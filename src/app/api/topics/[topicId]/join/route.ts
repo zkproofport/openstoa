@@ -14,12 +14,6 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/join';
 
-function getRpcUrl(): string {
-  const url = process.env.RPC_URL;
-  if (!url) throw new Error('RPC_URL environment variable is required');
-  return url;
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
@@ -66,23 +60,22 @@ export async function POST(
       logger.info(ROUTE, 'Topic requires country proof, verifying', { userId: session.userId, topicId });
 
       const body = await request.json();
-      const { proof, publicInputs, verifierAddress, chainId } = body;
+      const { proof, publicInputs } = body;
 
-      if (!proof || !publicInputs || !verifierAddress) {
-        logger.warn(ROUTE, 'Missing country proof fields', { userId: session.userId, topicId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
+      if (!proof || !publicInputs) {
+        logger.warn(ROUTE, 'Missing country proof fields', { userId: session.userId, topicId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
         return NextResponse.json(
-          { error: 'Country proof required: proof, publicInputs, verifierAddress' },
+          { error: 'Country proof required: proof, publicInputs' },
           { status: 400 },
         );
       }
 
-      logger.info(ROUTE, 'Verifying country proof on-chain', { userId: session.userId, topicId, verifierAddress, chainId, proofLength: proof.length });
+      logger.info(ROUTE, 'Verifying country proof on-chain', { userId: session.userId, topicId, proofLength: proof.length });
 
       const verification = await verifyProofOnChain(
         proof,
         publicInputs,
-        verifierAddress,
-        getRpcUrl(),
+        'coinbase_country_attestation',
       );
 
       if (!verification.valid) {

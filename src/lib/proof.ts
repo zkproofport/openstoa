@@ -6,13 +6,10 @@ export const COMMUNITY_SCOPE = 'zkproofport-community';
 export async function verifyProofOnChain(
   proof: string,
   publicInputs: string[],
-  verifierAddress: string,
-  rpcUrl: string,
   circuit: string = 'coinbase_attestation',
 ): Promise<{ valid: boolean; error?: string }> {
   const sdk = createSDK();
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  return sdk.verifyOnChain(circuit as any, proof, publicInputs, provider);
+  return sdk.verifyOnChain(circuit as any, proof, publicInputs);
 }
 
 function reconstructBytes32(fields: string[]): string {

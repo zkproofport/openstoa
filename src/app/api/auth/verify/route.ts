@@ -15,22 +15,16 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/auth/verify';
 
-function getRpcUrl(): string {
-  const url = process.env.RPC_URL;
-  if (!url) throw new Error('RPC_URL environment variable is required');
-  return url;
-}
-
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
-    const { challengeId, proof, publicInputs, verifierAddress, chainId } = body;
+    const { challengeId, proof, publicInputs } = body;
 
-    if (!challengeId || !proof || !publicInputs || !verifierAddress) {
-      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
+    if (!challengeId || !proof || !publicInputs) {
+      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
       return NextResponse.json(
-        { error: 'Missing required fields: challengeId, proof, publicInputs, verifierAddress' },
+        { error: 'Missing required fields: challengeId, proof, publicInputs' },
         { status: 400 },
       );
     }
@@ -47,14 +41,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain', { challengeId, verifierAddress, chainId, proofLength: proof.length, publicInputsLength: publicInputs.length });
+    logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain', { challengeId, proofLength: proof.length, publicInputsLength: publicInputs.length });
 
     // Verify proof on-chain
     const verification = await verifyProofOnChain(
       proof,
       publicInputs,
-      verifierAddress,
-      getRpcUrl(),
     );
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { challengeId, error: verification.error });

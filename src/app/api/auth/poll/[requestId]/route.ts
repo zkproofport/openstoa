@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { waitForProofResult, getServerRelayUrl } from '@/lib/relay';
+import { pollProofResult } from '@/lib/relay';
 import {
   verifyProofOnChain,
   extractNullifier,
@@ -15,12 +15,6 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/auth/poll/[requestId]';
 
-function getRpcUrl(): string {
-  const url = process.env.RPC_URL;
-  if (!url) throw new Error('RPC_URL environment variable is required');
-  return url;
-}
-
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> },
@@ -30,44 +24,28 @@ export async function GET(
 
     logger.info(ROUTE, 'Polling relay for proof result', { requestId });
 
-    // Poll relay once (not long-poll — client retries)
-    const relayUrl = getServerRelayUrl();
-    const res = await fetch(
-      `${relayUrl}/api/v1/proof/${requestId}`,
-    );
-    if (!res.ok) {
-      logger.error(ROUTE, 'Relay returned non-OK response', { requestId, status: res.status });
-      return NextResponse.json(
-        { error: 'Failed to poll relay' },
-        { status: 502 },
-      );
+    const result = await pollProofResult(requestId);
+
+    logger.info(ROUTE, 'Relay response received', { requestId, status: result.status });
+
+    if (result.status !== 'completed') {
+      return NextResponse.json({ status: result.status });
     }
 
-    const data = await res.json();
-
-    logger.info(ROUTE, 'Relay response received', { requestId, status: data.status });
-
-    if (data.status !== 'completed') {
-      return NextResponse.json({ status: data.status });
-    }
-
-    // Verify proof on-chain
-    const { proof, publicInputs, verifierAddress, chainId } = data;
-    if (!proof || !publicInputs || !verifierAddress) {
-      logger.error(ROUTE, 'Incomplete proof data from relay', { requestId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
+    const { proof, publicInputs } = result;
+    if (!proof || !publicInputs) {
+      logger.error(ROUTE, 'Incomplete proof data from relay', { requestId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
       return NextResponse.json(
         { error: 'Incomplete proof data from relay' },
         { status: 502 },
       );
     }
 
-    logger.info(ROUTE, 'Verifying proof on-chain', { requestId, verifierAddress, chainId, proofLength: proof.length, publicInputsLength: publicInputs.length });
+    logger.info(ROUTE, 'Verifying proof on-chain', { requestId, proofLength: proof.length, publicInputsLength: publicInputs.length });
 
     const verification = await verifyProofOnChain(
       proof,
       publicInputs,
-      verifierAddress,
-      getRpcUrl(),
     );
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { requestId, error: verification.error });

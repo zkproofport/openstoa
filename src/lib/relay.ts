@@ -19,16 +19,6 @@ function createSDK(): ProofportSDK {
   return sdk;
 }
 
-/**
- * Get the server-side relay URL for direct fetch calls.
- * Uses RELAY_URL if set (Docker), otherwise derives from SDK environment.
- */
-export function getServerRelayUrl(): string {
-  const relayUrl = process.env.RELAY_URL;
-  if (relayUrl) return relayUrl;
-  return 'https://relay.zkproofport.app';
-}
-
 export async function createRelayProofRequest(
   scope: string,
   options?: { dappName?: string; message?: string },
@@ -41,12 +31,11 @@ export async function createRelayProofRequest(
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }
 
-export async function waitForProofResult(
+export async function pollProofResult(
   requestId: string,
-  timeoutMs: number = 300_000,
 ): Promise<RelayProofResult> {
   const sdk = createSDK();
-  return sdk.waitForProof(requestId, { timeoutMs });
+  return sdk.pollResult(requestId);
 }
 
 export { createSDK };
