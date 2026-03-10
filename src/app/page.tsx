@@ -13,8 +13,16 @@ export default function LandingPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [agentExpanded, setAgentExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [agentToken, setAgentToken] = useState('');
+  const [agentConnecting, setAgentConnecting] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const doneRef = useRef(false);
+
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    setIsMobile(/iPhone|iPad|iPod|Android/i.test(ua));
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -43,11 +51,13 @@ export default function LandingPage() {
       setRequestId(data.requestId);
       setDeepLink(data.deepLink);
 
-      const QRCode = await import('qrcode');
-      const url = await QRCode.toDataURL(data.deepLink, {
+      const { createSDK } = await import('@/lib/relay');
+      const sdk = createSDK();
+      const url = await sdk.generateQRCode(data.deepLink, {
         width: 256,
         margin: 2,
-        color: { dark: '#ededed', light: '#0a0a0a' },
+        darkColor: '#ededed',
+        lightColor: '#0a0a0a',
       });
       setQrDataUrl(url);
 
@@ -217,99 +227,166 @@ export default function LandingPage() {
 
         {stage === 'proving' && (
           <div className="flex flex-col items-center gap-8" style={{ maxWidth: 400, width: '100%', padding: '0 16px' }}>
-            <div className="text-center">
-              <h2
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  letterSpacing: '-0.03em',
-                  margin: 0,
-                }}
-              >
-                Scan to Verify
-              </h2>
-              <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
-                Open ZKProofport app and scan this QR code
-              </p>
-            </div>
+            {isMobile ? (
+              <>
+                <div className="text-center">
+                  <h2
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 700,
+                      letterSpacing: '-0.03em',
+                      margin: 0,
+                    }}
+                  >
+                    Open ZKProofport
+                  </h2>
+                  <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
+                    Tap below to open the app and verify your identity
+                  </p>
+                </div>
 
-            {qrDataUrl ? (
-              <div
-                style={{
-                  padding: 20,
-                  border: '1px solid var(--border)',
-                  borderRadius: 20,
-                  background: '#0d0d0d',
-                  position: 'relative',
-                }}
-              >
-                <img
-                  src={qrDataUrl}
-                  alt="Proof request QR code"
-                  width={256}
-                  height={256}
-                  style={{ display: 'block', borderRadius: 10 }}
-                />
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: 20,
-                    boxShadow: '0 0 0 1px rgba(59,130,246,0.2) inset',
-                    pointerEvents: 'none',
-                  }}
-                />
-              </div>
+                {deepLink && (
+                  <a
+                    href={deepLink}
+                    style={{
+                      display: 'block',
+                      background: 'var(--accent)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 10,
+                      padding: '16px 40px',
+                      fontSize: 16,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      letterSpacing: '-0.01em',
+                      textDecoration: 'none',
+                      textAlign: 'center',
+                      width: '100%',
+                    }}
+                  >
+                    Open in ZKProofport →
+                  </a>
+                )}
+
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Spinner size={14} />
+                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+                      Waiting for proof...
+                    </span>
+                  </div>
+                  <button
+                    onClick={reset}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--muted)',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
             ) : (
-              <div
-                style={{
-                  width: 296,
-                  height: 296,
-                  border: '1px solid var(--border)',
-                  borderRadius: 20,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Spinner />
-              </div>
-            )}
+              <>
+                <div className="text-center">
+                  <h2
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 700,
+                      letterSpacing: '-0.03em',
+                      margin: 0,
+                    }}
+                  >
+                    Scan to Verify
+                  </h2>
+                  <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
+                    Open ZKProofport app and scan this QR code
+                  </p>
+                </div>
 
-            <div className="flex flex-col items-center gap-3">
-              {deepLink && (
-                <a
-                  href={deepLink}
-                  style={{
-                    fontSize: 13,
-                    color: 'var(--accent)',
-                    textDecoration: 'none',
-                    fontFamily: 'monospace',
-                  }}
-                >
-                  Open in ZKProofport app →
-                </a>
-              )}
-              <div className="flex items-center gap-2">
-                <Spinner size={14} />
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  Waiting for proof...
-                </span>
-              </div>
-              <button
-                onClick={reset}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--muted)',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                Cancel
-              </button>
-            </div>
+                {qrDataUrl ? (
+                  <div
+                    style={{
+                      padding: 20,
+                      border: '1px solid var(--border)',
+                      borderRadius: 20,
+                      background: '#0d0d0d',
+                      position: 'relative',
+                    }}
+                  >
+                    <img
+                      src={qrDataUrl}
+                      alt="Proof request QR code"
+                      width={256}
+                      height={256}
+                      style={{ display: 'block', borderRadius: 10 }}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: 20,
+                        boxShadow: '0 0 0 1px rgba(59,130,246,0.2) inset',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: 296,
+                      height: 296,
+                      border: '1px solid var(--border)',
+                      borderRadius: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Spinner />
+                  </div>
+                )}
+
+                <div className="flex flex-col items-center gap-3">
+                  {deepLink && (
+                    <a
+                      href={deepLink}
+                      style={{
+                        fontSize: 13,
+                        color: 'var(--accent)',
+                        textDecoration: 'none',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      Open in ZKProofport app →
+                    </a>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Spinner size={14} />
+                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+                      Waiting for proof...
+                    </span>
+                  </div>
+                  <button
+                    onClick={reset}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--muted)',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -411,7 +488,7 @@ export default function LandingPage() {
       <div
         style={{
           borderTop: '1px solid var(--border)',
-          padding: '32px 0',
+          padding: '32px 16px',
           maxWidth: 640,
           margin: '0 auto',
           width: '100%',
@@ -449,59 +526,132 @@ export default function LandingPage() {
           <div
             style={{
               marginTop: 16,
-              padding: 20,
-              background: '#111',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 20,
             }}
           >
-            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.6 }}>
-              AI agents can authenticate using a ZK proof flow. Request a challenge, generate a ZK
-              proof externally (e.g. via proofport-ai), then verify to receive a session token.
-              No wallet address is required or stored.
-            </p>
-
-            <pre
+            {/* Token Input */}
+            <div
               style={{
-                fontFamily: 'monospace',
-                fontSize: 12,
-                color: '#a3e635',
-                background: '#0a0a0a',
+                padding: 20,
+                background: '#111',
                 border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: 16,
-                overflowX: 'auto',
-                lineHeight: 1.6,
-                margin: 0,
+                borderRadius: 12,
               }}
             >
-{`// Step 1: Request a challenge
-const { challengeId, scope } = await fetch('/api/auth/challenge', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({}),
-}).then(r => r.json());
+              <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 8px 0' }}>
+                Browser Access with Token
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Paste your session token to access the community UI in this browser.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={agentToken}
+                  onChange={(e) => setAgentToken(e.target.value)}
+                  placeholder="Paste JWT token here..."
+                  style={{
+                    flex: 1,
+                    background: '#0a0a0a',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    padding: '10px 14px',
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    color: '#ededed',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (!agentToken.trim()) return;
+                    setAgentConnecting(true);
+                    window.location.href = `/api/auth/token-login?token=${encodeURIComponent(agentToken.trim())}`;
+                  }}
+                  disabled={!agentToken.trim() || agentConnecting}
+                  style={{
+                    background: agentToken.trim() ? 'var(--accent)' : '#333',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 20px',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: agentToken.trim() ? 'pointer' : 'not-allowed',
+                    whiteSpace: 'nowrap',
+                    opacity: agentConnecting ? 0.6 : 1,
+                  }}
+                >
+                  {agentConnecting ? 'Connecting...' : 'Connect'}
+                </button>
+              </div>
+            </div>
 
-// Step 2: Generate ZK proof externally (e.g. via proofport-ai)
-// Use the scope value as the proof scope binding
-const { proof, publicInputs, verifierAddress } = await generateZKProof({
-  circuit: 'coinbase_attestation',
-  scope,
-});
+            {/* CLI Instructions */}
+            <div
+              style={{
+                padding: 20,
+                background: '#111',
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+              }}
+            >
+              <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 8px 0' }}>
+                CLI Authentication
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Authenticate via API and use the token for both API calls and browser access.
+              </p>
 
-// Step 3: Verify proof and get session token
-const { token } = await fetch('/api/auth/verify', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ challengeId, proof, publicInputs, verifierAddress }),
-}).then(r => r.json());
+              <pre
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: '#a3e635',
+                  background: '#0a0a0a',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: 16,
+                  overflowX: 'auto',
+                  lineHeight: 1.6,
+                  margin: 0,
+                }}
+              >
+{`# Step 1: Get a challenge
+CHALLENGE=$(curl -s -X POST /api/auth/challenge \\
+  -H "Content-Type: application/json" | jq -r '.challengeId')
 
-// Step 4: Use token as Bearer in subsequent requests
-// (session cookie is also set automatically for browser use)
-fetch('/api/topics', {
-  headers: { Authorization: \`Bearer \${token}\` },
-});`}
-            </pre>
+# Step 2: Generate ZK proof via proofport-ai
+# (use the scope from challenge response)
+
+# Step 3: Verify and get token
+TOKEN=$(curl -s -X POST /api/auth/verify \\
+  -H "Content-Type: application/json" \\
+  -d '{"challengeId":"'$CHALLENGE'","proof":"...","publicInputs":"...","verifierAddress":"..."}' \\
+  | jq -r '.token')
+
+# Step 4a: Use token for API calls
+curl -H "Authorization: Bearer $TOKEN" /api/topics
+
+# Step 4b: Open browser with token (sets session cookie)
+open "/api/auth/token-login?token=$TOKEN"`}
+              </pre>
+
+              <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+                <a
+                  href="/docs"
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--accent)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  Full API Documentation →
+                </a>
+              </div>
+            </div>
           </div>
         )}
       </div>
