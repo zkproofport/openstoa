@@ -1,0 +1,91 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { jwtVerify } from 'jose';
+
+const PUBLIC_PATHS = [
+  '/',
+  '/api/auth/proof-request',
+  '/api/auth/challenge',
+  '/api/auth/verify',
+  '/api/auth/poll',
+  '/api/auth/logout',
+  '/api/health',
+  '/api/docs/openapi.json',
+  '/docs',
+];
+
+const PUBLIC_PREFIXES = [
+  '/_next',
+  '/favicon.ico',
+  '/api/auth/poll/',
+  '/docs',
+];
+
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATHS.includes(pathname)) return true;
+  return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+function isApiRoute(pathname: string): boolean {
+  return pathname.startsWith('/api/');
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  const cookieToken = request.cookies.get('zk-community-session')?.value;
+  const authHeader = request.headers.get('authorization');
+  const bearerToken =
+    authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const token = cookieToken ?? bearerToken;
+  if (!token) {
+    if (isApiRoute(pathname)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  const COMMUNITY_JWT_SECRET = process.env.COMMUNITY_JWT_SECRET;
+  if (!COMMUNITY_JWT_SECRET) {
+    throw new Error('COMMUNITY_JWT_SECRET environment variable is required');
+  }
+
+  const secret = new TextEncoder().encode(COMMUNITY_JWT_SECRET);
+
+  try {
+    const { payload } = await jwtVerify(token, secret);
+
+    // /profile is accessible with session but no nickname required
+    if (pathname === '/profile' || pathname.startsWith('/api/profile/')) {
+      return NextResponse.next();
+    }
+
+    // /topics/* requires session WITH nickname (not a temp anon_ nickname)
+    if (pathname.startsWith('/topics') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/posts')) {
+      const nickname = payload.nickname as string;
+      if (!nickname || nickname.startsWith('anon_')) {
+        if (isApiRoute(pathname)) {
+          return NextResponse.json(
+            { error: 'Nickname required. Set your nickname at /profile first.' },
+            { status: 403 },
+          );
+        }
+        return NextResponse.redirect(new URL('/profile', request.url));
+      }
+    }
+
+    return NextResponse.next();
+  } catch {
+    if (isApiRoute(pathname)) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};

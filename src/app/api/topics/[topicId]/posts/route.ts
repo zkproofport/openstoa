@@ -1,0 +1,135 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionFromCookies } from '@/lib/session';
+import { db } from '@/lib/db';
+import { posts, topicMembers, users } from '@/lib/db/schema';
+import { eq, and, desc } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+
+const ROUTE = '/api/topics/[topicId]/posts';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+) {
+  logger.info(ROUTE, 'GET request received');
+  try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      logger.warn(ROUTE, 'Unauthenticated request');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { topicId } = await params;
+
+    // Check membership
+    const membership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, topicId),
+        eq(topicMembers.userId, session.userId),
+      ),
+    });
+
+    if (!membership) {
+      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, topicId });
+      return NextResponse.json(
+        { error: 'Not a member of this topic' },
+        { status: 403 },
+      );
+    }
+
+    // Pagination
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
+    const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
+
+    logger.info(ROUTE, 'Fetching posts', { userId: session.userId, topicId, limit, offset });
+
+    const topicPosts = await db
+      .select({
+        id: posts.id,
+        topicId: posts.topicId,
+        authorId: posts.authorId,
+        title: posts.title,
+        content: posts.content,
+        createdAt: posts.createdAt,
+        updatedAt: posts.updatedAt,
+        authorNickname: users.nickname,
+      })
+      .from(posts)
+      .leftJoin(users, eq(posts.authorId, users.id))
+      .where(eq(posts.topicId, topicId))
+      .orderBy(desc(posts.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    logger.info(ROUTE, 'Posts fetched', { userId: session.userId, topicId, count: topicPosts.length });
+    return NextResponse.json({ posts: topicPosts });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+) {
+  logger.info(ROUTE, 'POST request received');
+  try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      logger.warn(ROUTE, 'Unauthenticated request');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { topicId } = await params;
+
+    // Check membership
+    const membership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, topicId),
+        eq(topicMembers.userId, session.userId),
+      ),
+    });
+
+    if (!membership) {
+      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, topicId });
+      return NextResponse.json(
+        { error: 'Not a member of this topic' },
+        { status: 403 },
+      );
+    }
+
+    const body = await request.json();
+    const { title, content } = body;
+
+    if (!title || typeof title !== 'string') {
+      logger.warn(ROUTE, 'Missing title', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    }
+    if (!content || typeof content !== 'string') {
+      logger.warn(ROUTE, 'Missing content', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+    }
+
+    logger.info(ROUTE, 'Creating post', { userId: session.userId, topicId, title });
+
+    const [post] = await db
+      .insert(posts)
+      .values({
+        topicId,
+        authorId: session.userId,
+        title,
+        content,
+      })
+      .returning();
+
+    logger.info(ROUTE, 'Post created', { userId: session.userId, topicId, postId: post.id });
+    return NextResponse.json({ post }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
