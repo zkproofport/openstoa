@@ -19,12 +19,12 @@ export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
-    const { challengeId, proof, publicInputs, verifierAddress, chainId } = body;
+    const { challengeId, proof, publicInputs } = body;
 
-    if (!challengeId || !proof || !publicInputs || !verifierAddress) {
-      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
+    if (!challengeId || !proof || !publicInputs) {
+      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
       return NextResponse.json(
-        { error: 'Missing required fields: challengeId, proof, publicInputs, verifierAddress' },
+        { error: 'Missing required fields: challengeId, proof, publicInputs' },
         { status: 400 },
       );
     }
@@ -48,13 +48,11 @@ export async function POST(request: NextRequest) {
       ? 'coinbase_country_attestation'
       : 'coinbase_attestation';
 
-    // Verify proof on-chain
+    // Verify proof on-chain (verifier address resolved by SDK internally)
     const verification = await verifyProofFromRelay({
       status: 'completed',
       proof,
       publicInputs,
-      verifierAddress,
-      chainId,
       circuit,
       requestId: challengeId,
     });
