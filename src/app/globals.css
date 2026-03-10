@@ -8,10 +8,12 @@
   --muted: #737373;
 }
 
-body {
+html, body {
   background: var(--background);
   color: var(--foreground);
   font-family: system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 * {

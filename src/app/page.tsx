@@ -114,7 +114,8 @@ export default function LandingPage() {
             top: '20%',
             left: '50%',
             transform: 'translateX(-50%)',
-            width: 600,
+            width: '100%',
+            maxWidth: 600,
             height: 300,
             background:
               'radial-gradient(ellipse at center, rgba(59,130,246,0.08) 0%, transparent 70%)',
@@ -123,7 +124,7 @@ export default function LandingPage() {
         />
 
         {stage === 'idle' && (
-          <div className="flex flex-col items-center text-center gap-8" style={{ maxWidth: 520 }}>
+          <div className="flex flex-col items-center text-center gap-8" style={{ maxWidth: 520, width: '100%', padding: '0 16px' }}>
             <div className="flex flex-col items-center gap-4">
               <div
                 style={{
@@ -200,7 +201,9 @@ export default function LandingPage() {
             <div
               style={{
                 display: 'flex',
-                gap: 24,
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: '8px 24px',
                 fontSize: 13,
                 color: 'var(--muted)',
               }}
@@ -213,7 +216,7 @@ export default function LandingPage() {
         )}
 
         {stage === 'proving' && (
-          <div className="flex flex-col items-center gap-8" style={{ maxWidth: 400 }}>
+          <div className="flex flex-col items-center gap-8" style={{ maxWidth: 400, width: '100%', padding: '0 16px' }}>
             <div className="text-center">
               <h2
                 style={{
