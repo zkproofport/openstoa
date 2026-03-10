@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { topics, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import {
-  verifyProofOnChain,
+  verifyProofFromRelay,
   extractScope,
   extractIsIncluded,
   computeScopeHash,
@@ -60,23 +60,27 @@ export async function POST(
       logger.info(ROUTE, 'Topic requires country proof, verifying', { userId: session.userId, topicId });
 
       const body = await request.json();
-      const { proof, publicInputs } = body;
+      const { proof, publicInputs, verifierAddress, chainId } = body;
 
-      if (!proof || !publicInputs) {
-        logger.warn(ROUTE, 'Missing country proof fields', { userId: session.userId, topicId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
+      if (!proof || !publicInputs || !verifierAddress) {
+        logger.warn(ROUTE, 'Missing country proof fields', { userId: session.userId, topicId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
         return NextResponse.json(
-          { error: 'Country proof required: proof, publicInputs' },
+          { error: 'Country proof required: proof, publicInputs, verifierAddress' },
           { status: 400 },
         );
       }
 
       logger.info(ROUTE, 'Verifying country proof on-chain', { userId: session.userId, topicId, proofLength: proof.length });
 
-      const verification = await verifyProofOnChain(
+      const verification = await verifyProofFromRelay({
+        status: 'completed',
         proof,
         publicInputs,
-        'coinbase_country_attestation',
-      );
+        verifierAddress,
+        chainId,
+        circuit: 'coinbase_country_attestation',
+        requestId: topicId,
+      });
 
       if (!verification.valid) {
         logger.warn(ROUTE, 'Country proof verification failed', { userId: session.userId, topicId, error: verification.error });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pollProofResult } from '@/lib/relay';
 import {
-  verifyProofOnChain,
+  verifyProofFromRelay,
   extractNullifier,
   extractScope,
   computeScopeHash,
@@ -32,21 +32,17 @@ export async function GET(
       return NextResponse.json({ status: result.status });
     }
 
-    const { proof, publicInputs } = result;
-    if (!proof || !publicInputs) {
-      logger.error(ROUTE, 'Incomplete proof data from relay', { requestId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
+    if (!result.proof || !result.publicInputs) {
+      logger.error(ROUTE, 'Incomplete proof data from relay', { requestId, hasProof: !!result.proof, hasPublicInputs: !!result.publicInputs });
       return NextResponse.json(
         { error: 'Incomplete proof data from relay' },
         { status: 502 },
       );
     }
 
-    logger.info(ROUTE, 'Verifying proof on-chain', { requestId, proofLength: proof.length, publicInputsLength: publicInputs.length });
+    logger.info(ROUTE, 'Verifying proof on-chain', { requestId, proofLength: result.proof.length, publicInputsLength: result.publicInputs.length });
 
-    const verification = await verifyProofOnChain(
-      proof,
-      publicInputs,
-    );
+    const verification = await verifyProofFromRelay(result);
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { requestId, error: verification.error });
       return NextResponse.json(
@@ -58,7 +54,7 @@ export async function GET(
     logger.info(ROUTE, 'Proof verified on-chain', { requestId });
 
     // Verify scope
-    const scope = extractScope(publicInputs, 'coinbase_attestation');
+    const scope = extractScope(result.publicInputs, 'coinbase_attestation');
     const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
     if (scope !== expectedScope) {
       logger.warn(ROUTE, 'Scope mismatch', { requestId, scope, expectedScope });
@@ -69,7 +65,7 @@ export async function GET(
     }
 
     // Extract nullifier as userId
-    const nullifier = extractNullifier(publicInputs, 'coinbase_attestation');
+    const nullifier = extractNullifier(result.publicInputs, 'coinbase_attestation');
 
     // Create or get user
     const existingUser = await db.query.users.findFirst({

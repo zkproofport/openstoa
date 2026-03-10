@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { consumeChallenge } from '@/lib/challenge';
 import {
-  verifyProofOnChain,
+  verifyProofFromRelay,
   extractNullifier,
   extractScope,
   computeScopeHash,
@@ -19,12 +19,12 @@ export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
-    const { challengeId, proof, publicInputs } = body;
+    const { challengeId, proof, publicInputs, verifierAddress, chainId } = body;
 
-    if (!challengeId || !proof || !publicInputs) {
-      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
+    if (!challengeId || !proof || !publicInputs || !verifierAddress) {
+      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
       return NextResponse.json(
-        { error: 'Missing required fields: challengeId, proof, publicInputs' },
+        { error: 'Missing required fields: challengeId, proof, publicInputs, verifierAddress' },
         { status: 400 },
       );
     }
@@ -43,11 +43,21 @@ export async function POST(request: NextRequest) {
 
     logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain', { challengeId, proofLength: proof.length, publicInputsLength: publicInputs.length });
 
+    // Determine circuit from publicInputs length
+    const circuit = publicInputs.length > 128
+      ? 'coinbase_country_attestation'
+      : 'coinbase_attestation';
+
     // Verify proof on-chain
-    const verification = await verifyProofOnChain(
+    const verification = await verifyProofFromRelay({
+      status: 'completed',
       proof,
       publicInputs,
-    );
+      verifierAddress,
+      chainId,
+      circuit,
+      requestId: challengeId,
+    });
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { challengeId, error: verification.error });
       return NextResponse.json(
@@ -56,14 +66,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.info(ROUTE, 'Proof verified on-chain', { challengeId });
-
-    // Determine circuit from publicInputs length
-    const circuit = publicInputs.length > 128
-      ? 'coinbase_country_attestation'
-      : 'coinbase_attestation';
-
-    logger.info(ROUTE, 'Detected circuit', { challengeId, circuit, publicInputsLength: publicInputs.length });
+    logger.info(ROUTE, 'Proof verified on-chain', { challengeId, circuit });
 
     // Verify scope
     const scope = extractScope(publicInputs, circuit);

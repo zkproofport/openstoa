@@ -1,15 +1,14 @@
 import { ethers } from 'ethers';
 import { createSDK } from './relay';
+import type { RelayProofResult } from '@zkproofport-app/sdk';
 
 export const COMMUNITY_SCOPE = 'zkproofport-community';
 
-export async function verifyProofOnChain(
-  proof: string,
-  publicInputs: string[],
-  circuit: string = 'coinbase_attestation',
+export async function verifyProofFromRelay(
+  result: RelayProofResult,
 ): Promise<{ valid: boolean; error?: string }> {
   const sdk = createSDK();
-  return sdk.verifyOnChain(circuit as any, proof, publicInputs);
+  return sdk.verifyResponseOnChain(result as any);
 }
 
 function reconstructBytes32(fields: string[]): string {
