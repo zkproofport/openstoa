@@ -54,6 +54,7 @@ export async function GET(
     logger.info(ROUTE, 'Proof verified on-chain', { requestId });
 
     // Verify scope
+    logger.info(ROUTE, 'Extracting scope', { requestId });
     const scope = extractScope(result.publicInputs, 'coinbase_attestation');
     const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
     if (scope !== expectedScope) {
@@ -65,12 +66,16 @@ export async function GET(
     }
 
     // Extract nullifier as userId
+    logger.info(ROUTE, 'Extracting nullifier', { requestId });
     const nullifier = extractNullifier(result.publicInputs, 'coinbase_attestation');
+    logger.info(ROUTE, 'Nullifier extracted', { requestId, nullifier });
 
     // Create or get user
+    logger.info(ROUTE, 'Querying DB for user', { requestId, nullifier });
     const existingUser = await db.query.users.findFirst({
       where: eq(users.id, nullifier),
     });
+    logger.info(ROUTE, 'DB query complete', { requestId, found: !!existingUser });
 
     const needsNickname = !existingUser;
 
