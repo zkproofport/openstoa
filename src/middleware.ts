@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   '/api/health',
   '/api/docs/openapi.json',
   '/docs',
+  '/icon.png',
 ];
 
 const PUBLIC_PREFIXES = [
