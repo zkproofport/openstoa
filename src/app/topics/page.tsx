@@ -13,6 +13,7 @@ interface Topic {
   requiresCountryProof: boolean;
   allowedCountries?: string[] | null;
   createdAt: string;
+  isMember?: boolean;
 }
 
 export default function TopicsPage() {
@@ -20,6 +21,8 @@ export default function TopicsPage() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<'all' | 'my'>('all');
+  const [joiningId, setJoiningId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -38,9 +41,16 @@ export default function TopicsPage() {
       .catch(() => router.replace('/'));
   }, [router]);
 
+  useEffect(() => {
+    loadTopics();
+  }, [view]);
+
   async function loadTopics() {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/topics');
+      const url = view === 'all' ? '/api/topics?view=all' : '/api/topics';
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to load topics');
       const data = await res.json();
       setTopics(data.topics ?? []);
@@ -48,6 +58,19 @@ export default function TopicsPage() {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleJoin(topicId: string) {
+    setJoiningId(topicId);
+    try {
+      const res = await fetch(`/api/topics/${topicId}/join`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to join topic');
+      await loadTopics();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join topic');
+    } finally {
+      setJoiningId(null);
     }
   }
 
@@ -59,6 +82,11 @@ export default function TopicsPage() {
     });
   }
 
+  const emptyMessage =
+    view === 'all'
+      ? 'No topics in the community yet'
+      : "You haven't joined any topics yet. Browse all topics to find one.";
+
   return (
     <>
       <Header />
@@ -68,7 +96,7 @@ export default function TopicsPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 32,
+            marginBottom: 24,
           }}
         >
           <div>
@@ -103,6 +131,38 @@ export default function TopicsPage() {
           >
             + Create Topic
           </Link>
+        </div>
+
+        {/* Tabs */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 0,
+            borderBottom: '1px solid var(--border)',
+            marginBottom: 28,
+          }}
+        >
+          {(['all', 'my'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setView(tab)}
+              style={{
+                background: 'none',
+                border: 'none',
+                borderBottom: view === tab ? '2px solid var(--accent)' : '2px solid transparent',
+                color: view === tab ? 'var(--accent)' : 'var(--muted)',
+                cursor: 'pointer',
+                fontSize: 14,
+                fontWeight: view === tab ? 600 : 400,
+                padding: '8px 16px',
+                marginBottom: -1,
+                letterSpacing: '-0.01em',
+                transition: 'color 0.15s',
+              }}
+            >
+              {tab === 'all' ? 'All Topics' : 'My Topics'}
+            </button>
+          ))}
         </div>
 
         {loading && (
@@ -151,36 +211,51 @@ export default function TopicsPage() {
                 marginBottom: 8,
               }}
             >
-              No topics yet
+              {view === 'all' ? 'No topics yet' : 'No joined topics'}
             </p>
             <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 24 }}>
-              Create the first one and start the conversation.
+              {emptyMessage}
             </p>
-            <Link
-              href="/topics/new"
-              style={{
-                background: 'var(--accent)',
-                color: '#fff',
-                textDecoration: 'none',
-                borderRadius: 8,
-                padding: '10px 24px',
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-              Create first topic
-            </Link>
+            {view === 'all' ? (
+              <Link
+                href="/topics/new"
+                style={{
+                  background: 'var(--accent)',
+                  color: '#fff',
+                  textDecoration: 'none',
+                  borderRadius: 8,
+                  padding: '10px 24px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                Create first topic
+              </Link>
+            ) : (
+              <button
+                onClick={() => setView('all')}
+                style={{
+                  background: 'var(--accent)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '10px 24px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Browse all topics
+              </button>
+            )}
           </div>
         )}
 
         {!loading && !error && topics.length > 0 && (
           <div className="flex flex-col gap-3">
-            {topics.map((topic) => (
-              <Link
-                key={topic.id}
-                href={`/topics/${topic.id}`}
-                style={{ textDecoration: 'none' }}
-              >
+            {topics.map((topic) => {
+              const isMember = topic.isMember !== false;
+              const cardContent = (
                 <div
                   style={{
                     padding: '20px 24px',
@@ -188,12 +263,14 @@ export default function TopicsPage() {
                     border: '1px solid var(--border)',
                     borderRadius: 12,
                     transition: 'border-color 0.15s, background 0.15s',
-                    cursor: 'pointer',
+                    cursor: isMember ? 'pointer' : 'default',
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor =
-                      'rgba(59,130,246,0.4)';
-                    (e.currentTarget as HTMLDivElement).style.background = '#111';
+                    if (isMember) {
+                      (e.currentTarget as HTMLDivElement).style.borderColor =
+                        'rgba(59,130,246,0.4)';
+                      (e.currentTarget as HTMLDivElement).style.background = '#111';
+                    }
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)';
@@ -279,11 +356,60 @@ export default function TopicsPage() {
                         </div>
                       )}
                       <div>{formatDate(topic.createdAt)}</div>
+                      {!isMember && (
+                        <div style={{ marginTop: 8 }}>
+                          {topic.requiresCountryProof ? (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                background: 'rgba(59,130,246,0.08)',
+                                color: 'var(--muted)',
+                                border: '1px solid var(--border)',
+                                padding: '3px 8px',
+                                borderRadius: 4,
+                              }}
+                            >
+                              Requires Country Proof
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleJoin(topic.id);
+                              }}
+                              disabled={joiningId === topic.id}
+                              style={{
+                                background: 'var(--accent)',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: 6,
+                                padding: '6px 16px',
+                                fontSize: 13,
+                                fontWeight: 600,
+                                cursor: joiningId === topic.id ? 'not-allowed' : 'pointer',
+                                opacity: joiningId === topic.id ? 0.7 : 1,
+                              }}
+                            >
+                              {joiningId === topic.id ? 'Joining…' : 'Join'}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
-              </Link>
-            ))}
+              );
+
+              return isMember ? (
+                <Link key={topic.id} href={`/topics/${topic.id}`} style={{ textDecoration: 'none' }}>
+                  {cardContent}
+                </Link>
+              ) : (
+                <div key={topic.id}>{cardContent}</div>
+              );
+            })}
           </div>
         )}
       </div>

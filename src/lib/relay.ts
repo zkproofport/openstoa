@@ -21,7 +21,7 @@ function createSDK(): ProofportSDK {
 
 export async function createRelayProofRequest(
   scope: string,
-  options?: { dappName?: string; message?: string },
+  options?: { dappName?: string; dappIcon?: string; message?: string },
 ): Promise<{ requestId: string; deepLink: string }> {
   const sdk = createSDK();
   const relay = await sdk.createRelayRequest('coinbase_attestation', { scope }, {
