@@ -22,7 +22,12 @@ export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'Token valid, setting cookie and redirecting', { userId: session.userId });
 
   const needsNickname = !session.nickname || session.nickname.startsWith('anon_');
-  const redirectUrl = new URL(needsNickname ? '/profile' : '/topics', request.url);
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const forwardedProto = request.headers.get('x-forwarded-proto') ?? 'https';
+  const baseUrl = forwardedHost
+    ? `${forwardedProto}://${forwardedHost}`
+    : request.url;
+  const redirectUrl = new URL(needsNickname ? '/profile' : '/topics', baseUrl);
   const response = NextResponse.redirect(redirectUrl);
   setSessionCookie(response, token);
   return response;
