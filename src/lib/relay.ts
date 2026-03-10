@@ -26,7 +26,8 @@ export async function createRelayProofRequest(
   const sdk = createSDK();
   const relay = await sdk.createRelayRequest('coinbase_attestation', { scope }, {
     dappName: options?.dappName ?? 'ZK Community',
-    message: options?.message,
+    dappIcon: options?.dappIcon ?? 'https://stg-community.zkproofport.app/icon.svg',
+    message: options?.message ?? 'Verify your Coinbase KYC to access ZK Community',
   });
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }
