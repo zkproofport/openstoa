@@ -5,6 +5,7 @@ import {
   extractNullifier,
   extractScope,
   computeScopeHash,
+  normalizePublicInputs,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
 import { createSession, setSessionCookie } from '@/lib/session';
@@ -41,10 +42,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain', { challengeId, proofLength: proof.length, publicInputsLength: publicInputs.length });
+    // Normalize publicInputs: SDK may return a single hex string; downstream functions expect string[]
+    const normalizedInputs = normalizePublicInputs(publicInputs);
 
-    // Determine circuit from publicInputs length
-    const circuit = publicInputs.length > 128
+    logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain', { challengeId, proofLength: proof.length, publicInputsCount: normalizedInputs.length });
+
+    // Determine circuit from normalized array length
+    const circuit = normalizedInputs.length > 10
       ? 'coinbase_country_attestation'
       : 'coinbase_attestation';
 
@@ -52,7 +56,7 @@ export async function POST(request: NextRequest) {
     const verification = await verifyProofFromRelay({
       status: 'completed',
       proof,
-      publicInputs,
+      publicInputs: normalizedInputs,
       circuit,
       requestId: challengeId,
     });
@@ -67,7 +71,7 @@ export async function POST(request: NextRequest) {
     logger.info(ROUTE, 'Proof verified on-chain', { challengeId, circuit });
 
     // Verify scope
-    const scope = extractScope(publicInputs, circuit);
+    const scope = extractScope(normalizedInputs, circuit);
     const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
     if (scope !== expectedScope) {
       logger.warn(ROUTE, 'Scope mismatch', { challengeId, scope, expectedScope });
@@ -78,7 +82,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract nullifier as userId
-    const nullifier = extractNullifier(publicInputs, circuit);
+    const nullifier = extractNullifier(normalizedInputs, circuit);
 
     // Create or get user
     const existingUser = await db.query.users.findFirst({

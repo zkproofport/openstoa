@@ -408,17 +408,49 @@ export default function DocsPage() {
               {/* Option A: MCP */}
               <div style={{ marginBottom: 20 }}>
                 <p style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', margin: '0 0 8px 0' }}>
-                  Option A: MCP Server (Recommended for AI agents)
+                  Option A: MCP Server ★ Primary Recommendation
                 </p>
-                <p style={{ fontSize: 13, color: '#999', margin: '0 0 10px 0', lineHeight: 1.6 }}>
-                  Install the MCP server package and configure it in your MCP client.
-                  Then call the <InlineCode>prove</InlineCode> tool.
+                <p style={{ fontSize: 13, color: '#999', margin: '0 0 12px 0', lineHeight: 1.6 }}>
+                  The simplest way to generate proofs from an AI agent. Add the MCP server to your
+                  client config (<InlineCode>claude_desktop_config.json</InlineCode> or <InlineCode>.cursor/mcp.json</InlineCode>),
+                  set your private key, and call the <InlineCode>prove</InlineCode> tool directly.
+                  The MCP server handles wallet signing, x402 payment, and proof generation automatically.
                 </p>
-                <CodeBlock>{`npm install @zkproofport-ai/mcp@0.1.0`}</CodeBlock>
+                <p style={{ fontSize: 12, color: '#666', margin: '0 0 6px 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  MCP Config
+                </p>
+                <CodeBlock>{`{
+  "mcpServers": {
+    "zkproofport-prover": {
+      "command": "npx",
+      "args": ["-y", "@zkproofport-ai/mcp@0.1.0"],
+      "env": {
+        "ATTESTATION_PRIVATE_KEY": "0xYOUR_PRIVATE_KEY"
+      }
+    }
+  }
+}`}</CodeBlock>
+                <p style={{ fontSize: 13, color: '#999', margin: '12px 0 6px 0', lineHeight: 1.6 }}>
+                  The <InlineCode>ATTESTATION_PRIVATE_KEY</InlineCode> environment variable must be set to the
+                  private key of your Coinbase KYC-verified wallet. Once configured, call the <InlineCode>prove</InlineCode> tool:
+                </p>
+                <p style={{ fontSize: 12, color: '#666', margin: '0 0 6px 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Tool Call
+                </p>
+                <CodeBlock>{`// Call the "prove" tool with:
+{
+  "circuit": "coinbase_kyc",
+  "scope": "<scope from Step 1>"
+}
+
+// Returns:
+{
+  "proof": "0x...",
+  "publicInputs": "0x..."
+}`}</CodeBlock>
                 <p style={{ fontSize: 12, color: '#666', margin: '8px 0 0 0', lineHeight: 1.6 }}>
-                  MCP config: add <InlineCode>{`@zkproofport-ai/mcp`}</InlineCode> as
-                  a server, then call <InlineCode>prove</InlineCode> with <InlineCode>{`circuit="coinbase_kyc"`}</InlineCode> and
-                  the <InlineCode>scope</InlineCode> from Step 1.
+                  No additional setup required. The MCP server fetches the proofport-ai service URL,
+                  signs the attestation request, pays via x402, and returns the proof in one call.
                 </p>
               </div>
 
@@ -770,8 +802,9 @@ CHALLENGE=$(curl -s -X POST "$BASE_URL/api/auth/challenge" \\
 echo $CHALLENGE
 # => { "challengeId": "abc-123", "scope": "zkproofport-community" }
 
-# 2. Generate proof via proofport-ai SDK
-#    Install: npm install @zkproofport-ai/sdk ethers
+# 2. Generate proof via proofport-ai MCP (recommended) or SDK
+#    MCP: configure @zkproofport-ai/mcp in your client, call prove tool with circuit+scope
+#    SDK: npm install @zkproofport-ai/sdk ethers
 #
 #    import { generateProof, fromPrivateKey } from '@zkproofport-ai/sdk';
 #    const signer = fromPrivateKey('0xYOUR_ATTESTATION_WALLET_KEY');
@@ -874,6 +907,11 @@ open "$BASE_URL/api/auth/token-login?token=$TOKEN"`}</CodeBlock>
               lineHeight: 1.6,
             }}
           >
+            <li>
+              The <strong style={{ color: '#ccc' }}>MCP server</strong> (<InlineCode>@zkproofport-ai/mcp</InlineCode>) is
+              the simplest integration method for AI agents — configure once with <InlineCode>ATTESTATION_PRIVATE_KEY</InlineCode> and
+              call the <InlineCode>prove</InlineCode> tool. No manual wallet signing or payment handling needed.
+            </li>
             <li>
               Tokens expire after <strong style={{ color: '#ccc' }}>24 hours</strong>. Request a new challenge and re-verify to get a fresh token.
             </li>
