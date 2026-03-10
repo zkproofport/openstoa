@@ -28,7 +28,7 @@ export async function createRelayProofRequest(
     dappName: options?.dappName ?? 'ZK Community',
     dappIcon: options?.dappIcon ?? 'https://stg-community.zkproofport.app/icon.svg',
     message: options?.message ?? 'Verify your Coinbase KYC to access ZK Community',
-  });
+  } as Record<string, string>);
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }
 
