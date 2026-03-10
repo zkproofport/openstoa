@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import RichEditor from '@/components/RichEditor';
+import TagInput from '@/components/TagInput';
 
 interface Topic {
   id: string;
@@ -20,6 +22,8 @@ interface Post {
   title: string;
   authorNickname: string;
   commentCount?: number;
+  upvoteCount?: number;
+  viewCount?: number;
   createdAt: string;
 }
 
@@ -41,7 +45,9 @@ export default function TopicPage() {
   // Write post inline
   const [composing, setComposing] = useState(false);
   const [postTitle, setPostTitle] = useState('');
-  const [postContent, setPostContent] = useState('');
+  const [postContentHtml, setPostContentHtml] = useState('');
+  const [postContentJson, setPostContentJson] = useState<Record<string, unknown> | null>(null);
+  const [postTags, setPostTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
@@ -99,21 +105,28 @@ export default function TopicPage() {
 
   async function handlePostSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!postTitle.trim() || !postContent.trim()) return;
+    if (!postTitle.trim() || !postContentHtml || postContentHtml === '<p></p>') return;
     setSubmitting(true);
     setPostError(null);
     try {
       const res = await fetch(`/api/topics/${topicId}/posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: postTitle.trim(), content: postContent.trim() }),
+        body: JSON.stringify({
+          title: postTitle.trim(),
+          content: postContentHtml,
+          contentJson: postContentJson,
+          tags: postTags.length > 0 ? postTags : undefined,
+        }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? 'Failed to post');
       }
       setPostTitle('');
-      setPostContent('');
+      setPostContentHtml('');
+      setPostContentJson(null);
+      setPostTags([]);
       setComposing(false);
       loadPosts(0, true);
     } catch (err) {
@@ -282,25 +295,17 @@ export default function TopicPage() {
                   outline: 'none',
                 }}
               />
-              <textarea
-                value={postContent}
-                onChange={(e) => setPostContent(e.target.value)}
+              <RichEditor
                 placeholder="Write your post..."
-                rows={5}
-                style={{
-                  width: '100%',
-                  background: '#111',
-                  border: '1px solid var(--border)',
-                  borderRadius: 7,
-                  padding: '10px 14px',
-                  color: 'var(--foreground)',
-                  fontSize: 14,
-                  outline: 'none',
-                  resize: 'vertical',
-                  lineHeight: 1.6,
-                  fontFamily: 'inherit',
+                onChange={(html, json) => {
+                  setPostContentHtml(html);
+                  setPostContentJson(json);
                 }}
+                minHeight={180}
               />
+              <div style={{ marginTop: 12 }}>
+                <TagInput tags={postTags} onChange={setPostTags} />
+              </div>
               {postError && (
                 <p style={{ fontSize: 12, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
                   {postError}
@@ -309,7 +314,7 @@ export default function TopicPage() {
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={() => { setComposing(false); setPostTitle(''); setPostContent(''); }}
+                  onClick={() => { setComposing(false); setPostTitle(''); setPostContentHtml(''); setPostContentJson(null); setPostTags([]); }}
                   style={{
                     background: 'var(--border)',
                     color: 'var(--muted)',
@@ -324,7 +329,7 @@ export default function TopicPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!postTitle.trim() || !postContent.trim() || submitting}
+                  disabled={!postTitle.trim() || !postContentHtml || postContentHtml === '<p></p>' || submitting}
                   style={{
                     background: 'var(--accent)',
                     color: '#fff',
@@ -334,7 +339,7 @@ export default function TopicPage() {
                     fontSize: 13,
                     fontWeight: 600,
                     cursor: 'pointer',
-                    opacity: (!postTitle.trim() || !postContent.trim() || submitting) ? 0.5 : 1,
+                    opacity: (!postTitle.trim() || !postContentHtml || postContentHtml === '<p></p>' || submitting) ? 0.5 : 1,
                   }}
                 >
                   {submitting ? 'Posting...' : 'Post'}
@@ -406,6 +411,18 @@ export default function TopicPage() {
                       {' · '}
                       {formatDate(post.createdAt)}
                     </p>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                      {post.upvoteCount != null && post.upvoteCount !== 0 && (
+                        <span style={{ fontSize: 11, color: post.upvoteCount > 0 ? '#22c55e' : '#ef4444', fontFamily: 'monospace' }}>
+                          {post.upvoteCount > 0 ? '↑' : '↓'}{Math.abs(post.upvoteCount)}
+                        </span>
+                      )}
+                      {post.viewCount != null && post.viewCount > 0 && (
+                        <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' }}>
+                          {post.viewCount} views
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {post.commentCount != null && (
                     <span

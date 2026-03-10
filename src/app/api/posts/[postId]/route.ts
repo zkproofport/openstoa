@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, comments, topicMembers, users } from '@/lib/db/schema';
-import { eq, and, asc } from 'drizzle-orm';
+import { posts, comments, topicMembers, users, postTags, tags } from '@/lib/db/schema';
+import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]';
@@ -31,9 +31,14 @@ export async function GET(
         authorId: posts.authorId,
         title: posts.title,
         content: posts.content,
+        contentJson: posts.contentJson,
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
+        upvoteCount: posts.upvoteCount,
+        viewCount: posts.viewCount,
+        commentCount: posts.commentCount,
+        score: posts.score,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
@@ -62,6 +67,9 @@ export async function GET(
       );
     }
 
+    // Atomically increment viewCount
+    await db.update(posts).set({ viewCount: sql`${posts.viewCount} + 1` }).where(eq(posts.id, postId));
+
     // Get comments with author nicknames
     const postComments = await db
       .select({
@@ -77,9 +85,16 @@ export async function GET(
       .where(eq(comments.postId, postId))
       .orderBy(asc(comments.createdAt));
 
+    // Fetch tags for the post
+    const postTagResults = await db
+      .select({ name: tags.name, slug: tags.slug })
+      .from(postTags)
+      .innerJoin(tags, eq(postTags.tagId, tags.id))
+      .where(eq(postTags.postId, postId));
+
     logger.info(ROUTE, 'Post detail fetched', { userId: session.userId, postId, commentCount: postComments.length });
     return NextResponse.json({
-      post,
+      post: { ...post, tags: postTagResults },
       comments: postComments,
     });
   } catch (error) {

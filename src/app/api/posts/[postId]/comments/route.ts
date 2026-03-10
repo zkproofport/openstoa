@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, comments, topicMembers } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]/comments';
@@ -68,6 +68,9 @@ export async function POST(
         content,
       })
       .returning();
+
+    // Increment commentCount on post
+    await db.update(posts).set({ commentCount: sql`${posts.commentCount} + 1` }).where(eq(posts.id, postId));
 
     logger.info(ROUTE, 'Comment created', { userId: session.userId, postId, commentId: comment.id });
     return NextResponse.json({ comment }, { status: 201 });

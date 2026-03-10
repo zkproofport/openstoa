@@ -4,16 +4,22 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import RichContent from '@/components/RichContent';
 
 interface Post {
   id: string;
   title: string;
   content: string;
+  contentJson?: Record<string, unknown> | null;
   authorNickname: string;
   authorId: string;
   createdAt: string;
   topicId: string;
   topicTitle?: string;
+  upvoteCount: number;
+  viewCount: number;
+  commentCount: number;
+  tags?: { name: string; slug: string }[];
 }
 
 interface Comment {
@@ -39,8 +45,17 @@ export default function PostPage() {
   const [submitting, setSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
 
+  const [userVote, setUserVote] = useState<number | null>(null);
+  const [upvoteCount, setUpvoteCount] = useState(0);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [voteLoading, setVoteLoading] = useState(false);
+
   useEffect(() => {
     loadPost();
+    fetch(`/api/posts/${postId}/bookmark`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setBookmarked(data.bookmarked); })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
 
@@ -53,10 +68,44 @@ export default function PostPage() {
       const data = await res.json();
       setPost(data.post);
       setComments(data.comments ?? []);
+      setUpvoteCount(data.post.upvoteCount ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load post');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleVote(value: 1 | -1) {
+    if (voteLoading) return;
+    setVoteLoading(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUserVote(data.vote?.value ?? null);
+        setUpvoteCount(data.upvoteCount);
+      }
+    } catch (err) {
+      console.error('Vote failed:', err);
+    } finally {
+      setVoteLoading(false);
+    }
+  }
+
+  async function handleBookmark() {
+    try {
+      const res = await fetch(`/api/posts/${postId}/bookmark`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setBookmarked(data.bookmarked);
+      }
+    } catch (err) {
+      console.error('Bookmark failed:', err);
     }
   }
 
@@ -207,16 +256,111 @@ export default function PostPage() {
             </div>
           </div>
 
-          <div
-            style={{
-              fontSize: 15,
-              lineHeight: 1.8,
-              color: 'var(--foreground)',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {post.content}
+          {post.tags && post.tags.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+              {post.tags.map(tag => (
+                <span
+                  key={tag.slug}
+                  style={{
+                    background: 'rgba(59,130,246,0.1)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(59,130,246,0.2)',
+                    borderRadius: 4,
+                    padding: '2px 8px',
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {tag.name}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <RichContent html={post.content} />
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            marginTop: 20,
+            paddingTop: 16,
+            borderTop: '1px solid var(--border)',
+          }}>
+            {/* Vote buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                type="button"
+                onClick={() => handleVote(1)}
+                disabled={voteLoading}
+                style={{
+                  background: userVote === 1 ? 'rgba(34,197,94,0.15)' : 'transparent',
+                  color: userVote === 1 ? '#22c55e' : 'var(--muted)',
+                  border: `1px solid ${userVote === 1 ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
+                  borderRadius: 6,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  transition: 'all 0.15s',
+                }}
+              >
+                ↑
+              </button>
+              <span style={{
+                fontSize: 14,
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                color: upvoteCount > 0 ? '#22c55e' : upvoteCount < 0 ? '#ef4444' : 'var(--muted)',
+                minWidth: 28,
+                textAlign: 'center',
+              }}>
+                {upvoteCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleVote(-1)}
+                disabled={voteLoading}
+                style={{
+                  background: userVote === -1 ? 'rgba(239,68,68,0.15)' : 'transparent',
+                  color: userVote === -1 ? '#ef4444' : 'var(--muted)',
+                  border: `1px solid ${userVote === -1 ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
+                  borderRadius: 6,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  transition: 'all 0.15s',
+                }}
+              >
+                ↓
+              </button>
+            </div>
+
+            {/* View count */}
+            <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'monospace' }}>
+              {post.viewCount} views
+            </span>
+
+            {/* Bookmark button */}
+            <button
+              type="button"
+              onClick={handleBookmark}
+              style={{
+                marginLeft: 'auto',
+                background: bookmarked ? 'rgba(59,130,246,0.12)' : 'transparent',
+                color: bookmarked ? 'var(--accent)' : 'var(--muted)',
+                border: `1px solid ${bookmarked ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                borderRadius: 6,
+                padding: '6px 14px',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                transition: 'all 0.15s',
+              }}
+            >
+              {bookmarked ? '★ Saved' : '☆ Save'}
+            </button>
           </div>
         </article>
 

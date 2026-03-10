@@ -66,7 +66,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // /topics/* requires session WITH nickname (not a temp anon_ nickname)
-    if (pathname.startsWith('/topics') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/posts')) {
+    if (pathname.startsWith('/topics') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/posts') || pathname.startsWith('/api/tags') || pathname.startsWith('/api/bookmarks') || pathname.startsWith('/api/upload')) {
       const nickname = payload.nickname as string;
       if (!nickname || nickname.startsWith('anon_')) {
         if (isApiRoute(pathname)) {

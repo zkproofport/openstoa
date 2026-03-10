@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, topicMembers, users } from '@/lib/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { posts, topicMembers, users, tags, postTags } from '@/lib/db/schema';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/posts';
@@ -54,6 +54,10 @@ export async function GET(
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
+        upvoteCount: posts.upvoteCount,
+        viewCount: posts.viewCount,
+        commentCount: posts.commentCount,
+        score: posts.score,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
@@ -102,7 +106,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { title, content } = body;
+    const { title, content, contentJson, tags: tagNames } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title', { userId: session.userId, topicId });
@@ -122,8 +126,35 @@ export async function POST(
         authorId: session.userId,
         title,
         content,
+        ...(contentJson !== undefined ? { contentJson } : {}),
       })
       .returning();
+
+    if (Array.isArray(tagNames) && tagNames.length > 0) {
+      const validTagNames = tagNames
+        .filter((t: unknown) => typeof t === 'string' && (t as string).trim().length > 0)
+        .slice(0, 5);
+
+      for (const tagName of validTagNames) {
+        const slug = (tagName as string)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9가-힣]+/g, '-')
+          .replace(/^-|-$/g, '');
+        if (!slug) continue;
+
+        const [tag] = await db
+          .insert(tags)
+          .values({ name: (tagName as string).trim(), slug })
+          .onConflictDoUpdate({
+            target: tags.slug,
+            set: { postCount: sql`${tags.postCount} + 1` },
+          })
+          .returning();
+
+        await db.insert(postTags).values({ postId: post.id, tagId: tag.id });
+      }
+    }
 
     logger.info(ROUTE, 'Post created', { userId: session.userId, topicId, postId: post.id });
     return NextResponse.json({ post }, { status: 201 });
