@@ -52,14 +52,22 @@ export async function POST(request: NextRequest) {
       ? 'coinbase_country_attestation'
       : 'coinbase_attestation';
 
-    // Verify proof on-chain (verifier address resolved by SDK internally)
+    // Base mainnet verifier addresses (server-side only, not exposed to clients)
+    const VERIFIERS: Record<string, string> = {
+      coinbase_attestation: '0xF7dED73E7a7fc8fb030c35c5A88D40ABe6865382',
+      coinbase_country_attestation: '0xF3D5A09d2C85B28C52EF2905c1BE3a852b609D0C',
+    };
+
+    // Verify proof on-chain
     const verification = await verifyProofFromRelay({
       status: 'completed',
       proof,
       publicInputs: normalizedInputs,
       circuit,
       requestId: challengeId,
-    });
+      verifierAddress: VERIFIERS[circuit],
+      chainId: 8453,
+    } as any);
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { challengeId, error: verification.error });
       return NextResponse.json(
