@@ -13,7 +13,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@zkproofport-app/sdk": "^0.2.0",
+    "@zkproofport-app/sdk": "^0.2.2",
     "drizzle-orm": "^0.38.0",
     "ethers": "^6.13.0",
     "ioredis": "^5.4.0",
