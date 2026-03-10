@@ -4,16 +4,13 @@ import type { RelayProofResult } from '@zkproofport-app/sdk';
 
 function createSDK(): ProofportSDK {
   const relayUrl = process.env.RELAY_URL;
-  const relayEnv = process.env.RELAY_ENV;
 
   let sdk: ProofportSDK;
   if (relayUrl) {
     // Local Docker or custom relay
     sdk = new ProofportSDK({ relayUrl });
-  } else if (relayEnv === 'staging') {
-    sdk = ProofportSDK.create('staging');
   } else {
-    // Production (default, no config needed)
+    // Production relay (used by both staging and production)
     sdk = ProofportSDK.create();
   }
 
@@ -29,7 +26,6 @@ function createSDK(): ProofportSDK {
 export function getServerRelayUrl(): string {
   const relayUrl = process.env.RELAY_URL;
   if (relayUrl) return relayUrl;
-  if (process.env.RELAY_ENV === 'staging') return 'https://stg-relay.zkproofport.app';
   return 'https://relay.zkproofport.app';
 }
 
