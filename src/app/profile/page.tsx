@@ -22,7 +22,7 @@ export default function ProfilePage() {
           router.replace('/');
           return;
         }
-        if (data.nickname) {
+        if (data.nickname && !data.nickname.startsWith('anon_')) {
           router.replace('/topics');
           return;
         }
@@ -67,9 +67,10 @@ export default function ProfilePage() {
         throw new Error(d.error ?? 'Failed to set nickname');
       }
 
-      router.push('/topics');
+      router.replace('/topics');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
       setLoading(false);
     }
   }
