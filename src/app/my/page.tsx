@@ -345,28 +345,7 @@ export default function MyPage() {
           display: 'flex',
           alignItems: 'center',
           gap: 18,
-          position: 'relative',
         }}>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            style={{
-              position: 'absolute',
-              top: 16,
-              right: 16,
-              fontSize: 13,
-              color: '#6b7280',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '4px 8px',
-              transition: 'color 0.12s',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#e5e7eb'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
-          >
-            {loggingOut ? 'Logging out...' : 'Logout'}
-          </button>
           {/* Avatar */}
           <div style={{
             width: 56,
@@ -509,6 +488,30 @@ export default function MyPage() {
               </button>
             </div>
           )}
+          {/* Logout */}
+          <div style={{ marginTop: 48, marginBottom: 16 }}>
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 10,
+                color: '#9ca3af',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.12s',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = '#e5e7eb'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = '#9ca3af'; }}
+            >
+              {loggingOut ? 'Logging out...' : 'Logout'}
+            </button>
+          </div>
+
           {/* Danger Zone */}
           <div style={{
             marginTop: 48,
