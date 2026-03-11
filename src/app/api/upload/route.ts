@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { s3, config } = getS3();
-    const env = process.env.NODE_ENV === 'production' ? 'production' : 'staging';
+    const env = process.env.APP_ENV === 'production' ? 'production' : 'staging';
     const key = `${env}/uploads/${session.userId}/${randomUUID()}/${filename}`;
 
     logger.info(ROUTE, 'Generating presigned URL', { userId: session.userId, key, contentType });
