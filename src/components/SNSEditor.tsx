@@ -165,6 +165,7 @@ export default function SNSEditor({
   const [videoUrl, setVideoUrl] = useState('');
   const [videoError, setVideoError] = useState('');
   const [isEmpty, setIsEmpty] = useState(true);
+  const [charCount, setCharCount] = useState(0);
 
   const { saved, saveDraft, loadDraft } = useDraftSave(draftKey);
 
@@ -191,6 +192,7 @@ export default function SNSEditor({
     if (draft && editorRef.current) {
       editorRef.current.innerHTML = draft.html;
       setEmbeds(draft.embeds ?? []);
+      setCharCount(htmlTextLength(draft.html));
       emitChange(draft.html, draft.embeds ?? []);
       checkEmpty();
     }
@@ -202,6 +204,7 @@ export default function SNSEditor({
     if (!el) return;
     const html = el.innerHTML;
     checkEmpty();
+    setCharCount(htmlTextLength(html));
     emitChange(html, embeds);
     saveDraft(html, embeds);
   }, [embeds, checkEmpty, emitChange, saveDraft]);
@@ -330,7 +333,23 @@ export default function SNSEditor({
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
     if (text) {
-      document.execCommand('insertText', false, text);
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        try {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          const textNode = document.createTextNode(text);
+          range.insertNode(textNode);
+          range.setStartAfter(textNode);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } catch {
+          document.execCommand('insertText', false, text);
+        }
+      } else {
+        document.execCommand('insertText', false, text);
+      }
     }
   }, [handleFiles]);
 
@@ -387,8 +406,6 @@ export default function SNSEditor({
   }, [handleFiles]);
 
   // ─── Render ─────────────────────────────────────────────────────────────
-
-  const charCount = htmlTextLength(editorRef.current?.innerHTML ?? '');
 
   return (
     <div
