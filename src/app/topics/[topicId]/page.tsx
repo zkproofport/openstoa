@@ -274,7 +274,7 @@ function PostCard({
         <h3 style={{
           fontSize: 15,
           fontWeight: 700,
-          margin: '0 0 6px 52px',
+          margin: '0 0 6px 0',
           letterSpacing: '-0.01em',
           color: '#e5e7eb',
           lineHeight: 1.4,
@@ -283,7 +283,7 @@ function PostCard({
         </h3>
 
         {/* Body preview */}
-        <div style={{ marginLeft: 52 }}>
+        <div>
           <SNSContent
             html={post.content}
             media={post.media}
@@ -300,7 +300,6 @@ function PostCard({
         alignItems: 'center',
         gap: 0,
         marginTop: 10,
-        marginLeft: 52,
       }}>
         {/* Like */}
         <ActionButton
