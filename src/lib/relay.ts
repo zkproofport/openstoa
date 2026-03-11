@@ -21,13 +21,16 @@ function createSDK(): ProofportSDK {
 
 export async function createRelayProofRequest(
   scope: string,
-  options?: { dappName?: string; dappIcon?: string; message?: string },
+  options?: { dappName?: string; dappIcon?: string; message?: string; circuitType?: string },
 ): Promise<{ requestId: string; deepLink: string }> {
   const sdk = createSDK();
-  const relay = await sdk.createRelayRequest('coinbase_attestation', { scope }, {
+  const circuit = options?.circuitType ?? 'coinbase_attestation';
+  const relay = await sdk.createRelayRequest(circuit, { scope }, {
     dappName: options?.dappName ?? 'ZK Community',
     dappIcon: options?.dappIcon ?? 'https://stg-community.zkproofport.app/icon.png',
-    message: options?.message ?? 'Verify your Coinbase KYC to access ZK Community',
+    message: options?.message ?? (circuit === 'coinbase_country_attestation'
+      ? 'Verify your country via Coinbase attestation for ZK Community'
+      : 'Verify your Coinbase KYC to access ZK Community'),
   });
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
@@ -49,6 +49,25 @@ export default function NewTopicPage() {
   const [visibility, setVisibility] = useState<'public' | 'private' | 'secret'>('public');
   const [imageUploading, setImageUploading] = useState(false);
 
+  // Country proof state
+  const [countryProofData, setCountryProofData] = useState<{
+    proof: string;
+    publicInputs: string[];
+  } | null>(null);
+  const [proofLoading, setProofLoading] = useState(false);
+  const [proofDone, setProofDone] = useState(false);
+  const [deepLink, setDeepLink] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const doneRef = useRef(false);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
   async function uploadTopicImage(file: File): Promise<string> {
     const resized = await resizeImage(file, 400);
     const filename = `topic-image.webp`;
@@ -87,6 +106,57 @@ export default function NewTopicPage() {
     }
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+  }
+
+  async function startCountryProof() {
+    setProofLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/auth/proof-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          circuitType: 'coinbase_country_attestation',
+          scope: 'zkproofport-community',
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create proof request');
+      const data = await res.json();
+      setDeepLink(data.deepLink);
+
+      const QRCode = await import('qrcode');
+      const url = await QRCode.toDataURL(data.deepLink, {
+        width: 224,
+        margin: 2,
+        color: { dark: '#ededed', light: '#0a0a0a' },
+      });
+      setQrDataUrl(url);
+
+      doneRef.current = false;
+      pollingRef.current = setInterval(async () => {
+        if (doneRef.current) return;
+        try {
+          const pollRes = await fetch(`/api/auth/poll/${data.requestId}?mode=proof`);
+          if (!pollRes.ok) return;
+          const pollData = await pollRes.json();
+          if (pollData.status === 'completed' && pollData.proof && pollData.publicInputs) {
+            doneRef.current = true;
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            setCountryProofData({
+              proof: pollData.proof,
+              publicInputs: pollData.publicInputs,
+            });
+            setProofDone(true);
+            setProofLoading(false);
+          }
+        } catch {
+          // Retry silently
+        }
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start proof');
+      setProofLoading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -130,6 +200,7 @@ export default function NewTopicPage() {
           countryMode: requiresCountry ? countryMode : undefined,
           image: imageUrl,
           visibility,
+          ...(countryProofData ? { proof: countryProofData.proof, publicInputs: countryProofData.publicInputs } : {}),
         }),
       });
 
@@ -146,7 +217,7 @@ export default function NewTopicPage() {
     }
   }
 
-  const canSubmit = title.trim().length > 0 && !loading;
+  const canSubmit = title.trim().length > 0 && !loading && (!requiresCountry || proofDone);
 
   return (
     <>
@@ -409,7 +480,17 @@ export default function NewTopicPage() {
               <input
                 type="checkbox"
                 checked={requiresCountry}
-                onChange={(e) => setRequiresCountry(e.target.checked)}
+                onChange={(e) => {
+                  setRequiresCountry(e.target.checked);
+                  if (!e.target.checked) {
+                    setCountryProofData(null);
+                    setProofDone(false);
+                    setProofLoading(false);
+                    setDeepLink(null);
+                    setQrDataUrl(null);
+                    if (pollingRef.current) clearInterval(pollingRef.current);
+                  }
+                }}
                 style={{
                   width: 16,
                   height: 16,
@@ -510,6 +591,77 @@ export default function NewTopicPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Country proof verification */}
+                {!proofDone && (
+                  <div style={{
+                    padding: '16px',
+                    background: '#0a0a0a',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    textAlign: 'center',
+                  }}>
+                    {!qrDataUrl && !proofLoading && (
+                      <button
+                        type="button"
+                        onClick={startCountryProof}
+                        style={{
+                          background: 'var(--accent)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '10px 24px',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Verify Your Country
+                      </button>
+                    )}
+                    {qrDataUrl && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                        <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+                          Scan with ZKProofport app to prove your country
+                        </p>
+                        <div style={{
+                          padding: 12,
+                          background: '#0a0a0a',
+                          border: '1px solid var(--border)',
+                          borderRadius: 12,
+                        }}>
+                          <img src={qrDataUrl} alt="Country proof QR" width={200} height={200} style={{ display: 'block', borderRadius: 8 }} />
+                        </div>
+                        {deepLink && (
+                          <a href={deepLink} style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontFamily: 'monospace' }}>
+                            Open in ZKProofport app →
+                          </a>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" style={{ animation: 'spin 1s linear infinite' }}>
+                            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                          </svg>
+                          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Waiting for proof...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {proofDone && (
+                  <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(34,197,94,0.08)',
+                    border: '1px solid rgba(34,197,94,0.25)',
+                    borderRadius: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}>
+                    <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
+                    <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 500 }}>Country proof verified</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

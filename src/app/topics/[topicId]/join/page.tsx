@@ -107,18 +107,18 @@ export default function JoinPage() {
       pollingRef.current = setInterval(async () => {
         if (doneRef.current) return;
         try {
-          const pollRes = await fetch(`/api/auth/poll/${data.requestId}`);
+          const pollRes = await fetch(`/api/auth/poll/${data.requestId}?mode=proof`);
           if (!pollRes.ok) return;
           const pollData = await pollRes.json();
           if (pollData.status === 'completed') {
             doneRef.current = true;
             if (pollingRef.current) clearInterval(pollingRef.current);
             // Capture proof data for join request
-            if (pollData.proof && pollData.publicInputs && pollData.verifierAddress) {
+            if (pollData.proof && pollData.publicInputs) {
               setCountryProofData({
                 proof: pollData.proof,
                 publicInputs: pollData.publicInputs,
-                verifierAddress: pollData.verifierAddress,
+                verifierAddress: '',
               });
             }
             setProofDone(true);

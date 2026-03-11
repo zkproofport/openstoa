@@ -16,11 +16,14 @@ import { logger } from '@/lib/logger';
 const ROUTE = '/api/auth/poll/[requestId]';
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> },
 ) {
   try {
     const { requestId } = await params;
+
+    const url = new URL(request.url);
+    const mode = url.searchParams.get('mode');
 
     logger.info(ROUTE, 'Polling relay for proof result', { requestId });
 
@@ -52,6 +55,17 @@ export async function GET(
     }
 
     logger.info(ROUTE, 'Proof verified on-chain', { requestId });
+
+    // Proof-only mode: return raw proof data without creating session
+    if (mode === 'proof') {
+      logger.info(ROUTE, 'Returning proof data (proof mode)', { requestId });
+      return NextResponse.json({
+        status: 'completed',
+        proof: result.proof,
+        publicInputs: result.publicInputs,
+        circuit: result.circuit,
+      });
+    }
 
     // Verify scope
     logger.info(ROUTE, 'Extracting scope', { requestId });
