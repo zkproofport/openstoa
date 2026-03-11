@@ -27,7 +27,7 @@ interface Post {
   bookmarkedAt?: string;
 }
 
-type TabId = 'posts' | 'bookmarks';
+type TabId = 'posts' | 'bookmarks' | 'likes';
 
 const PAGE_SIZE = 20;
 
@@ -183,6 +183,8 @@ export default function MyPage() {
 
   const [activeTab, setActiveTab] = useState<TabId>('posts');
 
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -198,6 +200,11 @@ export default function MyPage() {
   const [bookmarksHasMore, setBookmarksHasMore] = useState(false);
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
 
+  const [likes, setLikes] = useState<Post[]>([]);
+  const [likesOffset, setLikesOffset] = useState(0);
+  const [likesHasMore, setLikesHasMore] = useState(false);
+  const [likesLoading, setLikesLoading] = useState(false);
+
   // Load session
   useEffect(() => {
     fetch('/api/auth/session')
@@ -212,6 +219,16 @@ export default function MyPage() {
       .catch(() => router.replace('/'))
       .finally(() => setSessionLoading(false));
   }, [router]);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/');
+    } catch {
+      setLoggingOut(false);
+    }
+  }
 
   // Load my posts
   const loadMyPosts = useCallback(async (currentOffset: number, replace: boolean) => {
@@ -245,12 +262,29 @@ export default function MyPage() {
     }
   }, []);
 
+  // Load likes
+  const loadLikes = useCallback(async (currentOffset: number, replace: boolean) => {
+    setLikesLoading(true);
+    try {
+      const res = await fetch(`/api/my/likes?limit=${PAGE_SIZE}&offset=${currentOffset}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const newPosts: Post[] = data.posts ?? [];
+      setLikes((prev) => (replace ? newPosts : [...prev, ...newPosts]));
+      setLikesHasMore(newPosts.length === PAGE_SIZE);
+      setLikesOffset(currentOffset + newPosts.length);
+    } finally {
+      setLikesLoading(false);
+    }
+  }, []);
+
   // Initial load after session
   useEffect(() => {
     if (!session) return;
     loadMyPosts(0, true);
     loadBookmarks(0, true);
-  }, [session, loadMyPosts, loadBookmarks]);
+    loadLikes(0, true);
+  }, [session, loadMyPosts, loadBookmarks, loadLikes]);
 
   if (sessionLoading) {
     return (
@@ -271,21 +305,24 @@ export default function MyPage() {
   const tabs: { id: TabId; label: string }[] = [
     { id: 'posts', label: 'My Posts' },
     { id: 'bookmarks', label: 'Bookmarks' },
+    { id: 'likes', label: 'Likes' },
   ];
 
-  const activePosts = activeTab === 'posts' ? myPosts : bookmarks;
-  const activeLoading = activeTab === 'posts' ? myPostsLoading : bookmarksLoading;
-  const activeHasMore = activeTab === 'posts' ? myPostsHasMore : bookmarksHasMore;
+  const activePosts = activeTab === 'posts' ? myPosts : activeTab === 'bookmarks' ? bookmarks : likes;
+  const activeLoading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : likesLoading;
+  const activeHasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : likesHasMore;
 
   function handleLoadMore() {
     if (activeTab === 'posts') {
       loadMyPosts(myPostsOffset, false);
-    } else {
+    } else if (activeTab === 'bookmarks') {
       loadBookmarks(bookmarksOffset, false);
+    } else {
+      loadLikes(likesOffset, false);
     }
   }
 
-  const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : 'No bookmarks yet.';
+  const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : activeTab === 'bookmarks' ? 'No bookmarks yet.' : 'No liked posts yet.';
 
   return (
     <>
@@ -308,7 +345,28 @@ export default function MyPage() {
           display: 'flex',
           alignItems: 'center',
           gap: 18,
+          position: 'relative',
         }}>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              fontSize: 13,
+              color: '#6b7280',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px 8px',
+              transition: 'color 0.12s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#e5e7eb'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
+          >
+            {loggingOut ? 'Logging out...' : 'Logout'}
+          </button>
           {/* Avatar */}
           <div style={{
             width: 56,

@@ -84,8 +84,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'userId and role are required' }, { status: 400 });
     }
 
-    if (role !== 'admin' && role !== 'member') {
-      return NextResponse.json({ error: 'Role must be admin or member' }, { status: 400 });
+    if (role !== 'admin' && role !== 'member' && role !== 'owner') {
+      return NextResponse.json({ error: 'Role must be owner, admin, or member' }, { status: 400 });
     }
 
     // Verify caller is the topic owner
@@ -118,7 +118,22 @@ export async function PATCH(
       return NextResponse.json({ error: 'User is not a member of this topic' }, { status: 404 });
     }
 
-    // Update role
+    if (role === 'owner') {
+      // Ownership transfer: target becomes owner, caller becomes admin
+      await db
+        .update(topicMembers)
+        .set({ role: 'owner' })
+        .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, userId)));
+      await db
+        .update(topicMembers)
+        .set({ role: 'admin' })
+        .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, session.userId)));
+
+      logger.info(ROUTE, 'Ownership transferred', { topicId, newOwner: userId, previousOwner: session.userId });
+      return NextResponse.json({ success: true, role: 'owner', transferred: true });
+    }
+
+    // Update role (admin/member)
     await db
       .update(topicMembers)
       .set({ role })

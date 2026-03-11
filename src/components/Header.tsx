@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 interface UserSession {
   nickname?: string;
@@ -10,9 +9,7 @@ interface UserSession {
 }
 
 export default function Header() {
-  const router = useRouter();
   const [user, setUser] = useState<UserSession | null>(null);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -22,16 +19,6 @@ export default function Header() {
       })
       .catch(() => {});
   }, []);
-
-  async function handleLogout() {
-    setLoggingOut(true);
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.push('/');
-    } catch {
-      setLoggingOut(false);
-    }
-  }
 
   return (
     <header
@@ -84,43 +71,26 @@ export default function Header() {
           </Link>
 
           {user ? (
-            <div className="flex items-center gap-3">
-              <Link
-                href="/my"
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: 'var(--foreground)',
-                  background: 'var(--border)',
-                  padding: '3px 10px',
-                  borderRadius: 4,
-                  textDecoration: 'none',
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#333'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--border)'; }}
-              >
-                {user.nickname ??
-                  (user.userId
-                    ? `${user.userId.slice(0, 6)}...${user.userId.slice(-4)}`
-                    : 'anon')}
-              </Link>
-              <button
-                onClick={handleLogout}
-                disabled={loggingOut}
-                style={{
-                  fontSize: 13,
-                  color: 'var(--muted)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-                className="hover:text-white transition-colors disabled:opacity-50"
-              >
-                {loggingOut ? 'Logging out...' : 'Logout'}
-              </button>
-            </div>
+            <Link
+              href="/my"
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: 'var(--foreground)',
+                background: 'var(--border)',
+                padding: '3px 10px',
+                borderRadius: 4,
+                textDecoration: 'none',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#333'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--border)'; }}
+            >
+              {user.nickname ??
+                (user.userId
+                  ? `${user.userId.slice(0, 6)}...${user.userId.slice(-4)}`
+                  : 'anon')}
+            </Link>
           ) : null}
         </nav>
       </div>

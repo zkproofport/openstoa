@@ -41,6 +41,8 @@ export default function MembersPage() {
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
+  const [confirmTransfer, setConfirmTransfer] = useState<string | null>(null);
+  const [transferLoading, setTransferLoading] = useState(false);
   const [tab, setTab] = useState<'members' | 'requests'>('members');
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
@@ -183,6 +185,31 @@ export default function MembersPage() {
       alert(err instanceof Error ? err.message : 'Failed');
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function handleTransferOwnership(userId: string) {
+    if (confirmTransfer !== userId) {
+      setConfirmTransfer(userId);
+      return;
+    }
+    setTransferLoading(true);
+    setConfirmTransfer(null);
+    try {
+      const res = await fetch(`/api/topics/${topicId}/members`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, role: 'owner' }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Failed to transfer ownership');
+      }
+      await loadMembers();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setTransferLoading(false);
     }
   }
 
@@ -455,6 +482,24 @@ export default function MembersPage() {
                       Remove Admin
                     </button>
                   )}
+                  <button
+                    onClick={() => handleTransferOwnership(member.userId)}
+                    disabled={transferLoading}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      background: confirmTransfer === member.userId ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.08)',
+                      color: '#eab308',
+                      border: `1px solid ${confirmTransfer === member.userId ? 'rgba(234,179,8,0.4)' : 'rgba(234,179,8,0.15)'}`,
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                      opacity: transferLoading ? 0.5 : 1,
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {confirmTransfer === member.userId ? 'Confirm?' : 'Transfer'}
+                  </button>
                   <button
                     onClick={() => handleKick(member.userId)}
                     disabled={actionLoading === member.userId}

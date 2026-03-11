@@ -163,6 +163,7 @@ interface Post {
   viewCount: number;
   commentCount: number;
   tags?: { name: string; slug: string }[];
+  userVoted?: number | null;
 }
 
 interface Comment {
@@ -245,6 +246,7 @@ export default function PostPage() {
       setPost(data.post);
       setComments(data.comments ?? []);
       setUpvoteCount(data.post.upvoteCount ?? 0);
+      setUserVote(data.post.userVoted ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load post');
     } finally {

@@ -48,6 +48,7 @@ interface Post {
   viewCount?: number;
   isPinned?: boolean;
   reactions?: Reaction[];
+  userVoted?: number | null;
   createdAt: string;
 }
 
@@ -549,10 +550,10 @@ function PostCard({
       }}>
         {/* Like */}
         <ActionButton
-          icon={<HeartIcon filled={(post.upvoteCount ?? 0) > 0} />}
+          icon={<HeartIcon filled={post.userVoted === 1} />}
           count={post.upvoteCount ?? 0}
           color="#ef4444"
-          active={(post.upvoteCount ?? 0) > 0}
+          active={post.userVoted === 1}
         />
 
         {/* Comment */}

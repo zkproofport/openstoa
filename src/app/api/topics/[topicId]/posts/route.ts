@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, topicMembers, users, tags, postTags } from '@/lib/db/schema';
+import { posts, topicMembers, users, tags, postTags, votes } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { updateTopicScore } from '@/lib/topicScore';
@@ -87,9 +87,11 @@ export async function GET(
         commentCount: posts.commentCount,
         score: posts.score,
         isPinned: posts.isPinned,
+        userVoted: sql<number | null>`${votes.value}`,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
+      .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
       .where(whereClause)
       .orderBy(
         desc(posts.isPinned),
