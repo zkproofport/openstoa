@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, comments, topicMembers, users, postTags, tags, votes } from '@/lib/db/schema';
+import { posts, comments, topicMembers, users, postTags, tags, votes, topics } from '@/lib/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -40,10 +40,12 @@ export async function GET(
         commentCount: posts.commentCount,
         score: posts.score,
         userVoted: sql<number | null>`${votes.value}`,
+        topicTitle: topics.title,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
       .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
+      .leftJoin(topics, eq(posts.topicId, topics.id))
       .where(eq(posts.id, postId));
 
     if (postResults.length === 0) {

@@ -286,7 +286,7 @@ export default function SNSContent({
             letterSpacing: '-0.01em',
           }}
         >
-          더보기
+          Show more
         </button>
       )}
 

@@ -294,8 +294,9 @@ export default function PostCard({
             <SNSContent
               html={post.content}
               media={null}
-              truncate={true}
-              maxLines={2}
+              truncate={!expanded}
+              maxLines={3}
+              onToggleExpand={handleToggleExpand}
             />
           </div>
 
