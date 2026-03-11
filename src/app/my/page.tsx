@@ -6,13 +6,15 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
-import { truncateId } from '@/lib/utils';
+import Avatar from '@/components/Avatar';
+import { truncateId, resizeImage } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface UserSession {
   userId: string;
   nickname?: string;
+  profileImage?: string | null;
 }
 
 interface Post {
@@ -80,6 +82,10 @@ export default function MyPage() {
   const [nicknameSaving, setNicknameSaving] = useState(false);
   const [nicknameFeedback, setNicknameFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageFeedback, setImageFeedback] = useState<string | null>(null);
+
   // Infinite scroll sentinel ref
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -93,6 +99,11 @@ export default function MyPage() {
           return;
         }
         setSession(data);
+        if (data.profileImage) setProfileImage(data.profileImage);
+        // Also fetch from profile image endpoint (session may not include it)
+        fetch('/api/profile/image').then(r => r.ok ? r.json() : null).then(d => {
+          if (d?.profileImage) setProfileImage(d.profileImage);
+        }).catch(() => {});
       })
       .catch(() => router.replace('/'))
       .finally(() => setSessionLoading(false));
@@ -131,6 +142,55 @@ export default function MyPage() {
       setNicknameFeedback({ ok: false, msg: 'Network error.' });
     } finally {
       setNicknameSaving(false);
+    }
+  }
+
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setImageFeedback('Image must be under 10MB');
+      return;
+    }
+    setImageUploading(true);
+    setImageFeedback(null);
+    try {
+      const resized = await resizeImage(file, 200);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'avatar.webp', contentType: 'image/webp', size: resized.size, purpose: 'avatar' }),
+      });
+      if (!res.ok) throw new Error('Failed to get upload URL');
+      const { uploadUrl, publicUrl } = await res.json();
+      const uploadRes = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/webp' }, body: resized });
+      if (!uploadRes.ok) throw new Error('Failed to upload image');
+      const saveRes = await fetch('/api/profile/image', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: publicUrl }),
+      });
+      if (!saveRes.ok) throw new Error('Failed to save profile image');
+      setProfileImage(publicUrl);
+      setImageFeedback(null);
+    } catch (err) {
+      setImageFeedback(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setImageUploading(false);
+    }
+  }
+
+  async function handleImageRemove() {
+    setImageUploading(true);
+    try {
+      const res = await fetch('/api/profile/image', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to remove image');
+      setProfileImage(null);
+    } catch (err) {
+      setImageFeedback(err instanceof Error ? err.message : 'Failed to remove image');
+    } finally {
+      setImageUploading(false);
     }
   }
 
@@ -282,19 +342,7 @@ export default function MyPage() {
           gap: 18,
         }}>
           {/* Avatar */}
-          <div style={{
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            background: 'var(--accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            flexShrink: 0,
-          }}>
-            <UserIcon />
-          </div>
+          <Avatar src={profileImage} name={displayName} size={56} />
 
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -423,6 +471,91 @@ export default function MyPage() {
               flexDirection: 'column',
               gap: 32,
             }}>
+              {/* Profile Image section */}
+              <div>
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                  Profile Image
+                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  {profileImage ? (
+                    <div style={{ position: 'relative' }}>
+                      <Avatar src={profileImage} name={displayName} size={72} />
+                      <button
+                        type="button"
+                        onClick={handleImageRemove}
+                        disabled={imageUploading}
+                        style={{
+                          position: 'absolute',
+                          top: -4,
+                          right: -4,
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          background: '#ef4444',
+                          color: '#fff',
+                          border: 'none',
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 1,
+                          opacity: imageUploading ? 0.5 : 1,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <label
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: '50%',
+                        border: '2px dashed rgba(255,255,255,0.15)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: imageUploading ? 'wait' : 'pointer',
+                        color: 'var(--muted)',
+                        fontSize: 11,
+                        textAlign: 'center',
+                        lineHeight: 1.3,
+                        transition: 'border-color 0.15s',
+                        flexShrink: 0,
+                        opacity: imageUploading ? 0.5 : 1,
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.4)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)'; }}
+                    >
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageSelect}
+                        disabled={imageUploading}
+                        style={{ display: 'none' }}
+                      />
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 3 }}>
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                      <span>{imageUploading ? '...' : 'Upload'}</span>
+                    </label>
+                  )}
+                  <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
+                    {imageUploading ? 'Uploading...' : 'Click to change profile photo'}
+                    <br />
+                    Auto-resized to 200×200 WebP
+                  </div>
+                </div>
+                {imageFeedback && (
+                  <div style={{ marginTop: 8, fontSize: 13, color: '#f87171' }}>
+                    {imageFeedback}
+                  </div>
+                )}
+              </div>
+
               {/* Nickname section */}
               <div>
                 <h3 style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>

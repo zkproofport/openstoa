@@ -29,6 +29,29 @@ interface Topic {
   visibility?: string;
 }
 
+const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#22c55e', '#06b6d4', '#eab308'];
+
+function TopicAvatar({ title, size = 40 }: { title: string; size?: number }) {
+  const colorIndex = title.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
+  return (
+    <div style={{
+      width: size,
+      height: size,
+      borderRadius: '50%',
+      background: AVATAR_COLORS[colorIndex],
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: size * 0.45,
+      fontWeight: 700,
+      color: '#fff',
+      flexShrink: 0,
+    }}>
+      {title.slice(0, 1).toUpperCase()}
+    </div>
+  );
+}
+
 export default function MembersPage() {
   const params = useParams();
   const router = useRouter();
@@ -48,6 +71,7 @@ export default function MembersPage() {
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestActionLoading, setRequestActionLoading] = useState<string | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -248,30 +272,56 @@ export default function MembersPage() {
     <>
       <Header />
       <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: 560 }}>
-        {/* Breadcrumb */}
-        <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Link
-            href={`/topics/${topicId}`}
-            style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}
+        {/* Topic info card */}
+        <div style={{
+          padding: '16px 20px',
+          background: '#0d0d0d',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 12,
+          marginBottom: 24,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+        }}>
+          <TopicAvatar title={topic.title} size={44} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: '-0.03em',
+              margin: 0,
+              color: '#e5e7eb',
+            }}>
+              {topic.title}
+            </h1>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
+              {members.length} member{members.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          {/* Invite button */}
+          <button
+            onClick={async () => {
+              const url = `${window.location.origin}/topics/${topicId}/join`;
+              await navigator.clipboard.writeText(url);
+              setInviteCopied(true);
+              setTimeout(() => setInviteCopied(false), 2000);
+            }}
+            style={{
+              background: inviteCopied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
+              color: inviteCopied ? '#22c55e' : '#6b7280',
+              border: `1px solid ${inviteCopied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: 7,
+              padding: '8px 14px',
+              fontSize: 13,
+              cursor: 'pointer',
+              fontWeight: 500,
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s',
+              flexShrink: 0,
+            }}
           >
-            Back to Topic
-          </Link>
-        </div>
-
-        {/* Title */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{
-            fontSize: 24,
-            fontWeight: 800,
-            letterSpacing: '-0.03em',
-            margin: 0,
-            color: '#e5e7eb',
-          }}>
-            Members
-          </h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 6, fontFamily: 'monospace' }}>
-            {members.length} member{members.length !== 1 ? 's' : ''} in {topic.title}
-          </p>
+            {inviteCopied ? 'Copied!' : 'Invite'}
+          </button>
         </div>
 
         {/* Tabs (only show if owner/admin) */}
@@ -439,6 +489,30 @@ export default function MembersPage() {
                 }}>
                   Admin
                 </span>
+              )}
+
+              {/* Admin can kick regular members */}
+              {!isOwner && currentUserRole === 'admin' && member.role === 'member' && member.userId !== sessionUserId && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleKick(member.userId)}
+                    disabled={actionLoading === member.userId}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      background: confirmKick === member.userId ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
+                      color: '#ef4444',
+                      border: `1px solid ${confirmKick === member.userId ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.15)'}`,
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                      opacity: actionLoading === member.userId ? 0.5 : 1,
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {confirmKick === member.userId ? 'Confirm?' : 'Kick'}
+                  </button>
+                </div>
               )}
 
               {/* Actions (owner only, not on self/owner) */}

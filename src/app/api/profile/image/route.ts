@@ -7,6 +7,28 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/profile/image';
 
+export async function GET() {
+  try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const rows = await db
+      .select({ profileImage: users.profileImage })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+
+    const profileImage = rows[0]?.profileImage ?? null;
+    return NextResponse.json({ profileImage });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest) {
   logger.info(ROUTE, 'PUT request received');
   try {

@@ -166,7 +166,7 @@ function ProfilePageInner() {
               Choose a nickname
             </h1>
             <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
-              Your public identity in ZK Community. You can&apos;t change this later.
+              Your public identity in ZK Community.
             </p>
           </div>
 

@@ -11,12 +11,51 @@ interface Topic {
   id: string;
   title: string;
   description?: string | null;
+  image?: string | null;
   memberCount?: number;
   requiresCountryProof: boolean;
   allowedCountries?: string[] | null;
   visibility?: string;
   createdAt: string;
   isMember?: boolean;
+}
+
+const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#22c55e', '#06b6d4', '#eab308'];
+
+function TopicAvatar({ title, image, size = 40 }: { title: string; image?: string | null; size?: number }) {
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt=""
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          objectFit: 'cover',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  const colorIndex = title.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
+  return (
+    <div style={{
+      width: size,
+      height: size,
+      borderRadius: '50%',
+      background: AVATAR_COLORS[colorIndex],
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: size * 0.45,
+      fontWeight: 700,
+      color: '#fff',
+      flexShrink: 0,
+    }}>
+      {title.slice(0, 1).toUpperCase()}
+    </div>
+  );
 }
 
 export default function TopicsPage() {
@@ -317,11 +356,12 @@ export default function TopicsPage() {
                   <div
                     style={{
                       display: 'flex',
-                      alignItems: 'flex-start',
+                      alignItems: 'center',
                       justifyContent: 'space-between',
                       gap: 16,
                     }}
                   >
+                    <TopicAvatar title={topic.title} image={topic.image} size={42} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 6 }}>
                         <h2
