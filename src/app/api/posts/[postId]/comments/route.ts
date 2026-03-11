@@ -75,12 +75,12 @@ export async function POST(
     // Fetch author nickname for the response
     const author = await db.query.users.findFirst({
       where: eq(users.id, session.userId),
-      columns: { nickname: true },
+      columns: { nickname: true, profileImage: true },
     });
 
     logger.info(ROUTE, 'Comment created', { userId: session.userId, postId, commentId: comment.id });
     return NextResponse.json({
-      comment: { ...comment, authorNickname: author?.nickname ?? 'anon' },
+      comment: { ...comment, authorNickname: author?.nickname ?? 'anon', authorProfileImage: author?.profileImage ?? null },
     }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import Avatar from '@/components/Avatar';
 import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
 import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
@@ -90,6 +91,7 @@ interface Post {
   content: string;
   media?: { embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
   authorNickname: string;
+  authorProfileImage?: string | null;
   authorId: string;
   createdAt: string;
   topicId: string;
@@ -105,6 +107,7 @@ interface Comment {
   id: string;
   content: string;
   authorNickname: string;
+  authorProfileImage?: string | null;
   authorId: string;
   createdAt: string;
 }
@@ -344,23 +347,7 @@ export default function PostPage() {
               borderBottom: '1px solid var(--border)',
             }}
           >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                background: 'var(--accent)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 13,
-                fontWeight: 700,
-                color: '#fff',
-                flexShrink: 0,
-              }}
-            >
-              {post.authorNickname.slice(0, 1).toUpperCase()}
-            </div>
+            <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
             <div>
               <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>
                 {post.authorNickname}
@@ -523,23 +510,7 @@ export default function PostPage() {
                       marginBottom: 10,
                     }}
                   >
-                    <div
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: '50%',
-                        background: '#262626',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: 'var(--muted)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {comment.authorNickname.slice(0, 1).toUpperCase()}
-                    </div>
+                    <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
                     <div>
                       <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace' }}>
                         {comment.authorNickname}

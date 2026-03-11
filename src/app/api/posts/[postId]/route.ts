@@ -35,6 +35,7 @@ export async function GET(
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
+        authorProfileImage: users.profileImage,
         upvoteCount: posts.upvoteCount,
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,
@@ -83,6 +84,7 @@ export async function GET(
         content: comments.content,
         createdAt: comments.createdAt,
         authorNickname: users.nickname,
+        authorProfileImage: users.profileImage,
       })
       .from(comments)
       .leftJoin(users, eq(comments.authorId, users.id))
