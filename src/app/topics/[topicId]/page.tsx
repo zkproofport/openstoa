@@ -657,7 +657,7 @@ export default function TopicPage() {
   useEffect(() => {
     loadTopic();
     loadPosts(0, true, null, 'new');
-    fetch('/api/tags')
+    fetch(`/api/tags?topicId=${topicId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.tags) setPopularTags(data.tags); })
       .catch(() => {});
@@ -738,7 +738,7 @@ export default function TopicPage() {
     }
     tagSearchTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/tags?q=${encodeURIComponent(value.trim())}`);
+        const res = await fetch(`/api/tags?topicId=${topicId}&q=${encodeURIComponent(value.trim())}`);
         if (!res.ok) return;
         const data = await res.json();
         setTagSuggestions(data.tags ?? []);
@@ -1119,7 +1119,7 @@ export default function TopicPage() {
                     minHeight={180}
                   />
                   <div style={{ marginTop: 4 }}>
-                    <TagInput tags={postTags} onChange={setPostTags} />
+                    <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
                   </div>
                   {postError && (
                     <p style={{ fontSize: 12, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>

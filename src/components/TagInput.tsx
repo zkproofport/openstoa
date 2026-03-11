@@ -7,6 +7,7 @@ interface TagInputProps {
   onChange: (tags: string[]) => void;
   maxTags?: number;
   placeholder?: string;
+  topicId?: string;
 }
 
 interface TagSuggestion {
@@ -15,7 +16,7 @@ interface TagSuggestion {
   postCount: number;
 }
 
-export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'Add tags...' }: TagInputProps) {
+export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'Add tags...', topicId }: TagInputProps) {
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -29,7 +30,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
       return;
     }
     try {
-      const res = await fetch(`/api/tags?q=${encodeURIComponent(query.trim().toLowerCase())}`);
+      const res = await fetch(`/api/tags?q=${encodeURIComponent(query.trim().toLowerCase())}${topicId ? `&topicId=${topicId}` : ''}`);
       if (res.ok) {
         const data = await res.json();
         setSuggestions((data.tags || []).filter((t: TagSuggestion) => !tags.includes(t.name)));
