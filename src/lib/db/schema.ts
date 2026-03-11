@@ -33,7 +33,7 @@ export const posts = pgTable('community_posts', {
   content: text('content').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-  contentJson: jsonb('content_json'),
+  media: jsonb('media'),
   upvoteCount: integer('upvote_count').notNull().default(0),
   viewCount: integer('view_count').notNull().default(0),
   commentCount: integer('comment_count').notNull().default(0),

@@ -106,7 +106,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { title, content, contentJson, tags: tagNames } = body;
+    const { title, content, media, tags: tagNames } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title', { userId: session.userId, topicId });
@@ -126,7 +126,7 @@ export async function POST(
         authorId: session.userId,
         title,
         content,
-        ...(contentJson !== undefined ? { contentJson } : {}),
+        ...(media !== undefined ? { media } : {}),
       })
       .returning();
 

@@ -40,7 +40,7 @@ describe('schema: posts table columns', () => {
     expect(cols.viewCount).toBeDefined();
     expect(cols.commentCount).toBeDefined();
     expect(cols.score).toBeDefined();
-    expect(cols.contentJson).toBeDefined();
+    expect(cols.media).toBeDefined();
   });
 
   it('should have base post columns', () => {

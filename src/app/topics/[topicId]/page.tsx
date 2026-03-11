@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import RichEditor from '@/components/RichEditor';
+import SNSEditor from '@/components/SNSEditor';
 import TagInput from '@/components/TagInput';
 
 interface Topic {
@@ -45,8 +45,8 @@ export default function TopicPage() {
   // Write post inline
   const [composing, setComposing] = useState(false);
   const [postTitle, setPostTitle] = useState('');
-  const [postContentHtml, setPostContentHtml] = useState('');
-  const [postContentJson, setPostContentJson] = useState<Record<string, unknown> | null>(null);
+  const [postContent, setPostContent] = useState('');
+  const [postMedia, setPostMedia] = useState<{ images: string[]; embeds: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] }>({ images: [], embeds: [] });
   const [postTags, setPostTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export default function TopicPage() {
 
   async function handlePostSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!postTitle.trim() || !postContentHtml || postContentHtml === '<p></p>') return;
+    if (!postTitle.trim() || !postContent.trim()) return;
     setSubmitting(true);
     setPostError(null);
     try {
@@ -114,8 +114,8 @@ export default function TopicPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: postTitle.trim(),
-          content: postContentHtml,
-          contentJson: postContentJson,
+          content: postContent.trim(),
+          media: (postMedia.images.length > 0 || postMedia.embeds.length > 0) ? postMedia : undefined,
           tags: postTags.length > 0 ? postTags : undefined,
         }),
       });
@@ -124,8 +124,8 @@ export default function TopicPage() {
         throw new Error(d.error ?? 'Failed to post');
       }
       setPostTitle('');
-      setPostContentHtml('');
-      setPostContentJson(null);
+      setPostContent('');
+      setPostMedia({ images: [], embeds: [] });
       setPostTags([]);
       setComposing(false);
       loadPosts(0, true);
@@ -295,11 +295,11 @@ export default function TopicPage() {
                   outline: 'none',
                 }}
               />
-              <RichEditor
+              <SNSEditor
                 placeholder="Write your post..."
-                onChange={(html, json) => {
-                  setPostContentHtml(html);
-                  setPostContentJson(json);
+                onChange={(text, media) => {
+                  setPostContent(text);
+                  setPostMedia(media);
                 }}
                 minHeight={180}
               />
@@ -314,7 +314,7 @@ export default function TopicPage() {
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={() => { setComposing(false); setPostTitle(''); setPostContentHtml(''); setPostContentJson(null); setPostTags([]); }}
+                  onClick={() => { setComposing(false); setPostTitle(''); setPostContent(''); setPostMedia({ images: [], embeds: [] }); setPostTags([]); }}
                   style={{
                     background: 'var(--border)',
                     color: 'var(--muted)',
@@ -329,7 +329,7 @@ export default function TopicPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!postTitle.trim() || !postContentHtml || postContentHtml === '<p></p>' || submitting}
+                  disabled={!postTitle.trim() || !postContent.trim() || submitting}
                   style={{
                     background: 'var(--accent)',
                     color: '#fff',
@@ -339,7 +339,7 @@ export default function TopicPage() {
                     fontSize: 13,
                     fontWeight: 600,
                     cursor: 'pointer',
-                    opacity: (!postTitle.trim() || !postContentHtml || postContentHtml === '<p></p>' || submitting) ? 0.5 : 1,
+                    opacity: (!postTitle.trim() || !postContent.trim() || submitting) ? 0.5 : 1,
                   }}
                 >
                   {submitting ? 'Posting...' : 'Post'}

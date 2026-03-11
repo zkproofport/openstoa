@@ -4,13 +4,13 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import RichContent from '@/components/RichContent';
+import SNSContent from '@/components/SNSContent';
 
 interface Post {
   id: string;
   title: string;
   content: string;
-  contentJson?: Record<string, unknown> | null;
+  media?: { images?: string[]; embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
   authorNickname: string;
   authorId: string;
   createdAt: string;
@@ -277,7 +277,7 @@ export default function PostPage() {
             </div>
           )}
 
-          <RichContent html={post.content} />
+          <SNSContent text={post.content} media={post.media} />
 
           <div style={{
             display: 'flex',
