@@ -11,18 +11,22 @@ export async function POST(request: NextRequest) {
   try {
     let circuitType: CircuitType = 'coinbase_attestation';
     let scope = COMMUNITY_SCOPE;
+    let countryList: string[] | undefined;
+    let isIncluded: boolean | undefined;
 
     try {
       const body = await request.json();
       if (body.circuitType) circuitType = body.circuitType;
       if (body.scope) scope = body.scope;
+      if (Array.isArray(body.countryList)) countryList = body.countryList;
+      if (typeof body.isIncluded === 'boolean') isIncluded = body.isIncluded;
     } catch {
       // No body or invalid JSON — use defaults (login flow sends no body)
     }
 
-    logger.info(ROUTE, 'Creating relay proof request', { circuitType, scope });
+    logger.info(ROUTE, 'Creating relay proof request', { circuitType, scope, countryList, isIncluded });
 
-    const { requestId, deepLink } = await createRelayProofRequest(scope, { circuitType });
+    const { requestId, deepLink } = await createRelayProofRequest(scope, { circuitType, countryList, isIncluded });
 
     logger.info(ROUTE, 'Relay proof request created', { requestId, circuitType, scope });
     return NextResponse.json({

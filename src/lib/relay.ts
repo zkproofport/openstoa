@@ -21,11 +21,23 @@ function createSDK(): ProofportSDK {
 
 export async function createRelayProofRequest(
   scope: string,
-  options?: { dappName?: string; dappIcon?: string; message?: string; circuitType?: CircuitType },
+  options?: {
+    dappName?: string;
+    dappIcon?: string;
+    message?: string;
+    circuitType?: CircuitType;
+    countryList?: string[];
+    isIncluded?: boolean;
+  },
 ): Promise<{ requestId: string; deepLink: string }> {
   const sdk = createSDK();
   const circuit = options?.circuitType ?? 'coinbase_attestation';
-  const relay = await sdk.createRelayRequest(circuit, { scope }, {
+  const inputs: Record<string, unknown> = { scope };
+  if (circuit === 'coinbase_country_attestation') {
+    inputs.countryList = options?.countryList ?? [];
+    inputs.isIncluded = options?.isIncluded ?? true;
+  }
+  const relay = await sdk.createRelayRequest(circuit, inputs as any, {
     dappName: options?.dappName ?? 'ZK Community',
     dappIcon: options?.dappIcon ?? 'https://stg-community.zkproofport.app/icon.png',
     message: options?.message ?? (circuit === 'coinbase_country_attestation'

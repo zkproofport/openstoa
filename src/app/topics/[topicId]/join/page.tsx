@@ -72,7 +72,7 @@ export default function JoinPage() {
 
       setNeedsCountryProof(info.requiresCountryProof);
       if (info.requiresCountryProof) {
-        startCountryProof(info.id);
+        startCountryProof(info.id, info.allowedCountries ?? []);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load topic');
@@ -81,7 +81,7 @@ export default function JoinPage() {
     }
   }
 
-  async function startCountryProof(tid: string) {
+  async function startCountryProof(tid: string, countries: string[]) {
     try {
       const res = await fetch('/api/auth/proof-request', {
         method: 'POST',
@@ -89,6 +89,8 @@ export default function JoinPage() {
         body: JSON.stringify({
           circuitType: 'coinbase_country_attestation',
           scope: tid,
+          countryList: countries,
+          isIncluded: true,
         }),
       });
       if (!res.ok) throw new Error('Failed to create country proof request');

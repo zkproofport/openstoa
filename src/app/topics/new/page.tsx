@@ -112,12 +112,18 @@ export default function NewTopicPage() {
     setProofLoading(true);
     setError(null);
     try {
+      const parsedCountries = countryCodes
+        .split(',')
+        .map((c) => c.trim().toUpperCase())
+        .filter(Boolean);
       const res = await fetch('/api/auth/proof-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           circuitType: 'coinbase_country_attestation',
           scope: 'zkproofport-community',
+          countryList: parsedCountries,
+          isIncluded: countryMode === 'include',
         }),
       });
       if (!res.ok) throw new Error('Failed to create proof request');
