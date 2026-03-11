@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
+import Spinner from '@/components/Spinner';
+import { formatDate } from '@/lib/utils';
 
 interface Topic {
   id: string;
@@ -82,14 +84,6 @@ export default function TopicsPage() {
     } finally {
       setJoiningId(null);
     }
-  }
-
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
   }
 
   const emptyMessage =
@@ -474,21 +468,3 @@ export default function TopicsPage() {
   );
 }
 
-function Spinner() {
-  return (
-    <svg
-      width={28}
-      height={28}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}

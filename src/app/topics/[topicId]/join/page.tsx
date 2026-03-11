@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import Spinner from '@/components/Spinner';
+import ProofGate from '@/components/ProofGate';
 
 interface TopicInfo {
   id: string;
@@ -33,18 +35,10 @@ export default function JoinPage() {
   const [countryProofData, setCountryProofData] = useState<{
     proof: string;
     publicInputs: string[];
-    verifierAddress: string;
   } | null>(null);
-  const [deepLink, setDeepLink] = useState<string | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const doneRef = useRef(false);
 
   useEffect(() => {
     loadTopicInfo();
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -55,7 +49,6 @@ export default function JoinPage() {
         const res = await fetch(`/api/topics/join/${inviteCode}`);
         if (!res.ok) throw new Error('Invite link is invalid or expired');
         const data = await res.json();
-        // API returns { topic: {...}, isMember: bool }
         info = { ...data.topic, isMember: data.isMember, memberCount: data.topic.memberCount ?? 0 };
       } else {
         const res = await fetch(`/api/topics/${topicId}`);
@@ -71,66 +64,10 @@ export default function JoinPage() {
       }
 
       setNeedsCountryProof(info.requiresCountryProof);
-      if (info.requiresCountryProof) {
-        startCountryProof(info.id, info.allowedCountries ?? []);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load topic');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function startCountryProof(tid: string, countries: string[]) {
-    try {
-      const res = await fetch('/api/auth/proof-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          circuitType: 'coinbase_country_attestation',
-          scope: tid,
-          countryList: countries,
-          isIncluded: true,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to create country proof request');
-      const data = await res.json();
-      setDeepLink(data.deepLink);
-
-      const QRCode = await import('qrcode');
-      const url = await QRCode.toDataURL(data.deepLink, {
-        width: 224,
-        margin: 2,
-        color: { dark: '#ededed', light: '#0a0a0a' },
-      });
-      setQrDataUrl(url);
-
-      doneRef.current = false;
-      pollingRef.current = setInterval(async () => {
-        if (doneRef.current) return;
-        try {
-          const pollRes = await fetch(`/api/auth/poll/${data.requestId}?mode=proof`);
-          if (!pollRes.ok) return;
-          const pollData = await pollRes.json();
-          if (pollData.status === 'completed') {
-            doneRef.current = true;
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            // Capture proof data for join request
-            if (pollData.proof && pollData.publicInputs) {
-              setCountryProofData({
-                proof: pollData.proof,
-                publicInputs: pollData.publicInputs,
-                verifierAddress: '',
-              });
-            }
-            setProofDone(true);
-          }
-        } catch {
-          // Retry silently
-        }
-      }, 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start proof');
     }
   }
 
@@ -144,7 +81,6 @@ export default function JoinPage() {
       if (countryProofData) {
         body.proof = countryProofData.proof;
         body.publicInputs = countryProofData.publicInputs;
-        body.verifierAddress = countryProofData.verifierAddress;
       }
 
       const res = await fetch(`/api/topics/${topicInfo.id}/join`, {
@@ -258,7 +194,7 @@ export default function JoinPage() {
           )}
 
           {/* Country proof section */}
-          {needsCountryProof && !proofDone && (
+          {needsCountryProof && !proofDone && topicInfo && (
             <div
               style={{
                 padding: '24px',
@@ -273,36 +209,22 @@ export default function JoinPage() {
                 Country Proof Required
               </p>
               <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.5 }}>
-                This topic requires proof of your country via ZKProofport. Scan the QR code with the app.
+                This topic requires proof of your country via ZKProofport.
               </p>
 
-              {qrDataUrl ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-                  <div
-                    style={{
-                      padding: 16,
-                      background: '#0a0a0a',
-                      border: '1px solid var(--border)',
-                      borderRadius: 14,
-                    }}
-                  >
-                    <img src={qrDataUrl} alt="Country proof QR" width={224} height={224} style={{ display: 'block', borderRadius: 8 }} />
-                  </div>
-                  {deepLink && (
-                    <a href={deepLink} style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontFamily: 'monospace' }}>
-                      Open in ZKProofport app →
-                    </a>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Spinner size={14} />
-                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>Waiting for proof...</span>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
-                  <Spinner />
-                </div>
-              )}
+              <ProofGate
+                circuitType="coinbase_country_attestation"
+                scope={topicInfo.id}
+                countryList={topicInfo.allowedCountries ?? []}
+                isIncluded={true}
+                mode="proof"
+                qrSize={224}
+                label="Scan with ZKProofport app to verify your country"
+                onProofData={({ proof, publicInputs }) => {
+                  setCountryProofData({ proof, publicInputs });
+                  setProofDone(true);
+                }}
+              />
             </div>
           )}
 
@@ -371,23 +293,5 @@ export default function JoinPage() {
         </div>
       </div>
     </>
-  );
-}
-
-function Spinner({ size = 28 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
   );
 }

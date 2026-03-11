@@ -5,74 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import SNSContent from '@/components/SNSContent';
-
-// ─── SVG Icons ───────────────────────────────────────────────────────────────
-
-function HeartIcon({ filled }: { filled?: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444" stroke="none">
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-    </svg>
-  );
-}
-
-function CommentIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-    </svg>
-  );
-}
-
-function ShareIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-      <polyline points="16 6 12 2 8 6" />
-      <line x1="12" y1="2" x2="12" y2="15" />
-    </svg>
-  );
-}
-
-function BookmarkIcon({ filled }: { filled?: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="none">
-        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-    </svg>
-  );
-}
+import Spinner from '@/components/Spinner';
+import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
+import { formatDate, truncateId } from '@/lib/utils';
 
 function CloseIcon() {
   return (
@@ -325,20 +260,6 @@ export default function PostPage() {
     }
   }
 
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-
-  function truncateId(id: string) {
-    return `${id.slice(0, 6)}...${id.slice(-4)}`;
-  }
-
   if (loading) {
     return (
       <>
@@ -445,7 +366,7 @@ export default function PostPage() {
                 {post.authorNickname}
               </p>
               <p style={{ fontSize: 11, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'monospace' }}>
-                {truncateId(post.authorId)} · {formatDate(post.createdAt)}
+                {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
           </div>
@@ -514,7 +435,7 @@ export default function PostPage() {
 
             {/* Views */}
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'monospace' }}>
-              <EyeIcon />
+              <EyeIcon size={16} />
               {post.viewCount}
             </span>
 
@@ -536,7 +457,7 @@ export default function PostPage() {
                 transition: 'color 0.15s',
               }}
             >
-              <ShareIcon />
+              <ShareIcon size={18} />
               {shared && 'Copied!'}
             </button>
 
@@ -624,7 +545,7 @@ export default function PostPage() {
                         {comment.authorNickname}
                       </span>
                       <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8, fontFamily: 'monospace' }}>
-                        {truncateId(comment.authorId)} · {formatDate(comment.createdAt)}
+                        {truncateId(comment.authorId, 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                   </div>
@@ -715,20 +636,3 @@ export default function PostPage() {
   );
 }
 
-function Spinner() {
-  return (
-    <svg
-      width={28}
-      height={28}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}

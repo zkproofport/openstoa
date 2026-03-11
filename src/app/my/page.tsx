@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import SNSContent from '@/components/SNSContent';
+import PostCard from '@/components/PostCard';
+import Spinner from '@/components/Spinner';
+import { truncateId } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -18,7 +20,7 @@ interface Post {
   topicId: string;
   title: string;
   content: string;
-  media?: unknown;
+  media?: { embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
   authorNickname?: string;
   upvoteCount: number;
   commentCount: number;
@@ -27,56 +29,11 @@ interface Post {
   bookmarkedAt?: string;
 }
 
-type TabId = 'posts' | 'bookmarks' | 'likes';
+type TabId = 'posts' | 'bookmarks' | 'likes' | 'settings';
 
 const PAGE_SIZE = 20;
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function truncateId(id: string): string {
-  if (id.length <= 16) return id;
-  return `${id.slice(0, 8)}...${id.slice(-6)}`;
-}
-
 // ─── Icons ───────────────────────────────────────────────────────────────────
-
-function HeartIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-    </svg>
-  );
-}
-
-function CommentIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-    </svg>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
 
 function UserIcon() {
   return (
@@ -84,93 +41,6 @@ function UserIcon() {
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
     </svg>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg
-      width={24}
-      height={24}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}
-
-// ─── Post Card ───────────────────────────────────────────────────────────────
-
-function PostCard({ post }: { post: Post }) {
-  return (
-    <Link
-      href={`/topics/${post.topicId}/posts/${post.id}`}
-      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
-    >
-      <article
-        style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          transition: 'background 0.12s',
-          cursor: 'pointer',
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-      >
-        {/* Title */}
-        <h3 style={{
-          fontSize: 15,
-          fontWeight: 700,
-          margin: '0 0 6px 0',
-          letterSpacing: '-0.01em',
-          color: '#e5e7eb',
-          lineHeight: 1.4,
-        }}>
-          {post.title}
-        </h3>
-
-        {/* Content preview */}
-        <div style={{ marginBottom: 10 }}>
-          <SNSContent
-            html={post.content}
-            media={null}
-            truncate={true}
-            maxLines={2}
-          />
-        </div>
-
-        {/* Meta row */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 14,
-          fontSize: 12,
-          color: '#6b7280',
-        }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <HeartIcon />
-            {post.upvoteCount}
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <CommentIcon />
-            {post.commentCount}
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <EyeIcon />
-            {post.viewCount}
-          </span>
-          <span style={{ marginLeft: 'auto' }}>
-            {relativeTime(post.createdAt)}
-          </span>
-        </div>
-      </article>
-    </Link>
   );
 }
 
@@ -205,6 +75,14 @@ export default function MyPage() {
   const [likesHasMore, setLikesHasMore] = useState(false);
   const [likesLoading, setLikesLoading] = useState(false);
 
+  // Settings tab state
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [nicknameSaving, setNicknameSaving] = useState(false);
+  const [nicknameFeedback, setNicknameFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Infinite scroll sentinel ref
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
   // Load session
   useEffect(() => {
     fetch('/api/auth/session')
@@ -227,6 +105,32 @@ export default function MyPage() {
       router.push('/');
     } catch {
       setLoggingOut(false);
+    }
+  }
+
+  async function handleSaveNickname() {
+    const trimmed = nicknameInput.trim();
+    if (!trimmed) return;
+    setNicknameSaving(true);
+    setNicknameFeedback(null);
+    try {
+      const res = await fetch('/api/auth/session', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname: trimmed }),
+      });
+      if (res.ok) {
+        setSession((prev) => prev ? { ...prev, nickname: trimmed } : prev);
+        setNicknameFeedback({ ok: true, msg: 'Nickname updated.' });
+        setNicknameInput('');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setNicknameFeedback({ ok: false, msg: data?.error ?? 'Failed to update nickname.' });
+      }
+    } catch {
+      setNicknameFeedback({ ok: false, msg: 'Network error.' });
+    } finally {
+      setNicknameSaving(false);
     }
   }
 
@@ -286,6 +190,36 @@ export default function MyPage() {
     loadLikes(0, true);
   }, [session, loadMyPosts, loadBookmarks, loadLikes]);
 
+  // Infinite scroll via IntersectionObserver
+  // Uses raw state to avoid referencing render-body derived vars
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const hasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : likesHasMore;
+    const loading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : likesLoading;
+    const loadMore = () => {
+      if (activeTab === 'posts') loadMyPosts(myPostsOffset, false);
+      else if (activeTab === 'bookmarks') loadBookmarks(bookmarksOffset, false);
+      else if (activeTab === 'likes') loadLikes(likesOffset, false);
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    activeTab,
+    myPostsHasMore, myPostsLoading, myPostsOffset,
+    bookmarksHasMore, bookmarksLoading, bookmarksOffset,
+    likesHasMore, likesLoading, likesOffset,
+    loadMyPosts, loadBookmarks, loadLikes,
+  ]);
+
   if (sessionLoading) {
     return (
       <>
@@ -306,6 +240,7 @@ export default function MyPage() {
     { id: 'posts', label: 'My Posts' },
     { id: 'bookmarks', label: 'Bookmarks' },
     { id: 'likes', label: 'Likes' },
+    { id: 'settings', label: 'Settings' },
   ];
 
   const activePosts = activeTab === 'posts' ? myPosts : activeTab === 'bookmarks' ? bookmarks : likes;
@@ -317,7 +252,7 @@ export default function MyPage() {
       loadMyPosts(myPostsOffset, false);
     } else if (activeTab === 'bookmarks') {
       loadBookmarks(bookmarksOffset, false);
-    } else {
+    } else if (activeTab === 'likes') {
       loadLikes(likesOffset, false);
     }
   }
@@ -438,201 +373,257 @@ export default function MyPage() {
             ))}
           </div>
 
-          {/* Feed */}
-          <div style={{
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderTop: 'none',
-            borderRadius: '0 0 14px 14px',
-            overflow: 'hidden',
-            minHeight: 120,
-          }}>
-            {activeLoading && activePosts.length === 0 ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
-                <Spinner />
-              </div>
-            ) : activePosts.length === 0 ? (
+          {/* Feed — hidden when Settings tab is active */}
+          {activeTab !== 'settings' && (
+            <>
               <div style={{
-                textAlign: 'center',
-                padding: '60px 20px',
-                color: '#6b7280',
-                fontSize: 14,
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderTop: 'none',
+                borderRadius: '0 0 14px 14px',
+                overflow: 'hidden',
+                minHeight: 120,
               }}>
-                {emptyLabel}
+                {activeLoading && activePosts.length === 0 ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
+                    <Spinner />
+                  </div>
+                ) : activePosts.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '60px 20px',
+                    color: '#6b7280',
+                    fontSize: 14,
+                  }}>
+                    {emptyLabel}
+                  </div>
+                ) : (
+                  activePosts.map((post) => (
+                    <PostCard key={post.id} post={post} href={`/topics/${post.topicId}/posts/${post.id}`} />
+                  ))
+                )}
               </div>
-            ) : (
-              activePosts.map((post) => (
-                <PostCard key={post.id} post={post} />
-              ))
-            )}
-          </div>
 
-          {/* Load more */}
-          {activeHasMore && (
-            <div style={{ textAlign: 'center', marginTop: 20 }}>
-              <button
-                onClick={handleLoadMore}
-                disabled={activeLoading}
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  color: '#6b7280',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 8,
-                  padding: '10px 28px',
-                  fontSize: 14,
-                  cursor: activeLoading ? 'default' : 'pointer',
-                  opacity: activeLoading ? 0.5 : 1,
-                  transition: 'opacity 0.12s',
-                }}
-              >
-                {activeLoading ? 'Loading...' : 'Load more'}
-              </button>
-            </div>
+              {/* Infinite scroll sentinel */}
+              {activeHasMore && (
+                <div ref={sentinelRef} style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+                  {activeLoading && <Spinner />}
+                </div>
+              )}
+            </>
           )}
-          {/* Logout */}
-          <div style={{ marginTop: 48, marginBottom: 16 }}>
-            <button
-              onClick={handleLogout}
-              disabled={loggingOut}
-              style={{
-                width: '100%',
-                padding: '12px 20px',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 10,
-                color: '#9ca3af',
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.12s',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = '#e5e7eb'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = '#9ca3af'; }}
-            >
-              {loggingOut ? 'Logging out...' : 'Logout'}
-            </button>
-          </div>
 
-          {/* Danger Zone */}
-          <div style={{
-            marginTop: 48,
-            padding: '20px 24px',
-            background: 'rgba(239,68,68,0.04)',
-            border: '1px solid rgba(239,68,68,0.15)',
-            borderRadius: 12,
-          }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#ef4444', margin: '0 0 8px' }}>
-              Danger Zone
-            </h3>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
-              계정을 삭제하면 닉네임이 &apos;[탈퇴한 사용자]&apos;로 변경되며, 작성한 게시글과 댓글은 유지됩니다. 토픽 소유권은 미리 이전해야 합니다.
-            </p>
-
-            {ownedTopicsError && (
-              <div style={{
-                marginBottom: 14,
-                padding: '12px 14px',
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.25)',
-                borderRadius: 8,
-              }}>
-                <p style={{ fontSize: 13, color: '#ef4444', margin: '0 0 8px', fontWeight: 600 }}>
-                  토픽 소유권을 먼저 이전해주세요
-                </p>
-                <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 13, color: '#f87171', lineHeight: 1.8 }}>
-                  {ownedTopicsError.map((t) => (
-                    <li key={t.id}>{t.title}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {!showDeleteAccount ? (
-              <button onClick={() => { setShowDeleteAccount(true); setOwnedTopicsError(null); }} style={{
-                background: 'rgba(239,68,68,0.1)',
-                color: '#ef4444',
-                border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: 8,
-                padding: '8px 18px',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}>
-                Delete Account
-              </button>
-            ) : (
+          {/* Settings tab content */}
+          {activeTab === 'settings' && (
+            <div style={{
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderTop: 'none',
+              borderRadius: '0 0 14px 14px',
+              padding: '24px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 32,
+            }}>
+              {/* Nickname section */}
               <div>
-                <p style={{ fontSize: 12, color: '#ef4444', margin: '0 0 10px' }}>
-                  Type <strong>DELETE</strong> to confirm:
-                </p>
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                  Nickname
+                </h3>
+                <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 10 }}>
+                  Current: <span style={{ color: '#e5e7eb', fontWeight: 600 }}>{displayName}</span>
+                </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="text"
-                    value={deleteConfirmText}
-                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                    placeholder="DELETE"
+                    value={nicknameInput}
+                    onChange={(e) => { setNicknameInput(e.target.value); setNicknameFeedback(null); }}
+                    placeholder="New nickname"
+                    maxLength={30}
                     style={{
                       flex: 1,
                       background: '#111',
-                      border: '1px solid rgba(239,68,68,0.3)',
-                      borderRadius: 6,
-                      padding: '8px 12px',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: 8,
+                      padding: '9px 12px',
                       color: '#e5e7eb',
-                      fontSize: 13,
+                      fontSize: 14,
                       outline: 'none',
-                      fontFamily: 'monospace',
                     }}
                   />
                   <button
-                    onClick={async () => {
-                      setDeletingAccount(true);
-                      setOwnedTopicsError(null);
-                      try {
-                        const res = await fetch('/api/account', { method: 'DELETE' });
-                        if (res.status === 409) {
-                          const data = await res.json();
-                          setOwnedTopicsError(data.topics ?? []);
-                          setShowDeleteAccount(false);
-                          setDeleteConfirmText('');
-                        } else if (res.ok) {
-                          router.replace('/');
-                        }
-                      } finally {
-                        setDeletingAccount(false);
-                      }
-                    }}
-                    disabled={deleteConfirmText !== 'DELETE' || deletingAccount}
+                    onClick={handleSaveNickname}
+                    disabled={!nicknameInput.trim() || nicknameSaving}
                     style={{
-                      background: deleteConfirmText === 'DELETE' ? '#ef4444' : 'rgba(239,68,68,0.2)',
+                      background: 'var(--accent)',
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 6,
-                      padding: '8px 18px',
-                      fontSize: 13,
+                      borderRadius: 8,
+                      padding: '9px 20px',
+                      fontSize: 14,
                       fontWeight: 600,
-                      cursor: deleteConfirmText === 'DELETE' ? 'pointer' : 'not-allowed',
-                      opacity: deletingAccount ? 0.5 : 1,
+                      cursor: !nicknameInput.trim() || nicknameSaving ? 'not-allowed' : 'pointer',
+                      opacity: !nicknameInput.trim() || nicknameSaving ? 0.5 : 1,
+                      transition: 'opacity 0.12s',
                     }}
                   >
-                    {deletingAccount ? 'Deleting...' : 'Confirm'}
-                  </button>
-                  <button
-                    onClick={() => { setShowDeleteAccount(false); setDeleteConfirmText(''); setOwnedTopicsError(null); }}
-                    style={{
-                      background: 'rgba(255,255,255,0.06)',
-                      color: '#6b7280',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '8px 14px',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Cancel
+                    {nicknameSaving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
+                {nicknameFeedback && (
+                  <div style={{ marginTop: 8, fontSize: 13, color: nicknameFeedback.ok ? '#4ade80' : '#f87171' }}>
+                    {nicknameFeedback.msg}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* Account section */}
+              <div>
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                  Account
+                </h3>
+                <button
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  style={{
+                    width: '100%',
+                    padding: '12px 20px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 10,
+                    color: '#9ca3af',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.12s',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = '#e5e7eb'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = '#9ca3af'; }}
+                >
+                  {loggingOut ? 'Logging out...' : 'Logout'}
+                </button>
+              </div>
+
+              {/* Danger Zone */}
+              <div style={{
+                padding: '20px 24px',
+                background: 'rgba(239,68,68,0.04)',
+                border: '1px solid rgba(239,68,68,0.15)',
+                borderRadius: 12,
+              }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#ef4444', margin: '0 0 8px' }}>
+                  Danger Zone
+                </h3>
+                <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
+                  계정을 삭제하면 닉네임이 &apos;[탈퇴한 사용자]&apos;로 변경되며, 작성한 게시글과 댓글은 유지됩니다. 토픽 소유권은 미리 이전해야 합니다.
+                </p>
+
+                {ownedTopicsError && (
+                  <div style={{
+                    marginBottom: 14,
+                    padding: '12px 14px',
+                    background: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    borderRadius: 8,
+                  }}>
+                    <p style={{ fontSize: 13, color: '#ef4444', margin: '0 0 8px', fontWeight: 600 }}>
+                      토픽 소유권을 먼저 이전해주세요
+                    </p>
+                    <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 13, color: '#f87171', lineHeight: 1.8 }}>
+                      {ownedTopicsError.map((t) => (
+                        <li key={t.id}>{t.title}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {!showDeleteAccount ? (
+                  <button onClick={() => { setShowDeleteAccount(true); setOwnedTopicsError(null); }} style={{
+                    background: 'rgba(239,68,68,0.1)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    borderRadius: 8,
+                    padding: '8px 18px',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}>
+                    Delete Account
+                  </button>
+                ) : (
+                  <div>
+                    <p style={{ fontSize: 12, color: '#ef4444', margin: '0 0 10px' }}>
+                      Type <strong>DELETE</strong> to confirm:
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="text"
+                        value={deleteConfirmText}
+                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        placeholder="DELETE"
+                        style={{
+                          flex: 1,
+                          background: '#111',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          borderRadius: 6,
+                          padding: '8px 12px',
+                          color: '#e5e7eb',
+                          fontSize: 13,
+                          outline: 'none',
+                          fontFamily: 'monospace',
+                        }}
+                      />
+                      <button
+                        onClick={async () => {
+                          setDeletingAccount(true);
+                          setOwnedTopicsError(null);
+                          try {
+                            const res = await fetch('/api/account', { method: 'DELETE' });
+                            if (res.status === 409) {
+                              const data = await res.json();
+                              setOwnedTopicsError(data.topics ?? []);
+                              setShowDeleteAccount(false);
+                              setDeleteConfirmText('');
+                            } else if (res.ok) {
+                              router.replace('/');
+                            }
+                          } finally {
+                            setDeletingAccount(false);
+                          }
+                        }}
+                        disabled={deleteConfirmText !== 'DELETE' || deletingAccount}
+                        style={{
+                          background: deleteConfirmText === 'DELETE' ? '#ef4444' : 'rgba(239,68,68,0.2)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '8px 18px',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: deleteConfirmText === 'DELETE' ? 'pointer' : 'not-allowed',
+                          opacity: deletingAccount ? 0.5 : 1,
+                        }}
+                      >
+                        {deletingAccount ? 'Deleting...' : 'Confirm'}
+                      </button>
+                      <button
+                        onClick={() => { setShowDeleteAccount(false); setDeleteConfirmText(''); setOwnedTopicsError(null); }}
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          color: '#6b7280',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '8px 14px',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

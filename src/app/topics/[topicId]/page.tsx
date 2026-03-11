@@ -5,9 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import SNSEditor from '@/components/SNSEditor';
-import SNSContent from '@/components/SNSContent';
 import TagInput from '@/components/TagInput';
-import Avatar from '@/components/Avatar';
+import PostCard from '@/components/PostCard';
+import Spinner from '@/components/Spinner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -54,96 +54,13 @@ interface Post {
 
 const PAGE_SIZE = 20;
 
-// ─── Relative Time ──────────────────────────────────────────────────────────
-
-function relativeTime(iso: string): string {
-  const now = Date.now();
-  const then = new Date(iso).getTime();
-  const diff = now - then;
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
-
-function HeartIcon({ filled }: { filled?: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444" stroke="none">
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-    </svg>
-  );
-}
-
-function CommentIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-    </svg>
-  );
-}
-
-function ShareIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-      <polyline points="16 6 12 2 8 6" />
-      <line x1="12" y1="2" x2="12" y2="15" />
-    </svg>
-  );
-}
-
-function PinIcon({ filled }: { filled?: boolean }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 17v5" />
-      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
-    </svg>
-  );
-}
-
-function BookmarkIcon({ filled }: { filled?: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="none">
-        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
 
 function PlusIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   );
 }
@@ -188,423 +105,6 @@ function TopicAvatar({ title, image, size = 40 }: { title: string; image?: strin
   );
 }
 
-// ─── Action Button ───────────────────────────────────────────────────────────
-
-function ActionButton({
-  icon,
-  count,
-  color,
-  label,
-  onClick,
-  active,
-}: {
-  icon: React.ReactNode;
-  count?: number;
-  color?: string;
-  label?: string;
-  onClick?: (e: React.MouseEvent) => void;
-  active?: boolean;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const activeColor = color ?? 'var(--accent)';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick ?? ((e) => { e.preventDefault(); e.stopPropagation(); })}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: hovered
-          ? (active ? `${activeColor}15` : 'rgba(255,255,255,0.05)')
-          : 'none',
-        border: 'none',
-        color: active ? activeColor : (hovered ? activeColor : '#6b7280'),
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 5,
-        padding: '5px 10px',
-        borderRadius: 9999,
-        fontSize: 12,
-        fontWeight: 500,
-        fontVariantNumeric: 'tabular-nums',
-        transition: 'color 0.12s, background 0.12s',
-        userSelect: 'none',
-      }}
-    >
-      {icon}
-      {(count !== undefined && count > 0) && <span>{count}</span>}
-      {label && <span>{label}</span>}
-    </button>
-  );
-}
-
-// ─── Post Card ──────────────────────────────────────────────────────────────
-
-// ─── Reaction Emojis ────────────────────────────────────────────────────────
-
-const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
-
-function PostCard({
-  post,
-  topic,
-  topicId,
-  sessionUserId,
-  onDelete,
-  onPin,
-}: {
-  post: Post;
-  topic: Topic;
-  topicId: string;
-  sessionUserId: string | null;
-  onDelete?: (postId: string) => void;
-  onPin?: (postId: string) => void;
-}) {
-  const [shareText, setShareText] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  // Reactions state
-  const [reactions, setReactions] = useState<Reaction[]>(post.reactions ?? []);
-  const [showAllEmojis, setShowAllEmojis] = useState(false);
-  const [reactionsLoaded, setReactionsLoaded] = useState(!!post.reactions);
-
-  // Fetch reactions on mount if not loaded
-  useEffect(() => {
-    if (reactionsLoaded) return;
-    let cancelled = false;
-    fetch(`/api/posts/${post.id}/reactions`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (!cancelled && data?.reactions) {
-          setReactions(data.reactions);
-          setReactionsLoaded(true);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [post.id, reactionsLoaded]);
-
-  const handleReaction = async (e: React.MouseEvent, emoji: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Optimistic update
-    setReactions((prev) => {
-      const existing = prev.find((r) => r.emoji === emoji);
-      if (existing) {
-        if (existing.userReacted) {
-          // Remove reaction
-          const newCount = existing.count - 1;
-          return newCount <= 0
-            ? prev.filter((r) => r.emoji !== emoji)
-            : prev.map((r) => r.emoji === emoji ? { ...r, count: newCount, userReacted: false } : r);
-        } else {
-          return prev.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, userReacted: true } : r);
-        }
-      } else {
-        return [...prev, { emoji, count: 1, userReacted: true }];
-      }
-    });
-    try {
-      await fetch(`/api/posts/${post.id}/reactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emoji }),
-      });
-    } catch {
-      // Revert on error — refetch
-      fetch(`/api/posts/${post.id}/reactions`)
-        .then((r) => r.ok ? r.json() : null)
-        .then((data) => { if (data?.reactions) setReactions(data.reactions); })
-        .catch(() => {});
-    }
-  };
-
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!showDeleteConfirm) {
-      setShowDeleteConfirm(true);
-      return;
-    }
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/posts/${post.id}`, { method: 'DELETE' });
-      if (res.ok) {
-        onDelete?.(post.id);
-      }
-    } finally {
-      setDeleting(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const handleShare = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const url = `${window.location.origin}/topics/${topicId}/posts/${post.id}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: post.title, url }); return; } catch {}
-    }
-    await navigator.clipboard.writeText(url);
-    setShareText('Copied!');
-    setTimeout(() => setShareText(null), 1500);
-  };
-
-  const handlePin = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      await fetch(`/api/posts/${post.id}/pin`, { method: 'POST' });
-      onPin?.(post.id);
-    } catch {}
-  };
-
-  const handleToggleExpand = useCallback(() => {
-    setExpanded(true);
-  }, []);
-
-  const isTopicCreator = sessionUserId && topic.creatorId && sessionUserId === topic.creatorId;
-  const visibleReactions = reactions.filter((r) => r.count > 0);
-
-  return (
-    <article
-      style={{
-        padding: '16px 20px',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        transition: 'background 0.12s',
-        cursor: 'pointer',
-        position: 'relative',
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-    >
-      {/* Pin button for topic creator — top right */}
-      {isTopicCreator && (
-        <button
-          onClick={handlePin}
-          title={post.isPinned ? '고정 해제' : '게시글 고정'}
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            background: 'none',
-            border: 'none',
-            color: post.isPinned ? 'var(--accent)' : '#4b5563',
-            cursor: 'pointer',
-            padding: 4,
-            borderRadius: 4,
-            transition: 'color 0.12s',
-            zIndex: 2,
-          }}
-        >
-          <PinIcon filled={post.isPinned} />
-        </button>
-      )}
-
-      {/* Clicking on the card body navigates; action buttons stop propagation */}
-      <Link
-        href={`/topics/${topicId}/posts/${post.id}`}
-        style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
-      >
-        {/* Header: author avatar + nickname + time */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
-          <Avatar src={post.authorProfileImage} name={post.authorNickname} size={24} style={{ marginTop: 1 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-              <span style={{ fontWeight: 600, color: '#e5e7eb' }}>
-                {post.authorNickname}
-              </span>
-              <span style={{ color: '#4b5563' }}>·</span>
-              <span style={{ color: '#6b7280' }}>
-                {relativeTime(post.createdAt)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Title with pin badge */}
-        <h3 style={{
-          fontSize: 15,
-          fontWeight: 700,
-          margin: '0 0 6px 0',
-          letterSpacing: '-0.01em',
-          color: '#e5e7eb',
-          lineHeight: 1.4,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}>
-          {post.isPinned && (
-            <span style={{ fontSize: 12, flexShrink: 0 }} title="고정된 게시글">📌</span>
-          )}
-          {post.title}
-        </h3>
-
-        {/* Body preview */}
-        <div>
-          <SNSContent
-            html={post.content}
-            media={post.media}
-            truncate={!expanded}
-            maxLines={3}
-            onToggleExpand={handleToggleExpand}
-          />
-        </div>
-      </Link>
-
-      {/* Reactions bar */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        marginTop: 8,
-        flexWrap: 'wrap',
-      }}>
-        {visibleReactions.map((r) => (
-          <button
-            key={r.emoji}
-            onClick={(e) => handleReaction(e, r.emoji)}
-            style={{
-              background: r.userReacted ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
-              border: r.userReacted ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 9999,
-              padding: '2px 8px',
-              fontSize: 12,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              color: r.userReacted ? 'var(--accent)' : '#9ca3af',
-              transition: 'all 0.12s',
-            }}
-          >
-            <span>{r.emoji}</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.count}</span>
-          </button>
-        ))}
-        {/* Add reaction button */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowAllEmojis((v) => !v); }}
-            style={{
-              background: showAllEmojis ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 9999,
-              padding: '2px 8px',
-              fontSize: 12,
-              cursor: 'pointer',
-              color: '#6b7280',
-              transition: 'all 0.12s',
-            }}
-          >
-            +
-          </button>
-          {showAllEmojis && (
-            <div style={{
-              position: 'absolute',
-              bottom: '100%',
-              left: 0,
-              marginBottom: 4,
-              background: '#1a1a1a',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              padding: '4px 6px',
-              display: 'flex',
-              gap: 2,
-              zIndex: 10,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-            }}>
-              {REACTION_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={(e) => { handleReaction(e, emoji); setShowAllEmojis(false); }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    padding: '4px 6px',
-                    borderRadius: 4,
-                    transition: 'background 0.1s',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Action bar — outside Link to allow independent clicks */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0,
-        marginTop: 6,
-      }}>
-        {/* Like */}
-        <ActionButton
-          icon={<HeartIcon filled={post.userVoted === 1} />}
-          count={post.upvoteCount ?? 0}
-          color="#ef4444"
-          active={post.userVoted === 1}
-        />
-
-        {/* Comment */}
-        <ActionButton
-          icon={<CommentIcon />}
-          count={post.commentCount ?? 0}
-        />
-
-        {/* View count */}
-        {(post.viewCount ?? 0) > 0 && (
-          <ActionButton
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            }
-            count={post.viewCount}
-          />
-        )}
-
-        {/* Share */}
-        <ActionButton
-          icon={<ShareIcon />}
-          label={shareText ?? undefined}
-          color="var(--accent)"
-          active={!!shareText}
-          onClick={handleShare}
-        />
-
-        <div style={{ flex: 1 }} />
-
-        {/* Bookmark placeholder */}
-        <ActionButton
-          icon={<BookmarkIcon />}
-        />
-
-        {/* Delete (author only) */}
-        {sessionUserId && sessionUserId === post.authorId && (
-          <ActionButton
-            icon={<TrashIcon />}
-            color="#ef4444"
-            label={showDeleteConfirm ? (deleting ? 'Deleting...' : 'Delete?') : undefined}
-            active={showDeleteConfirm}
-            onClick={handleDelete}
-          />
-        )}
-      </div>
-    </article>
-  );
-}
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
@@ -634,6 +134,7 @@ export default function TopicPage() {
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const tagSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tagSearchRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Composer
   const [composing, setComposing] = useState(false);
@@ -707,6 +208,23 @@ export default function TopicPage() {
       setPostsLoading(false);
     }
   }, [topicId]);
+
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !postsLoading) {
+          loadPosts(offset, false, activeTag, sortBy);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, postsLoading, offset, activeTag, sortBy]);
 
   function handleLoadMore() {
     loadPosts(offset, false, activeTag, sortBy);
@@ -1188,28 +706,30 @@ export default function TopicPage() {
               </div>
             ) : (
               posts.map((post) => (
-                <PostCard key={post.id} post={post} topic={topic} topicId={topicId} sessionUserId={sessionUserId} onDelete={(id) => setPosts((prev) => prev.filter((p) => p.id !== id))} onPin={handlePinPost} />
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  href={`/topics/${topicId}/posts/${post.id}`}
+                  showAuthor
+                  media={post.media}
+                  isPinned={post.isPinned}
+                  userVoted={post.userVoted}
+                  reactions={post.reactions}
+                  sessionUserId={sessionUserId}
+                  authorId={post.authorId}
+                  topicCreatorId={topic?.creatorId}
+                  onDelete={(id) => setPosts((prev) => prev.filter((p) => p.id !== id))}
+                  onPin={handlePinPost}
+                  expandable
+                />
               ))
             )}
           </div>
 
+          {/* Infinite scroll sentinel */}
           {hasMore && (
-            <div style={{ textAlign: 'center', marginTop: 20 }}>
-              <button
-                onClick={handleLoadMore}
-                disabled={postsLoading}
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  color: '#6b7280',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 8,
-                  padding: '10px 28px',
-                  fontSize: 14,
-                  cursor: 'pointer',
-                }}
-              >
-                {postsLoading ? 'Loading...' : 'Load more'}
-              </button>
+            <div ref={sentinelRef} style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+              {postsLoading && <Spinner />}
             </div>
           )}
         </div>
@@ -1255,20 +775,3 @@ export default function TopicPage() {
   );
 }
 
-function Spinner() {
-  return (
-    <svg
-      width={28}
-      height={28}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}

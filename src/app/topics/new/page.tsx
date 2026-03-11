@@ -1,39 +1,11 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
-
-function resizeImage(file: File, maxSize: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let { width, height } = img;
-      if (width > maxSize || height > maxSize) {
-        if (width > height) {
-          height = Math.round((height / width) * maxSize);
-          width = maxSize;
-        } else {
-          width = Math.round((width / height) * maxSize);
-          height = maxSize;
-        }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error('Canvas toBlob failed'))),
-        'image/webp',
-        0.85,
-      );
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
+import ProofGate from '@/components/ProofGate';
+import { resizeImage } from '@/lib/utils';
 
 export default function NewTopicPage() {
   const router = useRouter();
@@ -53,20 +25,22 @@ export default function NewTopicPage() {
   const [countryProofData, setCountryProofData] = useState<{
     proof: string;
     publicInputs: string[];
+    circuit: string;
   } | null>(null);
-  const [proofLoading, setProofLoading] = useState(false);
   const [proofDone, setProofDone] = useState(false);
-  const [deepLink, setDeepLink] = useState<string | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const doneRef = useRef(false);
+  // Key to force ProofGate remount when country params change
+  const [proofGateKey, setProofGateKey] = useState(0);
 
-  // Cleanup polling on unmount
+  // Reset proof when country settings change
   useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
+    if (requiresCountry) {
+      setCountryProofData(null);
+      setProofDone(false);
+      setProofGateKey((k) => k + 1);
+    }
+  // Only reset when the actual filter values change, not on every render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryMode]);
 
   async function uploadTopicImage(file: File): Promise<string> {
     const resized = await resizeImage(file, 400);
@@ -108,62 +82,10 @@ export default function NewTopicPage() {
     setImagePreview(URL.createObjectURL(file));
   }
 
-  async function startCountryProof() {
-    setProofLoading(true);
-    setError(null);
-    try {
-      const parsedCountries = countryCodes
-        .split(',')
-        .map((c) => c.trim().toUpperCase())
-        .filter(Boolean);
-      const res = await fetch('/api/auth/proof-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          circuitType: 'coinbase_country_attestation',
-          scope: 'zkproofport-community',
-          countryList: parsedCountries,
-          isIncluded: countryMode === 'include',
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to create proof request');
-      const data = await res.json();
-      setDeepLink(data.deepLink);
-
-      const QRCode = await import('qrcode');
-      const url = await QRCode.toDataURL(data.deepLink, {
-        width: 224,
-        margin: 2,
-        color: { dark: '#ededed', light: '#0a0a0a' },
-      });
-      setQrDataUrl(url);
-
-      doneRef.current = false;
-      pollingRef.current = setInterval(async () => {
-        if (doneRef.current) return;
-        try {
-          const pollRes = await fetch(`/api/auth/poll/${data.requestId}?mode=proof`);
-          if (!pollRes.ok) return;
-          const pollData = await pollRes.json();
-          if (pollData.status === 'completed' && pollData.proof && pollData.publicInputs) {
-            doneRef.current = true;
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setCountryProofData({
-              proof: pollData.proof,
-              publicInputs: pollData.publicInputs,
-            });
-            setProofDone(true);
-            setProofLoading(false);
-          }
-        } catch {
-          // Retry silently
-        }
-      }, 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start proof');
-      setProofLoading(false);
-    }
-  }
+  const parsedCountries = countryCodes
+    .split(',')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -185,7 +107,7 @@ export default function NewTopicPage() {
       setImageUploading(true);
       try {
         imageUrl = await uploadTopicImage(imageFile);
-      } catch (err) {
+      } catch {
         setError('Failed to upload image');
         setLoading(false);
         setImageUploading(false);
@@ -206,7 +128,7 @@ export default function NewTopicPage() {
           countryMode: requiresCountry ? countryMode : undefined,
           image: imageUrl,
           visibility,
-          ...(countryProofData ? { proof: countryProofData.proof, publicInputs: countryProofData.publicInputs } : {}),
+          ...(countryProofData ? { proof: countryProofData.proof, publicInputs: countryProofData.publicInputs, circuit: countryProofData.circuit } : {}),
         }),
       });
 
@@ -491,10 +413,6 @@ export default function NewTopicPage() {
                   if (!e.target.checked) {
                     setCountryProofData(null);
                     setProofDone(false);
-                    setProofLoading(false);
-                    setDeepLink(null);
-                    setQrDataUrl(null);
-                    if (pollingRef.current) clearInterval(pollingRef.current);
                   }
                 }}
                 style={{
@@ -554,7 +472,15 @@ export default function NewTopicPage() {
                     id="countries"
                     type="text"
                     value={countryCodes}
-                    onChange={(e) => setCountryCodes(e.target.value)}
+                    onChange={(e) => {
+                      setCountryCodes(e.target.value);
+                      // Reset proof when country codes change
+                      if (proofDone) {
+                        setCountryProofData(null);
+                        setProofDone(false);
+                        setProofGateKey((k) => k + 1);
+                      }
+                    }}
                     placeholder="US, KR, JP, DE"
                     style={{
                       width: '100%',
@@ -607,51 +533,21 @@ export default function NewTopicPage() {
                     borderRadius: 10,
                     textAlign: 'center',
                   }}>
-                    {!qrDataUrl && !proofLoading && (
-                      <button
-                        type="button"
-                        onClick={startCountryProof}
-                        style={{
-                          background: 'var(--accent)',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: 8,
-                          padding: '10px 24px',
-                          fontSize: 13,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Verify Your Country
-                      </button>
-                    )}
-                    {qrDataUrl && (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                        <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
-                          Scan with ZKProofport app to prove your country
-                        </p>
-                        <div style={{
-                          padding: 12,
-                          background: '#0a0a0a',
-                          border: '1px solid var(--border)',
-                          borderRadius: 12,
-                        }}>
-                          <img src={qrDataUrl} alt="Country proof QR" width={200} height={200} style={{ display: 'block', borderRadius: 8 }} />
-                        </div>
-                        {deepLink && (
-                          <a href={deepLink} style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontFamily: 'monospace' }}>
-                            Open in ZKProofport app →
-                          </a>
-                        )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" style={{ animation: 'spin 1s linear infinite' }}>
-                            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                          </svg>
-                          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Waiting for proof...</span>
-                        </div>
-                      </div>
-                    )}
+                    <ProofGate
+                      key={proofGateKey}
+                      circuitType="coinbase_country_attestation"
+                      scope="zkproofport-community"
+                      countryList={parsedCountries}
+                      isIncluded={countryMode === 'include'}
+                      mode="proof"
+                      autoStart={false}
+                      qrSize={200}
+                      label="Scan with ZKProofport app to prove your country"
+                      onProofData={({ proof, publicInputs, circuit }) => {
+                        setCountryProofData({ proof, publicInputs, circuit });
+                        setProofDone(true);
+                      }}
+                    />
                   </div>
                 )}
                 {proofDone && (

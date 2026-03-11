@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import ProofGate from '@/components/ProofGate';
 
 type Stage = 'idle' | 'choose' | 'proving' | 'agent' | 'completed' | 'error';
 
@@ -18,94 +19,17 @@ function LandingPageInner() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get('returnTo') ?? '/topics';
   const [stage, setStage] = useState<Stage>('idle');
-  const [requestId, setRequestId] = useState<string | null>(null);
-  const [deepLink, setDeepLink] = useState<string | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [isMobile, setIsMobile] = useState(false);
   const [agentToken, setAgentToken] = useState('');
   const [agentConnecting, setAgentConnecting] = useState(false);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const doneRef = useRef(false);
 
+  // Track if we received login completion (for the brief "completed" display before redirect)
   useEffect(() => {
-    const ua = navigator.userAgent;
-    setIsMobile(/iPhone|iPad|iPod|Android/i.test(ua));
+    // nothing to clean up now — ProofGate handles polling
   }, []);
-
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
-
-  async function startProof() {
-    setStage('proving');
-    setErrorMsg('');
-    doneRef.current = false;
-
-    try {
-      const res = await fetch('/api/auth/proof-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ circuitType: 'coinbase_attestation' }),
-      });
-
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to create proof request');
-      }
-
-      const data = await res.json();
-      setRequestId(data.requestId);
-      setDeepLink(data.deepLink);
-
-      const { createSDK } = await import('@/lib/relay');
-      const sdk = createSDK();
-      const url = await sdk.generateQRCode(data.deepLink, {
-        width: 256,
-        margin: 2,
-        darkColor: '#ededed',
-        lightColor: '#0a0a0a',
-      });
-      setQrDataUrl(url);
-
-      pollingRef.current = setInterval(async () => {
-        if (doneRef.current) return;
-        try {
-          const pollRes = await fetch(`/api/auth/poll/${data.requestId}`);
-          if (!pollRes.ok) return;
-          const pollData = await pollRes.json();
-          if (pollData.status === 'completed') {
-            doneRef.current = true;
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setStage('completed');
-            // Give state a tick to settle before redirect
-            setTimeout(() => {
-              if (pollData.needsNickname) {
-                router.push(`/profile?returnTo=${encodeURIComponent(returnTo)}`);
-              } else {
-                router.push(returnTo);
-              }
-            }, 600);
-          }
-        } catch {
-          // Silently retry
-        }
-      }, 2000);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Unknown error');
-      setStage('error');
-    }
-  }
 
   function reset() {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    setRequestId(null);
-    setDeepLink(null);
-    setQrDataUrl(null);
     setErrorMsg('');
-    doneRef.current = false;
     setStage('idle');
   }
 
@@ -247,7 +171,7 @@ function LandingPageInner() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
               <button
-                onClick={startProof}
+                onClick={() => setStage('proving')}
                 style={{
                   background: 'var(--accent)',
                   color: '#fff',
@@ -403,166 +327,39 @@ function LandingPageInner() {
 
         {stage === 'proving' && (
           <div className="flex flex-col items-center gap-8" style={{ maxWidth: 400, width: '100%', padding: '0 16px' }}>
-            {isMobile ? (
-              <>
-                <div className="text-center">
-                  <h2
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 700,
-                      letterSpacing: '-0.03em',
-                      margin: 0,
-                    }}
-                  >
-                    Open ZKProofport
-                  </h2>
-                  <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
-                    Tap below to open the app and verify your identity
-                  </p>
-                </div>
+            <div className="text-center">
+              <h2
+                style={{
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: '-0.03em',
+                  margin: 0,
+                }}
+              >
+                Verify Identity
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
+                Prove your Coinbase KYC via ZKProofport
+              </p>
+            </div>
 
-                {deepLink && (
-                  <a
-                    href={deepLink}
-                    style={{
-                      display: 'block',
-                      background: 'var(--accent)',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 10,
-                      padding: '16px 40px',
-                      fontSize: 16,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      letterSpacing: '-0.01em',
-                      textDecoration: 'none',
-                      textAlign: 'center',
-                      width: '100%',
-                    }}
-                  >
-                    Open in ZKProofport →
-                  </a>
-                )}
-
-                <div className="flex flex-col items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <Spinner size={14} />
-                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                      Waiting for proof...
-                    </span>
-                  </div>
-                  <button
-                    onClick={reset}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--muted)',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="text-center">
-                  <h2
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 700,
-                      letterSpacing: '-0.03em',
-                      margin: 0,
-                    }}
-                  >
-                    Scan to Verify
-                  </h2>
-                  <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
-                    Open ZKProofport app and scan this QR code
-                  </p>
-                </div>
-
-                {qrDataUrl ? (
-                  <div
-                    style={{
-                      padding: 20,
-                      border: '1px solid var(--border)',
-                      borderRadius: 20,
-                      background: '#0d0d0d',
-                      position: 'relative',
-                    }}
-                  >
-                    <img
-                      src={qrDataUrl}
-                      alt="Proof request QR code"
-                      width={256}
-                      height={256}
-                      style={{ display: 'block', borderRadius: 10 }}
-                    />
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        borderRadius: 20,
-                        boxShadow: '0 0 0 1px rgba(59,130,246,0.2) inset',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      width: 296,
-                      height: 296,
-                      border: '1px solid var(--border)',
-                      borderRadius: 20,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Spinner />
-                  </div>
-                )}
-
-                <div className="flex flex-col items-center gap-3">
-                  {deepLink && (
-                    <a
-                      href={deepLink}
-                      style={{
-                        fontSize: 13,
-                        color: 'var(--accent)',
-                        textDecoration: 'none',
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      Open in ZKProofport app →
-                    </a>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Spinner size={14} />
-                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                      Waiting for proof...
-                    </span>
-                  </div>
-                  <button
-                    onClick={reset}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--muted)',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
+            <ProofGate
+              circuitType="coinbase_attestation"
+              mode="login"
+              qrSize={256}
+              label="Scan with ZKProofport app to verify"
+              onLogin={({ needsNickname }) => {
+                setStage('completed');
+                setTimeout(() => {
+                  if (needsNickname) {
+                    router.push(`/profile?returnTo=${encodeURIComponent(returnTo)}`);
+                  } else {
+                    router.push(returnTo);
+                  }
+                }, 600);
+              }}
+              onCancel={reset}
+            />
           </div>
         )}
 
@@ -661,24 +458,5 @@ function LandingPageInner() {
       </div>
 
     </div>
-  );
-}
-
-function Spinner({ size = 28 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ animation: 'spin 1s linear infinite' }}
-    >
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
   );
 }

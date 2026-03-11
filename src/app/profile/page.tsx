@@ -4,38 +4,9 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Avatar from '@/components/Avatar';
+import { resizeImage } from '@/lib/utils';
 
 const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
-
-function resizeImage(file: File, maxSize: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let { width, height } = img;
-      if (width > maxSize || height > maxSize) {
-        if (width > height) {
-          height = Math.round((height / width) * maxSize);
-          width = maxSize;
-        } else {
-          width = Math.round((width / height) * maxSize);
-          height = maxSize;
-        }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error('Canvas toBlob failed'))),
-        'image/webp',
-        0.85,
-      );
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
 
 export default function ProfilePage() {
   return (

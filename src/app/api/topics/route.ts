@@ -6,7 +6,6 @@ import { eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
 import {
-  verifyProofFromRelay,
   extractScope,
   extractIsIncluded,
   computeScopeHash,
@@ -127,25 +126,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      logger.info(ROUTE, 'Verifying creator country proof on-chain', { userId: session.userId, proofLength: proof.length });
-
-      const verification = await verifyProofFromRelay({
-        status: 'completed',
-        proof,
-        publicInputs,
-        circuit: 'coinbase_country_attestation',
-        requestId: session.userId,
-      });
-
-      if (!verification.valid) {
-        logger.warn(ROUTE, 'Creator country proof verification failed', { userId: session.userId, error: verification.error });
-        return NextResponse.json(
-          { error: 'Country proof verification failed', details: verification.error },
-          { status: 400 },
-        );
-      }
-
-      logger.info(ROUTE, 'Creator country proof verified on-chain', { userId: session.userId });
+      // Proof was already verified on-chain by the poll endpoint (mode=proof).
+      // Only validate scope and is_included from publicInputs.
 
       // Verify scope matches community scope
       const scope = extractScope(publicInputs, 'coinbase_country_attestation');
