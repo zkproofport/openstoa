@@ -241,6 +241,7 @@ export default function SNSContent({
       {/* HTML content */}
       <div
         ref={contentRef}
+        className="sns-content-body"
         dangerouslySetInnerHTML={{ __html: linkedHtml }}
         style={{
           ...(truncate ? {
@@ -308,11 +309,18 @@ export default function SNSContent({
       )}
 
       <style>{`
-        div[dangerouslySetInnerHTML] img,
-        .sns-content img {
+        .sns-content-body img {
           max-width: 100%;
+          max-height: 300px;
           height: auto;
+          object-fit: contain;
           border-radius: 8px;
+          display: block;
+        }
+        @media (max-width: 640px) {
+          .sns-content-body img {
+            max-height: 200px;
+          }
         }
       `}</style>
     </div>
