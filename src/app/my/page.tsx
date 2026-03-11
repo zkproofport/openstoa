@@ -122,11 +122,16 @@ export default function MyPage() {
   async function handleSaveNickname() {
     const trimmed = nicknameInput.trim();
     if (!trimmed) return;
+    const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
+    if (!NICKNAME_RE.test(trimmed)) {
+      setNicknameFeedback({ ok: false, msg: '2-20 characters, letters/numbers/underscore only' });
+      return;
+    }
     setNicknameSaving(true);
     setNicknameFeedback(null);
     try {
-      const res = await fetch('/api/auth/session', {
-        method: 'PATCH',
+      const res = await fetch('/api/profile/nickname', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nickname: trimmed }),
       });
