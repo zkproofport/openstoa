@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 
 const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
 
 export default function ProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get('returnTo') ?? '/topics';
   const [nickname, setNickname] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,7 +25,7 @@ export default function ProfilePage() {
           return;
         }
         if (data.nickname && !data.nickname.startsWith('anon_')) {
-          router.replace('/topics');
+          router.replace(returnTo);
           return;
         }
         setUserId(data.userId ?? null);
@@ -67,7 +69,7 @@ export default function ProfilePage() {
         throw new Error(d.error ?? 'Failed to set nickname');
       }
 
-      router.replace('/topics');
+      router.replace(returnTo);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {

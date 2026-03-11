@@ -47,7 +47,9 @@ export async function middleware(request: NextRequest) {
     if (isApiRoute(pathname)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
-    return NextResponse.redirect(new URL('/', request.url));
+    const loginUrl = new URL('/', request.url);
+    loginUrl.searchParams.set('returnTo', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   const COMMUNITY_JWT_SECRET = process.env.COMMUNITY_JWT_SECRET;
@@ -75,7 +77,9 @@ export async function middleware(request: NextRequest) {
             { status: 403 },
           );
         }
-        return NextResponse.redirect(new URL('/profile', request.url));
+        const profileUrl = new URL('/profile', request.url);
+        profileUrl.searchParams.set('returnTo', pathname);
+        return NextResponse.redirect(profileUrl);
       }
     }
 
@@ -84,7 +88,9 @@ export async function middleware(request: NextRequest) {
     if (isApiRoute(pathname)) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
-    return NextResponse.redirect(new URL('/', request.url));
+    const loginUrl = new URL('/', request.url);
+    loginUrl.searchParams.set('returnTo', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 }
 

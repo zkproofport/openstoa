@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 type Stage = 'idle' | 'choose' | 'proving' | 'agent' | 'completed' | 'error';
 
 export default function LandingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get('returnTo') ?? '/topics';
   const [stage, setStage] = useState<Stage>('idle');
   const [requestId, setRequestId] = useState<string | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
@@ -73,9 +75,9 @@ export default function LandingPage() {
             // Give state a tick to settle before redirect
             setTimeout(() => {
               if (pollData.needsNickname) {
-                router.push('/profile');
+                router.push(`/profile?returnTo=${encodeURIComponent(returnTo)}`);
               } else {
-                router.push('/topics');
+                router.push(returnTo);
               }
             }, 600);
           }
