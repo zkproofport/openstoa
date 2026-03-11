@@ -10,7 +10,7 @@ interface Post {
   id: string;
   title: string;
   content: string;
-  media?: { images?: string[]; embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
+  media?: { embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
   authorNickname: string;
   authorId: string;
   createdAt: string;
@@ -49,6 +49,7 @@ export default function PostPage() {
   const [upvoteCount, setUpvoteCount] = useState(0);
   const [bookmarked, setBookmarked] = useState(false);
   const [voteLoading, setVoteLoading] = useState(false);
+  const [shared, setShared] = useState(false);
 
   useEffect(() => {
     loadPost();
@@ -95,6 +96,19 @@ export default function PostPage() {
     } finally {
       setVoteLoading(false);
     }
+  }
+
+  async function handleShare() {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: post?.title ?? '', url });
+        return;
+      } catch {}
+    }
+    await navigator.clipboard.writeText(url);
+    setShared(true);
+    setTimeout(() => setShared(false), 1500);
   }
 
   async function handleBookmark() {
@@ -277,7 +291,7 @@ export default function PostPage() {
             </div>
           )}
 
-          <SNSContent text={post.content} media={post.media} />
+          <SNSContent html={post.content} media={post.media} />
 
           <div style={{
             display: 'flex',
@@ -341,6 +355,33 @@ export default function PostPage() {
             <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'monospace' }}>
               {post.viewCount} views
             </span>
+
+            {/* Share button */}
+            <button
+              type="button"
+              onClick={handleShare}
+              style={{
+                background: shared ? 'rgba(59,130,246,0.12)' : 'transparent',
+                color: shared ? 'var(--accent)' : 'var(--muted)',
+                border: `1px solid ${shared ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                borderRadius: 6,
+                padding: '6px 14px',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                transition: 'all 0.15s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                <polyline points="16 6 12 2 8 6"/>
+                <line x1="12" y1="2" x2="12" y2="15"/>
+              </svg>
+              {shared ? 'Copied!' : 'Share'}
+            </button>
 
             {/* Bookmark button */}
             <button

@@ -51,6 +51,7 @@ export async function GET(
         authorId: posts.authorId,
         title: posts.title,
         content: posts.content,
+        media: posts.media,
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,

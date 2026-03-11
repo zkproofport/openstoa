@@ -5,21 +5,33 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import SNSEditor from '@/components/SNSEditor';
+import SNSContent from '@/components/SNSContent';
 import TagInput from '@/components/TagInput';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface Topic {
   id: string;
   title: string;
   description?: string;
+  image?: string;
   memberCount: number;
   requiresCountryProof: boolean;
   isMember: boolean;
   createdAt: string;
 }
 
+interface Embed {
+  type: 'youtube' | 'vimeo';
+  url: string;
+  videoId: string;
+}
+
 interface Post {
   id: string;
   title: string;
+  content: string;
+  media?: { embeds?: Embed[] } | null;
   authorNickname: string;
   commentCount?: number;
   upvoteCount?: number;
@@ -28,6 +40,290 @@ interface Post {
 }
 
 const PAGE_SIZE = 20;
+
+// ─── Relative Time ──────────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diff = now - then;
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ─── SVG Icons ──────────────────────────────────────────────────────────────
+
+function HeartIcon({ filled }: { filled?: boolean }) {
+  if (filled) {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="#ef4444" stroke="none">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    </svg>
+  );
+}
+
+function CommentIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+      <polyline points="16 6 12 2 8 6"/>
+      <line x1="12" y1="2" x2="12" y2="15"/>
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="5" r="1.5"/>
+      <circle cx="12" cy="12" r="1.5"/>
+      <circle cx="12" cy="19" r="1.5"/>
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  );
+}
+
+// ─── Topic Avatar ───────────────────────────────────────────────────────────
+
+const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#22c55e', '#06b6d4', '#eab308'];
+
+function TopicAvatar({ title, image, size = 40 }: { title: string; image?: string; size?: number }) {
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt=""
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          objectFit: 'cover',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  const colorIndex = title.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
+  return (
+    <div style={{
+      width: size,
+      height: size,
+      borderRadius: '50%',
+      background: AVATAR_COLORS[colorIndex],
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: size * 0.45,
+      fontWeight: 700,
+      color: '#fff',
+      flexShrink: 0,
+    }}>
+      {title.slice(0, 1).toUpperCase()}
+    </div>
+  );
+}
+
+// ─── Post Card ──────────────────────────────────────────────────────────────
+
+function PostCard({
+  post,
+  topic,
+  topicId,
+}: {
+  post: Post;
+  topic: Topic;
+  topicId: string;
+}) {
+  const [shareText, setShareText] = useState<string | null>(null);
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const url = `${window.location.origin}/topics/${topicId}/posts/${post.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: post.title, url });
+        return;
+      } catch {}
+    }
+    await navigator.clipboard.writeText(url);
+    setShareText('Copied!');
+    setTimeout(() => setShareText(null), 1500);
+  };
+
+  return (
+    <Link
+      href={`/topics/${topicId}/posts/${post.id}`}
+      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+    >
+      <article
+        style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          transition: 'background 0.12s',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+      >
+        {/* Header: avatar + topic name + time + author */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+          <TopicAvatar title={topic.title} image={topic.image} size={40} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#e5e7eb' }}>
+                {topic.title}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
+              {relativeTime(post.createdAt)} · {post.authorNickname}
+            </div>
+          </div>
+        </div>
+
+        {/* Title */}
+        <h3 style={{
+          fontSize: 16,
+          fontWeight: 700,
+          margin: '0 0 6px 52px',
+          letterSpacing: '-0.01em',
+          color: '#e5e7eb',
+          lineHeight: 1.4,
+        }}>
+          {post.title}
+        </h3>
+
+        {/* Body preview */}
+        <div style={{ marginLeft: 52 }}>
+          <SNSContent
+            html={post.content}
+            media={post.media}
+            truncate
+            maxLines={3}
+          />
+        </div>
+
+        {/* Action bar */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0,
+          marginTop: 10,
+          marginLeft: 52,
+        }}>
+          {/* Like */}
+          <ActionButton
+            icon={<HeartIcon filled={(post.upvoteCount ?? 0) > 0} />}
+            count={post.upvoteCount ?? 0}
+            color={(post.upvoteCount ?? 0) > 0 ? '#ef4444' : undefined}
+          />
+          {/* Comment */}
+          <ActionButton
+            icon={<CommentIcon />}
+            count={post.commentCount ?? 0}
+          />
+          {/* Share */}
+          <button
+            type="button"
+            onClick={handleShare}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: shareText ? 'var(--accent)' : '#6b7280',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 12px',
+              borderRadius: 9999,
+              fontSize: 12,
+              transition: 'color 0.12s, background 0.12s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(59,130,246,0.08)'; e.currentTarget.style.color = 'var(--accent)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = shareText ? 'var(--accent)' : '#6b7280'; }}
+          >
+            <ShareIcon />
+            {shareText && <span style={{ fontSize: 12 }}>{shareText}</span>}
+          </button>
+
+          <div style={{ flex: 1 }} />
+
+          {/* More */}
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#6b7280',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '4px 8px',
+              borderRadius: 9999,
+              transition: 'background 0.12s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+          >
+            <MoreIcon />
+          </button>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+function ActionButton({ icon, count, color }: { icon: React.ReactNode; count: number; color?: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '4px 12px',
+        borderRadius: 9999,
+        color: color ?? '#6b7280',
+        fontSize: 12,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {icon}
+      {count > 0 && <span>{count}</span>}
+    </div>
+  );
+}
+
+// ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function TopicPage() {
   const params = useParams();
@@ -42,11 +338,11 @@ export default function TopicPage() {
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Write post inline
+  // Composer
   const [composing, setComposing] = useState(false);
   const [postTitle, setPostTitle] = useState('');
-  const [postContent, setPostContent] = useState('');
-  const [postMedia, setPostMedia] = useState<{ images: string[]; embeds: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] }>({ images: [], embeds: [] });
+  const [postContentHtml, setPostContentHtml] = useState('');
+  const [postMedia, setPostMedia] = useState<{ embeds: Embed[] }>({ embeds: [] });
   const [postTags, setPostTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -103,9 +399,20 @@ export default function TopicPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  /** Check if HTML content is effectively empty */
+  function isHtmlEmpty(html: string): boolean {
+    const stripped = html
+      .replace(/<br\s*\/?>/gi, '')
+      .replace(/<p><br><\/p>/gi, '')
+      .replace(/<div><br><\/div>/gi, '')
+      .replace(/<[^>]*>/g, '')
+      .trim();
+    return stripped.length === 0;
+  }
+
   async function handlePostSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!postTitle.trim() || !postContent.trim()) return;
+    if (!postTitle.trim() || isHtmlEmpty(postContentHtml)) return;
     setSubmitting(true);
     setPostError(null);
     try {
@@ -114,8 +421,8 @@ export default function TopicPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: postTitle.trim(),
-          content: postContent.trim(),
-          media: (postMedia.images.length > 0 || postMedia.embeds.length > 0) ? postMedia : undefined,
+          content: postContentHtml,
+          media: postMedia.embeds.length > 0 ? { embeds: postMedia.embeds } : undefined,
           tags: postTags.length > 0 ? postTags : undefined,
         }),
       });
@@ -124,8 +431,8 @@ export default function TopicPage() {
         throw new Error(d.error ?? 'Failed to post');
       }
       setPostTitle('');
-      setPostContent('');
-      setPostMedia({ images: [], embeds: [] });
+      setPostContentHtml('');
+      setPostMedia({ embeds: [] });
       setPostTags([]);
       setComposing(false);
       loadPosts(0, true);
@@ -134,13 +441,6 @@ export default function TopicPage() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
   }
 
   if (loading) {
@@ -173,7 +473,7 @@ export default function TopicPage() {
   return (
     <>
       <Header />
-      <div style={{ paddingTop: 36, paddingBottom: 80 }}>
+      <div style={{ paddingTop: 36, paddingBottom: 100, position: 'relative' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 24 }}>
           <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
@@ -182,262 +482,169 @@ export default function TopicPage() {
         </div>
 
         {/* Topic header */}
-        <div
-          style={{
-            padding: '24px 28px',
-            background: '#0d0d0d',
-            border: '1px solid var(--border)',
-            borderRadius: 14,
-            marginBottom: 28,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-            <div style={{ flex: 1 }}>
-              <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 6 }}>
-                <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', margin: 0 }}>
-                  {topic.title}
-                </h1>
-                {topic.requiresCountryProof && (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      background: 'rgba(59,130,246,0.12)',
-                      color: 'var(--accent)',
-                      border: '1px solid rgba(59,130,246,0.2)',
-                      padding: '2px 7px',
-                      borderRadius: 4,
-                    }}
-                  >
-                    country gated
-                  </span>
-                )}
-              </div>
-              {topic.description && (
-                <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0, lineHeight: 1.6 }}>
-                  {topic.description}
-                </p>
+        <div style={{
+          padding: '20px 24px',
+          background: '#0d0d0d',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 14,
+          marginBottom: 4,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+        }}>
+          <TopicAvatar title={topic.title} image={topic.image} size={48} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: '#e5e7eb' }}>
+                {topic.title}
+              </h1>
+              {topic.requiresCountryProof && (
+                <span style={{
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  background: 'rgba(59,130,246,0.12)',
+                  color: 'var(--accent)',
+                  border: '1px solid rgba(59,130,246,0.2)',
+                  padding: '2px 7px',
+                  borderRadius: 4,
+                }}>
+                  country gated
+                </span>
               )}
-              <p style={{ fontSize: 12, color: 'var(--muted)', margin: '12px 0 0', fontFamily: 'monospace' }}>
-                {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
-              </p>
             </div>
-            <button
-              onClick={handleCopyInvite}
-              style={{
-                background: copied ? 'rgba(34,197,94,0.12)' : 'var(--border)',
-                color: copied ? '#22c55e' : 'var(--muted)',
-                border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'transparent'}`,
-                borderRadius: 7,
-                padding: '8px 14px',
-                fontSize: 13,
-                cursor: 'pointer',
-                fontWeight: 500,
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s',
-                flexShrink: 0,
-              }}
-            >
-              {copied ? '✓ Copied!' : 'Copy Invite Link'}
-            </button>
+            {topic.description && (
+              <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0', lineHeight: 1.5 }}>
+                {topic.description}
+              </p>
+            )}
+            <p style={{ fontSize: 12, color: '#4b5563', margin: '6px 0 0', fontFamily: 'monospace' }}>
+              {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
+            </p>
           </div>
+          <button
+            onClick={handleCopyInvite}
+            style={{
+              background: copied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
+              color: copied ? '#22c55e' : '#6b7280',
+              border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: 7,
+              padding: '8px 14px',
+              fontSize: 13,
+              cursor: 'pointer',
+              fontWeight: 500,
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s',
+              flexShrink: 0,
+            }}
+          >
+            {copied ? 'Copied!' : 'Invite'}
+          </button>
         </div>
 
-        {/* Write post button / composer */}
-        {!composing ? (
-          <div style={{ marginBottom: 20 }}>
-            <button
-              onClick={() => setComposing(true)}
-              style={{
-                background: 'var(--accent)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                padding: '9px 20px',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              + Write Post
-            </button>
-          </div>
-        ) : (
-          <form
-            onSubmit={handlePostSubmit}
-            style={{
-              background: '#0d0d0d',
-              border: '1px solid rgba(59,130,246,0.3)',
-              borderRadius: 12,
-              padding: '20px',
-              marginBottom: 24,
-            }}
-          >
-            <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 16px', letterSpacing: '-0.02em' }}>
-              New Post
-            </h3>
-            <div className="flex flex-col gap-3">
-              <input
-                type="text"
-                value={postTitle}
-                onChange={(e) => setPostTitle(e.target.value)}
-                placeholder="Post title"
-                autoFocus
-                style={{
-                  width: '100%',
-                  background: '#111',
-                  border: '1px solid var(--border)',
-                  borderRadius: 7,
-                  padding: '10px 14px',
-                  color: 'var(--foreground)',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  outline: 'none',
-                }}
-              />
-              <SNSEditor
-                placeholder="Write your post..."
-                onChange={(text, media) => {
-                  setPostContent(text);
-                  setPostMedia(media);
-                }}
-                minHeight={180}
-              />
-              <div style={{ marginTop: 12 }}>
-                <TagInput tags={postTags} onChange={setPostTags} />
-              </div>
-              {postError && (
-                <p style={{ fontSize: 12, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
-                  {postError}
-                </p>
-              )}
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => { setComposing(false); setPostTitle(''); setPostContent(''); setPostMedia({ images: [], embeds: [] }); setPostTags([]); }}
+        {/* Composer (expanded) */}
+        {composing && (
+          <div style={{
+            background: '#0d0d0d',
+            border: '1px solid rgba(59,130,246,0.3)',
+            borderRadius: 12,
+            padding: '20px',
+            marginTop: 4,
+            marginBottom: 4,
+          }}>
+            <form onSubmit={handlePostSubmit}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 16px', letterSpacing: '-0.02em', color: '#e5e7eb' }}>
+                New Post
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <input
+                  type="text"
+                  value={postTitle}
+                  onChange={(e) => setPostTitle(e.target.value)}
+                  placeholder="Post title"
+                  autoFocus
                   style={{
-                    background: 'var(--border)',
-                    color: 'var(--muted)',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '8px 16px',
-                    fontSize: 13,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!postTitle.trim() || !postContent.trim() || submitting}
-                  style={{
-                    background: 'var(--accent)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '8px 20px',
-                    fontSize: 13,
+                    width: '100%',
+                    background: '#111',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 7,
+                    padding: '10px 14px',
+                    color: '#e5e7eb',
+                    fontSize: 14,
                     fontWeight: 600,
-                    cursor: 'pointer',
-                    opacity: (!postTitle.trim() || !postContent.trim() || submitting) ? 0.5 : 1,
+                    outline: 'none',
+                    boxSizing: 'border-box',
                   }}
-                >
-                  {submitting ? 'Posting...' : 'Post'}
-                </button>
+                />
+                <SNSEditor
+                  placeholder="Write your post..."
+                  onChange={(html, media) => {
+                    setPostContentHtml(html);
+                    setPostMedia(media);
+                  }}
+                  minHeight={180}
+                />
+                <div style={{ marginTop: 4 }}>
+                  <TagInput tags={postTags} onChange={setPostTags} />
+                </div>
+                {postError && (
+                  <p style={{ fontSize: 12, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
+                    {postError}
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setComposing(false); setPostTitle(''); setPostContentHtml(''); setPostMedia({ embeds: [] }); setPostTags([]); }}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      color: '#6b7280',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '8px 16px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting}
+                    style={{
+                      background: 'var(--accent)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '8px 20px',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      opacity: (!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting) ? 0.5 : 1,
+                    }}
+                  >
+                    {submitting ? 'Posting...' : 'Post'}
+                  </button>
+                </div>
               </div>
-            </div>
-          </form>
+            </form>
+          </div>
         )}
 
-        {/* Posts list */}
+        {/* Posts feed */}
         {posts.length === 0 && !postsLoading ? (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '60px 20px',
-              border: '1px dashed var(--border)',
-              borderRadius: 12,
-            }}
-          >
-            <p style={{ fontSize: 15, color: 'var(--muted)' }}>
+          <div style={{
+            textAlign: 'center',
+            padding: '60px 20px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <p style={{ fontSize: 15, color: '#6b7280' }}>
               No posts yet. Be the first to write!
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div>
             {posts.map((post) => (
-              <Link
-                key={post.id}
-                href={`/topics/${topicId}/posts/${post.id}`}
-                style={{ textDecoration: 'none' }}
-              >
-                <div
-                  style={{
-                    padding: '16px 20px',
-                    background: '#0d0d0d',
-                    border: '1px solid var(--border)',
-                    borderRadius: 10,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 16,
-                    transition: 'border-color 0.12s, background 0.12s',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(59,130,246,0.35)';
-                    (e.currentTarget as HTMLDivElement).style.background = '#111';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)';
-                    (e.currentTarget as HTMLDivElement).style.background = '#0d0d0d';
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 600,
-                        margin: 0,
-                        letterSpacing: '-0.01em',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {post.title}
-                    </p>
-                    <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 0' }}>
-                      <span style={{ fontFamily: 'monospace' }}>{post.authorNickname}</span>
-                      {' · '}
-                      {formatDate(post.createdAt)}
-                    </p>
-                    <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                      {post.upvoteCount != null && post.upvoteCount !== 0 && (
-                        <span style={{ fontSize: 11, color: post.upvoteCount > 0 ? '#22c55e' : '#ef4444', fontFamily: 'monospace' }}>
-                          {post.upvoteCount > 0 ? '↑' : '↓'}{Math.abs(post.upvoteCount)}
-                        </span>
-                      )}
-                      {post.viewCount != null && post.viewCount > 0 && (
-                        <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' }}>
-                          {post.viewCount} views
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {post.commentCount != null && (
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--muted)',
-                        flexShrink: 0,
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      {post.commentCount} comment{post.commentCount !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-              </Link>
+              <PostCard key={post.id} post={post} topic={topic} topicId={topicId} />
             ))}
           </div>
         )}
@@ -448,9 +655,9 @@ export default function TopicPage() {
               onClick={handleLoadMore}
               disabled={postsLoading}
               style={{
-                background: 'var(--border)',
-                color: 'var(--muted)',
-                border: 'none',
+                background: 'rgba(255,255,255,0.06)',
+                color: '#6b7280',
+                border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 8,
                 padding: '10px 28px',
                 fontSize: 14,
@@ -460,6 +667,36 @@ export default function TopicPage() {
               {postsLoading ? 'Loading...' : 'Load more'}
             </button>
           </div>
+        )}
+
+        {/* Floating compose button */}
+        {!composing && (
+          <button
+            onClick={() => setComposing(true)}
+            style={{
+              position: 'fixed',
+              bottom: 32,
+              right: 32,
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 24px rgba(59,130,246,0.3)',
+              transition: 'transform 0.15s, box-shadow 0.15s',
+              zIndex: 50,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 32px rgba(59,130,246,0.4)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(59,130,246,0.3)'; }}
+            title="Write Post"
+          >
+            <PlusIcon />
+          </button>
         )}
       </div>
     </>

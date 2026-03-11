@@ -10,6 +10,7 @@ export const topics = pgTable('community_topics', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   description: text('description'),
+  image: text('image'),
   creatorId: text('creator_id').references(() => users.id).notNull(),
   requiresCountryProof: boolean('requires_country_proof').default(false),
   allowedCountries: text('allowed_countries').array(),
