@@ -60,6 +60,7 @@ export async function GET(
         ...topic,
         memberCount: memberCount.count,
       },
+      currentUserRole: membership.role,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

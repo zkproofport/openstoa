@@ -44,7 +44,7 @@ export async function GET(
       .where(and(eq(topicMembers.topicId, topicId), ilike(users.nickname, `%${q}%`)))
       .limit(10);
 
-    return NextResponse.json({ members });
+    return NextResponse.json({ members, currentUserRole: membership.role });
   }
 
   // Full member list sorted by role: owner first, then admin, then member

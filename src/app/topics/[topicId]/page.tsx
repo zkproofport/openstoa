@@ -147,6 +147,7 @@ export default function TopicPage() {
 
   const [copied, setCopied] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -184,6 +185,7 @@ export default function TopicPage() {
       if (!res.ok) throw new Error('Topic not found');
       const data = await res.json();
       setTopic(data.topic);
+      if (data.currentUserRole) setCurrentUserRole(data.currentUserRole);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load topic');
     } finally {
@@ -394,24 +396,60 @@ export default function TopicPage() {
                 {topic.description}
               </p>
             )}
-            <Link
-              href={`/topics/${topicId}/members`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 12,
-                color: '#6b7280',
-                margin: '6px 0 0',
-                fontFamily: 'monospace',
-                textDecoration: 'none',
-                transition: 'color 0.12s',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
-            >
-              {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''} →
-            </Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+              <Link
+                href={`/topics/${topicId}/members`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 12,
+                  color: '#6b7280',
+                  fontFamily: 'monospace',
+                  textDecoration: 'none',
+                  transition: 'color 0.12s',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
+              >
+                {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
+              </Link>
+              {(currentUserRole === 'owner' || currentUserRole === 'admin') && (
+                <Link
+                  href={`/topics/${topicId}/members`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: '#9ca3af',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 6,
+                    padding: '3px 10px',
+                    textDecoration: 'none',
+                    transition: 'all 0.12s',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.3)';
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.color = '#9ca3af';
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                  Manage
+                </Link>
+              )}
+            </div>
           </div>
           <button
             onClick={handleCopyInvite}

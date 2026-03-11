@@ -108,6 +108,9 @@ export default function MembersPage() {
       if (!res.ok) throw new Error('Failed to load members');
       const data = await res.json();
       setMembers(data.members ?? []);
+      if (data.currentUserRole) {
+        setCurrentUserRole(data.currentUserRole);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load members');
     } finally {
