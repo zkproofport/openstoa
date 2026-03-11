@@ -226,7 +226,7 @@ export default function SNSContent({
   useEffect(() => {
     if (truncate && contentRef.current) {
       const el = contentRef.current;
-      setIsOverflowing(el.scrollHeight > el.clientHeight + 2);
+      setIsOverflowing(el.scrollHeight > 200 + 2);
     }
   }, [truncate, html]);
 
@@ -239,19 +239,35 @@ export default function SNSContent({
       fontFamily: "-apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
     }}>
       {/* HTML content */}
-      <div
-        ref={contentRef}
-        className="sns-content-body"
-        dangerouslySetInnerHTML={{ __html: linkedHtml }}
-        style={{
-          ...(truncate ? {
-            display: '-webkit-box',
-            WebkitLineClamp: maxLines,
-            WebkitBoxOrient: 'vertical' as const,
-            overflow: 'hidden',
-          } : {}),
-        }}
-      />
+      {truncate ? (
+        <div style={{ position: 'relative' }}>
+          <div
+            ref={contentRef}
+            className="sns-content-body"
+            dangerouslySetInnerHTML={{ __html: linkedHtml }}
+            style={{
+              maxHeight: 200,
+              overflow: 'hidden',
+            }}
+          />
+          {isOverflowing && (
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 60,
+              background: 'linear-gradient(transparent, #0a0a0a)',
+              pointerEvents: 'none',
+            }} />
+          )}
+        </div>
+      ) : (
+        <div
+          className="sns-content-body"
+          dangerouslySetInnerHTML={{ __html: linkedHtml }}
+        />
+      )}
 
       {/* "더보기" button for truncated content */}
       {truncate && isOverflowing && onToggleExpand && (
@@ -266,7 +282,7 @@ export default function SNSContent({
             fontWeight: 500,
             cursor: 'pointer',
             padding: '2px 0',
-            marginTop: 2,
+            marginTop: 6,
             letterSpacing: '-0.01em',
           }}
         >
@@ -290,36 +306,20 @@ export default function SNSContent({
         </>
       )}
 
-      {/* GIF preview in truncated mode (just the first one, small) */}
-      {truncate && gifUrls.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <img
-            src={gifUrls[0]}
-            alt=""
-            style={{
-              width: '100%',
-              maxHeight: 180,
-              objectFit: 'cover',
-              borderRadius: 8,
-              border: '1px solid rgba(255,255,255,0.06)',
-              display: 'block',
-            }}
-          />
-        </div>
-      )}
-
       <style>{`
         .sns-content-body img {
           max-width: 100%;
-          max-height: 300px;
+          max-height: 400px;
           height: auto;
           object-fit: contain;
           border-radius: 8px;
           display: block;
+          margin-left: 0;
+          margin-right: auto;
         }
         @media (max-width: 640px) {
           .sns-content-body img {
-            max-height: 200px;
+            max-height: 280px;
           }
         }
       `}</style>

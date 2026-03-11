@@ -1,0 +1,203 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionFromCookies } from '@/lib/session';
+import { db } from '@/lib/db';
+import { topicMembers, users } from '@/lib/db/schema';
+import { eq, and, ilike, sql } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+
+const ROUTE = '/api/topics/[topicId]/members';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+) {
+  const session = await getSessionFromCookies();
+  if (!session) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const { topicId } = await params;
+  const url = new URL(request.url);
+  const q = url.searchParams.get('q')?.trim() ?? '';
+
+  // Check membership
+  const membership = await db.query.topicMembers.findFirst({
+    where: and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, session.userId)),
+  });
+  if (!membership) {
+    return NextResponse.json({ error: 'Not a member' }, { status: 403 });
+  }
+
+  logger.info(ROUTE, 'Fetching members', { topicId, q });
+
+  if (q) {
+    // Mention autocomplete: search by nickname, limit 10
+    const members = await db
+      .select({
+        userId: users.id,
+        nickname: users.nickname,
+        role: topicMembers.role,
+        profileImage: users.profileImage,
+      })
+      .from(topicMembers)
+      .innerJoin(users, eq(topicMembers.userId, users.id))
+      .where(and(eq(topicMembers.topicId, topicId), ilike(users.nickname, `%${q}%`)))
+      .limit(10);
+
+    return NextResponse.json({ members });
+  }
+
+  // Full member list sorted by role: owner first, then admin, then member
+  const members = await db
+    .select({
+      userId: users.id,
+      nickname: users.nickname,
+      role: topicMembers.role,
+      profileImage: users.profileImage,
+    })
+    .from(topicMembers)
+    .innerJoin(users, eq(topicMembers.userId, users.id))
+    .where(eq(topicMembers.topicId, topicId))
+    .orderBy(
+      sql`CASE ${topicMembers.role} WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END`,
+    );
+
+  return NextResponse.json({ members });
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+) {
+  logger.info(ROUTE, 'PATCH request received');
+  try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { topicId } = await params;
+    const body = await request.json();
+    const { userId, role } = body;
+
+    if (!userId || !role) {
+      return NextResponse.json({ error: 'userId and role are required' }, { status: 400 });
+    }
+
+    if (role !== 'admin' && role !== 'member') {
+      return NextResponse.json({ error: 'Role must be admin or member' }, { status: 400 });
+    }
+
+    // Verify caller is the topic owner
+    const callerMembership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, topicId),
+        eq(topicMembers.userId, session.userId),
+      ),
+    });
+
+    if (!callerMembership || callerMembership.role !== 'owner') {
+      logger.warn(ROUTE, 'Non-owner attempted role change', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Only the topic owner can change roles' }, { status: 403 });
+    }
+
+    // Cannot change own role
+    if (userId === session.userId) {
+      return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 });
+    }
+
+    // Verify target is a member
+    const targetMembership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, topicId),
+        eq(topicMembers.userId, userId),
+      ),
+    });
+
+    if (!targetMembership) {
+      return NextResponse.json({ error: 'User is not a member of this topic' }, { status: 404 });
+    }
+
+    // Update role
+    await db
+      .update(topicMembers)
+      .set({ role })
+      .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, userId)));
+
+    logger.info(ROUTE, 'Member role updated', { topicId, targetUserId: userId, newRole: role, byUserId: session.userId });
+    return NextResponse.json({ success: true, role });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+) {
+  logger.info(ROUTE, 'DELETE request received');
+  try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { topicId } = await params;
+    const body = await request.json();
+    const { userId } = body;
+
+    if (!userId) {
+      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+    }
+
+    // Cannot kick self
+    if (userId === session.userId) {
+      return NextResponse.json({ error: 'Cannot kick yourself' }, { status: 400 });
+    }
+
+    // Get caller's membership
+    const callerMembership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, topicId),
+        eq(topicMembers.userId, session.userId),
+      ),
+    });
+
+    if (!callerMembership || (callerMembership.role !== 'owner' && callerMembership.role !== 'admin')) {
+      logger.warn(ROUTE, 'Unauthorized kick attempt', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Only owner or admin can kick members' }, { status: 403 });
+    }
+
+    // Get target's membership
+    const targetMembership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, topicId),
+        eq(topicMembers.userId, userId),
+      ),
+    });
+
+    if (!targetMembership) {
+      return NextResponse.json({ error: 'User is not a member of this topic' }, { status: 404 });
+    }
+
+    // Admin can only kick members (not other admins or owner)
+    if (callerMembership.role === 'admin' && targetMembership.role !== 'member') {
+      logger.warn(ROUTE, 'Admin attempted to kick non-member role', { userId: session.userId, targetRole: targetMembership.role, topicId });
+      return NextResponse.json({ error: 'Admins can only kick members' }, { status: 403 });
+    }
+
+    // Delete membership
+    await db
+      .delete(topicMembers)
+      .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, userId)));
+
+    logger.info(ROUTE, 'Member kicked', { topicId, kickedUserId: userId, byUserId: session.userId });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

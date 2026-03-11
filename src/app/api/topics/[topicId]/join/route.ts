@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers } from '@/lib/db/schema';
+import { topics, topicMembers, joinRequests } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import {
   verifyProofFromRelay,
@@ -114,9 +114,57 @@ export async function POST(
       }
     }
 
+    // Handle join based on visibility
+    if (topic.visibility === 'secret') {
+      logger.warn(ROUTE, 'Direct join attempt on secret topic', { userId: session.userId, topicId });
+      return NextResponse.json(
+        { error: 'This topic requires an invite code' },
+        { status: 403 },
+      );
+    }
+
+    if (topic.visibility === 'private') {
+      // Check for existing join request
+      const existingRequest = await db.query.joinRequests.findFirst({
+        where: and(eq(joinRequests.topicId, topicId), eq(joinRequests.userId, session.userId)),
+      });
+
+      if (existingRequest) {
+        if (existingRequest.status === 'pending') {
+          logger.warn(ROUTE, 'Duplicate join request', { userId: session.userId, topicId });
+          return NextResponse.json(
+            { error: 'Join request already pending' },
+            { status: 409 },
+          );
+        }
+        if (existingRequest.status === 'rejected') {
+          logger.warn(ROUTE, 'Previously rejected join request', { userId: session.userId, topicId });
+          return NextResponse.json(
+            { error: 'Join request was rejected' },
+            { status: 403 },
+          );
+        }
+      }
+
+      // Create pending join request
+      await db.insert(joinRequests).values({
+        topicId,
+        userId: session.userId,
+        status: 'pending',
+      });
+
+      logger.info(ROUTE, 'Join request submitted for private topic', { userId: session.userId, topicId });
+      return NextResponse.json(
+        { success: true, status: 'pending', message: 'Join request submitted' },
+        { status: 202 },
+      );
+    }
+
+    // Public topic — instant join
     await db.insert(topicMembers).values({
       topicId,
       userId: session.userId,
+      role: 'member',
     });
 
     logger.info(ROUTE, 'User joined topic successfully', { userId: session.userId, topicId });

@@ -103,3 +103,64 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ postId: string }> },
+) {
+  logger.info(ROUTE, 'DELETE request received');
+  try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      logger.warn(ROUTE, 'Unauthenticated DELETE request');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { postId } = await params;
+
+    logger.info(ROUTE, 'Deleting post', { userId: session.userId, postId });
+
+    // Check post exists
+    const postResults = await db
+      .select({ id: posts.id, authorId: posts.authorId, topicId: posts.topicId })
+      .from(posts)
+      .where(eq(posts.id, postId));
+
+    if (postResults.length === 0) {
+      logger.warn(ROUTE, 'Post not found for deletion', { postId });
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+
+    const post = postResults[0];
+
+    // Allow author, or topic owner/admin
+    if (post.authorId !== session.userId) {
+      const membership = await db.query.topicMembers.findFirst({
+        where: and(
+          eq(topicMembers.topicId, post.topicId),
+          eq(topicMembers.userId, session.userId),
+        ),
+      });
+
+      if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
+        logger.warn(ROUTE, 'Unauthorized delete attempt', { userId: session.userId, authorId: post.authorId, postId });
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+
+      logger.info(ROUTE, 'Admin/owner deleting post', { userId: session.userId, role: membership.role, postId });
+    }
+
+    // Delete comments first (no cascade)
+    await db.delete(comments).where(eq(comments.postId, postId));
+
+    // Delete post (votes, bookmarks, postTags cascade automatically)
+    await db.delete(posts).where(eq(posts.id, postId));
+
+    logger.info(ROUTE, 'Post deleted', { userId: session.userId, postId });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

@@ -51,12 +51,65 @@ export async function GET(
         description: topic.description,
         requiresCountryProof: topic.requiresCountryProof,
         allowedCountries: topic.allowedCountries,
+        visibility: topic.visibility,
       },
       isMember: !!membership,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(
+  _request: NextRequest,
+  { params }: { params: Promise<{ inviteCode: string }> },
+) {
+  logger.info(ROUTE, 'POST request received (invite code join)');
+  try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      logger.warn(ROUTE, 'Unauthenticated request');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { inviteCode } = await params;
+
+    const topic = await db.query.topics.findFirst({
+      where: eq(topics.inviteCode, inviteCode),
+    });
+
+    if (!topic) {
+      logger.warn(ROUTE, 'Invalid invite code', { inviteCode });
+      return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 });
+    }
+
+    // Check if already a member
+    const existingMembership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, topic.id),
+        eq(topicMembers.userId, session.userId),
+      ),
+    });
+
+    if (existingMembership) {
+      logger.warn(ROUTE, 'User already a member', { userId: session.userId, topicId: topic.id });
+      return NextResponse.json({ error: 'Already a member of this topic' }, { status: 409 });
+    }
+
+    // Invite code bypasses visibility restrictions (works for public, private, and secret)
+    await db.insert(topicMembers).values({
+      topicId: topic.id,
+      userId: session.userId,
+      role: 'member',
+    });
+
+    logger.info(ROUTE, 'User joined topic via invite code', { userId: session.userId, topicId: topic.id, visibility: topic.visibility });
+    return NextResponse.json({ success: true, topicId: topic.id }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

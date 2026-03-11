@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import SNSEditor from '@/components/SNSEditor';
 import SNSContent from '@/components/SNSContent';
 import TagInput from '@/components/TagInput';
+import Avatar from '@/components/Avatar';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ interface Topic {
   memberCount: number;
   requiresCountryProof: boolean;
   isMember: boolean;
+  creatorId?: string;
   createdAt: string;
 }
 
@@ -27,15 +29,25 @@ interface Embed {
   videoId: string;
 }
 
+interface Reaction {
+  emoji: string;
+  count: number;
+  userReacted: boolean;
+}
+
 interface Post {
   id: string;
   title: string;
   content: string;
   media?: { embeds?: Embed[] } | null;
   authorNickname: string;
+  authorProfileImage?: string | null;
+  authorId: string;
   commentCount?: number;
   upvoteCount?: number;
   viewCount?: number;
+  isPinned?: boolean;
+  reactions?: Reaction[];
   createdAt: string;
 }
 
@@ -85,10 +97,19 @@ function CommentIcon() {
 
 function ShareIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 12h6" />
-      <path d="M12 9l3 3-3 3" />
-      <path d="M19 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+      <polyline points="16 6 12 2 8 6" />
+      <line x1="12" y1="2" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+function PinIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 17v5" />
+      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
     </svg>
   );
 }
@@ -113,6 +134,15 @@ function PlusIcon() {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   );
 }
@@ -211,17 +241,104 @@ function ActionButton({
 
 // ─── Post Card ──────────────────────────────────────────────────────────────
 
+// ─── Reaction Emojis ────────────────────────────────────────────────────────
+
+const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
+
 function PostCard({
   post,
   topic,
   topicId,
+  sessionUserId,
+  onDelete,
+  onPin,
 }: {
   post: Post;
   topic: Topic;
   topicId: string;
+  sessionUserId: string | null;
+  onDelete?: (postId: string) => void;
+  onPin?: (postId: string) => void;
 }) {
   const [shareText, setShareText] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Reactions state
+  const [reactions, setReactions] = useState<Reaction[]>(post.reactions ?? []);
+  const [showAllEmojis, setShowAllEmojis] = useState(false);
+  const [reactionsLoaded, setReactionsLoaded] = useState(!!post.reactions);
+
+  // Fetch reactions on mount if not loaded
+  useEffect(() => {
+    if (reactionsLoaded) return;
+    let cancelled = false;
+    fetch(`/api/posts/${post.id}/reactions`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!cancelled && data?.reactions) {
+          setReactions(data.reactions);
+          setReactionsLoaded(true);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [post.id, reactionsLoaded]);
+
+  const handleReaction = async (e: React.MouseEvent, emoji: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Optimistic update
+    setReactions((prev) => {
+      const existing = prev.find((r) => r.emoji === emoji);
+      if (existing) {
+        if (existing.userReacted) {
+          // Remove reaction
+          const newCount = existing.count - 1;
+          return newCount <= 0
+            ? prev.filter((r) => r.emoji !== emoji)
+            : prev.map((r) => r.emoji === emoji ? { ...r, count: newCount, userReacted: false } : r);
+        } else {
+          return prev.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, userReacted: true } : r);
+        }
+      } else {
+        return [...prev, { emoji, count: 1, userReacted: true }];
+      }
+    });
+    try {
+      await fetch(`/api/posts/${post.id}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      });
+    } catch {
+      // Revert on error — refetch
+      fetch(`/api/posts/${post.id}/reactions`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data?.reactions) setReactions(data.reactions); })
+        .catch(() => {});
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        onDelete?.(post.id);
+      }
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   const handleShare = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -235,9 +352,21 @@ function PostCard({
     setTimeout(() => setShareText(null), 1500);
   };
 
+  const handlePin = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await fetch(`/api/posts/${post.id}/pin`, { method: 'POST' });
+      onPin?.(post.id);
+    } catch {}
+  };
+
   const handleToggleExpand = useCallback(() => {
     setExpanded(true);
   }, []);
+
+  const isTopicCreator = sessionUserId && topic.creatorId && sessionUserId === topic.creatorId;
+  const visibleReactions = reactions.filter((r) => r.count > 0);
 
   return (
     <article
@@ -246,31 +375,56 @@ function PostCard({
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         transition: 'background 0.12s',
         cursor: 'pointer',
+        position: 'relative',
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
     >
+      {/* Pin button for topic creator — top right */}
+      {isTopicCreator && (
+        <button
+          onClick={handlePin}
+          title={post.isPinned ? '고정 해제' : '게시글 고정'}
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            background: 'none',
+            border: 'none',
+            color: post.isPinned ? 'var(--accent)' : '#4b5563',
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: 4,
+            transition: 'color 0.12s',
+            zIndex: 2,
+          }}
+        >
+          <PinIcon filled={post.isPinned} />
+        </button>
+      )}
+
       {/* Clicking on the card body navigates; action buttons stop propagation */}
       <Link
         href={`/topics/${topicId}/posts/${post.id}`}
         style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
       >
-        {/* Header: avatar + topic name + time + author */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
-          <TopicAvatar title={topic.title} image={topic.image} size={40} />
+        {/* Header: author avatar + nickname + time */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+          <Avatar src={post.authorProfileImage} name={post.authorNickname} size={24} style={{ marginTop: 1 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#e5e7eb' }}>
-                {topic.title}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <span style={{ fontWeight: 600, color: '#e5e7eb' }}>
+                {post.authorNickname}
               </span>
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
-              {relativeTime(post.createdAt)} · {post.authorNickname}
+              <span style={{ color: '#4b5563' }}>·</span>
+              <span style={{ color: '#6b7280' }}>
+                {relativeTime(post.createdAt)}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Title */}
+        {/* Title with pin badge */}
         <h3 style={{
           fontSize: 15,
           fontWeight: 700,
@@ -278,7 +432,13 @@ function PostCard({
           letterSpacing: '-0.01em',
           color: '#e5e7eb',
           lineHeight: 1.4,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
         }}>
+          {post.isPinned && (
+            <span style={{ fontSize: 12, flexShrink: 0 }} title="고정된 게시글">📌</span>
+          )}
           {post.title}
         </h3>
 
@@ -294,12 +454,98 @@ function PostCard({
         </div>
       </Link>
 
+      {/* Reactions bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        marginTop: 8,
+        flexWrap: 'wrap',
+      }}>
+        {visibleReactions.map((r) => (
+          <button
+            key={r.emoji}
+            onClick={(e) => handleReaction(e, r.emoji)}
+            style={{
+              background: r.userReacted ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+              border: r.userReacted ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 9999,
+              padding: '2px 8px',
+              fontSize: 12,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              color: r.userReacted ? 'var(--accent)' : '#9ca3af',
+              transition: 'all 0.12s',
+            }}
+          >
+            <span>{r.emoji}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.count}</span>
+          </button>
+        ))}
+        {/* Add reaction button */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowAllEmojis((v) => !v); }}
+            style={{
+              background: showAllEmojis ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 9999,
+              padding: '2px 8px',
+              fontSize: 12,
+              cursor: 'pointer',
+              color: '#6b7280',
+              transition: 'all 0.12s',
+            }}
+          >
+            +
+          </button>
+          {showAllEmojis && (
+            <div style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: 0,
+              marginBottom: 4,
+              background: '#1a1a1a',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
+              padding: '4px 6px',
+              display: 'flex',
+              gap: 2,
+              zIndex: 10,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            }}>
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={(e) => { handleReaction(e, emoji); setShowAllEmojis(false); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    padding: '4px 6px',
+                    borderRadius: 4,
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Action bar — outside Link to allow independent clicks */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         gap: 0,
-        marginTop: 10,
+        marginTop: 6,
       }}>
         {/* Like */}
         <ActionButton
@@ -314,6 +560,19 @@ function PostCard({
           icon={<CommentIcon />}
           count={post.commentCount ?? 0}
         />
+
+        {/* View count */}
+        {(post.viewCount ?? 0) > 0 && (
+          <ActionButton
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            }
+            count={post.viewCount}
+          />
+        )}
 
         {/* Share */}
         <ActionButton
@@ -330,6 +589,17 @@ function PostCard({
         <ActionButton
           icon={<BookmarkIcon />}
         />
+
+        {/* Delete (author only) */}
+        {sessionUserId && sessionUserId === post.authorId && (
+          <ActionButton
+            icon={<TrashIcon />}
+            color="#ef4444"
+            label={showDeleteConfirm ? (deleting ? 'Deleting...' : 'Delete?') : undefined}
+            active={showDeleteConfirm}
+            onClick={handleDelete}
+          />
+        )}
       </div>
     </article>
   );
@@ -350,9 +620,19 @@ export default function TopicPage() {
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Sort
+  const [sortBy, setSortBy] = useState<'new' | 'popular'>('new');
+
   // Tag filter
   const [popularTags, setPopularTags] = useState<{ id: string; name: string; slug: string; postCount: number }[]>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+
+  // Tag search
+  const [tagSearch, setTagSearch] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState<{ slug: string; name: string; postCount: number }[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const tagSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tagSearchRef = useRef<HTMLDivElement>(null);
 
   // Composer
   const [composing, setComposing] = useState(false);
@@ -364,16 +644,35 @@ export default function TopicPage() {
   const [postError, setPostError] = useState<string | null>(null);
 
   const [copied, setCopied] = useState(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.userId) setSessionUserId(data.userId); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadTopic();
-    loadPosts(0, true, null);
+    loadPosts(0, true, null, 'new');
     fetch('/api/tags')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.tags) setPopularTags(data.tags); })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId]);
+
+  // Close tag suggestions on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (tagSearchRef.current && !tagSearchRef.current.contains(e.target as Node)) {
+        setShowTagSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   async function loadTopic() {
     try {
@@ -390,12 +689,12 @@ export default function TopicPage() {
     }
   }
 
-  const loadPosts = useCallback(async (currentOffset: number, replace: boolean, tag: string | null) => {
+  const loadPosts = useCallback(async (currentOffset: number, replace: boolean, tag: string | null, currentSort: string) => {
     setPostsLoading(true);
     try {
       const tagParam = tag ? `&tag=${encodeURIComponent(tag)}` : '';
       const res = await fetch(
-        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}${tagParam}`
+        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}&sort=${currentSort}${tagParam}`
       );
       if (!res.ok) return;
       const data = await res.json();
@@ -409,13 +708,47 @@ export default function TopicPage() {
   }, [topicId]);
 
   function handleLoadMore() {
-    loadPosts(offset, false, activeTag);
+    loadPosts(offset, false, activeTag, sortBy);
   }
 
   function handleTagSelect(slug: string | null) {
     setActiveTag(slug);
+    setTagSearch('');
+    setTagSuggestions([]);
+    setShowTagSuggestions(false);
     setOffset(0);
-    loadPosts(0, true, slug);
+    loadPosts(0, true, slug, sortBy);
+  }
+
+  function handleSortChange(newSort: 'new' | 'popular') {
+    if (newSort === sortBy) return;
+    setSortBy(newSort);
+    setOffset(0);
+    loadPosts(0, true, activeTag, newSort);
+  }
+
+  function handleTagSearchChange(value: string) {
+    setTagSearch(value);
+    if (tagSearchTimer.current) clearTimeout(tagSearchTimer.current);
+    if (!value.trim()) {
+      setTagSuggestions([]);
+      setShowTagSuggestions(false);
+      return;
+    }
+    tagSearchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/tags?q=${encodeURIComponent(value.trim())}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setTagSuggestions(data.tags ?? []);
+        setShowTagSuggestions(true);
+      } catch {}
+    }, 300);
+  }
+
+  function handlePinPost(postId: string) {
+    // Reload posts to reflect pin state change
+    loadPosts(0, true, activeTag, sortBy);
   }
 
   async function handleCopyInvite() {
@@ -460,7 +793,7 @@ export default function TopicPage() {
       setPostMedia({ embeds: [] });
       setPostTags([]);
       setComposing(false);
-      loadPosts(0, true, activeTag);
+      loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
       setPostError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -542,9 +875,24 @@ export default function TopicPage() {
                 {topic.description}
               </p>
             )}
-            <p style={{ fontSize: 12, color: '#4b5563', margin: '6px 0 0', fontFamily: 'monospace' }}>
-              {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
-            </p>
+            <Link
+              href={`/topics/${topicId}/members`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 12,
+                color: '#6b7280',
+                margin: '6px 0 0',
+                fontFamily: 'monospace',
+                textDecoration: 'none',
+                transition: 'color 0.12s',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
+            >
+              {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''} →
+            </Link>
           </div>
           <button
             onClick={handleCopyInvite}
@@ -566,55 +914,162 @@ export default function TopicPage() {
           </button>
         </div>
 
-        {/* ── Tag filter bar ── */}
-        {popularTags.length > 0 && (
-          <div style={{
-            maxWidth: 600,
-            margin: '0 auto 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flexWrap: 'wrap',
-          }}>
-            <button
-              onClick={() => handleTagSelect(null)}
+        {/* ── Tag search + filter bar ── */}
+        <div style={{ maxWidth: 600, margin: '0 auto 12px' }}>
+          {/* Tag search input */}
+          <div ref={tagSearchRef} style={{ position: 'relative', marginBottom: 10 }}>
+            <input
+              type="text"
+              placeholder="태그 검색..."
+              value={tagSearch}
+              onChange={(e) => handleTagSearchChange(e.target.value)}
+              onFocus={() => { if (tagSuggestions.length > 0) setShowTagSuggestions(true); }}
               style={{
-                background: activeTag === null ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-                color: activeTag === null ? '#fff' : '#9ca3af',
-                border: activeTag === null ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 9999,
-                padding: '4px 12px',
-                fontSize: 12,
-                fontWeight: activeTag === null ? 600 : 400,
-                cursor: 'pointer',
-                transition: 'all 0.12s',
+                width: '100%',
+                background: '#111',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 8,
+                padding: '8px 14px',
+                color: '#e5e7eb',
+                fontSize: 13,
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.12s',
               }}
-            >
-              All
-            </button>
-            {popularTags.map((tag) => (
+            />
+            {showTagSuggestions && tagSuggestions.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: 4,
+                background: '#1a1a1a',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                overflow: 'hidden',
+                zIndex: 20,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+              }}>
+                {tagSuggestions.map((tag) => (
+                  <button
+                    key={tag.slug}
+                    onClick={() => handleTagSelect(tag.slug)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      background: 'none',
+                      border: 'none',
+                      padding: '8px 14px',
+                      color: '#e5e7eb',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                  >
+                    <span>#{tag.name}</span>
+                    <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>{tag.postCount}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Popular tag buttons */}
+          {popularTags.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}>
               <button
-                key={tag.id}
-                onClick={() => handleTagSelect(tag.slug)}
+                onClick={() => handleTagSelect(null)}
                 style={{
-                  background: activeTag === tag.slug ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
-                  color: activeTag === tag.slug ? 'var(--accent)' : '#9ca3af',
-                  border: activeTag === tag.slug
-                    ? '1px solid rgba(59,130,246,0.3)'
-                    : '1px solid rgba(255,255,255,0.08)',
+                  background: activeTag === null ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+                  color: activeTag === null ? '#fff' : '#9ca3af',
+                  border: activeTag === null ? 'none' : '1px solid rgba(255,255,255,0.08)',
                   borderRadius: 9999,
                   padding: '4px 12px',
                   fontSize: 12,
-                  fontWeight: activeTag === tag.slug ? 600 : 400,
+                  fontWeight: activeTag === null ? 600 : 400,
                   cursor: 'pointer',
                   transition: 'all 0.12s',
                 }}
               >
-                #{tag.name}
+                All
               </button>
-            ))}
-          </div>
-        )}
+              {popularTags.slice(0, 8).map((tag) => (
+                <button
+                  key={tag.id}
+                  onClick={() => handleTagSelect(tag.slug)}
+                  style={{
+                    background: activeTag === tag.slug ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: activeTag === tag.slug ? 'var(--accent)' : '#9ca3af',
+                    border: activeTag === tag.slug
+                      ? '1px solid rgba(59,130,246,0.3)'
+                      : '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 9999,
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    fontWeight: activeTag === tag.slug ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.12s',
+                  }}
+                >
+                  #{tag.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Sort pills ── */}
+        <div style={{
+          maxWidth: 600,
+          margin: '0 auto 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}>
+          <button
+            onClick={() => handleSortChange('new')}
+            style={{
+              background: sortBy === 'new' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+              color: sortBy === 'new' ? '#fff' : '#9ca3af',
+              border: sortBy === 'new' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 9999,
+              padding: '4px 14px',
+              fontSize: 12,
+              fontWeight: sortBy === 'new' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.12s',
+            }}
+          >
+            🆕 New
+          </button>
+          <button
+            onClick={() => handleSortChange('popular')}
+            style={{
+              background: sortBy === 'popular' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+              color: sortBy === 'popular' ? '#fff' : '#9ca3af',
+              border: sortBy === 'popular' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 9999,
+              padding: '4px 14px',
+              fontSize: 12,
+              fontWeight: sortBy === 'popular' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.12s',
+            }}
+          >
+            🔥 Popular
+          </button>
+        </div>
 
         {/* ── Centered feed column (~600px) ── */}
         <div style={{
@@ -732,7 +1187,7 @@ export default function TopicPage() {
               </div>
             ) : (
               posts.map((post) => (
-                <PostCard key={post.id} post={post} topic={topic} topicId={topicId} />
+                <PostCard key={post.id} post={post} topic={topic} topicId={topicId} sessionUserId={sessionUserId} onDelete={(id) => setPosts((prev) => prev.filter((p) => p.id !== id))} onPin={handlePinPost} />
               ))
             )}
           </div>

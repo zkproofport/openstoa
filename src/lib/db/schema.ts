@@ -3,7 +3,9 @@ import { pgTable, text, uuid, boolean, timestamp, primaryKey, integer, real, jso
 export const users = pgTable('community_users', {
   id: text('id').primaryKey(), // nullifier from publicInputs
   nickname: text('nickname').unique().notNull(),
+  profileImage: text('profile_image'), // URL to R2 uploaded image
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
 export const topics = pgTable('community_topics', {
@@ -15,15 +17,31 @@ export const topics = pgTable('community_topics', {
   requiresCountryProof: boolean('requires_country_proof').default(false),
   allowedCountries: text('allowed_countries').array(),
   inviteCode: text('invite_code').unique().notNull(),
+  visibility: varchar('visibility', { length: 10 }).notNull().default('public'), // 'public' | 'private' | 'secret'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  score: real('score').notNull().default(0),
+  lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow(),
 });
 
 export const topicMembers = pgTable('community_topic_members', {
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
   userId: text('user_id').references(() => users.id).notNull(),
+  role: varchar('role', { length: 10 }).notNull().default('member'), // 'owner' | 'admin' | 'member'
   joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   pk: primaryKey({ columns: [table.topicId, table.userId] }),
+}));
+
+export const joinRequests = pgTable('community_join_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  status: varchar('status', { length: 10 }).notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  reviewedBy: text('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+}, (table) => ({
+  uniqueRequest: uniqueIndex('community_join_request_topic_user_idx').on(table.topicId, table.userId),
 }));
 
 export const posts = pgTable('community_posts', {
@@ -39,6 +57,7 @@ export const posts = pgTable('community_posts', {
   viewCount: integer('view_count').notNull().default(0),
   commentCount: integer('comment_count').notNull().default(0),
   score: real('score').notNull().default(0),
+  isPinned: boolean('is_pinned').notNull().default(false),
 });
 
 export const comments = pgTable('community_comments', {
@@ -70,6 +89,15 @@ export const bookmarks = pgTable('community_bookmarks', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   pk: primaryKey({ columns: [table.userId, table.postId] }),
+}));
+
+export const reactions = pgTable('community_reactions', {
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }).notNull(),
+  emoji: varchar('emoji', { length: 10 }).notNull(), // e.g. '👍', '❤️', '🔥', '😂', '🎉', '😮'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.postId, table.emoji] }),
 }));
 
 export const votes = pgTable('community_votes', {

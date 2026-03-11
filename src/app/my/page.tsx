@@ -183,6 +183,11 @@ export default function MyPage() {
 
   const [activeTab, setActiveTab] = useState<TabId>('posts');
 
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [ownedTopicsError, setOwnedTopicsError] = useState<{ id: string; title: string }[] | null>(null);
+
   const [myPosts, setMyPosts] = useState<Post[]>([]);
   const [myPostsOffset, setMyPostsOffset] = useState(0);
   const [myPostsHasMore, setMyPostsHasMore] = useState(false);
@@ -446,6 +451,127 @@ export default function MyPage() {
               </button>
             </div>
           )}
+          {/* Danger Zone */}
+          <div style={{
+            marginTop: 48,
+            padding: '20px 24px',
+            background: 'rgba(239,68,68,0.04)',
+            border: '1px solid rgba(239,68,68,0.15)',
+            borderRadius: 12,
+          }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#ef4444', margin: '0 0 8px' }}>
+              Danger Zone
+            </h3>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
+              계정을 삭제하면 닉네임이 &apos;[탈퇴한 사용자]&apos;로 변경되며, 작성한 게시글과 댓글은 유지됩니다. 토픽 소유권은 미리 이전해야 합니다.
+            </p>
+
+            {ownedTopicsError && (
+              <div style={{
+                marginBottom: 14,
+                padding: '12px 14px',
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: 8,
+              }}>
+                <p style={{ fontSize: 13, color: '#ef4444', margin: '0 0 8px', fontWeight: 600 }}>
+                  토픽 소유권을 먼저 이전해주세요
+                </p>
+                <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 13, color: '#f87171', lineHeight: 1.8 }}>
+                  {ownedTopicsError.map((t) => (
+                    <li key={t.id}>{t.title}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!showDeleteAccount ? (
+              <button onClick={() => { setShowDeleteAccount(true); setOwnedTopicsError(null); }} style={{
+                background: 'rgba(239,68,68,0.1)',
+                color: '#ef4444',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: 8,
+                padding: '8px 18px',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}>
+                Delete Account
+              </button>
+            ) : (
+              <div>
+                <p style={{ fontSize: 12, color: '#ef4444', margin: '0 0 10px' }}>
+                  Type <strong>DELETE</strong> to confirm:
+                </p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    style={{
+                      flex: 1,
+                      background: '#111',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      borderRadius: 6,
+                      padding: '8px 12px',
+                      color: '#e5e7eb',
+                      fontSize: 13,
+                      outline: 'none',
+                      fontFamily: 'monospace',
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      setDeletingAccount(true);
+                      setOwnedTopicsError(null);
+                      try {
+                        const res = await fetch('/api/account', { method: 'DELETE' });
+                        if (res.status === 409) {
+                          const data = await res.json();
+                          setOwnedTopicsError(data.topics ?? []);
+                          setShowDeleteAccount(false);
+                          setDeleteConfirmText('');
+                        } else if (res.ok) {
+                          router.replace('/');
+                        }
+                      } finally {
+                        setDeletingAccount(false);
+                      }
+                    }}
+                    disabled={deleteConfirmText !== 'DELETE' || deletingAccount}
+                    style={{
+                      background: deleteConfirmText === 'DELETE' ? '#ef4444' : 'rgba(239,68,68,0.2)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '8px 18px',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: deleteConfirmText === 'DELETE' ? 'pointer' : 'not-allowed',
+                      opacity: deletingAccount ? 0.5 : 1,
+                    }}
+                  >
+                    {deletingAccount ? 'Deleting...' : 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => { setShowDeleteAccount(false); setDeleteConfirmText(''); setOwnedTopicsError(null); }}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      color: '#6b7280',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '8px 14px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>

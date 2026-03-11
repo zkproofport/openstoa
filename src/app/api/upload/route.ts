@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { filename, contentType, size } = body;
+    const { filename, contentType, size, purpose, width, height } = body;
 
     if (!filename || typeof filename !== 'string') {
       logger.warn(ROUTE, 'Missing filename', { userId: session.userId });
@@ -75,14 +75,25 @@ export async function POST(request: NextRequest) {
 
     const { s3, config } = getS3();
     const env = process.env.APP_ENV === 'production' ? 'production' : 'staging';
-    const key = `${env}/uploads/${session.userId}/${randomUUID()}/${filename}`;
 
-    logger.info(ROUTE, 'Generating presigned URL', { userId: session.userId, key, contentType });
+    const VALID_PURPOSES = ['post', 'topic', 'avatar'] as const;
+    type Purpose = (typeof VALID_PURPOSES)[number];
+    const resolvedPurpose: Purpose = VALID_PURPOSES.includes(purpose) ? purpose : 'post';
+    const purposeFolder = resolvedPurpose === 'post' ? 'posts' : resolvedPurpose === 'topic' ? 'topics' : 'avatars';
+    const key = `${env}/${purposeFolder}/${session.userId}/${randomUUID()}/${filename}`;
+
+    const metadata: Record<string, string> = {};
+    if (typeof width === 'number') metadata['width'] = String(width);
+    if (typeof height === 'number') metadata['height'] = String(height);
+
+    logger.info(ROUTE, 'Generating presigned URL', { userId: session.userId, key, contentType, purpose: resolvedPurpose, width, height });
 
     const command = new PutObjectCommand({
       Bucket: config.R2_BUCKET_NAME,
       Key: key,
       ContentType: contentType,
+      CacheControl: 'public, max-age=31536000, immutable',
+      ...(Object.keys(metadata).length > 0 ? { Metadata: metadata } : {}),
     });
 
     const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 600 });

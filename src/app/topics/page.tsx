@@ -12,6 +12,7 @@ interface Topic {
   memberCount?: number;
   requiresCountryProof: boolean;
   allowedCountries?: string[] | null;
+  visibility?: string;
   createdAt: string;
   isMember?: boolean;
 }
@@ -22,7 +23,9 @@ export default function TopicsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'all' | 'my'>('all');
+  const [sortBy, setSortBy] = useState<'hot' | 'new' | 'top' | 'active'>('hot');
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -43,13 +46,13 @@ export default function TopicsPage() {
 
   useEffect(() => {
     loadTopics();
-  }, [view]);
+  }, [view, sortBy]);
 
   async function loadTopics() {
     setLoading(true);
     setError(null);
     try {
-      const url = view === 'all' ? '/api/topics?view=all' : '/api/topics';
+      const url = view === 'all' ? `/api/topics?view=all&sort=${sortBy}` : '/api/topics';
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to load topics');
       const data = await res.json();
@@ -65,8 +68,15 @@ export default function TopicsPage() {
     setJoiningId(topicId);
     try {
       const res = await fetch(`/api/topics/${topicId}/join`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to join topic');
-      await loadTopics();
+      if (res.status === 202) {
+        // Join request submitted for private topic
+        setPendingRequests((prev) => new Set(prev).add(topicId));
+      } else if (res.status === 201) {
+        await loadTopics();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Failed to join topic');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join topic');
     } finally {
@@ -164,6 +174,39 @@ export default function TopicsPage() {
             </button>
           ))}
         </div>
+
+        {/* Sort pills — only shown for All Topics */}
+        {view === 'all' && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+            {(
+              [
+                { key: 'hot', label: '🔥 Hot' },
+                { key: 'new', label: '🆕 New' },
+                { key: 'top', label: '👥 Top' },
+                { key: 'active', label: '⚡ Active' },
+              ] as const
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setSortBy(key)}
+                style={{
+                  background: sortBy === key ? 'var(--accent)' : 'transparent',
+                  color: sortBy === key ? '#fff' : 'var(--muted)',
+                  border: `1px solid ${sortBy === key ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: 20,
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  fontWeight: sortBy === key ? 600 : 400,
+                  cursor: 'pointer',
+                  letterSpacing: '-0.01em',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading && (
           <div
@@ -296,7 +339,7 @@ export default function TopicsPage() {
                             color: 'var(--foreground)',
                           }}
                         >
-                          {topic.title}
+                          {topic.visibility === 'private' && '\uD83D\uDD12 '}{topic.title}
                         </h2>
                         {topic.requiresCountryProof && (
                           <span
@@ -372,6 +415,20 @@ export default function TopicsPage() {
                             >
                               Requires Country Proof
                             </span>
+                          ) : pendingRequests.has(topic.id) ? (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 500,
+                                color: '#eab308',
+                                background: 'rgba(234,179,8,0.1)',
+                                border: '1px solid rgba(234,179,8,0.2)',
+                                padding: '4px 12px',
+                                borderRadius: 6,
+                              }}
+                            >
+                              Pending...
+                            </span>
                           ) : (
                             <button
                               onClick={(e) => {
@@ -392,7 +449,7 @@ export default function TopicsPage() {
                                 opacity: joiningId === topic.id ? 0.7 : 1,
                               }}
                             >
-                              {joiningId === topic.id ? 'Joining…' : 'Join'}
+                              {joiningId === topic.id ? 'Joining…' : topic.visibility === 'private' ? 'Request to Join' : 'Join'}
                             </button>
                           )}
                         </div>

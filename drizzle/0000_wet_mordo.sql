@@ -13,6 +13,16 @@ CREATE TABLE "community_comments" (
 	"created_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
+CREATE TABLE "community_join_requests" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"topic_id" uuid NOT NULL,
+	"user_id" text NOT NULL,
+	"status" varchar(10) DEFAULT 'pending' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now(),
+	"reviewed_by" text,
+	"reviewed_at" timestamp with time zone
+);
+--> statement-breakpoint
 CREATE TABLE "community_post_tags" (
 	"post_id" uuid NOT NULL,
 	"tag_id" uuid NOT NULL,
@@ -27,11 +37,20 @@ CREATE TABLE "community_posts" (
 	"content" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now(),
 	"updated_at" timestamp with time zone DEFAULT now(),
-	"content_json" jsonb,
+	"media" jsonb,
 	"upvote_count" integer DEFAULT 0 NOT NULL,
 	"view_count" integer DEFAULT 0 NOT NULL,
 	"comment_count" integer DEFAULT 0 NOT NULL,
-	"score" real DEFAULT 0 NOT NULL
+	"score" real DEFAULT 0 NOT NULL,
+	"is_pinned" boolean DEFAULT false NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "community_reactions" (
+	"user_id" text NOT NULL,
+	"post_id" uuid NOT NULL,
+	"emoji" varchar(10) NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now(),
+	CONSTRAINT "community_reactions_user_id_post_id_emoji_pk" PRIMARY KEY("user_id","post_id","emoji")
 );
 --> statement-breakpoint
 CREATE TABLE "community_tags" (
@@ -47,6 +66,7 @@ CREATE TABLE "community_tags" (
 CREATE TABLE "community_topic_members" (
 	"topic_id" uuid NOT NULL,
 	"user_id" text NOT NULL,
+	"role" varchar(10) DEFAULT 'member' NOT NULL,
 	"joined_at" timestamp with time zone DEFAULT now(),
 	CONSTRAINT "community_topic_members_topic_id_user_id_pk" PRIMARY KEY("topic_id","user_id")
 );
@@ -55,18 +75,24 @@ CREATE TABLE "community_topics" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"title" text NOT NULL,
 	"description" text,
+	"image" text,
 	"creator_id" text NOT NULL,
 	"requires_country_proof" boolean DEFAULT false,
 	"allowed_countries" text[],
 	"invite_code" text NOT NULL,
+	"visibility" varchar(10) DEFAULT 'public' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now(),
+	"score" real DEFAULT 0 NOT NULL,
+	"last_activity_at" timestamp with time zone DEFAULT now(),
 	CONSTRAINT "community_topics_invite_code_unique" UNIQUE("invite_code")
 );
 --> statement-breakpoint
 CREATE TABLE "community_users" (
 	"id" text PRIMARY KEY NOT NULL,
 	"nickname" text NOT NULL,
+	"profile_image" text,
 	"created_at" timestamp with time zone DEFAULT now(),
+	"deleted_at" timestamp with time zone,
 	CONSTRAINT "community_users_nickname_unique" UNIQUE("nickname")
 );
 --> statement-breakpoint
@@ -83,15 +109,21 @@ ALTER TABLE "community_bookmarks" ADD CONSTRAINT "community_bookmarks_user_id_co
 ALTER TABLE "community_bookmarks" ADD CONSTRAINT "community_bookmarks_post_id_community_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."community_posts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_comments" ADD CONSTRAINT "community_comments_post_id_community_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."community_posts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_comments" ADD CONSTRAINT "community_comments_author_id_community_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."community_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "community_join_requests" ADD CONSTRAINT "community_join_requests_topic_id_community_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "public"."community_topics"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "community_join_requests" ADD CONSTRAINT "community_join_requests_user_id_community_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."community_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "community_join_requests" ADD CONSTRAINT "community_join_requests_reviewed_by_community_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."community_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_post_tags" ADD CONSTRAINT "community_post_tags_post_id_community_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."community_posts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_post_tags" ADD CONSTRAINT "community_post_tags_tag_id_community_tags_id_fk" FOREIGN KEY ("tag_id") REFERENCES "public"."community_tags"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_posts" ADD CONSTRAINT "community_posts_topic_id_community_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "public"."community_topics"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_posts" ADD CONSTRAINT "community_posts_author_id_community_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."community_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "community_reactions" ADD CONSTRAINT "community_reactions_user_id_community_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."community_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "community_reactions" ADD CONSTRAINT "community_reactions_post_id_community_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."community_posts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_topic_members" ADD CONSTRAINT "community_topic_members_topic_id_community_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "public"."community_topics"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_topic_members" ADD CONSTRAINT "community_topic_members_user_id_community_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."community_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_topics" ADD CONSTRAINT "community_topics_creator_id_community_users_id_fk" FOREIGN KEY ("creator_id") REFERENCES "public"."community_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_votes" ADD CONSTRAINT "community_votes_user_id_community_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."community_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_votes" ADD CONSTRAINT "community_votes_post_id_community_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."community_posts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "community_votes" ADD CONSTRAINT "community_votes_comment_id_community_comments_id_fk" FOREIGN KEY ("comment_id") REFERENCES "public"."community_comments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "community_join_request_topic_user_idx" ON "community_join_requests" USING btree ("topic_id","user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "community_vote_user_post_idx" ON "community_votes" USING btree ("user_id","post_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "community_vote_user_comment_idx" ON "community_votes" USING btree ("user_id","comment_id");

@@ -26,12 +26,18 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const view = searchParams.get('view');
+    const sort = searchParams.get('sort') ?? 'hot';
 
     if (view === 'all') {
-      logger.info(ROUTE, 'Fetching all topics with member counts', { userId: session.userId });
+      logger.info(ROUTE, 'Fetching all topics with member counts', { userId: session.userId, sort });
 
       const allTopics = await db.query.topics.findMany({
-        orderBy: (t, { desc }) => [desc(t.createdAt)],
+        orderBy: (t, { desc: d }) =>
+          sort === 'new'
+            ? [d(t.createdAt)]
+            : sort === 'active'
+            ? [d(t.lastActivityAt)]
+            : [d(t.score)], // hot (default)
       });
 
       const memberCounts = await db
@@ -46,13 +52,22 @@ export async function GET(request: NextRequest) {
       const memberCountMap = Object.fromEntries(memberCounts.map((m) => [m.topicId, m.count]));
       const userTopicIds = new Set(userMemberships.map((m) => m.topicId));
 
-      const result = allTopics.map((t) => ({
+      // Filter out secret topics unless the user is a member
+      const visibleTopics = allTopics.filter((t) =>
+        t.visibility !== 'secret' || userTopicIds.has(t.id),
+      );
+
+      const result = visibleTopics.map((t) => ({
         ...t,
         memberCount: memberCountMap[t.id] ?? 0,
         isMember: userTopicIds.has(t.id),
       }));
 
-      logger.info(ROUTE, 'All topics fetched', { userId: session.userId, count: result.length });
+      if (sort === 'top') {
+        result.sort((a, b) => (b.memberCount ?? 0) - (a.memberCount ?? 0));
+      }
+
+      logger.info(ROUTE, 'All topics fetched', { userId: session.userId, count: result.length, sort });
       return NextResponse.json({ topics: result });
     }
 
@@ -90,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs } = body;
+    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, image, visibility } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title in topic creation', { userId: session.userId });
@@ -158,22 +173,27 @@ export async function POST(request: NextRequest) {
 
     logger.info(ROUTE, 'Creating topic', { userId: session.userId, title, requiresCountryProof: requiresCountryProof ?? false, inviteCode });
 
+    const validVisibility = ['public', 'private', 'secret'].includes(visibility) ? visibility : 'public';
+
     const [topic] = await db
       .insert(topics)
       .values({
         title,
         description: description ?? null,
+        image: image ?? null,
         creatorId: session.userId,
         requiresCountryProof: requiresCountryProof ?? false,
         allowedCountries: allowedCountries ?? null,
         inviteCode,
+        visibility: validVisibility,
       })
       .returning();
 
-    // Auto-add creator as member
+    // Auto-add creator as owner
     await db.insert(topicMembers).values({
       topicId: topic.id,
       userId: session.userId,
+      role: 'owner',
     });
 
     logger.info(ROUTE, 'Topic created and creator added as member', { userId: session.userId, topicId: topic.id });

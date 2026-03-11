@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, topicMembers, users, tags, postTags } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { updateTopicScore } from '@/lib/topicScore';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -42,8 +43,9 @@ export async function GET(
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
     const tagSlug = url.searchParams.get('tag') ?? null;
+    const sort = url.searchParams.get('sort') ?? 'new';
 
-    logger.info(ROUTE, 'Fetching posts', { userId: session.userId, topicId, limit, offset, tagSlug });
+    logger.info(ROUTE, 'Fetching posts', { userId: session.userId, topicId, limit, offset, tagSlug, sort });
 
     // When a tag filter is requested, resolve the tag and collect matching postIds
     let tagFilteredPostIds: string[] | null = null;
@@ -79,15 +81,20 @@ export async function GET(
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
+        authorProfileImage: users.profileImage,
         upvoteCount: posts.upvoteCount,
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,
         score: posts.score,
+        isPinned: posts.isPinned,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
       .where(whereClause)
-      .orderBy(desc(posts.createdAt))
+      .orderBy(
+        desc(posts.isPinned),
+        sort === 'popular' ? desc(posts.score) : desc(posts.createdAt),
+      )
       .limit(limit)
       .offset(offset);
 
@@ -182,6 +189,12 @@ export async function POST(
     }
 
     logger.info(ROUTE, 'Post created', { userId: session.userId, topicId, postId: post.id });
+
+    // Update topic score asynchronously (non-blocking)
+    updateTopicScore(topicId).catch((err) =>
+      logger.warn(ROUTE, 'Failed to update topic score', { topicId, error: String(err) }),
+    );
+
     return NextResponse.json({ post }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

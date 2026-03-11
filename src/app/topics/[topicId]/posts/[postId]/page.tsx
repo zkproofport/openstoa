@@ -1,10 +1,131 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import SNSContent from '@/components/SNSContent';
+
+// ─── SVG Icons ───────────────────────────────────────────────────────────────
+
+function UpvoteIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 19V5M5 12l7-7 7 7" />
+    </svg>
+  );
+}
+
+function DownvoteIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14M19 12l-7 7-7-7" />
+    </svg>
+  );
+}
+
+function BookmarkIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  );
+}
+
+function CommentIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+// ─── Image Lightbox ──────────────────────────────────────────────────────────
+
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(0,0,0,0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {/* Close button */}
+      <button
+        type="button"
+        onClick={onClose}
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 16,
+          background: 'rgba(255,255,255,0.1)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 8,
+          color: '#fff',
+          cursor: 'pointer',
+          padding: '6px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          lineHeight: 0,
+        }}
+      >
+        <CloseIcon />
+      </button>
+
+      {/* Image — stop propagation so clicking image doesn't close */}
+      <img
+        src={src}
+        alt=""
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '95vw',
+          maxHeight: '95vh',
+          objectFit: 'contain',
+          borderRadius: 8,
+          boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Post {
   id: string;
@@ -30,6 +151,8 @@ interface Comment {
   createdAt: string;
 }
 
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 export default function PostPage() {
   const params = useParams();
   const router = useRouter();
@@ -51,6 +174,9 @@ export default function PostPage() {
   const [voteLoading, setVoteLoading] = useState(false);
   const [shared, setShared] = useState(false);
 
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     loadPost();
     fetch(`/api/posts/${postId}/bookmark`)
@@ -59,6 +185,24 @@ export default function PostPage() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
+
+  // Attach click handlers to images in the post content area
+  useEffect(() => {
+    if (!contentAreaRef.current) return;
+    const imgs = contentAreaRef.current.querySelectorAll<HTMLImageElement>('.sns-content-body img');
+    function handleImgClick(this: HTMLImageElement) {
+      setLightboxSrc(this.src);
+    }
+    imgs.forEach(img => {
+      img.style.cursor = 'zoom-in';
+      img.addEventListener('click', handleImgClick);
+    });
+    return () => {
+      imgs.forEach(img => {
+        img.removeEventListener('click', handleImgClick);
+      });
+    };
+  }, [post]);
 
   async function loadPost() {
     try {
@@ -192,6 +336,9 @@ export default function PostPage() {
   return (
     <>
       <Header />
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
       <div style={{ paddingTop: 36, paddingBottom: 80 }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
@@ -291,7 +438,9 @@ export default function PostPage() {
             </div>
           )}
 
-          <SNSContent html={post.content} media={post.media} />
+          <div ref={contentAreaRef}>
+            <SNSContent html={post.content} media={post.media} />
+          </div>
 
           <div style={{
             display: 'flex',
@@ -312,14 +461,17 @@ export default function PostPage() {
                   color: userVote === 1 ? '#22c55e' : 'var(--muted)',
                   border: `1px solid ${userVote === 1 ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
                   borderRadius: 6,
-                  padding: '4px 10px',
+                  padding: '5px 10px',
                   cursor: 'pointer',
                   fontSize: 14,
                   fontWeight: 600,
                   transition: 'all 0.15s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
                 }}
               >
-                ↑
+                <UpvoteIcon filled={userVote === 1} />
               </button>
               <span style={{
                 fontSize: 14,
@@ -340,16 +492,25 @@ export default function PostPage() {
                   color: userVote === -1 ? '#ef4444' : 'var(--muted)',
                   border: `1px solid ${userVote === -1 ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
                   borderRadius: 6,
-                  padding: '4px 10px',
+                  padding: '5px 10px',
                   cursor: 'pointer',
                   fontSize: 14,
                   fontWeight: 600,
                   transition: 'all 0.15s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
                 }}
               >
-                ↓
+                <DownvoteIcon filled={userVote === -1} />
               </button>
             </div>
+
+            {/* Comment count */}
+            <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <CommentIcon />
+              {comments.length}
+            </span>
 
             {/* View count */}
             <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'monospace' }}>
@@ -372,14 +533,10 @@ export default function PostPage() {
                 transition: 'all 0.15s',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 4,
+                gap: 6,
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-                <polyline points="16 6 12 2 8 6"/>
-                <line x1="12" y1="2" x2="12" y2="15"/>
-              </svg>
+              <ShareIcon />
               {shared ? 'Copied!' : 'Share'}
             </button>
 
@@ -398,9 +555,13 @@ export default function PostPage() {
                 fontSize: 13,
                 fontWeight: 500,
                 transition: 'all 0.15s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
               }}
             >
-              {bookmarked ? '★ Saved' : '☆ Save'}
+              <BookmarkIcon filled={bookmarked} />
+              {bookmarked ? 'Saved' : 'Save'}
             </button>
           </div>
         </article>

@@ -5,6 +5,36 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 
+function resizeImage(file: File, maxSize: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        if (width > height) {
+          height = Math.round((height / width) * maxSize);
+          width = maxSize;
+        } else {
+          width = Math.round((width / height) * maxSize);
+          height = maxSize;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('Canvas toBlob failed'))),
+        'image/webp',
+        0.85,
+      );
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export default function NewTopicPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
@@ -14,6 +44,50 @@ export default function NewTopicPage() {
   const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<'public' | 'private' | 'secret'>('public');
+  const [imageUploading, setImageUploading] = useState(false);
+
+  async function uploadTopicImage(file: File): Promise<string> {
+    const resized = await resizeImage(file, 400);
+    const filename = `topic-image.webp`;
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename,
+        contentType: 'image/webp',
+        size: resized.size,
+        purpose: 'topic',
+      }),
+    });
+
+    if (!res.ok) throw new Error('Failed to get upload URL');
+    const { uploadUrl, publicUrl } = await res.json();
+
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/webp' },
+      body: resized,
+    });
+
+    if (!uploadRes.ok) throw new Error('Failed to upload image');
+    return publicUrl;
+  }
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Image must be under 10MB');
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,6 +104,20 @@ export default function NewTopicPage() {
         .filter((s) => s.length === 2);
     }
 
+    let imageUrl: string | undefined;
+    if (imageFile) {
+      setImageUploading(true);
+      try {
+        imageUrl = await uploadTopicImage(imageFile);
+      } catch (err) {
+        setError('Failed to upload image');
+        setLoading(false);
+        setImageUploading(false);
+        return;
+      }
+      setImageUploading(false);
+    }
+
     try {
       const res = await fetch('/api/topics', {
         method: 'POST',
@@ -40,6 +128,8 @@ export default function NewTopicPage() {
           requiresCountryProof: requiresCountry,
           allowedCountries,
           countryMode: requiresCountry ? countryMode : undefined,
+          image: imageUrl,
+          visibility,
         }),
       });
 
@@ -151,6 +241,150 @@ export default function NewTopicPage() {
               onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
+          </div>
+
+          {/* Topic Image */}
+          <div>
+            <label
+              style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+            >
+              Topic Image{' '}
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>(optional)</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {imagePreview ? (
+                <div style={{ position: 'relative' }}>
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    style={{
+                      width: 80,
+                      height: 80,
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '2px solid rgba(255,255,255,0.1)',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageFile(null);
+                      setImagePreview(null);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      background: '#ef4444',
+                      color: '#fff',
+                      border: 'none',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <label
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: '50%',
+                    border: '2px dashed rgba(255,255,255,0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--muted)',
+                    fontSize: 12,
+                    textAlign: 'center',
+                    lineHeight: 1.3,
+                    transition: 'border-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    style={{ display: 'none' }}
+                  />
+                  <span>
+                    Add
+                    <br />
+                    Image
+                  </span>
+                </label>
+              )}
+              <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
+                Displayed as topic avatar.
+                <br />
+                Auto-resized to 400×400 WebP.
+              </div>
+            </div>
+          </div>
+
+          {/* Visibility */}
+          <div>
+            <label
+              style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 10 }}
+            >
+              Visibility
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {([
+                { value: 'public' as const, label: 'Public', desc: 'Anyone can find and join' },
+                { value: 'private' as const, label: 'Private', desc: 'Visible to all, requires approval to join' },
+                { value: 'secret' as const, label: 'Secret', desc: 'Hidden, invite code only' },
+              ]).map((opt) => (
+                <label
+                  key={opt.value}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    padding: '10px 14px',
+                    background: visibility === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
+                    border: `1px solid ${visibility === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    transition: 'all 0.12s',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value={opt.value}
+                    checked={visibility === opt.value}
+                    onChange={() => setVisibility(opt.value)}
+                    style={{ marginTop: 2, accentColor: 'var(--accent)' }}
+                  />
+                  <div>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>
+                      {opt.label}
+                      {opt.value === 'private' && ' \uD83D\uDD12'}
+                      {opt.value === 'secret' && ' \uD83D\uDC7B'}
+                    </span>
+                    <p style={{ fontSize: 12, color: 'var(--muted)', margin: '2px 0 0' }}>
+                      {opt.desc}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
 
           {/* Country gating */}
@@ -316,21 +550,21 @@ export default function NewTopicPage() {
             </Link>
             <button
               type="submit"
-              disabled={!canSubmit}
+              disabled={!canSubmit || imageUploading}
               style={{
                 flex: 2,
-                background: canSubmit ? 'var(--accent)' : 'var(--border)',
-                color: canSubmit ? '#fff' : 'var(--muted)',
+                background: canSubmit && !imageUploading ? 'var(--accent)' : 'var(--border)',
+                color: canSubmit && !imageUploading ? '#fff' : 'var(--muted)',
                 border: 'none',
                 borderRadius: 8,
                 padding: '12px',
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: canSubmit ? 'pointer' : 'not-allowed',
+                cursor: canSubmit && !imageUploading ? 'pointer' : 'not-allowed',
                 transition: 'all 0.15s',
               }}
             >
-              {loading ? 'Creating...' : 'Create Topic'}
+              {imageUploading ? 'Uploading image...' : loading ? 'Creating...' : 'Create Topic'}
             </button>
           </div>
         </form>
