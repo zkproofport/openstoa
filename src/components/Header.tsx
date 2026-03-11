@@ -85,7 +85,8 @@ export default function Header() {
 
           {user ? (
             <div className="flex items-center gap-3">
-              <span
+              <Link
+                href="/my"
                 style={{
                   fontFamily: 'monospace',
                   fontSize: 13,
@@ -93,13 +94,17 @@ export default function Header() {
                   background: 'var(--border)',
                   padding: '3px 10px',
                   borderRadius: 4,
+                  textDecoration: 'none',
+                  transition: 'background 0.12s',
                 }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#333'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--border)'; }}
               >
                 {user.nickname ??
                   (user.userId
                     ? `${user.userId.slice(0, 6)}...${user.userId.slice(-4)}`
                     : 'anon')}
-              </span>
+              </Link>
               <button
                 onClick={handleLogout}
                 disabled={loggingOut}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, topicMembers, users, tags, postTags } from '@/lib/db/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/posts';
@@ -37,12 +37,36 @@ export async function GET(
       );
     }
 
-    // Pagination
+    // Pagination + tag filter
     const url = new URL(request.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
+    const tagSlug = url.searchParams.get('tag') ?? null;
 
-    logger.info(ROUTE, 'Fetching posts', { userId: session.userId, topicId, limit, offset });
+    logger.info(ROUTE, 'Fetching posts', { userId: session.userId, topicId, limit, offset, tagSlug });
+
+    // When a tag filter is requested, resolve the tag and collect matching postIds
+    let tagFilteredPostIds: string[] | null = null;
+    if (tagSlug) {
+      const tag = await db.query.tags.findFirst({ where: eq(tags.slug, tagSlug) });
+      if (tag) {
+        const rows = await db
+          .select({ postId: postTags.postId })
+          .from(postTags)
+          .where(eq(postTags.tagId, tag.id));
+        tagFilteredPostIds = rows.map((r) => r.postId);
+      } else {
+        // Tag doesn't exist — return empty result
+        tagFilteredPostIds = [];
+      }
+    }
+
+    const whereClause =
+      tagFilteredPostIds !== null
+        ? tagFilteredPostIds.length > 0
+          ? and(eq(posts.topicId, topicId), inArray(posts.id, tagFilteredPostIds))
+          : and(eq(posts.topicId, topicId), sql`false`)
+        : eq(posts.topicId, topicId);
 
     const topicPosts = await db
       .select({
@@ -62,7 +86,7 @@ export async function GET(
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
-      .where(eq(posts.topicId, topicId))
+      .where(whereClause)
       .orderBy(desc(posts.createdAt))
       .limit(limit)
       .offset(offset);

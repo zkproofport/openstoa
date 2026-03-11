@@ -350,6 +350,10 @@ export default function TopicPage() {
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Tag filter
+  const [popularTags, setPopularTags] = useState<{ id: string; name: string; slug: string; postCount: number }[]>([]);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+
   // Composer
   const [composing, setComposing] = useState(false);
   const [postTitle, setPostTitle] = useState('');
@@ -363,7 +367,11 @@ export default function TopicPage() {
 
   useEffect(() => {
     loadTopic();
-    loadPosts(0, true);
+    loadPosts(0, true, null);
+    fetch('/api/tags')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.tags) setPopularTags(data.tags); })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId]);
 
@@ -382,11 +390,12 @@ export default function TopicPage() {
     }
   }
 
-  const loadPosts = useCallback(async (currentOffset: number, replace: boolean) => {
+  const loadPosts = useCallback(async (currentOffset: number, replace: boolean, tag: string | null) => {
     setPostsLoading(true);
     try {
+      const tagParam = tag ? `&tag=${encodeURIComponent(tag)}` : '';
       const res = await fetch(
-        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}`
+        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}${tagParam}`
       );
       if (!res.ok) return;
       const data = await res.json();
@@ -400,7 +409,13 @@ export default function TopicPage() {
   }, [topicId]);
 
   function handleLoadMore() {
-    loadPosts(offset, false);
+    loadPosts(offset, false, activeTag);
+  }
+
+  function handleTagSelect(slug: string | null) {
+    setActiveTag(slug);
+    setOffset(0);
+    loadPosts(0, true, slug);
   }
 
   async function handleCopyInvite() {
@@ -445,7 +460,7 @@ export default function TopicPage() {
       setPostMedia({ embeds: [] });
       setPostTags([]);
       setComposing(false);
-      loadPosts(0, true);
+      loadPosts(0, true, activeTag);
     } catch (err) {
       setPostError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -550,6 +565,56 @@ export default function TopicPage() {
             {copied ? 'Copied!' : 'Invite'}
           </button>
         </div>
+
+        {/* ── Tag filter bar ── */}
+        {popularTags.length > 0 && (
+          <div style={{
+            maxWidth: 600,
+            margin: '0 auto 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}>
+            <button
+              onClick={() => handleTagSelect(null)}
+              style={{
+                background: activeTag === null ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+                color: activeTag === null ? '#fff' : '#9ca3af',
+                border: activeTag === null ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 9999,
+                padding: '4px 12px',
+                fontSize: 12,
+                fontWeight: activeTag === null ? 600 : 400,
+                cursor: 'pointer',
+                transition: 'all 0.12s',
+              }}
+            >
+              All
+            </button>
+            {popularTags.map((tag) => (
+              <button
+                key={tag.id}
+                onClick={() => handleTagSelect(tag.slug)}
+                style={{
+                  background: activeTag === tag.slug ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+                  color: activeTag === tag.slug ? 'var(--accent)' : '#9ca3af',
+                  border: activeTag === tag.slug
+                    ? '1px solid rgba(59,130,246,0.3)'
+                    : '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 9999,
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  fontWeight: activeTag === tag.slug ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.12s',
+                }}
+              >
+                #{tag.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ── Centered feed column (~600px) ── */}
         <div style={{
