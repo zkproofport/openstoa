@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { ProofportSDK } from '@zkproofport-app/sdk';
-import type { RelayProofResult } from '@zkproofport-app/sdk';
+import type { CircuitType, RelayProofResult } from '@zkproofport-app/sdk';
 
 function createSDK(): ProofportSDK {
   const relayUrl = process.env.RELAY_URL;
@@ -21,7 +21,7 @@ function createSDK(): ProofportSDK {
 
 export async function createRelayProofRequest(
   scope: string,
-  options?: { dappName?: string; dappIcon?: string; message?: string; circuitType?: string },
+  options?: { dappName?: string; dappIcon?: string; message?: string; circuitType?: CircuitType },
 ): Promise<{ requestId: string; deepLink: string }> {
   const sdk = createSDK();
   const circuit = options?.circuitType ?? 'coinbase_attestation';
