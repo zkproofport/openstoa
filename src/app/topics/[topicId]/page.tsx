@@ -63,42 +63,47 @@ function relativeTime(iso: string): string {
 function HeartIcon({ filled }: { filled?: boolean }) {
   if (filled) {
     return (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="#ef4444" stroke="none">
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444" stroke="none">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
       </svg>
     );
   }
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
     </svg>
   );
 }
 
 function CommentIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
     </svg>
   );
 }
 
 function ShareIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-      <polyline points="16 6 12 2 8 6"/>
-      <line x1="12" y1="2" x2="12" y2="15"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 12h6" />
+      <path d="M12 9l3 3-3 3" />
+      <path d="M19 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
     </svg>
   );
 }
 
-function MoreIcon() {
+function BookmarkIcon({ filled }: { filled?: boolean }) {
+  if (filled) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="none">
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+      </svg>
+    );
+  }
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="12" cy="5" r="1.5"/>
-      <circle cx="12" cy="12" r="1.5"/>
-      <circle cx="12" cy="19" r="1.5"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
@@ -106,8 +111,8 @@ function MoreIcon() {
 function PlusIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-      <line x1="12" y1="5" x2="12" y2="19"/>
-      <line x1="5" y1="12" x2="19" y2="12"/>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
   );
 }
@@ -152,6 +157,58 @@ function TopicAvatar({ title, image, size = 40 }: { title: string; image?: strin
   );
 }
 
+// ─── Action Button ───────────────────────────────────────────────────────────
+
+function ActionButton({
+  icon,
+  count,
+  color,
+  label,
+  onClick,
+  active,
+}: {
+  icon: React.ReactNode;
+  count?: number;
+  color?: string;
+  label?: string;
+  onClick?: (e: React.MouseEvent) => void;
+  active?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const activeColor = color ?? 'var(--accent)';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick ?? ((e) => { e.preventDefault(); e.stopPropagation(); })}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: hovered
+          ? (active ? `${activeColor}15` : 'rgba(255,255,255,0.05)')
+          : 'none',
+        border: 'none',
+        color: active ? activeColor : (hovered ? activeColor : '#6b7280'),
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '5px 10px',
+        borderRadius: 9999,
+        fontSize: 12,
+        fontWeight: 500,
+        fontVariantNumeric: 'tabular-nums',
+        transition: 'color 0.12s, background 0.12s',
+        userSelect: 'none',
+      }}
+    >
+      {icon}
+      {(count !== undefined && count > 0) && <span>{count}</span>}
+      {label && <span>{label}</span>}
+    </button>
+  );
+}
+
 // ─── Post Card ──────────────────────────────────────────────────────────────
 
 function PostCard({
@@ -164,36 +221,39 @@ function PostCard({
   topicId: string;
 }) {
   const [shareText, setShareText] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const handleShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const url = `${window.location.origin}/topics/${topicId}/posts/${post.id}`;
     if (navigator.share) {
-      try {
-        await navigator.share({ title: post.title, url });
-        return;
-      } catch {}
+      try { await navigator.share({ title: post.title, url }); return; } catch {}
     }
     await navigator.clipboard.writeText(url);
     setShareText('Copied!');
     setTimeout(() => setShareText(null), 1500);
   };
 
+  const handleToggleExpand = useCallback(() => {
+    setExpanded(true);
+  }, []);
+
   return (
-    <Link
-      href={`/topics/${topicId}/posts/${post.id}`}
-      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+    <article
+      style={{
+        padding: '16px 20px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        transition: 'background 0.12s',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
     >
-      <article
-        style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          transition: 'background 0.12s',
-          cursor: 'pointer',
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+      {/* Clicking on the card body navigates; action buttons stop propagation */}
+      <Link
+        href={`/topics/${topicId}/posts/${post.id}`}
+        style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
       >
         {/* Header: avatar + topic name + time + author */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
@@ -212,7 +272,7 @@ function PostCard({
 
         {/* Title */}
         <h3 style={{
-          fontSize: 16,
+          fontSize: 15,
           fontWeight: 700,
           margin: '0 0 6px 52px',
           letterSpacing: '-0.01em',
@@ -227,99 +287,52 @@ function PostCard({
           <SNSContent
             html={post.content}
             media={post.media}
-            truncate
+            truncate={!expanded}
             maxLines={3}
+            onToggleExpand={handleToggleExpand}
           />
         </div>
+      </Link>
 
-        {/* Action bar */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0,
-          marginTop: 10,
-          marginLeft: 52,
-        }}>
-          {/* Like */}
-          <ActionButton
-            icon={<HeartIcon filled={(post.upvoteCount ?? 0) > 0} />}
-            count={post.upvoteCount ?? 0}
-            color={(post.upvoteCount ?? 0) > 0 ? '#ef4444' : undefined}
-          />
-          {/* Comment */}
-          <ActionButton
-            icon={<CommentIcon />}
-            count={post.commentCount ?? 0}
-          />
-          {/* Share */}
-          <button
-            type="button"
-            onClick={handleShare}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: shareText ? 'var(--accent)' : '#6b7280',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 12px',
-              borderRadius: 9999,
-              fontSize: 12,
-              transition: 'color 0.12s, background 0.12s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(59,130,246,0.08)'; e.currentTarget.style.color = 'var(--accent)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = shareText ? 'var(--accent)' : '#6b7280'; }}
-          >
-            <ShareIcon />
-            {shareText && <span style={{ fontSize: 12 }}>{shareText}</span>}
-          </button>
-
-          <div style={{ flex: 1 }} />
-
-          {/* More */}
-          <button
-            type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#6b7280',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '4px 8px',
-              borderRadius: 9999,
-              transition: 'background 0.12s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-          >
-            <MoreIcon />
-          </button>
-        </div>
-      </article>
-    </Link>
-  );
-}
-
-function ActionButton({ icon, count, color }: { icon: React.ReactNode; count: number; color?: string }) {
-  return (
-    <div
-      style={{
+      {/* Action bar — outside Link to allow independent clicks */}
+      <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 4,
-        padding: '4px 12px',
-        borderRadius: 9999,
-        color: color ?? '#6b7280',
-        fontSize: 12,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      {icon}
-      {count > 0 && <span>{count}</span>}
-    </div>
+        gap: 0,
+        marginTop: 10,
+        marginLeft: 52,
+      }}>
+        {/* Like */}
+        <ActionButton
+          icon={<HeartIcon filled={(post.upvoteCount ?? 0) > 0} />}
+          count={post.upvoteCount ?? 0}
+          color="#ef4444"
+          active={(post.upvoteCount ?? 0) > 0}
+        />
+
+        {/* Comment */}
+        <ActionButton
+          icon={<CommentIcon />}
+          count={post.commentCount ?? 0}
+        />
+
+        {/* Share */}
+        <ActionButton
+          icon={<ShareIcon />}
+          label={shareText ?? undefined}
+          color="var(--accent)"
+          active={!!shareText}
+          onClick={handleShare}
+        />
+
+        <div style={{ flex: 1 }} />
+
+        {/* Bookmark placeholder */}
+        <ActionButton
+          icon={<BookmarkIcon />}
+        />
+      </div>
+    </article>
   );
 }
 
@@ -347,7 +360,6 @@ export default function TopicPage() {
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
-  // Clipboard feedback
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -399,7 +411,6 @@ export default function TopicPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  /** Check if HTML content is effectively empty */
   function isHtmlEmpty(html: string): boolean {
     const stripped = html
       .replace(/<br\s*\/?>/gi, '')
@@ -481,13 +492,13 @@ export default function TopicPage() {
           </Link>
         </div>
 
-        {/* Topic header */}
+        {/* Topic header — full width within max-w-4xl */}
         <div style={{
           padding: '20px 24px',
           background: '#0d0d0d',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: 14,
-          marginBottom: 4,
+          marginBottom: 24,
           display: 'flex',
           alignItems: 'center',
           gap: 16,
@@ -541,133 +552,148 @@ export default function TopicPage() {
           </button>
         </div>
 
-        {/* Composer (expanded) */}
-        {composing && (
-          <div style={{
-            background: '#0d0d0d',
-            border: '1px solid rgba(59,130,246,0.3)',
-            borderRadius: 12,
-            padding: '20px',
-            marginTop: 4,
-            marginBottom: 4,
-          }}>
-            <form onSubmit={handlePostSubmit}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 16px', letterSpacing: '-0.02em', color: '#e5e7eb' }}>
-                New Post
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <input
-                  type="text"
-                  value={postTitle}
-                  onChange={(e) => setPostTitle(e.target.value)}
-                  placeholder="Post title"
-                  autoFocus
-                  style={{
-                    width: '100%',
-                    background: '#111',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 7,
-                    padding: '10px 14px',
-                    color: '#e5e7eb',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <SNSEditor
-                  placeholder="Write your post..."
-                  onChange={(html, media) => {
-                    setPostContentHtml(html);
-                    setPostMedia(media);
-                  }}
-                  minHeight={180}
-                />
-                <div style={{ marginTop: 4 }}>
-                  <TagInput tags={postTags} onChange={setPostTags} />
-                </div>
-                {postError && (
-                  <p style={{ fontSize: 12, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
-                    {postError}
-                  </p>
-                )}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => { setComposing(false); setPostTitle(''); setPostContentHtml(''); setPostMedia({ embeds: [] }); setPostTags([]); }}
+        {/* ── Centered feed column (~600px) ── */}
+        <div style={{
+          maxWidth: 600,
+          margin: '0 auto',
+        }}>
+          {/* Composer (expanded) */}
+          {composing && (
+            <div style={{
+              background: '#0d0d0d',
+              border: '1px solid rgba(59,130,246,0.3)',
+              borderRadius: 12,
+              padding: '20px',
+              marginBottom: 8,
+            }}>
+              <form onSubmit={handlePostSubmit}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 16px', letterSpacing: '-0.02em', color: '#e5e7eb' }}>
+                  New Post
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <input
+                    type="text"
+                    value={postTitle}
+                    onChange={(e) => setPostTitle(e.target.value)}
+                    placeholder="Post title"
+                    autoFocus
                     style={{
-                      background: 'rgba(255,255,255,0.06)',
-                      color: '#6b7280',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '8px 16px',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting}
-                    style={{
-                      background: 'var(--accent)',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '8px 20px',
-                      fontSize: 13,
+                      width: '100%',
+                      background: '#111',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 7,
+                      padding: '10px 14px',
+                      color: '#e5e7eb',
+                      fontSize: 14,
                       fontWeight: 600,
-                      cursor: 'pointer',
-                      opacity: (!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting) ? 0.5 : 1,
+                      outline: 'none',
+                      boxSizing: 'border-box',
                     }}
-                  >
-                    {submitting ? 'Posting...' : 'Post'}
-                  </button>
+                  />
+                  <SNSEditor
+                    placeholder="Write your post..."
+                    onChange={(html, media) => {
+                      setPostContentHtml(html);
+                      setPostMedia(media);
+                    }}
+                    minHeight={180}
+                  />
+                  <div style={{ marginTop: 4 }}>
+                    <TagInput tags={postTags} onChange={setPostTags} />
+                  </div>
+                  {postError && (
+                    <p style={{ fontSize: 12, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
+                      {postError}
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setComposing(false);
+                        setPostTitle('');
+                        setPostContentHtml('');
+                        setPostMedia({ embeds: [] });
+                        setPostTags([]);
+                      }}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        color: '#6b7280',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '8px 16px',
+                        fontSize: 13,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting}
+                      style={{
+                        background: 'var(--accent)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '8px 20px',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        opacity: (!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting) ? 0.5 : 1,
+                      }}
+                    >
+                      {submitting ? 'Posting...' : 'Post'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </form>
-          </div>
-        )}
+              </form>
+            </div>
+          )}
 
-        {/* Posts feed */}
-        {posts.length === 0 && !postsLoading ? (
+          {/* Feed border container */}
           <div style={{
-            textAlign: 'center',
-            padding: '60px 20px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 14,
+            overflow: 'hidden',
           }}>
-            <p style={{ fontSize: 15, color: '#6b7280' }}>
-              No posts yet. Be the first to write!
-            </p>
+            {posts.length === 0 && !postsLoading ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '60px 20px',
+              }}>
+                <p style={{ fontSize: 15, color: '#6b7280' }}>
+                  No posts yet. Be the first to write!
+                </p>
+              </div>
+            ) : (
+              posts.map((post) => (
+                <PostCard key={post.id} post={post} topic={topic} topicId={topicId} />
+              ))
+            )}
           </div>
-        ) : (
-          <div>
-            {posts.map((post) => (
-              <PostCard key={post.id} post={post} topic={topic} topicId={topicId} />
-            ))}
-          </div>
-        )}
 
-        {hasMore && (
-          <div style={{ textAlign: 'center', marginTop: 20 }}>
-            <button
-              onClick={handleLoadMore}
-              disabled={postsLoading}
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                color: '#6b7280',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 8,
-                padding: '10px 28px',
-                fontSize: 14,
-                cursor: 'pointer',
-              }}
-            >
-              {postsLoading ? 'Loading...' : 'Load more'}
-            </button>
-          </div>
-        )}
+          {hasMore && (
+            <div style={{ textAlign: 'center', marginTop: 20 }}>
+              <button
+                onClick={handleLoadMore}
+                disabled={postsLoading}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#6b7280',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 8,
+                  padding: '10px 28px',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                }}
+              >
+                {postsLoading ? 'Loading...' : 'Load more'}
+              </button>
+            </div>
+          )}
+        </div>
+        {/* ── End centered feed ── */}
 
         {/* Floating compose button */}
         {!composing && (
@@ -691,8 +717,14 @@ export default function TopicPage() {
               transition: 'transform 0.15s, box-shadow 0.15s',
               zIndex: 50,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 32px rgba(59,130,246,0.4)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(59,130,246,0.3)'; }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.08)';
+              e.currentTarget.style.boxShadow = '0 6px 32px rgba(59,130,246,0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 4px 24px rgba(59,130,246,0.3)';
+            }}
             title="Write Post"
           >
             <PlusIcon />
