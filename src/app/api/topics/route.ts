@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, verifierAddress, chainId } = body;
+    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title in topic creation', { userId: session.userId });
@@ -104,10 +104,10 @@ export async function POST(request: NextRequest) {
     if (requiresCountryProof) {
       logger.info(ROUTE, 'Topic requires country proof, verifying creator proof', { userId: session.userId });
 
-      if (!proof || !publicInputs || !verifierAddress) {
-        logger.warn(ROUTE, 'Missing country proof fields for topic creation', { userId: session.userId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
+      if (!proof || !publicInputs) {
+        logger.warn(ROUTE, 'Missing country proof fields for topic creation', { userId: session.userId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
         return NextResponse.json(
-          { error: 'Country proof required: proof, publicInputs, verifierAddress' },
+          { error: 'Country proof required: proof, publicInputs' },
           { status: 400 },
         );
       }
@@ -118,8 +118,6 @@ export async function POST(request: NextRequest) {
         status: 'completed',
         proof,
         publicInputs,
-        verifierAddress,
-        chainId,
         circuit: 'coinbase_country_attestation',
         requestId: session.userId,
       });

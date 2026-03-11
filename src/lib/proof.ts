@@ -27,6 +27,7 @@ export async function verifyProofFromRelay(
   return sdk.verifyResponseOnChain(result as any);
 }
 
+
 export function extractNullifier(publicInputs: string[], circuit: string): string {
   const nullifier = extractNullifierFromPublicInputs(publicInputs, circuit);
   if (!nullifier) throw new Error(`Failed to extract nullifier for circuit: ${circuit}`);

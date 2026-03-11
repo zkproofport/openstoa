@@ -60,12 +60,12 @@ export async function POST(
       logger.info(ROUTE, 'Topic requires country proof, verifying', { userId: session.userId, topicId });
 
       const body = await request.json();
-      const { proof, publicInputs, verifierAddress, chainId } = body;
+      const { proof, publicInputs } = body;
 
-      if (!proof || !publicInputs || !verifierAddress) {
-        logger.warn(ROUTE, 'Missing country proof fields', { userId: session.userId, topicId, hasProof: !!proof, hasPublicInputs: !!publicInputs, hasVerifierAddress: !!verifierAddress });
+      if (!proof || !publicInputs) {
+        logger.warn(ROUTE, 'Missing country proof fields', { userId: session.userId, topicId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
         return NextResponse.json(
-          { error: 'Country proof required: proof, publicInputs, verifierAddress' },
+          { error: 'Country proof required: proof, publicInputs' },
           { status: 400 },
         );
       }
@@ -76,8 +76,6 @@ export async function POST(
         status: 'completed',
         proof,
         publicInputs,
-        verifierAddress,
-        chainId,
         circuit: 'coinbase_country_attestation',
         requestId: topicId,
       });
