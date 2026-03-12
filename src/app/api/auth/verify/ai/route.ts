@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
     const normalizedInputs = normalizePublicInputs(result.publicInputs);
 
     // Determine circuit from normalized array length
-    const circuit = normalizedInputs.length > 10
+    // coinbase_attestation: 128 fields, coinbase_country_attestation: 150 fields
+    const circuit = normalizedInputs.length > 128
       ? 'coinbase_country_attestation'
       : 'coinbase_attestation';
 
