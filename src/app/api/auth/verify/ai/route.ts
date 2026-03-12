@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { consumeChallenge } from '@/lib/challenge';
 import {
-  verifyProofFromRelay,
   extractNullifier,
   extractScope,
   computeScopeHash,
@@ -13,26 +12,38 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { verifyProof } from '@zkproofport-ai/sdk';
 
-const ROUTE = '/api/auth/verify';
+const ROUTE = '/api/auth/verify/ai';
 
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
-    const { challengeId, proof, publicInputs } = body;
+    const { challengeId, result } = body;
 
-    if (!challengeId || !proof || !publicInputs) {
-      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
+    if (!challengeId || !result) {
+      logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasResult: !!result });
       return NextResponse.json(
-        { error: 'Missing required fields: challengeId, proof, publicInputs' },
+        { error: 'Missing required fields: challengeId, result' },
+        { status: 400 },
+      );
+    }
+
+    if (!result.proof || !result.publicInputs || !result.verification) {
+      logger.warn(ROUTE, 'Incomplete result', {
+        hasProof: !!result.proof,
+        hasPublicInputs: !!result.publicInputs,
+        hasVerification: !!result.verification,
+      });
+      return NextResponse.json(
+        { error: 'Incomplete result: proof, publicInputs, and verification are required' },
         { status: 400 },
       );
     }
 
     logger.info(ROUTE, 'Consuming challenge', { challengeId });
 
-    // Consume challenge
     const challengeValid = await consumeChallenge(challengeId);
     if (!challengeValid) {
       logger.warn(ROUTE, 'Invalid or expired challenge', { challengeId });
@@ -42,24 +53,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Normalize publicInputs: SDK may return a single hex string; downstream functions expect string[]
-    const normalizedInputs = normalizePublicInputs(publicInputs);
+    logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain via AI SDK', { challengeId });
 
-    logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain', { challengeId, proofLength: proof.length, publicInputsCount: normalizedInputs.length });
-
-    // Determine circuit from normalized array length
-    const circuit = normalizedInputs.length > 10
-      ? 'coinbase_country_attestation'
-      : 'coinbase_attestation';
-
-    // Verify proof on-chain (verifier address resolved by SDK internally)
-    const verification = await verifyProofFromRelay({
-      status: 'completed',
-      proof,
-      publicInputs: normalizedInputs,
-      circuit,
-      requestId: challengeId,
-    });
+    // Verify proof on-chain using @zkproofport-ai/sdk
+    const verification = await verifyProof(result);
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { challengeId, error: verification.error });
       return NextResponse.json(
@@ -68,7 +65,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.info(ROUTE, 'Proof verified on-chain', { challengeId, circuit });
+    logger.info(ROUTE, 'Proof verified on-chain', { challengeId });
+
+    // Normalize publicInputs for scope/nullifier extraction
+    const normalizedInputs = normalizePublicInputs(result.publicInputs);
+
+    // Determine circuit from normalized array length
+    const circuit = normalizedInputs.length > 10
+      ? 'coinbase_country_attestation'
+      : 'coinbase_attestation';
 
     // Verify scope
     const scope = extractScope(normalizedInputs, circuit);

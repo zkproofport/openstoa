@@ -243,7 +243,19 @@ export default function TopicPage() {
 
   async function handleCopyInvite() {
     const url = `${window.location.origin}/topics/${topicId}/join`;
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Fallback for mobile browsers without clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -282,6 +294,7 @@ export default function TopicPage() {
       setPostContentHtml('');
       setPostMedia({ embeds: [] });
       setPostTags([]);
+      try { localStorage.removeItem('zk-community-draft'); } catch {}
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
@@ -668,6 +681,7 @@ export default function TopicPage() {
                         setPostContentHtml('');
                         setPostMedia({ embeds: [] });
                         setPostTags([]);
+                        try { localStorage.removeItem('zk-community-draft'); } catch {}
                       }}
                       style={{
                         background: 'rgba(255,255,255,0.06)',

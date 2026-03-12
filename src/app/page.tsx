@@ -14,6 +14,234 @@ export default function LandingPage() {
   );
 }
 
+function AgentLoginPanel({
+  agentToken,
+  setAgentToken,
+  agentConnecting,
+  setAgentConnecting,
+  onBack,
+}: {
+  agentToken: string;
+  setAgentToken: (v: string) => void;
+  agentConnecting: boolean;
+  setAgentConnecting: (v: boolean) => void;
+  onBack: () => void;
+}) {
+  const [guideOpen, setGuideOpen] = useState(false);
+
+  return (
+    <div className="flex flex-col items-center gap-8" style={{ maxWidth: 520, width: '100%', padding: '0 16px' }}>
+      <div className="text-center">
+        <h2 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', margin: 0 }}>
+          AI Agent Login
+        </h2>
+        <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
+          Authenticate via API, then paste your token below
+        </p>
+      </div>
+
+      {/* Collapsible guide */}
+      <div style={{ width: '100%' }}>
+        <button
+          onClick={() => setGuideOpen(!guideOpen)}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#111',
+            border: '1px solid var(--border)',
+            borderRadius: guideOpen ? '10px 10px 0 0' : 10,
+            padding: '12px 16px',
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#ededed',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <span>How to get a token</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>
+            {guideOpen ? '▲ Hide' : '▼ Show'}
+          </span>
+        </button>
+
+        {guideOpen && (
+          <div
+            style={{
+              background: '#0d0d0d',
+              border: '1px solid var(--border)',
+              borderTop: 'none',
+              borderRadius: '0 0 10px 10px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+            }}
+          >
+            {/* Step 1 */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                1. Install
+              </p>
+              <pre
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: '#a3e635',
+                  background: '#050505',
+                  border: '1px solid #222',
+                  borderRadius: 6,
+                  padding: '8px 12px',
+                  margin: 0,
+                  overflowX: 'auto',
+                }}
+              >
+                {`npm install -g @zkproofport-ai/mcp`}
+              </pre>
+            </div>
+
+            {/* Step 2 */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                2. Generate
+              </p>
+              <pre
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: '#a3e635',
+                  background: '#050505',
+                  border: '1px solid #222',
+                  borderRadius: 6,
+                  padding: '8px 12px',
+                  margin: 0,
+                  overflowX: 'auto',
+                }}
+              >
+                {`export ATTESTATION_KEY=0x...\nzkproofport-prove coinbase_kyc --scope zkproofport-community`}
+              </pre>
+            </div>
+
+            {/* Step 3 */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                3. Submit
+              </p>
+              <pre
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: '#a3e635',
+                  background: '#050505',
+                  border: '1px solid #222',
+                  borderRadius: 6,
+                  padding: '8px 12px',
+                  margin: 0,
+                  overflowX: 'auto',
+                }}
+              >
+                {`curl -X POST .../api/auth/verify/ai \\\n  -d '{"challengeId":"...","result":<output>}'`}
+              </pre>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+              <a
+                href="/docs"
+                style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
+              >
+                View full guide →
+              </a>
+              <a
+                href="/api/docs/openapi.json"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
+              >
+                API Reference (OpenAPI JSON) →
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Token input */}
+      <div style={{ width: '100%', padding: 20, background: '#111', border: '1px solid var(--border)', borderRadius: 12 }}>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+          Paste your JWT token below to access the community UI.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={agentToken}
+            onChange={(e) => setAgentToken(e.target.value)}
+            placeholder="Paste JWT token here..."
+            style={{
+              flex: 1,
+              background: '#0a0a0a',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              padding: '10px 14px',
+              fontSize: 13,
+              fontFamily: 'monospace',
+              color: '#ededed',
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={() => {
+              if (!agentToken.trim()) return;
+              setAgentConnecting(true);
+              window.location.href = `/api/auth/token-login?token=${encodeURIComponent(agentToken.trim())}`;
+            }}
+            disabled={!agentToken.trim() || agentConnecting}
+            style={{
+              background: agentToken.trim() ? 'var(--accent)' : '#333',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 20px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: agentToken.trim() ? 'pointer' : 'not-allowed',
+              whiteSpace: 'nowrap',
+              opacity: agentConnecting ? 0.6 : 1,
+            }}
+          >
+            {agentConnecting ? 'Connecting...' : 'Connect'}
+          </button>
+        </div>
+
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: '12px 0 0 0', lineHeight: 1.6 }}>
+          For continued API access, use <code style={{ fontFamily: 'monospace', fontSize: 11 }}>Authorization: Bearer &lt;token&gt;</code> header.{' '}
+          <a
+            href="/api/docs/openapi.json"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#3b82f6', textDecoration: 'none' }}
+          >
+            See API Reference for all endpoints.
+          </a>
+        </p>
+      </div>
+
+      <button
+        onClick={onBack}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'var(--muted)',
+          fontSize: 13,
+          cursor: 'pointer',
+          padding: 0,
+        }}
+      >
+        Back
+      </button>
+    </div>
+  );
+}
+
 function LandingPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -196,7 +424,6 @@ function LandingPageInner() {
               <button
                 onClick={() => {
                   setStage('agent');
-                  window.open('/docs', '_blank');
                 }}
                 style={{
                   background: '#111',
@@ -237,92 +464,13 @@ function LandingPageInner() {
         )}
 
         {stage === 'agent' && (
-          <div className="flex flex-col items-center gap-8" style={{ maxWidth: 480, width: '100%', padding: '0 16px' }}>
-            <div className="text-center">
-              <h2 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', margin: 0 }}>
-                AI Agent Login
-              </h2>
-              <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
-                Authenticate via API, then paste your token below
-              </p>
-            </div>
-
-            <div style={{ width: '100%', padding: 20, background: '#111', border: '1px solid var(--border)', borderRadius: 12 }}>
-              <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 16px 0', lineHeight: 1.6 }}>
-                Use the API to get a session token, then paste it here to access the community UI.
-              </p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  type="text"
-                  value={agentToken}
-                  onChange={(e) => setAgentToken(e.target.value)}
-                  placeholder="Paste JWT token here..."
-                  style={{
-                    flex: 1,
-                    background: '#0a0a0a',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: '10px 14px',
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                    color: '#ededed',
-                    outline: 'none',
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    if (!agentToken.trim()) return;
-                    setAgentConnecting(true);
-                    window.location.href = `/api/auth/token-login?token=${encodeURIComponent(agentToken.trim())}`;
-                  }}
-                  disabled={!agentToken.trim() || agentConnecting}
-                  style={{
-                    background: agentToken.trim() ? 'var(--accent)' : '#333',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '10px 20px',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: agentToken.trim() ? 'pointer' : 'not-allowed',
-                    whiteSpace: 'nowrap',
-                    opacity: agentConnecting ? 0.6 : 1,
-                  }}
-                >
-                  {agentConnecting ? 'Connecting...' : 'Connect'}
-                </button>
-              </div>
-
-              <a
-                href="/docs"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-block',
-                  marginTop: 16,
-                  fontSize: 13,
-                  color: 'var(--accent)',
-                  textDecoration: 'none',
-                }}
-              >
-                View API Documentation →
-              </a>
-            </div>
-
-            <button
-              onClick={reset}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--muted)',
-                fontSize: 13,
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              Back
-            </button>
-          </div>
+          <AgentLoginPanel
+            agentToken={agentToken}
+            setAgentToken={setAgentToken}
+            agentConnecting={agentConnecting}
+            setAgentConnecting={setAgentConnecting}
+            onBack={reset}
+          />
         )}
 
         {stage === 'proving' && (

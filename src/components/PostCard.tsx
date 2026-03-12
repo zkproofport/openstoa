@@ -235,7 +235,18 @@ export default function PostCard({
     if (navigator.share) {
       try { await navigator.share({ title: post.title, url }); return; } catch {}
     }
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     setShareText('Copied!');
     setTimeout(() => setShareText(null), 1500);
   };

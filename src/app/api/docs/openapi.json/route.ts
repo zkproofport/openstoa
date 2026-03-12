@@ -242,10 +242,10 @@ const spec = {
       },
     },
 
-    '/api/auth/verify': {
+    '/api/auth/verify/ai': {
       post: {
         tags: ['Auth'],
-        summary: 'Verify proof with challenge (agent flow)',
+        summary: 'Verify AI agent proof and get session token',
         security: [],
         requestBody: {
           required: true,
@@ -253,16 +253,29 @@ const spec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['challengeId', 'proof', 'publicInputs', 'verifierAddress'],
+                required: ['challengeId', 'result'],
                 properties: {
                   challengeId: { type: 'string' },
-                  proof: { type: 'string' },
-                  publicInputs: {
-                    type: 'array',
-                    items: { type: 'string' },
+                  result: {
+                    type: 'object',
+                    required: ['proof', 'publicInputs', 'verification'],
+                    properties: {
+                      proof: { type: 'string', description: '0x-prefixed proof hex' },
+                      publicInputs: { type: 'string', description: '0x-prefixed public inputs hex' },
+                      proofWithInputs: { type: 'string', description: 'Combined proof + public inputs hex' },
+                      verification: {
+                        type: 'object',
+                        required: ['chainId', 'verifierAddress', 'rpcUrl'],
+                        properties: {
+                          chainId: { type: 'number', example: 8453 },
+                          verifierAddress: { type: 'string', example: '0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382' },
+                          rpcUrl: { type: 'string', example: 'https://mainnet.base.org' },
+                        },
+                      },
+                      attestation: { type: 'object', nullable: true },
+                      timing: { type: 'object' },
+                    },
                   },
-                  verifierAddress: { type: 'string' },
-                  chainId: { type: 'number' },
                 },
               },
             },
