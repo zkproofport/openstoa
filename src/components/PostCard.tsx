@@ -346,7 +346,7 @@ export default function PostCard({
       {isTopicCreator && (
         <button
           onClick={handlePin}
-          title={resolvedIsPinned ? '고정 해제' : '게시글 고정'}
+          title={resolvedIsPinned ? 'Unpin' : 'Pin post'}
           style={{
             position: 'absolute',
             top: 12,
@@ -401,7 +401,7 @@ export default function PostCard({
           gap: 6,
         }}>
           {resolvedIsPinned && (
-            <span style={{ fontSize: 12, flexShrink: 0 }} title="고정된 게시글">📌</span>
+            <span style={{ fontSize: 12, flexShrink: 0 }} title="Pinned post">📌</span>
           )}
           {post.title}
         </h3>

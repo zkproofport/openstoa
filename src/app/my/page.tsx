@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 import Avatar from '@/components/Avatar';
+import ImageLightbox from '@/components/ImageLightbox';
 import { truncateId, resizeImage } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -86,6 +87,16 @@ export default function MyPage() {
   const [imageUploading, setImageUploading] = useState(false);
   const [imageFeedback, setImageFeedback] = useState<string | null>(null);
 
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  function handleImageClick(src: string) {
+    if (window.innerWidth <= 768 || 'ontouchstart' in window) {
+      setLightboxSrc(src);
+    } else {
+      window.open(src, '_blank');
+    }
+  }
+
   // Infinite scroll sentinel ref
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -161,6 +172,10 @@ export default function MyPage() {
     setImageUploading(true);
     setImageFeedback(null);
     try {
+      if (profileImage) {
+        const delRes = await fetch('/api/profile/image', { method: 'DELETE' });
+        if (!delRes.ok) throw new Error('Failed to remove old image');
+      }
       const resized = await resizeImage(file, 200);
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -183,19 +198,7 @@ export default function MyPage() {
       setImageFeedback(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setImageUploading(false);
-    }
-  }
-
-  async function handleImageRemove() {
-    setImageUploading(true);
-    try {
-      const res = await fetch('/api/profile/image', { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to remove image');
-      setProfileImage(null);
-    } catch (err) {
-      setImageFeedback(err instanceof Error ? err.message : 'Failed to remove image');
-    } finally {
-      setImageUploading(false);
+      e.target.value = '';
     }
   }
 
@@ -327,6 +330,9 @@ export default function MyPage() {
   return (
     <>
       <Header />
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
       <div style={{ paddingTop: 36, paddingBottom: 100 }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 24 }}>
@@ -347,7 +353,12 @@ export default function MyPage() {
           gap: 18,
         }}>
           {/* Avatar */}
-          <Avatar src={profileImage} name={displayName} size={56} />
+          <span
+            onClick={() => profileImage && handleImageClick(profileImage)}
+            style={{ cursor: profileImage ? 'pointer' : undefined, display: 'inline-flex' }}
+          >
+            <Avatar src={profileImage} name={displayName} size={56} />
+          </span>
 
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -482,76 +493,92 @@ export default function MyPage() {
                   Profile Image
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  {profileImage ? (
-                    <div style={{ position: 'relative' }}>
-                      <Avatar src={profileImage} name={displayName} size={72} />
-                      <button
-                        type="button"
-                        onClick={handleImageRemove}
-                        disabled={imageUploading}
-                        style={{
-                          position: 'absolute',
-                          top: -4,
-                          right: -4,
-                          width: 22,
-                          height: 22,
-                          borderRadius: '50%',
-                          background: '#ef4444',
-                          color: '#fff',
-                          border: 'none',
-                          fontSize: 12,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          lineHeight: 1,
-                          opacity: imageUploading ? 0.5 : 1,
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <label
-                      style={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: '50%',
-                        border: '2px dashed rgba(255,255,255,0.15)',
+                  <label
+                    style={{
+                      position: 'relative',
+                      width: 72,
+                      height: 72,
+                      borderRadius: '50%',
+                      cursor: imageUploading ? 'wait' : 'pointer',
+                      flexShrink: 0,
+                      display: 'block',
+                      overflow: 'hidden',
+                      border: profileImage ? 'none' : '2px dashed rgba(255,255,255,0.15)',
+                      transition: 'border-color 0.15s',
+                      opacity: imageUploading ? 0.5 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!profileImage) (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.4)';
+                      const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement | null;
+                      if (overlay) overlay.style.opacity = '1';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!profileImage) (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
+                      const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement | null;
+                      if (overlay) overlay.style.opacity = '0';
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      disabled={imageUploading}
+                      style={{ display: 'none' }}
+                    />
+                    {profileImage ? (
+                      <>
+                        <Avatar src={profileImage} name={displayName} size={72} />
+                        <div
+                          data-overlay=""
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            borderRadius: '50%',
+                            background: 'rgba(0,0,0,0.55)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: 0,
+                            transition: 'opacity 0.15s',
+                            color: '#fff',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            gap: 2,
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                            <circle cx="12" cy="13" r="4" />
+                          </svg>
+                          <span>Change</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '100%',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        cursor: imageUploading ? 'wait' : 'pointer',
                         color: 'var(--muted)',
                         fontSize: 11,
                         textAlign: 'center',
                         lineHeight: 1.3,
-                        transition: 'border-color 0.15s',
-                        flexShrink: 0,
-                        opacity: imageUploading ? 0.5 : 1,
-                      }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.4)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)'; }}
-                    >
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageSelect}
-                        disabled={imageUploading}
-                        style={{ display: 'none' }}
-                      />
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 3 }}>
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                        <circle cx="12" cy="13" r="4" />
-                      </svg>
-                      <span>{imageUploading ? '...' : 'Upload'}</span>
-                    </label>
-                  )}
+                      }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 3 }}>
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                          <circle cx="12" cy="13" r="4" />
+                        </svg>
+                        <span>{imageUploading ? '...' : 'Upload'}</span>
+                      </div>
+                    )}
+                  </label>
                   <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
-                    {imageUploading ? 'Uploading...' : 'Click to change profile photo'}
+                    {imageUploading ? 'Uploading...' : profileImage ? 'Hover to change photo' : 'Click to upload photo'}
                     <br />
-                    Auto-resized to 200×200 WebP
+                    Auto-resized to 200x200 WebP
                   </div>
                 </div>
                 {imageFeedback && (
@@ -651,7 +678,7 @@ export default function MyPage() {
                   Danger Zone
                 </h3>
                 <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
-                  계정을 삭제하면 닉네임이 &apos;[탈퇴한 사용자]&apos;로 변경되며, 작성한 게시글과 댓글은 유지됩니다. 토픽 소유권은 미리 이전해야 합니다.
+                  If you delete your account, your nickname will be changed to &apos;[Withdrawn User]&apos; and your posts and comments will remain. Please transfer topic ownership beforehand.
                 </p>
 
                 {ownedTopicsError && (
@@ -663,7 +690,7 @@ export default function MyPage() {
                     borderRadius: 8,
                   }}>
                     <p style={{ fontSize: 13, color: '#ef4444', margin: '0 0 8px', fontWeight: 600 }}>
-                      토픽 소유권을 먼저 이전해주세요
+                      Please transfer topic ownership first
                     </p>
                     <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 13, color: '#f87171', lineHeight: 1.8 }}>
                       {ownedTopicsError.map((t) => (

@@ -7,81 +7,9 @@ import Header from '@/components/Header';
 import Avatar from '@/components/Avatar';
 import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
+import ImageLightbox from '@/components/ImageLightbox';
 import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
 import { formatDate, truncateId } from '@/lib/utils';
-
-function CloseIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
-// ─── Image Lightbox ──────────────────────────────────────────────────────────
-
-function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'rgba(0,0,0,0.9)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {/* Close button */}
-      <button
-        type="button"
-        onClick={onClose}
-        style={{
-          position: 'absolute',
-          top: 16,
-          right: 16,
-          background: 'rgba(255,255,255,0.1)',
-          border: '1px solid rgba(255,255,255,0.15)',
-          borderRadius: 8,
-          color: '#fff',
-          cursor: 'pointer',
-          padding: '6px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          lineHeight: 0,
-        }}
-      >
-        <CloseIcon />
-      </button>
-
-      {/* Image — stop propagation so clicking image doesn't close */}
-      <img
-        src={src}
-        alt=""
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '95vw',
-          maxHeight: '95vh',
-          objectFit: 'contain',
-          borderRadius: 8,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
-        }}
-      />
-    </div>
-  );
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -137,6 +65,14 @@ export default function PostPage() {
 
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
+
+  function handleImageClick(src: string) {
+    if (window.innerWidth <= 768 || 'ontouchstart' in window) {
+      setLightboxSrc(src);
+    } else {
+      window.open(src, '_blank');
+    }
+  }
 
   useEffect(() => {
     loadPost();
@@ -347,7 +283,12 @@ export default function PostPage() {
               borderBottom: '1px solid var(--border)',
             }}
           >
-            <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
+            <span
+              onClick={() => post.authorProfileImage && handleImageClick(post.authorProfileImage)}
+              style={{ cursor: post.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
+            >
+              <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
+            </span>
             <div>
               <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>
                 {post.authorNickname}
@@ -510,7 +451,12 @@ export default function PostPage() {
                       marginBottom: 10,
                     }}
                   >
-                    <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
+                    <span
+                      onClick={() => comment.authorProfileImage && handleImageClick(comment.authorProfileImage)}
+                      style={{ cursor: comment.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
+                    >
+                      <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
+                    </span>
                     <div>
                       <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace' }}>
                         {comment.authorNickname}

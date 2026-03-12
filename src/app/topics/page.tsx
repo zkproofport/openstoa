@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Spinner from '@/components/Spinner';
+import TopicAvatar from '@/components/TopicAvatar';
+import ImageLightbox from '@/components/ImageLightbox';
 import { formatDate } from '@/lib/utils';
 
 interface Topic {
@@ -20,44 +22,6 @@ interface Topic {
   isMember?: boolean;
 }
 
-const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#22c55e', '#06b6d4', '#eab308'];
-
-function TopicAvatar({ title, image, size = 40 }: { title: string; image?: string | null; size?: number }) {
-  if (image) {
-    return (
-      <img
-        src={image}
-        alt=""
-        style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          objectFit: 'cover',
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-  const colorIndex = title.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
-  return (
-    <div style={{
-      width: size,
-      height: size,
-      borderRadius: '50%',
-      background: AVATAR_COLORS[colorIndex],
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: size * 0.45,
-      fontWeight: 700,
-      color: '#fff',
-      flexShrink: 0,
-    }}>
-      {title.slice(0, 1).toUpperCase()}
-    </div>
-  );
-}
-
 export default function TopicsPage() {
   const router = useRouter();
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -67,6 +31,15 @@ export default function TopicsPage() {
   const [sortBy, setSortBy] = useState<'hot' | 'new' | 'top' | 'active'>('hot');
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set());
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  function handleImageClick(src: string) {
+    if (window.innerWidth <= 768 || 'ontouchstart' in window) {
+      setLightboxSrc(src);
+    } else {
+      window.open(src, '_blank');
+    }
+  }
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -133,6 +106,9 @@ export default function TopicsPage() {
   return (
     <>
       <Header />
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
       <div style={{ paddingTop: 40, paddingBottom: 80 }}>
         <div
           style={{
@@ -361,7 +337,12 @@ export default function TopicsPage() {
                       gap: 16,
                     }}
                   >
-                    <TopicAvatar title={topic.title} image={topic.image} size={42} />
+                    <TopicAvatar
+                      name={topic.title}
+                      image={topic.image}
+                      size={42}
+                      onClick={topic.image ? () => handleImageClick(topic.image!) : undefined}
+                    />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 6 }}>
                         <h2

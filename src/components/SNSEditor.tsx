@@ -149,7 +149,7 @@ function htmlTextLength(html: string): number {
 
 export default function SNSEditor({
   onChange,
-  placeholder = '내용을 입력하세요…',
+  placeholder = 'Write something…',
   minHeight = 180,
   draftKey = 'zk-community-draft',
 }: SNSEditorProps) {
@@ -466,7 +466,7 @@ export default function SNSEditor({
           borderRadius: 10,
           zIndex: 10,
         }}>
-          <span style={{ color: 'var(--accent)', fontSize: 14, fontWeight: 500 }}>이미지를 놓으세요</span>
+          <span style={{ color: 'var(--accent)', fontSize: 14, fontWeight: 500 }}>Drop image here</span>
         </div>
       )}
 

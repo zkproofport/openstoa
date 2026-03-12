@@ -269,7 +269,7 @@ export default function SNSContent({
         />
       )}
 
-      {/* "더보기" button for truncated content */}
+      {/* "Show more" button for truncated content */}
       {truncate && isOverflowing && onToggleExpand && (
         <button
           type="button"

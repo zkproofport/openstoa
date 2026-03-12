@@ -47,7 +47,7 @@ export async function DELETE() {
   // 6. Anonymize user record (keep posts/comments intact)
   const randomSuffix = Math.random().toString(36).slice(2, 10);
   await db.update(users).set({
-    nickname: `[탈퇴한 사용자]_${randomSuffix}`,
+    nickname: `[Withdrawn User]_${randomSuffix}`,
     deletedAt: new Date(),
   }).where(eq(users.id, userId));
   logger.info(ROUTE, 'DELETE account: user record anonymized', { userId });

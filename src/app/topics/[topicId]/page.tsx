@@ -8,6 +8,8 @@ import SNSEditor from '@/components/SNSEditor';
 import TagInput from '@/components/TagInput';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
+import TopicAvatar from '@/components/TopicAvatar';
+import ImageLightbox from '@/components/ImageLightbox';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -65,47 +67,6 @@ function PlusIcon() {
   );
 }
 
-// ─── Topic Avatar ───────────────────────────────────────────────────────────
-
-const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#22c55e', '#06b6d4', '#eab308'];
-
-function TopicAvatar({ title, image, size = 40 }: { title: string; image?: string; size?: number }) {
-  if (image) {
-    return (
-      <img
-        src={image}
-        alt=""
-        style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          objectFit: 'cover',
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-  const colorIndex = title.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
-  return (
-    <div style={{
-      width: size,
-      height: size,
-      borderRadius: '50%',
-      background: AVATAR_COLORS[colorIndex],
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: size * 0.45,
-      fontWeight: 700,
-      color: '#fff',
-      flexShrink: 0,
-    }}>
-      {title.slice(0, 1).toUpperCase()}
-    </div>
-  );
-}
-
-
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function TopicPage() {
@@ -148,6 +109,15 @@ export default function TopicPage() {
   const [copied, setCopied] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  function handleImageClick(src: string) {
+    if (window.innerWidth <= 768 || 'ontouchstart' in window) {
+      setLightboxSrc(src);
+    } else {
+      window.open(src, '_blank');
+    }
+  }
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -351,6 +321,9 @@ export default function TopicPage() {
   return (
     <>
       <Header />
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
       <div style={{ paddingTop: 36, paddingBottom: 100, position: 'relative' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 24 }}>
@@ -370,7 +343,12 @@ export default function TopicPage() {
           alignItems: 'center',
           gap: 16,
         }}>
-          <TopicAvatar title={topic.title} image={topic.image} size={48} />
+          <TopicAvatar
+            name={topic.title}
+            image={topic.image}
+            size={48}
+            onClick={topic.image ? () => handleImageClick(topic.image!) : undefined}
+          />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: '#e5e7eb' }}>
@@ -476,7 +454,7 @@ export default function TopicPage() {
           <div ref={tagSearchRef} style={{ position: 'relative', marginBottom: 10 }}>
             <input
               type="text"
-              placeholder="태그 검색..."
+              placeholder="Search tags..."
               value={tagSearch}
               onChange={(e) => handleTagSearchChange(e.target.value)}
               onFocus={() => { if (tagSuggestions.length > 0) setShowTagSuggestions(true); }}
