@@ -313,9 +313,12 @@ PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope $SCOPE --silent)`}</CodeBl
                 Submit proof and get a session token
               </p>
               <CodeBlock>{`# Submit proof and get token (uses variables from Step 2)
-TOKEN=$(curl -s -X POST "https://stg-community.zkproofport.app/api/auth/verify/ai" \\
-  -H "Content-Type: application/json" \\
-  -d '{"challengeId":"'$CHALLENGE_ID'","result":'$PROOF_RESULT'}' \\
+TOKEN=$(jq -n \\
+  --arg cid "$CHALLENGE_ID" \\
+  --argjson result "$PROOF_RESULT" \\
+  '{challengeId: $cid, result: $result}' \\
+  | curl -s -X POST "https://stg-community.zkproofport.app/api/auth/verify/ai" \\
+    -H "Content-Type: application/json" -d @- \\
   | jq -r '.token')
 
 # Option 1: Use in browser — paste token in the login page

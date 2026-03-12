@@ -186,10 +186,12 @@ PROOF_RESULT=$(zkproofport-prove coinbase_kyc \\
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 3. Submit &amp; Get Token
               </p>
-              <CopyableCodeBlock>{`TOKEN=$(curl -s -X POST \\
-  ${host}/api/auth/verify/ai \\
-  -H "Content-Type: application/json" \\
-  -d '{"challengeId":"'$CHALLENGE_ID'","result":'$PROOF_RESULT'}' \\
+              <CopyableCodeBlock>{`TOKEN=$(jq -n \\
+  --arg cid "$CHALLENGE_ID" \\
+  --argjson result "$PROOF_RESULT" \\
+  '{challengeId: $cid, result: $result}' \\
+  | curl -s -X POST ${host}/api/auth/verify/ai \\
+    -H "Content-Type: application/json" -d @- \\
   | jq -r '.token')
 echo $TOKEN
 # Paste this token into the input below to access the community UI
