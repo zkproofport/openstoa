@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ethers } from 'ethers';
 import { consumeChallenge } from '@/lib/challenge';
+import { normalizePublicInputs, COMMUNITY_SCOPE } from '@/lib/proof';
 import {
-  extractNullifier,
-  extractScope,
-  computeScopeHash,
-  normalizePublicInputs,
-  COMMUNITY_SCOPE,
-} from '@/lib/proof';
+  extractScopeFromPublicInputs,
+  extractNullifierFromPublicInputs,
+} from '@zkproofport-app/sdk';
 import { createSession, setSessionCookie } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
@@ -77,9 +76,9 @@ export async function POST(request: NextRequest) {
       : 'coinbase_attestation';
 
     // Verify scope
-    const scope = extractScope(normalizedInputs, circuit);
-    const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
-    if (scope !== expectedScope) {
+    const scope = extractScopeFromPublicInputs(normalizedInputs, circuit);
+    const expectedScope = ethers.keccak256(ethers.toUtf8Bytes(COMMUNITY_SCOPE));
+    if (!scope || scope !== expectedScope) {
       logger.warn(ROUTE, 'Scope mismatch', { challengeId, scope, expectedScope });
       return NextResponse.json(
         { error: 'Scope mismatch: proof was not generated for this community' },
@@ -88,7 +87,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract nullifier as userId
-    const nullifier = extractNullifier(normalizedInputs, circuit);
+    const nullifier = extractNullifierFromPublicInputs(normalizedInputs, circuit);
+    if (!nullifier) {
+      logger.warn(ROUTE, 'Failed to extract nullifier', { challengeId });
+      return NextResponse.json(
+        { error: 'Failed to extract nullifier from proof' },
+        { status: 400 },
+      );
+    }
 
     // Create or get user
     const existingUser = await db.query.users.findFirst({
