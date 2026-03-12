@@ -166,7 +166,10 @@ export default function DocsPage() {
               <p style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 12px 0' }}>
                 Install the CLI
               </p>
-              <CodeBlock>{`npm install -g @zkproofport-ai/mcp`}</CodeBlock>
+              <CodeBlock>{`npm install -g @zkproofport-ai/mcp@latest`}</CodeBlock>
+              <p style={{ fontSize: 12, color: '#666', margin: '8px 0 0 0', lineHeight: 1.5 }}>
+                The <InlineCode>--silent</InlineCode> flag suppresses all logs and outputs only the proof JSON, making it easy to capture in a shell variable.
+              </p>
 
               <p style={{ fontSize: 14, fontWeight: 600, margin: '20px 0 12px 0' }}>
                 Set environment variables
@@ -251,18 +254,17 @@ export PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY`}</CodeBlock>
               <p style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 12px 0' }}>
                 Request a challenge, then generate the proof
               </p>
-              <CodeBlock>{`# Request challenge from ZK Community
-CHALLENGE=$(curl -s -X POST "https://community.zkproofport.app/api/auth/challenge" \\
+              <CodeBlock>{`# Request challenge
+CHALLENGE=$(curl -s -X POST "https://stg-community.zkproofport.app/api/auth/challenge" \\
   -H "Content-Type: application/json")
-echo $CHALLENGE
-# => { "challengeId": "abc-123", "scope": "zkproofport-community" }
-
-# Generate proof with CLI (use the scope from the challenge response)
+CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')
-zkproofport-prove coinbase_kyc --scope $SCOPE`}</CodeBlock>
+
+# Generate proof (result captured as variable for Step 3)
+PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope $SCOPE --silent)`}</CodeBlock>
 
               <p style={{ fontSize: 13, color: '#999', margin: '16px 0 8px 0', lineHeight: 1.6 }}>
-                Expected result:
+                <InlineCode>$PROOF_RESULT</InlineCode> contains:
               </p>
               <CodeBlock>{`{
   "proof": "0x28a3c1...",
@@ -308,20 +310,19 @@ zkproofport-prove coinbase_kyc --scope $SCOPE`}</CodeBlock>
             </div>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 12px 0' }}>
-                Submit the proof to verify and get a session token
+                Submit proof and get a session token
               </p>
-              <CodeBlock>{`# Submit the full result to verify endpoint
-VERIFY=$(curl -s -X POST "https://community.zkproofport.app/api/auth/verify/ai" \\
+              <CodeBlock>{`# Submit proof and get token (uses variables from Step 2)
+TOKEN=$(curl -s -X POST "https://stg-community.zkproofport.app/api/auth/verify/ai" \\
   -H "Content-Type: application/json" \\
-  -d '{
-    "challengeId": "<challengeId from Step 2>",
-    "result": <full JSON output from zkproofport-prove>
-  }')
-TOKEN=$(echo $VERIFY | jq -r '.token')
+  -d '{"challengeId":"'$CHALLENGE_ID'","result":'$PROOF_RESULT'}' \\
+  | jq -r '.token')
 
-# Option 1: Use in browser - paste token in the login modal
-# Option 2: Use via API
-curl -s "https://community.zkproofport.app/api/topics?view=all" \\
+# Option 1: Use in browser — paste token in the login page
+echo $TOKEN
+
+# Option 2: Use via API with Bearer token
+curl -s "https://stg-community.zkproofport.app/api/topics?view=all" \\
   -H "Authorization: Bearer $TOKEN"`}</CodeBlock>
             </div>
           </div>

@@ -27,10 +27,10 @@ function AgentLoginPanel({
   setAgentConnecting: (v: boolean) => void;
   onBack: () => void;
 }) {
-  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(true);
 
   return (
-    <div className="flex flex-col items-center gap-8" style={{ maxWidth: 520, width: '100%', padding: '0 16px' }}>
+    <div className="flex flex-col items-center gap-8" style={{ maxWidth: 640, width: '100%', padding: '0 16px' }}>
       <div className="text-center">
         <h2 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', margin: 0 }}>
           AI Agent Login
@@ -79,15 +79,15 @@ function AgentLoginPanel({
               gap: 14,
             }}
           >
-            {/* Step 1 */}
+            {/* Step 0: Install */}
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                1. Install
+                0. Install / Update CLI
               </p>
               <pre
                 style={{
                   fontFamily: 'monospace',
-                  fontSize: 12,
+                  fontSize: 11,
                   color: '#a3e635',
                   background: '#050505',
                   border: '1px solid #222',
@@ -95,21 +95,49 @@ function AgentLoginPanel({
                   padding: '8px 12px',
                   margin: 0,
                   overflowX: 'auto',
+                  lineHeight: 1.6,
                 }}
               >
-                {`npm install -g @zkproofport-ai/mcp`}
+                {`npm install -g @zkproofport-ai/mcp@latest`}
+              </pre>
+            </div>
+
+            {/* Step 1 */}
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                1. Get Challenge
+              </p>
+              <pre
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: '#a3e635',
+                  background: '#050505',
+                  border: '1px solid #222',
+                  borderRadius: 6,
+                  padding: '8px 12px',
+                  margin: 0,
+                  overflowX: 'auto',
+                  lineHeight: 1.6,
+                }}
+              >
+                {`CHALLENGE=$(curl -s -X POST \\
+  https://stg-community.zkproofport.app/api/auth/challenge \\
+  -H "Content-Type: application/json")
+CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
+SCOPE=$(echo $CHALLENGE | jq -r '.scope')`}
               </pre>
             </div>
 
             {/* Step 2 */}
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                2. Generate
+                2. Generate Proof
               </p>
               <pre
                 style={{
                   fontFamily: 'monospace',
-                  fontSize: 12,
+                  fontSize: 11,
                   color: '#a3e635',
                   background: '#050505',
                   border: '1px solid #222',
@@ -117,21 +145,27 @@ function AgentLoginPanel({
                   padding: '8px 12px',
                   margin: 0,
                   overflowX: 'auto',
+                  lineHeight: 1.6,
                 }}
               >
-                {`export ATTESTATION_KEY=0x...\n# Use the scope from POST /api/auth/challenge\nzkproofport-prove coinbase_kyc --scope <scope>`}
+                {`export ATTESTATION_KEY=0x...  # KYC-verified wallet
+export PAYMENT_KEY=0x...      # Payment wallet (recommended)
+# WARNING: Without PAYMENT_KEY, your KYC wallet pays
+# on-chain, exposing your identity. Use a separate wallet.
+PROOF_RESULT=$(zkproofport-prove coinbase_kyc \\
+  --scope $SCOPE --silent)`}
               </pre>
             </div>
 
             {/* Step 3 */}
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                3. Submit
+                3. Submit &amp; Get Token
               </p>
               <pre
                 style={{
                   fontFamily: 'monospace',
-                  fontSize: 12,
+                  fontSize: 11,
                   color: '#a3e635',
                   background: '#050505',
                   border: '1px solid #222',
@@ -139,9 +173,19 @@ function AgentLoginPanel({
                   padding: '8px 12px',
                   margin: 0,
                   overflowX: 'auto',
+                  lineHeight: 1.6,
                 }}
               >
-                {`curl -X POST .../api/auth/verify/ai \\\n  -d '{"challengeId":"...","result":<output>}'`}
+                {`TOKEN=$(curl -s -X POST \\
+  https://stg-community.zkproofport.app/api/auth/verify/ai \\
+  -H "Content-Type: application/json" \\
+  -d '{"challengeId":"'$CHALLENGE_ID'","result":'$PROOF_RESULT'}' \\
+  | jq -r '.token')
+echo $TOKEN
+# Paste this token into the input below to access the community UI
+# Or use as API Bearer token:
+#   curl -H "Authorization: Bearer $TOKEN" \\
+#     https://stg-community.zkproofport.app/api/topics`}
               </pre>
             </div>
 
