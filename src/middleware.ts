@@ -43,6 +43,17 @@ export async function middleware(request: NextRequest) {
   const bearerToken =
     authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
   const token = cookieToken ?? bearerToken;
+
+  if (isApiRoute(pathname)) {
+    console.log('[middleware]', pathname, {
+      hasCookie: !!cookieToken,
+      hasAuthHeader: !!authHeader,
+      authHeaderValue: authHeader ? `${authHeader.substring(0, 20)}...` : null,
+      hasBearerToken: !!bearerToken,
+      hasToken: !!token,
+    });
+  }
+
   if (!token) {
     if (isApiRoute(pathname)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
