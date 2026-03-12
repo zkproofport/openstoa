@@ -225,8 +225,7 @@ export default function TopicPage() {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMore, postsLoading, offset, activeTag, sortBy]);
+  }, [hasMore, postsLoading, offset, activeTag, sortBy, loadPosts]);
 
   function handleLoadMore() {
     loadPosts(offset, false, activeTag, sortBy);
