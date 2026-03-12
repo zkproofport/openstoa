@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromCookies } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topics, topicMembers } from '@/lib/db/schema';
 import { eq, and, count } from 'drizzle-orm';
@@ -8,12 +8,12 @@ import { logger } from '@/lib/logger';
 const ROUTE = '/api/topics/[topicId]';
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
   logger.info(ROUTE, 'GET request received');
   try {
-    const session = await getSessionFromCookies();
+    const session = await getSession(request);
     if (!session) {
       logger.warn(ROUTE, 'Unauthenticated request');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

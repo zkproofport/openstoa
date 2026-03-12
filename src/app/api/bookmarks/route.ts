@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromCookies } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { bookmarks, posts, users } from '@/lib/db/schema';
 import { eq, desc } from 'drizzle-orm';
@@ -10,7 +10,7 @@ const ROUTE = '/api/bookmarks';
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {
-    const session = await getSessionFromCookies();
+    const session = await getSession(request);
     if (!session) {
       logger.warn(ROUTE, 'Unauthenticated request');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

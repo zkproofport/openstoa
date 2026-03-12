@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const COOKIE_NAME = 'zk-community-session';
 
@@ -44,6 +44,19 @@ export async function getSessionFromCookies(): Promise<SessionPayload | null> {
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   return verifySession(token);
+}
+
+export async function getSession(request: NextRequest): Promise<SessionPayload | null> {
+  // 1. Try cookie
+  const cookieToken = request.cookies.get(COOKIE_NAME)?.value;
+  if (cookieToken) return verifySession(cookieToken);
+
+  // 2. Try Bearer token
+  const authHeader = request.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  if (bearerToken) return verifySession(bearerToken);
+
+  return null;
 }
 
 export function setSessionCookie(response: NextResponse, token: string): void {

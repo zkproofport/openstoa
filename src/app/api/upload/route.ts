@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromCookies } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
@@ -44,7 +44,7 @@ function getS3() {
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
-    const session = await getSessionFromCookies();
+    const session = await getSession(request);
     if (!session) {
       logger.warn(ROUTE, 'Unauthenticated request');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

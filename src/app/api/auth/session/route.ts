@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server';
-import { getSessionFromCookies } from '@/lib/session';
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/auth/session';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {
-    const session = await getSessionFromCookies();
+    const session = await getSession(request);
     if (!session) {
       logger.info(ROUTE, 'No active session found, returning 401');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

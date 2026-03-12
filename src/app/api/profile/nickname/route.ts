@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromCookies, createSession, setSessionCookie } from '@/lib/session';
+import { getSession, createSession, setSessionCookie } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -12,7 +12,7 @@ const NICKNAME_REGEX = /^[a-zA-Z0-9_]{2,20}$/;
 export async function PUT(request: NextRequest) {
   logger.info(ROUTE, 'PUT request received');
   try {
-    const session = await getSessionFromCookies();
+    const session = await getSession(request);
     if (!session) {
       logger.warn(ROUTE, 'Unauthenticated request');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromCookies } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { joinRequests, topicMembers, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -13,7 +13,7 @@ export async function GET(
 ) {
   logger.info(ROUTE, 'GET request received');
   try {
-    const session = await getSessionFromCookies();
+    const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
@@ -68,7 +68,7 @@ export async function PATCH(
 ) {
   logger.info(ROUTE, 'PATCH request received');
   try {
-    const session = await getSessionFromCookies();
+    const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }

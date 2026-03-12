@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { getSessionFromCookies } from '@/lib/session';
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users, topicMembers, topics, votes, bookmarks } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -8,9 +8,9 @@ import { cookies } from 'next/headers';
 
 const ROUTE = '/api/account';
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   // 1. Auth check
-  const session = await getSessionFromCookies();
+  const session = await getSession(request);
   if (!session) {
     logger.warn(ROUTE, 'DELETE account: unauthenticated');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
