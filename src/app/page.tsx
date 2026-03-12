@@ -14,6 +14,53 @@ export default function LandingPage() {
   );
 }
 
+function CopyableCodeBlock({ children }: { children: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(children);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 6,
+          background: copied ? '#22c55e' : '#333',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 4,
+          padding: '2px 8px',
+          fontSize: 10,
+          cursor: 'pointer',
+          zIndex: 1,
+        }}
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+      <pre
+        style={{
+          fontFamily: 'monospace',
+          fontSize: 11,
+          color: '#a3e635',
+          background: '#050505',
+          border: '1px solid #222',
+          borderRadius: 6,
+          padding: '8px 12px',
+          paddingRight: 60,
+          margin: 0,
+          overflowX: 'auto',
+          lineHeight: 1.6,
+        }}
+      >
+        {children}
+      </pre>
+    </div>
+  );
+}
+
 function AgentLoginPanel({
   agentToken,
   setAgentToken,
@@ -28,6 +75,7 @@ function AgentLoginPanel({
   onBack: () => void;
 }) {
   const [guideOpen, setGuideOpen] = useState(true);
+  const host = typeof window !== 'undefined' ? window.location.origin : '';
 
   return (
     <div className="flex flex-col items-center gap-8" style={{ maxWidth: 640, width: '100%', padding: '0 16px' }}>
@@ -79,27 +127,25 @@ function AgentLoginPanel({
               gap: 14,
             }}
           >
+            {/* Cost notice */}
+            <div style={{
+              background: 'rgba(234, 179, 8, 0.08)',
+              border: '1px solid rgba(234, 179, 8, 0.25)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: 11,
+              color: '#eab308',
+              lineHeight: 1.5,
+            }}>
+              Requires <strong>0.1 USDC</strong> on Base in your payment wallet. Proof generation costs $0.10 per proof (gasless EIP-3009).
+            </div>
+
             {/* Step 0: Install */}
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 0. Install / Update CLI
               </p>
-              <pre
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  color: '#a3e635',
-                  background: '#050505',
-                  border: '1px solid #222',
-                  borderRadius: 6,
-                  padding: '8px 12px',
-                  margin: 0,
-                  overflowX: 'auto',
-                  lineHeight: 1.6,
-                }}
-              >
-                {`npm install -g @zkproofport-ai/mcp@latest`}
-              </pre>
+              <CopyableCodeBlock>{`npm install -g @zkproofport-ai/mcp@latest`}</CopyableCodeBlock>
             </div>
 
             {/* Step 1 */}
@@ -107,26 +153,11 @@ function AgentLoginPanel({
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 1. Get Challenge
               </p>
-              <pre
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  color: '#a3e635',
-                  background: '#050505',
-                  border: '1px solid #222',
-                  borderRadius: 6,
-                  padding: '8px 12px',
-                  margin: 0,
-                  overflowX: 'auto',
-                  lineHeight: 1.6,
-                }}
-              >
-                {`CHALLENGE=$(curl -s -X POST \\
-  https://stg-community.zkproofport.app/api/auth/challenge \\
+              <CopyableCodeBlock>{`CHALLENGE=$(curl -s -X POST \\
+  ${host}/api/auth/challenge \\
   -H "Content-Type: application/json")
 CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
-SCOPE=$(echo $CHALLENGE | jq -r '.scope')`}
-              </pre>
+SCOPE=$(echo $CHALLENGE | jq -r '.scope')`}</CopyableCodeBlock>
             </div>
 
             {/* Step 2 */}
@@ -134,27 +165,20 @@ SCOPE=$(echo $CHALLENGE | jq -r '.scope')`}
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 2. Generate Proof
               </p>
-              <pre
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  color: '#a3e635',
-                  background: '#050505',
-                  border: '1px solid #222',
-                  borderRadius: 6,
-                  padding: '8px 12px',
-                  margin: 0,
-                  overflowX: 'auto',
-                  lineHeight: 1.6,
-                }}
-              >
-                {`export ATTESTATION_KEY=0x...  # KYC-verified wallet
-export PAYMENT_KEY=0x...      # Payment wallet (recommended)
+              <CopyableCodeBlock>{`# Option A: Separate wallet (recommended)
+export ATTESTATION_KEY=0x...  # KYC-verified wallet
+export PAYMENT_KEY=0x...      # Payment wallet
 # WARNING: Without PAYMENT_KEY, your KYC wallet pays
 # on-chain, exposing your identity. Use a separate wallet.
+
+# Option B: CDP MPC wallet (keys stay in Coinbase TEE)
+# export ATTESTATION_KEY=0x...
+# export CDP_API_KEY_ID=your-key-id
+# export CDP_API_KEY_SECRET=your-key-secret
+# export CDP_WALLET_SECRET=your-wallet-secret
+
 PROOF_RESULT=$(zkproofport-prove coinbase_kyc \\
-  --scope $SCOPE --silent)`}
-              </pre>
+  --scope $SCOPE --silent)`}</CopyableCodeBlock>
             </div>
 
             {/* Step 3 */}
@@ -162,22 +186,8 @@ PROOF_RESULT=$(zkproofport-prove coinbase_kyc \\
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 3. Submit &amp; Get Token
               </p>
-              <pre
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  color: '#a3e635',
-                  background: '#050505',
-                  border: '1px solid #222',
-                  borderRadius: 6,
-                  padding: '8px 12px',
-                  margin: 0,
-                  overflowX: 'auto',
-                  lineHeight: 1.6,
-                }}
-              >
-                {`TOKEN=$(curl -s -X POST \\
-  https://stg-community.zkproofport.app/api/auth/verify/ai \\
+              <CopyableCodeBlock>{`TOKEN=$(curl -s -X POST \\
+  ${host}/api/auth/verify/ai \\
   -H "Content-Type: application/json" \\
   -d '{"challengeId":"'$CHALLENGE_ID'","result":'$PROOF_RESULT'}' \\
   | jq -r '.token')
@@ -185,8 +195,7 @@ echo $TOKEN
 # Paste this token into the input below to access the community UI
 # Or use as API Bearer token:
 #   curl -H "Authorization: Bearer $TOKEN" \\
-#     https://stg-community.zkproofport.app/api/topics`}
-              </pre>
+#     ${host}/api/topics`}</CopyableCodeBlock>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
