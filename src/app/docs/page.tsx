@@ -257,8 +257,9 @@ CHALLENGE=$(curl -s -X POST "https://community.zkproofport.app/api/auth/challeng
 echo $CHALLENGE
 # => { "challengeId": "abc-123", "scope": "zkproofport-community" }
 
-# Generate proof with CLI
-zkproofport-prove coinbase_kyc --scope zkproofport-community`}</CodeBlock>
+# Generate proof with CLI (use the scope from the challenge response)
+SCOPE=$(echo $CHALLENGE | jq -r '.scope')
+zkproofport-prove coinbase_kyc --scope $SCOPE`}</CodeBlock>
 
               <p style={{ fontSize: 13, color: '#999', margin: '16px 0 8px 0', lineHeight: 1.6 }}>
                 Expected result:

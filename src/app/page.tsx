@@ -119,7 +119,7 @@ function AgentLoginPanel({
                   overflowX: 'auto',
                 }}
               >
-                {`export ATTESTATION_KEY=0x...\nzkproofport-prove coinbase_kyc --scope zkproofport-community`}
+                {`export ATTESTATION_KEY=0x...\n# Use the scope from POST /api/auth/challenge\nzkproofport-prove coinbase_kyc --scope <scope>`}
               </pre>
             </div>
 

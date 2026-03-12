@@ -5,7 +5,6 @@ const PUBLIC_PATHS = [
   '/',
   '/api/auth/proof-request',
   '/api/auth/challenge',
-  '/api/auth/verify',
   '/api/auth/verify/ai',
   '/api/auth/poll',
   '/api/auth/logout',
