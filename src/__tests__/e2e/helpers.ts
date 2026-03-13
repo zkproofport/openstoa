@@ -47,11 +47,15 @@ export async function authPut(path: string, body?: unknown): Promise<Response> {
   });
 }
 
-/** Make an authenticated DELETE request */
-export async function authDelete(path: string): Promise<Response> {
+/** Make an authenticated DELETE request with optional JSON body */
+export async function authDelete(path: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${getAuthToken()}` },
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
   });
 }
 

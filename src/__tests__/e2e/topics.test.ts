@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, publicGet } from './helpers';
+import { authGet, authPost, authPatch, authDelete, publicGet } from './helpers';
 
 let createdTopicId: string;
 let inviteCode: string;
@@ -95,5 +95,73 @@ describe.sequential('Topics endpoints', () => {
     const json = await res.json();
     const requests = json.requests || json;
     expect(Array.isArray(requests)).toBe(true);
+  });
+
+  it('POST /api/topics/:topicId/join returns 409 when already a member', async () => {
+    expect(createdTopicId).toBeTruthy();
+    const res = await authPost(`/api/topics/${createdTopicId}/join`, {});
+    // Creator is already a member (owner), so expect 409 Conflict
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('POST /api/topics/join/:inviteCode returns 409 when already a member', async () => {
+    expect(inviteCode).toBeTruthy();
+    const res = await authPost(`/api/topics/join/${inviteCode}`, {});
+    // Creator is already a member (owner), so expect 409 Conflict
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('PATCH /api/topics/:topicId/members returns 400 when owner tries to change own role', async () => {
+    expect(createdTopicId).toBeTruthy();
+    // Fetch current user's userId from the members list
+    const membersRes = await authGet(`/api/topics/${createdTopicId}/members`);
+    expect(membersRes.status).toBe(200);
+    const membersJson = await membersRes.json();
+    const ownerMember = membersJson.members.find((m: { role: string }) => m.role === 'owner');
+    expect(ownerMember).toBeTruthy();
+
+    const res = await authPatch(`/api/topics/${createdTopicId}/members`, {
+      userId: ownerMember.userId,
+      role: 'admin',
+    });
+    // Cannot change own role
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('DELETE /api/topics/:topicId/members returns 400 when trying to remove self', async () => {
+    expect(createdTopicId).toBeTruthy();
+    // Fetch current user's userId from the members list
+    const membersRes = await authGet(`/api/topics/${createdTopicId}/members`);
+    expect(membersRes.status).toBe(200);
+    const membersJson = await membersRes.json();
+    const ownerMember = membersJson.members.find((m: { role: string }) => m.role === 'owner');
+    expect(ownerMember).toBeTruthy();
+
+    const res = await authDelete(`/api/topics/${createdTopicId}/members`, {
+      userId: ownerMember.userId,
+    });
+    // Cannot kick yourself
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('PATCH /api/topics/:topicId/requests returns 404 for non-existent requestId', async () => {
+    expect(createdTopicId).toBeTruthy();
+    const fakeRequestId = '00000000-0000-0000-0000-000000000000';
+    const res = await authPatch(`/api/topics/${createdTopicId}/requests`, {
+      requestId: fakeRequestId,
+      action: 'approve',
+    });
+    // Request does not exist → 404
+    expect(res.status).toBe(404);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
   });
 });

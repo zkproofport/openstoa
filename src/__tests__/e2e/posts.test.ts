@@ -136,4 +136,27 @@ describe.sequential('Posts endpoints', () => {
 
   // NOTE: Do NOT delete the post here — it may be needed for record tests
   // The post needs to be at least 1 hour old for recording
+
+  it('DELETE /api/posts/:postId deletes a post', async () => {
+    // Create a new post specifically for deletion testing
+    const createRes = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `E2E Delete Target Post ${Date.now()}`,
+      content: 'This post will be deleted by the E2E delete test.',
+      tags: [],
+    });
+    expect(createRes.status).toBe(201);
+    const createJson = await createRes.json();
+    const newPostId = createJson.post.id;
+    expect(newPostId).toBeTruthy();
+
+    // Delete the post
+    const deleteRes = await authDelete(`/api/posts/${newPostId}`);
+    expect(deleteRes.status).toBe(200);
+    const deleteJson = await deleteRes.json();
+    expect(deleteJson.success).toBe(true);
+
+    // Confirm it is gone
+    const getRes = await authGet(`/api/posts/${newPostId}`);
+    expect(getRes.status).toBe(404);
+  });
 });

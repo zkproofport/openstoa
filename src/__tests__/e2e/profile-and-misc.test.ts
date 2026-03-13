@@ -17,6 +17,21 @@ describe('Profile endpoints', () => {
     const json = await res.json();
     expect(json.nickname).toBe(nickname);
   });
+
+  it('PUT /api/profile/image sets profile image URL', async () => {
+    const res = await authPut('/api/profile/image', { imageUrl: 'https://example.com/test.png' });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.profileImage).toBe('https://example.com/test.png');
+  });
+
+  it('DELETE /api/profile/image removes profile image', async () => {
+    const res = await authDelete('/api/profile/image');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+  });
 });
 
 describe('My Activity endpoints', () => {
