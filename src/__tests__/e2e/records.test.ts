@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { authGet, authPost } from './helpers';
 
-describe('Record endpoints', () => {
+describe.sequential('Record endpoints', () => {
   let topicId: string;
   let ownPostId: string;
 
@@ -26,20 +26,16 @@ describe('Record endpoints', () => {
     ownPostId = postJson.post.id;
   });
 
-  it('POST /api/posts/:postId/record rejects own post', async () => {
+  it('POST /api/posts/:postId/record rejects own post (403)', async () => {
     const res = await authPost(`/api/posts/${ownPostId}/record`);
-    // Not yet deployed to staging - accept 404
-    if (res.status === 404) return;
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toContain('own post');
   });
 
-  it('POST /api/posts/:postId/record rejects non-existent post', async () => {
+  it('POST /api/posts/:postId/record rejects non-existent post (403)', async () => {
     const fakeId = '00000000-0000-0000-0000-000000000000';
     const res = await authPost(`/api/posts/${fakeId}/record`);
-    // Not yet deployed to staging - accept 404
-    if (res.status === 404) return;
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toContain('not found');
@@ -47,28 +43,20 @@ describe('Record endpoints', () => {
 
   it('GET /api/posts/:postId/records returns records list', async () => {
     const res = await authGet(`/api/posts/${ownPostId}/records`);
-    // Not yet deployed to staging - accept 404
-    if (res.status === 404) return;
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.records).toBeDefined();
     expect(Array.isArray(json.records)).toBe(true);
-    expect(json.postEdited).toBeDefined();
+    expect(typeof json.recordCount).toBe('number');
+    expect(typeof json.postEdited).toBe('boolean');
+    expect(typeof json.userRecorded).toBe('boolean');
   });
 
   it('GET /api/recorded returns recorded feed', async () => {
     const res = await authGet('/api/recorded');
-    // Not yet deployed to staging - accept 404
-    if (res.status === 404) return;
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(Array.isArray(json)).toBe(true);
+    expect(json.posts).toBeDefined();
+    expect(Array.isArray(json.posts)).toBe(true);
   });
-
-  // Note: Testing actual on-chain recording requires:
-  // 1. A post NOT created by the test user
-  // 2. That post must be at least 1 hour old
-  // 3. Test user must not have already recorded it
-  // This is hard to set up in automated E2E — the contract integration
-  // is tested separately in record-onchain.test.ts
 });

@@ -51,10 +51,10 @@ export async function setup() {
   const { challengeId, scope } = await challengeRes.json();
   console.log(`[E2E Setup] Challenge created: ${challengeId}, scope: ${scope}`);
 
-  // Step 2: Generate ZK proof using AI SDK (production — default config)
+  // Step 2: Generate ZK proof using AI SDK (staging AI for Base Sepolia payment)
   const { createConfig, generateProof, fromPrivateKey } = await import('@zkproofport-ai/sdk');
 
-  const aiConfig = createConfig();
+  const aiConfig = createConfig({ baseUrl: 'https://stg-ai.zkproofport.app' });
 
   const attestationKey = process.env.E2E_ATTESTATION_WALLET_KEY;
   const payerKey = process.env.E2E_PAYER_WALLET_KEY;
