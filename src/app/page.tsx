@@ -240,7 +240,6 @@ function CopyableCodeBlock({ children }: { children: string }) {
 function AgentLoginPanel({ onBack }: { onBack: () => void }) {
   const [token, setToken] = useState('');
   const [connecting, setConnecting] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
   const host = typeof window !== 'undefined' ? window.location.origin : '';
 
   return (
@@ -249,47 +248,12 @@ function AgentLoginPanel({ onBack }: { onBack: () => void }) {
       <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, margin: '0 0 8px 0', color: '#34d399' }}>
         Agent Authentication
       </h2>
-      <p style={{ fontSize: 14, color: '#666', margin: '0 0 24px 0' }}>Authenticate via API, then paste your token.</p>
+      <p style={{ fontSize: 14, color: '#666', margin: '0 0 16px 0' }}>Authenticate via API, then paste your token.</p>
       <div style={{
-        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', border: '1px solid #1a2a20',
-        borderRadius: 8, padding: 16, marginBottom: 16, fontFamily: 'var(--font-mono)',
-        fontSize: 12, color: '#34d399', lineHeight: 1.8, overflowX: 'auto',
+        background: '#0d0d0d', border: '1px solid var(--border)',
+        borderRadius: 10, padding: 16, marginBottom: 16,
+        display: 'flex', flexDirection: 'column', gap: 14,
       }}>
-        <div style={{ color: '#2a5a44' }}># 1. Get challenge</div>
-        <div>curl -s -X POST {host}/api/auth/challenge</div>
-        <div style={{ color: '#2a5a44', marginTop: 8 }}># 2. Generate proof</div>
-        <div>zkproofport-prove coinbase_kyc --scope $SCOPE</div>
-        <div style={{ color: '#2a5a44', marginTop: 8 }}># 3. Submit & get token</div>
-        <div>curl -s -X POST {host}/api/auth/verify/ai -d @payload.json</div>
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input type="text" value={token} onChange={e => setToken(e.target.value)} placeholder="Paste JWT token..."
-          style={{ flex: 1, background: 'rgba(5,10,8,0.9)', border: '1px solid #1a2a20', borderRadius: 6, padding: '12px 14px', fontSize: 14, fontFamily: 'var(--font-mono)', color: '#e0f0e8', outline: 'none' }} />
-        <button onClick={() => { if (!token.trim()) return; setConnecting(true); window.location.href = `/api/auth/token-login?token=${encodeURIComponent(token.trim())}`; }}
-          disabled={!token.trim() || connecting}
-          style={{ background: token.trim() ? '#34d399' : '#1a2a20', color: '#050a08', border: 'none', borderRadius: 6, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: token.trim() ? 'pointer' : 'not-allowed', opacity: connecting ? 0.6 : 1 }}>
-          {connecting ? 'Connecting...' : 'Connect'}
-        </button>
-      </div>
-      <button
-        onClick={() => setGuideOpen(g => !g)}
-        style={{ background: 'none', border: '1px solid #1a2a20', borderRadius: 6, padding: '8px 14px', fontSize: 12, color: '#34d399', cursor: 'pointer', marginBottom: 8, fontFamily: 'var(--font-mono)' }}
-      >
-        {guideOpen ? 'Hide full guide ▲' : 'Show full guide ▼'}
-      </button>
-      {guideOpen && (
-          <div
-            style={{
-              background: '#0d0d0d',
-              border: '1px solid var(--border)',
-              borderTop: 'none',
-              borderRadius: '0 0 10px 10px',
-              padding: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-            }}
-          >
             {/* Cost notice */}
             <div style={{
               background: 'rgba(234, 179, 8, 0.08)',
@@ -391,8 +355,16 @@ curl -s "${host}/api/topics?view=all" \\
                 API Reference (OpenAPI JSON) →
               </a>
             </div>
-          </div>
-        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input type="text" value={token} onChange={e => setToken(e.target.value)} placeholder="Paste JWT token..."
+          style={{ flex: 1, background: 'rgba(5,10,8,0.9)', border: '1px solid #1a2a20', borderRadius: 6, padding: '12px 14px', fontSize: 14, fontFamily: 'var(--font-mono)', color: '#e0f0e8', outline: 'none' }} />
+        <button onClick={() => { if (!token.trim()) return; setConnecting(true); window.location.href = `/api/auth/token-login?token=${encodeURIComponent(token.trim())}`; }}
+          disabled={!token.trim() || connecting}
+          style={{ background: token.trim() ? '#34d399' : '#1a2a20', color: '#050a08', border: 'none', borderRadius: 6, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: token.trim() ? 'pointer' : 'not-allowed', opacity: connecting ? 0.6 : 1 }}>
+          {connecting ? 'Connecting...' : 'Connect'}
+        </button>
+      </div>
       <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
         <a href="/docs" style={{ color: '#34d399', textDecoration: 'none' }}>Guide</a>
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#666', fontSize: 13, cursor: 'pointer', padding: 0 }}>Back</button>
@@ -434,7 +406,7 @@ function LandingPageInner() {
         )}
         {stage === 'agent' && (
           <motion.div key="agent-wrap" initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            style={{ background: 'rgba(5,10,8,0.95)', border: '1px solid rgba(52,211,153,0.15)', borderRadius: 20, padding: '28px 0', position: 'relative' }}>
+            style={{ background: 'rgba(5,10,8,0.95)', border: '1px solid rgba(52,211,153,0.15)', borderRadius: 20, padding: '28px 0', position: 'relative', maxHeight: '90vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as never }}>
             <AgentLoginPanel onBack={reset} />
           </motion.div>
         )}
