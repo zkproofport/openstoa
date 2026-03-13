@@ -138,7 +138,7 @@ export default function JoinPage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '40px 0',
+          padding: '40px 1.5rem',
         }}
       >
         <div style={{ width: '100%', maxWidth: 460 }}>
@@ -147,16 +147,16 @@ export default function JoinPage() {
             <div
               style={{
                 padding: '24px',
-                background: '#0d0d0d',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
                 borderRadius: 14,
                 marginBottom: 28,
               }}
             >
-              <p style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', margin: '0 0 8px' }}>
+              <p style={{ fontSize: 15, color: 'var(--muted)', fontFamily: 'monospace', margin: '0 0 8px' }}>
                 You&apos;ve been invited to
               </p>
-              <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', margin: '0 0 8px' }}>
+              <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', margin: '0 0 8px' }}>
                 {topicInfo.title}
               </h1>
               {topicInfo.description && (
@@ -167,7 +167,7 @@ export default function JoinPage() {
               <div className="flex items-center gap-3 flex-wrap">
                 <span
                   style={{
-                    fontSize: 12,
+                    fontSize: 14,
                     fontFamily: 'monospace',
                     color: 'var(--muted)',
                   }}
@@ -177,7 +177,7 @@ export default function JoinPage() {
                 {topicInfo.requiresCountryProof && (
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: 15,
                       fontFamily: 'monospace',
                       background: 'rgba(59,130,246,0.12)',
                       color: 'var(--accent)',
@@ -198,7 +198,7 @@ export default function JoinPage() {
             <div
               style={{
                 padding: '24px',
-                background: '#0d0d0d',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
                 borderRadius: 14,
                 marginBottom: 20,
@@ -208,7 +208,7 @@ export default function JoinPage() {
               <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
                 Country Proof Required
               </p>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.5 }}>
                 This topic requires proof of your country via ZKProofport.
               </p>
 
@@ -251,7 +251,7 @@ export default function JoinPage() {
           {error && (
             <p
               style={{
-                fontSize: 13,
+                fontSize: 15,
                 color: '#ef4444',
                 fontFamily: 'monospace',
                 background: 'rgba(239,68,68,0.08)',
@@ -286,7 +286,7 @@ export default function JoinPage() {
           </button>
 
           <div style={{ textAlign: 'center', marginTop: 16 }}>
-            <Link href="/topics" style={{ fontSize: 13, color: 'var(--muted)', textDecoration: 'none' }}>
+            <Link href="/topics" style={{ fontSize: 15, color: 'var(--muted)', textDecoration: 'none' }}>
               Browse all topics instead
             </Link>
           </div>

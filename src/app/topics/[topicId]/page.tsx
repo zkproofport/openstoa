@@ -337,7 +337,7 @@ export default function TopicPage() {
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
-      <div style={{ paddingTop: 36, paddingBottom: 100, position: 'relative' }}>
+      <div style={{ paddingTop: 36, paddingBottom: 100, position: 'relative', maxWidth: '56rem', margin: '0 auto', padding: '36px 1.5rem 100px' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 24 }}>
           <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
@@ -348,7 +348,7 @@ export default function TopicPage() {
         {/* Topic header — full width within max-w-4xl */}
         <div style={{
           padding: '20px 24px',
-          background: '#0d0d0d',
+          background: 'var(--surface, #0c0e18)',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: 14,
           marginBottom: 24,
@@ -364,12 +364,12 @@ export default function TopicPage() {
           />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: '#e5e7eb' }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: '#e5e7eb' }}>
                 {topic.title}
               </h1>
               {topic.requiresCountryProof && (
                 <span style={{
-                  fontSize: 11,
+                  fontSize: 15,
                   fontFamily: 'monospace',
                   background: 'rgba(59,130,246,0.12)',
                   color: 'var(--accent)',
@@ -382,7 +382,7 @@ export default function TopicPage() {
               )}
             </div>
             {topic.description && (
-              <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 15, color: '#6b7280', margin: '4px 0 0', lineHeight: 1.5 }}>
                 {topic.description}
               </p>
             )}
@@ -393,7 +393,7 @@ export default function TopicPage() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
-                  fontSize: 12,
+                  fontSize: 14,
                   color: '#6b7280',
                   fontFamily: 'monospace',
                   textDecoration: 'none',
@@ -411,7 +411,7 @@ export default function TopicPage() {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
-                    fontSize: 11,
+                    fontSize: 15,
                     fontWeight: 600,
                     color: '#9ca3af',
                     background: 'rgba(255,255,255,0.06)',
@@ -449,7 +449,7 @@ export default function TopicPage() {
               border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
               borderRadius: 7,
               padding: '8px 14px',
-              fontSize: 13,
+              fontSize: 15,
               cursor: 'pointer',
               fontWeight: 500,
               whiteSpace: 'nowrap',
@@ -473,12 +473,12 @@ export default function TopicPage() {
               onFocus={() => { if (tagSuggestions.length > 0) setShowTagSuggestions(true); }}
               style={{
                 width: '100%',
-                background: '#111',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 8,
                 padding: '8px 14px',
                 color: '#e5e7eb',
-                fontSize: 13,
+                fontSize: 15,
                 outline: 'none',
                 boxSizing: 'border-box',
                 transition: 'border-color 0.12s',
@@ -491,7 +491,7 @@ export default function TopicPage() {
                 left: 0,
                 right: 0,
                 marginTop: 4,
-                background: '#1a1a1a',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: 8,
                 overflow: 'hidden',
@@ -511,7 +511,7 @@ export default function TopicPage() {
                       border: 'none',
                       padding: '8px 14px',
                       color: '#e5e7eb',
-                      fontSize: 13,
+                      fontSize: 15,
                       cursor: 'pointer',
                       textAlign: 'left',
                       transition: 'background 0.1s',
@@ -520,7 +520,7 @@ export default function TopicPage() {
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
                   >
                     <span>#{tag.name}</span>
-                    <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>{tag.postCount}</span>
+                    <span style={{ fontSize: 15, color: '#6b7280', fontFamily: 'monospace' }}>{tag.postCount}</span>
                   </button>
                 ))}
               </div>
@@ -543,7 +543,7 @@ export default function TopicPage() {
                   border: activeTag === null ? 'none' : '1px solid rgba(255,255,255,0.08)',
                   borderRadius: 9999,
                   padding: '4px 12px',
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: activeTag === null ? 600 : 400,
                   cursor: 'pointer',
                   transition: 'all 0.12s',
@@ -563,7 +563,7 @@ export default function TopicPage() {
                       : '1px solid rgba(255,255,255,0.08)',
                     borderRadius: 9999,
                     padding: '4px 12px',
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: activeTag === tag.slug ? 600 : 400,
                     cursor: 'pointer',
                     transition: 'all 0.12s',
@@ -592,7 +592,7 @@ export default function TopicPage() {
               border: sortBy === 'new' ? 'none' : '1px solid rgba(255,255,255,0.08)',
               borderRadius: 9999,
               padding: '4px 14px',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: sortBy === 'new' ? 600 : 400,
               cursor: 'pointer',
               transition: 'all 0.12s',
@@ -608,7 +608,7 @@ export default function TopicPage() {
               border: sortBy === 'popular' ? 'none' : '1px solid rgba(255,255,255,0.08)',
               borderRadius: 9999,
               padding: '4px 14px',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: sortBy === 'popular' ? 600 : 400,
               cursor: 'pointer',
               transition: 'all 0.12s',
@@ -626,7 +626,7 @@ export default function TopicPage() {
           {/* Composer (expanded) */}
           {composing && (
             <div style={{
-              background: '#0d0d0d',
+              background: 'var(--surface, #0c0e18)',
               border: '1px solid rgba(59,130,246,0.3)',
               borderRadius: 12,
               padding: '20px',
@@ -645,7 +645,7 @@ export default function TopicPage() {
                     autoFocus
                     style={{
                       width: '100%',
-                      background: '#111',
+                      background: 'var(--surface, #0c0e18)',
                       border: '1px solid rgba(255,255,255,0.08)',
                       borderRadius: 7,
                       padding: '10px 14px',
@@ -668,7 +668,7 @@ export default function TopicPage() {
                     <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
                   </div>
                   {postError && (
-                    <p style={{ fontSize: 12, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
+                    <p style={{ fontSize: 14, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
                       {postError}
                     </p>
                   )}
@@ -689,7 +689,7 @@ export default function TopicPage() {
                         border: 'none',
                         borderRadius: 6,
                         padding: '8px 16px',
-                        fontSize: 13,
+                        fontSize: 15,
                         cursor: 'pointer',
                       }}
                     >
@@ -704,7 +704,7 @@ export default function TopicPage() {
                         border: 'none',
                         borderRadius: 6,
                         padding: '8px 20px',
-                        fontSize: 13,
+                        fontSize: 15,
                         fontWeight: 600,
                         cursor: 'pointer',
                         opacity: (!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting) ? 0.5 : 1,

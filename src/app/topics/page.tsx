@@ -109,7 +109,7 @@ export default function TopicsPage() {
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
-      <div style={{ paddingTop: 40, paddingBottom: 80 }}>
+      <div style={{ paddingTop: 40, paddingBottom: 80, maxWidth: '56rem', margin: '0 auto', padding: '40px 1.5rem 80px' }}>
         <div
           style={{
             display: 'flex',
@@ -121,7 +121,7 @@ export default function TopicsPage() {
           <div>
             <h1
               style={{
-                fontSize: 26,
+                fontSize: 32,
                 fontWeight: 800,
                 letterSpacing: '-0.04em',
                 margin: 0,
@@ -129,7 +129,7 @@ export default function TopicsPage() {
             >
               Topics
             </h1>
-            <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 4 }}>
+            <p style={{ fontSize: 16, color: 'var(--muted)', marginTop: 4 }}>
               {topics.length > 0
                 ? `${topics.length} topic${topics.length !== 1 ? 's' : ''}`
                 : 'Explore community topics'}
@@ -204,7 +204,7 @@ export default function TopicsPage() {
                   border: `1px solid ${sortBy === key ? 'var(--accent)' : 'var(--border)'}`,
                   borderRadius: 20,
                   padding: '4px 12px',
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: sortBy === key ? 600 : 400,
                   cursor: 'pointer',
                   letterSpacing: '-0.01em',
@@ -257,7 +257,7 @@ export default function TopicsPage() {
             <p style={{ fontSize: 32, marginBottom: 12 }}>🌱</p>
             <p
               style={{
-                fontSize: 16,
+                fontSize: 18,
                 fontWeight: 600,
                 letterSpacing: '-0.02em',
                 marginBottom: 8,
@@ -265,7 +265,7 @@ export default function TopicsPage() {
             >
               {view === 'all' ? 'No topics yet' : 'No joined topics'}
             </p>
-            <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 24 }}>
+            <p style={{ fontSize: 16, color: 'var(--muted)', marginBottom: 24 }}>
               {emptyMessage}
             </p>
             {view === 'all' ? (
@@ -311,7 +311,7 @@ export default function TopicsPage() {
                 <div
                   style={{
                     padding: '20px 24px',
-                    background: '#0d0d0d',
+                    background: 'var(--surface, #0c0e18)',
                     border: '1px solid var(--border)',
                     borderRadius: 12,
                     transition: 'border-color 0.15s, background 0.15s',
@@ -320,13 +320,13 @@ export default function TopicsPage() {
                   onMouseEnter={(e) => {
                     if (isMember) {
                       (e.currentTarget as HTMLDivElement).style.borderColor =
-                        'rgba(59,130,246,0.4)';
-                      (e.currentTarget as HTMLDivElement).style.background = '#111';
+                        'rgba(120,140,255,0.3)';
+                      (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-hover, #10131f)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)';
-                    (e.currentTarget as HTMLDivElement).style.background = '#0d0d0d';
+                    (e.currentTarget as HTMLDivElement).style.background = 'var(--surface, #0c0e18)';
                   }}
                 >
                   <div
@@ -347,7 +347,7 @@ export default function TopicsPage() {
                       <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 6 }}>
                         <h2
                           style={{
-                            fontSize: 16,
+                            fontSize: 18,
                             fontWeight: 700,
                             letterSpacing: '-0.02em',
                             margin: 0,
@@ -359,7 +359,7 @@ export default function TopicsPage() {
                         {topic.requiresCountryProof && (
                           <span
                             style={{
-                              fontSize: 11,
+                              fontSize: 13,
                               fontFamily: 'monospace',
                               background: 'rgba(59,130,246,0.12)',
                               color: 'var(--accent)',
@@ -394,7 +394,7 @@ export default function TopicsPage() {
                       style={{
                         textAlign: 'right',
                         flexShrink: 0,
-                        fontSize: 12,
+                        fontSize: 14,
                         color: 'var(--muted)',
                         lineHeight: 1.8,
                       }}
@@ -419,7 +419,7 @@ export default function TopicsPage() {
                           {topic.requiresCountryProof ? (
                             <span
                               style={{
-                                fontSize: 11,
+                                fontSize: 13,
                                 fontFamily: 'monospace',
                                 background: 'rgba(59,130,246,0.08)',
                                 color: 'var(--muted)',
@@ -433,7 +433,7 @@ export default function TopicsPage() {
                           ) : pendingRequests.has(topic.id) ? (
                             <span
                               style={{
-                                fontSize: 12,
+                                fontSize: 14,
                                 fontWeight: 500,
                                 color: '#eab308',
                                 background: 'rgba(234,179,8,0.1)',

@@ -22,73 +22,99 @@ export default function Header() {
 
   return (
     <header
-      style={{ borderBottom: '1px solid var(--border)' }}
-      className="sticky top-0 z-50 py-4"
+      style={{
+        position: 'sticky', top: 0, zIndex: 50, padding: '12px 0',
+        borderBottom: '1px solid rgba(120,140,255,0.08)',
+      }}
       role="banner"
     >
       <div
-        style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(12px)' }}
-        className="absolute inset-0 -z-10"
+        style={{
+          position: 'absolute', inset: 0, zIndex: -1,
+          background: 'rgba(5,8,16,0.92)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+        }}
       />
-      <div className="flex items-center justify-between">
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          maxWidth: '56rem', margin: '0 auto', padding: '0 1rem',
+        }}
+      >
         <Link
           href="/topics"
-          className="flex items-center gap-2 group"
-          aria-label="ZK Community home"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            textDecoration: 'none', color: 'inherit',
+          }}
+          aria-label="OpenStoa home"
         >
+          {/* Mini arch logo */}
+          <svg width={24} height={24} viewBox="0 0 64 64" fill="none">
+            <path d="M14 54 L14 26 C14 14 22 6 32 6 C42 6 50 14 50 26 L50 54"
+              stroke="#788cff" strokeWidth="2.5" fill="none" />
+            <circle cx="32" cy="6" r="3" fill="#788cff" />
+            <line x1="10" y1="54" x2="54" y2="54" stroke="#788cff" strokeWidth="1.5" opacity="0.4" />
+          </svg>
           <span
             style={{
-              background: 'var(--accent)',
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#fff',
-              flexShrink: 0,
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16,
+              letterSpacing: '-0.03em', color: '#fff',
             }}
           >
-            ZK
-          </span>
-          <span
-            style={{ fontWeight: 600, letterSpacing: '-0.02em' }}
-            className="text-base"
-          >
-            Community
+            Open<span style={{ color: '#788cff' }}>Stoa</span>
           </span>
         </Link>
 
-        <nav className="flex items-center gap-6">
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           <Link
             href="/topics"
-            style={{ color: 'var(--muted)', fontSize: 14 }}
-            className="hover:text-white transition-colors"
+            style={{
+              color: '#666', fontSize: 14, textDecoration: 'none',
+              fontFamily: 'var(--font-sans)', fontWeight: 500,
+              transition: 'color 0.15s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
           >
             Topics
+          </Link>
+
+          <Link
+            href="/docs"
+            style={{
+              color: '#666', fontSize: 14, textDecoration: 'none',
+              fontFamily: 'var(--font-sans)', fontWeight: 500,
+              transition: 'color 0.15s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
+          >
+            Docs
           </Link>
 
           {user ? (
             <Link
               href="/my"
               style={{
-                fontFamily: 'monospace',
-                fontSize: 13,
-                color: 'var(--foreground)',
-                background: 'var(--border)',
-                padding: '3px 10px',
-                borderRadius: 4,
-                textDecoration: 'none',
-                transition: 'background 0.12s',
+                fontFamily: 'var(--font-mono)', fontSize: 13, color: '#ccc',
+                background: 'rgba(120,140,255,0.1)', border: '1px solid rgba(120,140,255,0.15)',
+                padding: '4px 12px', borderRadius: 6,
+                textDecoration: 'none', transition: 'all 0.15s',
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#333'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--border)'; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.18)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.3)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.1)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
+              }}
             >
               {user.nickname ??
                 (user.userId
-                  ? `${user.userId.slice(0, 6)}...${user.userId.slice(-4)}`
+                  ? `${user.userId.slice(0, 6)}…${user.userId.slice(-4)}`
                   : 'anon')}
             </Link>
           ) : null}

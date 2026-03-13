@@ -274,11 +274,11 @@ export default function MembersPage() {
   return (
     <>
       <Header />
-      <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: 560 }}>
+      <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: 560, margin: '0 auto', padding: '36px 1.5rem 80px' }}>
         {/* Topic info card */}
         <div style={{
           padding: '16px 20px',
-          background: '#0d0d0d',
+          background: 'var(--surface, #0c0e18)',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: 12,
           marginBottom: 24,
@@ -289,7 +289,7 @@ export default function MembersPage() {
           <TopicAvatar title={topic.title} size={44} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{
-              fontSize: 18,
+              fontSize: 22,
               fontWeight: 800,
               letterSpacing: '-0.03em',
               margin: 0,
@@ -297,7 +297,7 @@ export default function MembersPage() {
             }}>
               {topic.title}
             </h1>
-            <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
+            <p style={{ fontSize: 14, color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
               {members.length} member{members.length !== 1 ? 's' : ''}
             </p>
           </div>
@@ -315,7 +315,7 @@ export default function MembersPage() {
               border: `1px solid ${inviteCopied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
               borderRadius: 7,
               padding: '8px 14px',
-              fontSize: 13,
+              fontSize: 15,
               cursor: 'pointer',
               fontWeight: 500,
               whiteSpace: 'nowrap',
@@ -381,7 +381,7 @@ export default function MembersPage() {
                   alignItems: 'center',
                   gap: 12,
                   padding: '12px 16px',
-                  background: '#0d0d0d',
+                  background: 'var(--surface, #0c0e18)',
                   border: '1px solid rgba(255,255,255,0.06)',
                   borderRadius: 10,
                 }}
@@ -391,7 +391,7 @@ export default function MembersPage() {
                   <span style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }}>
                     {req.nickname}
                   </span>
-                  <p style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 0', fontFamily: 'monospace' }}>
+                  <p style={{ fontSize: 15, color: '#6b7280', margin: '2px 0 0', fontFamily: 'monospace' }}>
                     {new Date(req.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </p>
                 </div>
@@ -400,7 +400,7 @@ export default function MembersPage() {
                     onClick={() => handleRequestAction(req.id, 'approve')}
                     disabled={requestActionLoading === req.id}
                     style={{
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: 600,
                       background: 'rgba(34,197,94,0.12)',
                       color: '#22c55e',
@@ -418,7 +418,7 @@ export default function MembersPage() {
                     onClick={() => handleRequestAction(req.id, 'reject')}
                     disabled={requestActionLoading === req.id}
                     style={{
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: 600,
                       background: 'rgba(239,68,68,0.1)',
                       color: '#ef4444',
@@ -448,7 +448,7 @@ export default function MembersPage() {
                 alignItems: 'center',
                 gap: 12,
                 padding: '12px 16px',
-                background: '#0d0d0d',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid rgba(255,255,255,0.06)',
                 borderRadius: 10,
                 transition: 'background 0.12s',
@@ -467,7 +467,7 @@ export default function MembersPage() {
               {/* Role badge */}
               {member.role === 'owner' && (
                 <span style={{
-                  fontSize: 11,
+                  fontSize: 15,
                   fontWeight: 600,
                   background: 'rgba(234,179,8,0.15)',
                   color: '#eab308',
@@ -481,7 +481,7 @@ export default function MembersPage() {
               )}
               {member.role === 'admin' && (
                 <span style={{
-                  fontSize: 11,
+                  fontSize: 15,
                   fontWeight: 600,
                   background: 'rgba(59,130,246,0.15)',
                   color: 'var(--accent)',
@@ -501,7 +501,7 @@ export default function MembersPage() {
                     onClick={() => handleKick(member.userId)}
                     disabled={actionLoading === member.userId}
                     style={{
-                      fontSize: 11,
+                      fontSize: 15,
                       fontWeight: 500,
                       background: confirmKick === member.userId ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
                       color: '#ef4444',
@@ -526,7 +526,7 @@ export default function MembersPage() {
                       onClick={() => handleRoleChange(member.userId, 'admin')}
                       disabled={actionLoading === member.userId}
                       style={{
-                        fontSize: 11,
+                        fontSize: 15,
                         fontWeight: 500,
                         background: 'rgba(59,130,246,0.1)',
                         color: 'var(--accent)',
@@ -545,7 +545,7 @@ export default function MembersPage() {
                       onClick={() => handleRoleChange(member.userId, 'member')}
                       disabled={actionLoading === member.userId}
                       style={{
-                        fontSize: 11,
+                        fontSize: 15,
                         fontWeight: 500,
                         background: 'rgba(255,255,255,0.05)',
                         color: '#9ca3af',
@@ -564,7 +564,7 @@ export default function MembersPage() {
                     onClick={() => handleTransferOwnership(member.userId)}
                     disabled={transferLoading}
                     style={{
-                      fontSize: 11,
+                      fontSize: 15,
                       fontWeight: 500,
                       background: confirmTransfer === member.userId ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.08)',
                       color: '#eab308',
@@ -582,7 +582,7 @@ export default function MembersPage() {
                     onClick={() => handleKick(member.userId)}
                     disabled={actionLoading === member.userId}
                     style={{
-                      fontSize: 11,
+                      fontSize: 15,
                       fontWeight: 500,
                       background: confirmKick === member.userId ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
                       color: '#ef4444',
