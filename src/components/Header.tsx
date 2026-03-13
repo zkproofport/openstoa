@@ -13,9 +13,9 @@ export default function Header() {
 
   useEffect(() => {
     fetch('/api/auth/session')
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => r.json())
       .then((data) => {
-        if (data) setUser(data);
+        if (data?.userId) setUser(data);
       })
       .catch(() => {});
   }, []);

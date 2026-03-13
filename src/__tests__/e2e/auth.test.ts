@@ -28,10 +28,11 @@ describe('Auth endpoints', () => {
     expect(json.verifiedAt).toBeTypeOf('number');
   });
 
-  it('GET /api/auth/session returns 401 when not authenticated', async () => {
+  it('GET /api/auth/session returns 200 with authenticated=false when not authenticated', async () => {
     const res = await publicGet('/api/auth/session');
-    // Session endpoint might return 401 or empty session
-    expect([200, 401]).toContain(res.status);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.authenticated).toBe(false);
   });
 
   it('GET /api/docs/openapi.json returns valid OpenAPI spec', async () => {

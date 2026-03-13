@@ -14,26 +14,31 @@ const ROUTE = '/api/auth/session';
  *     tags: [Auth]
  *     summary: Get current session info
  *     description: >-
- *       Returns the current authenticated user's session information. Works with both cookie
- *       and Bearer token authentication.
+ *       Returns the current user's session information. Works with both cookie
+ *       and Bearer token authentication. Returns `authenticated: false` for
+ *       unauthenticated (guest) requests — never returns 401.
  *     operationId: getSession
  *     responses:
  *       200:
- *         description: Current session information
+ *         description: Current session information (or authenticated=false for guests)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Session'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
+ *               oneOf:
+ *                 - $ref: '#/components/schemas/Session'
+ *                 - type: object
+ *                   properties:
+ *                     authenticated:
+ *                       type: boolean
+ *                       example: false
  */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
     if (!session) {
-      logger.info(ROUTE, 'No active session found, returning 401');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      logger.info(ROUTE, 'No active session found, returning authenticated=false');
+      return NextResponse.json({ authenticated: false });
     }
 
     // Fetch totalRecorded from users table

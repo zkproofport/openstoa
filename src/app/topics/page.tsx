@@ -49,9 +49,9 @@ function TopicsPageInner() {
   useEffect(() => {
     const initialCategory = searchParams.get('category');
     fetch('/api/auth/session')
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => r.json())
       .then((data) => {
-        if (!data) {
+        if (!data?.userId) {
           setIsGuest(true);
           setSessionChecked(true);
           loadTopics('hot', initialCategory);

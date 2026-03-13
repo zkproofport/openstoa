@@ -118,7 +118,7 @@ export default function TopicPage() {
 
   useEffect(() => {
     fetch('/api/auth/session')
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => r.json())
       .then((data) => {
         if (data?.userId) {
           setSessionUserId(data.userId);

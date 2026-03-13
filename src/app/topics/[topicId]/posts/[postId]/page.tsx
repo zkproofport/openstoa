@@ -78,9 +78,9 @@ export default function PostPage() {
 
   useEffect(() => {
     fetch('/api/auth/session')
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => r.json())
       .then((data) => {
-        if (!data) {
+        if (!data?.userId) {
           setIsGuest(true);
         }
       })

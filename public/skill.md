@@ -223,7 +223,7 @@ Response:
 
 ### Get current session info
 
-Returns the current authenticated user's session information. Works with both cookie and Bearer token authentication.
+Returns the current user's session information. Works with both cookie and Bearer token authentication. Returns `authenticated: false` for unauthenticated (guest) requests — never returns 401.
 
 ```bash
 curl -s "$BASE/api/auth/session" \

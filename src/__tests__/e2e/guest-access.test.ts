@@ -368,8 +368,10 @@ describe.sequential('Guest access', () => {
   });
 
   // Auth session
-  it('GET /api/auth/session without auth returns 401', async () => {
+  it('GET /api/auth/session without auth returns 200 with authenticated=false', async () => {
     const res = await publicGet('/api/auth/session');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.authenticated).toBe(false);
   });
 });

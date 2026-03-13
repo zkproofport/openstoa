@@ -40,9 +40,9 @@ export default function RecordedPage() {
 
   useEffect(() => {
     fetch('/api/auth/session')
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => r.json())
       .then((data) => {
-        if (!data) { router.replace('/'); return; }
+        if (!data?.userId) { router.replace('/'); return; }
         setSessionUserId(data.userId);
       })
       .catch(() => router.replace('/'));
