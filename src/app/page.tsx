@@ -381,6 +381,50 @@ function LandingPageInner() {
   const [stage, setStage] = useState<Stage>('idle');
   const badgeRef = useRef<HTMLDivElement>(null);
 
+  // Beta signup modal state
+  const [betaOpen, setBetaOpen] = useState(false);
+  const [betaPlatform, setBetaPlatform] = useState<string>('Both');
+  const [betaEmail, setBetaEmail] = useState('');
+  const [betaOrg, setBetaOrg] = useState('');
+  const [betaSubmitting, setBetaSubmitting] = useState(false);
+  const [betaSuccess, setBetaSuccess] = useState(false);
+  const [betaError, setBetaError] = useState('');
+
+  const openBetaModal = useCallback((platform: string) => {
+    setBetaPlatform(platform);
+    setBetaOpen(true);
+    setBetaSuccess(false);
+    setBetaError('');
+  }, []);
+
+  const closeBetaModal = useCallback(() => {
+    setBetaOpen(false);
+    setBetaEmail('');
+    setBetaOrg('');
+    setBetaSuccess(false);
+    setBetaError('');
+  }, []);
+
+  const submitBetaRequest = useCallback(async () => {
+    if (!betaEmail.trim()) { setBetaError('Email is required'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(betaEmail.trim())) { setBetaError('Enter a valid email'); return; }
+    setBetaSubmitting(true);
+    setBetaError('');
+    try {
+      const res = await fetch('/api/beta-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: betaEmail.trim(), organization: betaOrg.trim(), platform: betaPlatform }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+      setBetaSuccess(true);
+    } catch (err) {
+      setBetaError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setBetaSubmitting(false);
+    }
+  }, [betaEmail, betaOrg, betaPlatform]);
+
   function reset() { setStage('idle'); }
 
   // Modal overlay rendered on top of main page
@@ -402,6 +446,19 @@ function LandingPageInner() {
             <ProofGate circuitType="coinbase_attestation" mode="login" qrSize={240} label="Scan with ZKProofport app"
               onLogin={({ needsNickname }) => { setStage('completed'); setTimeout(() => router.push(needsNickname ? `/profile?returnTo=${encodeURIComponent(returnTo)}` : returnTo), 600); }}
               onCancel={reset} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <p style={{ fontSize: 12, color: '#666', margin: 0 }}>Don&apos;t have the app yet?</p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => openBetaModal('iOS')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '8px 16px', color: '#ccc', fontSize: 13, cursor: 'pointer' }}>
+                  <svg width="14" height="14" viewBox="0 0 384 512" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+                  iOS
+                </button>
+                <button onClick={() => openBetaModal('Android')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '8px 16px', color: '#ccc', fontSize: 13, cursor: 'pointer' }}>
+                  <svg width="14" height="14" viewBox="0 0 512 512" fill="currentColor"><path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z"/></svg>
+                  Android
+                </button>
+              </div>
+            </div>
           </motion.div>
         )}
         {stage === 'agent' && (
@@ -561,6 +618,62 @@ function LandingPageInner() {
         <span>powered by <span style={{ color: '#788cff' }}>Masse Labs</span></span>
       </motion.div>
     </div>
+
+      {/* Beta signup modal */}
+      {betaOpen && (
+        <div onClick={(e) => { if (e.target === e.currentTarget) closeBetaModal(); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 400, background: '#0c0e18', border: '1px solid rgba(120,140,255,0.2)', borderRadius: 16, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: '#f0f0f8', margin: 0 }}>Get the App</h3>
+              <button onClick={closeBetaModal} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ padding: '16px 24px 24px' }}>
+              <p style={{ fontSize: 14, color: '#999', lineHeight: 1.6, margin: '0 0 20px' }}>
+                ZKProofport is in closed beta. Leave your email and we&apos;ll send you a {betaPlatform === 'Both' ? 'TestFlight / Play Store' : betaPlatform === 'iOS' ? 'TestFlight' : 'Play Store'} invite.
+              </p>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#888', marginBottom: 6 }}>Email *</label>
+                <input type="email" value={betaEmail} onChange={(e) => setBetaEmail(e.target.value)} placeholder="you@example.com"
+                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#888', marginBottom: 6 }}>Organization (optional)</label>
+                <input type="text" value={betaOrg} onChange={(e) => setBetaOrg(e.target.value)} placeholder="Company or team name"
+                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#888', marginBottom: 6 }}>Platform</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {['iOS', 'Android', 'Both'].map((plat) => (
+                    <button key={plat} onClick={() => setBetaPlatform(plat)}
+                      style={{ flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 500, background: betaPlatform === plat ? 'rgba(120,140,255,0.12)' : 'rgba(0,0,0,0.3)', border: `1px solid ${betaPlatform === plat ? '#788cff' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: betaPlatform === plat ? '#788cff' : '#888', cursor: 'pointer' }}>
+                      {plat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {!betaSuccess && (
+                <button onClick={submitBetaRequest} disabled={betaSubmitting}
+                  style={{ width: '100%', padding: 12, fontSize: 15, fontWeight: 600, background: '#788cff', color: '#0c0e18', border: 'none', borderRadius: 8, cursor: betaSubmitting ? 'not-allowed' : 'pointer', opacity: betaSubmitting ? 0.5 : 1 }}>
+                  {betaSubmitting ? 'Sending...' : 'Request Invite'}
+                </button>
+              )}
+              {betaSuccess && (
+                <div style={{ marginTop: 8, padding: 12, background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 8, color: '#34d399', fontSize: 14, textAlign: 'center' }}>
+                  Thanks! We&apos;ll send your invite soon.
+                </div>
+              )}
+              {betaError && (
+                <div style={{ marginTop: 8, padding: 12, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 8, color: '#f87171', fontSize: 14, textAlign: 'center' }}>
+                  {betaError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

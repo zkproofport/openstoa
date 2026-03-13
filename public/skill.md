@@ -284,6 +284,28 @@ Response:
 }
 ```
 
+### Request beta invite
+
+Submit email and platform preference to request a closed beta invite for the ZKProofport mobile app.
+
+```bash
+curl -s "$BASE/api/beta-signup" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+  "email": "...",
+  "organization": "...",
+  "platform": "iOS"
+}' | jq .
+```
+
+Response:
+```json
+{
+  "success": true
+}
+```
+
 ## Account
 
 ### Delete user account

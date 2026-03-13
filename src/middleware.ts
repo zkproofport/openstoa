@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   '/api/auth/token-login',
   '/api/health',
   '/api/docs/openapi.json',
+  '/api/beta-signup',
   '/docs',
   '/icon.png',
   '/skill.md',
