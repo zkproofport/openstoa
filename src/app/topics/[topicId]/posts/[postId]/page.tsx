@@ -66,6 +66,9 @@ export default function PostPage() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
 
+  // Guest mode
+  const [isGuest, setIsGuest] = useState(false);
+
   function handleImageClick(src: string) {
     if (window.innerWidth <= 768 || 'ontouchstart' in window) {
       setLightboxSrc(src);
@@ -75,7 +78,21 @@ export default function PostPage() {
   }
 
   useEffect(() => {
+    fetch('/api/auth/session')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data) {
+          setIsGuest(true);
+        }
+      })
+      .catch(() => {
+        setIsGuest(true);
+      });
+  }, []);
+
+  useEffect(() => {
     loadPost();
+    // Only check bookmark status for authenticated users
     fetch(`/api/posts/${postId}/bookmark`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setBookmarked(data.bookmarked); })
@@ -96,7 +113,6 @@ export default function PostPage() {
       const target = e.target as HTMLElement;
       if (target.tagName === 'IMG') {
         const src = (target as HTMLImageElement).src;
-        // Mobile: fullscreen lightbox, Desktop: open in new tab
         const isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
         if (isMobile) {
           setLightboxSrc(src);
@@ -113,8 +129,20 @@ export default function PostPage() {
   async function loadPost() {
     try {
       const res = await fetch(`/api/posts/${postId}`);
-      if (res.status === 401) { router.replace('/'); return; }
-      if (res.status === 403) { router.replace(`/topics/${topicId}/join`); return; }
+      if (res.status === 401) {
+        // Guest on a non-public topic
+        router.replace('/topics');
+        return;
+      }
+      if (res.status === 403) {
+        router.replace('/topics');
+        return;
+      }
+      if (res.status === 404) {
+        setError('Post not found');
+        setLoading(false);
+        return;
+      }
       if (!res.ok) throw new Error('Post not found');
       const data = await res.json();
       setPost(data.post);
@@ -129,7 +157,7 @@ export default function PostPage() {
   }
 
   async function handleVote(value: 1 | -1) {
-    if (voteLoading) return;
+    if (voteLoading || isGuest) return;
     setVoteLoading(true);
     try {
       const res = await fetch(`/api/posts/${postId}/vote`, {
@@ -163,6 +191,7 @@ export default function PostPage() {
   }
 
   async function handleBookmark() {
+    if (isGuest) return;
     try {
       const res = await fetch(`/api/posts/${postId}/bookmark`, { method: 'POST' });
       if (res.ok) {
@@ -176,7 +205,7 @@ export default function PostPage() {
 
   async function handleCommentSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!commentContent.trim()) return;
+    if (!commentContent.trim() || isGuest) return;
     setSubmitting(true);
     setCommentError(null);
     try {
@@ -250,6 +279,40 @@ export default function PostPage() {
             {post.title}
           </span>
         </div>
+
+        {/* Guest banner */}
+        {isGuest && (
+          <div
+            style={{
+              padding: '10px 16px',
+              background: 'rgba(120,140,255,0.06)',
+              border: '1px solid rgba(120,140,255,0.12)',
+              borderRadius: 8,
+              marginBottom: 20,
+              fontSize: 14,
+              color: '#888',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <span>Sign in to vote, comment, and bookmark.</span>
+            <Link
+              href="/"
+              style={{
+                color: 'var(--accent)',
+                textDecoration: 'none',
+                fontWeight: 600,
+                fontSize: 13,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Sign in
+            </Link>
+          </div>
+        )}
 
         {/* Post */}
         <article
@@ -332,28 +395,35 @@ export default function PostPage() {
             paddingTop: 16,
             borderTop: '1px solid var(--border)',
           }}>
-            {/* Like */}
-            <button
-              type="button"
-              onClick={() => handleVote(1)}
-              disabled={voteLoading}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                color: userVote === 1 ? '#ef4444' : 'var(--muted)',
-                fontSize: 14,
-                fontFamily: 'monospace',
-                padding: 0,
-                transition: 'color 0.15s',
-              }}
-            >
-              <HeartIcon filled={userVote === 1} />
-              {upvoteCount > 0 && upvoteCount}
-            </button>
+            {/* Like — disabled for guests */}
+            {!isGuest ? (
+              <button
+                type="button"
+                onClick={() => handleVote(1)}
+                disabled={voteLoading}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  color: userVote === 1 ? '#ef4444' : 'var(--muted)',
+                  fontSize: 14,
+                  fontFamily: 'monospace',
+                  padding: 0,
+                  transition: 'color 0.15s',
+                }}
+              >
+                <HeartIcon filled={userVote === 1} />
+                {upvoteCount > 0 && upvoteCount}
+              </button>
+            ) : (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'monospace' }}>
+                <HeartIcon filled={false} />
+                {upvoteCount > 0 && upvoteCount}
+              </span>
+            )}
 
             {/* Comments */}
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'monospace' }}>
@@ -367,7 +437,7 @@ export default function PostPage() {
               {post.viewCount}
             </span>
 
-            {/* Share */}
+            {/* Share — always available */}
             <button
               type="button"
               onClick={handleShare}
@@ -391,28 +461,27 @@ export default function PostPage() {
 
             <div style={{ flex: 1 }} />
 
-            {/* Bookmark */}
-            <button
-              type="button"
-              onClick={handleBookmark}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                color: bookmarked ? 'var(--accent)' : 'var(--muted)',
-                fontSize: 14,
-                padding: 0,
-                transition: 'color 0.15s',
-              }}
-            >
-              <BookmarkIcon filled={bookmarked} />
-            </button>
-
-            {/* Delete - only show for post author */}
-            {/* NOTE: We don't have sessionUserId in this page yet, so skip delete button for now */}
+            {/* Bookmark — hidden for guests */}
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={handleBookmark}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  color: bookmarked ? 'var(--accent)' : 'var(--muted)',
+                  fontSize: 14,
+                  padding: 0,
+                  transition: 'color 0.15s',
+                }}
+              >
+                <BookmarkIcon filled={bookmarked} />
+              </button>
+            )}
           </div>
         </article>
 
@@ -483,73 +552,99 @@ export default function PostPage() {
             </div>
           )}
 
-          {/* Comment form */}
-          <form
-            onSubmit={handleCommentSubmit}
-            style={{
-              padding: '20px',
-              background: 'var(--surface, #0c0e18)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-            }}
-          >
-            <label
-              htmlFor="comment"
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
-            >
-              Write a comment
-            </label>
-            <textarea
-              id="comment"
-              value={commentContent}
-              onChange={(e) => setCommentContent(e.target.value)}
-              placeholder="Share your thoughts..."
-              rows={4}
+          {/* Comment form — hidden for guests, show sign-in prompt instead */}
+          {isGuest ? (
+            <div
               style={{
-                width: '100%',
+                padding: '20px',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: '12px 14px',
-                color: 'var(--foreground)',
-                fontSize: 14,
-                outline: 'none',
-                resize: 'vertical',
-                lineHeight: 1.6,
-                fontFamily: 'inherit',
-                marginBottom: 8,
+                borderRadius: 12,
+                textAlign: 'center',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-            />
-            {commentError && (
-              <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 8px', fontFamily: 'monospace' }}>
-                {commentError}
+            >
+              <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 12px' }}>
+                Sign in to join the conversation.
               </p>
-            )}
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={!commentContent.trim() || submitting}
+              <Link
+                href="/"
                 style={{
-                  background: commentContent.trim() ? 'var(--accent)' : 'var(--border)',
-                  color: commentContent.trim() ? '#fff' : 'var(--muted)',
-                  border: 'none',
-                  borderRadius: 7,
-                  padding: '9px 22px',
-                  fontSize: 14,
+                  color: 'var(--accent)',
+                  textDecoration: 'none',
                   fontWeight: 600,
-                  cursor: commentContent.trim() ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.15s',
+                  fontSize: 14,
                 }}
               >
-                {submitting ? 'Posting...' : 'Post Comment'}
-              </button>
+                Sign in
+              </Link>
             </div>
-          </form>
+          ) : (
+            <form
+              onSubmit={handleCommentSubmit}
+              style={{
+                padding: '20px',
+                background: 'var(--surface, #0c0e18)',
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+              }}
+            >
+              <label
+                htmlFor="comment"
+                style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              >
+                Write a comment
+              </label>
+              <textarea
+                id="comment"
+                value={commentContent}
+                onChange={(e) => setCommentContent(e.target.value)}
+                placeholder="Share your thoughts..."
+                rows={4}
+                style={{
+                  width: '100%',
+                  background: 'var(--surface, #0c0e18)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: '12px 14px',
+                  color: 'var(--foreground)',
+                  fontSize: 14,
+                  outline: 'none',
+                  resize: 'vertical',
+                  lineHeight: 1.6,
+                  fontFamily: 'inherit',
+                  marginBottom: 8,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+              />
+              {commentError && (
+                <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 8px', fontFamily: 'monospace' }}>
+                  {commentError}
+                </p>
+              )}
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={!commentContent.trim() || submitting}
+                  style={{
+                    background: commentContent.trim() ? 'var(--accent)' : 'var(--border)',
+                    color: commentContent.trim() ? '#fff' : 'var(--muted)',
+                    border: 'none',
+                    borderRadius: 7,
+                    padding: '9px 22px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: commentContent.trim() ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {submitting ? 'Posting...' : 'Post Comment'}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </>
   );
 }
-

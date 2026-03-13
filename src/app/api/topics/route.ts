@@ -21,10 +21,12 @@ const ROUTE = '/api/topics';
  *     tags: [Topics]
  *     summary: List topics
  *     description: >-
- *       Lists topics. Without view parameter, returns only the current user's joined topics.
- *       With view=all, returns all visible topics (excludes secret topics unless user is a member)
- *       with membership status. Supports sorting.
+ *       Authentication optional. Without auth, returns public and private topics (excludes secret).
+ *       With auth, includes membership status and secret topics the user belongs to.
+ *       Without view=all, authenticated users see only their joined topics; unauthenticated users
+ *       receive an empty list. With view=all, all visible topics are returned with sorting support.
  *     operationId: listTopics
+ *     security: []
  *     parameters:
  *       - name: view
  *         in: query
@@ -54,6 +56,7 @@ const ROUTE = '/api/topics';
  *                   items:
  *                     $ref: '#/components/schemas/TopicListItem'
  *       401:
+ *         description: Unauthorized (only applies to authenticated requests with invalid credentials)
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
  *         $ref: '#/components/responses/Forbidden'
@@ -121,14 +124,55 @@ export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
-    if (!session) {
-      logger.warn(ROUTE, 'Unauthenticated request');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
 
     const { searchParams } = new URL(request.url);
     const view = searchParams.get('view');
     const sort = searchParams.get('sort') ?? 'hot';
+
+    // --- Guest (unauthenticated) access ---
+    if (!session) {
+      // Guests can only browse all visible topics (view=all)
+      if (view !== 'all') {
+        logger.info(ROUTE, 'Guest request without view=all, returning empty');
+        return NextResponse.json({ topics: [] });
+      }
+
+      logger.info(ROUTE, 'Guest fetching all topics', { sort });
+
+      const allTopics = await db.query.topics.findMany({
+        orderBy: (t, { desc: d }) =>
+          sort === 'new'
+            ? [d(t.createdAt)]
+            : sort === 'active'
+            ? [d(t.lastActivityAt)]
+            : [d(t.score)],
+      });
+
+      const memberCounts = await db
+        .select({ topicId: topicMembers.topicId, count: sql<number>`count(*)::int` })
+        .from(topicMembers)
+        .groupBy(topicMembers.topicId);
+
+      const memberCountMap = Object.fromEntries(memberCounts.map((m) => [m.topicId, m.count]));
+
+      // Guests see public + private, never secret
+      const visibleTopics = allTopics.filter((t) => t.visibility !== 'secret');
+
+      const result = visibleTopics.map((t) => ({
+        ...t,
+        memberCount: memberCountMap[t.id] ?? 0,
+        isMember: false,
+      }));
+
+      if (sort === 'top') {
+        result.sort((a, b) => (b.memberCount ?? 0) - (a.memberCount ?? 0));
+      }
+
+      logger.info(ROUTE, 'Guest topics fetched', { count: result.length, sort });
+      return NextResponse.json({ topics: result });
+    }
+
+    // --- Authenticated access (existing behavior) ---
 
     if (view === 'all') {
       logger.info(ROUTE, 'Fetching all topics with member counts', { userId: session.userId, sort });

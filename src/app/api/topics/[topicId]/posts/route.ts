@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, topicMembers, users, tags, postTags, votes } from '@/lib/db/schema';
+import { posts, topicMembers, users, tags, postTags, votes, topics } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { updateTopicScore } from '@/lib/topicScore';
@@ -15,9 +15,12 @@ const ROUTE = '/api/topics/[topicId]/posts';
  *     tags: [Posts]
  *     summary: List posts in topic
  *     description: >-
- *       Lists posts in a topic with pagination. Pinned posts always appear first regardless of sort
- *       order. Supports tag filtering and sorting by newest or popularity.
+ *       Authentication optional for public topics. Guests can read posts in public topics.
+ *       Private and secret topics require authentication and membership.
+ *       Pinned posts always appear first regardless of sort order.
+ *       Supports tag filtering and sorting by newest or popularity.
  *     operationId: listPosts
+ *     security: []
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -132,12 +135,89 @@ export async function GET(
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
+    const { topicId } = await params;
+
+    // --- Guest (unauthenticated) access ---
     if (!session) {
-      logger.warn(ROUTE, 'Unauthenticated request');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      logger.info(ROUTE, 'Guest fetching posts', { topicId });
+
+      // Guests can only read posts in public topics
+      const topic = await db.query.topics.findFirst({
+        where: eq(topics.id, topicId),
+      });
+
+      if (!topic) {
+        return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+      }
+
+      if (topic.visibility !== 'public') {
+        logger.warn(ROUTE, 'Guest attempted to read non-public topic posts', { topicId, visibility: topic.visibility });
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      }
+
+      const url = new URL(request.url);
+      const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
+      const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
+      const tagSlug = url.searchParams.get('tag') ?? null;
+      const sort = url.searchParams.get('sort') ?? 'new';
+
+      let tagFilteredPostIds: string[] | null = null;
+      if (tagSlug) {
+        const tag = await db.query.tags.findFirst({ where: eq(tags.slug, tagSlug) });
+        if (tag) {
+          const rows = await db
+            .select({ postId: postTags.postId })
+            .from(postTags)
+            .where(eq(postTags.tagId, tag.id));
+          tagFilteredPostIds = rows.map((r) => r.postId);
+        } else {
+          tagFilteredPostIds = [];
+        }
+      }
+
+      const whereClause =
+        tagFilteredPostIds !== null
+          ? tagFilteredPostIds.length > 0
+            ? and(eq(posts.topicId, topicId), inArray(posts.id, tagFilteredPostIds))
+            : and(eq(posts.topicId, topicId), sql`false`)
+          : eq(posts.topicId, topicId);
+
+      // No userVoted join for guests
+      const topicPosts = await db
+        .select({
+          id: posts.id,
+          topicId: posts.topicId,
+          authorId: posts.authorId,
+          title: posts.title,
+          content: posts.content,
+          media: posts.media,
+          createdAt: posts.createdAt,
+          updatedAt: posts.updatedAt,
+          authorNickname: users.nickname,
+          authorProfileImage: users.profileImage,
+          upvoteCount: posts.upvoteCount,
+          viewCount: posts.viewCount,
+          commentCount: posts.commentCount,
+          score: posts.score,
+          isPinned: posts.isPinned,
+          recordCount: posts.recordCount,
+          userVoted: sql<number | null>`null`,
+        })
+        .from(posts)
+        .leftJoin(users, eq(posts.authorId, users.id))
+        .where(whereClause)
+        .orderBy(
+          desc(posts.isPinned),
+          sort === 'popular' ? desc(posts.score) : sort === 'recorded' ? desc(posts.recordCount) : desc(posts.createdAt),
+        )
+        .limit(limit)
+        .offset(offset);
+
+      logger.info(ROUTE, 'Guest posts fetched', { topicId, count: topicPosts.length });
+      return NextResponse.json({ posts: topicPosts });
     }
 
-    const { topicId } = await params;
+    // --- Authenticated access (existing behavior) ---
 
     // Check membership
     const membership = await db.query.topicMembers.findFirst({

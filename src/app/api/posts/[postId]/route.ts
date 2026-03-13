@@ -13,8 +13,12 @@ const ROUTE = '/api/posts/[postId]';
  *   get:
  *     tags: [Posts]
  *     summary: Get post with comments
- *     description: Returns a post with its comments and tags. Increments the view counter.
+ *     description: >-
+ *       Authentication optional for posts in public topics. Guests can read posts and comments
+ *       in public topics. Private and secret topic posts require authentication.
+ *       Increments the view counter.
  *     operationId: getPost
+ *     security: []
  *     parameters:
  *       - name: postId
  *         in: path
@@ -90,12 +94,88 @@ export async function GET(
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
+    const { postId } = await params;
+
+    // --- Guest (unauthenticated) access ---
     if (!session) {
-      logger.warn(ROUTE, 'Unauthenticated request');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      logger.info(ROUTE, 'Guest fetching post detail', { postId });
+
+      // Get post with author (no votes join for guests)
+      const postResults = await db
+        .select({
+          id: posts.id,
+          topicId: posts.topicId,
+          authorId: posts.authorId,
+          title: posts.title,
+          content: posts.content,
+          media: posts.media,
+          createdAt: posts.createdAt,
+          updatedAt: posts.updatedAt,
+          authorNickname: users.nickname,
+          authorProfileImage: users.profileImage,
+          upvoteCount: posts.upvoteCount,
+          viewCount: posts.viewCount,
+          commentCount: posts.commentCount,
+          score: posts.score,
+          userVoted: sql<number | null>`null`,
+          topicTitle: topics.title,
+          topicVisibility: topics.visibility,
+        })
+        .from(posts)
+        .leftJoin(users, eq(posts.authorId, users.id))
+        .leftJoin(topics, eq(posts.topicId, topics.id))
+        .where(eq(posts.id, postId));
+
+      if (postResults.length === 0) {
+        logger.warn(ROUTE, 'Post not found', { postId });
+        return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      }
+
+      const post = postResults[0];
+
+      // Guests can only read posts in public topics
+      if (post.topicVisibility !== 'public') {
+        logger.warn(ROUTE, 'Guest attempted to read non-public topic post', { postId, topicId: post.topicId, visibility: post.topicVisibility });
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      }
+
+      // Increment viewCount
+      await db.update(posts).set({ viewCount: sql`${posts.viewCount} + 1` }).where(eq(posts.id, postId));
+
+      // Get comments
+      const postComments = await db
+        .select({
+          id: comments.id,
+          postId: comments.postId,
+          authorId: comments.authorId,
+          content: comments.content,
+          createdAt: comments.createdAt,
+          authorNickname: users.nickname,
+          authorProfileImage: users.profileImage,
+        })
+        .from(comments)
+        .leftJoin(users, eq(comments.authorId, users.id))
+        .where(eq(comments.postId, postId))
+        .orderBy(asc(comments.createdAt));
+
+      // Fetch tags
+      const postTagResults = await db
+        .select({ name: tags.name, slug: tags.slug })
+        .from(postTags)
+        .innerJoin(tags, eq(postTags.tagId, tags.id))
+        .where(eq(postTags.postId, postId));
+
+      // Strip topicVisibility from response
+      const { topicVisibility: _, ...postWithoutVisibility } = post;
+
+      logger.info(ROUTE, 'Guest post detail fetched', { postId, commentCount: postComments.length });
+      return NextResponse.json({
+        post: { ...postWithoutVisibility, tags: postTagResults },
+        comments: postComments,
+      });
     }
 
-    const { postId } = await params;
+    // --- Authenticated access (existing behavior) ---
 
     logger.info(ROUTE, 'Fetching post detail', { userId: session.userId, postId });
 

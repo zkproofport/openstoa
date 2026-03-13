@@ -465,11 +465,10 @@ Response:
 
 ### Get topic detail
 
-Returns detailed information about a topic including the current user's role. Requires topic membership.
+Authentication optional. Guests can view public and private topic details. Secret topics return 404 for unauthenticated users. Authenticated users must be members to view a topic; non-members receive 403.
 
 ```bash
-curl -s "$BASE/api/topics/:topicId" \
-  -H "$AUTH" | jq .
+curl -s "$BASE/api/topics/:topicId" | jq .
 ```
 
 Path params:
@@ -552,11 +551,10 @@ Response:
 
 ### List topics
 
-Lists topics. Without view parameter, returns only the current user's joined topics. With view=all, returns all visible topics (excludes secret topics unless user is a member) with membership status. Supports sorting.
+Authentication optional. Without auth, returns public and private topics (excludes secret). With auth, includes membership status and secret topics the user belongs to. Without view=all, authenticated users see only their joined topics; unauthenticated users receive an empty list. With view=all, all visible topics are returned with sorting support.
 
 ```bash
-curl -s "$BASE/api/topics?view=...&sort=..." \
-  -H "$AUTH" | jq .
+curl -s "$BASE/api/topics?view=...&sort=..." | jq .
 ```
 
 Query params:
@@ -780,11 +778,10 @@ Response:
 
 ### Get post with comments
 
-Returns a post with its comments and tags. Increments the view counter.
+Authentication optional for posts in public topics. Guests can read posts and comments in public topics. Private and secret topic posts require authentication. Increments the view counter.
 
 ```bash
-curl -s "$BASE/api/posts/:postId" \
-  -H "$AUTH" | jq .
+curl -s "$BASE/api/posts/:postId" | jq .
 ```
 
 Path params:
@@ -854,11 +851,10 @@ Response:
 
 ### List posts in topic
 
-Lists posts in a topic with pagination. Pinned posts always appear first regardless of sort order. Supports tag filtering and sorting by newest or popularity.
+Authentication optional for public topics. Guests can read posts in public topics. Private and secret topics require authentication and membership. Pinned posts always appear first regardless of sort order. Supports tag filtering and sorting by newest or popularity.
 
 ```bash
-curl -s "$BASE/api/topics/:topicId/posts?limit=...&offset=...&tag=...&sort=..." \
-  -H "$AUTH" | jq .
+curl -s "$BASE/api/topics/:topicId/posts?limit=...&offset=...&tag=...&sort=..." | jq .
 ```
 
 Path params:

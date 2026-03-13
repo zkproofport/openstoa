@@ -20,6 +20,7 @@ interface Topic {
   image?: string;
   memberCount: number;
   requiresCountryProof: boolean;
+  visibility?: string;
   isMember: boolean;
   creatorId?: string;
   createdAt: string;
@@ -82,6 +83,9 @@ export default function TopicPage() {
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Guest mode
+  const [isGuest, setIsGuest] = useState(false);
+
   // Sort
   const [sortBy, setSortBy] = useState<'new' | 'popular' | 'recorded'>('new');
 
@@ -122,8 +126,16 @@ export default function TopicPage() {
   useEffect(() => {
     fetch('/api/auth/session')
       .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data?.userId) setSessionUserId(data.userId); })
-      .catch(() => {});
+      .then((data) => {
+        if (data?.userId) {
+          setSessionUserId(data.userId);
+        } else {
+          setIsGuest(true);
+        }
+      })
+      .catch(() => {
+        setIsGuest(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -150,8 +162,32 @@ export default function TopicPage() {
   async function loadTopic() {
     try {
       const res = await fetch(`/api/topics/${topicId}`);
-      if (res.status === 401) { router.replace('/'); return; }
-      if (res.status === 403) { router.replace(`/topics/${topicId}/join`); return; }
+      if (res.status === 401) {
+        // For guests, 401 means they can't view this topic — redirect to topics list
+        if (isGuest) { router.replace('/topics'); return; }
+        router.replace('/');
+        return;
+      }
+      if (res.status === 403) {
+        // Guest on a private topic — show restricted message
+        if (isGuest) {
+          // Try to get basic topic info from the response
+          const data = await res.json().catch(() => ({}));
+          if (data.topic) {
+            setTopic(data.topic);
+          }
+          setError('private');
+          setLoading(false);
+          return;
+        }
+        router.replace(`/topics/${topicId}/join`);
+        return;
+      }
+      if (res.status === 404) {
+        setError('Topic not found');
+        setLoading(false);
+        return;
+      }
       if (!res.ok) throw new Error('Topic not found');
       const data = await res.json();
       setTopic(data.topic);
@@ -237,7 +273,6 @@ export default function TopicPage() {
   }
 
   function handlePinPost(postId: string) {
-    // Reload posts to reflect pin state change
     loadPosts(0, true, activeTag, sortBy);
   }
 
@@ -246,7 +281,6 @@ export default function TopicPage() {
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      // Fallback for mobile browsers without clipboard API
       const ta = document.createElement('textarea');
       ta.value = url;
       ta.style.position = 'fixed';
@@ -315,6 +349,50 @@ export default function TopicPage() {
     );
   }
 
+  // Guest + private topic: show restricted message
+  if (isGuest && error === 'private') {
+    return (
+      <>
+        <Header />
+        <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: '56rem', margin: '0 auto', padding: '36px 1.5rem 80px' }}>
+          <div style={{ marginBottom: 24 }}>
+            <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
+              ← Topics
+            </Link>
+          </div>
+          <div style={{
+            textAlign: 'center',
+            padding: '80px 20px',
+            border: '1px dashed var(--border)',
+            borderRadius: 16,
+          }}>
+            <p style={{ fontSize: 32, marginBottom: 12 }}>{'\uD83D\uDD12'}</p>
+            <p style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 8 }}>
+              Private Topic
+            </p>
+            <p style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 24, lineHeight: 1.6 }}>
+              This is a private topic. Sign in and join to view posts.
+            </p>
+            <Link
+              href="/"
+              style={{
+                background: 'var(--accent)',
+                color: '#fff',
+                textDecoration: 'none',
+                borderRadius: 8,
+                padding: '10px 24px',
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              Sign in
+            </Link>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   if (error || !topic) {
     return (
       <>
@@ -344,6 +422,40 @@ export default function TopicPage() {
             ← Topics
           </Link>
         </div>
+
+        {/* Guest banner */}
+        {isGuest && (
+          <div
+            style={{
+              padding: '10px 16px',
+              background: 'rgba(120,140,255,0.06)',
+              border: '1px solid rgba(120,140,255,0.12)',
+              borderRadius: 8,
+              marginBottom: 20,
+              fontSize: 14,
+              color: '#888',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <span>Sign in to participate in discussions.</span>
+            <Link
+              href="/"
+              style={{
+                color: 'var(--accent)',
+                textDecoration: 'none',
+                fontWeight: 600,
+                fontSize: 13,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Sign in
+            </Link>
+          </div>
+        )}
 
         {/* Topic header — full width within max-w-4xl */}
         <div style={{
@@ -387,24 +499,36 @@ export default function TopicPage() {
               </p>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
-              <Link
-                href={`/topics/${topicId}/members`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 14,
-                  color: '#6b7280',
-                  fontFamily: 'monospace',
-                  textDecoration: 'none',
-                  transition: 'color 0.12s',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
-              >
-                {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
-              </Link>
-              {(currentUserRole === 'owner' || currentUserRole === 'admin') && (
+              {!isGuest ? (
+                <Link
+                  href={`/topics/${topicId}/members`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 14,
+                    color: '#6b7280',
+                    fontFamily: 'monospace',
+                    textDecoration: 'none',
+                    transition: 'color 0.12s',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
+                >
+                  {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
+                </Link>
+              ) : (
+                <span
+                  style={{
+                    fontSize: 14,
+                    color: '#6b7280',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
+                </span>
+              )}
+              {!isGuest && (currentUserRole === 'owner' || currentUserRole === 'admin') && (
                 <Link
                   href={`/topics/${topicId}/members`}
                   style={{
@@ -441,24 +565,26 @@ export default function TopicPage() {
               )}
             </div>
           </div>
-          <button
-            onClick={handleCopyInvite}
-            style={{
-              background: copied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
-              color: copied ? '#22c55e' : '#6b7280',
-              border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-              borderRadius: 7,
-              padding: '8px 14px',
-              fontSize: 15,
-              cursor: 'pointer',
-              fontWeight: 500,
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s',
-              flexShrink: 0,
-            }}
-          >
-            {copied ? 'Copied!' : 'Invite'}
-          </button>
+          {!isGuest && (
+            <button
+              onClick={handleCopyInvite}
+              style={{
+                background: copied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
+                color: copied ? '#22c55e' : '#6b7280',
+                border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                borderRadius: 7,
+                padding: '8px 14px',
+                fontSize: 15,
+                cursor: 'pointer',
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+            >
+              {copied ? 'Copied!' : 'Invite'}
+            </button>
+          )}
         </div>
 
         {/* ── Tag search + filter bar ── */}
@@ -598,7 +724,7 @@ export default function TopicPage() {
               transition: 'all 0.12s',
             }}
           >
-            🆕 New
+            {'\uD83C\uDD95'} New
           </button>
           <button
             onClick={() => handleSortChange('popular')}
@@ -614,7 +740,7 @@ export default function TopicPage() {
               transition: 'all 0.12s',
             }}
           >
-            🔥 Popular
+            {'\uD83D\uDD25'} Popular
           </button>
           <button
             onClick={() => handleSortChange('recorded')}
@@ -639,8 +765,8 @@ export default function TopicPage() {
           maxWidth: 600,
           margin: '0 auto',
         }}>
-          {/* Composer (expanded) */}
-          {composing && (
+          {/* Composer (expanded) — hidden for guests */}
+          {!isGuest && composing && (
             <div style={{
               background: 'var(--surface, #0c0e18)',
               border: '1px solid rgba(59,130,246,0.3)',
@@ -746,7 +872,7 @@ export default function TopicPage() {
                 padding: '60px 20px',
               }}>
                 <p style={{ fontSize: 15, color: '#6b7280' }}>
-                  No posts yet. Be the first to write!
+                  {isGuest ? 'No posts yet.' : 'No posts yet. Be the first to write!'}
                 </p>
               </div>
             ) : (
@@ -758,13 +884,13 @@ export default function TopicPage() {
                   showAuthor
                   media={post.media}
                   isPinned={post.isPinned}
-                  userVoted={post.userVoted}
+                  userVoted={isGuest ? null : post.userVoted}
                   reactions={post.reactions}
                   sessionUserId={sessionUserId}
                   authorId={post.authorId}
                   topicCreatorId={topic?.creatorId}
-                  onDelete={(id) => setPosts((prev) => prev.filter((p) => p.id !== id))}
-                  onPin={handlePinPost}
+                  onDelete={isGuest ? undefined : (id) => setPosts((prev) => prev.filter((p) => p.id !== id))}
+                  onPin={isGuest ? undefined : handlePinPost}
                   expandable
                 />
               ))
@@ -780,8 +906,8 @@ export default function TopicPage() {
         </div>
         {/* ── End centered feed ── */}
 
-        {/* Floating compose button */}
-        {!composing && (
+        {/* Floating compose button — hidden for guests */}
+        {!isGuest && !composing && (
           <button
             onClick={() => setComposing(true)}
             style={{
@@ -819,4 +945,3 @@ export default function TopicPage() {
     </>
   );
 }
-

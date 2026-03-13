@@ -130,7 +130,19 @@ export default function Header() {
                   ? `${user.userId.slice(0, 6)}…${user.userId.slice(-4)}`
                   : 'anon')}
             </Link>
-          ) : null}
+          ) : (
+            <Link
+              href="/"
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 13, color: '#666',
+                textDecoration: 'none', transition: 'color 0.15s',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
+            >
+              Sign in
+            </Link>
+          )}
         </nav>
       </div>
     </header>

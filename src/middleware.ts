@@ -24,9 +24,23 @@ const PUBLIC_PREFIXES = [
   '/docs',
 ];
 
+// Paths accessible without authentication (guests can browse).
+// If a token IS present it will still be validated; only the
+// "no token" case is allowed through.
+const GUEST_ACCESSIBLE_PREFIXES = [
+  '/topics',       // topic list page + topic/post detail pages
+  '/api/topics',   // GET /api/topics, GET /api/topics/[topicId], GET /api/topics/[topicId]/posts
+  '/api/posts/',   // GET /api/posts/[postId]
+  '/api/tags',     // public tag data
+];
+
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+function isGuestAccessiblePath(pathname: string): boolean {
+  return GUEST_ACCESSIBLE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
 function isApiRoute(pathname: string): boolean {
@@ -46,7 +60,13 @@ export async function middleware(request: NextRequest) {
     authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
   const token = cookieToken ?? bearerToken;
 
+  const guestAccessible = isGuestAccessiblePath(pathname);
+
   if (!token) {
+    // Guest-accessible paths are allowed through without auth
+    if (guestAccessible) {
+      return NextResponse.next();
+    }
     if (isApiRoute(pathname)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
@@ -71,7 +91,9 @@ export async function middleware(request: NextRequest) {
     }
 
     // /topics/* requires session WITH nickname (not a temp anon_ nickname)
-    if (pathname.startsWith('/topics') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/posts') || pathname.startsWith('/api/tags') || pathname.startsWith('/api/bookmarks') || pathname.startsWith('/api/upload')) {
+    // Skip nickname check for guest-accessible paths (they work without auth,
+    // so they should also work with a valid token that has no nickname yet)
+    if (!guestAccessible && (pathname.startsWith('/topics') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/posts') || pathname.startsWith('/api/tags') || pathname.startsWith('/api/bookmarks') || pathname.startsWith('/api/upload'))) {
       const nickname = payload.nickname as string;
       if (!nickname || nickname.startsWith('anon_')) {
         if (isApiRoute(pathname)) {

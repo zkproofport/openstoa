@@ -14,9 +14,11 @@ const ROUTE = '/api/topics/[topicId]';
  *     tags: [Topics]
  *     summary: Get topic detail
  *     description: >-
- *       Returns detailed information about a topic including the current user's role.
- *       Requires topic membership.
+ *       Authentication optional. Guests can view public and private topic details.
+ *       Secret topics return 404 for unauthenticated users. Authenticated users must be
+ *       members to view a topic; non-members receive 403.
  *     operationId: getTopic
+ *     security: []
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -44,11 +46,12 @@ const ROUTE = '/api/topics/[topicId]';
  *                 currentUserRole:
  *                   type: string
  *                   enum: [owner, admin, member]
- *                   description: Current user's role in the topic
+ *                   nullable: true
+ *                   description: Current user's role in the topic (null for guests)
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Not a member of this topic
+ *         description: Not a member of this topic (authenticated users only)
  *         content:
  *           application/json:
  *             schema:
@@ -61,12 +64,44 @@ export async function GET(
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
+    const { topicId } = await params;
+
+    // --- Guest (unauthenticated) access ---
     if (!session) {
-      logger.warn(ROUTE, 'Unauthenticated request');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      logger.info(ROUTE, 'Guest fetching topic detail', { topicId });
+
+      const topic = await db.query.topics.findFirst({
+        where: eq(topics.id, topicId),
+      });
+
+      if (!topic) {
+        logger.warn(ROUTE, 'Topic not found', { topicId });
+        return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+      }
+
+      // Secret topics are invisible to guests
+      if (topic.visibility === 'secret') {
+        logger.warn(ROUTE, 'Guest attempted to access secret topic', { topicId });
+        return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+      }
+
+      const [memberCount] = await db
+        .select({ count: count() })
+        .from(topicMembers)
+        .where(eq(topicMembers.topicId, topicId));
+
+      logger.info(ROUTE, 'Guest topic detail fetched', { topicId, memberCount: memberCount.count });
+      return NextResponse.json({
+        topic: {
+          ...topic,
+          memberCount: memberCount.count,
+        },
+        currentUserRole: null,
+        isMember: false,
+      });
     }
 
-    const { topicId } = await params;
+    // --- Authenticated access (existing behavior) ---
 
     logger.info(ROUTE, 'Fetching topic detail', { userId: session.userId, topicId });
 

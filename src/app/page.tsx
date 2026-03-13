@@ -570,6 +570,26 @@ function LandingPageInner() {
           style={{ marginTop: 20, fontFamily: 'var(--font-serif)', fontSize: 16, color: '#777', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.5, padding: '0 12px' }}>
           A public square<br />for verified minds.
         </motion.p>
+
+        <motion.a
+          href="/topics"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.6, duration: 1 }}
+          style={{
+            marginTop: 16,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 13,
+            color: '#555',
+            textDecoration: 'none',
+            letterSpacing: '0.02em',
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#999'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#555'; }}
+        >
+          or just explore →
+        </motion.a>
       </div>
 
       <div className="os-agent">

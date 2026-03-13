@@ -32,6 +32,8 @@ export default function TopicsPage() {
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set());
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   function handleImageClick(src: string) {
     if (window.innerWidth <= 768 || 'ontouchstart' in window) {
@@ -46,20 +48,29 @@ export default function TopicsPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data) {
-          router.replace('/');
+          setIsGuest(true);
+          setSessionChecked(true);
+          loadTopics();
           return;
         }
         if (!data.nickname) {
           router.replace('/profile');
           return;
         }
+        setSessionChecked(true);
         loadTopics();
       })
-      .catch(() => router.replace('/'));
+      .catch(() => {
+        setIsGuest(true);
+        setSessionChecked(true);
+        loadTopics();
+      });
   }, [router]);
 
   useEffect(() => {
-    loadTopics();
+    if (sessionChecked) {
+      loadTopics();
+    }
   }, [view, sortBy]);
 
   async function loadTopics() {
@@ -83,7 +94,6 @@ export default function TopicsPage() {
     try {
       const res = await fetch(`/api/topics/${topicId}/join`, { method: 'POST' });
       if (res.status === 202) {
-        // Join request submitted for private topic
         setPendingRequests((prev) => new Set(prev).add(topicId));
       } else if (res.status === 201) {
         await loadTopics();
@@ -110,6 +120,40 @@ export default function TopicsPage() {
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
       <div style={{ paddingTop: 40, paddingBottom: 80, maxWidth: '56rem', margin: '0 auto', padding: '40px 1.5rem 80px' }}>
+        {/* Guest banner */}
+        {isGuest && (
+          <div
+            style={{
+              padding: '10px 16px',
+              background: 'rgba(120,140,255,0.06)',
+              border: '1px solid rgba(120,140,255,0.12)',
+              borderRadius: 8,
+              marginBottom: 20,
+              fontSize: 14,
+              color: '#888',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <span>You're browsing as a guest. Sign in to join topics and post.</span>
+            <Link
+              href="/"
+              style={{
+                color: 'var(--accent)',
+                textDecoration: 'none',
+                fontWeight: 600,
+                fontSize: 13,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Sign in
+            </Link>
+          </div>
+        )}
+
         <div
           style={{
             display: 'flex',
@@ -135,21 +179,23 @@ export default function TopicsPage() {
                 : 'Explore community topics'}
             </p>
           </div>
-          <Link
-            href="/topics/new"
-            style={{
-              background: 'var(--accent)',
-              color: '#fff',
-              textDecoration: 'none',
-              borderRadius: 8,
-              padding: '9px 20px',
-              fontSize: 14,
-              fontWeight: 600,
-              letterSpacing: '-0.01em',
-            }}
-          >
-            + Create Topic
-          </Link>
+          {!isGuest && (
+            <Link
+              href="/topics/new"
+              style={{
+                background: 'var(--accent)',
+                color: '#fff',
+                textDecoration: 'none',
+                borderRadius: 8,
+                padding: '9px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                letterSpacing: '-0.01em',
+              }}
+            >
+              + Create Topic
+            </Link>
+          )}
         </div>
 
         {/* Tabs */}
@@ -161,7 +207,7 @@ export default function TopicsPage() {
             marginBottom: 28,
           }}
         >
-          {(['all', 'my'] as const).map((tab) => (
+          {(isGuest ? (['all'] as const) : (['all', 'my'] as const)).map((tab) => (
             <button
               key={tab}
               onClick={() => setView(tab)}
@@ -189,10 +235,10 @@ export default function TopicsPage() {
           <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
             {(
               [
-                { key: 'hot', label: '🔥 Hot' },
-                { key: 'new', label: '🆕 New' },
-                { key: 'top', label: '👥 Top' },
-                { key: 'active', label: '⚡ Active' },
+                { key: 'hot', label: '\uD83D\uDD25 Hot' },
+                { key: 'new', label: '\uD83C\uDD95 New' },
+                { key: 'top', label: '\uD83D\uDC65 Top' },
+                { key: 'active', label: '\u26A1 Active' },
               ] as const
             ).map(({ key, label }) => (
               <button
@@ -254,7 +300,7 @@ export default function TopicsPage() {
               borderRadius: 16,
             }}
           >
-            <p style={{ fontSize: 32, marginBottom: 12 }}>🌱</p>
+            <p style={{ fontSize: 32, marginBottom: 12 }}>{'\uD83C\uDF31'}</p>
             <p
               style={{
                 fontSize: 18,
@@ -268,7 +314,7 @@ export default function TopicsPage() {
             <p style={{ fontSize: 16, color: 'var(--muted)', marginBottom: 24 }}>
               {emptyMessage}
             </p>
-            {view === 'all' ? (
+            {view === 'all' && !isGuest ? (
               <Link
                 href="/topics/new"
                 style={{
@@ -283,7 +329,7 @@ export default function TopicsPage() {
               >
                 Create first topic
               </Link>
-            ) : (
+            ) : view !== 'all' ? (
               <button
                 onClick={() => setView('all')}
                 style={{
@@ -299,7 +345,7 @@ export default function TopicsPage() {
               >
                 Browse all topics
               </button>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -307,6 +353,15 @@ export default function TopicsPage() {
           <div className="flex flex-col gap-3">
             {topics.map((topic) => {
               const isMember = topic.isMember !== false;
+              const isPublic = topic.visibility === 'public' || !topic.visibility;
+              const isPrivate = topic.visibility === 'private';
+
+              // Guest: public topics are clickable, private topics are not
+              // Auth: members can click, non-members cannot (existing behavior)
+              const canClick = isGuest
+                ? isPublic
+                : isMember;
+
               const cardContent = (
                 <div
                   style={{
@@ -315,10 +370,11 @@ export default function TopicsPage() {
                     border: '1px solid var(--border)',
                     borderRadius: 12,
                     transition: 'border-color 0.15s, background 0.15s',
-                    cursor: isMember ? 'pointer' : 'default',
+                    cursor: canClick ? 'pointer' : 'default',
+                    opacity: isGuest && isPrivate ? 0.7 : 1,
                   }}
                   onMouseEnter={(e) => {
-                    if (isMember) {
+                    if (canClick) {
                       (e.currentTarget as HTMLDivElement).style.borderColor =
                         'rgba(120,140,255,0.3)';
                       (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-hover, #10131f)';
@@ -414,7 +470,22 @@ export default function TopicsPage() {
                         </div>
                       )}
                       <div>{formatDate(topic.createdAt)}</div>
-                      {!isMember && (
+                      {/* Guest: show "Members only" for private, nothing for public */}
+                      {isGuest && isPrivate && (
+                        <div style={{ marginTop: 8 }}>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: '#666',
+                              fontFamily: 'monospace',
+                            }}
+                          >
+                            Members only
+                          </span>
+                        </div>
+                      )}
+                      {/* Authenticated non-member: show join buttons */}
+                      {!isGuest && !isMember && (
                         <div style={{ marginTop: 8 }}>
                           {topic.requiresCountryProof ? (
                             <span
@@ -464,7 +535,7 @@ export default function TopicsPage() {
                                 opacity: joiningId === topic.id ? 0.7 : 1,
                               }}
                             >
-                              {joiningId === topic.id ? 'Joining…' : topic.visibility === 'private' ? 'Request to Join' : 'Join'}
+                              {joiningId === topic.id ? 'Joining\u2026' : topic.visibility === 'private' ? 'Request to Join' : 'Join'}
                             </button>
                           )}
                         </div>
@@ -474,7 +545,7 @@ export default function TopicsPage() {
                 </div>
               );
 
-              return isMember ? (
+              return canClick ? (
                 <Link key={topic.id} href={`/topics/${topic.id}`} style={{ textDecoration: 'none' }}>
                   {cardContent}
                 </Link>
@@ -488,4 +559,3 @@ export default function TopicsPage() {
     </>
   );
 }
-
