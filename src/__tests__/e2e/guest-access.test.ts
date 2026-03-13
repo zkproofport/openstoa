@@ -314,9 +314,15 @@ describe.sequential('Guest access', () => {
     expect(res.status).toBe(401);
   });
 
-  it('GET /api/posts/:id/reactions without auth returns 401', async () => {
+  it('GET /api/posts/:id/reactions without auth returns 200 with userReacted false', async () => {
     const res = await publicGet(`/api/posts/${publicPostId}/reactions`);
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.reactions)).toBe(true);
+    // Guests should always have userReacted: false
+    for (const reaction of json.reactions) {
+      expect(reaction.userReacted).toBe(false);
+    }
   });
 
   // Bookmarks list

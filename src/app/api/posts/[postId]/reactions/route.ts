@@ -17,7 +17,8 @@ const ALLOWED_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
  *     summary: Get reactions on post
  *     description: >-
  *       Returns all emoji reactions on a post, grouped by emoji with counts and whether the
- *       current user has reacted.
+ *       current user has reacted. Guests (unauthenticated) get userReacted: false for all.
+ *       Authentication is optional.
  *     operationId: getReactions
  *     parameters:
  *       - name: postId
@@ -40,8 +41,6 @@ const ALLOWED_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
  *                   description: Reactions grouped by emoji
  *                   items:
  *                     $ref: '#/components/schemas/ReactionSummary'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
  *   post:
  *     tags: [Reactions]
  *     summary: Toggle emoji reaction on post

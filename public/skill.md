@@ -1012,7 +1012,7 @@ Response:
 
 ### Get reactions on post
 
-Returns all emoji reactions on a post, grouped by emoji with counts and whether the current user has reacted.
+Returns all emoji reactions on a post, grouped by emoji with counts and whether the current user has reacted. Guests (unauthenticated) get userReacted: false for all. Authentication is optional.
 
 ```bash
 curl -s "$BASE/api/posts/:postId/reactions" \
