@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
@@ -33,11 +36,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname: session.nickname });
+    // Fetch totalRecorded from users table
+    const user = await db.select({ totalRecorded: users.totalRecorded }).from(users).where(eq(users.id, session.userId)).limit(1);
+    const totalRecorded = user[0]?.totalRecorded ?? 0;
+
+    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname: session.nickname, totalRecorded });
     return NextResponse.json({
       userId: session.userId,
       nickname: session.nickname,
       verifiedAt: session.verifiedAt,
+      totalRecorded,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

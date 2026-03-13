@@ -5,7 +5,7 @@ import Link from 'next/link';
 import SNSContent from '@/components/SNSContent';
 import Avatar from '@/components/Avatar';
 import { relativeTime } from '@/lib/utils';
-import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon, PinIcon } from '@/components/icons';
+import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon, PinIcon, RecordIcon } from '@/components/icons';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +36,7 @@ export interface PostCardPost {
   authorNickname?: string;
   authorProfileImage?: string | null;
   authorId?: string;
+  recordCount?: number;
 }
 
 export interface PostCardProps {
@@ -61,6 +62,7 @@ export interface PostCardProps {
   // Callbacks
   onDelete?: (postId: string) => void;
   onPin?: (postId: string) => void;
+  onRecord?: (postId: string) => void;
 
   // Expandable content
   expandable?: boolean;
@@ -137,6 +139,7 @@ export default function PostCard({
   topicCreatorId,
   onDelete,
   onPin,
+  onRecord,
   expandable = false,
 }: PostCardProps) {
   // Determine if we have "rich" features (topic-page mode)
@@ -267,6 +270,50 @@ export default function PostCard({
   const resolvedIsPinned = isPinned ?? post.isPinned;
   const resolvedUserVoted = userVoted ?? post.userVoted;
   const resolvedAuthorId = authorId ?? post.authorId;
+
+  // Record state
+  const [recording, setRecording] = useState(false);
+  const [recordCount, setRecordCount] = useState(post.recordCount ?? 0);
+  const [recorded, setRecorded] = useState(false);
+  const [recordError, setRecordError] = useState<string | null>(null);
+
+  // Check if user already recorded this post
+  useEffect(() => {
+    if (!hasRichFeatures || !sessionUserId || sessionUserId === resolvedAuthorId) return;
+    fetch(`/api/posts/${post.id}/records`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) {
+          setRecorded(data.userRecorded ?? false);
+          setRecordCount(data.recordCount ?? post.recordCount ?? 0);
+        }
+      })
+      .catch(() => {});
+  }, [post.id, sessionUserId, resolvedAuthorId, hasRichFeatures]);
+
+  const handleRecord = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (recording || recorded) return;
+    setRecording(true);
+    setRecordError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/record`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setRecordError(data.error ?? 'Failed to record');
+        return;
+      }
+      setRecorded(true);
+      setRecordCount(data.record?.recordCount ?? recordCount + 1);
+      onRecord?.(post.id);
+    } catch {
+      setRecordError('Failed to record');
+    } finally {
+      setRecording(false);
+    }
+  };
+
   const resolvedMedia = media ?? post.media;
   const isTopicCreator = sessionUserId && topicCreatorId && sessionUserId === topicCreatorId;
   const visibleReactions = reactions.filter((r) => r.count > 0);
@@ -429,6 +476,28 @@ export default function PostCard({
         </div>
       </Link>
 
+      {/* Recorded on Base badge */}
+      {recordCount > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: 8,
+          padding: '4px 10px',
+          background: 'rgba(139,92,246,0.08)',
+          border: '1px solid rgba(139,92,246,0.15)',
+          borderRadius: 6,
+          fontSize: 12,
+          color: '#a78bfa',
+          width: 'fit-content',
+        }}>
+          <RecordIcon size={12} />
+          <span>Recorded on Base</span>
+          <span style={{ color: '#6b7280' }}>|</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{recordCount} record{recordCount !== 1 ? 's' : ''}</span>
+        </div>
+      )}
+
       {/* Reactions bar */}
       <div style={{
         display: 'flex',
@@ -552,6 +621,18 @@ export default function PostCard({
           active={!!shareText}
           onClick={handleShare}
         />
+
+        {/* Record on-chain */}
+        {sessionUserId && sessionUserId !== resolvedAuthorId && (
+          <ActionButton
+            icon={<RecordIcon />}
+            count={recordCount > 0 ? recordCount : undefined}
+            color="#8b5cf6"
+            active={recorded}
+            label={recording ? 'Recording...' : recorded ? 'Recorded' : recordError ?? undefined}
+            onClick={handleRecord}
+          />
+        )}
 
         <div style={{ flex: 1 }} />
 

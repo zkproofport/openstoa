@@ -3,5 +3,9 @@ node_modules/
 dist/
 .env
 .env.local
+.env.test
 *.tsbuildinfo
 src/generated/
+
+# E2E test cache
+.e2e-token-cache.json

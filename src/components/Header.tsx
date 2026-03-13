@@ -82,6 +82,19 @@ export default function Header() {
           </Link>
 
           <Link
+            href="/recorded"
+            style={{
+              color: '#666', fontSize: 14, textDecoration: 'none',
+              fontFamily: 'var(--font-sans)', fontWeight: 500,
+              transition: 'color 0.15s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
+          >
+            Recorded
+          </Link>
+
+          <Link
             href="/docs"
             style={{
               color: '#666', fontSize: 14, textDecoration: 'none',

@@ -1,0 +1,12 @@
+# Compiler output
+cache/
+out/
+
+# Dependencies
+lib/
+
+# Environment
+.env
+
+# Broadcast (deployment artifacts with sensitive data)
+broadcast/

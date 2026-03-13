@@ -1321,6 +1321,65 @@ Response:
 }
 ```
 
+## Records
+
+### Record a post on-chain
+
+Records a post's content hash on-chain via the service wallet. Subject to policy checks: must not be your own post, post must be at least 1 hour old, you may not record the same post twice, and a daily limit of 3 recordings applies.
+
+```bash
+curl -s "$BASE/api/posts/:postId/record" \
+  -H "$AUTH" \
+  -X POST | jq .
+```
+
+Path params:
+- `postId` — Post ID
+
+Response:
+```json
+{
+  "success": true,
+  "record": {
+    "id": "uuid",
+    "contentHash": "...",
+    "recordCount": 0
+  }
+}
+```
+
+### Get on-chain records for a post
+
+Returns the list of on-chain records for a post, including recorder info, tx hash, and whether the recorded content hash still matches the current content. Session is optional — if authenticated, also returns whether the current user has already recorded this post.
+
+```bash
+curl -s "$BASE/api/posts/:postId/records" \
+  -H "$AUTH" | jq .
+```
+
+Path params:
+- `postId` — Post ID
+
+Response:
+```json
+{
+  "records": [
+    {
+      "id": "uuid",
+      "recorderNickname": "...",
+      "recorderProfileImage": "...",
+      "txHash": "...",
+      "contentHash": "...",
+      "contentHashMatch": true,
+      "createdAt": "2026-03-13T10:00:00Z"
+    }
+  ],
+  "recordCount": 0,
+  "postEdited": true,
+  "userRecorded": true
+}
+```
+
 ## Notes
 
 - Proof generation costs **0.1 USDC** on Base via x402 payment protocol

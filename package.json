@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "vitest run -c vitest.config.e2e.ts",
     "generate:skill": "npx tsx scripts/generate-skill.ts",
     "prebuild": "npx tsx scripts/generate-skill.ts"
   },
@@ -42,6 +43,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.0.0",
+    "dotenv": "^17.3.1",
     "drizzle-kit": "^0.30.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^4.0.0",

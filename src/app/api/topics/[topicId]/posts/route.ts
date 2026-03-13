@@ -204,6 +204,7 @@ export async function GET(
         commentCount: posts.commentCount,
         score: posts.score,
         isPinned: posts.isPinned,
+        recordCount: posts.recordCount,
         userVoted: sql<number | null>`${votes.value}`,
       })
       .from(posts)
@@ -212,7 +213,7 @@ export async function GET(
       .where(whereClause)
       .orderBy(
         desc(posts.isPinned),
-        sort === 'popular' ? desc(posts.score) : desc(posts.createdAt),
+        sort === 'popular' ? desc(posts.score) : sort === 'recorded' ? desc(posts.recordCount) : desc(posts.createdAt),
       )
       .limit(limit)
       .offset(offset);

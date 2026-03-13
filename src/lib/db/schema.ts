@@ -6,6 +6,7 @@ export const users = pgTable('community_users', {
   profileImage: text('profile_image'), // URL to R2 uploaded image
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  totalRecorded: integer('total_recorded').notNull().default(0),
 });
 
 export const topics = pgTable('community_topics', {
@@ -58,6 +59,7 @@ export const posts = pgTable('community_posts', {
   commentCount: integer('comment_count').notNull().default(0),
   score: real('score').notNull().default(0),
   isPinned: boolean('is_pinned').notNull().default(false),
+  recordCount: integer('record_count').notNull().default(0),
 });
 
 export const comments = pgTable('community_comments', {
@@ -110,4 +112,26 @@ export const votes = pgTable('community_votes', {
 }, (table) => ({
   userPostVote: uniqueIndex('community_vote_user_post_idx').on(table.userId, table.postId),
   userCommentVote: uniqueIndex('community_vote_user_comment_idx').on(table.userId, table.commentId),
+}));
+
+export const records = pgTable('community_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  postId: uuid('post_id').references(() => posts.id).notNull(),
+  recorderNullifier: text('recorder_nullifier').references(() => users.id).notNull(),
+  contentHash: text('content_hash').notNull(), // keccak256 of post content at time of recording
+  txHash: text('tx_hash'), // Base TX hash (null while pending)
+  method: varchar('method', { length: 10 }).notNull().default('service'), // 'service' | 'direct'
+  status: varchar('status', { length: 10 }).notNull().default('pending'), // 'pending' | 'confirmed' | 'failed'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  uniqueRecord: uniqueIndex('community_record_post_recorder_idx').on(table.postId, table.recorderNullifier),
+  postIdx: index('community_record_post_idx').on(table.postId),
+}));
+
+export const recordLimits = pgTable('community_record_limits', {
+  userId: text('user_id').references(() => users.id).notNull(),
+  date: text('date').notNull(), // YYYY-MM-DD format
+  count: integer('count').notNull().default(0),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.date] }),
 }));

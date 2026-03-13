@@ -83,7 +83,7 @@ export default function TopicPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Sort
-  const [sortBy, setSortBy] = useState<'new' | 'popular'>('new');
+  const [sortBy, setSortBy] = useState<'new' | 'popular' | 'recorded'>('new');
 
   // Tag filter
   const [popularTags, setPopularTags] = useState<{ id: string; name: string; slug: string; postCount: number }[]>([]);
@@ -210,7 +210,7 @@ export default function TopicPage() {
     loadPosts(0, true, slug, sortBy);
   }
 
-  function handleSortChange(newSort: 'new' | 'popular') {
+  function handleSortChange(newSort: 'new' | 'popular' | 'recorded') {
     if (newSort === sortBy) return;
     setSortBy(newSort);
     setOffset(0);
@@ -615,6 +615,22 @@ export default function TopicPage() {
             }}
           >
             🔥 Popular
+          </button>
+          <button
+            onClick={() => handleSortChange('recorded')}
+            style={{
+              background: sortBy === 'recorded' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+              color: sortBy === 'recorded' ? '#fff' : '#9ca3af',
+              border: sortBy === 'recorded' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 9999,
+              padding: '4px 14px',
+              fontSize: 14,
+              fontWeight: sortBy === 'recorded' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.12s',
+            }}
+          >
+            Recorded
           </button>
         </div>
 

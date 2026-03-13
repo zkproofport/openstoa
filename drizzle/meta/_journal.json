@@ -22,6 +22,13 @@
       "when": 1773242000000,
       "tag": "0002_create_missing_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1773246000000,
+      "tag": "0003_add_onchain_recording",
+      "breakpoints": true
     }
   ]
 }

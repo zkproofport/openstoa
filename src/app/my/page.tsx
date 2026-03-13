@@ -16,6 +16,7 @@ interface UserSession {
   userId: string;
   nickname?: string;
   profileImage?: string | null;
+  totalRecorded?: number;
 }
 
 interface Post {
@@ -440,6 +441,28 @@ export default function MyPage() {
           {/* Feed — hidden when Settings tab is active */}
           {activeTab !== 'settings' && (
             <>
+              {/* My posts recorded stat */}
+              {activeTab === 'posts' && session.totalRecorded !== undefined && session.totalRecorded > 0 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 16px',
+                  background: 'rgba(139,92,246,0.08)',
+                  border: '1px solid rgba(139,92,246,0.15)',
+                  borderRadius: 8,
+                  marginBottom: 16,
+                  fontSize: 14,
+                  color: '#a78bfa',
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                  <span>My posts recorded <strong>{session.totalRecorded}</strong> time{session.totalRecorded !== 1 ? 's' : ''} on Base</span>
+                </div>
+              )}
+
               <div style={{
                 border: '1px solid rgba(255,255,255,0.06)',
                 borderTop: 'none',
