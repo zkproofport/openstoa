@@ -528,6 +528,14 @@ function generate(): void {
   const outPath = path.resolve(__dirname, '../public/skill.md');
   fs.writeFileSync(outPath, output, 'utf-8');
   console.log(`Generated ${outPath} (${output.length} bytes)`);
+
+  // Also write the OpenAPI spec JSON for production runtime
+  // (swagger-jsdoc scans source files which aren't available in Docker runner)
+  const specDir = path.resolve(__dirname, '../src/generated');
+  fs.mkdirSync(specDir, { recursive: true });
+  const specPath = path.resolve(specDir, 'openapi-spec.json');
+  fs.writeFileSync(specPath, JSON.stringify(spec, null, 2), 'utf-8');
+  console.log(`Generated ${specPath}`);
 }
 
 generate();

@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   '/api/docs/openapi.json',
   '/docs',
   '/icon.png',
+  '/skill.md',
 ];
 
 const PUBLIC_PREFIXES = [
