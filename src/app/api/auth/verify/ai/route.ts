@@ -25,6 +25,8 @@ const ROUTE = '/api/auth/verify/ai';
  *       Verifies an AI agent's ZK proof against a previously issued challenge. On success,
  *       creates/retrieves the user account and returns both a session cookie and a Bearer token.
  *       The Bearer token can be used for subsequent API calls via the Authorization header.
+ *       In production, paymentTxHash is required and must exist on Base mainnet (chain 8453).
+ *       If teeAttestation is provided in production, PCR0 must be non-zero (real TEE, not debug mode).
  *     operationId: verifyAiProof
  *     security: []
  *     requestBody:
@@ -38,6 +40,13 @@ const ROUTE = '/api/auth/verify/ai';
  *               challengeId:
  *                 type: string
  *                 description: Challenge ID from /api/auth/challenge
+ *               paymentTxHash:
+ *                 type: string
+ *                 description: Payment transaction hash (required in production). Must exist on Base mainnet.
+ *                 example: "0xabc123..."
+ *               teeAttestation:
+ *                 type: string
+ *                 description: Raw Nitro TEE attestation document (base64). If provided in production, PCR0 must be non-zero.
  *               result:
  *                 type: object
  *                 description: Proof result from the ZK proof generation
@@ -104,7 +113,7 @@ export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
-    const { challengeId, result } = body;
+    const { challengeId, result, paymentTxHash, teeAttestation } = body;
 
     if (!challengeId || !result) {
       logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasResult: !!result });
@@ -138,6 +147,81 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain via AI SDK', { challengeId });
+
+    // Production-only security checks: reject staging AI proofs
+    if (process.env.APP_ENV === 'production') {
+      // Check 1: Payment TX must exist on Base mainnet (chain 8453)
+      if (!paymentTxHash) {
+        logger.warn(ROUTE, 'Production: paymentTxHash is required', { challengeId });
+        return NextResponse.json(
+          { error: 'paymentTxHash is required in production' },
+          { status: 400 },
+        );
+      }
+
+      const mainnetProvider = new ethers.JsonRpcProvider('https://mainnet.base.org');
+      const tx = await mainnetProvider.getTransaction(paymentTxHash);
+      if (!tx) {
+        logger.warn(ROUTE, 'Production: paymentTxHash not found on Base mainnet', { challengeId, paymentTxHash });
+        return NextResponse.json(
+          { error: 'Payment transaction not found on Base mainnet' },
+          { status: 400 },
+        );
+      }
+
+      logger.info(ROUTE, 'Production: payment TX verified on Base mainnet', { challengeId, paymentTxHash });
+
+      // Check 2: PCR0 non-zero (TEE attestation, if provided)
+      if (teeAttestation) {
+        const attestationBytes = Buffer.from(teeAttestation, 'base64');
+
+        // Find 'pcrs' marker in the CBOR-encoded attestation document
+        const pcrsMarker = Buffer.from('pcrs', 'utf8');
+        const markerIdx = attestationBytes.indexOf(pcrsMarker);
+
+        if (markerIdx === -1) {
+          logger.warn(ROUTE, 'Production: pcrs marker not found in teeAttestation', { challengeId });
+          return NextResponse.json(
+            { error: 'Invalid teeAttestation: pcrs marker not found' },
+            { status: 400 },
+          );
+        }
+
+        // PCR0 is a 48-byte value. In CBOR, the map key 0 follows 'pcrs', then a
+        // CBOR bstr header precedes the 48 bytes. Scan forward for the 48-byte bstr
+        // (CBOR major type 2, additional info 24 or 25 with length 48 = 0x30).
+        // We look for 0x58 0x30 (bstr, 1-byte length=48) after the 'pcrs' marker.
+        const searchStart = markerIdx + pcrsMarker.length;
+        let pcr0: Buffer | null = null;
+
+        for (let i = searchStart; i < attestationBytes.length - 49; i++) {
+          // CBOR bstr with 1-byte uint8 length: 0x58 0x30 = 48 bytes
+          if (attestationBytes[i] === 0x58 && attestationBytes[i + 1] === 0x30) {
+            pcr0 = attestationBytes.slice(i + 2, i + 2 + 48);
+            break;
+          }
+        }
+
+        if (!pcr0) {
+          logger.warn(ROUTE, 'Production: PCR0 not found in teeAttestation', { challengeId });
+          return NextResponse.json(
+            { error: 'Invalid teeAttestation: PCR0 not found' },
+            { status: 400 },
+          );
+        }
+
+        const isAllZeros = pcr0.every((b) => b === 0);
+        if (isAllZeros) {
+          logger.warn(ROUTE, 'Production: PCR0 is all zeros (debug mode TEE), rejecting', { challengeId });
+          return NextResponse.json(
+            { error: 'TEE attestation is in debug mode (PCR0 all zeros)' },
+            { status: 400 },
+          );
+        }
+
+        logger.info(ROUTE, 'Production: PCR0 non-zero, TEE attestation valid', { challengeId });
+      }
+    }
 
     // Verify proof on-chain using @zkproofport-ai/sdk
     const verification = await verifyProof(result);

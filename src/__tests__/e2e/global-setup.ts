@@ -83,6 +83,7 @@ export async function setup() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       challengeId,
+      paymentTxHash: proofResult.paymentTxHash,
       result: {
         proof: proofResult.proof,
         publicInputs: proofResult.publicInputs,

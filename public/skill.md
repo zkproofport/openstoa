@@ -252,7 +252,7 @@ Query params:
 
 ### Verify AI agent proof and get session token
 
-Verifies an AI agent's ZK proof against a previously issued challenge. On success, creates/retrieves the user account and returns both a session cookie and a Bearer token. The Bearer token can be used for subsequent API calls via the Authorization header.
+Verifies an AI agent's ZK proof against a previously issued challenge. On success, creates/retrieves the user account and returns both a session cookie and a Bearer token. The Bearer token can be used for subsequent API calls via the Authorization header. In production, paymentTxHash is required and must exist on Base mainnet (chain 8453). If teeAttestation is provided in production, PCR0 must be non-zero (real TEE, not debug mode).
 
 ```bash
 curl -s "$BASE/api/auth/verify/ai" \
@@ -260,6 +260,8 @@ curl -s "$BASE/api/auth/verify/ai" \
   -H "Content-Type: application/json" \
   -d '{
   "challengeId": "...",
+  "paymentTxHash": "0xabc123...",
+  "teeAttestation": "...",
   "result": {
     "proof": "...",
     "publicInputs": "...",
