@@ -150,25 +150,25 @@ export default function NewTopicPage() {
   return (
     <>
       <Header />
-      <div style={{ paddingTop: 40, paddingBottom: 80, maxWidth: 560 }}>
+      <div style={{ paddingTop: 40, paddingBottom: 80, maxWidth: 560, margin: '0 auto', padding: '40px 1.5rem 80px' }}>
         <div style={{ marginBottom: 32, display: 'flex', alignItems: 'center', gap: 12 }}>
           <Link
             href="/topics"
             style={{
               color: 'var(--muted)',
               textDecoration: 'none',
-              fontSize: 13,
+              fontSize: 15,
             }}
           >
             ← Topics
           </Link>
           <span style={{ color: 'var(--border)' }}>/</span>
-          <span style={{ fontSize: 13, color: 'var(--muted)' }}>New</span>
+          <span style={{ fontSize: 15, color: 'var(--muted)' }}>New</span>
         </div>
 
         <h1
           style={{
-            fontSize: 26,
+            fontSize: 32,
             fontWeight: 800,
             letterSpacing: '-0.04em',
             margin: '0 0 28px',
@@ -182,7 +182,7 @@ export default function NewTopicPage() {
           <div>
             <label
               htmlFor="title"
-              style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
             >
               Title <span style={{ color: '#ef4444' }}>*</span>
             </label>
@@ -196,7 +196,7 @@ export default function NewTopicPage() {
               autoFocus
               style={{
                 width: '100%',
-                background: '#111',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
                 padding: '12px 14px',
@@ -213,10 +213,10 @@ export default function NewTopicPage() {
           <div>
             <label
               htmlFor="description"
-              style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
             >
               Description{' '}
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>(optional)</span>
+              <span style={{ fontSize: 15, color: 'var(--muted)' }}>(optional)</span>
             </label>
             <textarea
               id="description"
@@ -226,7 +226,7 @@ export default function NewTopicPage() {
               rows={3}
               style={{
                 width: '100%',
-                background: '#111',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
                 padding: '12px 14px',
@@ -245,10 +245,10 @@ export default function NewTopicPage() {
           {/* Topic Image */}
           <div>
             <label
-              style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
             >
               Topic Image{' '}
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>(optional)</span>
+              <span style={{ fontSize: 15, color: 'var(--muted)' }}>(optional)</span>
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {imagePreview ? (
@@ -280,7 +280,7 @@ export default function NewTopicPage() {
                       background: '#ef4444',
                       color: '#fff',
                       border: 'none',
-                      fontSize: 12,
+                      fontSize: 14,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -303,7 +303,7 @@ export default function NewTopicPage() {
                     justifyContent: 'center',
                     cursor: 'pointer',
                     color: 'var(--muted)',
-                    fontSize: 12,
+                    fontSize: 14,
                     textAlign: 'center',
                     lineHeight: 1.3,
                     transition: 'border-color 0.15s',
@@ -328,7 +328,7 @@ export default function NewTopicPage() {
                   </span>
                 </label>
               )}
-              <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5 }}>
                 Displayed as topic avatar.
                 <br />
                 Auto-resized to 400×400 WebP.
@@ -339,7 +339,7 @@ export default function NewTopicPage() {
           {/* Visibility */}
           <div>
             <label
-              style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 10 }}
+              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 10 }}
             >
               Visibility
             </label>
@@ -377,7 +377,7 @@ export default function NewTopicPage() {
                       {opt.value === 'private' && ' \uD83D\uDD12'}
                       {opt.value === 'secret' && ' \uD83D\uDC7B'}
                     </span>
-                    <p style={{ fontSize: 12, color: 'var(--muted)', margin: '2px 0 0' }}>
+                    <p style={{ fontSize: 14, color: 'var(--muted)', margin: '2px 0 0' }}>
                       {opt.desc}
                     </p>
                   </div>
@@ -390,7 +390,7 @@ export default function NewTopicPage() {
           <div
             style={{
               padding: '16px 20px',
-              background: '#111',
+              background: 'var(--surface, #0c0e18)',
               border: `1px solid ${requiresCountry ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
               borderRadius: 12,
               transition: 'border-color 0.15s',
@@ -424,7 +424,7 @@ export default function NewTopicPage() {
               />
               <div>
                 <span style={{ fontSize: 14, fontWeight: 600 }}>Require Country Proof</span>
-                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '2px 0 0' }}>
+                <p style={{ fontSize: 14, color: 'var(--muted)', margin: '2px 0 0' }}>
                   Members must provide a ZK proof of their country via Coinbase attestation
                 </p>
               </div>
@@ -434,7 +434,7 @@ export default function NewTopicPage() {
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* Include / Exclude toggle */}
                 <div>
-                  <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+                  <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
                     Country filter mode
                   </p>
                   <div className="flex gap-2">
@@ -449,7 +449,7 @@ export default function NewTopicPage() {
                           border: 'none',
                           borderRadius: 6,
                           padding: '6px 16px',
-                          fontSize: 13,
+                          fontSize: 15,
                           cursor: 'pointer',
                           fontWeight: countryMode === mode ? 600 : 400,
                           transition: 'all 0.12s',
@@ -464,7 +464,7 @@ export default function NewTopicPage() {
                 <div>
                   <label
                     htmlFor="countries"
-                    style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 6 }}
+                    style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 6 }}
                   >
                     ISO country codes (comma-separated)
                   </label>
@@ -489,7 +489,7 @@ export default function NewTopicPage() {
                       borderRadius: 6,
                       padding: '10px 12px',
                       color: 'var(--foreground)',
-                      fontSize: 13,
+                      fontSize: 15,
                       outline: 'none',
                       fontFamily: 'monospace',
                       letterSpacing: '0.04em',
@@ -505,7 +505,7 @@ export default function NewTopicPage() {
                           <span
                             key={i}
                             style={{
-                              fontSize: 11,
+                              fontSize: 15,
                               fontFamily: 'monospace',
                               background:
                                 code.length === 2
@@ -561,7 +561,7 @@ export default function NewTopicPage() {
                     gap: 10,
                   }}>
                     <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-                    <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 500 }}>Country proof verified</span>
+                    <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>Country proof verified</span>
                   </div>
                 )}
               </div>
@@ -571,7 +571,7 @@ export default function NewTopicPage() {
           {error && (
             <p
               style={{
-                fontSize: 13,
+                fontSize: 15,
                 color: '#ef4444',
                 margin: 0,
                 fontFamily: 'monospace',

@@ -333,7 +333,7 @@ export default function MyPage() {
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
-      <div style={{ paddingTop: 36, paddingBottom: 100 }}>
+      <div style={{ paddingTop: 36, paddingBottom: 100, maxWidth: '56rem', margin: '0 auto', padding: '36px 1.5rem 100px' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 24 }}>
           <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
@@ -344,7 +344,7 @@ export default function MyPage() {
         {/* Profile card */}
         <div style={{
           padding: '24px',
-          background: '#0d0d0d',
+          background: 'var(--surface, #0c0e18)',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: 14,
           marginBottom: 28,
@@ -363,7 +363,7 @@ export default function MyPage() {
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: 18,
+              fontSize: 22,
               fontWeight: 800,
               letterSpacing: '-0.03em',
               color: '#e5e7eb',
@@ -373,14 +373,14 @@ export default function MyPage() {
             </div>
             <div style={{
               fontFamily: 'monospace',
-              fontSize: 11,
+              fontSize: 15,
               color: '#4b5563',
               wordBreak: 'break-all',
             }}>
               {truncateId(session.userId)}
             </div>
             {memberSince && (
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>
                 Member since {memberSince}
               </div>
             )}
@@ -400,7 +400,7 @@ export default function MyPage() {
             }}>
               {myPosts.length}
             </div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>posts</div>
+            <div style={{ fontSize: 15, color: '#6b7280', marginTop: 1 }}>posts</div>
           </div>
         </div>
 
@@ -489,7 +489,7 @@ export default function MyPage() {
             }}>
               {/* Profile Image section */}
               <div>
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
                   Profile Image
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -542,7 +542,7 @@ export default function MyPage() {
                             opacity: 0,
                             transition: 'opacity 0.15s',
                             color: '#fff',
-                            fontSize: 11,
+                            fontSize: 15,
                             fontWeight: 600,
                             gap: 2,
                           }}
@@ -563,7 +563,7 @@ export default function MyPage() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: 'var(--muted)',
-                        fontSize: 11,
+                        fontSize: 15,
                         textAlign: 'center',
                         lineHeight: 1.3,
                       }}>
@@ -575,14 +575,14 @@ export default function MyPage() {
                       </div>
                     )}
                   </label>
-                  <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5 }}>
                     {imageUploading ? 'Uploading...' : profileImage ? 'Hover to change photo' : 'Click to upload photo'}
                     <br />
                     Auto-resized to 200x200 WebP
                   </div>
                 </div>
                 {imageFeedback && (
-                  <div style={{ marginTop: 8, fontSize: 13, color: '#f87171' }}>
+                  <div style={{ marginTop: 8, fontSize: 15, color: '#f87171' }}>
                     {imageFeedback}
                   </div>
                 )}
@@ -590,10 +590,10 @@ export default function MyPage() {
 
               {/* Nickname section */}
               <div>
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
                   Nickname
                 </h3>
-                <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 10 }}>
+                <div style={{ fontSize: 15, color: '#9ca3af', marginBottom: 10 }}>
                   Current: <span style={{ color: '#e5e7eb', fontWeight: 600 }}>{displayName}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -605,7 +605,7 @@ export default function MyPage() {
                     maxLength={30}
                     style={{
                       flex: 1,
-                      background: '#111',
+                      background: 'var(--surface, #0c0e18)',
                       border: '1px solid rgba(255,255,255,0.12)',
                       borderRadius: 8,
                       padding: '9px 12px',
@@ -634,7 +634,7 @@ export default function MyPage() {
                   </button>
                 </div>
                 {nicknameFeedback && (
-                  <div style={{ marginTop: 8, fontSize: 13, color: nicknameFeedback.ok ? '#4ade80' : '#f87171' }}>
+                  <div style={{ marginTop: 8, fontSize: 15, color: nicknameFeedback.ok ? '#4ade80' : '#f87171' }}>
                     {nicknameFeedback.msg}
                   </div>
                 )}
@@ -642,7 +642,7 @@ export default function MyPage() {
 
               {/* Account section */}
               <div>
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
                   Account
                 </h3>
                 <button
@@ -677,7 +677,7 @@ export default function MyPage() {
                 <h3 style={{ fontSize: 14, fontWeight: 700, color: '#ef4444', margin: '0 0 8px' }}>
                   Danger Zone
                 </h3>
-                <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
+                <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
                   If you delete your account, your nickname will be changed to &apos;[Withdrawn User]&apos; and your posts and comments will remain. Please transfer topic ownership beforehand.
                 </p>
 
@@ -689,10 +689,10 @@ export default function MyPage() {
                     border: '1px solid rgba(239,68,68,0.25)',
                     borderRadius: 8,
                   }}>
-                    <p style={{ fontSize: 13, color: '#ef4444', margin: '0 0 8px', fontWeight: 600 }}>
+                    <p style={{ fontSize: 15, color: '#ef4444', margin: '0 0 8px', fontWeight: 600 }}>
                       Please transfer topic ownership first
                     </p>
-                    <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 13, color: '#f87171', lineHeight: 1.8 }}>
+                    <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 15, color: '#f87171', lineHeight: 1.8 }}>
                       {ownedTopicsError.map((t) => (
                         <li key={t.id}>{t.title}</li>
                       ))}
@@ -707,7 +707,7 @@ export default function MyPage() {
                     border: '1px solid rgba(239,68,68,0.3)',
                     borderRadius: 8,
                     padding: '8px 18px',
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: 600,
                     cursor: 'pointer',
                   }}>
@@ -715,7 +715,7 @@ export default function MyPage() {
                   </button>
                 ) : (
                   <div>
-                    <p style={{ fontSize: 12, color: '#ef4444', margin: '0 0 10px' }}>
+                    <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 10px' }}>
                       Type <strong>DELETE</strong> to confirm:
                     </p>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -726,12 +726,12 @@ export default function MyPage() {
                         placeholder="DELETE"
                         style={{
                           flex: 1,
-                          background: '#111',
+                          background: 'var(--surface, #0c0e18)',
                           border: '1px solid rgba(239,68,68,0.3)',
                           borderRadius: 6,
                           padding: '8px 12px',
                           color: '#e5e7eb',
-                          fontSize: 13,
+                          fontSize: 15,
                           outline: 'none',
                           fontFamily: 'monospace',
                         }}
@@ -761,7 +761,7 @@ export default function MyPage() {
                           border: 'none',
                           borderRadius: 6,
                           padding: '8px 18px',
-                          fontSize: 13,
+                          fontSize: 15,
                           fontWeight: 600,
                           cursor: deleteConfirmText === 'DELETE' ? 'pointer' : 'not-allowed',
                           opacity: deletingAccount ? 0.5 : 1,
@@ -777,7 +777,7 @@ export default function MyPage() {
                           border: 'none',
                           borderRadius: 6,
                           padding: '8px 14px',
-                          fontSize: 13,
+                          fontSize: 15,
                           cursor: 'pointer',
                         }}
                       >

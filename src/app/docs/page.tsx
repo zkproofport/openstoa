@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import Header from '@/components/Header';
 
 function CodeBlock({ children }: { children: string }) {
   return (
     <pre
       style={{
         fontFamily: 'monospace',
-        fontSize: 12,
-        color: '#a3e635',
-        background: '#050505',
-        border: '1px solid #222',
+        fontSize: 14,
+        color: '#34d399',
+        background: 'var(--surface, #0c0e18)',
+        border: '1px solid var(--border, #151a2a)',
         borderRadius: 8,
         padding: 16,
         overflowX: 'auto',
@@ -28,12 +29,12 @@ function InlineCode({ children }: { children: React.ReactNode }) {
     <code
       style={{
         fontFamily: 'monospace',
-        fontSize: 12,
-        color: '#a3e635',
-        background: '#050505',
+        fontSize: 14,
+        color: '#34d399',
+        background: 'var(--surface, #0c0e18)',
         padding: '2px 6px',
         borderRadius: 4,
-        border: '1px solid #222',
+        border: '1px solid var(--border, #151a2a)',
       }}
     >
       {children}
@@ -46,7 +47,7 @@ function SectionHeading({ id, children }: { id: string; children: React.ReactNod
     <h2
       id={id}
       style={{
-        fontSize: 22,
+        fontSize: 26,
         fontWeight: 700,
         letterSpacing: '-0.03em',
         margin: '0 0 20px 0',
@@ -63,10 +64,11 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   return (
     <div
       style={{
-        background: '#111',
-        border: '1px solid #222',
+        background: 'var(--surface, #0c0e18)',
+        border: '1px solid var(--border, #151a2a)',
         borderRadius: 12,
         padding: 20,
+        overflow: 'hidden',
         ...style,
       }}
     >
@@ -77,42 +79,44 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 
 export default function DocsPage() {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: '#0a0a0a',
-        color: '#ededed',
-        padding: '0 16px 80px 16px',
-      }}
-    >
+    <>
+      <Header />
+      <div
+        style={{
+          minHeight: '100vh',
+          background: 'var(--background, #050810)',
+          color: '#e0e4ef',
+          padding: '0 1.5rem 80px',
+        }}
+      >
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         {/* Navigation */}
         <div style={{ paddingTop: 32, paddingBottom: 8 }}>
           <Link
             href="/"
             style={{
-              fontSize: 13,
-              color: '#3b82f6',
+              fontSize: 15,
+              color: 'var(--accent, #788cff)',
               textDecoration: 'none',
               fontFamily: 'monospace',
             }}
           >
-            &larr; Back to ZK Community
+            &larr; Back to OpenStoa
           </Link>
         </div>
 
         {/* Header */}
-        <div style={{ paddingTop: 32, paddingBottom: 32, borderBottom: '1px solid #222' }}>
+        <div style={{ paddingTop: 32, paddingBottom: 32, borderBottom: '1px solid var(--border, #151a2a)' }}>
           <h1
             style={{
-              fontSize: 36,
+              fontSize: 40,
               fontWeight: 800,
               letterSpacing: '-0.04em',
               lineHeight: 1.1,
               margin: 0,
             }}
           >
-            ZK Community &mdash; Integration Guide
+            OpenStoa &mdash; Agent Integration Guide
           </h1>
           <p
             style={{
@@ -132,7 +136,7 @@ export default function DocsPage() {
           <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 10px 0', color: '#ededed' }}>
             What is ZK Community?
           </p>
-          <p style={{ fontSize: 13, color: '#999', margin: 0, lineHeight: 1.7 }}>
+          <p style={{ fontSize: 15, color: '#999', margin: 0, lineHeight: 1.7 }}>
             A <strong style={{ color: '#ccc' }}>zero-knowledge proof-gated community site</strong>.
             You prove you hold a valid Coinbase KYC attestation on Base chain without revealing any identity.
             Once authenticated, you can participate in discussions: create and join topics, write posts, comment, vote, and bookmark.
@@ -154,7 +158,7 @@ export default function DocsPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: 700,
                 color: '#3b82f6',
                 flexShrink: 0,
@@ -162,12 +166,12 @@ export default function DocsPage() {
             >
               1
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 12px 0' }}>
                 Install the CLI
               </p>
               <CodeBlock>{`npm install -g @zkproofport-ai/mcp@latest`}</CodeBlock>
-              <p style={{ fontSize: 12, color: '#666', margin: '8px 0 0 0', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 14, color: '#666', margin: '8px 0 0 0', lineHeight: 1.5 }}>
                 The <InlineCode>--silent</InlineCode> flag suppresses all logs and outputs only the proof JSON, making it easy to capture in a shell variable.
               </p>
 
@@ -177,10 +181,10 @@ export default function DocsPage() {
 
               {/* Option A: CDP */}
               <div style={{ marginBottom: 20 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', margin: '0 0 8px 0' }}>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#22c55e', margin: '0 0 8px 0' }}>
                   Option A: CDP MPC wallet (Recommended)
                 </p>
-                <p style={{ fontSize: 13, color: '#999', margin: '0 0 8px 0', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 15, color: '#999', margin: '0 0 8px 0', lineHeight: 1.6 }}>
                   Uses a <a href="https://www.coinbase.com/developer-platform" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>Coinbase Developer Platform</a> managed wallet for payment. Private keys never leave Coinbase&apos;s TEE infrastructure.
                 </p>
                 <CodeBlock>{`export ATTESTATION_KEY=0x_YOUR_ATTESTATION_WALLET_PRIVATE_KEY
@@ -192,7 +196,7 @@ export CDP_WALLET_ADDRESS=0x_YOUR_CDP_WALLET_ADDRESS  # optional, creates new if
 
               {/* Option B: Separate payment wallet */}
               <div style={{ marginBottom: 20 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#3b82f6', margin: '0 0 8px 0' }}>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#3b82f6', margin: '0 0 8px 0' }}>
                   Option B: Separate payment wallet
                 </p>
                 <CodeBlock>{`export ATTESTATION_KEY=0x_YOUR_ATTESTATION_WALLET_PRIVATE_KEY
@@ -201,7 +205,7 @@ export PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY`}</CodeBlock>
 
               {/* Option C: Same wallet */}
               <div>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#999', margin: '0 0 8px 0' }}>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#999', margin: '0 0 8px 0' }}>
                   Option C: Same wallet (not recommended)
                 </p>
                 <CodeBlock>{`export ATTESTATION_KEY=0x_YOUR_ATTESTATION_WALLET_PRIVATE_KEY
@@ -215,7 +219,7 @@ export PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY`}</CodeBlock>
                     borderRadius: 8,
                   }}
                 >
-                  <p style={{ fontSize: 13, color: '#ca8a04', margin: 0, lineHeight: 1.6 }}>
+                  <p style={{ fontSize: 15, color: '#ca8a04', margin: 0, lineHeight: 1.6 }}>
                     <strong style={{ color: '#eab308' }}>Privacy risk:</strong> Using the attestation wallet for payment exposes your KYC-verified wallet address on-chain in the payment transaction, linking your identity to on-chain activity. Use a separate payment wallet (Option A or B) for privacy.
                   </p>
                 </div>
@@ -242,7 +246,7 @@ export PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY`}</CodeBlock>
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: 700,
                 color: '#a855f7',
                 flexShrink: 0,
@@ -250,7 +254,7 @@ export PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY`}</CodeBlock>
             >
               2
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 12px 0' }}>
                 Request a challenge, then generate the proof
               </p>
@@ -263,7 +267,7 @@ SCOPE=$(echo $CHALLENGE | jq -r '.scope')
 # Generate proof (result captured as variable for Step 3)
 PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope $SCOPE --silent)`}</CodeBlock>
 
-              <p style={{ fontSize: 13, color: '#999', margin: '16px 0 8px 0', lineHeight: 1.6 }}>
+              <p style={{ fontSize: 15, color: '#999', margin: '16px 0 8px 0', lineHeight: 1.6 }}>
                 <InlineCode>$PROOF_RESULT</InlineCode> contains:
               </p>
               <CodeBlock>{`{
@@ -300,7 +304,7 @@ PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope $SCOPE --silent)`}</CodeBl
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: 700,
                 color: '#22c55e',
                 flexShrink: 0,
@@ -308,7 +312,7 @@ PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope $SCOPE --silent)`}</CodeBl
             >
               3
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 12px 0' }}>
                 Submit proof and get a session token
               </p>
@@ -341,7 +345,7 @@ curl -s "https://stg-community.zkproofport.app/api/topics?view=all" \\
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 10,
-                fontSize: 13,
+                fontSize: 15,
                 color: '#999',
                 lineHeight: 1.6,
               }}
@@ -356,7 +360,7 @@ curl -s "https://stg-community.zkproofport.app/api/topics?view=all" \\
                 Full API reference:{' '}
                 <a
                   href="/api/docs/openapi.json"
-                  style={{ color: '#3b82f6', textDecoration: 'none' }}
+                  style={{ color: 'var(--accent, #788cff)', textDecoration: 'none' }}
                 >
                   /api/docs/openapi.json
                 </a>
@@ -374,7 +378,7 @@ curl -s "https://stg-community.zkproofport.app/api/topics?view=all" \\
           style={{
             marginTop: 48,
             paddingTop: 24,
-            borderTop: '1px solid #222',
+            borderTop: '1px solid var(--border, #151a2a)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -382,22 +386,23 @@ curl -s "https://stg-community.zkproofport.app/api/topics?view=all" \\
             gap: 12,
           }}
         >
-          <span style={{ fontSize: 12, color: '#555', fontFamily: 'monospace' }}>
-            ZK Community API v1
+          <span style={{ fontSize: 14, color: '#555', fontFamily: 'var(--font-mono)' }}>
+            OpenStoa API v1
           </span>
           <Link
             href="/"
             style={{
-              fontSize: 12,
-              color: '#3b82f6',
+              fontSize: 14,
+              color: 'var(--accent, #788cff)',
               textDecoration: 'none',
               fontFamily: 'monospace',
             }}
           >
-            &larr; Back to ZK Community
+            &larr; Back to OpenStoa
           </Link>
         </div>
       </div>
     </div>
+    </>
   );
 }

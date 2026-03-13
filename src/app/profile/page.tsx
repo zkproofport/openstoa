@@ -150,14 +150,14 @@ function ProfilePageInner() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '40px 0',
+          padding: '40px 1.5rem',
         }}
       >
         <div style={{ width: '100%', maxWidth: 440 }}>
           <div style={{ marginBottom: 32 }}>
             <h1
               style={{
-                fontSize: 28,
+                fontSize: 32,
                 fontWeight: 800,
                 letterSpacing: '-0.04em',
                 margin: 0,
@@ -166,7 +166,7 @@ function ProfilePageInner() {
               Choose a nickname
             </h1>
             <p style={{ fontSize: 14, color: 'var(--muted)', marginTop: 8 }}>
-              Your public identity in ZK Community.
+              Your public identity in OpenStoa.
             </p>
           </div>
 
@@ -174,18 +174,18 @@ function ProfilePageInner() {
             <div
               style={{
                 padding: '10px 14px',
-                background: '#111',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
                 marginBottom: 24,
               }}
             >
-              <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0, fontFamily: 'monospace' }}>
+              <p style={{ fontSize: 15, color: 'var(--muted)', margin: 0, fontFamily: 'monospace' }}>
                 Your verified identity
               </p>
               <p
                 style={{
-                  fontSize: 13,
+                  fontSize: 15,
                   color: 'var(--foreground)',
                   margin: '4px 0 0',
                   fontFamily: 'monospace',
@@ -217,7 +217,7 @@ function ProfilePageInner() {
                       background: '#ef4444',
                       color: '#fff',
                       border: 'none',
-                      fontSize: 12,
+                      fontSize: 14,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -242,7 +242,7 @@ function ProfilePageInner() {
                     justifyContent: 'center',
                     cursor: imageUploading ? 'wait' : 'pointer',
                     color: 'var(--muted)',
-                    fontSize: 11,
+                    fontSize: 15,
                     textAlign: 'center',
                     lineHeight: 1.3,
                     transition: 'border-color 0.15s',
@@ -266,7 +266,7 @@ function ProfilePageInner() {
                   <span>{imageUploading ? 'Uploading...' : 'Upload\nPhoto'}</span>
                 </label>
               )}
-              <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5 }}>
                 Profile photo (optional)
                 <br />
                 Auto-resized to 200x200 WebP.
@@ -276,7 +276,7 @@ function ProfilePageInner() {
             <div>
               <label
                 htmlFor="nickname"
-                style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+                style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
               >
                 Nickname
               </label>
@@ -290,14 +290,14 @@ function ProfilePageInner() {
                 autoFocus
                 style={{
                   width: '100%',
-                  background: '#111',
+                  background: 'var(--surface, #0c0e18)',
                   border: `1px solid ${validationError ? '#ef4444' : isValid && nickname ? '#22c55e' : 'var(--border)'}`,
                   borderRadius: 8,
                   padding: '12px 14px',
                   color: 'var(--foreground)',
                   fontSize: 15,
                   outline: 'none',
-                  fontFamily: 'monospace',
+                  fontFamily: 'var(--font-mono)',
                   transition: 'border-color 0.15s',
                 }}
               />
@@ -309,15 +309,15 @@ function ProfilePageInner() {
                 }}
               >
                 {validationError ? (
-                  <p style={{ fontSize: 12, color: '#ef4444', margin: 0 }}>{validationError}</p>
+                  <p style={{ fontSize: 14, color: '#ef4444', margin: 0 }}>{validationError}</p>
                 ) : isValid && nickname ? (
-                  <p style={{ fontSize: 12, color: '#22c55e', margin: 0 }}>Looks good</p>
+                  <p style={{ fontSize: 14, color: '#22c55e', margin: 0 }}>Looks good</p>
                 ) : (
-                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+                  <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>
                     Letters, numbers, underscores only
                   </p>
                 )}
-                <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+                <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>
                   {nickname.length}/20
                 </p>
               </div>
@@ -326,7 +326,7 @@ function ProfilePageInner() {
             {error && (
               <p
                 style={{
-                  fontSize: 13,
+                  fontSize: 15,
                   color: '#ef4444',
                   margin: 0,
                   fontFamily: 'monospace',

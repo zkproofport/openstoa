@@ -232,9 +232,9 @@ export default function PostPage() {
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
-      <div style={{ paddingTop: 36, paddingBottom: 80 }}>
+      <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: '56rem', margin: '0 auto', padding: '36px 1.5rem 80px' }}>
         {/* Breadcrumb */}
-        <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
+        <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 6, fontSize: 15, color: 'var(--muted)' }}>
           <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none' }}>Topics</Link>
           <span style={{ color: 'var(--border)' }}>/</span>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--muted)', textDecoration: 'none' }}>
@@ -255,7 +255,7 @@ export default function PostPage() {
         <article
           style={{
             padding: '28px 32px',
-            background: '#0d0d0d',
+            background: 'var(--surface, #0c0e18)',
             border: '1px solid var(--border)',
             borderRadius: 14,
             marginBottom: 32,
@@ -263,7 +263,7 @@ export default function PostPage() {
         >
           <h1
             style={{
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: 800,
               letterSpacing: '-0.03em',
               margin: '0 0 14px',
@@ -293,7 +293,7 @@ export default function PostPage() {
               <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>
                 {post.authorNickname}
               </p>
-              <p style={{ fontSize: 11, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'monospace' }}>
+              <p style={{ fontSize: 15, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'monospace' }}>
                 {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
@@ -310,7 +310,7 @@ export default function PostPage() {
                     border: '1px solid rgba(59,130,246,0.2)',
                     borderRadius: 4,
                     padding: '2px 8px',
-                    fontSize: 12,
+                    fontSize: 14,
                     fontFamily: 'monospace',
                   }}
                 >
@@ -420,7 +420,7 @@ export default function PostPage() {
         <div>
           <h2
             style={{
-              fontSize: 16,
+              fontSize: 20,
               fontWeight: 700,
               letterSpacing: '-0.02em',
               margin: '0 0 16px',
@@ -438,7 +438,7 @@ export default function PostPage() {
                   key={comment.id}
                   style={{
                     padding: '16px 20px',
-                    background: '#0d0d0d',
+                    background: 'var(--surface, #0c0e18)',
                     border: '1px solid var(--border)',
                     borderRadius: 10,
                   }}
@@ -458,10 +458,10 @@ export default function PostPage() {
                       <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
                     </span>
                     <div>
-                      <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'monospace' }}>
+                      <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'monospace' }}>
                         {comment.authorNickname}
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8, fontFamily: 'monospace' }}>
+                      <span style={{ fontSize: 15, color: 'var(--muted)', marginLeft: 8, fontFamily: 'monospace' }}>
                         {truncateId(comment.authorId, 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
@@ -488,14 +488,14 @@ export default function PostPage() {
             onSubmit={handleCommentSubmit}
             style={{
               padding: '20px',
-              background: '#0d0d0d',
+              background: 'var(--surface, #0c0e18)',
               border: '1px solid var(--border)',
               borderRadius: 12,
             }}
           >
             <label
               htmlFor="comment"
-              style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
             >
               Write a comment
             </label>
@@ -507,7 +507,7 @@ export default function PostPage() {
               rows={4}
               style={{
                 width: '100%',
-                background: '#111',
+                background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
                 padding: '12px 14px',
@@ -523,7 +523,7 @@ export default function PostPage() {
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
             {commentError && (
-              <p style={{ fontSize: 12, color: '#ef4444', margin: '0 0 8px', fontFamily: 'monospace' }}>
+              <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 8px', fontFamily: 'monospace' }}>
                 {commentError}
               </p>
             )}
