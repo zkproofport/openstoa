@@ -85,6 +85,7 @@ export default function TopicPage() {
 
   // Guest mode
   const [isGuest, setIsGuest] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   // Sort
   const [sortBy, setSortBy] = useState<'new' | 'popular' | 'recorded'>('new');
@@ -135,6 +136,9 @@ export default function TopicPage() {
       })
       .catch(() => {
         setIsGuest(true);
+      })
+      .finally(() => {
+        setSessionChecked(true);
       });
   }, []);
 
@@ -766,7 +770,7 @@ export default function TopicPage() {
           margin: '0 auto',
         }}>
           {/* Composer (expanded) — hidden for guests */}
-          {!isGuest && composing && (
+          {sessionChecked && !isGuest && composing && (
             <div style={{
               background: 'var(--surface, #0c0e18)',
               border: '1px solid rgba(59,130,246,0.3)',
@@ -907,7 +911,7 @@ export default function TopicPage() {
         {/* ── End centered feed ── */}
 
         {/* Floating compose button — hidden for guests */}
-        {!isGuest && !composing && (
+        {sessionChecked && !isGuest && !composing && (
           <button
             onClick={() => setComposing(true)}
             style={{

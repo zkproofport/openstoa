@@ -31,7 +31,7 @@ const GUEST_ACCESSIBLE_PREFIXES = [
   '/topics',       // topic list page + topic/post detail pages
   '/api/topics',   // GET /api/topics, GET /api/topics/[topicId], GET /api/topics/[topicId]/posts
   '/api/posts/',   // GET /api/posts/[postId]
-  '/api/tags',     // public tag data
+  '/api/tags',     // tag search/list
 ];
 
 function isPublicPath(pathname: string): boolean {

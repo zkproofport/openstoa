@@ -50,16 +50,12 @@ export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
-    if (!session) {
-      logger.warn(ROUTE, 'Unauthenticated request');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
 
     const { searchParams } = new URL(request.url);
     const q = searchParams.get('q');
     const topicId = searchParams.get('topicId');
 
-    logger.info(ROUTE, 'Fetching tags', { userId: session.userId, q, topicId });
+    logger.info(ROUTE, 'Fetching tags', { userId: session?.userId ?? 'guest', q, topicId });
 
     let result;
 
@@ -108,7 +104,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    logger.info(ROUTE, 'Tags fetched', { userId: session.userId, count: result.length });
+    logger.info(ROUTE, 'Tags fetched', { userId: session?.userId ?? 'guest', count: result.length });
     return NextResponse.json({ tags: result });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

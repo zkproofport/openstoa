@@ -80,3 +80,26 @@ export async function publicPost(path: string, body?: unknown): Promise<Response
     body: body ? JSON.stringify(body) : undefined,
   });
 }
+
+/** Make an unauthenticated PUT request */
+export async function publicPut(path: string, body?: unknown): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+/** Make an unauthenticated DELETE request */
+export async function publicDelete(path: string): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+}
+
+/** Make an unauthenticated PATCH request */
+export async function publicPatch(path: string, body?: unknown): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}

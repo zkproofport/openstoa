@@ -1,13 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { publicGet, publicPost, authPost } from './helpers';
+import {
+  publicGet,
+  publicPost,
+  publicPut,
+  publicDelete,
+  authGet,
+  authPost,
+} from './helpers';
 
 describe.sequential('Guest access', () => {
   let publicTopicId: string;
   let privateTopicId: string;
   let secretTopicId: string;
   let publicPostId: string;
+  let privatePostId: string;
 
-  // Setup: create topics with different visibility (requires auth)
+  // ── Setup: create resources needed for tests ──────────────────────────
+
   it('setup: create public topic', async () => {
     const res = await authPost('/api/topics', {
       title: `E2E Guest Public ${Date.now()}`,
@@ -51,31 +60,54 @@ describe.sequential('Guest access', () => {
     publicPostId = json.post.id;
   });
 
-  // Guest topic list tests
-  it('GET /api/topics?view=all without auth returns public and private topics', async () => {
+  it('setup: create post in private topic', async () => {
+    const res = await authPost(`/api/topics/${privateTopicId}/posts`, {
+      title: `E2E Guest Private Post ${Date.now()}`,
+      content: 'Post content in private topic',
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    privatePostId = json.post.id;
+  });
+
+  // ── Section 1: Guest-allowed endpoints ────────────────────────────────
+
+  // GET /api/topics?view=all
+  it('GET /api/topics?view=all returns 200 for guests', async () => {
     const res = await publicGet('/api/topics?view=all');
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(Array.isArray(json.topics)).toBe(true);
-
     const topicIds = json.topics.map((t: any) => t.id);
-    // Public topic should be in list
     expect(topicIds).toContain(publicTopicId);
-    // Private topic should be in list
     expect(topicIds).toContain(privateTopicId);
-    // Secret topic should NOT be in list
     expect(topicIds).not.toContain(secretTopicId);
   });
 
-  it('GET /api/topics without view=all and without auth returns empty', async () => {
+  it('GET /api/topics?view=all returns 200 for authenticated users', async () => {
+    const res = await authGet('/api/topics?view=all');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.topics)).toBe(true);
+  });
+
+  // GET /api/topics (no view=all)
+  it('GET /api/topics returns 200 with empty array for guests', async () => {
     const res = await publicGet('/api/topics');
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.topics).toEqual([]);
   });
 
-  // Guest topic detail tests
-  it('GET /api/topics/:id without auth returns public topic detail', async () => {
+  it('GET /api/topics returns 200 with user topics for authenticated users', async () => {
+    const res = await authGet('/api/topics');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.topics)).toBe(true);
+  });
+
+  // GET /api/topics/:publicId
+  it('GET /api/topics/:publicId returns 200 for guests', async () => {
     const res = await publicGet(`/api/topics/${publicTopicId}`);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -83,7 +115,16 @@ describe.sequential('Guest access', () => {
     expect(topic.id).toBe(publicTopicId);
   });
 
-  it('GET /api/topics/:id without auth returns private topic detail', async () => {
+  it('GET /api/topics/:publicId returns 200 for authenticated users', async () => {
+    const res = await authGet(`/api/topics/${publicTopicId}`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const topic = json.topic || json;
+    expect(topic.id).toBe(publicTopicId);
+  });
+
+  // GET /api/topics/:privateId
+  it('GET /api/topics/:privateId returns 200 for guests', async () => {
     const res = await publicGet(`/api/topics/${privateTopicId}`);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -91,13 +132,27 @@ describe.sequential('Guest access', () => {
     expect(topic.id).toBe(privateTopicId);
   });
 
-  it('GET /api/topics/:id without auth returns 404 for secret topic', async () => {
+  it('GET /api/topics/:privateId returns 200 for authenticated users', async () => {
+    const res = await authGet(`/api/topics/${privateTopicId}`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const topic = json.topic || json;
+    expect(topic.id).toBe(privateTopicId);
+  });
+
+  // GET /api/topics/:secretId
+  it('GET /api/topics/:secretId returns 404 for guests', async () => {
     const res = await publicGet(`/api/topics/${secretTopicId}`);
     expect(res.status).toBe(404);
   });
 
-  // Guest posts access tests
-  it('GET /api/topics/:id/posts without auth returns posts for public topic', async () => {
+  it('GET /api/topics/:secretId returns 200 for authenticated member', async () => {
+    const res = await authGet(`/api/topics/${secretTopicId}`);
+    expect(res.status).toBe(200);
+  });
+
+  // GET /api/topics/:publicId/posts
+  it('GET /api/topics/:publicId/posts returns 200 for guests', async () => {
     const res = await publicGet(`/api/topics/${publicTopicId}/posts`);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -105,13 +160,28 @@ describe.sequential('Guest access', () => {
     expect(json.posts.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('GET /api/topics/:id/posts without auth rejects private topic', async () => {
+  it('GET /api/topics/:publicId/posts returns 200 for authenticated users', async () => {
+    const res = await authGet(`/api/topics/${publicTopicId}/posts`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  // GET /api/topics/:privateId/posts
+  it('GET /api/topics/:privateId/posts without auth returns 401 or 403', async () => {
     const res = await publicGet(`/api/topics/${privateTopicId}/posts`);
     expect([401, 403]).toContain(res.status);
   });
 
-  // Guest post detail tests
-  it('GET /api/posts/:id without auth returns post from public topic', async () => {
+  it('GET /api/topics/:privateId/posts returns 200 for authenticated member', async () => {
+    const res = await authGet(`/api/topics/${privateTopicId}/posts`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  // GET /api/posts/:publicPostId
+  it('GET /api/posts/:publicPostId returns 200 for guests', async () => {
     const res = await publicGet(`/api/posts/${publicPostId}`);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -119,7 +189,39 @@ describe.sequential('Guest access', () => {
     expect(post.id).toBe(publicPostId);
   });
 
-  // Guest write operations should fail
+  it('GET /api/posts/:publicPostId returns 200 for authenticated users', async () => {
+    const res = await authGet(`/api/posts/${publicPostId}`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const post = json.post || json;
+    expect(post.id).toBe(publicPostId);
+  });
+
+  // GET /api/posts/:publicPostId/records
+  it('GET /api/posts/:publicPostId/records returns 200 for guests', async () => {
+    const res = await publicGet(`/api/posts/${publicPostId}/records`);
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /api/posts/:publicPostId/records returns 200 for authenticated users', async () => {
+    const res = await authGet(`/api/posts/${publicPostId}/records`);
+    expect(res.status).toBe(200);
+  });
+
+  // GET /api/tags
+  it('GET /api/tags returns 200 for guests', async () => {
+    const res = await publicGet('/api/tags');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /api/tags returns 200 for authenticated users', async () => {
+    const res = await authGet('/api/tags');
+    expect(res.status).toBe(200);
+  });
+
+  // ── Section 2: Auth-required endpoints (must return 401 without auth) ─
+
+  // Topic write operations
   it('POST /api/topics without auth returns 401', async () => {
     const res = await publicPost('/api/topics', {
       title: 'Should fail',
@@ -136,9 +238,105 @@ describe.sequential('Guest access', () => {
     expect(res.status).toBe(401);
   });
 
-  // Tags endpoint (public)
-  it('GET /api/tags without auth returns tags', async () => {
-    const res = await publicGet('/api/tags');
-    expect(res.status).toBe(200);
+  it('POST /api/topics/:id/join without auth returns 401', async () => {
+    const res = await publicPost(`/api/topics/${publicTopicId}/join`);
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/topics/:id/members without auth returns 401', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/members`);
+    expect(res.status).toBe(401);
+  });
+
+  // Post operations
+  it('DELETE /api/posts/:id without auth returns 401', async () => {
+    const res = await publicDelete(`/api/posts/${publicPostId}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/posts/:id/vote without auth returns 401', async () => {
+    const res = await publicPost(`/api/posts/${publicPostId}/vote`, {
+      value: 1,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/posts/:id/comments without auth returns 401', async () => {
+    const res = await publicPost(`/api/posts/${publicPostId}/comments`, {
+      content: 'Should fail',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  // Bookmark operations
+  it('GET /api/posts/:id/bookmark without auth returns 401', async () => {
+    const res = await publicGet(`/api/posts/${publicPostId}/bookmark`);
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/posts/:id/bookmark without auth returns 401', async () => {
+    const res = await publicPost(`/api/posts/${publicPostId}/bookmark`);
+    expect(res.status).toBe(401);
+  });
+
+  // Reaction operations
+  it('POST /api/posts/:id/reactions without auth returns 401', async () => {
+    const res = await publicPost(`/api/posts/${publicPostId}/reactions`, {
+      emoji: '👍',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/posts/:id/reactions without auth returns 401', async () => {
+    const res = await publicGet(`/api/posts/${publicPostId}/reactions`);
+    expect(res.status).toBe(401);
+  });
+
+  // Bookmarks list
+  it('GET /api/bookmarks without auth returns 401', async () => {
+    const res = await publicGet('/api/bookmarks');
+    expect(res.status).toBe(401);
+  });
+
+  // My endpoints
+  it('GET /api/my/posts without auth returns 401', async () => {
+    const res = await publicGet('/api/my/posts');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/my/likes without auth returns 401', async () => {
+    const res = await publicGet('/api/my/likes');
+    expect(res.status).toBe(401);
+  });
+
+  // Recorded
+  it('GET /api/recorded without auth returns 401', async () => {
+    const res = await publicGet('/api/recorded');
+    expect(res.status).toBe(401);
+  });
+
+  // Profile
+  it('PUT /api/profile/nickname without auth returns 401', async () => {
+    const res = await publicPut('/api/profile/nickname', {
+      nickname: 'should-fail',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/profile/image without auth returns 401', async () => {
+    const res = await publicGet('/api/profile/image');
+    expect(res.status).toBe(401);
+  });
+
+  // Upload
+  it('POST /api/upload without auth returns 401', async () => {
+    const res = await publicPost('/api/upload');
+    expect(res.status).toBe(401);
+  });
+
+  // Auth session
+  it('GET /api/auth/session without auth returns 401', async () => {
+    const res = await publicGet('/api/auth/session');
+    expect(res.status).toBe(401);
   });
 });
