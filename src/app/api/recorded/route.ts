@@ -7,6 +7,48 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/recorded';
 
+/**
+ * @openapi
+ * /api/recorded:
+ *   get:
+ *     tags: [MyActivity]
+ *     summary: Get recorded posts feed
+ *     description: >-
+ *       Returns posts the current user has recorded (bookmarked/saved), with pagination.
+ *       Only includes posts from topics the user is a member of.
+ *     operationId: getRecordedPosts
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         description: Number of posts to return (max 100)
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         description: Number of posts to skip
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: List of recorded posts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 posts:
+ *                   type: array
+ *                   description: Recorded posts sorted by record count
+ *                   items:
+ *                     $ref: '#/components/schemas/Post'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {

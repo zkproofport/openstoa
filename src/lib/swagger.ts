@@ -135,6 +135,23 @@ const options: swaggerJsdoc.Options = {
               format: 'date-time',
               description: 'Last post/comment activity timestamp',
             },
+            categoryId: {
+              type: 'string',
+              format: 'uuid',
+              nullable: true,
+              description: 'Category ID (null if uncategorized)',
+            },
+            category: {
+              type: 'object',
+              nullable: true,
+              description: 'Category details',
+              properties: {
+                id: { type: 'string', format: 'uuid', description: 'Category ID' },
+                name: { type: 'string', description: 'Category display name' },
+                slug: { type: 'string', description: 'URL-safe category slug' },
+                icon: { type: 'string', nullable: true, description: 'Category icon emoji' },
+              },
+            },
             memberCount: {
               type: 'integer',
               description: 'Number of members',

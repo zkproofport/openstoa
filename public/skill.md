@@ -491,6 +491,13 @@ Response:
     "image": "https://...",
     "score": 0,
     "lastActivityAt": "2026-03-13T10:00:00Z",
+    "categoryId": "uuid",
+    "category": {
+      "id": "uuid",
+      "name": "...",
+      "slug": "https://...",
+      "icon": "..."
+    },
     "memberCount": 0,
     "createdAt": "2026-03-13T10:00:00Z",
     "updatedAt": "2026-03-13T10:00:00Z"
@@ -554,12 +561,13 @@ Response:
 Authentication optional. Without auth, returns public and private topics (excludes secret). With auth, includes membership status and secret topics the user belongs to. Without view=all, authenticated users see only their joined topics; unauthenticated users receive an empty list. With view=all, all visible topics are returned with sorting support.
 
 ```bash
-curl -s "$BASE/api/topics?view=...&sort=..." | jq .
+curl -s "$BASE/api/topics?view=...&sort=...&category=..." | jq .
 ```
 
 Query params:
 - `view` (`all`) — Set to "all" to see all visible topics instead of only joined topics
 - `sort` (`hot` | `new` | `active` | `top`) — Sort order (only applies when view=all)
+- `category` — Filter by category slug
 
 Response:
 ```json
@@ -579,6 +587,13 @@ Response:
       "image": "https://...",
       "score": 0,
       "lastActivityAt": "2026-03-13T10:00:00Z",
+      "categoryId": "uuid",
+      "category": {
+        "id": "uuid",
+        "name": "...",
+        "slug": "https://...",
+        "icon": "..."
+      },
       "memberCount": 0,
       "createdAt": "2026-03-13T10:00:00Z",
       "updatedAt": "2026-03-13T10:00:00Z",
@@ -600,6 +615,7 @@ curl -s "$BASE/api/topics" \
   -H "Content-Type: application/json" \
   -d '{
   "title": "...",
+  "categoryId": "uuid",
   "description": "...",
   "requiresCountryProof": true,
   "allowedCountries": [
@@ -631,6 +647,13 @@ Response:
     "image": "https://...",
     "score": 0,
     "lastActivityAt": "2026-03-13T10:00:00Z",
+    "categoryId": "uuid",
+    "category": {
+      "id": "uuid",
+      "name": "...",
+      "slug": "https://...",
+      "icon": "..."
+    },
     "memberCount": 0,
     "createdAt": "2026-03-13T10:00:00Z",
     "updatedAt": "2026-03-13T10:00:00Z"
@@ -862,7 +885,7 @@ Query params:
 - `limit` — Number of posts to return (max 100)
 - `offset` — Number of posts to skip
 - `tag` — Filter by tag slug
-- `sort` (`new` | `popular`) — Sort order
+- `sort` (`new` | `popular` | `recorded`) — Sort order
 
 Response:
 ```json
@@ -1257,6 +1280,50 @@ Response:
 }
 ```
 
+### Get recorded posts feed
+
+Returns posts the current user has recorded (bookmarked/saved), with pagination. Only includes posts from topics the user is a member of.
+
+```bash
+curl -s "$BASE/api/recorded?limit=...&offset=..." \
+  -H "$AUTH" | jq .
+```
+
+Query params:
+- `limit` — Number of posts to return (max 100)
+- `offset` — Number of posts to skip
+
+Response:
+```json
+{
+  "posts": [
+    {
+      "id": "uuid",
+      "topicId": "uuid",
+      "authorId": "0x1a2b3c...",
+      "title": "...",
+      "content": "...",
+      "upvoteCount": 0,
+      "viewCount": 0,
+      "commentCount": 0,
+      "score": 0,
+      "isPinned": true,
+      "createdAt": "2026-03-13T10:00:00Z",
+      "updatedAt": "2026-03-13T10:00:00Z",
+      "authorNickname": "...",
+      "authorProfileImage": "https://...",
+      "userVoted": 0,
+      "tags": [
+        {
+          "name": "...",
+          "slug": "https://..."
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Tags
 
 ### Search and list tags
@@ -1264,8 +1331,7 @@ Response:
 Searches and lists tags. With q parameter, performs prefix search (up to 10 results). Without q, returns most-used tags (up to 20). Optionally scoped to a specific topic.
 
 ```bash
-curl -s "$BASE/api/tags?q=...&topicId=..." \
-  -H "$AUTH" | jq .
+curl -s "$BASE/api/tags?q=...&topicId=..." | jq .
 ```
 
 Query params:

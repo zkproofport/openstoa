@@ -17,6 +17,7 @@ const ROUTE = '/api/tags';
  *       Searches and lists tags. With q parameter, performs prefix search (up to 10 results). Without
  *       q, returns most-used tags (up to 20). Optionally scoped to a specific topic.
  *     operationId: listTags
+ *     security: []
  *     parameters:
  *       - name: q
  *         in: query
@@ -43,8 +44,6 @@ const ROUTE = '/api/tags';
  *                   description: Matching tags
  *                   items:
  *                     $ref: '#/components/schemas/Tag'
- *       '401':
- *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');

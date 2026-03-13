@@ -57,7 +57,7 @@ const ROUTE = '/api/topics/[topicId]/posts';
  *         description: Sort order
  *         schema:
  *           type: string
- *           enum: [new, popular]
+ *           enum: [new, popular, recorded]
  *           default: new
  *     responses:
  *       200:

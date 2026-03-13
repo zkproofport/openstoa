@@ -42,6 +42,12 @@ const ROUTE = '/api/topics';
  *         schema:
  *           type: string
  *           enum: [hot, new, active, top]
+ *       - name: category
+ *         in: query
+ *         required: false
+ *         description: Filter by category slug
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Topics list
@@ -74,11 +80,15 @@ const ROUTE = '/api/topics';
  *         application/json:
  *           schema:
  *             type: object
- *             required: [title]
+ *             required: [title, categoryId]
  *             properties:
  *               title:
  *                 type: string
  *                 description: Topic title
+ *               categoryId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Category ID for the topic
  *               description:
  *                 type: string
  *                 description: Topic description (optional)
