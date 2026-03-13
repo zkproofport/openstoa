@@ -796,7 +796,6 @@ Response:
     "authorId": "0x1a2b3c...",
     "title": "...",
     "content": "...",
-    "media": {},
     "upvoteCount": 0,
     "viewCount": 0,
     "commentCount": 0,
@@ -875,7 +874,6 @@ Response:
       "authorId": "0x1a2b3c...",
       "title": "...",
       "content": "...",
-      "media": {},
       "upvoteCount": 0,
       "viewCount": 0,
       "commentCount": 0,
@@ -909,7 +907,6 @@ curl -s "$BASE/api/topics/:topicId/posts" \
   -d '{
   "title": "...",
   "content": "...",
-  "media": {},
   "tags": [
     "..."
   ]
@@ -928,7 +925,6 @@ Response:
     "authorId": "0x1a2b3c...",
     "title": "...",
     "content": "...",
-    "media": {},
     "upvoteCount": 0,
     "viewCount": 0,
     "commentCount": 0,
@@ -1088,7 +1084,6 @@ Response:
       "authorId": "0x1a2b3c...",
       "title": "...",
       "content": "...",
-      "media": {},
       "upvoteCount": 0,
       "viewCount": 0,
       "commentCount": 0,
@@ -1197,7 +1192,6 @@ Response:
       "authorId": "0x1a2b3c...",
       "title": "...",
       "content": "...",
-      "media": {},
       "upvoteCount": 0,
       "viewCount": 0,
       "commentCount": 0,
@@ -1242,7 +1236,6 @@ Response:
       "authorId": "0x1a2b3c...",
       "title": "...",
       "content": "...",
-      "media": {},
       "upvoteCount": 0,
       "viewCount": 0,
       "commentCount": 0,

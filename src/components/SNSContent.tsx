@@ -5,7 +5,7 @@ import LinkPreview from './LinkPreview';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-interface Embed {
+interface VideoEmbed {
   type: 'youtube' | 'vimeo';
   url: string;
   videoId: string;
@@ -13,7 +13,6 @@ interface Embed {
 
 interface SNSContentProps {
   html: string;
-  media?: { embeds?: Embed[] } | null;
   truncate?: boolean;
   maxLines?: number;
   onToggleExpand?: () => void;
@@ -49,6 +48,77 @@ function extractFirstUrl(html: string): string | null {
   if (hrefMatch) return hrefMatch[1];
   const plainMatch = html.match(URL_REGEX);
   return plainMatch?.[0] ?? null;
+}
+
+// ─── Video URL Detection & Extraction ────────────────────────────────────────
+
+const VIDEO_PATTERNS = [
+  // YouTube: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/shorts/ID
+  { type: 'youtube' as const, regex: /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?[^\s<]*v=([a-zA-Z0-9_-]{11})[^\s<]*/g },
+  { type: 'youtube' as const, regex: /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})[^\s<]*/g },
+  { type: 'youtube' as const, regex: /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})[^\s<]*/g },
+  // Vimeo: vimeo.com/ID
+  { type: 'vimeo' as const, regex: /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)[^\s<]*/g },
+];
+
+function isVideoUrl(url: string): boolean {
+  return VIDEO_PATTERNS.some(({ regex }) => {
+    regex.lastIndex = 0;
+    return regex.test(url);
+  });
+}
+
+function extractVideoUrls(html: string): { videoEmbeds: VideoEmbed[]; cleanedHtml: string } {
+  const videoEmbeds: VideoEmbed[] = [];
+  const seenIds = new Set<string>();
+  let cleanedHtml = html;
+
+  // Helper to collect a video embed (deduplicating by videoId)
+  function collect(type: VideoEmbed['type'], videoId: string, matchedUrl: string) {
+    if (seenIds.has(videoId)) return;
+    seenIds.add(videoId);
+    videoEmbeds.push({ type, videoId, url: matchedUrl });
+  }
+
+  // 1. Extract video URLs from <a> href attributes and remove the entire <a> tag
+  const anchorPattern = /<a[^>]+href=["']([^"']+)["'][^>]*>[\s\S]*?<\/a>/gi;
+  cleanedHtml = cleanedHtml.replace(anchorPattern, (match, href) => {
+    for (const { type, regex } of VIDEO_PATTERNS) {
+      regex.lastIndex = 0;
+      const m = regex.exec(href);
+      if (m) {
+        collect(type, m[1], href);
+        return '';
+      }
+    }
+    return match;
+  });
+
+  // 2. Extract plain-text video URLs (not inside tags)
+  const parts = cleanedHtml.split(/(<[^>]*>)/);
+  let insideAnchor = false;
+  const processedParts = parts.map(part => {
+    if (part.startsWith('<')) {
+      const lower = part.toLowerCase();
+      if (lower.startsWith('<a ') || lower.startsWith('<a>')) insideAnchor = true;
+      if (lower.startsWith('</a')) insideAnchor = false;
+      return part;
+    }
+    if (insideAnchor) return part;
+
+    let processed = part;
+    for (const { type, regex } of VIDEO_PATTERNS) {
+      regex.lastIndex = 0;
+      processed = processed.replace(regex, (url, videoId) => {
+        collect(type, videoId, url);
+        return '';
+      });
+    }
+    return processed;
+  });
+  cleanedHtml = processedParts.join('');
+
+  return { videoEmbeds, cleanedHtml };
 }
 
 // ─── GIF Detection & Extraction ─────────────────────────────────────────────
@@ -145,7 +215,7 @@ function GifImages({ urls }: { urls: string[] }) {
 
 // ─── Video Embeds ───────────────────────────────────────────────────────────
 
-function VideoEmbeds({ embeds }: { embeds: Embed[] }) {
+function VideoEmbeds({ embeds }: { embeds: VideoEmbed[] }) {
   if (embeds.length === 0) return null;
 
   return (
@@ -193,20 +263,21 @@ function VideoEmbeds({ embeds }: { embeds: Embed[] }) {
 
 export default function SNSContent({
   html,
-  media,
   truncate,
   maxLines = 4,
   onToggleExpand,
 }: SNSContentProps) {
-  const embeds = media?.embeds ?? [];
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
-  // Extract GIFs before auto-linking (so we can clean their img tags)
-  const { gifUrls, cleanedHtml } = useMemo(() => extractGifs(html), [html]);
+  // 1. Extract video URLs from HTML
+  const { videoEmbeds, cleanedHtml: htmlAfterVideos } = useMemo(() => extractVideoUrls(html), [html]);
 
-  // Auto-link remaining URLs
-  const linkedHtml = useMemo(() => autoLinkUrls(cleanedHtml), [cleanedHtml]);
+  // 2. Extract GIFs from remaining HTML
+  const { gifUrls, cleanedHtml: htmlAfterGifs } = useMemo(() => extractGifs(htmlAfterVideos), [htmlAfterVideos]);
+
+  // 3. Auto-link remaining URLs
+  const linkedHtml = useMemo(() => autoLinkUrls(htmlAfterGifs), [htmlAfterGifs]);
 
   // First URL in content for link preview (only in non-truncated mode)
   const firstUrl = useMemo(() => {
@@ -214,12 +285,11 @@ export default function SNSContent({
     return extractFirstUrl(html);
   }, [html, truncate]);
 
-  // Filter out GIF URLs from link preview — don't preview a GIF link
+  // Filter out GIF and video URLs from link preview
   const previewUrl = useMemo(() => {
     if (!firstUrl) return null;
     if (isGifUrl(firstUrl)) return null;
-    // Don't preview YouTube/Vimeo (they're embedded)
-    if (/youtube\.com|youtu\.be|vimeo\.com/.test(firstUrl)) return null;
+    if (isVideoUrl(firstUrl)) return null;
     return firstUrl;
   }, [firstUrl]);
 
@@ -301,8 +371,8 @@ export default function SNSContent({
             <LinkPreview url={previewUrl} />
           )}
 
-          {/* Video embeds */}
-          <VideoEmbeds embeds={embeds} />
+          {/* Video embeds (auto-detected from content) */}
+          <VideoEmbeds embeds={videoEmbeds} />
         </>
       )}
 

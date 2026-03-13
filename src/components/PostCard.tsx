@@ -9,12 +9,6 @@ import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon, Pi
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Embed {
-  type: 'youtube' | 'vimeo';
-  url: string;
-  videoId: string;
-}
-
 interface Reaction {
   emoji: string;
   count: number;
@@ -25,7 +19,6 @@ export interface PostCardPost {
   id: string;
   title: string;
   content: string;
-  media?: { embeds?: Embed[] } | null;
   upvoteCount?: number;
   commentCount?: number;
   viewCount?: number;
@@ -45,9 +38,6 @@ export interface PostCardProps {
 
   // Author header
   showAuthor?: boolean;
-
-  // Media for SNSContent
-  media?: { embeds?: Embed[] } | null;
 
   // Pin
   isPinned?: boolean;
@@ -130,7 +120,6 @@ export default function PostCard({
   post,
   href,
   showAuthor = false,
-  media,
   isPinned,
   userVoted,
   reactions: reactionsProp,
@@ -314,7 +303,6 @@ export default function PostCard({
     }
   };
 
-  const resolvedMedia = media ?? post.media;
   const isTopicCreator = sessionUserId && topicCreatorId && sessionUserId === topicCreatorId;
   const visibleReactions = reactions.filter((r) => r.count > 0);
 
@@ -351,7 +339,6 @@ export default function PostCard({
           <div style={{ marginBottom: 10 }}>
             <SNSContent
               html={post.content}
-              media={null}
               truncate={!expanded}
               maxLines={3}
               onToggleExpand={handleToggleExpand}
@@ -468,7 +455,6 @@ export default function PostCard({
         <div>
           <SNSContent
             html={post.content}
-            media={resolvedMedia}
             truncate={expandable ? !expanded : true}
             maxLines={3}
             onToggleExpand={expandable ? handleToggleExpand : undefined}

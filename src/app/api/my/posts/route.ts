@@ -70,7 +70,6 @@ export async function GET(request: NextRequest) {
         authorId: posts.authorId,
         title: posts.title,
         content: posts.content,
-        media: posts.media,
         upvoteCount: posts.upvoteCount,
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,

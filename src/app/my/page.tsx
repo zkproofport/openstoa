@@ -24,7 +24,6 @@ interface Post {
   topicId: string;
   title: string;
   content: string;
-  media?: { embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
   authorNickname?: string;
   upvoteCount: number;
   commentCount: number;

@@ -69,7 +69,6 @@ export async function GET(request: NextRequest) {
         topicId: posts.topicId,
         title: posts.title,
         content: posts.content,
-        media: posts.media,
         authorNickname: users.nickname,
         upvoteCount: posts.upvoteCount,
         commentCount: posts.commentCount,

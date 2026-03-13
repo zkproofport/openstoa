@@ -17,7 +17,6 @@ interface Post {
   id: string;
   title: string;
   content: string;
-  media?: { embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
   authorNickname: string;
   authorProfileImage?: string | null;
   authorId: string;
@@ -384,7 +383,7 @@ export default function PostPage() {
           )}
 
           <div ref={contentAreaRef}>
-            <SNSContent html={post.content} media={post.media} />
+            <SNSContent html={post.content} />
           </div>
 
           <div style={{

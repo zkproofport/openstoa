@@ -26,12 +26,6 @@ interface Topic {
   createdAt: string;
 }
 
-interface Embed {
-  type: 'youtube' | 'vimeo';
-  url: string;
-  videoId: string;
-}
-
 interface Reaction {
   emoji: string;
   count: number;
@@ -42,7 +36,6 @@ interface Post {
   id: string;
   title: string;
   content: string;
-  media?: { embeds?: Embed[] } | null;
   authorNickname: string;
   authorProfileImage?: string | null;
   authorId: string;
@@ -106,7 +99,6 @@ export default function TopicPage() {
   const [composing, setComposing] = useState(false);
   const [postTitle, setPostTitle] = useState('');
   const [postContentHtml, setPostContentHtml] = useState('');
-  const [postMedia, setPostMedia] = useState<{ embeds: Embed[] }>({ embeds: [] });
   const [postTags, setPostTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -313,7 +305,6 @@ export default function TopicPage() {
         body: JSON.stringify({
           title: postTitle.trim(),
           content: postContentHtml,
-          media: postMedia.embeds.length > 0 ? { embeds: postMedia.embeds } : undefined,
           tags: postTags.length > 0 ? postTags : undefined,
         }),
       });
@@ -323,7 +314,6 @@ export default function TopicPage() {
       }
       setPostTitle('');
       setPostContentHtml('');
-      setPostMedia({ embeds: [] });
       setPostTags([]);
       try { localStorage.removeItem('zk-community-draft'); } catch {}
       setComposing(false);
@@ -797,9 +787,8 @@ export default function TopicPage() {
                 />
                 <SNSEditor
                   placeholder="Write your post..."
-                  onChange={(html, media) => {
+                  onChange={(html) => {
                     setPostContentHtml(html);
-                    setPostMedia(media);
                   }}
                   minHeight={180}
                 />
@@ -818,7 +807,6 @@ export default function TopicPage() {
                       setComposing(false);
                       setPostTitle('');
                       setPostContentHtml('');
-                      setPostMedia({ embeds: [] });
                       setPostTags([]);
                       try { localStorage.removeItem('zk-community-draft'); } catch {}
                     }}
@@ -879,7 +867,6 @@ export default function TopicPage() {
                 post={post}
                 href={`/topics/${topicId}/posts/${post.id}`}
                 showAuthor
-                media={post.media}
                 isPinned={post.isPinned}
                 userVoted={isGuest ? null : post.userVoted}
                 reactions={post.reactions}

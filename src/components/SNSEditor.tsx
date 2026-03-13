@@ -4,37 +4,22 @@ import { useCallback, useRef, useState, useEffect } from 'react';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-interface Embed {
-  type: 'youtube' | 'vimeo';
-  url: string;
-  videoId: string;
-}
-
 interface SNSEditorProps {
-  onChange?: (html: string, media: { embeds: Embed[] }) => void;
+  onChange?: (html: string) => void;
   placeholder?: string;
   minHeight?: number;
   draftKey?: string;
 }
 
-// ─── Video URL Detection ────────────────────────────────────────────────────
+// ─── Video URL Validation ──────────────────────────────────────────────────
 
-function parseVideoUrl(url: string): Embed | null {
+function isVideoUrl(url: string): boolean {
   const trimmed = url.trim();
-
-  const ytLong = trimmed.match(/(?:youtube\.com\/watch\?.*v=)([\w-]{11})/);
-  if (ytLong) return { type: 'youtube', url: trimmed, videoId: ytLong[1] };
-
-  const ytShort = trimmed.match(/(?:youtu\.be\/)([\w-]{11})/);
-  if (ytShort) return { type: 'youtube', url: trimmed, videoId: ytShort[1] };
-
-  const ytShorts = trimmed.match(/(?:youtube\.com\/shorts\/)([\w-]{11})/);
-  if (ytShorts) return { type: 'youtube', url: trimmed, videoId: ytShorts[1] };
-
-  const vimeo = trimmed.match(/(?:vimeo\.com\/)(\d+)/);
-  if (vimeo) return { type: 'vimeo', url: trimmed, videoId: vimeo[1] };
-
-  return null;
+  if (/(?:youtube\.com\/watch\?.*v=)([\w-]{11})/.test(trimmed)) return true;
+  if (/(?:youtu\.be\/)([\w-]{11})/.test(trimmed)) return true;
+  if (/(?:youtube\.com\/shorts\/)([\w-]{11})/.test(trimmed)) return true;
+  if (/(?:vimeo\.com\/)(\d+)/.test(trimmed)) return true;
+  return false;
 }
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
@@ -50,12 +35,6 @@ const IconVideo = () => (
   <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
     <path d="M2 3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9.5l3 2V4.5l-3 2V4a1 1 0 0 0-1-1H2zm0 1h8v8H2V4z"/>
     <path d="M5.5 6v4l3.5-2-3.5-2z"/>
-  </svg>
-);
-
-const IconClose = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-    <path d="M9.35 3.35a.5.5 0 0 0-.7-.7L6 5.29 3.35 2.65a.5.5 0 1 0-.7.7L5.29 6 2.65 8.65a.5.5 0 1 0 .7.7L6 6.71l2.65 2.64a.5.5 0 0 0 .7-.7L6.71 6l2.64-2.65z"/>
   </svg>
 );
 
@@ -92,7 +71,6 @@ function UploadIndicator({ count, total }: { count: number; total: number }) {
 
 interface DraftData {
   html: string;
-  embeds: Embed[];
   savedAt: number;
 }
 
@@ -100,14 +78,14 @@ function useDraftSave(draftKey: string) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const saveDraft = useCallback((html: string, embeds: Embed[]) => {
+  const saveDraft = useCallback((html: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setSaved(false);
     timerRef.current = setTimeout(() => {
       try {
         const stripped = html.replace(/<[^>]*>/g, '').trim();
-        if (stripped || embeds.length > 0) {
-          localStorage.setItem(draftKey, JSON.stringify({ html, embeds, savedAt: Date.now() }));
+        if (stripped) {
+          localStorage.setItem(draftKey, JSON.stringify({ html, savedAt: Date.now() }));
           setSaved(true);
           setTimeout(() => setSaved(false), 2000);
         } else {
@@ -157,7 +135,6 @@ export default function SNSEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [embeds, setEmbeds] = useState<Embed[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [uploadTotal, setUploadTotal] = useState(0);
@@ -168,11 +145,6 @@ export default function SNSEditor({
   const [charCount, setCharCount] = useState(0);
 
   const { saved, saveDraft, loadDraft } = useDraftSave(draftKey);
-
-  // Fire onChange
-  const emitChange = useCallback((html: string, embs: Embed[]) => {
-    onChange?.(html, { embeds: embs });
-  }, [onChange]);
 
   // Check if editor is empty
   const checkEmpty = useCallback(() => {
@@ -191,12 +163,11 @@ export default function SNSEditor({
     const draft = loadDraft();
     if (draft && editorRef.current) {
       editorRef.current.innerHTML = draft.html;
-      setEmbeds(draft.embeds ?? []);
       setCharCount(htmlTextLength(draft.html));
-      emitChange(draft.html, draft.embeds ?? []);
+      onChange?.(draft.html);
       checkEmpty();
     }
-  }, [loadDraft, emitChange, checkEmpty]);
+  }, [loadDraft, onChange, checkEmpty]);
 
   // Handle editor input
   const handleInput = useCallback(() => {
@@ -205,9 +176,22 @@ export default function SNSEditor({
     const html = el.innerHTML;
     checkEmpty();
     setCharCount(htmlTextLength(html));
-    emitChange(html, embeds);
-    saveDraft(html, embeds);
-  }, [embeds, checkEmpty, emitChange, saveDraft]);
+    onChange?.(html);
+    saveDraft(html);
+  }, [checkEmpty, onChange, saveDraft]);
+
+  // Insert text at cursor position in the editor
+  const insertTextAtCursor = useCallback((text: string) => {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    document.execCommand('insertHTML', false, `<div>${text}</div>`);
+    const html = el.innerHTML;
+    checkEmpty();
+    setCharCount(htmlTextLength(html));
+    onChange?.(html);
+    saveDraft(html);
+  }, [checkEmpty, onChange, saveDraft]);
 
   // ─── Image Upload ───────────────────────────────────────────────────────
 
@@ -276,9 +260,9 @@ export default function SNSEditor({
 
     const html = el.innerHTML;
     checkEmpty();
-    emitChange(html, embeds);
-    saveDraft(html, embeds);
-  }, [embeds, checkEmpty, emitChange, saveDraft]);
+    onChange?.(html);
+    saveDraft(html);
+  }, [checkEmpty, onChange, saveDraft]);
 
   const handleFiles = useCallback(async (files: File[]) => {
     const imageFiles = files.filter(f => f.type.startsWith('image/') && f.size <= 10 * 1024 * 1024);
@@ -353,37 +337,20 @@ export default function SNSEditor({
     }
   }, [handleFiles]);
 
-  // ─── Video Embed ────────────────────────────────────────────────────────
+  // ─── Video URL Insert ─────────────────────────────────────────────────
 
   const handleVideoAdd = useCallback(() => {
-    const embed = parseVideoUrl(videoUrl);
-    if (!embed) {
+    const url = videoUrl.trim();
+    if (!url) return;
+    if (!isVideoUrl(url)) {
       setVideoError('YouTube or Vimeo URL only');
       return;
     }
-    if (embeds.some(e => e.videoId === embed.videoId)) {
-      setVideoError('Already added');
-      return;
-    }
-    const next = [...embeds, embed];
-    setEmbeds(next);
-    const html = editorRef.current?.innerHTML ?? '';
-    emitChange(html, next);
-    saveDraft(html, next);
+    insertTextAtCursor(url);
     setVideoUrl('');
     setVideoError('');
     setShowVideoInput(false);
-  }, [videoUrl, embeds, emitChange, saveDraft]);
-
-  const removeEmbed = useCallback((index: number) => {
-    setEmbeds(prev => {
-      const next = prev.filter((_, i) => i !== index);
-      const html = editorRef.current?.innerHTML ?? '';
-      emitChange(html, next);
-      saveDraft(html, next);
-      return next;
-    });
-  }, [emitChange, saveDraft]);
+  }, [videoUrl, insertTextAtCursor]);
 
   // ─── Drag & Drop ────────────────────────────────────────────────────────
 
@@ -467,69 +434,6 @@ export default function SNSEditor({
           zIndex: 10,
         }}>
           <span style={{ color: 'var(--accent)', fontSize: 14, fontWeight: 500 }}>Drop image here</span>
-        </div>
-      )}
-
-      {/* Video embed previews */}
-      {embeds.length > 0 && (
-        <div style={{ padding: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {embeds.map((embed, i) => (
-            <div key={embed.videoId} style={{
-              position: 'relative',
-              background: '#0a0a0a',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 8,
-              padding: '10px 12px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 6,
-                background: embed.type === 'youtube' ? 'rgba(255,0,0,0.12)' : 'rgba(0,173,239,0.12)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <span style={{ fontSize: 14 }}>{embed.type === 'youtube' ? '\u25B6' : '\u25B7'}</span>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'capitalize' }}>
-                  {embed.type}
-                </div>
-                <div style={{
-                  fontSize: 11,
-                  color: '#6b7280',
-                  fontFamily: 'monospace',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {embed.videoId}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => removeEmbed(i)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#6b7280',
-                  cursor: 'pointer',
-                  padding: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <IconClose />
-              </button>
-            </div>
-          ))}
         </div>
       )}
 

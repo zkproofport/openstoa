@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, boolean, timestamp, primaryKey, integer, real, jsonb, varchar, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, uuid, boolean, timestamp, primaryKey, integer, real, varchar, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('community_users', {
   id: text('id').primaryKey(), // nullifier from publicInputs
@@ -64,7 +64,6 @@ export const posts = pgTable('community_posts', {
   content: text('content').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-  media: jsonb('media'),
   upvoteCount: integer('upvote_count').notNull().default(0),
   viewCount: integer('view_count').notNull().default(0),
   commentCount: integer('comment_count').notNull().default(0),

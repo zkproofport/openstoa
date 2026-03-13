@@ -171,11 +171,6 @@ const options: swaggerJsdoc.Options = {
             authorId: { type: 'string', description: "Author's user ID" },
             title: { type: 'string', description: 'Post title' },
             content: { type: 'string', description: 'Post body (markdown supported)' },
-            media: {
-              type: 'object',
-              nullable: true,
-              description: 'Attached media metadata',
-            },
             upvoteCount: { type: 'integer', description: 'Net upvote count' },
             viewCount: {
               type: 'integer',

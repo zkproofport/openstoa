@@ -11,7 +11,6 @@ interface Post {
   id: string;
   title: string;
   content: string;
-  media?: { embeds?: { type: 'youtube' | 'vimeo'; url: string; videoId: string }[] } | null;
   authorNickname: string;
   authorProfileImage?: string | null;
   authorId: string;
@@ -125,7 +124,6 @@ export default function RecordedPage() {
                   post={post}
                   href={`/topics/${post.topicId}/posts/${post.id}`}
                   showAuthor
-                  media={post.media}
                   sessionUserId={sessionUserId}
                   authorId={post.authorId}
                   expandable

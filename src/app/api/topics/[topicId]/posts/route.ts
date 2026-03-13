@@ -5,6 +5,7 @@ import { posts, topicMembers, users, tags, postTags, votes, topics } from '@/lib
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { updateTopicScore } from '@/lib/topicScore';
+import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -103,10 +104,7 @@ const ROUTE = '/api/topics/[topicId]/posts';
  *                 description: Post title
  *               content:
  *                 type: string
- *                 description: Post body (markdown supported)
- *               media:
- *                 type: object
- *                 description: Attached media metadata (optional)
+ *                 description: Post body (HTML, base64 images auto-uploaded to CDN)
  *               tags:
  *                 type: array
  *                 items:
@@ -190,7 +188,6 @@ export async function GET(
           authorId: posts.authorId,
           title: posts.title,
           content: posts.content,
-          media: posts.media,
           createdAt: posts.createdAt,
           updatedAt: posts.updatedAt,
           authorNickname: users.nickname,
@@ -274,7 +271,6 @@ export async function GET(
         authorId: posts.authorId,
         title: posts.title,
         content: posts.content,
-        media: posts.media,
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
@@ -338,7 +334,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { title, content, media, tags: tagNames } = body;
+    const { title, content, tags: tagNames } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title', { userId: session.userId, topicId });
@@ -349,6 +345,9 @@ export async function POST(
       return NextResponse.json({ error: 'Content is required' }, { status: 400 });
     }
 
+    // Extract base64 images from content and upload to R2
+    const processedContent = await extractAndUploadBase64Images(content, session.userId);
+
     logger.info(ROUTE, 'Creating post', { userId: session.userId, topicId, title });
 
     const [post] = await db
@@ -357,8 +356,7 @@ export async function POST(
         topicId,
         authorId: session.userId,
         title,
-        content,
-        ...(media !== undefined ? { media } : {}),
+        content: processedContent,
       })
       .returning();
 
