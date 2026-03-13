@@ -1319,6 +1319,32 @@ Response:
 }
 ```
 
+## Categories
+
+### List all categories
+
+Returns all categories sorted by sort order. Public endpoint, no auth required.
+
+```bash
+curl -s "$BASE/api/categories" | jq .
+```
+
+Response:
+```json
+{
+  "categories": [
+    {
+      "id": "uuid",
+      "name": "...",
+      "slug": "...",
+      "description": "...",
+      "icon": "...",
+      "sortOrder": 0
+    }
+  ]
+}
+```
+
 ## Records
 
 ### Record a post on-chain

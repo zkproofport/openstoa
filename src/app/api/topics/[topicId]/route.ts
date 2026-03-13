@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers } from '@/lib/db/schema';
+import { topics, topicMembers, categories } from '@/lib/db/schema';
 import { eq, and, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -90,10 +90,22 @@ export async function GET(
         .from(topicMembers)
         .where(eq(topicMembers.topicId, topicId));
 
+      // Fetch category info if topic has one
+      let category = null;
+      if (topic.categoryId) {
+        const cat = await db.query.categories.findFirst({
+          where: eq(categories.id, topic.categoryId),
+        });
+        if (cat) {
+          category = { id: cat.id, name: cat.name, slug: cat.slug, icon: cat.icon };
+        }
+      }
+
       logger.info(ROUTE, 'Guest topic detail fetched', { topicId, memberCount: memberCount.count });
       return NextResponse.json({
         topic: {
           ...topic,
+          category,
           memberCount: memberCount.count,
         },
         currentUserRole: null,
@@ -136,10 +148,22 @@ export async function GET(
       .from(topicMembers)
       .where(eq(topicMembers.topicId, topicId));
 
+    // Fetch category info if topic has one
+    let category = null;
+    if (topic.categoryId) {
+      const cat = await db.query.categories.findFirst({
+        where: eq(categories.id, topic.categoryId),
+      });
+      if (cat) {
+        category = { id: cat.id, name: cat.name, slug: cat.slug, icon: cat.icon };
+      }
+    }
+
     logger.info(ROUTE, 'Topic detail fetched', { topicId, memberCount: memberCount.count });
     return NextResponse.json({
       topic: {
         ...topic,
+        category,
         memberCount: memberCount.count,
       },
       currentUserRole: membership.role,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers } from '@/lib/db/schema';
+import { topics, topicMembers, categories } from '@/lib/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
@@ -129,6 +129,23 @@ export async function GET(request: NextRequest) {
     const view = searchParams.get('view');
     const sort = searchParams.get('sort') ?? 'hot';
 
+    const categorySlug = searchParams.get('category');
+
+    // Build category lookup map for enriching topic responses
+    const allCategories = await db.select().from(categories);
+    const categoryMap = Object.fromEntries(allCategories.map((c) => [c.id, { id: c.id, name: c.name, slug: c.slug, icon: c.icon }]));
+
+    // Resolve category filter if provided
+    let filterCategoryId: string | null = null;
+    if (categorySlug) {
+      const matched = allCategories.find((c) => c.slug === categorySlug);
+      if (!matched) {
+        logger.warn(ROUTE, 'Category not found', { categorySlug });
+        return NextResponse.json({ error: 'Category not found' }, { status: 400 });
+      }
+      filterCategoryId = matched.id;
+    }
+
     // --- Guest (unauthenticated) access ---
     if (!session) {
       // Guests can only browse all visible topics (view=all)
@@ -137,7 +154,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ topics: [] });
       }
 
-      logger.info(ROUTE, 'Guest fetching all topics', { sort });
+      logger.info(ROUTE, 'Guest fetching all topics', { sort, categorySlug });
 
       const allTopics = await db.query.topics.findMany({
         orderBy: (t, { desc: d }) =>
@@ -155,11 +172,15 @@ export async function GET(request: NextRequest) {
 
       const memberCountMap = Object.fromEntries(memberCounts.map((m) => [m.topicId, m.count]));
 
-      // Guests see public + private, never secret
-      const visibleTopics = allTopics.filter((t) => t.visibility !== 'secret');
+      // Guests see public + private, never secret; optionally filter by category
+      const visibleTopics = allTopics.filter((t) =>
+        t.visibility !== 'secret' &&
+        (!filterCategoryId || t.categoryId === filterCategoryId),
+      );
 
       const result = visibleTopics.map((t) => ({
         ...t,
+        category: t.categoryId ? categoryMap[t.categoryId] ?? null : null,
         memberCount: memberCountMap[t.id] ?? 0,
         isMember: false,
       }));
@@ -168,14 +189,14 @@ export async function GET(request: NextRequest) {
         result.sort((a, b) => (b.memberCount ?? 0) - (a.memberCount ?? 0));
       }
 
-      logger.info(ROUTE, 'Guest topics fetched', { count: result.length, sort });
+      logger.info(ROUTE, 'Guest topics fetched', { count: result.length, sort, categorySlug });
       return NextResponse.json({ topics: result });
     }
 
     // --- Authenticated access (existing behavior) ---
 
     if (view === 'all') {
-      logger.info(ROUTE, 'Fetching all topics with member counts', { userId: session.userId, sort });
+      logger.info(ROUTE, 'Fetching all topics with member counts', { userId: session.userId, sort, categorySlug });
 
       const allTopics = await db.query.topics.findMany({
         orderBy: (t, { desc: d }) =>
@@ -198,13 +219,15 @@ export async function GET(request: NextRequest) {
       const memberCountMap = Object.fromEntries(memberCounts.map((m) => [m.topicId, m.count]));
       const userTopicIds = new Set(userMemberships.map((m) => m.topicId));
 
-      // Filter out secret topics unless the user is a member
+      // Filter out secret topics unless the user is a member; optionally filter by category
       const visibleTopics = allTopics.filter((t) =>
-        t.visibility !== 'secret' || userTopicIds.has(t.id),
+        (t.visibility !== 'secret' || userTopicIds.has(t.id)) &&
+        (!filterCategoryId || t.categoryId === filterCategoryId),
       );
 
       const result = visibleTopics.map((t) => ({
         ...t,
+        category: t.categoryId ? categoryMap[t.categoryId] ?? null : null,
         memberCount: memberCountMap[t.id] ?? 0,
         isMember: userTopicIds.has(t.id),
       }));
@@ -213,7 +236,7 @@ export async function GET(request: NextRequest) {
         result.sort((a, b) => (b.memberCount ?? 0) - (a.memberCount ?? 0));
       }
 
-      logger.info(ROUTE, 'All topics fetched', { userId: session.userId, count: result.length, sort });
+      logger.info(ROUTE, 'All topics fetched', { userId: session.userId, count: result.length, sort, categorySlug });
       return NextResponse.json({ topics: result });
     }
 
@@ -232,8 +255,13 @@ export async function GET(request: NextRequest) {
       where: (t, { inArray }) => inArray(t.id, topicIds),
     });
 
-    logger.info(ROUTE, 'Topics fetched', { userId: session.userId, count: userTopics.length });
-    return NextResponse.json({ topics: userTopics });
+    const userTopicsWithCategory = userTopics.map((t) => ({
+      ...t,
+      category: t.categoryId ? categoryMap[t.categoryId] ?? null : null,
+    }));
+
+    logger.info(ROUTE, 'Topics fetched', { userId: session.userId, count: userTopicsWithCategory.length });
+    return NextResponse.json({ topics: userTopicsWithCategory });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in GET', { error: message });
@@ -251,12 +279,33 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, image, visibility } = body;
+    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, image, visibility, categoryId } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title in topic creation', { userId: session.userId });
       return NextResponse.json(
         { error: 'Title is required' },
+        { status: 400 },
+      );
+    }
+
+    // categoryId is required for new topics
+    if (!categoryId || typeof categoryId !== 'string') {
+      logger.warn(ROUTE, 'Missing categoryId in topic creation', { userId: session.userId });
+      return NextResponse.json(
+        { error: 'categoryId is required' },
+        { status: 400 },
+      );
+    }
+
+    // Validate category exists
+    const category = await db.query.categories.findFirst({
+      where: eq(categories.id, categoryId),
+    });
+    if (!category) {
+      logger.warn(ROUTE, 'Invalid categoryId', { userId: session.userId, categoryId });
+      return NextResponse.json(
+        { error: 'Category not found' },
         { status: 400 },
       );
     }
@@ -311,6 +360,7 @@ export async function POST(request: NextRequest) {
         description: description ?? null,
         image: image ?? null,
         creatorId: session.userId,
+        categoryId,
         requiresCountryProof: requiresCountryProof ?? false,
         allowedCountries: allowedCountries ?? null,
         inviteCode,
@@ -325,8 +375,13 @@ export async function POST(request: NextRequest) {
       role: 'owner',
     });
 
-    logger.info(ROUTE, 'Topic created and creator added as member', { userId: session.userId, topicId: topic.id });
-    return NextResponse.json({ topic }, { status: 201 });
+    logger.info(ROUTE, 'Topic created and creator added as member', { userId: session.userId, topicId: topic.id, categoryId });
+    return NextResponse.json({
+      topic: {
+        ...topic,
+        category: { id: category.id, name: category.name, slug: category.slug, icon: category.icon },
+      },
+    }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in POST', { error: message });

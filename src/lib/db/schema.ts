@@ -9,12 +9,23 @@ export const users = pgTable('community_users', {
   totalRecorded: integer('total_recorded').notNull().default(0),
 });
 
+export const categories = pgTable('community_categories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 100 }).notNull().unique(),
+  slug: varchar('slug', { length: 100 }).notNull().unique(),
+  description: text('description'),
+  icon: varchar('icon', { length: 10 }), // emoji icon
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 export const topics = pgTable('community_topics', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   description: text('description'),
   image: text('image'),
   creatorId: text('creator_id').references(() => users.id).notNull(),
+  categoryId: uuid('category_id').references(() => categories.id),
   requiresCountryProof: boolean('requires_country_proof').default(false),
   allowedCountries: text('allowed_countries').array(),
   inviteCode: text('invite_code').unique().notNull(),

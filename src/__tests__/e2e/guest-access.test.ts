@@ -14,14 +14,24 @@ describe.sequential('Guest access', () => {
   let secretTopicId: string;
   let publicPostId: string;
   let privatePostId: string;
+  let categoryId: string;
 
   // ── Setup: create resources needed for tests ──────────────────────────
+
+  it('setup: fetch categories', async () => {
+    const res = await publicGet('/api/categories');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.categories.length).toBeGreaterThan(0);
+    categoryId = json.categories[0].id;
+  });
 
   it('setup: create public topic', async () => {
     const res = await authPost('/api/topics', {
       title: `E2E Guest Public ${Date.now()}`,
       description: 'Public topic for guest access tests',
       visibility: 'public',
+      categoryId,
     });
     expect(res.status).toBe(201);
     const json = await res.json();
@@ -33,6 +43,7 @@ describe.sequential('Guest access', () => {
       title: `E2E Guest Private ${Date.now()}`,
       description: 'Private topic for guest access tests',
       visibility: 'private',
+      categoryId,
     });
     expect(res.status).toBe(201);
     const json = await res.json();
@@ -44,6 +55,7 @@ describe.sequential('Guest access', () => {
       title: `E2E Guest Secret ${Date.now()}`,
       description: 'Secret topic for guest access tests',
       visibility: 'secret',
+      categoryId,
     });
     expect(res.status).toBe(201);
     const json = await res.json();
@@ -217,6 +229,21 @@ describe.sequential('Guest access', () => {
   it('GET /api/tags returns 200 for authenticated users', async () => {
     const res = await authGet('/api/tags');
     expect(res.status).toBe(200);
+  });
+
+  // GET /api/categories
+  it('GET /api/categories returns 200 for guests', async () => {
+    const res = await publicGet('/api/categories');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.categories)).toBe(true);
+  });
+
+  it('GET /api/categories returns 200 for authenticated users', async () => {
+    const res = await authGet('/api/categories');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.categories)).toBe(true);
   });
 
   // ── Section 2: Auth-required endpoints (must return 401 without auth) ─

@@ -39,7 +39,7 @@ export default function Header() {
       <div
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          maxWidth: '56rem', margin: '0 auto', padding: '0 1rem',
+          maxWidth: 1400, margin: '0 auto', padding: '0 20px',
         }}
       >
         <Link

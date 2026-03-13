@@ -46,8 +46,8 @@ export async function runMigrations(): Promise<void> {
           await pool.query(stmt);
         } catch (err: unknown) {
           const pgErr = err as { code?: string; message?: string };
-          // Ignore "already exists" errors (42P07=relation, 42710=constraint/index)
-          if (pgErr.code === '42P07' || pgErr.code === '42710') {
+          // Ignore "already exists" errors (42P07=relation, 42710=constraint/index, 42701=column)
+          if (pgErr.code === '42P07' || pgErr.code === '42710' || pgErr.code === '42701') {
             console.log(`[DB] Skipped (already exists): ${stmt.substring(0, 60)}...`);
             continue;
           }

@@ -1,16 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authDelete } from './helpers';
+import { authGet, authPost, authDelete, publicGet } from './helpers';
 
 let topicId: string;
 let postId: string;
+let categoryId: string;
 
 describe.sequential('Posts endpoints', () => {
+  // Setup: fetch categories first
+  it('setup: fetch categories', async () => {
+    const res = await publicGet('/api/categories');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.categories.length).toBeGreaterThan(0);
+    categoryId = json.categories[0].id;
+  });
+
   // Setup: create a topic for testing
   it('setup: create test topic', async () => {
     const res = await authPost('/api/topics', {
       title: `E2E Posts Topic ${Date.now()}`,
       description: 'Topic for post E2E tests',
       visibility: 'public',
+      categoryId,
     });
     expect(res.status).toBe(201);
     const json = await res.json();

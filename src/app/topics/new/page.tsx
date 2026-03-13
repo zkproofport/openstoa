@@ -20,6 +20,8 @@ export default function NewTopicPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<'public' | 'private' | 'secret'>('public');
   const [imageUploading, setImageUploading] = useState(false);
+  const [categories, setCategories] = useState<{id: string; name: string; slug: string; icon: string; description?: string}[]>([]);
+  const [categoryId, setCategoryId] = useState<string>('');
 
   // Country proof state
   const [countryProofData, setCountryProofData] = useState<{
@@ -41,6 +43,14 @@ export default function NewTopicPage() {
   // Only reset when the actual filter values change, not on every render
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countryMode]);
+
+  // Fetch categories on mount
+  useEffect(() => {
+    fetch('/api/categories')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.categories) setCategories(data.categories); })
+      .catch(() => {});
+  }, []);
 
   async function uploadTopicImage(file: File): Promise<string> {
     const resized = await resizeImage(file, 400);
@@ -123,6 +133,7 @@ export default function NewTopicPage() {
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || undefined,
+          categoryId: categoryId || undefined,
           requiresCountryProof: requiresCountry,
           allowedCountries,
           countryMode: requiresCountry ? countryMode : undefined,
@@ -145,7 +156,7 @@ export default function NewTopicPage() {
     }
   }
 
-  const canSubmit = title.trim().length > 0 && !loading && (!requiresCountry || proofDone);
+  const canSubmit = title.trim().length > 0 && categoryId !== '' && !loading && (!requiresCountry || proofDone);
 
   return (
     <>
@@ -207,6 +218,51 @@ export default function NewTopicPage() {
               onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 10 }}>
+              Category <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            {categories.length === 0 ? (
+              <p style={{ fontSize: 14, color: 'var(--muted)' }}>Loading categories…</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {categories.map((cat) => {
+                  const selected = categoryId === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setCategoryId(cat.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 14px',
+                        background: selected ? 'rgba(120,140,255,0.08)' : 'var(--surface)',
+                        border: `1px solid ${selected ? 'rgba(120,140,255,0.3)' : 'var(--border)'}`,
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        transition: 'all 0.12s',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {cat.icon && (
+                        <span style={{ fontSize: 20, flexShrink: 0 }}>{cat.icon}</span>
+                      )}
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>{cat.name}</div>
+                        {cat.description && (
+                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{cat.description}</div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Description */}

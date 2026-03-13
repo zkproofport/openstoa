@@ -1,10 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost } from './helpers';
+import { authGet, authPost, publicGet } from './helpers';
 
 let createdTopicId: string;
 let inviteCode: string;
+let categoryId: string;
 
 describe.sequential('Topics endpoints', () => {
+  it('setup: fetch categories', async () => {
+    const res = await publicGet('/api/categories');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.categories.length).toBeGreaterThan(0);
+    categoryId = json.categories[0].id;
+  });
+
   it('GET /api/topics returns topic list', async () => {
     const res = await authGet('/api/topics');
     expect(res.status).toBe(200);
@@ -22,17 +31,22 @@ describe.sequential('Topics endpoints', () => {
   });
 
   it('POST /api/topics creates a new topic', async () => {
+    expect(categoryId).toBeTruthy();
     const uniqueTitle = `E2E Test Topic ${Date.now()}`;
     const res = await authPost('/api/topics', {
       title: uniqueTitle,
       description: 'Created by E2E test',
       visibility: 'public',
+      categoryId,
     });
     expect(res.status).toBe(201);
     const json = await res.json();
     expect(json.topic.id).toBeTruthy();
     expect(json.topic.title).toBe(uniqueTitle);
     expect(json.topic.inviteCode).toBeTruthy();
+    expect(json.topic.categoryId).toBe(categoryId);
+    expect(json.topic.category).toBeDefined();
+    expect(json.topic.category.id).toBe(categoryId);
     createdTopicId = json.topic.id;
     inviteCode = json.topic.inviteCode;
   });
