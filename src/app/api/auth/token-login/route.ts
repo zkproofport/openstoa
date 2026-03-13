@@ -4,6 +4,28 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/auth/token-login';
 
+/**
+ * @openapi
+ * /api/auth/token-login:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Convert Bearer token to browser session
+ *     description: >-
+ *       Converts a Bearer token into a browser session cookie and redirects to the appropriate page.
+ *       Used when AI agents need to open a browser context with their authenticated session.
+ *     operationId: tokenLogin
+ *     security: []
+ *     parameters:
+ *       - name: token
+ *         in: query
+ *         required: true
+ *         description: Bearer token to convert into a session cookie
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to /profile (if needs nickname) or /topics
+ */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
 

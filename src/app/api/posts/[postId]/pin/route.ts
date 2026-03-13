@@ -7,6 +7,40 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]/pin';
 
+/**
+ * @openapi
+ * /api/posts/{postId}/pin:
+ *   post:
+ *     tags: [Pins]
+ *     summary: Toggle pin on post
+ *     description: >-
+ *       Toggles pin status on a post. Pinned posts appear at the top of post listings regardless
+ *       of sort order. Only topic owners and admins can pin/unpin.
+ *     operationId: togglePin
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Pin status toggled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 isPinned:
+ *                   type: boolean
+ *                   description: New pin state
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },

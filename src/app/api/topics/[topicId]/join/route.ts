@@ -13,6 +13,86 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/join';
 
+/**
+ * @openapi
+ * /api/topics/{topicId}/join:
+ *   post:
+ *     tags: [Topics]
+ *     summary: Join or request to join topic
+ *     description: >-
+ *       Requests to join a topic. For public topics, joins immediately. For private topics, creates
+ *       a pending join request that must be approved by a topic owner or admin. Secret topics cannot
+ *       be joined directly (use invite code). Country-gated topics require a valid ZK proof.
+ *     operationId: joinTopic
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID to join
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: Required only if topic requires country proof
+ *             properties:
+ *               proof:
+ *                 type: string
+ *                 description: Country attestation proof hex string
+ *               publicInputs:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Proof public inputs as hex strings
+ *     responses:
+ *       201:
+ *         description: Joined public topic immediately
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Join success indicator
+ *       202:
+ *         description: Join request created for private topic (pending approval)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Request creation success
+ *                 status:
+ *                   type: string
+ *                   example: pending
+ *                   description: Join request status
+ *                 message:
+ *                   type: string
+ *                   description: Human-readable status message
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Secret topic (use invite code) or country not in allowed list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error403'
+ *       409:
+ *         description: Already a member or join request already pending
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error409'
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },

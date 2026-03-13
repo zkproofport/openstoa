@@ -4,6 +4,26 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/auth/session';
 
+/**
+ * @openapi
+ * /api/auth/session:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Get current session info
+ *     description: >-
+ *       Returns the current authenticated user's session information. Works with both cookie
+ *       and Bearer token authentication.
+ *     operationId: getSession
+ *     responses:
+ *       200:
+ *         description: Current session information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Session'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {

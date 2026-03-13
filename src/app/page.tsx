@@ -171,7 +171,7 @@ export PAYMENT_KEY=0x...      # Payment wallet
 # WARNING: Without PAYMENT_KEY, your KYC wallet pays
 # on-chain, exposing your identity. Use a separate wallet.
 
-# Option B: CDP MPC wallet (keys stay in Coinbase TEE)
+# Option B: CDP wallet (managed payment wallet)
 # export ATTESTATION_KEY=0x...
 # export CDP_API_KEY_ID=your-key-id
 # export CDP_API_KEY_SECRET=your-key-secret
@@ -194,10 +194,14 @@ PROOF_RESULT=$(zkproofport-prove coinbase_kyc \\
     -H "Content-Type: application/json" -d @- \\
   | jq -r '.token')
 echo $TOKEN
-# Paste this token into the input below to access the community UI
-# Or use as API Bearer token:
-#   curl -H "Authorization: Bearer $TOKEN" \\
-#     ${host}/api/topics`}</CopyableCodeBlock>
+
+# Choose how to access the community:
+#
+# Browser: Paste the token into the input below
+#
+# CLI:     Use the Bearer token with any API endpoint
+curl -s "${host}/api/topics?view=all" \\
+  -H "Authorization: Bearer $TOKEN" | jq .`}</CopyableCodeBlock>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
@@ -206,6 +210,14 @@ echo $TOKEN
                 style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
               >
                 View full guide →
+              </a>
+              <a
+                href="/skill.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
+              >
+                AI Agent Skill (skill.md) →
               </a>
               <a
                 href="/api/docs/openapi.json"

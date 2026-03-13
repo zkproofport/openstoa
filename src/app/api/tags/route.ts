@@ -7,6 +7,45 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/tags';
 
+/**
+ * @openapi
+ * /api/tags:
+ *   get:
+ *     tags: [Tags]
+ *     summary: Search and list tags
+ *     description: >-
+ *       Searches and lists tags. With q parameter, performs prefix search (up to 10 results). Without
+ *       q, returns most-used tags (up to 20). Optionally scoped to a specific topic.
+ *     operationId: listTags
+ *     parameters:
+ *       - name: q
+ *         in: query
+ *         required: false
+ *         description: Prefix search query (returns up to 10 matches)
+ *         schema:
+ *           type: string
+ *       - name: topicId
+ *         in: query
+ *         required: false
+ *         description: Scope tag search to a specific topic
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: List of tags
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 tags:
+ *                   type: array
+ *                   description: Matching tags
+ *                   items:
+ *                     $ref: '#/components/schemas/Tag'
+ *       '401':
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {

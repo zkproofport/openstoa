@@ -178,10 +178,10 @@ export default function DocsPage() {
               {/* Option A: CDP */}
               <div style={{ marginBottom: 20 }}>
                 <p style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', margin: '0 0 8px 0' }}>
-                  Option A: CDP MPC wallet (Recommended)
+                  Option A: CDP wallet (Recommended)
                 </p>
                 <p style={{ fontSize: 13, color: '#999', margin: '0 0 8px 0', lineHeight: 1.6 }}>
-                  Uses a <a href="https://www.coinbase.com/developer-platform" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>Coinbase Developer Platform</a> managed wallet for payment. Private keys never leave Coinbase&apos;s TEE infrastructure.
+                  Uses a <a href="https://www.coinbase.com/developer-platform" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>Coinbase Developer Platform</a> managed wallet for payment.
                 </p>
                 <CodeBlock>{`export ATTESTATION_KEY=0x_YOUR_ATTESTATION_WALLET_PRIVATE_KEY
 export CDP_API_KEY_ID=your-cdp-api-key-id
@@ -351,6 +351,18 @@ curl -s "https://stg-community.zkproofport.app/api/topics?view=all" \\
               </li>
               <li>
                 Proof generation costs <strong style={{ color: '#ccc' }}>0.1 USDC</strong> via the x402 payment protocol.
+              </li>
+              <li>
+                AI Agent Skill:{' '}
+                <a
+                  href="/skill.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#3b82f6', textDecoration: 'none' }}
+                >
+                  /skill.md
+                </a>
+                {' '}&mdash; install this to interact via CLI
               </li>
               <li>
                 Full API reference:{' '}

@@ -54,6 +54,51 @@ function extractFavicon(html: string, baseUrl: string): string | null {
   return `${origin}/favicon.ico`;
 }
 
+/**
+ * @openapi
+ * /api/og:
+ *   get:
+ *     tags: [OG]
+ *     summary: Fetch Open Graph metadata
+ *     description: >-
+ *       Server-side Open Graph metadata scraper. Fetches and parses OG tags from a given URL for
+ *       link preview rendering. Results are cached for 1 hour.
+ *     operationId: getOgMetadata
+ *     security: []
+ *     parameters:
+ *       - name: url
+ *         in: query
+ *         required: true
+ *         description: URL to scrape OG metadata from (must be http/https)
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: OG metadata extracted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   description: Page title (og:title)
+ *                 description:
+ *                   type: string
+ *                   description: Page description (og:description)
+ *                 image:
+ *                   type: string
+ *                   description: Preview image URL (og:image)
+ *                 siteName:
+ *                   type: string
+ *                   description: Site name (og:site_name)
+ *                 favicon:
+ *                   type: string
+ *                   description: Site favicon URL
+ *                 url:
+ *                   type: string
+ *                   description: Canonical URL
+ */
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get('url');
   if (!url) {

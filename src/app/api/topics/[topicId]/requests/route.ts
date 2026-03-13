@@ -7,6 +7,94 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/requests';
 
+/**
+ * @openapi
+ * /api/topics/{topicId}/requests:
+ *   get:
+ *     tags: [JoinRequests]
+ *     summary: List join requests
+ *     description: >-
+ *       Lists join requests for a private topic. By default returns only pending requests. Use
+ *       status=all to see all requests including approved and rejected.
+ *     operationId: listJoinRequests
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - name: status
+ *         in: query
+ *         required: false
+ *         description: Set to "all" to include approved and rejected requests
+ *         schema:
+ *           type: string
+ *           enum: [all]
+ *     responses:
+ *       200:
+ *         description: List of join requests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 requests:
+ *                   type: array
+ *                   description: Join requests for the topic
+ *                   items:
+ *                     $ref: '#/components/schemas/JoinRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *   patch:
+ *     tags: [JoinRequests]
+ *     summary: Approve or reject join request
+ *     description: >-
+ *       Approves or rejects a pending join request. Approving automatically adds the user as a member.
+ *     operationId: handleJoinRequest
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [requestId, action]
+ *             properties:
+ *               requestId:
+ *                 type: string
+ *                 description: Join request ID to act on
+ *               action:
+ *                 type: string
+ *                 enum: [approve, reject]
+ *                 description: Action to take on the request
+ *     responses:
+ *       200:
+ *         description: Request handled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Action success indicator
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },

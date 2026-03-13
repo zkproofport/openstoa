@@ -9,6 +9,55 @@ const ROUTE = '/api/profile/nickname';
 
 const NICKNAME_REGEX = /^[a-zA-Z0-9_]{2,20}$/;
 
+/**
+ * @openapi
+ * /api/profile/nickname:
+ *   put:
+ *     tags: [Profile]
+ *     summary: Set or update nickname
+ *     description: >-
+ *       Sets or updates the user's display nickname. Required after first login. Must be 2-20
+ *       characters, alphanumeric and underscores only. Reissues the session cookie/token with
+ *       the updated nickname.
+ *     operationId: setNickname
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [nickname]
+ *             properties:
+ *               nickname:
+ *                 type: string
+ *                 pattern: "^[a-zA-Z0-9_]{2,20}$"
+ *                 description: Display name (2-20 chars, alphanumeric + underscore)
+ *     responses:
+ *       200:
+ *         description: Nickname updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 nickname:
+ *                   type: string
+ *                   description: The updated nickname
+ *       400:
+ *         description: Invalid nickname format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error400'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       409:
+ *         description: Nickname already taken
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error409'
+ */
 export async function PUT(request: NextRequest) {
   logger.info(ROUTE, 'PUT request received');
   try {

@@ -7,6 +7,114 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/join/[inviteCode]';
 
+/**
+ * @openapi
+ * /api/topics/join/{inviteCode}:
+ *   get:
+ *     tags: [Topics]
+ *     summary: Lookup topic by invite code
+ *     description: >-
+ *       Looks up a topic by its invite code. Returns topic info and whether the current user is
+ *       already a member. Used to show a preview before joining.
+ *     operationId: lookupInviteCode
+ *     parameters:
+ *       - name: inviteCode
+ *         in: path
+ *         required: true
+ *         description: 8-character invite code
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Topic found by invite code
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 topic:
+ *                   type: object
+ *                   description: Topic preview information
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                       description: Topic ID
+ *                     title:
+ *                       type: string
+ *                       description: Topic title
+ *                     description:
+ *                       type: string
+ *                       nullable: true
+ *                       description: Topic description
+ *                     requiresCountryProof:
+ *                       type: boolean
+ *                       description: Whether country proof is required to join
+ *                     allowedCountries:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       nullable: true
+ *                       description: Allowed country codes
+ *                     visibility:
+ *                       type: string
+ *                       enum: [public, private, secret]
+ *                       description: Topic visibility level
+ *                 isMember:
+ *                   type: boolean
+ *                   description: Whether the current user is already a member
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         description: Invalid invite code
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error404'
+ *   post:
+ *     tags: [Topics]
+ *     summary: Join topic via invite code
+ *     description: >-
+ *       Joins a topic via invite code. Bypasses all visibility restrictions (public, private, secret).
+ *       For country-gated topics, country proof is still required.
+ *     operationId: joinByInviteCode
+ *     parameters:
+ *       - name: inviteCode
+ *         in: path
+ *         required: true
+ *         description: 8-character invite code
+ *         schema:
+ *           type: string
+ *     responses:
+ *       201:
+ *         description: Successfully joined the topic
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Join success indicator
+ *                 topicId:
+ *                   type: string
+ *                   description: ID of the joined topic
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         description: Invalid invite code
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error404'
+ *       409:
+ *         description: Already a member of this topic
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error409'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ inviteCode: string }> },

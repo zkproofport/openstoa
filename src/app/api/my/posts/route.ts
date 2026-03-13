@@ -7,6 +7,47 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/my/posts';
 
+/**
+ * @openapi
+ * /api/my/posts:
+ *   get:
+ *     tags: [MyActivity]
+ *     summary: List my posts
+ *     description: >-
+ *       Lists the current user's own posts across all topics, sorted by newest first.
+ *     operationId: listMyPosts
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         description: Number of posts to return (max 100)
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         description: Number of posts to skip
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       '200':
+ *         description: Current user's posts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 posts:
+ *                   type: array
+ *                   description: User's posts sorted by newest first
+ *                   items:
+ *                     $ref: '#/components/schemas/Post'
+ *       '401':
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {

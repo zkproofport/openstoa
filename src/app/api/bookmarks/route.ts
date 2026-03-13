@@ -7,6 +7,54 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/bookmarks';
 
+/**
+ * @openapi
+ * /api/bookmarks:
+ *   get:
+ *     tags: [Bookmarks]
+ *     summary: List bookmarked posts
+ *     description: >-
+ *       Lists all posts bookmarked by the current user, sorted by bookmark time (newest first).
+ *     operationId: listBookmarks
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         description: Number of posts to return (max 100)
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         description: Number of posts to skip
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       '200':
+ *         description: Bookmarked posts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 posts:
+ *                   type: array
+ *                   description: Bookmarked posts with bookmarkedAt timestamp
+ *                   items:
+ *                     allOf:
+ *                       - $ref: '#/components/schemas/Post'
+ *                       - type: object
+ *                         properties:
+ *                           bookmarkedAt:
+ *                             type: string
+ *                             format: date-time
+ *                             description: When the post was bookmarked
+ *       '401':
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {

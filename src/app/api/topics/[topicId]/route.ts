@@ -7,6 +7,53 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]';
 
+/**
+ * @openapi
+ * /api/topics/{topicId}:
+ *   get:
+ *     tags: [Topics]
+ *     summary: Get topic detail
+ *     description: >-
+ *       Returns detailed information about a topic including the current user's role.
+ *       Requires topic membership.
+ *     operationId: getTopic
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Topic detail with current user role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 topic:
+ *                   allOf:
+ *                     - $ref: '#/components/schemas/Topic'
+ *                     - type: object
+ *                       properties:
+ *                         memberCount:
+ *                           type: integer
+ *                           description: Number of members in the topic
+ *                 currentUserRole:
+ *                   type: string
+ *                   enum: [owner, admin, member]
+ *                   description: Current user's role in the topic
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Not a member of this topic
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error403'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },

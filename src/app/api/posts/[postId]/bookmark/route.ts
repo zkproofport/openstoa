@@ -7,6 +7,62 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]/bookmark';
 
+/**
+ * @openapi
+ * /api/posts/{postId}/bookmark:
+ *   get:
+ *     tags: [Bookmarks]
+ *     summary: Check bookmark status
+ *     description: Checks if the current user has bookmarked a specific post.
+ *     operationId: getBookmarkStatus
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Bookmark status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 bookmarked:
+ *                   type: boolean
+ *                   description: Whether the post is bookmarked by the current user
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *   post:
+ *     tags: [Bookmarks]
+ *     summary: Toggle bookmark on post
+ *     description: Toggles a bookmark on a post.
+ *     operationId: toggleBookmark
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Bookmark toggled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 bookmarked:
+ *                   type: boolean
+ *                   description: New bookmark state (true if added, false if removed)
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },

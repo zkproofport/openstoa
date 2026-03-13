@@ -7,6 +7,48 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]/comments';
 
+/**
+ * @openapi
+ * /api/posts/{postId}/comments:
+ *   post:
+ *     tags: [Comments]
+ *     summary: Create comment on post
+ *     description: Creates a comment on a post. Increments the post's comment count.
+ *     operationId: createComment
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 description: Comment body (plain text)
+ *     responses:
+ *       201:
+ *         description: Comment created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 comment:
+ *                   $ref: '#/components/schemas/Comment'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },

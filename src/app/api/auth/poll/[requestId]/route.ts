@@ -15,6 +15,78 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/auth/poll/[requestId]';
 
+/**
+ * @openapi
+ * /api/auth/poll/{requestId}:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Poll relay for proof result
+ *     description: >-
+ *       Polls the relay server for ZK proof generation status. When completed, verifies the proof
+ *       on-chain, creates/retrieves the user account, and issues a session. Use mode=proof to get
+ *       raw proof data without creating a session (used for country-gated topic operations).
+ *     operationId: pollProofResult
+ *     security: []
+ *     parameters:
+ *       - name: requestId
+ *         in: path
+ *         required: true
+ *         description: Relay request ID from /api/auth/proof-request
+ *         schema:
+ *           type: string
+ *       - name: mode
+ *         in: query
+ *         required: false
+ *         description: Set to "proof" to get raw proof data without creating a session
+ *         schema:
+ *           type: string
+ *           enum: [proof]
+ *     responses:
+ *       200:
+ *         description: Poll result — status may be pending, failed, or completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - type: object
+ *                   description: Proof generation still in progress or failed
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       enum: [pending, failed]
+ *                       description: Current proof generation status
+ *                 - type: object
+ *                   description: Proof completed — session created (default mode)
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       enum: [completed]
+ *                       description: Completed status
+ *                     userId:
+ *                       type: string
+ *                       description: Authenticated user ID
+ *                     needsNickname:
+ *                       type: boolean
+ *                       description: Whether the user still needs to set a nickname
+ *                 - type: object
+ *                   description: Proof completed — raw proof data (mode=proof)
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       enum: [completed]
+ *                       description: Completed status
+ *                     proof:
+ *                       type: string
+ *                       description: 0x-prefixed proof hex string
+ *                     publicInputs:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       description: Array of 0x-prefixed public input hex strings
+ *                     circuit:
+ *                       type: string
+ *                       description: Circuit type that was proven
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> },

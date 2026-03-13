@@ -9,6 +9,85 @@ const ROUTE = '/api/posts/[postId]/reactions';
 
 const ALLOWED_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
 
+/**
+ * @openapi
+ * /api/posts/{postId}/reactions:
+ *   get:
+ *     tags: [Reactions]
+ *     summary: Get reactions on post
+ *     description: >-
+ *       Returns all emoji reactions on a post, grouped by emoji with counts and whether the
+ *       current user has reacted.
+ *     operationId: getReactions
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Reaction summaries grouped by emoji
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 reactions:
+ *                   type: array
+ *                   description: Reactions grouped by emoji
+ *                   items:
+ *                     $ref: '#/components/schemas/ReactionSummary'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *   post:
+ *     tags: [Reactions]
+ *     summary: Toggle emoji reaction on post
+ *     description: >-
+ *       Toggles an emoji reaction on a post. Reacting with the same emoji again removes it.
+ *       Only 6 emojis are allowed.
+ *     operationId: toggleReaction
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [emoji]
+ *             properties:
+ *               emoji:
+ *                 type: string
+ *                 description: "Emoji character (allowed: thumbs up, heart, fire, laughing, party, surprised)"
+ *     responses:
+ *       200:
+ *         description: Reaction toggled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 added:
+ *                   type: boolean
+ *                   description: True if reaction was added, false if removed
+ *       400:
+ *         description: Invalid emoji
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error400'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },

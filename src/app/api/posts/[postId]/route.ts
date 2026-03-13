@@ -7,6 +7,82 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]';
 
+/**
+ * @openapi
+ * /api/posts/{postId}:
+ *   get:
+ *     tags: [Posts]
+ *     summary: Get post with comments
+ *     description: Returns a post with its comments and tags. Increments the view counter.
+ *     operationId: getPost
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Post detail with comments and tags
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 post:
+ *                   allOf:
+ *                     - $ref: '#/components/schemas/Post'
+ *                     - type: object
+ *                       properties:
+ *                         topicTitle:
+ *                           type: string
+ *                           description: Title of the parent topic
+ *                 comments:
+ *                   type: array
+ *                   description: Comments on the post
+ *                   items:
+ *                     $ref: '#/components/schemas/Comment'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *   delete:
+ *     tags: [Posts]
+ *     summary: Delete post
+ *     description: >-
+ *       Deletes a post and all its comments. Only the author, topic owner, or topic admin can delete.
+ *     operationId: deletePost
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Post deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Deletion success indicator
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },

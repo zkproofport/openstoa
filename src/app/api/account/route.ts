@@ -8,6 +8,54 @@ import { cookies } from 'next/headers';
 
 const ROUTE = '/api/account';
 
+/**
+ * @openapi
+ * /api/account:
+ *   delete:
+ *     tags: [Account]
+ *     summary: Delete user account
+ *     description: >-
+ *       Permanently deletes the user account. Anonymizes the user's nickname to '[Withdrawn User]_<random>',
+ *       sets deletedAt, removes all memberships/votes/bookmarks, and clears the session. Posts and comments
+ *       are preserved but orphaned. Fails if the user owns any topics (must transfer ownership first).
+ *     operationId: deleteAccount
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Deletion success indicator
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       409:
+ *         description: User owns topics — must transfer ownership first
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   description: Error message explaining the conflict
+ *                 topics:
+ *                   type: array
+ *                   description: List of topics the user owns
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         description: Topic ID
+ *                       title:
+ *                         type: string
+ *                         description: Topic title
+ */
 export async function DELETE(request: NextRequest) {
   // 1. Auth check
   const session = await getSession(request);

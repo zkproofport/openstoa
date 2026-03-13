@@ -15,6 +15,91 @@ import { verifyProof } from '@zkproofport-ai/sdk';
 
 const ROUTE = '/api/auth/verify/ai';
 
+/**
+ * @openapi
+ * /api/auth/verify/ai:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Verify AI agent proof and get session token
+ *     description: >-
+ *       Verifies an AI agent's ZK proof against a previously issued challenge. On success,
+ *       creates/retrieves the user account and returns both a session cookie and a Bearer token.
+ *       The Bearer token can be used for subsequent API calls via the Authorization header.
+ *     operationId: verifyAiProof
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [challengeId, result]
+ *             properties:
+ *               challengeId:
+ *                 type: string
+ *                 description: Challenge ID from /api/auth/challenge
+ *               result:
+ *                 type: object
+ *                 description: Proof result from the ZK proof generation
+ *                 required: [proof, publicInputs, verification]
+ *                 properties:
+ *                   proof:
+ *                     type: string
+ *                     description: 0x-prefixed proof hex string
+ *                   publicInputs:
+ *                     type: string
+ *                     description: 0x-prefixed public inputs hex string
+ *                   verification:
+ *                     type: object
+ *                     description: On-chain verification parameters
+ *                     required: [chainId, verifierAddress, rpcUrl]
+ *                     properties:
+ *                       chainId:
+ *                         type: number
+ *                         example: 8453
+ *                         description: Chain ID where the verifier contract is deployed
+ *                       verifierAddress:
+ *                         type: string
+ *                         example: "0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382"
+ *                         description: Address of the on-chain verifier contract
+ *                       rpcUrl:
+ *                         type: string
+ *                         example: "https://mainnet.base.org"
+ *                         description: RPC URL for the target chain
+ *                   proofWithInputs:
+ *                     type: string
+ *                     description: Combined proof + public inputs hex (optional)
+ *                   attestation:
+ *                     type: object
+ *                     nullable: true
+ *                     description: Raw attestation data (optional)
+ *                   timing:
+ *                     type: object
+ *                     description: Proof generation timing metadata (optional)
+ *     responses:
+ *       200:
+ *         description: Verification successful. Sets session cookie and returns Bearer token.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userId:
+ *                   type: string
+ *                   description: Authenticated user ID
+ *                 needsNickname:
+ *                   type: boolean
+ *                   description: Whether the user still needs to set a nickname
+ *                 token:
+ *                   type: string
+ *                   description: Bearer token for subsequent API calls
+ *       400:
+ *         description: Invalid challenge, expired, scope mismatch, or on-chain verification failure
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error400'
+ */
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {

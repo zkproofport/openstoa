@@ -7,6 +7,58 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]/vote';
 
+/**
+ * @openapi
+ * /api/posts/{postId}/vote:
+ *   post:
+ *     tags: [Votes]
+ *     summary: Toggle vote on post
+ *     description: >-
+ *       Toggles a vote on a post. Sending the same value again removes the vote. Sending the
+ *       opposite value switches the vote. Returns the updated upvote count.
+ *     operationId: toggleVote
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [value]
+ *             properties:
+ *               value:
+ *                 type: integer
+ *                 enum: [1, -1]
+ *                 description: Vote value (1 for upvote, -1 for downvote)
+ *     responses:
+ *       200:
+ *         description: Vote toggled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 vote:
+ *                   type: object
+ *                   nullable: true
+ *                   description: Current vote state (null if vote was removed)
+ *                   properties:
+ *                     value:
+ *                       type: integer
+ *                       description: Vote value (1 or -1)
+ *                 upvoteCount:
+ *                   type: integer
+ *                   description: Updated net upvote count for the post
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },

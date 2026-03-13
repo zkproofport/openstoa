@@ -8,6 +8,123 @@ import { updateTopicScore } from '@/lib/topicScore';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
+/**
+ * @openapi
+ * /api/topics/{topicId}/posts:
+ *   get:
+ *     tags: [Posts]
+ *     summary: List posts in topic
+ *     description: >-
+ *       Lists posts in a topic with pagination. Pinned posts always appear first regardless of sort
+ *       order. Supports tag filtering and sorting by newest or popularity.
+ *     operationId: listPosts
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         description: Number of posts to return (max 100)
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         description: Number of posts to skip
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *       - name: tag
+ *         in: query
+ *         required: false
+ *         description: Filter by tag slug
+ *         schema:
+ *           type: string
+ *       - name: sort
+ *         in: query
+ *         required: false
+ *         description: Sort order
+ *         schema:
+ *           type: string
+ *           enum: [new, popular]
+ *           default: new
+ *     responses:
+ *       200:
+ *         description: Paginated list of posts (pinned posts first)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 posts:
+ *                   type: array
+ *                   description: Posts in the topic
+ *                   items:
+ *                     $ref: '#/components/schemas/Post'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *   post:
+ *     tags: [Posts]
+ *     summary: Create post in topic
+ *     description: >-
+ *       Creates a new post in a topic. Supports up to 5 tags (created automatically if they don't
+ *       exist). Triggers async topic score recalculation.
+ *     operationId: createPost
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, content]
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Post title
+ *               content:
+ *                 type: string
+ *                 description: Post body (markdown supported)
+ *               media:
+ *                 type: object
+ *                 description: Attached media metadata (optional)
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 maxItems: 5
+ *                 description: Tag names (max 5, auto-created if new)
+ *     responses:
+ *       201:
+ *         description: Post created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 post:
+ *                   $ref: '#/components/schemas/Post'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },

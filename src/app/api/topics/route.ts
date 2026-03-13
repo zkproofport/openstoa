@@ -14,6 +14,109 @@ import {
 
 const ROUTE = '/api/topics';
 
+/**
+ * @openapi
+ * /api/topics:
+ *   get:
+ *     tags: [Topics]
+ *     summary: List topics
+ *     description: >-
+ *       Lists topics. Without view parameter, returns only the current user's joined topics.
+ *       With view=all, returns all visible topics (excludes secret topics unless user is a member)
+ *       with membership status. Supports sorting.
+ *     operationId: listTopics
+ *     parameters:
+ *       - name: view
+ *         in: query
+ *         required: false
+ *         description: Set to "all" to see all visible topics instead of only joined topics
+ *         schema:
+ *           type: string
+ *           enum: [all]
+ *       - name: sort
+ *         in: query
+ *         required: false
+ *         description: Sort order (only applies when view=all)
+ *         schema:
+ *           type: string
+ *           enum: [hot, new, active, top]
+ *     responses:
+ *       200:
+ *         description: Topics list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 topics:
+ *                   type: array
+ *                   description: List of topics with membership info
+ *                   items:
+ *                     $ref: '#/components/schemas/TopicListItem'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *   post:
+ *     tags: [Topics]
+ *     summary: Create topic
+ *     description: >-
+ *       Creates a new topic. The creator is automatically added as the owner. For country-gated
+ *       topics (requiresCountryProof=true), the creator must also provide a valid
+ *       coinbase_country_attestation proof proving they are in one of the allowed countries.
+ *     operationId: createTopic
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title]
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Topic title
+ *               description:
+ *                 type: string
+ *                 description: Topic description (optional)
+ *               requiresCountryProof:
+ *                 type: boolean
+ *                 description: Whether joining requires a country attestation proof
+ *               allowedCountries:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: ISO 3166-1 alpha-2 country codes allowed
+ *               proof:
+ *                 type: string
+ *                 description: Country attestation proof hex (required if requiresCountryProof=true)
+ *               publicInputs:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Proof public inputs (required if requiresCountryProof=true)
+ *               image:
+ *                 type: string
+ *                 description: Topic thumbnail image URL (from /api/upload)
+ *               visibility:
+ *                 type: string
+ *                 enum: [public, private, secret]
+ *                 description: Topic visibility (defaults to public)
+ *     responses:
+ *       201:
+ *         description: Topic created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 topic:
+ *                   $ref: '#/components/schemas/Topic'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {

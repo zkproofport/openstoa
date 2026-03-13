@@ -41,6 +41,61 @@ function getS3() {
   return { s3: _s3, config: _config! };
 }
 
+/**
+ * @openapi
+ * /api/upload:
+ *   post:
+ *     tags: [Upload]
+ *     summary: Get presigned upload URL
+ *     description: >-
+ *       Generates an R2 presigned URL for direct file upload. The client uploads the file directly
+ *       to R2 using the returned uploadUrl (PUT request with the file as body), then uses the
+ *       publicUrl in subsequent API calls.
+ *     operationId: createUploadUrl
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [filename, contentType]
+ *             properties:
+ *               filename:
+ *                 type: string
+ *                 description: Original filename
+ *               contentType:
+ *                 type: string
+ *                 description: MIME type (must start with "image/")
+ *               size:
+ *                 type: number
+ *                 description: File size in bytes (optional)
+ *               purpose:
+ *                 type: string
+ *                 enum: [post, topic, avatar]
+ *                 description: Upload purpose for path organization
+ *               width:
+ *                 type: number
+ *                 description: Image width in pixels (optional)
+ *               height:
+ *                 type: number
+ *                 description: Image height in pixels (optional)
+ *     responses:
+ *       200:
+ *         description: Presigned upload URL generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 uploadUrl:
+ *                   type: string
+ *                   description: Presigned PUT URL for direct upload (10 min TTL)
+ *                 publicUrl:
+ *                   type: string
+ *                   description: Permanent public URL for the uploaded file
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {

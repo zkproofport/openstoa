@@ -7,6 +7,149 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/members';
 
+/**
+ * @openapi
+ * /api/topics/{topicId}/members:
+ *   get:
+ *     tags: [Members]
+ *     summary: List topic members
+ *     description: >-
+ *       Lists all members of a topic, sorted by role (owner then admin then member). Supports
+ *       nickname prefix search for @mention autocomplete.
+ *     operationId: listMembers
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - name: q
+ *         in: query
+ *         required: false
+ *         description: Nickname prefix search (returns up to 10 matches)
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of topic members
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 members:
+ *                   type: array
+ *                   description: Topic members sorted by role
+ *                   items:
+ *                     $ref: '#/components/schemas/Member'
+ *                 currentUserRole:
+ *                   type: string
+ *                   description: Current user's role in the topic
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *   patch:
+ *     tags: [Members]
+ *     summary: Change member role
+ *     description: >-
+ *       Changes a member's role. Only the topic owner can change roles. Transferring ownership
+ *       (setting another member to 'owner') automatically demotes the current owner to 'admin'.
+ *     operationId: changeMemberRole
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, role]
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: User ID of the member to update
+ *               role:
+ *                 type: string
+ *                 enum: [owner, admin, member]
+ *                 description: New role to assign
+ *     responses:
+ *       200:
+ *         description: Role changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Update success indicator
+ *                 role:
+ *                   type: string
+ *                   description: New role assigned
+ *                 transferred:
+ *                   type: boolean
+ *                   description: Whether ownership was transferred (current owner demoted to admin)
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *   delete:
+ *     tags: [Members]
+ *     summary: Remove member from topic
+ *     description: >-
+ *       Removes a member from the topic. Admins can only remove regular members. Owners can
+ *       remove anyone except themselves.
+ *     operationId: removeMember
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId]
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: User ID of the member to remove
+ *     responses:
+ *       200:
+ *         description: Member removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: Removal success indicator
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Insufficient permissions to remove this member
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error403'
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
