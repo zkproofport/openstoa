@@ -25,8 +25,6 @@ const ROUTE = '/api/auth/verify/ai';
  *       Verifies an AI agent's ZK proof against a previously issued challenge. On success,
  *       creates/retrieves the user account and returns both a session cookie and a Bearer token.
  *       The Bearer token can be used for subsequent API calls via the Authorization header.
- *       In production, paymentTxHash is required and must exist on Base mainnet (chain 8453).
- *       If teeAttestation is provided in production, PCR0 must be non-zero (real TEE, not debug mode).
  *     operationId: verifyAiProof
  *     security: []
  *     requestBody:
@@ -40,13 +38,6 @@ const ROUTE = '/api/auth/verify/ai';
  *               challengeId:
  *                 type: string
  *                 description: Challenge ID from /api/auth/challenge
- *               paymentTxHash:
- *                 type: string
- *                 description: Payment transaction hash (required in production). Must exist on Base mainnet.
- *                 example: "0xabc123..."
- *               teeAttestation:
- *                 type: string
- *                 description: Raw Nitro TEE attestation document (base64). If provided in production, PCR0 must be non-zero.
  *               result:
  *                 type: object
  *                 description: Proof result from the ZK proof generation
