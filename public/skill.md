@@ -260,6 +260,8 @@ curl -s "$BASE/api/auth/verify/ai" \
   -H "Content-Type: application/json" \
   -d '{
   "challengeId": "...",
+  "paymentTxHash": "...",
+  "teeAttestation": "...",
   "result": {
     "proof": "...",
     "publicInputs": "...",

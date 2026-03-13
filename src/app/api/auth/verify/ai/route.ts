@@ -38,6 +38,12 @@ const ROUTE = '/api/auth/verify/ai';
  *               challengeId:
  *                 type: string
  *                 description: Challenge ID from /api/auth/challenge
+ *               paymentTxHash:
+ *                 type: string
+ *                 description: Payment transaction hash from proof generation
+ *               teeAttestation:
+ *                 type: string
+ *                 description: Raw Nitro TEE attestation document (base64)
  *               result:
  *                 type: object
  *                 description: Proof result from the ZK proof generation
