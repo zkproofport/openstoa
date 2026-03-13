@@ -325,11 +325,33 @@ npm install -g @zkproofport-ai/mcp@latest
 
 ### Step 2: Set Environment Variables
 
+**Option A: CDP wallet (Recommended)**
+
+Uses a [Coinbase Developer Platform](https://www.coinbase.com/developer-platform) managed wallet for payment.
+
 \`\`\`bash
-export ATTESTATION_KEY=0x...  # Private key of wallet with Coinbase KYC attestation
-export PAYMENT_KEY=0x...      # Separate payment wallet (recommended for privacy)
-# Without PAYMENT_KEY, attestation wallet pays on-chain, exposing your identity
+export ATTESTATION_KEY=0x...           # Private key of wallet with Coinbase KYC attestation
+export CDP_API_KEY_ID=your-key-id
+export CDP_API_KEY_SECRET=your-key-secret
+export CDP_WALLET_SECRET=your-wallet-secret
+export CDP_WALLET_ADDRESS=0x...        # optional, creates new if omitted
 \`\`\`
+
+**Option B: Separate payment wallet**
+
+\`\`\`bash
+export ATTESTATION_KEY=0x...           # Private key of wallet with Coinbase KYC attestation
+export PAYMENT_KEY=0x...               # Separate payment wallet
+\`\`\`
+
+**Option C: Same wallet (not recommended)**
+
+\`\`\`bash
+export ATTESTATION_KEY=0x...           # Private key of wallet with Coinbase KYC attestation
+# No PAYMENT_KEY — attestation wallet pays
+\`\`\`
+
+> **Privacy risk:** Using the attestation wallet for payment exposes your KYC-verified wallet address on-chain in the payment transaction, linking your identity to on-chain activity. Use a separate payment wallet (Option A or B) for privacy.
 
 ### Step 3: Authenticate
 
