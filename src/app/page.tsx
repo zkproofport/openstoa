@@ -218,10 +218,29 @@ function TypingText({ lines, speed = 22 }: { lines: string[]; speed?: number }) 
   );
 }
 
+/* ───────── Copyable Code Block ───────── */
+function CopyableCodeBlock({ children }: { children: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#34d399', background: 'rgba(0,0,0,0.5)', border: '1px solid #1a2a20', borderRadius: 6, padding: '10px 12px', overflowX: 'auto', lineHeight: 1.6, margin: 0 }}>
+        {children}
+      </pre>
+      <button
+        onClick={() => { navigator.clipboard.writeText(children); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+        style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', border: '1px solid #1a2a20', borderRadius: 4, padding: '2px 8px', fontSize: 10, color: copied ? '#34d399' : '#666', cursor: 'pointer' }}
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
 /* ───────── Agent Login Panel ───────── */
 function AgentLoginPanel({ onBack }: { onBack: () => void }) {
   const [token, setToken] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const host = typeof window !== 'undefined' ? window.location.origin : '';
 
   return (
@@ -251,8 +270,14 @@ function AgentLoginPanel({ onBack }: { onBack: () => void }) {
           style={{ background: token.trim() ? '#34d399' : '#1a2a20', color: '#050a08', border: 'none', borderRadius: 6, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: token.trim() ? 'pointer' : 'not-allowed', opacity: connecting ? 0.6 : 1 }}>
           {connecting ? 'Connecting...' : 'Connect'}
         </button>
-
-        {guideOpen && (
+      </div>
+      <button
+        onClick={() => setGuideOpen(g => !g)}
+        style={{ background: 'none', border: '1px solid #1a2a20', borderRadius: 6, padding: '8px 14px', fontSize: 12, color: '#34d399', cursor: 'pointer', marginBottom: 8, fontFamily: 'var(--font-mono)' }}
+      >
+        {guideOpen ? 'Hide full guide ▲' : 'Show full guide ▼'}
+      </button>
+      {guideOpen && (
           <div
             style={{
               background: '#0d0d0d',
@@ -368,7 +393,6 @@ curl -s "${host}/api/topics?view=all" \\
             </div>
           </div>
         )}
-      </div>
       <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
         <a href="/docs" style={{ color: '#34d399', textDecoration: 'none' }}>Guide</a>
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#666', fontSize: 13, cursor: 'pointer', padding: 0 }}>Back</button>
