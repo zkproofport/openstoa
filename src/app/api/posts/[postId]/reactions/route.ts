@@ -95,25 +95,31 @@ export async function GET(
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
-    if (!session) {
-      logger.warn(ROUTE, 'Unauthenticated request');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
     const { postId } = await params;
 
-    // Get reaction counts grouped by emoji, and whether current user reacted
-    const rows = await db
-      .select({
-        emoji: reactions.emoji,
-        count: sql<number>`count(distinct ${reactions.userId})::int`,
-        userReacted: sql<boolean>`bool_or(${reactions.userId} = ${session.userId})`,
-      })
-      .from(reactions)
-      .where(eq(reactions.postId, postId))
-      .groupBy(reactions.emoji);
+    // Get reaction counts grouped by emoji, and whether current user reacted.
+    // Guests (no session) always get userReacted: false.
+    const rows = session
+      ? await db
+          .select({
+            emoji: reactions.emoji,
+            count: sql<number>`count(distinct ${reactions.userId})::int`,
+            userReacted: sql<boolean>`bool_or(${reactions.userId} = ${session.userId})`,
+          })
+          .from(reactions)
+          .where(eq(reactions.postId, postId))
+          .groupBy(reactions.emoji)
+      : await db
+          .select({
+            emoji: reactions.emoji,
+            count: sql<number>`count(distinct ${reactions.userId})::int`,
+            userReacted: sql<boolean>`false`,
+          })
+          .from(reactions)
+          .where(eq(reactions.postId, postId))
+          .groupBy(reactions.emoji);
 
-    logger.info(ROUTE, 'Reactions fetched', { postId, count: rows.length });
+    logger.info(ROUTE, 'Reactions fetched', { postId, count: rows.length, guest: !session });
     return NextResponse.json({ reactions: rows });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

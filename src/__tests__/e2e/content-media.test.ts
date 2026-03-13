@@ -99,6 +99,31 @@ describe.sequential('Content & Media handling', () => {
     expectNoMedia(json.post);
   });
 
+  // Test 4b: Verify base64 → CDN URL conversion via GET post detail
+  it('GET post detail after base64 image post shows CDN URL (not data URI)', async () => {
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+    const contentWithBase64 = `<p>CDN conversion test:</p><img src="data:image/png;base64,${tinyPng}" alt="cdn-check">`;
+
+    const createRes = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `Base64 CDN Conversion Test ${Date.now()}`,
+      content: contentWithBase64,
+      tags: ['e2e-test'],
+    });
+    expect(createRes.status).toBe(201);
+    const createJson = await createRes.json();
+    const postId = createJson.post.id;
+
+    const detailRes = await authGet(`/api/posts/${postId}`);
+    expect(detailRes.status).toBe(200);
+    const detailJson = await detailRes.json();
+    const returnedContent: string = detailJson.post.content;
+
+    // base64 data URI must be replaced with CDN URL
+    expect(returnedContent).not.toContain('data:image');
+    expect(returnedContent).toContain('https://media.zkproofport.app/');
+    expectNoMedia(detailJson.post);
+  });
+
   // Test 5: GET post detail
   it('GET post detail returns content without meaningful media', async () => {
     const createRes = await authPost(`/api/topics/${topicId}/posts`, {

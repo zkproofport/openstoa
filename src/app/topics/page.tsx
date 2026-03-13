@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
 import Spinner from '@/components/Spinner';
 import TopicAvatar from '@/components/TopicAvatar';
@@ -22,8 +22,9 @@ interface Topic {
   isMember?: boolean;
 }
 
-export default function TopicsPage() {
+function TopicsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +34,9 @@ export default function TopicsPage() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string | null>(
+    searchParams.get('category'),
+  );
 
   function handleImageClick(src: string) {
     if (window.innerWidth <= 768 || 'ontouchstart' in window) {
@@ -44,13 +47,14 @@ export default function TopicsPage() {
   }
 
   useEffect(() => {
+    const initialCategory = searchParams.get('category');
     fetch('/api/auth/session')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data) {
           setIsGuest(true);
           setSessionChecked(true);
-          loadTopics('hot', null);
+          loadTopics('hot', initialCategory);
           return;
         }
         if (!data.nickname) {
@@ -58,12 +62,12 @@ export default function TopicsPage() {
           return;
         }
         setSessionChecked(true);
-        loadTopics('hot', null);
+        loadTopics('hot', initialCategory);
       })
       .catch(() => {
         setIsGuest(true);
         setSessionChecked(true);
-        loadTopics('hot', null);
+        loadTopics('hot', initialCategory);
       });
   }, [router]);
 
@@ -496,5 +500,13 @@ export default function TopicsPage() {
         </div>
       )}
     </CommunityLayout>
+  );
+}
+
+export default function TopicsPage() {
+  return (
+    <Suspense>
+      <TopicsPageInner />
+    </Suspense>
   );
 }

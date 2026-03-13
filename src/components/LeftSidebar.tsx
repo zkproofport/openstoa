@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import TopicAvatar from '@/components/TopicAvatar';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -92,6 +92,7 @@ export default function LeftSidebar({
   onCategorySelect,
 }: LeftSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [myTopics, setMyTopics] = useState<JoinedTopic[]>([]);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -134,7 +135,7 @@ export default function LeftSidebar({
         <div style={sectionHeadingStyle}>Categories</div>
         {/* All Topics item */}
         <button
-          onClick={() => onCategorySelect?.(null)}
+          onClick={() => onCategorySelect ? onCategorySelect(null) : router.push('/topics')}
           onMouseEnter={() => setHoveredItem('all')}
           onMouseLeave={() => setHoveredItem(null)}
           style={{
@@ -155,7 +156,7 @@ export default function LeftSidebar({
           return (
             <button
               key={cat.id}
-              onClick={() => onCategorySelect?.(cat.slug)}
+              onClick={() => onCategorySelect ? onCategorySelect(cat.slug) : router.push(`/topics?category=${encodeURIComponent(cat.slug)}`)}
               onMouseEnter={() => setHoveredItem(cat.id)}
               onMouseLeave={() => setHoveredItem(null)}
               style={{
