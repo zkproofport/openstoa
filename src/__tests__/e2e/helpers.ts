@@ -16,6 +16,51 @@ export function getUserId(): string {
   return id;
 }
 
+// ── Second user helpers (for tests that need a different user) ──
+
+let secondUserCache: { token: string; userId: string } | null = null;
+
+/** Create a second test user via dev-login endpoint (non-production only) */
+export async function getSecondUserToken(): Promise<{ token: string; userId: string }> {
+  if (secondUserCache) return secondUserCache;
+
+  const res = await fetch(`${BASE_URL}/api/auth/dev-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nickname: `e2e_second_${Date.now().toString(36)}` }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`dev-login failed: ${res.status} ${err}`);
+  }
+
+  const data = await res.json();
+  secondUserCache = { token: data.token, userId: data.userId };
+  return secondUserCache;
+}
+
+/** Make an authenticated GET request as the second user */
+export async function secondUserGet(path: string): Promise<Response> {
+  const { token } = await getSecondUserToken();
+  return fetch(`${BASE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+/** Make an authenticated POST request as the second user */
+export async function secondUserPost(path: string, body?: unknown): Promise<Response> {
+  const { token } = await getSecondUserToken();
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
 /** Make an authenticated GET request */
 export async function authGet(path: string): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
