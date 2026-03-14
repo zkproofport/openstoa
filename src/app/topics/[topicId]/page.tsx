@@ -402,6 +402,7 @@ export default function TopicPage() {
       topicTitle={topic.title}
       topicDescription={topic.description}
       topicMemberCount={topic.memberCount}
+      isMember={topic?.isMember}
     >
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />

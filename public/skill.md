@@ -1420,6 +1420,96 @@ curl -s "$BASE/api/categories" \
 }' | jq .
 ```
 
+## Chat
+
+### Get current chat presence
+
+Returns the list of users currently connected to the topic chat. Presence is tracked via Redis HASH and updated on SSE connect/disconnect. Only topic members can query presence.
+
+```bash
+curl -s "$BASE/api/topics/:topicId/chat/presence" \
+  -H "$AUTH" | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+
+Response:
+```json
+{
+  "users": [
+    {
+      "userId": "...",
+      "nickname": "...",
+      "profileImage": "...",
+      "connectedAt": "2026-03-13T10:00:00Z"
+    }
+  ],
+  "count": 0
+}
+```
+
+### Get chat history
+
+Returns paginated chat messages for a topic. Only topic members can access. Messages are returned in descending order (newest first).
+
+```bash
+curl -s "$BASE/api/topics/:topicId/chat?limit=...&offset=..." \
+  -H "$AUTH" | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+Query params:
+- `limit` — Number of messages to return (default 50, max 100)
+- `offset` — Number of messages to skip
+
+Response:
+```json
+{
+  "messages": [
+    {}
+  ],
+  "total": 0
+}
+```
+
+### Send a chat message
+
+Sends a message to the topic chat. Only topic members can send messages. The message is persisted to the database and broadcast via Redis pub/sub.
+
+```bash
+curl -s "$BASE/api/topics/:topicId/chat" \
+  -H "$AUTH" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+  "message": "..."
+}' | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+
+Response:
+```json
+{
+  "message": {}
+}
+```
+
+### Subscribe to real-time chat via SSE
+
+Opens a Server-Sent Events stream for real-time chat messages in a topic. Only topic members can subscribe. On connect, adds user to presence tracking, inserts a join event, and sends the current presence list as the first SSE event. Sends a heartbeat ping every 30 seconds. On disconnect, removes user from presence and publishes a leave event.
+
+```bash
+curl -s "$BASE/api/topics/:topicId/chat/subscribe" \
+  -H "$AUTH" | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+
 ## Feed
 
 ### Get cross-topic posts feed

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
+import ChatPanel from '@/components/ChatPanel';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ interface CommunityLayoutProps {
   topicTitle?: string;
   topicDescription?: string;
   topicMemberCount?: number;
+  isMember?: boolean;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -45,8 +47,10 @@ export default function CommunityLayout({
   topicTitle,
   topicDescription,
   topicMemberCount,
+  isMember,
 }: CommunityLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -229,9 +233,115 @@ export default function CommunityLayout({
             topicTitle={topicTitle}
             topicDescription={topicDescription}
             topicMemberCount={topicMemberCount}
+            isGuest={isGuest}
+            isMember={isMember}
           />
         </div>
       </div>
+
+      {/* ── Mobile chat bottom sheet ── */}
+      {topicId && isMember && !isGuest && (
+        <>
+          {/* Floating chat button (visible only on mobile <1024px) */}
+          <button
+            className="mobile-chat-fab"
+            onClick={() => setMobileChatOpen(true)}
+            style={{
+              position: 'fixed',
+              bottom: 32,
+              left: 24,
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 20px rgba(59,130,246,0.3)',
+              zIndex: 50,
+              fontSize: 20,
+            }}
+            title="Open Chat"
+          >
+            💬
+          </button>
+
+          {/* Overlay */}
+          {mobileChatOpen && (
+            <div
+              className="mobile-chat-overlay"
+              onClick={() => setMobileChatOpen(false)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.6)',
+                zIndex: 90,
+              }}
+            />
+          )}
+
+          {/* Bottom sheet */}
+          <div
+            className="mobile-chat-sheet"
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              maxHeight: '75vh',
+              background: 'var(--background)',
+              borderTop: '1px solid var(--border)',
+              borderRadius: '16px 16px 0 0',
+              zIndex: 95,
+              transform: mobileChatOpen ? 'translateY(0)' : 'translateY(100%)',
+              transition: 'transform 0.3s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Drag handle + close */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '10px 16px 4px',
+              position: 'relative',
+            }}>
+              <div style={{
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                background: 'var(--border)',
+              }} />
+              <button
+                onClick={() => setMobileChatOpen(false)}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: 8,
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  padding: 4,
+                  fontSize: 18,
+                }}
+                aria-label="Close chat"
+              >
+                ✕
+              </button>
+            </div>
+            {/* Chat content */}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember ?? false} />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── Responsive CSS ── */}
       <style>{`
@@ -249,6 +359,22 @@ export default function CommunityLayout({
         /* Hide right sidebar on medium screens */
         @media (max-width: 1023px) {
           .layout-right-sidebar {
+            display: none !important;
+          }
+        }
+        /* Show mobile chat FAB only below 1024px */
+        .mobile-chat-fab {
+          display: none !important;
+        }
+        @media (max-width: 1023px) {
+          .mobile-chat-fab {
+            display: flex !important;
+          }
+        }
+        /* Hide mobile chat sheet on desktop */
+        @media (min-width: 1024px) {
+          .mobile-chat-overlay,
+          .mobile-chat-sheet {
             display: none !important;
           }
         }

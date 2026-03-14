@@ -145,3 +145,15 @@ export const recordLimits = pgTable('community_record_limits', {
 }, (table) => ({
   pk: primaryKey({ columns: [table.userId, table.date] }),
 }));
+
+export const chatMessages = pgTable('community_chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  message: text('message').notNull(),
+  type: varchar('type', { length: 10 }).notNull().default('message'), // 'message' | 'join' | 'leave'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  topicIdx: index('community_chat_msg_topic_idx').on(table.topicId),
+  topicCreatedIdx: index('community_chat_msg_topic_created_idx').on(table.topicId, table.createdAt),
+}));

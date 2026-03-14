@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { relativeTime } from '@/lib/utils';
+import ChatPanel from '@/components/ChatPanel';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,8 @@ interface RightSidebarProps {
   topicTitle?: string;
   topicDescription?: string;
   topicMemberCount?: number;
+  isGuest?: boolean;
+  isMember?: boolean;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -60,6 +63,8 @@ export default function RightSidebar({
   topicTitle,
   topicDescription,
   topicMemberCount,
+  isGuest,
+  isMember,
 }: RightSidebarProps) {
   const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
@@ -168,6 +173,11 @@ export default function RightSidebar({
             </div>
           )}
         </div>
+      )}
+
+      {/* Live Chat */}
+      {topicId && (
+        <ChatPanel topicId={topicId} isGuest={isGuest ?? true} isMember={isMember ?? false} />
       )}
 
       {/* Recent Posts */}
