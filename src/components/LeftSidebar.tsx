@@ -280,6 +280,42 @@ export default function LeftSidebar({
         )}
       </div>
 
+      {/* Start a Topic -- Reddit-style, just below search */}
+      {!isGuest && sessionChecked && (
+        <Link
+          href="/topics/new"
+          onMouseEnter={() => setHoveredItem('start-topic')}
+          onMouseLeave={() => setHoveredItem(null)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 10px',
+            borderRadius: 8,
+            textDecoration: 'none',
+            fontSize: 14,
+            fontWeight: 500,
+            color: 'var(--foreground)',
+            background: hoveredItem === 'start-topic' ? 'var(--surface-hover)' : 'transparent',
+            transition: 'background 0.12s, color 0.12s',
+            marginBottom: 12,
+          }}
+        >
+          <span style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 20,
+            height: 20,
+            fontSize: 16,
+            color: 'var(--muted)',
+          }}>
+            +
+          </span>
+          <span>Start a Topic</span>
+        </Link>
+      )}
+
       {/* Categories with popular topics */}
       <div style={sidebarCardStyle}>
         <div style={sectionHeadingStyle}>Categories</div>
@@ -538,37 +574,6 @@ export default function LeftSidebar({
         </Link>
       </div>
 
-      {/* Create Topic button (authenticated only) */}
-      {!isGuest && sessionChecked && (
-        <Link
-          href="/topics/new"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            background: 'var(--accent)',
-            color: '#fff',
-            textDecoration: 'none',
-            borderRadius: 10,
-            padding: '10px 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: 'var(--font-mono)',
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase' as const,
-            transition: 'opacity 0.15s, box-shadow 0.15s',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.boxShadow = '0 0 20px rgba(120,140,255,0.2)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-          }}
-        >
-          + Create Topic
-        </Link>
-      )}
     </nav>
   );
 }

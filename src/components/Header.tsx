@@ -108,45 +108,53 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
         </Link>
         </div>
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <Link
-            href="/topics"
-            style={{
-              color: '#666', fontSize: 12, textDecoration: 'none',
-              fontFamily: 'var(--font-mono)', fontWeight: 500,
-              letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              transition: 'color 0.15s',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
-          >
-            Topics
-          </Link>
-
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="header-nav">
           <Link
             href="/recorded"
+            className="header-nav-link"
             style={{
-              color: '#666', fontSize: 12, textDecoration: 'none',
+              color: '#999', fontSize: 12, textDecoration: 'none',
               fontFamily: 'var(--font-mono)', fontWeight: 500,
               letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              transition: 'color 0.15s',
+              transition: 'all 0.15s',
+              padding: '6px 14px', borderRadius: 6,
+              border: '1px solid transparent',
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = '#ccc';
+              (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = '#999';
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
+            }}
           >
             Recorded
           </Link>
 
           <Link
             href="/docs"
+            className="header-nav-link"
             style={{
-              color: '#666', fontSize: 12, textDecoration: 'none',
+              color: '#999', fontSize: 12, textDecoration: 'none',
               fontFamily: 'var(--font-mono)', fontWeight: 500,
               letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              transition: 'color 0.15s',
+              transition: 'all 0.15s',
+              padding: '6px 14px', borderRadius: 6,
+              border: '1px solid transparent',
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = '#ccc';
+              (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = '#999';
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
+            }}
           >
             Docs
           </Link>
@@ -155,10 +163,11 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             <Link
               href="/my"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 13, color: '#ccc',
+                fontFamily: 'var(--font-mono)', fontSize: 12, color: '#ccc',
                 background: 'rgba(120,140,255,0.1)', border: '1px solid rgba(120,140,255,0.15)',
-                padding: '4px 12px', borderRadius: 6,
+                padding: '6px 14px', borderRadius: 6,
                 textDecoration: 'none', transition: 'all 0.15s',
+                letterSpacing: '0.02em',
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.18)';
@@ -178,11 +187,20 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             <Link
               href="/"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 13, color: '#666',
-                textDecoration: 'none', transition: 'color 0.15s',
+                fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent)',
+                textDecoration: 'none', transition: 'all 0.15s',
+                padding: '6px 14px', borderRadius: 6,
+                border: '1px solid rgba(120,140,255,0.25)',
+                letterSpacing: '0.04em', textTransform: 'uppercase' as const,
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.1)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
+              }}
             >
               Sign in
             </Link>

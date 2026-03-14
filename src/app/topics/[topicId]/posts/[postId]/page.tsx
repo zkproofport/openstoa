@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Header from '@/components/Header';
+import CommunityLayout from '@/components/CommunityLayout';
 import Avatar from '@/components/Avatar';
 import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
@@ -67,6 +67,7 @@ export default function PostPage() {
 
   // Guest mode
   const [isGuest, setIsGuest] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   function handleImageClick(src: string) {
     if (window.innerWidth <= 768 || 'ontouchstart' in window) {
@@ -86,6 +87,9 @@ export default function PostPage() {
       })
       .catch(() => {
         setIsGuest(true);
+      })
+      .finally(() => {
+        setSessionChecked(true);
       });
   }, []);
 
@@ -229,40 +233,42 @@ export default function PostPage() {
 
   if (loading) {
     return (
-      <>
-        <Header />
+      <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
           <Spinner />
         </div>
-      </>
+      </CommunityLayout>
     );
   }
 
   if (error || !post) {
     return (
-      <>
-        <Header />
+      <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
         <div style={{ padding: '60px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 14, marginBottom: 16 }}>
+          <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 14, marginBottom: 16 }}>
             {error ?? 'Post not found'}
           </p>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 14 }}>
             ← Back to topic
           </Link>
         </div>
-      </>
+      </CommunityLayout>
     );
   }
 
   return (
-    <>
-      <Header />
+    <CommunityLayout
+      isGuest={isGuest}
+      sessionChecked={sessionChecked}
+      topicId={topicId}
+      topicTitle={post.topicTitle}
+      topicDescription=""
+    >
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
-      <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: '56rem', margin: '0 auto', padding: '36px 1.5rem 80px' }}>
         {/* Breadcrumb */}
-        <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 6, fontSize: 15, color: 'var(--muted)' }}>
+        <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
           <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none' }}>Topics</Link>
           <span style={{ color: 'var(--border)' }}>/</span>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--muted)', textDecoration: 'none' }}>
@@ -352,10 +358,10 @@ export default function PostPage() {
               <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
             </span>
             <div>
-              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'monospace' }}>
+              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)' }}>
                 {post.authorNickname}
               </p>
-              <p style={{ fontSize: 15, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'monospace' }}>
+              <p style={{ fontSize: 15, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
                 {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
@@ -373,7 +379,7 @@ export default function PostPage() {
                     borderRadius: 4,
                     padding: '2px 8px',
                     fontSize: 14,
-                    fontFamily: 'monospace',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 >
                   {tag.name}
@@ -409,7 +415,7 @@ export default function PostPage() {
                   gap: 6,
                   color: userVote === 1 ? '#ef4444' : 'var(--muted)',
                   fontSize: 14,
-                  fontFamily: 'monospace',
+                  fontFamily: 'var(--font-mono)',
                   padding: 0,
                   transition: 'color 0.15s',
                 }}
@@ -418,20 +424,20 @@ export default function PostPage() {
                 {upvoteCount > 0 && upvoteCount}
               </button>
             ) : (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'monospace' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'var(--font-mono)' }}>
                 <HeartIcon filled={false} />
                 {upvoteCount > 0 && upvoteCount}
               </span>
             )}
 
             {/* Comments */}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'monospace' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'var(--font-mono)' }}>
               <CommentIcon />
               {comments.length}
             </span>
 
             {/* Views */}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'monospace' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'var(--font-mono)' }}>
               <EyeIcon size={16} />
               {post.viewCount}
             </span>
@@ -449,7 +455,7 @@ export default function PostPage() {
                 gap: 6,
                 color: shared ? 'var(--accent)' : 'var(--muted)',
                 fontSize: 14,
-                fontFamily: 'monospace',
+                fontFamily: 'var(--font-mono)',
                 padding: 0,
                 transition: 'color 0.15s',
               }}
@@ -526,10 +532,10 @@ export default function PostPage() {
                       <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
                     </span>
                     <div>
-                      <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'monospace' }}>
+                      <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
                         {comment.authorNickname}
                       </span>
-                      <span style={{ fontSize: 15, color: 'var(--muted)', marginLeft: 8, fontFamily: 'monospace' }}>
+                      <span style={{ fontSize: 15, color: 'var(--muted)', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
                         {truncateId(comment.authorId, 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
@@ -617,7 +623,7 @@ export default function PostPage() {
                 onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
               />
               {commentError && (
-                <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 8px', fontFamily: 'monospace' }}>
+                <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 8px', fontFamily: 'var(--font-mono)' }}>
                   {commentError}
                 </p>
               )}
@@ -643,7 +649,6 @@ export default function PostPage() {
             </form>
           )}
         </div>
-      </div>
-    </>
+    </CommunityLayout>
   );
 }
