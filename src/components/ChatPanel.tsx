@@ -402,7 +402,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: Ch
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           maxLength={1000}
-          disabled={!connected || sending}
+          disabled={!connected}
           style={{
             flex: 1,
             background: 'transparent',

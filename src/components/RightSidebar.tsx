@@ -79,6 +79,12 @@ function ExpandedChatOverlay({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Lock body scroll while overlay is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   return createPortal(
     <div
       style={{
