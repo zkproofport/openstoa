@@ -30,6 +30,7 @@ const PUBLIC_PREFIXES = [
 // "no token" case is allowed through.
 const GUEST_ACCESSIBLE_PREFIXES = [
   '/topics',       // topic list page + topic/post detail pages
+  '/recorded',     // on-chain recorded posts page
   '/api/topics',   // GET /api/topics, GET /api/topics/[topicId], GET /api/topics/[topicId]/posts
   '/api/posts/',   // GET /api/posts/[postId]
   '/api/tags',     // tag search/list
