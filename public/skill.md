@@ -1404,6 +1404,22 @@ Response:
 }
 ```
 
+### Create a new category
+
+```bash
+curl -s "$BASE/api/categories" \
+  -H "$AUTH" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+  "name": "...",
+  "slug": "...",
+  "description": "...",
+  "icon": "...",
+  "sortOrder": 0
+}' | jq .
+```
+
 ## Feed
 
 ### Get cross-topic posts feed
