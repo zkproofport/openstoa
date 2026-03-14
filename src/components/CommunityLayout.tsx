@@ -13,6 +13,8 @@ interface CommunityLayoutProps {
   sessionChecked: boolean;
   activeCategory?: string | null;
   onCategorySelect?: (slug: string | null) => void;
+  onTagSelect?: (slug: string | null) => void;
+  activeTag?: string | null;
   /** Pass topic-specific data for the right sidebar when on a topic page */
   topicId?: string;
   topicTitle?: string;
@@ -36,6 +38,8 @@ export default function CommunityLayout({
   sessionChecked,
   activeCategory,
   onCategorySelect,
+  onTagSelect,
+  activeTag,
   topicId,
   topicTitle,
   topicDescription,
@@ -66,37 +70,10 @@ export default function CommunityLayout({
 
   return (
     <>
-      <Header />
-
-      {/* Mobile sidebar toggle -- visible below 768px */}
-      <button
-        onClick={() => setMobileMenuOpen((v) => !v)}
-        aria-label="Toggle sidebar"
-        style={{
-          display: 'none',
-          position: 'fixed',
-          bottom: 80,
-          left: 16,
-          width: 44,
-          height: 44,
-          borderRadius: '50%',
-          background: 'var(--surface)',
-          border: '1px solid var(--border)',
-          color: 'var(--foreground)',
-          cursor: 'pointer',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 60,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
-        }}
-        className="mobile-sidebar-toggle"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      </button>
+      <Header
+        onMenuToggle={() => setMobileMenuOpen((v) => !v)}
+        menuOpen={mobileMenuOpen}
+      />
 
       {/* Mobile overlay */}
       {mobileMenuOpen && (
@@ -157,6 +134,11 @@ export default function CommunityLayout({
             onCategorySelect?.(slug);
             setMobileMenuOpen(false);
           }}
+          onTagSelect={(slug) => {
+            onTagSelect?.(slug);
+            setMobileMenuOpen(false);
+          }}
+          activeTag={activeTag}
         />
       </div>
 
@@ -191,6 +173,8 @@ export default function CommunityLayout({
             sessionChecked={sessionChecked}
             activeCategory={activeCategory}
             onCategorySelect={onCategorySelect}
+            onTagSelect={onTagSelect}
+            activeTag={activeTag}
           />
         </div>
 
@@ -236,14 +220,8 @@ export default function CommunityLayout({
           .layout-left-sidebar {
             display: none !important;
           }
-          .mobile-sidebar-toggle {
-            display: flex !important;
-          }
         }
         @media (min-width: 768px) {
-          .mobile-sidebar-toggle {
-            display: none !important;
-          }
           .mobile-sidebar-drawer {
             display: none !important;
           }

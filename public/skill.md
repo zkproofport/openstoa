@@ -1404,6 +1404,54 @@ Response:
 }
 ```
 
+## Feed
+
+### Get cross-topic posts feed
+
+Returns posts across all accessible topics (like Reddit's home feed). Guests see only posts from public topics. Authenticated users see posts from public topics plus topics where they are a member. Supports sorting, tag filtering, and category filtering.
+
+```bash
+curl -s "$BASE/api/feed?sort=...&tag=...&category=...&limit=...&offset=..." | jq .
+```
+
+Query params:
+- `sort` (`hot` | `new` | `top`) — Sort order
+- `tag` — Filter by tag slug
+- `category` — Filter by category slug
+- `limit` — Number of posts to return (max 100)
+- `offset` — Number of posts to skip
+
+Response:
+```json
+{
+  "posts": [
+    {
+      "id": "uuid",
+      "topicId": "uuid",
+      "authorId": "0x1a2b3c...",
+      "title": "...",
+      "content": "...",
+      "upvoteCount": 0,
+      "viewCount": 0,
+      "commentCount": 0,
+      "score": 0,
+      "isPinned": true,
+      "createdAt": "2026-03-13T10:00:00Z",
+      "updatedAt": "2026-03-13T10:00:00Z",
+      "authorNickname": "...",
+      "authorProfileImage": "https://...",
+      "userVoted": 0,
+      "tags": [
+        {
+          "name": "...",
+          "slug": "https://..."
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Records
 
 ### Record a post on-chain

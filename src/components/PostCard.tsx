@@ -30,6 +30,9 @@ export interface PostCardPost {
   authorProfileImage?: string | null;
   authorId?: string;
   recordCount?: number;
+  /** Topic breadcrumb — shown when rendering in a cross-topic feed */
+  topicTitle?: string;
+  topicId?: string;
 }
 
 export interface PostCardProps {
@@ -38,6 +41,9 @@ export interface PostCardProps {
 
   // Author header
   showAuthor?: boolean;
+
+  // Show topic breadcrumb (for cross-topic feeds)
+  showTopic?: boolean;
 
   // Pin
   isPinned?: boolean;
@@ -120,6 +126,7 @@ export default function PostCard({
   post,
   href,
   showAuthor = false,
+  showTopic = false,
   isPinned,
   userVoted,
   reactions: reactionsProp,
@@ -306,6 +313,29 @@ export default function PostCard({
   const isTopicCreator = sessionUserId && topicCreatorId && sessionUserId === topicCreatorId;
   const visibleReactions = reactions.filter((r) => r.count > 0);
 
+  // Topic breadcrumb element (reused in both modes)
+  const topicBreadcrumb = showTopic && post.topicTitle && post.topicId ? (
+    <div style={{ marginBottom: 6 }}>
+      <Link
+        href={`/topics/${post.topicId}`}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--accent)',
+          textDecoration: 'none',
+          letterSpacing: '0.02em',
+          transition: 'opacity 0.12s',
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+      >
+        t/{post.topicTitle}
+      </Link>
+    </div>
+  ) : null;
+
   // ─── Simple mode (My page) ──────────────────────────────────────────────
   if (!hasRichFeatures) {
     return (
@@ -323,6 +353,9 @@ export default function PostCard({
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
         >
+          {/* Topic breadcrumb */}
+          {topicBreadcrumb}
+
           {/* Title */}
           <h3 style={{
             fontSize: 15,
@@ -365,7 +398,7 @@ export default function PostCard({
               <EyeIcon size={14} />
               {post.viewCount ?? 0}
             </span>
-            <span style={{ marginLeft: 'auto' }}>
+            <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
               {relativeTime(post.createdAt)}
             </span>
           </div>
@@ -410,6 +443,9 @@ export default function PostCard({
         </button>
       )}
 
+      {/* Topic breadcrumb */}
+      {topicBreadcrumb}
+
       {/* Clicking on the card body navigates; action buttons stop propagation */}
       <Link
         href={href}
@@ -425,7 +461,7 @@ export default function PostCard({
                   {post.authorNickname}
                 </span>
                 <span style={{ color: '#4b5563' }}>·</span>
-                <span style={{ color: '#6b7280' }}>
+                <span style={{ color: '#6b7280', fontFamily: 'var(--font-mono)' }}>
                   {relativeTime(post.createdAt)}
                 </span>
               </div>
