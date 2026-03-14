@@ -99,7 +99,7 @@ describe.sequential('Feed endpoints', () => {
   });
 
   it('auth feed contains posts from user joined topics', async () => {
-    const res = await authGet('/api/feed?limit=100');
+    const res = await authGet('/api/feed?sort=new&limit=100');
     expect(res.status).toBe(200);
     const json = await res.json();
     const topicIds = json.posts.map((p: any) => p.topicId);
@@ -139,7 +139,7 @@ describe.sequential('Feed endpoints', () => {
   // ── Category filter ───────────────────────────────────────────────────
 
   it('GET /api/feed?category=slug filters by category', async () => {
-    const res = await publicGet(`/api/feed?category=${categorySlug}`);
+    const res = await publicGet(`/api/feed?sort=new&category=${categorySlug}&limit=100`);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(Array.isArray(json.posts)).toBe(true);
