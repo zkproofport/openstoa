@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { relativeTime } from '@/lib/utils';
 import ChatPanel from '@/components/ChatPanel';
+import { createPortal } from 'react-dom';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,114 @@ function stripAndTruncate(html: string, maxLen: number): string {
   return text.slice(0, maxLen).trimEnd() + '...';
 }
 
+// ─── Expanded chat overlay ────────────────────────────────────────────────────
+
+function ExpandedChatOverlay({
+  topicId,
+  isGuest,
+  isMember,
+  onClose,
+}: {
+  topicId: string;
+  isGuest: boolean;
+  isMember: boolean;
+  onClose: () => void;
+}) {
+  // Close on Escape key
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        zIndex: 95,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: 'chatOverlayFadeIn 0.18s ease',
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          width: 480,
+          height: 600,
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+        }}
+      >
+        {/* Overlay header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 15 }}>💬</span>
+            <span style={{
+              fontSize: 13,
+              fontWeight: 700,
+              fontFamily: 'var(--font-mono)',
+              textTransform: 'uppercase' as const,
+              letterSpacing: '0.08em',
+              color: 'var(--foreground)',
+            }}>Live Chat</span>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close expanded chat"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              width: 30,
+              height: 30,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        {/* Chat fills remaining space */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember} fullHeight />
+        </div>
+      </div>
+      <style>{`
+        @keyframes chatOverlayFadeIn {
+          from { opacity: 0; transform: scale(0.97); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
+    </div>,
+    document.body,
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function RightSidebar({
@@ -68,6 +177,7 @@ export default function RightSidebar({
 }: RightSidebarProps) {
   const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
+  const [chatExpanded, setChatExpanded] = useState(false);
 
   // Fetch recent posts from feed endpoint (falls back to topics endpoint)
   useEffect(() => {
@@ -177,7 +287,48 @@ export default function RightSidebar({
 
       {/* Live Chat */}
       {topicId && (
-        <ChatPanel topicId={topicId} isGuest={isGuest ?? true} isMember={isMember ?? false} />
+        <div style={{ position: 'relative', marginBottom: 12 }}>
+          {/* Expand button — desktop only (hidden via CSS on mobile) */}
+          <button
+            className="chat-expand-btn"
+            onClick={() => setChatExpanded(true)}
+            aria-label="Expand chat"
+            title="Expand chat"
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 10,
+              zIndex: 2,
+              background: 'none',
+              border: 'none',
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              padding: 4,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+            }}
+          >
+            {/* ↗ expand icon */}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
+          <ChatPanel topicId={topicId} isGuest={isGuest ?? true} isMember={isMember ?? false} />
+          {chatExpanded && (
+            <ExpandedChatOverlay
+              topicId={topicId}
+              isGuest={isGuest ?? true}
+              isMember={isMember ?? false}
+              onClose={() => setChatExpanded(false)}
+            />
+          )}
+        </div>
       )}
 
       {/* Recent Posts */}

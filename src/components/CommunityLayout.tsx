@@ -364,6 +364,12 @@ export default function CommunityLayout({
             display: none !important;
           }
         }
+        /* Hide expand button on mobile (right sidebar is hidden there anyway) */
+        @media (max-width: 1023px) {
+          .chat-expand-btn {
+            display: none !important;
+          }
+        }
         /* Sidebar scrollbar styling */
         .layout-left-sidebar::-webkit-scrollbar,
         .layout-right-sidebar::-webkit-scrollbar {
