@@ -64,10 +64,6 @@ export interface PostCardProps {
   expandable?: boolean;
 }
 
-// ─── Reaction Emojis ─────────────────────────────────────────────────────────
-
-const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
-
 // ─── Action Button ───────────────────────────────────────────────────────────
 
 function ActionButton({
@@ -149,7 +145,6 @@ export default function PostCard({
 
   // Reactions state
   const [reactions, setReactions] = useState<Reaction[]>(reactionsProp ?? post.reactions ?? []);
-  const [showAllEmojis, setShowAllEmojis] = useState(false);
   const [reactionsLoaded, setReactionsLoaded] = useState(!!(reactionsProp ?? post.reactions));
 
   // Sync reactions when prop changes
@@ -175,38 +170,6 @@ export default function PostCard({
       .catch(() => {});
     return () => { cancelled = true; };
   }, [post.id, reactionsLoaded, hasRichFeatures]);
-
-  const handleReaction = async (e: React.MouseEvent, emoji: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setReactions((prev) => {
-      const existing = prev.find((r) => r.emoji === emoji);
-      if (existing) {
-        if (existing.userReacted) {
-          const newCount = existing.count - 1;
-          return newCount <= 0
-            ? prev.filter((r) => r.emoji !== emoji)
-            : prev.map((r) => r.emoji === emoji ? { ...r, count: newCount, userReacted: false } : r);
-        } else {
-          return prev.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, userReacted: true } : r);
-        }
-      } else {
-        return [...prev, { emoji, count: 1, userReacted: true }];
-      }
-    });
-    try {
-      await fetch(`/api/posts/${post.id}/reactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emoji }),
-      });
-    } catch {
-      fetch(`/api/posts/${post.id}/reactions`)
-        .then((r) => r.ok ? r.json() : null)
-        .then((data) => { if (data?.reactions) setReactions(data.reactions); })
-        .catch(() => {});
-    }
-  };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -520,91 +483,36 @@ export default function PostCard({
         </div>
       )}
 
-      {/* Reactions bar */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        marginTop: 8,
-        flexWrap: 'wrap',
-      }}>
-        {visibleReactions.map((r) => (
-          <button
-            key={r.emoji}
-            onClick={(e) => handleReaction(e, r.emoji)}
-            style={{
-              background: r.userReacted ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
-              border: r.userReacted ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 9999,
-              padding: '2px 8px',
-              fontSize: 12,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              color: r.userReacted ? 'var(--accent)' : '#9ca3af',
-              transition: 'all 0.12s',
-            }}
-          >
-            <span>{r.emoji}</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.count}</span>
-          </button>
-        ))}
-        {/* Add reaction button */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowAllEmojis((v) => !v); }}
-            style={{
-              background: showAllEmojis ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 9999,
-              padding: '2px 8px',
-              fontSize: 12,
-              cursor: 'pointer',
-              color: '#6b7280',
-              transition: 'all 0.12s',
-            }}
-          >
-            +
-          </button>
-          {showAllEmojis && (
-            <div style={{
-              position: 'absolute',
-              bottom: '100%',
-              left: 0,
-              marginBottom: 4,
-              background: '#1a1a1a',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              padding: '4px 6px',
-              display: 'flex',
-              gap: 2,
-              zIndex: 10,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-            }}>
-              {REACTION_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={(e) => { handleReaction(e, emoji); setShowAllEmojis(false); }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    padding: '4px 6px',
-                    borderRadius: 4,
-                    transition: 'background 0.1s',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
+      {/* Reaction stats (read-only in list view) */}
+      {visibleReactions.length > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          marginTop: 8,
+          flexWrap: 'wrap',
+        }}>
+          {visibleReactions.map((r) => (
+            <span
+              key={r.emoji}
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 9999,
+                padding: '2px 8px',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                color: '#9ca3af',
+              }}
+            >
+              <span>{r.emoji}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.count}</span>
+            </span>
+          ))}
         </div>
-      </div>
+      )}
 
       {/* Action bar — outside Link to allow independent clicks */}
       <div style={{
