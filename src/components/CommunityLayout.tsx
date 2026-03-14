@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
@@ -48,6 +48,7 @@ export default function CommunityLayout({
 }: CommunityLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   // Close mobile menu on route changes
   useEffect(() => {
@@ -138,11 +139,19 @@ export default function CommunityLayout({
           sessionChecked={sessionChecked}
           activeCategory={activeCategory}
           onCategorySelect={(slug) => {
-            onCategorySelect?.(slug);
+            if (onCategorySelect) {
+              onCategorySelect(slug);
+            } else {
+              router.push(slug ? `/topics?category=${encodeURIComponent(slug)}` : '/topics');
+            }
             setMobileMenuOpen(false);
           }}
           onTagSelect={(slug) => {
-            onTagSelect?.(slug);
+            if (onTagSelect) {
+              onTagSelect(slug);
+            } else {
+              router.push(slug ? `/topics?tag=${encodeURIComponent(slug)}` : '/topics');
+            }
             setMobileMenuOpen(false);
           }}
           activeTag={activeTag}
