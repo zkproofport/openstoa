@@ -140,13 +140,20 @@ export default function LeftSidebar({
       .then((data) => {
         if (data?.topics) {
           setAllTopics(data.topics);
-          // Derive stats
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch community stats from dedicated endpoint
+  useEffect(() => {
+    fetch('/api/stats')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) {
           setStats({
-            totalTopics: data.topics.length,
-            totalMembers: data.topics.reduce(
-              (sum: number, t: { memberCount?: number }) => sum + (t.memberCount ?? 0),
-              0,
-            ),
+            totalTopics: data.totalTopics ?? 0,
+            totalMembers: data.totalMembers ?? 0,
           });
         }
       })

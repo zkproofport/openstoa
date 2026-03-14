@@ -1452,6 +1452,16 @@ Response:
 }
 ```
 
+## Other
+
+### Get community statistics
+
+Returns total number of topics and unique members.
+
+```bash
+curl -s "$BASE/api/stats" | jq .
+```
+
 ## Records
 
 ### Record a post on-chain
