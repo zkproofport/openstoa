@@ -107,9 +107,9 @@ export async function GET(
           ...topic,
           category,
           memberCount: memberCount.count,
+          isMember: false,
         },
         currentUserRole: null,
-        isMember: false,
       });
     }
 
@@ -165,6 +165,7 @@ export async function GET(
         ...topic,
         category,
         memberCount: memberCount.count,
+        isMember: true,
       },
       currentUserRole: membership.role,
     });
