@@ -27,6 +27,8 @@ interface ChatPanelProps {
   topicId: string;
   isGuest: boolean;
   isMember: boolean;
+  /** When true, panel fills its parent height (used in mobile full-screen) */
+  fullHeight?: boolean;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -36,6 +38,16 @@ const panelStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: 12,
   marginBottom: 12,
+  overflow: 'hidden',
+};
+
+const panelFullHeightStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  borderRadius: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
   overflow: 'hidden',
 };
 
@@ -184,7 +196,7 @@ function MessageRow({ msg }: { msg: ChatMessage }) {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ChatPanel({ topicId, isGuest, isMember }: ChatPanelProps) {
+export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
@@ -311,7 +323,7 @@ export default function ChatPanel({ topicId, isGuest, isMember }: ChatPanelProps
   // ─── Guest / non-member state ──────────────────────────────────────────────
   if (isGuest || !isMember) {
     return (
-      <div style={panelStyle}>
+      <div style={fullHeight ? panelFullHeightStyle : panelStyle}>
         <div style={headerStyle}>
           <div style={headerLeftStyle}>
             <span style={{ fontSize: 14 }}>💬</span>
@@ -333,7 +345,7 @@ export default function ChatPanel({ topicId, isGuest, isMember }: ChatPanelProps
 
   // ─── Member state ─────────────────────────────────────────────────────────
   return (
-    <div style={panelStyle}>
+    <div style={fullHeight ? panelFullHeightStyle : panelStyle}>
       {/* Header */}
       <div style={headerStyle}>
         <div style={headerLeftStyle}>
@@ -356,7 +368,12 @@ export default function ChatPanel({ topicId, isGuest, isMember }: ChatPanelProps
       </div>
 
       {/* Messages */}
-      <div style={messagesContainerStyle}>
+      <div style={fullHeight ? {
+        ...messagesContainerStyle,
+        maxHeight: 'none',
+        flex: 1,
+        overflowY: 'auto' as const,
+      } : messagesContainerStyle}>
         {messages.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
             No messages yet

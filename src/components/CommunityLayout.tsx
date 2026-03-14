@@ -269,32 +269,13 @@ export default function CommunityLayout({
             💬
           </button>
 
-          {/* Overlay */}
-          {mobileChatOpen && (
-            <div
-              className="mobile-chat-overlay"
-              onClick={() => setMobileChatOpen(false)}
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.6)',
-                zIndex: 90,
-              }}
-            />
-          )}
-
-          {/* Bottom sheet */}
+          {/* Full-screen mobile chat */}
           <div
             className="mobile-chat-sheet"
             style={{
               position: 'fixed',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              maxHeight: '75vh',
+              inset: 0,
               background: 'var(--background)',
-              borderTop: '1px solid var(--border)',
-              borderRadius: '16px 16px 0 0',
               zIndex: 95,
               transform: mobileChatOpen ? 'translateY(0)' : 'translateY(100%)',
               transition: 'transform 0.3s ease',
@@ -303,41 +284,46 @@ export default function CommunityLayout({
               overflow: 'hidden',
             }}
           >
-            {/* Drag handle + close */}
+            {/* Header */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              padding: '10px 16px 4px',
-              position: 'relative',
+              justifyContent: 'space-between',
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--border)',
+              flexShrink: 0,
             }}>
-              <div style={{
-                width: 36,
-                height: 4,
-                borderRadius: 2,
-                background: 'var(--border)',
-              }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>💬</span>
+                <span style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-mono)',
+                  textTransform: 'uppercase' as const,
+                  letterSpacing: '0.08em',
+                  color: 'var(--foreground)',
+                }}>Live Chat</span>
+              </div>
               <button
                 onClick={() => setMobileChatOpen(false)}
                 style={{
-                  position: 'absolute',
-                  right: 12,
-                  top: 8,
-                  background: 'none',
-                  border: 'none',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 8,
                   color: 'var(--muted)',
                   cursor: 'pointer',
-                  padding: 4,
-                  fontSize: 18,
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  fontWeight: 500,
                 }}
                 aria-label="Close chat"
               >
-                ✕
+                Close
               </button>
             </div>
-            {/* Chat content */}
+            {/* Chat content — fills remaining space */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember ?? false} />
+              <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember ?? false} fullHeight />
             </div>
           </div>
         </>
