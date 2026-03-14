@@ -469,7 +469,14 @@ export default function LeftSidebar({
               return (
                 <button
                   key={tag.id}
-                  onClick={() => onTagSelect?.(isActive ? null : tag.slug)}
+                  onClick={() => {
+                    const newSlug = isActive ? null : tag.slug;
+                    if (onTagSelect) {
+                      onTagSelect(newSlug);
+                    } else {
+                      router.push(newSlug ? `/topics?tag=${encodeURIComponent(newSlug)}` : '/topics');
+                    }
+                  }}
                   onMouseEnter={() => setHoveredTag(tag.id)}
                   onMouseLeave={() => setHoveredTag(null)}
                   style={{

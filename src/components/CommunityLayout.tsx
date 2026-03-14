@@ -188,8 +188,12 @@ export default function CommunityLayout({
             isGuest={isGuest}
             sessionChecked={sessionChecked}
             activeCategory={activeCategory}
-            onCategorySelect={onCategorySelect}
-            onTagSelect={onTagSelect}
+            onCategorySelect={onCategorySelect ?? ((slug) => {
+              router.push(slug ? `/topics?category=${encodeURIComponent(slug)}` : '/topics');
+            })}
+            onTagSelect={onTagSelect ?? ((slug) => {
+              router.push(slug ? `/topics?tag=${encodeURIComponent(slug)}` : '/topics');
+            })}
             activeTag={activeTag}
           />
         </div>
