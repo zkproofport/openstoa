@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import Header from '@/components/Header';
+import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 import Avatar from '@/components/Avatar';
@@ -290,12 +289,11 @@ export default function MyPage() {
 
   if (sessionLoading) {
     return (
-      <>
-        <Header />
+      <CommunityLayout isGuest={false} sessionChecked={false}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
           <Spinner />
         </div>
-      </>
+      </CommunityLayout>
     );
   }
 
@@ -328,18 +326,10 @@ export default function MyPage() {
   const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : activeTab === 'bookmarks' ? 'No bookmarks yet.' : 'No liked posts yet.';
 
   return (
-    <>
-      <Header />
+    <CommunityLayout isGuest={false} sessionChecked={true}>
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
-      <div style={{ paddingTop: 36, paddingBottom: 100, maxWidth: '56rem', margin: '0 auto', padding: '36px 1.5rem 100px' }}>
-        {/* Breadcrumb */}
-        <div style={{ marginBottom: 24 }}>
-          <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
-            ← Topics
-          </Link>
-        </div>
 
         {/* Profile card */}
         <div style={{
@@ -812,7 +802,6 @@ export default function MyPage() {
             </div>
           )}
         </div>
-      </div>
-    </>
+    </CommunityLayout>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Header from '@/components/Header';
+import CommunityLayout from '@/components/CommunityLayout';
 import ProofGate from '@/components/ProofGate';
 import { resizeImage } from '@/lib/utils';
 
@@ -159,24 +159,8 @@ export default function NewTopicPage() {
   const canSubmit = title.trim().length > 0 && categoryId !== '' && !loading && (!requiresCountry || proofDone);
 
   return (
-    <>
-      <Header />
-      <div style={{ paddingTop: 40, paddingBottom: 80, maxWidth: 560, margin: '0 auto', padding: '40px 1.5rem 80px' }}>
-        <div style={{ marginBottom: 32, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Link
-            href="/topics"
-            style={{
-              color: 'var(--muted)',
-              textDecoration: 'none',
-              fontSize: 15,
-            }}
-          >
-            ← Topics
-          </Link>
-          <span style={{ color: 'var(--border)' }}>/</span>
-          <span style={{ fontSize: 15, color: 'var(--muted)' }}>New</span>
-        </div>
-
+    <CommunityLayout isGuest={false} sessionChecked={true}>
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px 1.5rem 80px' }}>
         <h1
           style={{
             fontSize: 32,
@@ -679,6 +663,6 @@ export default function NewTopicPage() {
           </div>
         </form>
       </div>
-    </>
+    </CommunityLayout>
   );
 }

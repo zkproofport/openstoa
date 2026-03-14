@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import Header from '@/components/Header';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
@@ -46,8 +47,14 @@ export default function CommunityLayout({
   topicMemberCount,
 }: CommunityLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
 
-  // Close mobile menu on route changes (resize)
+  // Close mobile menu on route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Close mobile menu on resize to desktop
   useEffect(() => {
     function handleResize() {
       if (window.innerWidth >= 768) {

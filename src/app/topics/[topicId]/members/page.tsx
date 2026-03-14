@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Header from '@/components/Header';
+import CommunityLayout from '@/components/CommunityLayout';
 import Avatar from '@/components/Avatar';
 import Spinner from '@/components/Spinner';
 
@@ -246,19 +246,17 @@ export default function MembersPage() {
 
   if (loading) {
     return (
-      <>
-        <Header />
+      <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
           <Spinner />
         </div>
-      </>
+      </CommunityLayout>
     );
   }
 
   if (error || !topic) {
     return (
-      <>
-        <Header />
+      <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '40px 0', textAlign: 'center' }}>
           <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 14 }}>
             {error ?? 'Topic not found'}
@@ -267,13 +265,12 @@ export default function MembersPage() {
             Back to topics
           </Link>
         </div>
-      </>
+      </CommunityLayout>
     );
   }
 
   return (
-    <>
-      <Header />
+    <CommunityLayout isGuest={false} sessionChecked={true}>
       <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: 560, margin: '0 auto', padding: '36px 1.5rem 80px' }}>
         {/* Topic info card */}
         <div style={{
@@ -602,7 +599,7 @@ export default function MembersPage() {
           ))}
         </div>}
       </div>
-    </>
+    </CommunityLayout>
   );
 }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Header from '@/components/Header';
+import CommunityLayout from '@/components/CommunityLayout';
 import Spinner from '@/components/Spinner';
 import ProofGate from '@/components/ProofGate';
 
@@ -103,34 +103,28 @@ export default function JoinPage() {
 
   if (loading) {
     return (
-      <>
-        <Header />
+      <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
           <Spinner />
         </div>
-      </>
+      </CommunityLayout>
     );
   }
 
   if (error && !topicInfo) {
     return (
-      <>
-        <Header />
+      <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '60px 0', textAlign: 'center' }}>
           <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 14, marginBottom: 16 }}>
             {error}
           </p>
-          <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 14 }}>
-            ← Browse topics
-          </Link>
         </div>
-      </>
+      </CommunityLayout>
     );
   }
 
   return (
-    <>
-      <Header />
+    <CommunityLayout isGuest={false} sessionChecked={true}>
       <div
         style={{
           minHeight: 'calc(100vh - 73px)',
@@ -292,6 +286,6 @@ export default function JoinPage() {
           </div>
         </div>
       </div>
-    </>
+    </CommunityLayout>
   );
 }

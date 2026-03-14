@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import Header from '@/components/Header';
+import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 
@@ -29,7 +27,6 @@ interface Post {
 const PAGE_SIZE = 20;
 
 export default function RecordedPage() {
-  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -42,11 +39,10 @@ export default function RecordedPage() {
     fetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
-        if (!data?.userId) { router.replace('/'); return; }
-        setSessionUserId(data.userId);
+        if (data?.userId) setSessionUserId(data.userId);
       })
-      .catch(() => router.replace('/'));
-  }, [router]);
+      .catch(() => {});
+  }, []);
 
   const loadPosts = useCallback(async (currentOffset: number, replace: boolean) => {
     if (replace) setLoading(true);
@@ -85,60 +81,51 @@ export default function RecordedPage() {
   }, [hasMore, postsLoading, offset, loadPosts]);
 
   return (
-    <>
-      <Header />
-      <div style={{ paddingTop: 40, paddingBottom: 80, maxWidth: '56rem', margin: '0 auto', padding: '40px 1.5rem 80px' }}>
-        <div style={{ marginBottom: 24 }}>
-          <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
-            ← Topics
-          </Link>
-        </div>
-
-        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 8px' }}>
+    <CommunityLayout isGuest={!sessionUserId} sessionChecked={!loading}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 8px' }}>
           Recorded Posts
         </h1>
-        <p style={{ fontSize: 16, color: 'var(--muted)', marginBottom: 24 }}>
+        <p style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 0 }}>
           Posts recorded on Base by the community
         </p>
-
-        <div style={{ maxWidth: 600, margin: '0 auto' }}>
-          <div style={{
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 14,
-            overflow: 'hidden',
-          }}>
-            {loading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
-                <Spinner />
-              </div>
-            ) : posts.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                <p style={{ fontSize: 15, color: '#6b7280' }}>
-                  No recorded posts yet. Be the first to record a post on-chain!
-                </p>
-              </div>
-            ) : (
-              posts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  href={`/topics/${post.topicId}/posts/${post.id}`}
-                  showAuthor
-                  sessionUserId={sessionUserId}
-                  authorId={post.authorId}
-                  expandable
-                />
-              ))
-            )}
-          </div>
-
-          {hasMore && (
-            <div ref={sentinelRef} style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
-              {postsLoading && <Spinner />}
-            </div>
-          )}
-        </div>
       </div>
-    </>
+
+      <div style={{
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 14,
+        overflow: 'hidden',
+      }}>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+            <Spinner />
+          </div>
+        ) : posts.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <p style={{ fontSize: 15, color: '#6b7280' }}>
+              No recorded posts yet. Be the first to record a post on-chain!
+            </p>
+          </div>
+        ) : (
+          posts.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              href={`/topics/${post.topicId}/posts/${post.id}`}
+              showAuthor
+              sessionUserId={sessionUserId}
+              authorId={post.authorId}
+              expandable
+            />
+          ))
+        )}
+      </div>
+
+      {hasMore && (
+        <div ref={sentinelRef} style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+          {postsLoading && <Spinner />}
+        </div>
+      )}
+    </CommunityLayout>
   );
 }
