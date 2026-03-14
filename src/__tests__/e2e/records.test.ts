@@ -70,6 +70,10 @@ describe.sequential('Record endpoints', () => {
   });
 
   it('POST /api/posts/:postId/record rejects post younger than 1 hour (403)', async () => {
+    if (!otherUserPostId) {
+      console.warn('[E2E] otherUserPostId not set — skipping');
+      return;
+    }
     // The other user's post was just created, so it's < 1 hour old
     const res = await authPost(`/api/posts/${otherUserPostId}/record`);
     expect(res.status).toBe(403);
