@@ -280,10 +280,10 @@ export default function LeftSidebar({
         )}
       </div>
 
-      {/* Start a Topic -- Reddit-style, just below search */}
-      {!isGuest && sessionChecked && (
+      {/* Start a Topic -- always visible, redirects to login if guest */}
+      {sessionChecked && (
         <Link
-          href="/topics/new"
+          href={isGuest ? '/?returnTo=%2Ftopics%2Fnew' : '/topics/new'}
           onMouseEnter={() => setHoveredItem('start-topic')}
           onMouseLeave={() => setHoveredItem(null)}
           style={{
