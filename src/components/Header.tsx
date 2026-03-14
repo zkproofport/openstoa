@@ -215,6 +215,20 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             align-items: center;
             justify-content: center;
           }
+          .header-nav {
+            gap: 4px !important;
+          }
+          .header-nav-link {
+            padding: 5px 8px !important;
+            font-size: 11px !important;
+          }
+        }
+        @media (max-width: 380px) {
+          .header-nav-link {
+            padding: 4px 6px !important;
+            font-size: 10px !important;
+            letter-spacing: 0.02em !important;
+          }
         }
       `}</style>
     </header>

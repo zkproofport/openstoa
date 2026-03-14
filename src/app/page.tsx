@@ -493,14 +493,14 @@ function LandingPageInner() {
         .os-human-content { position: relative; z-index: 2; max-width: 440px; }
         .os-agent-content { position: relative; z-index: 2; max-width: 440px; margin-left: auto; }
         @media (max-width: 768px) {
-          .os-split { flex-direction: column; }
-          .os-human { padding: 80px 28px 40px; min-height: auto; }
-          .os-center { width: 100%; height: auto; padding: 32px 0; flex-direction: row; gap: 16px; background: linear-gradient(180deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); }
-          .os-center > div:last-child { display: none; }
-          .os-agent { padding: 40px 28px 80px; min-height: auto; }
-          .os-agent-content { margin-left: 0; }
-          .os-human h2, .os-human-content h2 { font-size: 32px !important; }
-          .os-agent h2, .os-agent-content h2 { font-size: 28px !important; text-align: left !important; }
+          .os-split { flex-direction: column; overflow-x: hidden; }
+          .os-human { padding: 80px 20px 40px; min-height: auto; }
+          .os-center { width: 100%; height: auto; padding: 32px 16px; flex-direction: column; gap: 12px; background: linear-gradient(180deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); box-sizing: border-box; overflow: hidden; }
+          .os-agent { padding: 40px 20px 80px; min-height: auto; }
+          .os-agent-content { margin-left: 0; max-width: 100%; }
+          .os-human-content { max-width: 100%; }
+          .os-human h2, .os-human-content h2 { font-size: 28px !important; }
+          .os-agent h2, .os-agent-content h2 { font-size: 24px !important; text-align: left !important; }
           .os-agent-content p { text-align: left !important; }
         }
       `}</style>
@@ -579,16 +579,28 @@ function LandingPageInner() {
           style={{
             marginTop: 16,
             fontFamily: 'var(--font-mono)',
-            fontSize: 13,
-            color: '#555',
+            fontSize: 12,
+            color: '#999',
             textDecoration: 'none',
-            letterSpacing: '0.02em',
-            transition: 'color 0.15s',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase' as const,
+            transition: 'all 0.15s',
+            padding: '8px 20px',
+            borderRadius: 6,
+            border: '1px solid rgba(120,140,255,0.25)',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#999'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#555'; }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.1)';
+            (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)';
+            (e.currentTarget as HTMLElement).style.color = '#ccc';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = 'transparent';
+            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
+            (e.currentTarget as HTMLElement).style.color = '#999';
+          }}
         >
-          or just explore →
+          Explorer
         </motion.a>
       </div>
 
