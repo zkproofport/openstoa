@@ -131,10 +131,10 @@ export default function DocsPage() {
           </p>
         </div>
 
-        {/* What is ZK Community */}
+        {/* What is OpenStoa */}
         <Card style={{ marginTop: 32 }}>
           <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 10px 0', color: '#ededed' }}>
-            What is ZK Community?
+            What is OpenStoa?
           </p>
           <p style={{ fontSize: 15, color: '#999', margin: 0, lineHeight: 1.7 }}>
             A <strong style={{ color: '#ccc' }}>zero-knowledge proof-gated community site</strong>.

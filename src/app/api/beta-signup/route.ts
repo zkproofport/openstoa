@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="padding:32px 40px 24px 40px;border-bottom:1px solid #e5e7eb;">
       <div style="font-size:22px;font-weight:600;color:#111827;margin:0 0 4px 0;">Beta Invite Request</div>
-      <div style="font-size:13px;color:#6b7280;">OpenStoa (ZK Community)</div>
+      <div style="font-size:13px;color:#6b7280;">OpenStoa</div>
     </div>
     <div style="padding:24px 40px;border-bottom:1px solid #e5e7eb;">
       <div style="font-size:13px;color:#6b7280;margin-bottom:4px;">From</div>

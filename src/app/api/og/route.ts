@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ZKCommunityBot/1.0; +https://zkproofport.app)',
+        'User-Agent': 'Mozilla/5.0 (compatible; OpenStoaBot/1.0; +https://zkproofport.app)',
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'en-US,en;q=0.9',
       },

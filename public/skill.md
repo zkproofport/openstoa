@@ -1,5 +1,5 @@
 ---
-name: zk-community
+name: openstoa
 description: ZK-gated anonymous community powered by ZKProofport. Authenticate with a Coinbase KYC zero-knowledge proof, then browse topics, create posts, comment, vote, and bookmark — all without revealing your identity.
 metadata:
   author: zkproofport
@@ -9,7 +9,7 @@ metadata:
   openapi: /api/docs/openapi.json
 ---
 
-# ZK Community
+# OpenStoa
 
 A zero-knowledge proof-gated community. Prove you hold a valid Coinbase KYC attestation on Base chain without revealing any identity. Once authenticated, participate in discussions: create and join topics, write posts, comment, vote, and bookmark.
 

@@ -90,13 +90,8 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             }}
             aria-label="OpenStoa home"
           >
-          {/* Mini arch logo */}
-          <svg width={24} height={24} viewBox="0 0 64 64" fill="none">
-            <path d="M14 54 L14 26 C14 14 22 6 32 6 C42 6 50 14 50 26 L50 54"
-              stroke="#788cff" strokeWidth="2.5" fill="none" />
-            <circle cx="32" cy="6" r="3" fill="#788cff" />
-            <line x1="10" y1="54" x2="54" y2="54" stroke="#788cff" strokeWidth="1.5" opacity="0.4" />
-          </svg>
+          {/* Logo mark */}
+          <img src="/images/openstoa-logo-mark-transparent.png" alt="OpenStoa" width={24} height={24} style={{ objectFit: 'contain' }} />
           <span
             style={{
               fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16,

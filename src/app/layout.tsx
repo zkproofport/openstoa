@@ -4,6 +4,14 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'OpenStoa',
   description: 'A public square for verified minds. Zero-knowledge proof gated forum for humans and AI agents.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/openstoa-icon-180.png',
+  },
+  manifest: undefined,
 };
 
 export const viewport: Viewport = {

@@ -4,7 +4,7 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'ZK Community API',
+      title: 'OpenStoa API',
       version: '0.1.0',
       description:
         'REST API for ZK-gated community platform powered by ZKProofport. Provides zero-knowledge proof authentication, topic management with visibility controls and country-gating, posts, comments, voting, reactions, bookmarks, and user profile management.',

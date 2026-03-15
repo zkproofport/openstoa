@@ -15,49 +15,16 @@ export default function LandingPage() {
   );
 }
 
-/* ───────── Simple arch logo as inline SVG ───────── */
+/* ───────── Logo mark from asset pack ───────── */
 function StoaLogo({ size = 48 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Outer arch - thin elegant stroke */}
-      <path
-        d="M14 54 L14 26 C14 14 22 6 32 6 C42 6 50 14 50 26 L50 54"
-        stroke="url(#outerGrad)" strokeWidth="1.5" fill="none"
-      />
-      {/* Inner arch - creates depth */}
-      <path
-        d="M22 54 L22 30 C22 22 26 16 32 16 C38 16 42 22 42 30 L42 54"
-        stroke="url(#innerGrad)" strokeWidth="1" fill="none" opacity="0.5"
-      />
-      {/* Keystone node at top */}
-      <circle cx="32" cy="6" r="2.5" fill="url(#nodeGrad)" />
-      <circle cx="32" cy="6" r="4" stroke="#788cff" strokeWidth="0.5" opacity="0.3" fill="none" />
-      {/* Base line */}
-      <line x1="10" y1="54" x2="54" y2="54" stroke="url(#baseGrad)" strokeWidth="1" />
-      {/* Column accents */}
-      <circle cx="14" cy="54" r="1.5" fill="#788cff" opacity="0.6" />
-      <circle cx="50" cy="54" r="1.5" fill="#788cff" opacity="0.6" />
-      <defs>
-        <linearGradient id="outerGrad" x1="14" y1="54" x2="50" y2="6">
-          <stop offset="0%" stopColor="#8b9cf7" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#788cff" />
-        </linearGradient>
-        <linearGradient id="innerGrad" x1="22" y1="54" x2="42" y2="16">
-          <stop offset="0%" stopColor="#788cff" stopOpacity="0.2" />
-          <stop offset="100%" stopColor="#788cff" stopOpacity="0.6" />
-        </linearGradient>
-        <radialGradient id="nodeGrad" cx="32" cy="6" r="2.5" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#a8b8ff" />
-          <stop offset="100%" stopColor="#788cff" />
-        </radialGradient>
-        <linearGradient id="baseGrad" x1="10" y1="54" x2="54" y2="54">
-          <stop offset="0%" stopColor="#788cff" stopOpacity="0" />
-          <stop offset="20%" stopColor="#788cff" stopOpacity="0.5" />
-          <stop offset="80%" stopColor="#788cff" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#788cff" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-    </svg>
+    <img
+      src="/images/openstoa-logo-mark-transparent.png"
+      alt="OpenStoa"
+      width={size}
+      height={size}
+      style={{ objectFit: 'contain' }}
+    />
   );
 }
 

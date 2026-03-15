@@ -315,7 +315,7 @@ export default function TopicPage() {
       setPostTitle('');
       setPostContentHtml('');
       setPostTags([]);
-      try { localStorage.removeItem('zk-community-draft'); } catch {}
+      try { localStorage.removeItem('openstoa-draft'); } catch {}
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
@@ -809,7 +809,7 @@ export default function TopicPage() {
                       setPostTitle('');
                       setPostContentHtml('');
                       setPostTags([]);
-                      try { localStorage.removeItem('zk-community-draft'); } catch {}
+                      try { localStorage.removeItem('openstoa-draft'); } catch {}
                     }}
                     style={{
                       background: 'rgba(255,255,255,0.06)',

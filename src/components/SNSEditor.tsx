@@ -129,7 +129,7 @@ export default function SNSEditor({
   onChange,
   placeholder = 'Write something…',
   minHeight = 180,
-  draftKey = 'zk-community-draft',
+  draftKey = 'openstoa-draft',
 }: SNSEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);

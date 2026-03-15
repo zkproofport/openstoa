@@ -38,11 +38,11 @@ export async function createRelayProofRequest(
     inputs.isIncluded = options?.isIncluded ?? true;
   }
   const relay = await sdk.createRelayRequest(circuit, inputs as any, {
-    dappName: options?.dappName ?? 'ZK Community',
+    dappName: options?.dappName ?? 'OpenStoa',
     dappIcon: options?.dappIcon ?? 'https://stg-community.zkproofport.app/icon.png',
     message: options?.message ?? (circuit === 'coinbase_country_attestation'
-      ? 'Verify your country via Coinbase attestation for ZK Community'
-      : 'Verify your Coinbase KYC to access ZK Community'),
+      ? 'Verify your country via Coinbase attestation for OpenStoa'
+      : 'Verify your Coinbase KYC to access OpenStoa'),
   });
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }
