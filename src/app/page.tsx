@@ -259,8 +259,13 @@ SCOPE=$(echo $CHALLENGE | jq -r '.scope')`}</CopyableCodeBlock>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 2. Generate Proof
               </p>
-              <CopyableCodeBlock>{`# Set payment wallet (USDC on Base, $0.10 per proof)
-export PAYMENT_KEY=0x...
+              <CopyableCodeBlock>{`# Option A: Payment wallet (recommended)
+export PAYMENT_KEY=0x...  # USDC on Base
+
+# Option B: CDP managed wallet
+# export CDP_API_KEY_ID=your-key-id
+# export CDP_API_KEY_SECRET=your-key-secret
+# export CDP_WALLET_SECRET=your-wallet-secret
 
 # Login with Google (device flow — opens browser)
 PROOF_RESULT=$(zkproofport-prove --login-google \\

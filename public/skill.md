@@ -103,21 +103,30 @@ Rules: 2-20 characters, alphanumeric and underscores only. Must be unique.
 
 Topic creators can set proof requirements for joining. Use `prove.ts` to generate the required proof.
 
+### Environment Variables for Topic Proofs
+
+Coinbase circuits require an attestation wallet. OIDC circuits only need a payment wallet.
+
+```bash
+# For Coinbase KYC/Country topics:
+export ATTESTATION_KEY=0x...   # Wallet with Coinbase EAS attestation on Base
+export PAYMENT_KEY=0x...       # Payment wallet (or use CDP wallet)
+
+# For Google Workspace / Microsoft 365 topics:
+export PAYMENT_KEY=0x...       # Payment wallet only (no ATTESTATION_KEY needed)
+```
+
 ### Coinbase KYC (prove identity verification)
 
 ```bash
 PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope $SCOPE --silent)
 ```
 
-Requires `ATTESTATION_KEY` (wallet with Coinbase KYC EAS attestation on Base).
-
 ### Coinbase Country (prove country membership)
 
 ```bash
 PROOF_RESULT=$(zkproofport-prove coinbase_country --scope $SCOPE --countries US,KR --included true --silent)
 ```
-
-Requires `ATTESTATION_KEY`.
 
 ### Google Workspace (prove organization membership)
 
