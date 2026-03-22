@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { categories } from '@/lib/db/schema';
-import { asc } from 'drizzle-orm';
+import { categories, users } from '@/lib/db/schema';
+import { asc, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/categories';
@@ -45,43 +45,18 @@ const ROUTE = '/api/categories';
  *                       sortOrder:
  *                         type: integer
  */
-/**
- * @openapi
- * /api/categories:
- *   post:
- *     tags: [Categories]
- *     summary: Create a new category
- *     operationId: createCategory
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [name, slug]
- *             properties:
- *               name:
- *                 type: string
- *               slug:
- *                 type: string
- *               description:
- *                 type: string
- *               icon:
- *                 type: string
- *               sortOrder:
- *                 type: integer
- *     responses:
- *       201:
- *         description: Category created
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- */
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    // Check admin role
+    const user = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
     const body = await request.json();

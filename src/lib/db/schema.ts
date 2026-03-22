@@ -7,6 +7,7 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   totalRecorded: integer('total_recorded').notNull().default(0),
+  role: varchar('role', { length: 10 }).notNull().default('user'), // 'user' | 'admin'
 });
 
 export const categories = pgTable('categories', {

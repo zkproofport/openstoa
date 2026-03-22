@@ -14,6 +14,7 @@ export interface SessionPayload extends JWTPayload {
   userId: string;
   nickname: string;
   verifiedAt: number;
+  role?: string;
 }
 
 export async function createSession(userId: string, nickname: string): Promise<string> {

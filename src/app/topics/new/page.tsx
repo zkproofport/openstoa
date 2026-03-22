@@ -11,9 +11,10 @@ export default function NewTopicPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [requiresCountry, setRequiresCountry] = useState(false);
+  const [proofType, setProofType] = useState<'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365'>('none');
   const [countryCodes, setCountryCodes] = useState('');
   const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
+  const [requiredDomain, setRequiredDomain] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -35,7 +36,7 @@ export default function NewTopicPage() {
 
   // Reset proof when country settings change
   useEffect(() => {
-    if (requiresCountry) {
+    if (proofType === 'country') {
       setCountryProofData(null);
       setProofDone(false);
       setProofGateKey((k) => k + 1);
@@ -105,7 +106,7 @@ export default function NewTopicPage() {
     setError(null);
 
     let allowedCountries: string[] | undefined;
-    if (requiresCountry && countryCodes.trim()) {
+    if (proofType === 'country' && countryCodes.trim()) {
       allowedCountries = countryCodes
         .split(',')
         .map((s) => s.trim().toUpperCase())
@@ -134,9 +135,11 @@ export default function NewTopicPage() {
           title: title.trim(),
           description: description.trim() || undefined,
           categoryId: categoryId || undefined,
-          requiresCountryProof: requiresCountry,
+          proofType,
+          requiresCountryProof: proofType === 'country',
           allowedCountries,
-          countryMode: requiresCountry ? countryMode : undefined,
+          countryMode: proofType === 'country' ? countryMode : undefined,
+          requiredDomain: (proofType === 'google_workspace' || proofType === 'microsoft_365') ? (requiredDomain.trim() || undefined) : undefined,
           image: imageUrl,
           visibility,
           ...(countryProofData ? { proof: countryProofData.proof, publicInputs: countryProofData.publicInputs, circuit: countryProofData.circuit } : {}),
@@ -156,7 +159,7 @@ export default function NewTopicPage() {
     }
   }
 
-  const canSubmit = title.trim().length > 0 && categoryId !== '' && !loading && (!requiresCountry || proofDone);
+  const canSubmit = title.trim().length > 0 && categoryId !== '' && !loading && (proofType !== 'country' || proofDone);
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
@@ -426,51 +429,61 @@ export default function NewTopicPage() {
             </div>
           </div>
 
-          {/* Country gating */}
+          {/* Proof requirement */}
           <div
             style={{
               padding: '16px 20px',
               background: 'var(--surface, #0c0e18)',
-              border: `1px solid ${requiresCountry ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+              border: `1px solid ${proofType !== 'none' ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
               borderRadius: 12,
               transition: 'border-color 0.15s',
             }}
           >
             <label
+              htmlFor="proofType"
+              style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+            >
+              Proof Requirement
+            </label>
+            <select
+              id="proofType"
+              value={proofType}
+              onChange={(e) => {
+                const val = e.target.value as typeof proofType;
+                setProofType(val);
+                if (val !== 'country') {
+                  setCountryProofData(null);
+                  setProofDone(false);
+                }
+                if (val !== 'google_workspace' && val !== 'microsoft_365') {
+                  setRequiredDomain('');
+                }
+              }}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
+                width: '100%',
+                background: 'rgba(5,10,8,0.9)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '10px 12px',
+                color: 'var(--foreground)',
+                fontSize: 14,
+                outline: 'none',
                 cursor: 'pointer',
-                userSelect: 'none',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 12px center',
+                paddingRight: 32,
               }}
             >
-              <input
-                type="checkbox"
-                checked={requiresCountry}
-                onChange={(e) => {
-                  setRequiresCountry(e.target.checked);
-                  if (!e.target.checked) {
-                    setCountryProofData(null);
-                    setProofDone(false);
-                  }
-                }}
-                style={{
-                  width: 16,
-                  height: 16,
-                  accentColor: 'var(--accent)',
-                  cursor: 'pointer',
-                }}
-              />
-              <div>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>Require Country Proof</span>
-                <p style={{ fontSize: 14, color: 'var(--muted)', margin: '2px 0 0' }}>
-                  Members must provide a ZK proof of their country via Coinbase attestation
-                </p>
-              </div>
-            </label>
+              <option value="none">No proof required</option>
+              <option value="kyc">Coinbase KYC verification</option>
+              <option value="country">Coinbase Country attestation</option>
+              <option value="google_workspace">Google Workspace domain</option>
+              <option value="microsoft_365">Microsoft 365 domain</option>
+            </select>
 
-            {requiresCountry && (
+            {proofType === 'country' && (
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* Include / Exclude toggle */}
                 <div>
@@ -604,6 +617,41 @@ export default function NewTopicPage() {
                     <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>Country proof verified</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {(proofType === 'google_workspace' || proofType === 'microsoft_365') && (
+              <div style={{ marginTop: 16 }}>
+                <label
+                  htmlFor="requiredDomain"
+                  style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 6 }}
+                >
+                  {proofType === 'google_workspace' ? 'Google Workspace' : 'Microsoft 365'} domain
+                </label>
+                <input
+                  id="requiredDomain"
+                  type="text"
+                  value={requiredDomain}
+                  onChange={(e) => setRequiredDomain(e.target.value)}
+                  placeholder="company.com"
+                  style={{
+                    width: '100%',
+                    background: '#0a0a0a',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    padding: '10px 12px',
+                    color: 'var(--foreground)',
+                    fontSize: 14,
+                    outline: 'none',
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.04em',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                />
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                  Members must prove their email belongs to this domain
+                </p>
               </div>
             )}
           </div>

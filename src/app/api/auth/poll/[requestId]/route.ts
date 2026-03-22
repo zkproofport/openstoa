@@ -192,6 +192,10 @@ export async function GET(
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('not found') || message.includes('expired')) {
+      logger.warn(ROUTE, 'Request not found or expired', { error: message });
+      return NextResponse.json({ error: message }, { status: 404 });
+    }
     logger.error(ROUTE, 'Unhandled error', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }

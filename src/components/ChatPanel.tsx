@@ -400,7 +400,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: Ch
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
+          placeholder="Type a message... (or @ask a question)"
           maxLength={1000}
           disabled={!connected}
           style={{

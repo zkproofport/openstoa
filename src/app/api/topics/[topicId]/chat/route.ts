@@ -238,6 +238,45 @@ export async function POST(
     const redis = getRedis();
     await redis.publish(`chat:topic:${topicId}`, JSON.stringify({ event: 'message', data: payload }));
 
+    // Handle @ask command
+    if (message.trim().startsWith('@ask ')) {
+      const question = message.trim().slice(5).trim();
+      if (question) {
+        try {
+          const askRes = await fetch(`${request.nextUrl.origin}/api/ask`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question }),
+          });
+          if (askRes.ok) {
+            const { answer } = await askRes.json();
+            const [aiMsg] = await db.insert(chatMessages).values({
+              topicId,
+              userId: session.userId,
+              message: `🤖 ${answer}`,
+              type: 'message',
+            }).returning();
+            await redis.publish(`chat:topic:${topicId}`, JSON.stringify({
+              event: 'message',
+              data: {
+                id: aiMsg.id,
+                topicId: aiMsg.topicId,
+                userId: aiMsg.userId,
+                nickname: 'OpenStoa AI',
+                profileImage: null,
+                message: aiMsg.message,
+                type: aiMsg.type,
+                createdAt: aiMsg.createdAt,
+              },
+            }));
+            logger.info(ROUTE, '@ask AI response published', { topicId, messageId: aiMsg.id });
+          }
+        } catch (e) {
+          logger.warn(ROUTE, '@ask handler failed', { error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+    }
+
     logger.info(ROUTE, 'Message sent and published', { userId: session.userId, topicId, messageId: inserted.id });
     return NextResponse.json({ message: payload }, { status: 201 });
   } catch (error) {
