@@ -4,19 +4,8 @@ import {
   extractScopeFromPublicInputs,
   extractNullifierFromPublicInputs,
   COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
+  OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT,
 } from '@zkproofport-app/sdk';
-
-// OIDC layout constants (from proofport-app-sdk source, not yet published to npm)
-const OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT = {
-  PUBKEY_MODULUS_START: 0,
-  PUBKEY_MODULUS_END: 287,
-  DOMAIN_START: 288,
-  DOMAIN_END: 355,
-  SCOPE_START: 356,
-  SCOPE_END: 387,
-  NULLIFIER_START: 388,
-  NULLIFIER_END: 419,
-};
 import type { RelayProofResult } from '@zkproofport-app/sdk';
 
 export const COMMUNITY_SCOPE = 'zkproofport-community';
@@ -81,7 +70,19 @@ export function extractDomain(publicInputs: string[], circuit: string): string |
   return String.fromCharCode(...trimmed);
 }
 
-export function detectCircuit(publicInputs: string[]): string {
+// Known verifier addresses → circuit mapping (Base Mainnet)
+const VERIFIER_CIRCUIT_MAP: Record<string, string> = {
+  '0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382': 'coinbase_attestation',
+  '0x9677ba46ad226ce8b3c4517d9c0143e4d458beae': 'oidc_domain_attestation',
+};
+
+export function detectCircuit(publicInputs: string[], verifierAddress?: string): string {
+  // 1. Use verifier address if available (most reliable)
+  if (verifierAddress) {
+    const circuit = VERIFIER_CIRCUIT_MAP[verifierAddress.toLowerCase()];
+    if (circuit) return circuit;
+  }
+  // 2. Fallback to public input count
   const len = publicInputs.length;
   if (len >= 420) return 'oidc_domain_attestation';
   if (len > 128) return 'coinbase_country_attestation';

@@ -235,8 +235,8 @@ export async function POST(request: NextRequest) {
     // Normalize publicInputs for scope/nullifier extraction
     const normalizedInputs = normalizePublicInputs(result.publicInputs);
 
-    // Determine circuit from normalized array length
-    const circuit = detectCircuit(normalizedInputs);
+    // Determine circuit from verifier address (primary) or public input count (fallback)
+    const circuit = detectCircuit(normalizedInputs, result.verification?.verifierAddress);
 
     // Verify scope
     const scope = extractScopeFromPublicInputs(normalizedInputs, circuit);
