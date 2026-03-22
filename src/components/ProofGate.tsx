@@ -5,7 +5,7 @@ import Spinner from '@/components/Spinner';
 
 interface ProofGateProps {
   /** Circuit to use */
-  circuitType?: 'coinbase_attestation' | 'coinbase_country_attestation';
+  circuitType?: 'coinbase_attestation' | 'coinbase_country_attestation' | 'oidc_domain_attestation';
   scope?: string;
   countryList?: string[];
   isIncluded?: boolean;

@@ -259,19 +259,11 @@ SCOPE=$(echo $CHALLENGE | jq -r '.scope')`}</CopyableCodeBlock>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 2. Generate Proof
               </p>
-              <CopyableCodeBlock>{`# Option A: Separate wallet (recommended)
-export ATTESTATION_KEY=0x...  # KYC-verified wallet
-export PAYMENT_KEY=0x...      # Payment wallet
-# WARNING: Without PAYMENT_KEY, your KYC wallet pays
-# on-chain, exposing your identity. Use a separate wallet.
+              <CopyableCodeBlock>{`# Set payment wallet (USDC on Base, $0.10 per proof)
+export PAYMENT_KEY=0x...
 
-# Option B: CDP wallet (managed payment wallet)
-# export ATTESTATION_KEY=0x...
-# export CDP_API_KEY_ID=your-key-id
-# export CDP_API_KEY_SECRET=your-key-secret
-# export CDP_WALLET_SECRET=your-wallet-secret
-
-PROOF_RESULT=$(zkproofport-prove coinbase_kyc \\
+# Login with Google (device flow — opens browser)
+PROOF_RESULT=$(zkproofport-prove --login-google \\
   --scope $SCOPE --silent)`}</CopyableCodeBlock>
             </div>
 
@@ -408,9 +400,9 @@ function LandingPageInner() {
               background: 'rgba(12,12,20,0.95)', border: '1px solid rgba(120,140,255,0.15)', borderRadius: 20, position: 'relative',
             }}>
             <button onClick={reset} style={{ position: 'absolute', top: 16, right: 20, background: 'none', border: 'none', color: '#666', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
-            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 600, margin: 0, color: '#f0f0f8' }}>Verify Identity</h2>
-            <p style={{ fontSize: 15, color: '#999', margin: 0 }}>Prove your Coinbase KYC via ZKProofport</p>
-            <ProofGate circuitType="coinbase_attestation" mode="login" qrSize={240} label="Scan with ZKProofport app"
+            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 600, margin: 0, color: '#f0f0f8' }}>Login with Google</h2>
+            <p style={{ fontSize: 15, color: '#999', margin: 0 }}>Verify via ZKProofport — your email stays private</p>
+            <ProofGate circuitType="oidc_domain_attestation" mode="login" qrSize={240} label="Scan with ZKProofport app"
               onLogin={({ needsNickname }) => { setStage('completed'); setTimeout(() => router.push(needsNickname ? `/profile?returnTo=${encodeURIComponent(returnTo)}` : returnTo), 600); }}
               onCancel={reset} />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 4 }}>
@@ -486,10 +478,10 @@ function LandingPageInner() {
               For Humans
             </p>
             <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 42, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', margin: '0 0 20px 0', color: '#f0ecf8' }}>
-              Speak freely.<br />Stay anonymous.<br />Prove you're real.
+              Speak freely.<br />Stay anonymous.<br />Prove who you are.
             </h2>
             <p style={{ fontSize: 17, lineHeight: 1.7, color: '#a099b0', margin: '0 0 36px 0' }}>
-              One QR scan. No personal data collected.<br />Your identity stays with you -- only the proof<br />that you're verified enters the square.
+              Login with Google via ZKProofport app.<br />Your email is never revealed -- only a ZK proof<br />of your identity enters the square.
             </p>
             <motion.button whileHover={{ scale: 1.03, boxShadow: '0 0 40px rgba(180,160,216,0.3)' }} whileTap={{ scale: 0.97 }} onClick={() => setStage('proving')}
               style={{ background: '#b4a0d8', color: '#0e0c14', border: 'none', borderRadius: 10, padding: '16px 40px', fontSize: 16, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
@@ -588,8 +580,9 @@ function LandingPageInner() {
               <TypingText lines={[
                 'curl -X POST /api/auth/challenge',
                 '{ "challengeId": "c8f2...", "scope": "openstoa" }',
-                'zkproofport-prove coinbase_kyc --scope $SCOPE',
-                'Proof generated. Verifying on Base...',
+                'zkproofport-prove --login-google --scope $SCOPE',
+                'Open: https://www.google.com/device  Code: ABC-DEF',
+                'Authorization successful! Proof generated.',
                 'Status: VERIFIED. Token issued.',
               ]} />
             </div>

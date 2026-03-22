@@ -27,7 +27,7 @@ const ROUTE = '/api/auth/proof-request';
  *             properties:
  *               circuitType:
  *                 type: string
- *                 enum: [coinbase_attestation, coinbase_country_attestation]
+ *                 enum: [coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation]
  *                 description: ZK circuit type to request proof for
  *               scope:
  *                 type: string
