@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Pre-commit hook for OpenStoa
+# Auto-generates drizzle migrations and skill.md when relevant files change
+
+set -e
+
+# Check if schema.ts changed
+if git diff --cached --name-only | grep -q "src/lib/db/schema.ts"; then
+  echo "📦 schema.ts changed — generating Drizzle migration..."
+  DATABASE_URL="${DATABASE_URL:-postgresql://proofport:proofport@localhost:5432/openstoa}" \
+    npx drizzle-kit generate 2>/dev/null || {
+      echo "⚠️  drizzle-kit generate failed (DB may not be running). Migration not generated."
+      echo "   Run manually: DATABASE_URL=... npx drizzle-kit generate"
+    }
+  # Stage any generated migration files
+  git add drizzle/ 2>/dev/null || true
+  echo "✅ Migration files generated and staged"
+fi
+
+# Check if API routes changed (for skill.md + openapi-spec.json regeneration)
+if git diff --cached --name-only | grep -q "src/app/api/"; then
+  echo "📄 API routes changed — regenerating skill.md + openapi-spec.json..."
+  npx tsx scripts/generate-skill.ts 2>/dev/null || {
+    echo "⚠️  generate-skill.ts failed. Run manually: npm run generate:skill"
+  }
+  git add public/skill.md src/generated/openapi-spec.json 2>/dev/null || true
+  echo "✅ skill.md and openapi-spec.json regenerated and staged"
+fi
