@@ -24,6 +24,11 @@ export async function runMigrations(): Promise<void> {
 
     // Read journal to find all migrations
     const journalPath = path.join(process.cwd(), 'drizzle', 'meta', '_journal.json');
+    if (!fs.existsSync(journalPath)) {
+      console.log('[DB] No migration journal found — using db:push mode');
+      migrated = true;
+      return;
+    }
     const journal = JSON.parse(fs.readFileSync(journalPath, 'utf-8'));
 
     // Get already applied migrations
