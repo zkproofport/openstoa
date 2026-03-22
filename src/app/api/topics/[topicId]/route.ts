@@ -125,20 +125,18 @@ export async function GET(
       ),
     });
 
-    if (!membership) {
-      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, topicId });
-      return NextResponse.json(
-        { error: 'Not a member of this topic' },
-        { status: 403 },
-      );
-    }
-
     const topic = await db.query.topics.findFirst({
       where: eq(topics.id, topicId),
     });
 
     if (!topic) {
       logger.warn(ROUTE, 'Topic not found', { topicId });
+      return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    }
+
+    // Secret topics require membership
+    if (!membership && topic.visibility === 'secret') {
+      logger.warn(ROUTE, 'Non-member accessing secret topic', { userId: session.userId, topicId });
       return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
     }
 
@@ -159,15 +157,16 @@ export async function GET(
       }
     }
 
-    logger.info(ROUTE, 'Topic detail fetched', { topicId, memberCount: memberCount.count });
+    const isMember = !!membership;
+    logger.info(ROUTE, 'Topic detail fetched', { topicId, memberCount: memberCount.count, isMember });
     return NextResponse.json({
       topic: {
         ...topic,
         category,
         memberCount: memberCount.count,
-        isMember: true,
+        isMember,
       },
-      currentUserRole: membership.role,
+      currentUserRole: membership?.role ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -23,6 +23,7 @@ const PUBLIC_PATHS = [
 const PUBLIC_PREFIXES = [
   '/_next',
   '/favicon.ico',
+  '/images/',
   '/api/auth/poll/',
   '/docs',
 ];

@@ -254,7 +254,7 @@ export async function POST(
               topicId,
               userId: session.userId,
               message: `🤖 ${answer}`,
-              type: 'message',
+              type: 'ai',
             }).returning();
             await redis.publish(`chat:topic:${topicId}`, JSON.stringify({
               event: 'message',
