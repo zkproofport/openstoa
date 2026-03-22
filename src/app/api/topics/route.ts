@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, image, visibility, categoryId } = body;
+    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, image, visibility, categoryId, proofType, requiredDomain } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title in topic creation', { userId: session.userId });
@@ -373,6 +373,8 @@ export async function POST(request: NextRequest) {
         categoryId,
         requiresCountryProof: requiresCountryProof ?? false,
         allowedCountries: allowedCountries ?? null,
+        proofType: proofType ?? (requiresCountryProof ? 'country' : 'none'),
+        requiredDomain: requiredDomain ?? null,
         inviteCode,
         visibility: validVisibility,
       })

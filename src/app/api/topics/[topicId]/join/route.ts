@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import {
   extractScope,
   extractIsIncluded,
+  extractDomain,
   computeScopeHash,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
@@ -134,45 +135,55 @@ export async function POST(
       );
     }
 
-    // If topic requires country proof, verify it
-    if (topic.requiresCountryProof) {
-      logger.info(ROUTE, 'Topic requires country proof, verifying', { userId: session.userId, topicId });
+    // Determine effective proof type
+    const effectiveProofType = (topic as any).proofType || (topic.requiresCountryProof ? 'country' : 'none');
+
+    if (effectiveProofType !== 'none') {
+      logger.info(ROUTE, 'Topic requires proof', { userId: session.userId, topicId, proofType: effectiveProofType });
 
       const body = await request.json();
       const { proof, publicInputs } = body;
 
       if (!proof || !publicInputs) {
-        logger.warn(ROUTE, 'Missing country proof fields', { userId: session.userId, topicId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
+        logger.warn(ROUTE, 'Missing proof fields', { userId: session.userId, topicId });
         return NextResponse.json(
-          { error: 'Country proof required: proof, publicInputs' },
+          { error: `Proof required for this topic (type: ${effectiveProofType})` },
           { status: 400 },
         );
       }
-
-      // Proof was already verified on-chain by the poll endpoint (mode=proof).
-      // Only validate scope and is_included from publicInputs.
 
       // Verify scope matches community scope
-      const scope = extractScope(publicInputs, 'coinbase_country_attestation');
+      const scope = extractScope(publicInputs, effectiveProofType === 'country' ? 'coinbase_country_attestation' :
+        effectiveProofType === 'kyc' ? 'coinbase_attestation' : 'oidc_domain_attestation');
       const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
       if (scope !== expectedScope) {
-        logger.warn(ROUTE, 'Country proof scope mismatch', { userId: session.userId, topicId, scope, expectedScope });
+        logger.warn(ROUTE, 'Proof scope mismatch', { userId: session.userId, topicId, scope, expectedScope });
         return NextResponse.json(
-          { error: 'Country proof scope mismatch' },
+          { error: 'Proof scope mismatch' },
           { status: 400 },
         );
       }
 
-      // Verify is_included flag: the prover built the country_list from
-      // topic.allowedCountries, so is_included=1 means the user's country
-      // is in that list.
-      const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
-      if (!isIncluded) {
-        logger.warn(ROUTE, 'Country not in allowed list', { userId: session.userId, topicId });
-        return NextResponse.json(
-          { error: 'Country not allowed for this topic' },
-          { status: 403 },
-        );
+      // Type-specific verification
+      if (effectiveProofType === 'country') {
+        const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
+        if (!isIncluded) {
+          logger.warn(ROUTE, 'Country not in allowed list', { userId: session.userId, topicId });
+          return NextResponse.json({ error: 'Country not allowed for this topic' }, { status: 403 });
+        }
+      }
+
+      if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365') {
+        const domain = extractDomain(publicInputs, 'oidc_domain_attestation');
+        const requiredDomain = (topic as any).requiredDomain;
+
+        if (requiredDomain && domain !== requiredDomain) {
+          logger.warn(ROUTE, 'Domain mismatch', { userId: session.userId, topicId, domain, requiredDomain });
+          return NextResponse.json(
+            { error: `Domain mismatch: expected ${requiredDomain}, got ${domain}` },
+            { status: 403 },
+          );
+        }
       }
     }
 

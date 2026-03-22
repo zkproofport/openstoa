@@ -9,3 +9,5 @@ src/generated/
 
 # E2E test cache
 .e2e-token-cache.json
+.omc/
+.omc/

@@ -5,6 +5,18 @@ import {
   extractNullifierFromPublicInputs,
   COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
 } from '@zkproofport-app/sdk';
+
+// OIDC layout constants (from proofport-app-sdk source, not yet published to npm)
+const OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT = {
+  PUBKEY_MODULUS_START: 0,
+  PUBKEY_MODULUS_END: 287,
+  DOMAIN_START: 288,
+  DOMAIN_END: 355,
+  SCOPE_START: 356,
+  SCOPE_END: 387,
+  NULLIFIER_START: 388,
+  NULLIFIER_END: 419,
+};
 import type { RelayProofResult } from '@zkproofport-app/sdk';
 
 export const COMMUNITY_SCOPE = 'zkproofport-community';
@@ -53,4 +65,25 @@ export function extractIsIncluded(publicInputs: string[], circuit: string): bool
     throw new Error('publicInputs too short: missing is_included field');
   }
   return BigInt(isIncludedField) === 1n;
+}
+
+export function extractDomain(publicInputs: string[], circuit: string): string | null {
+  if (circuit !== 'oidc_domain_attestation') return null;
+  const start = OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.DOMAIN_START;
+  const end = OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.DOMAIN_END;
+  if (publicInputs.length <= end) return null;
+  const domainFields = publicInputs.slice(start, end + 1);
+  // Convert field elements (each is a single byte) to ASCII string
+  const bytes = domainFields.map(f => Number(BigInt(f) & 0xFFn));
+  // Find null terminator and trim
+  const nullIdx = bytes.indexOf(0);
+  const trimmed = nullIdx >= 0 ? bytes.slice(0, nullIdx) : bytes;
+  return String.fromCharCode(...trimmed);
+}
+
+export function detectCircuit(publicInputs: string[]): string {
+  const len = publicInputs.length;
+  if (len >= 420) return 'oidc_domain_attestation';
+  if (len > 128) return 'coinbase_country_attestation';
+  return 'coinbase_attestation';
 }

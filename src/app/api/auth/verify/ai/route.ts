@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { consumeChallenge } from '@/lib/challenge';
-import { normalizePublicInputs, COMMUNITY_SCOPE } from '@/lib/proof';
+import { normalizePublicInputs, COMMUNITY_SCOPE, detectCircuit } from '@/lib/proof';
 import {
   extractScopeFromPublicInputs,
   extractNullifierFromPublicInputs,
@@ -236,10 +236,7 @@ export async function POST(request: NextRequest) {
     const normalizedInputs = normalizePublicInputs(result.publicInputs);
 
     // Determine circuit from normalized array length
-    // coinbase_attestation: 128 fields, coinbase_country_attestation: 150 fields
-    const circuit = normalizedInputs.length > 128
-      ? 'coinbase_country_attestation'
-      : 'coinbase_attestation';
+    const circuit = detectCircuit(normalizedInputs);
 
     // Verify scope
     const scope = extractScopeFromPublicInputs(normalizedInputs, circuit);
