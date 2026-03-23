@@ -354,7 +354,7 @@ export default function LeftSidebar({
         {!isGuest && (
           <button
             onClick={() => {
-              router.push('/topics?view=my');
+              window.location.href = '/topics?view=my';
             }}
             onMouseEnter={() => setHoveredItem('my-topics')}
             onMouseLeave={() => setHoveredItem(null)}

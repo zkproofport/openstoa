@@ -169,7 +169,7 @@ function ExpandedChatOverlay({
         </div>
         {/* Chat fills remaining space */}
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember} fullHeight />
+          <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember} fullHeight hideHeader />
         </div>
       </div>
       <style>{`
@@ -315,7 +315,7 @@ export default function RightSidebar({
             style={{
               position: 'absolute',
               top: 8,
-              right: 10,
+              right: 36,
               zIndex: 2,
               background: 'none',
               border: 'none',
