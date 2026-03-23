@@ -441,9 +441,11 @@ function generate(): void {
   console.log(`Generated ${specPath}`);
 
   // Copy AGENTS.md to public/ for standalone builds (Next.js only copies public/ folder)
-  const publicAgentsPath = path.resolve(__dirname, '../public/AGENTS.md');
-  fs.copyFileSync(agentsMdPath, publicAgentsPath);
-  console.log(`Copied AGENTS.md → ${publicAgentsPath}`);
+  if (fs.existsSync(agentsMdPath)) {
+    const publicAgentsPath = path.resolve(__dirname, '../public/AGENTS.md');
+    fs.copyFileSync(agentsMdPath, publicAgentsPath);
+    console.log(`Copied AGENTS.md → ${publicAgentsPath}`);
+  }
 }
 
 generate();
