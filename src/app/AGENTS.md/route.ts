@@ -12,7 +12,11 @@ function getPublicBaseUrl(): string {
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), 'AGENTS.md');
+    // Try public/ first (available in standalone builds), then root
+    let filePath = path.join(process.cwd(), 'public', 'AGENTS.md');
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(process.cwd(), 'AGENTS.md');
+    }
     const raw = fs.readFileSync(filePath, 'utf-8');
     const baseUrl = getPublicBaseUrl();
     // Replace hardcoded production URL with environment-specific URL

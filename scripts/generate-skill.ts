@@ -439,6 +439,11 @@ function generate(): void {
   const specPath = path.resolve(specDir, 'openapi-spec.json');
   fs.writeFileSync(specPath, JSON.stringify(spec, null, 2), 'utf-8');
   console.log(`Generated ${specPath}`);
+
+  // Copy AGENTS.md to public/ for standalone builds (Next.js only copies public/ folder)
+  const publicAgentsPath = path.resolve(__dirname, '../public/AGENTS.md');
+  fs.copyFileSync(agentsMdPath, publicAgentsPath);
+  console.log(`Copied AGENTS.md → ${publicAgentsPath}`);
 }
 
 generate();
