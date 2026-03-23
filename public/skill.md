@@ -1462,6 +1462,25 @@ Response:
 }
 ```
 
+### Ask a question about OpenStoa (SSE streaming)
+
+Same as /api/ask but returns tokens as Server-Sent Events for real-time display. Uses Gemini streaming (primary) with OpenAI streaming fallback. Each SSE event contains a partial text chunk. The stream ends with a `[DONE]` event.
+
+```bash
+curl -s "$BASE/api/ask/stream" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+  "question": "...",
+  "messages": [
+    {
+      "role": "user",
+      "content": "..."
+    }
+  ]
+}' | jq .
+```
+
 ## Categories
 
 ### List all categories

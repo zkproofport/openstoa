@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 interface Message {
@@ -14,6 +14,138 @@ const SUGGESTED_QUESTIONS = [
   'What is a nullifier?',
   'How does on-chain recording work?',
 ];
+
+const FOLLOW_UP_QUESTIONS = [
+  ['How do I create a topic with KYC gating?', 'What is the difference between KYC and Country proof?', 'How do I generate a single-use invite link?', 'Can AI agents post in any topic?'],
+  ['How do verification badges work?', 'What is the scope in ZK proofs?', 'How does nullifier-based identity prevent tracking?', 'What blockchains are supported?'],
+  ['How do I set up the MCP server?', 'What USDC amount is needed for proof generation?', 'How do I use the OpenAPI spec?', 'What is on-chain recording?'],
+];
+
+// ---- Simple inline markdown renderer (no dependencies) ----
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderInline(text: string): string {
+  return text
+    // Bold **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic *text* or _text_
+    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
+    .replace(/_([^_\n]+?)_/g, '<em>$1</em>')
+    // Inline code `code`
+    .replace(/`([^`\n]+?)`/g, '<code style="background:rgba(120,140,255,0.12);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:0.88em;color:#a8b8ff">$1</code>')
+    // Links [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#788cff;text-decoration:underline;text-underline-offset:2px">$1</a>');
+}
+
+function renderMarkdown(raw: string): string {
+  const lines = raw.split('\n');
+  const output: string[] = [];
+  let inCode = false;
+  let codeLang = '';
+  let codeLines: string[] = [];
+  let inList = false;
+
+  function flushList() {
+    if (!inList) return;
+    output.push('</ul>');
+    inList = false;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Fenced code block start/end
+    if (line.startsWith('```')) {
+      if (!inCode) {
+        flushList();
+        inCode = true;
+        codeLang = line.slice(3).trim();
+        codeLines = [];
+      } else {
+        inCode = false;
+        const langLabel = codeLang ? `<span style="color:#555;font-size:11px;font-family:var(--font-mono);display:block;margin-bottom:6px">${escapeHtml(codeLang)}</span>` : '';
+        output.push(
+          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;padding:14px 16px;margin:10px 0;overflow-x:auto">${langLabel}<pre style="margin:0;font-family:var(--font-mono);font-size:13px;color:#c8d0ff;white-space:pre;line-height:1.55">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
+        );
+        codeLang = '';
+        codeLines = [];
+      }
+      continue;
+    }
+
+    if (inCode) {
+      codeLines.push(line);
+      continue;
+    }
+
+    // Heading # / ## / ###
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
+    if (headingMatch) {
+      flushList();
+      const level = headingMatch[1].length;
+      const text = renderInline(escapeHtml(headingMatch[2]));
+      const sizes = ['18px', '16px', '14px'];
+      output.push(
+        `<div style="font-size:${sizes[level - 1]};font-weight:700;color:#e8e8f0;margin:16px 0 6px;letter-spacing:-0.01em">${text}</div>`,
+      );
+      continue;
+    }
+
+    // Horizontal rule ---
+    if (/^---+$/.test(line.trim())) {
+      flushList();
+      output.push('<hr style="border:none;border-top:1px solid rgba(120,140,255,0.1);margin:12px 0" />');
+      continue;
+    }
+
+    // Unordered list - item or * item
+    const listMatch = line.match(/^[\-\*]\s+(.+)/);
+    if (listMatch) {
+      if (!inList) {
+        output.push('<ul style="margin:6px 0;padding-left:20px;list-style:none">');
+        inList = true;
+      }
+      output.push(
+        `<li style="margin:3px 0;display:flex;gap:8px;align-items:baseline"><span style="color:rgba(120,140,255,0.5);flex-shrink:0">•</span><span>${renderInline(escapeHtml(listMatch[1]))}</span></li>`,
+      );
+      continue;
+    }
+
+    // Ordered list 1. item
+    const orderedMatch = line.match(/^\d+\.\s+(.+)/);
+    if (orderedMatch) {
+      flushList();
+      output.push(
+        `<div style="margin:3px 0;padding-left:4px">${renderInline(escapeHtml(orderedMatch[1]))}</div>`,
+      );
+      continue;
+    }
+
+    // Empty line
+    if (line.trim() === '') {
+      flushList();
+      output.push('<div style="height:8px"></div>');
+      continue;
+    }
+
+    // Normal paragraph line
+    flushList();
+    output.push(`<div style="margin:2px 0;line-height:1.65">${renderInline(escapeHtml(line))}</div>`);
+  }
+
+  flushList();
+  return output.join('');
+}
+
+// ---- Components ----
 
 function TypingIndicator() {
   return (
@@ -41,17 +173,100 @@ function TypingIndicator() {
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy response"
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '4px 6px',
+        borderRadius: 5,
+        color: copied ? '#788cff' : '#444',
+        fontSize: 11,
+        fontFamily: 'var(--font-mono)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        transition: 'color 0.15s',
+        marginTop: 6,
+        marginLeft: 'auto',
+      }}
+      onMouseEnter={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = '#777'; }}
+      onMouseLeave={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = '#444'; }}
+    >
+      {copied ? (
+        <>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Copied!
+        </>
+      ) : (
+        <>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          Copy
+        </>
+      )}
+    </button>
+  );
+}
+
+function AssistantMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{
+          maxWidth: '78%',
+          padding: '14px 18px',
+          borderRadius: '4px 18px 18px 18px',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          color: '#c8c8d8',
+          fontSize: 14,
+          fontFamily: 'var(--font-sans)',
+          lineHeight: 1.65,
+          wordBreak: 'break-word',
+        }}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+      />
+      {!isStreaming && content && <CopyButton text={content} />}
+    </div>
+  );
+}
+
+// ---- Main page ----
+
 export default function AskPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [followUps, setFollowUps] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+  }, [messages, loading, streamingContent]);
 
   function autoResize() {
     const el = textareaRef.current;
@@ -59,6 +274,13 @@ export default function AskPage() {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   }
+
+  const pickFollowUps = useCallback((turnIndex: number) => {
+    const pool = FOLLOW_UP_QUESTIONS[turnIndex % FOLLOW_UP_QUESTIONS.length];
+    // Pick 3 unique random items
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3);
+  }, []);
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
@@ -70,27 +292,67 @@ export default function AskPage() {
     setInput('');
     setError(null);
     setLoading(true);
+    setStreamingContent('');
+    setFollowUps([]);
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
 
     try {
-      const res = await fetch('/api/ask', {
+      const res = await fetch('/api/ask/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages }),
       });
-      const data = await res.json();
-      if (!res.ok) {
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({ error: 'Something went wrong' }));
         setError(data.error || 'Something went wrong');
-      } else {
-        setMessages((prev) => [...prev, { role: 'assistant', content: data.answer }]);
+        setLoading(false);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === '[DONE]') continue;
+          try {
+            const chunk = JSON.parse(jsonStr);
+            if (chunk.error) {
+              setError(chunk.error);
+            } else if (chunk.text) {
+              accumulated += chunk.text;
+              setStreamingContent(accumulated);
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+
+      if (accumulated) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: accumulated }]);
+        setFollowUps(pickFollowUps(newMessages.length));
       }
     } catch {
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
+      setStreamingContent('');
     }
   }
 
@@ -101,7 +363,7 @@ export default function AskPage() {
     }
   }
 
-  const isEmpty = messages.length === 0 && !loading;
+  const isEmpty = messages.length === 0 && !loading && !streamingContent;
 
   return (
     <div
@@ -192,7 +454,7 @@ export default function AskPage() {
 
           {messages.length > 0 && (
             <button
-              onClick={() => { setMessages([]); setError(null); }}
+              onClick={() => { setMessages([]); setError(null); setFollowUps([]); }}
               style={{
                 background: 'none',
                 border: '1px solid rgba(120,140,255,0.15)',
@@ -370,32 +632,59 @@ export default function AskPage() {
                     </svg>
                   </div>
                 )}
-                <div
-                  style={{
-                    maxWidth: '78%',
-                    padding: msg.role === 'user' ? '10px 16px' : '14px 18px',
-                    borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
-                    background: msg.role === 'user'
-                      ? 'rgba(120,140,255,0.18)'
-                      : 'rgba(255,255,255,0.04)',
-                    border: msg.role === 'user'
-                      ? '1px solid rgba(120,140,255,0.3)'
-                      : '1px solid rgba(255,255,255,0.06)',
-                    color: msg.role === 'user' ? '#d0d4ff' : '#c8c8d8',
-                    fontSize: 14,
-                    fontFamily: 'var(--font-sans)',
-                    lineHeight: 1.65,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {msg.content}
-                </div>
+                {msg.role === 'assistant' ? (
+                  <AssistantMessage content={msg.content} isStreaming={false} />
+                ) : (
+                  <div
+                    style={{
+                      maxWidth: '78%',
+                      padding: '10px 16px',
+                      borderRadius: '18px 18px 4px 18px',
+                      background: 'rgba(120,140,255,0.18)',
+                      border: '1px solid rgba(120,140,255,0.3)',
+                      color: '#d0d4ff',
+                      fontSize: 14,
+                      fontFamily: 'var(--font-sans)',
+                      lineHeight: 1.65,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {msg.content}
+                  </div>
+                )}
               </div>
             ))}
 
-            {/* Typing indicator */}
-            {loading && (
+            {/* Streaming in-progress */}
+            {loading && streamingContent && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    background: 'rgba(120,140,255,0.15)',
+                    border: '1px solid rgba(120,140,255,0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: 2,
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                </div>
+                <AssistantMessage content={streamingContent} isStreaming={true} />
+              </div>
+            )}
+
+            {/* Typing indicator (before first token arrives) */}
+            {loading && !streamingContent && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
                 <div
                   style={{
@@ -445,6 +734,56 @@ export default function AskPage() {
                 }}
               >
                 {error}
+              </div>
+            )}
+
+            {/* Follow-up suggested questions */}
+            {!loading && followUps.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: '#444',
+                    fontFamily: 'var(--font-mono)',
+                    letterSpacing: '0.05em',
+                    marginBottom: 8,
+                    paddingLeft: 38,
+                  }}
+                >
+                  SUGGESTED
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 38 }}>
+                  {followUps.map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => sendMessage(q)}
+                      style={{
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(120,140,255,0.12)',
+                        borderRadius: 20,
+                        padding: '6px 14px',
+                        color: '#666',
+                        fontSize: 12,
+                        fontFamily: 'var(--font-sans)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.07)';
+                        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
+                        (e.currentTarget as HTMLElement).style.color = '#aaa';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
+                        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.12)';
+                        (e.currentTarget as HTMLElement).style.color = '#666';
+                      }}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

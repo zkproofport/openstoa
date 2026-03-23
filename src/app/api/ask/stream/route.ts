@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { logger } from '@/lib/logger';
 
-const ROUTE = '/api/ask';
+const ROUTE = '/api/ask/stream';
 
 function getSystemPrompt(baseUrl: string) { return `You are OpenStoa's AI assistant — an expert on the OpenStoa platform, zero-knowledge proofs, and the ZKProofport ecosystem.
 
@@ -59,7 +59,7 @@ interface ChatMessage {
   content: string;
 }
 
-async function askGemini(messages: ChatMessage[], systemPrompt: string): Promise<string> {
+async function* streamGemini(messages: ChatMessage[], systemPrompt: string): AsyncGenerator<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
 
@@ -69,7 +69,7 @@ async function askGemini(messages: ChatMessage[], systemPrompt: string): Promise
   }));
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${apiKey}&alt=sse`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -85,11 +85,36 @@ async function askGemini(messages: ChatMessage[], systemPrompt: string): Promise
     throw new Error(`Gemini API error: ${res.status} ${err}`);
   }
 
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
+  if (!res.body) throw new Error('Gemini returned empty body');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr || jsonStr === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(jsonStr);
+        const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) yield text;
+      } catch {
+        // skip malformed chunk
+      }
+    }
+  }
 }
 
-async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise<string> {
+async function* streamOpenAI(messages: ChatMessage[], systemPrompt: string): AsyncGenerator<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
 
@@ -108,6 +133,7 @@ async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise
       model: 'gpt-4o-mini',
       messages: openaiMessages,
       max_tokens: 1000,
+      stream: true,
     }),
   });
 
@@ -116,18 +142,43 @@ async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise
     throw new Error(`OpenAI API error: ${res.status} ${err}`);
   }
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || 'No response generated';
+  if (!res.body) throw new Error('OpenAI returned empty body');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr || jsonStr === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(jsonStr);
+        const text = chunk.choices?.[0]?.delta?.content;
+        if (text) yield text;
+      } catch {
+        // skip malformed chunk
+      }
+    }
+  }
 }
 
 /**
  * @openapi
- * /api/ask:
+ * /api/ask/stream:
  *   post:
  *     tags: [AI]
- *     summary: Ask a question about OpenStoa
- *     description: AI-powered Q&A about OpenStoa features, usage, and community guidelines. Supports multi-turn conversation. Uses Gemini (primary) with OpenAI fallback.
- *     operationId: askQuestion
+ *     summary: Ask a question about OpenStoa (SSE streaming)
+ *     description: Same as /api/ask but returns tokens as Server-Sent Events for real-time display. Uses Gemini streaming (primary) with OpenAI streaming fallback. Each SSE event contains a partial text chunk. The stream ends with a `[DONE]` event.
+ *     operationId: askQuestionStream
  *     security: []
  *     requestBody:
  *       required: true
@@ -152,74 +203,97 @@ async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise
  *                       type: string
  *     responses:
  *       200:
- *         description: AI-generated answer
+ *         description: SSE stream of text chunks
  *         content:
- *           application/json:
+ *           text/event-stream:
  *             schema:
- *               type: object
- *               properties:
- *                 answer:
- *                   type: string
- *                 provider:
- *                   type: string
- *                   enum: [gemini, openai]
+ *               type: string
+ *               example: "data: {\"text\":\"Hello\"}\n\ndata: [DONE]\n\n"
  */
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
+
+  let chatMessages: ChatMessage[];
+
   try {
     const body = await request.json();
     const { question, messages } = body;
 
-    let chatMessages: ChatMessage[];
-
     if (messages && Array.isArray(messages)) {
-      // Multi-turn: validate and use conversation history
       if (messages.length === 0) {
-        return NextResponse.json({ error: 'messages array is empty' }, { status: 400 });
+        return new Response(JSON.stringify({ error: 'messages array is empty' }), { status: 400 });
       }
       chatMessages = messages.map((m: { role: string; content: string }) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
+        role: m.role === 'assistant' ? 'assistant' : ('user' as const),
         content: String(m.content ?? '').slice(0, 2000),
       }));
     } else if (question && typeof question === 'string' && question.trim().length > 0) {
-      // Single question (backward compat)
       if (question.length > 1000) {
-        return NextResponse.json({ error: 'Question too long (max 1000 characters)' }, { status: 400 });
+        return new Response(JSON.stringify({ error: 'Question too long (max 1000 characters)' }), { status: 400 });
       }
       chatMessages = [{ role: 'user', content: question.trim() }];
     } else {
-      return NextResponse.json({ error: 'question or messages is required' }, { status: 400 });
-    }
-
-    // Build system prompt with public URL (Docker internal origin is not publicly accessible)
-    const baseUrl = process.env.APP_ENV === 'production'
-      ? 'https://www.openstoa.xyz'
-      : request.nextUrl.origin;
-    const systemPrompt = getSystemPrompt(baseUrl);
-
-    // Try Gemini first, fallback to OpenAI
-    try {
-      const answer = await askGemini(chatMessages, systemPrompt);
-      logger.info(ROUTE, 'Answered via Gemini');
-      return NextResponse.json({ answer, provider: 'gemini' });
-    } catch (geminiError) {
-      logger.warn(ROUTE, 'Gemini failed, trying OpenAI', { error: geminiError instanceof Error ? geminiError.message : String(geminiError) });
-
-      try {
-        const answer = await askOpenAI(chatMessages, systemPrompt);
-        logger.info(ROUTE, 'Answered via OpenAI');
-        return NextResponse.json({ answer, provider: 'openai' });
-      } catch (openaiError) {
-        logger.error(ROUTE, 'Both LLM providers failed', {
-          gemini: geminiError instanceof Error ? geminiError.message : String(geminiError),
-          openai: openaiError instanceof Error ? openaiError.message : String(openaiError),
-        });
-        return NextResponse.json({ error: 'AI service unavailable. Please try again later.' }, { status: 503 });
-      }
+      return new Response(JSON.stringify({ error: 'question or messages is required' }), { status: 400 });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return new Response(JSON.stringify({ error: message }), { status: 400 });
   }
+
+  // Build system prompt with public URL (Docker internal origin is not publicly accessible)
+  const baseUrl = process.env.APP_ENV === 'production'
+    ? 'https://www.openstoa.xyz'
+    : request.nextUrl.origin;
+  const systemPrompt = getSystemPrompt(baseUrl);
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encode = (s: string) => new TextEncoder().encode(s);
+
+      async function pipeGenerator(gen: AsyncGenerator<string>, provider: string) {
+        try {
+          for await (const chunk of gen) {
+            controller.enqueue(encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
+          }
+          controller.enqueue(encode(`data: ${JSON.stringify({ provider })}\n\n`));
+          controller.enqueue(encode('data: [DONE]\n\n'));
+          controller.close();
+        } catch (err) {
+          controller.enqueue(encode(`data: ${JSON.stringify({ error: err instanceof Error ? err.message : String(err) })}\n\n`));
+          controller.enqueue(encode('data: [DONE]\n\n'));
+          controller.close();
+        }
+      }
+
+      // Try Gemini first, fallback to OpenAI
+      try {
+        await pipeGenerator(streamGemini(chatMessages, systemPrompt), 'gemini');
+        logger.info(ROUTE, 'Streamed via Gemini');
+      } catch (geminiError) {
+        logger.warn(ROUTE, 'Gemini streaming failed, trying OpenAI', {
+          error: geminiError instanceof Error ? geminiError.message : String(geminiError),
+        });
+        try {
+          await pipeGenerator(streamOpenAI(chatMessages, systemPrompt), 'openai');
+          logger.info(ROUTE, 'Streamed via OpenAI');
+        } catch (openaiError) {
+          logger.error(ROUTE, 'Both LLM providers failed for streaming', {
+            gemini: geminiError instanceof Error ? geminiError.message : String(geminiError),
+            openai: openaiError instanceof Error ? openaiError.message : String(openaiError),
+          });
+          controller.enqueue(encode('data: ' + JSON.stringify({ error: 'AI service unavailable. Please try again later.' }) + '\n\n'));
+          controller.enqueue(encode('data: [DONE]\n\n'));
+          controller.close();
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }
