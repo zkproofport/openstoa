@@ -9,6 +9,8 @@ interface ProofGateProps {
   scope?: string;
   countryList?: string[];
   isIncluded?: boolean;
+  /** Domain for workspace/MS365 proof (e.g., 'company.com') */
+  domain?: string;
 
   /**
    * 'login' — polls `/api/auth/poll/{id}` (no query param), calls onLogin on completion
@@ -40,6 +42,7 @@ export default function ProofGate({
   scope,
   countryList,
   isIncluded,
+  domain,
   mode = 'login',
   onLogin,
   onProofData,
@@ -85,6 +88,7 @@ export default function ProofGate({
       if (scope) body.scope = scope;
       if (countryList) body.countryList = countryList;
       if (isIncluded !== undefined) body.isIncluded = isIncluded;
+      if (domain) body.domain = domain;
 
       const res = await fetch('/api/auth/proof-request', {
         method: 'POST',

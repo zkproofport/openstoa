@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { topics, topicMembers, categories } from '@/lib/db/schema';
 import { eq, and, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { buildProofRequirement } from '@/lib/proof-guides';
 
 const ROUTE = '/api/topics/[topicId]';
 
@@ -101,6 +102,15 @@ export async function GET(
         }
       }
 
+      // Build proof requirement for non-members
+      const effectiveProofType = topic.proofType || (topic.requiresCountryProof ? 'country' : 'none');
+      const proofRequirement = effectiveProofType !== 'none'
+        ? buildProofRequirement(effectiveProofType, {
+            domain: topic.requiredDomain,
+            allowedCountries: topic.allowedCountries,
+          })
+        : null;
+
       logger.info(ROUTE, 'Guest topic detail fetched', { topicId, memberCount: memberCount.count });
       return NextResponse.json({
         topic: {
@@ -110,6 +120,7 @@ export async function GET(
           isMember: false,
         },
         currentUserRole: null,
+        proofRequirement,
       });
     }
 
@@ -158,6 +169,19 @@ export async function GET(
     }
 
     const isMember = !!membership;
+
+    // Build proof requirement for non-members
+    let proofRequirement = null;
+    if (!isMember) {
+      const effectiveProofType = topic.proofType || (topic.requiresCountryProof ? 'country' : 'none');
+      if (effectiveProofType !== 'none') {
+        proofRequirement = buildProofRequirement(effectiveProofType, {
+          domain: topic.requiredDomain,
+          allowedCountries: topic.allowedCountries,
+        });
+      }
+    }
+
     logger.info(ROUTE, 'Topic detail fetched', { topicId, memberCount: memberCount.count, isMember });
     return NextResponse.json({
       topic: {
@@ -167,6 +191,7 @@ export async function GET(
         isMember,
       },
       currentUserRole: membership?.role ?? null,
+      proofRequirement,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

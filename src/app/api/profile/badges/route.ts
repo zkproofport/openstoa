@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { getActiveVerifications } from '@/lib/verification';
+import { getActiveVerificationsCache } from '@/lib/verification-cache';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/profile/badges';
@@ -11,7 +11,10 @@ const ROUTE = '/api/profile/badges';
  *   get:
  *     tags: [Profile]
  *     summary: Get user's active verification badges
- *     description: Returns all active (non-expired) verification badges for the authenticated user.
+ *     description: >-
+ *       Returns all active (non-expired) verification badges for the authenticated user.
+ *       Verification data is stored in Redis cache only (30-day TTL) — no personal
+ *       information is persisted in the database.
  *     operationId: getUserBadges
  *     responses:
  *       200:
@@ -24,13 +27,11 @@ export async function GET(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
-  const verifications = await getActiveVerifications(session.userId);
+  const verifications = await getActiveVerificationsCache(session.userId);
   const badges = verifications.map(v => ({
     type: v.proofType,
-    domain: v.domain,
-    country: v.country,
-    verifiedAt: v.verifiedAt,
-    expiresAt: v.expiresAt,
+    verifiedAt: v.record.verifiedAt,
+    expiresAt: v.record.expiresAt,
   }));
   return NextResponse.json({ badges });
 }

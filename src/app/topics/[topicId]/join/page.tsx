@@ -14,6 +14,8 @@ interface TopicInfo {
   memberCount: number;
   requiresCountryProof: boolean;
   allowedCountries?: string[];
+  proofType?: string;
+  requiredDomain?: string;
   isMember: boolean;
 }
 
@@ -29,10 +31,10 @@ export default function JoinPage() {
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
 
-  // Country proof state
-  const [needsCountryProof, setNeedsCountryProof] = useState(false);
+  // Proof state
+  const [effectiveProofType, setEffectiveProofType] = useState<string>('none');
   const [proofDone, setProofDone] = useState(false);
-  const [countryProofData, setCountryProofData] = useState<{
+  const [proofData, setProofData] = useState<{
     proof: string;
     publicInputs: string[];
   } | null>(null);
@@ -63,7 +65,8 @@ export default function JoinPage() {
         return;
       }
 
-      setNeedsCountryProof(info.requiresCountryProof);
+      const pt = info.proofType || (info.requiresCountryProof ? 'country' : 'none');
+      setEffectiveProofType(pt);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load topic');
     } finally {
@@ -78,9 +81,9 @@ export default function JoinPage() {
     try {
       const body: Record<string, unknown> = {};
       if (inviteCode) body.inviteCode = inviteCode;
-      if (countryProofData) {
-        body.proof = countryProofData.proof;
-        body.publicInputs = countryProofData.publicInputs;
+      if (proofData) {
+        body.proof = proofData.proof;
+        body.publicInputs = proofData.publicInputs;
       }
 
       const res = await fetch(`/api/topics/${topicInfo.id}/join`, {
@@ -99,7 +102,8 @@ export default function JoinPage() {
     }
   }
 
-  const canJoin = topicInfo && (!needsCountryProof || proofDone);
+  const needsProof = effectiveProofType !== 'none';
+  const canJoin = topicInfo && (!needsProof || proofDone);
 
   if (loading) {
     return (
@@ -168,7 +172,7 @@ export default function JoinPage() {
                 >
                   {topicInfo.memberCount} member{topicInfo.memberCount !== 1 ? 's' : ''}
                 </span>
-                {topicInfo.requiresCountryProof && (
+                {effectiveProofType !== 'none' && (
                   <span
                     style={{
                       fontSize: 15,
@@ -180,15 +184,20 @@ export default function JoinPage() {
                       borderRadius: 4,
                     }}
                   >
-                    country gated
+                    {effectiveProofType === 'kyc' ? 'KYC required' :
+                     effectiveProofType === 'country' ? 'country gated' :
+                     effectiveProofType === 'google_workspace' ? 'Google Workspace required' :
+                     effectiveProofType === 'microsoft_365' ? 'Microsoft 365 required' :
+                     effectiveProofType === 'workspace' ? 'organization proof required' :
+                     'proof required'}
                   </span>
                 )}
               </div>
             </div>
           )}
 
-          {/* Country proof section */}
-          {needsCountryProof && !proofDone && topicInfo && (
+          {/* Proof section */}
+          {needsProof && !proofDone && topicInfo && (
             <div
               style={{
                 padding: '24px',
@@ -200,29 +209,57 @@ export default function JoinPage() {
               }}
             >
               <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-                Country Proof Required
+                {effectiveProofType === 'kyc' ? 'KYC Verification Required' :
+                 effectiveProofType === 'country' ? 'Country Proof Required' :
+                 effectiveProofType === 'google_workspace' ? 'Google Workspace Verification Required' :
+                 effectiveProofType === 'microsoft_365' ? 'Microsoft 365 Verification Required' :
+                 effectiveProofType === 'workspace' ? 'Organization Verification Required' :
+                 'Proof Required'}
               </p>
               <p style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.5 }}>
-                This topic requires proof of your country via ZKProofport.
+                {effectiveProofType === 'kyc'
+                  ? 'This topic requires Coinbase KYC verification via ZKProofport.'
+                  : effectiveProofType === 'country'
+                  ? 'This topic requires proof of your country via ZKProofport.'
+                  : effectiveProofType === 'google_workspace'
+                  ? `This topic requires Google Workspace domain verification${topicInfo.requiredDomain ? ` (${topicInfo.requiredDomain})` : ''}.`
+                  : effectiveProofType === 'microsoft_365'
+                  ? `This topic requires Microsoft 365 domain verification${topicInfo.requiredDomain ? ` (${topicInfo.requiredDomain})` : ''}.`
+                  : effectiveProofType === 'workspace'
+                  ? `This topic requires organization membership verification${topicInfo.requiredDomain ? ` (${topicInfo.requiredDomain})` : ''} via Google Workspace or Microsoft 365.`
+                  : 'This topic requires proof verification via ZKProofport.'}
               </p>
 
               <ProofGate
-                circuitType="coinbase_country_attestation"
-                scope={topicInfo.id}
-                countryList={topicInfo.allowedCountries ?? []}
-                isIncluded={true}
+                circuitType={
+                  effectiveProofType === 'kyc' ? 'coinbase_attestation' :
+                  effectiveProofType === 'country' ? 'coinbase_country_attestation' :
+                  'oidc_domain_attestation'
+                }
+                scope="zkproofport-community"
+                countryList={effectiveProofType === 'country' ? (topicInfo.allowedCountries ?? []) : undefined}
+                isIncluded={effectiveProofType === 'country' ? true : undefined}
+                domain={
+                  (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
+                    ? topicInfo.requiredDomain
+                    : undefined
+                }
                 mode="proof"
                 qrSize={224}
-                label="Scan with ZKProofport app to verify your country"
+                label={
+                  effectiveProofType === 'kyc' ? 'Scan with ZKProofport app to verify KYC' :
+                  effectiveProofType === 'country' ? 'Scan with ZKProofport app to verify your country' :
+                  'Scan with ZKProofport app to verify your organization'
+                }
                 onProofData={({ proof, publicInputs }) => {
-                  setCountryProofData({ proof, publicInputs });
+                  setProofData({ proof, publicInputs });
                   setProofDone(true);
                 }}
               />
             </div>
           )}
 
-          {needsCountryProof && proofDone && (
+          {needsProof && proofDone && (
             <div
               style={{
                 padding: '14px 18px',
@@ -237,8 +274,29 @@ export default function JoinPage() {
             >
               <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
               <span style={{ fontSize: 14, color: '#22c55e', fontWeight: 500 }}>
-                Country proof verified
+                Verification complete
               </span>
+            </div>
+          )}
+
+          {/* Privacy notice for proof-gated topics */}
+          {needsProof && (
+            <div
+              style={{
+                padding: '12px 16px',
+                background: 'rgba(59,130,246,0.05)',
+                border: '1px solid rgba(59,130,246,0.15)',
+                borderRadius: 8,
+                marginBottom: 16,
+                fontSize: 13,
+                color: 'var(--muted)',
+                lineHeight: 1.5,
+              }}
+            >
+              <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>Privacy:</span>{' '}
+              Your proof is verified without storing personal information. Only a hashed
+              verification status is cached for 30 days to avoid repeated proofs. No email,
+              domain, or country data is saved to the database.
             </div>
           )}
 
@@ -276,7 +334,7 @@ export default function JoinPage() {
               letterSpacing: '-0.01em',
             }}
           >
-            {joining ? 'Joining...' : needsCountryProof && !proofDone ? 'Complete verification to join' : 'Join Topic'}
+            {joining ? 'Joining...' : needsProof && !proofDone ? 'Complete verification to join' : 'Join Topic'}
           </button>
 
           <div style={{ textAlign: 'center', marginTop: 16 }}>

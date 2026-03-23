@@ -7,35 +7,7 @@ import { logger } from '@/lib/logger';
 import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
-type Badge = { type: string; label: string; country?: string; domain?: string };
-
-async function getAuthorBadges(authorIds: string[]): Promise<Map<string, Badge[]>> {
-  const result = new Map<string, Badge[]>();
-  if (authorIds.length === 0) return result;
-
-  const now = new Date();
-  const verifications = await db.query.userVerifications.findMany({
-    where: (v, { inArray: inn, and: a, gt }) => a(
-      inn(v.userId, authorIds),
-      gt(v.expiresAt, now),
-    ),
-  });
-
-  for (const v of verifications) {
-    const badges = result.get(v.userId) ?? [];
-    if (v.proofType === 'kyc') {
-      badges.push({ type: 'kyc', label: 'KYC Verified' });
-    } else if (v.proofType === 'country' && v.country) {
-      badges.push({ type: 'country', country: v.country, label: `${v.country}` });
-    } else if (v.proofType === 'google_workspace' && v.domain) {
-      badges.push({ type: 'google_workspace', domain: v.domain, label: v.domain });
-    } else if (v.proofType === 'microsoft_365' && v.domain) {
-      badges.push({ type: 'microsoft_365', domain: v.domain, label: v.domain });
-    }
-    result.set(v.userId, badges);
-  }
-  return result;
-}
+import { getBatchUserBadges, type Badge } from '@/lib/verification-cache';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -241,7 +213,7 @@ export async function GET(
         .offset(offset);
 
       const guestAuthorIds = [...new Set(topicPosts.map((p) => p.authorId).filter(Boolean))] as string[];
-      const guestBadgeMap = await getAuthorBadges(guestAuthorIds);
+      const guestBadgeMap = await getBatchUserBadges(guestAuthorIds);
       const guestPostsWithBadges = topicPosts.map((p) => ({
         ...p,
         badges: guestBadgeMap.get(p.authorId) ?? [],
@@ -332,7 +304,7 @@ export async function GET(
       .offset(offset);
 
     const authorIds = [...new Set(topicPosts.map((p) => p.authorId).filter(Boolean))] as string[];
-    const badgeMap = await getAuthorBadges(authorIds);
+    const badgeMap = await getBatchUserBadges(authorIds);
     const postsWithBadges = topicPosts.map((p) => ({
       ...p,
       badges: badgeMap.get(p.authorId) ?? [],

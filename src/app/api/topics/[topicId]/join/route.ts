@@ -10,7 +10,8 @@ import {
   computeScopeHash,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
-import { hasValidVerification } from '@/lib/verification';
+import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
+import { buildProofRequirement } from '@/lib/proof-guides';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/join';
@@ -82,6 +83,72 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                   description: Human-readable status message
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
+ *       402:
+ *         description: >-
+ *           Proof required to join this topic. Response includes full proof generation guide with
+ *           CLI commands, payment info (0.1 USDC via x402), challenge endpoint, and step-by-step
+ *           instructions for both mobile app and AI agent workflows.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Proof required to join this topic
+ *                 proofRequirement:
+ *                   type: object
+ *                   description: >-
+ *                     Complete proof generation guide. Includes payment options (PAYMENT_KEY wallet
+ *                     or CDP managed wallet), challenge endpoint (POST /api/auth/challenge),
+ *                     CLI prove commands (zkproofport-prove), and join endpoint details.
+ *                   properties:
+ *                     type:
+ *                       type: string
+ *                       description: >-
+ *                         Proof type required. kyc=Coinbase KYC, country=Coinbase Country,
+ *                         google_workspace=Google Workspace domain, microsoft_365=Microsoft 365 domain,
+ *                         workspace=either Google or Microsoft
+ *                       enum: [kyc, country, google_workspace, microsoft_365, workspace]
+ *                     circuit:
+ *                       type: string
+ *                       description: ZK circuit used (coinbase_attestation, coinbase_country_attestation, or oidc_domain_attestation)
+ *                     domain:
+ *                       type: string
+ *                       nullable: true
+ *                       description: Required email domain (e.g., company.com). Null if any domain accepted.
+ *                     allowedCountries:
+ *                       type: array
+ *                       nullable: true
+ *                       items:
+ *                         type: string
+ *                       description: ISO 3166-1 alpha-2 country codes (for country proof type)
+ *                     payment:
+ *                       type: object
+ *                       description: Payment info — 0.1 USDC per proof via x402 protocol
+ *                       properties:
+ *                         cost:
+ *                           type: string
+ *                           example: 0.1 USDC per proof
+ *                         options:
+ *                           type: array
+ *                           description: Payment wallet (PAYMENT_KEY) or CDP managed wallet
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               name:
+ *                                 type: string
+ *                               envVars:
+ *                                 type: object
+ *                     guide:
+ *                       type: object
+ *                       description: Step-by-step instructions for mobile and agent workflows with CLI commands
+ *                     guideUrl:
+ *                       type: string
+ *                       description: URL to full proof guide (e.g., /api/docs/proof-guide/kyc)
+ *                     proofEndpoint:
+ *                       type: object
+ *                       description: Endpoints for proof generation (mobile relay + agent challenge/prove/join flow)
  *       403:
  *         description: Secret topic (use invite code) or country not in allowed list
  *         content:
@@ -144,31 +211,45 @@ export async function POST(
 
       const requiredDomain = topic.requiredDomain ?? undefined;
 
-      // Check if user already has a valid verification for this proof type
-      const alreadyVerified = await hasValidVerification(
+      // Check Redis verification cache (all OIDC types map to same cache key)
+      const alreadyVerified = await hasValidVerificationCache(
         session.userId,
         effectiveProofType,
-        effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' ? requiredDomain : undefined,
+        (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
+          ? requiredDomain : undefined,
       );
 
       if (alreadyVerified) {
         logger.info(ROUTE, 'User has existing valid verification, skipping proof', { userId: session.userId, topicId, proofType: effectiveProofType });
       } else {
-        const body = await request.json();
-        const { proof, publicInputs } = body;
+        let body: Record<string, unknown> = {};
+        try {
+          body = await request.json();
+        } catch {
+          // No body provided
+        }
+        const { proof, publicInputs } = body as { proof?: string; publicInputs?: string[] };
 
         if (!proof || !publicInputs) {
-          logger.warn(ROUTE, 'Missing proof fields', { userId: session.userId, topicId });
+          // Return 402 with proof requirement info
+          logger.info(ROUTE, 'Proof required but not provided, returning 402', { userId: session.userId, topicId, proofType: effectiveProofType });
+          const proofRequirement = buildProofRequirement(effectiveProofType, {
+            domain: topic.requiredDomain,
+            allowedCountries: topic.allowedCountries,
+          });
           return NextResponse.json(
-            { error: `Proof required for this topic (type: ${effectiveProofType})` },
-            { status: 400 },
+            {
+              error: 'Proof required to join this topic',
+              proofRequirement,
+            },
+            { status: 402 },
           );
         }
 
         // Verify scope matches community scope
         const circuitId = effectiveProofType === 'country' ? 'coinbase_country_attestation'
           : effectiveProofType === 'kyc' ? 'coinbase_attestation'
-          : 'oidc_domain_attestation';
+          : 'oidc_domain_attestation'; // workspace, google_workspace, microsoft_365 all use oidc
         const scope = extractScope(publicInputs, circuitId);
         const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
         if (scope !== expectedScope) {
@@ -189,10 +270,11 @@ export async function POST(
         }
 
         // KYC: scope check is sufficient — just verifying proof exists with correct scope
-        // google_workspace / microsoft_365: verify domain matches
-        if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365') {
+        // google_workspace / microsoft_365 / workspace: verify domain matches (if requiredDomain is set)
+        if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace') {
           const domain = extractDomain(publicInputs, 'oidc_domain_attestation');
 
+          // Only check domain if requiredDomain is set; otherwise any workspace domain is accepted
           if (requiredDomain && domain !== requiredDomain) {
             logger.warn(ROUTE, 'Domain mismatch', { userId: session.userId, topicId, domain, requiredDomain });
             return NextResponse.json(
@@ -201,6 +283,14 @@ export async function POST(
             );
           }
         }
+
+        // Save verification to Redis cache (privacy-first: hashed domain only, no PII in DB)
+        const cacheType = circuitToCacheType(circuitId);
+        const domainForCache = (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
+          ? extractDomain(publicInputs, 'oidc_domain_attestation') ?? undefined
+          : undefined;
+        await saveVerificationCache(session.userId, cacheType, { domain: domainForCache });
+        logger.info(ROUTE, 'Verification cached', { userId: session.userId, cacheType, hasDomain: !!domainForCache });
       }
     }
 

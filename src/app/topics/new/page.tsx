@@ -11,7 +11,10 @@ export default function NewTopicPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [proofType, setProofType] = useState<'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365'>('none');
+  const [proofType, setProofType] = useState<'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace'>('none');
+  // Workspace provider selection (for affiliation proof)
+  const [workspaceGoogle, setWorkspaceGoogle] = useState(false);
+  const [workspaceMs, setWorkspaceMs] = useState(false);
   const [countryCodes, setCountryCodes] = useState('');
   const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
   const [requiredDomain, setRequiredDomain] = useState('');
@@ -139,7 +142,7 @@ export default function NewTopicPage() {
           requiresCountryProof: proofType === 'country',
           allowedCountries,
           countryMode: proofType === 'country' ? countryMode : undefined,
-          requiredDomain: (proofType === 'google_workspace' || proofType === 'microsoft_365') ? (requiredDomain.trim() || undefined) : undefined,
+          requiredDomain: (proofType === 'google_workspace' || proofType === 'microsoft_365' || proofType === 'workspace') ? (requiredDomain.trim() || undefined) : undefined,
           image: imageUrl,
           visibility,
           ...(countryProofData ? { proof: countryProofData.proof, publicInputs: countryProofData.publicInputs, circuit: countryProofData.circuit } : {}),
@@ -388,9 +391,9 @@ export default function NewTopicPage() {
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {([
-                { value: 'public' as const, label: 'Public', desc: 'Anyone can find and join' },
-                { value: 'private' as const, label: 'Private', desc: 'Visible to all, requires approval to join' },
-                { value: 'secret' as const, label: 'Secret', desc: 'Hidden, invite code only' },
+                { value: 'public' as const, label: 'Public', desc: 'Anyone can find and join', disabled: false },
+                { value: 'private' as const, label: 'Private', desc: 'Visible to all, requires approval to join', disabled: true },
+                { value: 'secret' as const, label: 'Secret', desc: 'Hidden, invite code only', disabled: true },
               ]).map((opt) => (
                 <label
                   key={opt.value}
@@ -402,8 +405,9 @@ export default function NewTopicPage() {
                     background: visibility === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
                     border: `1px solid ${visibility === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
                     borderRadius: 8,
-                    cursor: 'pointer',
+                    cursor: opt.disabled ? 'not-allowed' : 'pointer',
                     transition: 'all 0.12s',
+                    opacity: opt.disabled ? 0.5 : 1,
                   }}
                 >
                   <input
@@ -411,7 +415,8 @@ export default function NewTopicPage() {
                     name="visibility"
                     value={opt.value}
                     checked={visibility === opt.value}
-                    onChange={() => setVisibility(opt.value)}
+                    onChange={() => { if (!opt.disabled) setVisibility(opt.value); }}
+                    disabled={opt.disabled}
                     style={{ marginTop: 2, accentColor: 'var(--accent)' }}
                   />
                   <div>
@@ -420,6 +425,20 @@ export default function NewTopicPage() {
                       {opt.value === 'private' && ' \uD83D\uDD12'}
                       {opt.value === 'secret' && ' \uD83D\uDC7B'}
                     </span>
+                    {opt.disabled && (
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: '#f59e0b',
+                        background: 'rgba(245,158,11,0.1)',
+                        border: '1px solid rgba(245,158,11,0.2)',
+                        borderRadius: 4,
+                        padding: '1px 6px',
+                        marginLeft: 8,
+                      }}>
+                        Coming Soon
+                      </span>
+                    )}
                     <p style={{ fontSize: 14, color: 'var(--muted)', margin: '2px 0 0' }}>
                       {opt.desc}
                     </p>
@@ -447,15 +466,24 @@ export default function NewTopicPage() {
             </label>
             <select
               id="proofType"
-              value={proofType}
+              value={proofType === 'workspace' || proofType === 'google_workspace' || proofType === 'microsoft_365' ? 'affiliation' : proofType}
               onChange={(e) => {
-                const val = e.target.value as typeof proofType;
-                setProofType(val);
+                const val = e.target.value;
+                if (val === 'affiliation') {
+                  // Default to workspace (both providers)
+                  setProofType('workspace');
+                  setWorkspaceGoogle(false);
+                  setWorkspaceMs(false);
+                } else {
+                  setProofType(val as 'none' | 'kyc' | 'country');
+                  setWorkspaceGoogle(false);
+                  setWorkspaceMs(false);
+                }
                 if (val !== 'country') {
                   setCountryProofData(null);
                   setProofDone(false);
                 }
-                if (val !== 'google_workspace' && val !== 'microsoft_365') {
+                if (val !== 'affiliation') {
                   setRequiredDomain('');
                 }
               }}
@@ -479,8 +507,7 @@ export default function NewTopicPage() {
               <option value="none">No proof required</option>
               <option value="kyc">Coinbase KYC verification</option>
               <option value="country">Coinbase Country attestation</option>
-              <option value="google_workspace">Google Workspace domain</option>
-              <option value="microsoft_365">Microsoft 365 domain</option>
+              <option value="affiliation">Affiliation proof (Organization)</option>
             </select>
 
             {proofType === 'country' && (
@@ -620,38 +647,134 @@ export default function NewTopicPage() {
               </div>
             )}
 
-            {(proofType === 'google_workspace' || proofType === 'microsoft_365') && (
-              <div style={{ marginTop: 16 }}>
-                <label
-                  htmlFor="requiredDomain"
-                  style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 6 }}
-                >
-                  {proofType === 'google_workspace' ? 'Google Workspace' : 'Microsoft 365'} domain
-                </label>
-                <input
-                  id="requiredDomain"
-                  type="text"
-                  value={requiredDomain}
-                  onChange={(e) => setRequiredDomain(e.target.value)}
-                  placeholder="company.com"
-                  style={{
-                    width: '100%',
-                    background: '#0a0a0a',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    padding: '10px 12px',
-                    color: 'var(--foreground)',
-                    fontSize: 14,
-                    outline: 'none',
-                    fontFamily: 'monospace',
-                    letterSpacing: '0.04em',
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-                />
-                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
-                  Members must prove their email belongs to this domain
-                </p>
+            {(proofType === 'workspace' || proofType === 'google_workspace' || proofType === 'microsoft_365') && (
+              <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Provider selection */}
+                <div>
+                  <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
+                    Accepted providers
+                  </p>
+                  <div className="flex gap-3">
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 14px',
+                      background: workspaceGoogle ? 'rgba(59,130,246,0.06)' : '#111',
+                      border: `1px solid ${workspaceGoogle ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      transition: 'all 0.12s',
+                      fontSize: 14,
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={workspaceGoogle}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setWorkspaceGoogle(checked);
+                          // Derive proofType from checkbox state
+                          if (checked && !workspaceMs) setProofType('google_workspace');
+                          else if (!checked && workspaceMs) setProofType('microsoft_365');
+                          else setProofType('workspace'); // both or neither = workspace
+                        }}
+                        style={{ accentColor: 'var(--accent)' }}
+                      />
+                      Google Workspace
+                    </label>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 14px',
+                      background: workspaceMs ? 'rgba(59,130,246,0.06)' : '#111',
+                      border: `1px solid ${workspaceMs ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      transition: 'all 0.12s',
+                      fontSize: 14,
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={workspaceMs}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setWorkspaceMs(checked);
+                          // Derive proofType from checkbox state
+                          if (checked && !workspaceGoogle) setProofType('microsoft_365');
+                          else if (!checked && workspaceGoogle) setProofType('google_workspace');
+                          else setProofType('workspace'); // both or neither = workspace
+                        }}
+                        style={{ accentColor: 'var(--accent)' }}
+                      />
+                      Microsoft 365
+                    </label>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                    {!workspaceGoogle && !workspaceMs
+                      ? 'Both providers accepted (Google Workspace or Microsoft 365)'
+                      : workspaceGoogle && workspaceMs
+                      ? 'Both providers accepted (Google Workspace or Microsoft 365)'
+                      : workspaceGoogle
+                      ? 'Only Google Workspace accounts accepted'
+                      : 'Only Microsoft 365 accounts accepted'}
+                  </p>
+                </div>
+
+                {/* Domain input (optional) */}
+                <div>
+                  <label
+                    htmlFor="requiredDomain"
+                    style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 6 }}
+                  >
+                    Domain restriction{' '}
+                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>(optional)</span>
+                  </label>
+                  <input
+                    id="requiredDomain"
+                    type="text"
+                    value={requiredDomain}
+                    onChange={(e) => setRequiredDomain(e.target.value)}
+                    placeholder="company.com"
+                    style={{
+                      width: '100%',
+                      background: '#0a0a0a',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: '10px 12px',
+                      color: 'var(--foreground)',
+                      fontSize: 14,
+                      outline: 'none',
+                      fontFamily: 'monospace',
+                      letterSpacing: '0.04em',
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                  />
+                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                    {requiredDomain.trim()
+                      ? 'Only members with this email domain can join'
+                      : 'Leave empty to allow any organization domain'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {proofType !== 'none' && (
+              <div style={{
+                marginTop: 16,
+                padding: '12px 16px',
+                background: 'rgba(59,130,246,0.05)',
+                border: '1px solid rgba(59,130,246,0.15)',
+                borderRadius: 8,
+                fontSize: 13,
+                color: 'var(--muted)',
+                lineHeight: 1.5,
+              }}>
+                <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>Privacy:</span>{' '}
+                Proof verification is privacy-preserving. Only a hashed verification status is
+                cached for 30 days — no email, domain, or country is stored in the database.
+                Members who already verified within 30 days can join without re-proving.
               </div>
             )}
           </div>

@@ -29,7 +29,7 @@ export const topics = pgTable('topics', {
   categoryId: uuid('category_id').references(() => categories.id),
   requiresCountryProof: boolean('requires_country_proof').default(false),
   allowedCountries: text('allowed_countries').array(),
-  proofType: varchar('proof_type', { length: 30 }).notNull().default('none'), // 'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365'
+  proofType: varchar('proof_type', { length: 30 }).notNull().default('none'), // 'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace'
   requiredDomain: text('required_domain'), // e.g., 'company.com' for workspace/MS 365 gating
   inviteCode: text('invite_code').unique().notNull(),
   visibility: varchar('visibility', { length: 10 }).notNull().default('public'), // 'public' | 'private' | 'secret'

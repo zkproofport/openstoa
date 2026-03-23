@@ -8,9 +8,11 @@ import { logger } from '@/lib/logger';
 import {
   extractScope,
   extractIsIncluded,
+  extractDomain,
   computeScopeHash,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
+import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
 
 const ROUTE = '/api/topics';
 
@@ -299,6 +301,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Only public visibility is currently supported
+    if (visibility && visibility !== 'public') {
+      logger.warn(ROUTE, 'Non-public visibility attempted', { userId: session.userId, visibility });
+      return NextResponse.json(
+        { error: 'Only public topics are currently supported. Private and secret topics are coming soon.' },
+        { status: 400 },
+      );
+    }
+
     // categoryId is required for new topics
     if (!categoryId || typeof categoryId !== 'string') {
       logger.warn(ROUTE, 'Missing categoryId in topic creation', { userId: session.userId });
@@ -320,48 +331,90 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If topic requires country proof, verify it before creating
-    if (requiresCountryProof) {
-      logger.info(ROUTE, 'Topic requires country proof, verifying creator proof', { userId: session.userId });
+    // Validate proofType
+    const validProofTypes = ['none', 'kyc', 'country', 'google_workspace', 'microsoft_365', 'workspace'];
+    const effectiveProofType = proofType && validProofTypes.includes(proofType)
+      ? proofType
+      : (requiresCountryProof ? 'country' : 'none');
 
-      if (!proof || !publicInputs) {
-        logger.warn(ROUTE, 'Missing country proof fields for topic creation', { userId: session.userId, hasProof: !!proof, hasPublicInputs: !!publicInputs });
-        return NextResponse.json(
-          { error: 'Country proof required: proof, publicInputs' },
-          { status: 400 },
-        );
-      }
+    // Creator must satisfy the proof condition they're setting
+    if (effectiveProofType !== 'none') {
+      logger.info(ROUTE, 'Topic requires proof, verifying creator', { userId: session.userId, proofType: effectiveProofType });
 
-      // Proof was already verified on-chain by the poll endpoint (mode=proof).
-      // Only validate scope and is_included from publicInputs.
+      // Check Redis cache first
+      const creatorVerified = await hasValidVerificationCache(
+        session.userId,
+        effectiveProofType,
+        (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
+          ? (requiredDomain?.trim() || undefined) : undefined,
+      );
 
-      // Verify scope matches community scope
-      const scope = extractScope(publicInputs, 'coinbase_country_attestation');
-      const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
-      if (scope !== expectedScope) {
-        logger.warn(ROUTE, 'Creator country proof scope mismatch', { userId: session.userId, scope, expectedScope });
-        return NextResponse.json(
-          { error: 'Country proof scope mismatch' },
-          { status: 400 },
-        );
-      }
+      if (!creatorVerified) {
+        if (!proof || !publicInputs) {
+          logger.warn(ROUTE, 'Missing proof fields for topic creation', { userId: session.userId, proofType: effectiveProofType });
+          return NextResponse.json(
+            { error: `Proof required to create a ${effectiveProofType}-gated topic` },
+            { status: 400 },
+          );
+        }
 
-      // Verify is_included flag: confirms creator's country is in the allowed list
-      const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
-      if (!isIncluded) {
-        logger.warn(ROUTE, 'Creator country not in allowed list', { userId: session.userId });
-        return NextResponse.json(
-          { error: 'Your country is not allowed to create this topic' },
-          { status: 403 },
-        );
+        // Determine circuit from proofType
+        const circuitId = effectiveProofType === 'country' ? 'coinbase_country_attestation'
+          : effectiveProofType === 'kyc' ? 'coinbase_attestation'
+          : 'oidc_domain_attestation';
+
+        // Verify scope matches community scope
+        const scope = extractScope(publicInputs, circuitId);
+        const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
+        if (scope !== expectedScope) {
+          logger.warn(ROUTE, 'Creator proof scope mismatch', { userId: session.userId, scope, expectedScope });
+          return NextResponse.json(
+            { error: 'Proof scope mismatch' },
+            { status: 400 },
+          );
+        }
+
+        // Type-specific verification
+        if (effectiveProofType === 'country') {
+          const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
+          if (!isIncluded) {
+            logger.warn(ROUTE, 'Creator country not in allowed list', { userId: session.userId });
+            return NextResponse.json(
+              { error: 'Your country is not allowed to create this topic' },
+              { status: 403 },
+            );
+          }
+        }
+
+        if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace') {
+          const domain = extractDomain(publicInputs, 'oidc_domain_attestation');
+          const trimmedRequired = requiredDomain?.trim();
+          if (trimmedRequired && domain !== trimmedRequired) {
+            logger.warn(ROUTE, 'Creator domain mismatch', { userId: session.userId, domain, requiredDomain: trimmedRequired });
+            return NextResponse.json(
+              { error: `Domain mismatch: expected ${trimmedRequired}, got ${domain}` },
+              { status: 403 },
+            );
+          }
+          // Cache with extracted domain
+          await saveVerificationCache(session.userId, circuitToCacheType(circuitId), { domain: domain ?? undefined });
+        } else {
+          // Cache KYC/country verification
+          await saveVerificationCache(session.userId, circuitToCacheType(circuitId));
+        }
       }
     }
 
     const inviteCode = crypto.randomBytes(8).toString('hex');
 
-    logger.info(ROUTE, 'Creating topic', { userId: session.userId, title, requiresCountryProof: requiresCountryProof ?? false, inviteCode });
+    logger.info(ROUTE, 'Creating topic', { userId: session.userId, title, proofType: effectiveProofType, inviteCode });
 
-    const validVisibility = ['public', 'private', 'secret'].includes(visibility) ? visibility : 'public';
+    // For workspace types, domain is optional (no domain = any workspace user can join)
+    const effectiveDomain = (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
+      ? (requiredDomain?.trim() || null)
+      : null;
+
+    const validVisibility = 'public'; // Only public supported for now
 
     const [topic] = await db
       .insert(topics)
@@ -373,8 +426,8 @@ export async function POST(request: NextRequest) {
         categoryId,
         requiresCountryProof: requiresCountryProof ?? false,
         allowedCountries: allowedCountries ?? null,
-        proofType: proofType ?? (requiresCountryProof ? 'country' : 'none'),
-        requiredDomain: requiredDomain ?? null,
+        proofType: effectiveProofType,
+        requiredDomain: effectiveDomain,
         inviteCode,
         visibility: validVisibility,
       })

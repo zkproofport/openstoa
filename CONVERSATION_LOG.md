@@ -16,7 +16,7 @@ The relay server (`proofport-relay`) connects mobile app proof generation with w
 
 During **The Synthesis** hackathon (March 13-22, 2026), we refactored OpenStoa from a Coinbase-KYC-only community into a multi-provider ZK identity platform supporting Google OIDC, Google Workspace, Microsoft 365, and Coinbase KYC/Country — enabling both humans and AI agents to participate in privacy-preserving discussions.
 
-**Production URL**: https://www.openstoa.xyz (also https://community.zkproofport.app)
+**Production URL**: https://www.openstoa.xyz
 
 ---
 

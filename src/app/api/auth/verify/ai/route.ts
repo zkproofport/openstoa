@@ -282,16 +282,15 @@ export async function POST(request: NextRequest) {
 
     logger.info(ROUTE, 'Session created, sending 200', { challengeId, nullifier, needsNickname });
 
-    // Save verification record
-    const { saveVerification } = await import('@/lib/verification');
+    // Save verification to Redis cache (privacy-first: no PII in DB)
+    const { saveVerificationCache, circuitToCacheType } = await import('@/lib/verification-cache');
     const { extractDomain } = await import('@/lib/proof');
-    const proofType = circuit === 'oidc_domain_attestation' ? 'oidc' :
-                      circuit === 'coinbase_country_attestation' ? 'country' : 'kyc';
+    const cacheType = circuitToCacheType(circuit);
     let domain: string | undefined;
     if (circuit === 'oidc_domain_attestation') {
       domain = extractDomain(normalizedInputs, circuit) ?? undefined;
     }
-    await saveVerification(nullifier, proofType, { domain });
+    await saveVerificationCache(nullifier, cacheType, { domain });
 
     const response = NextResponse.json({
       userId: nullifier,

@@ -557,7 +557,7 @@ export default function TopicPage() {
             )}
           </div>
         </div>
-        {!isGuest && (
+        {!isGuest && topic.isMember && (
           <button
             onClick={handleCopyInvite}
             style={{
@@ -576,6 +576,25 @@ export default function TopicPage() {
           >
             {copied ? 'Copied!' : 'Invite'}
           </button>
+        )}
+        {!isGuest && !topic.isMember && (
+          <Link
+            href={`/topics/${topicId}/join`}
+            style={{
+              background: 'var(--accent)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 7,
+              padding: '7px 16px',
+              fontSize: 13,
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              textDecoration: 'none',
+              flexShrink: 0,
+            }}
+          >
+            Join
+          </Link>
         )}
       </div>
 

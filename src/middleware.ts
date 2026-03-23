@@ -31,6 +31,7 @@ const PUBLIC_PREFIXES = [
   '/favicon.ico',
   '/images/',
   '/api/auth/poll/',
+  '/api/docs/',
   '/docs',
 ];
 

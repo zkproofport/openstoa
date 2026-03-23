@@ -54,7 +54,11 @@ export async function createRelayProofRequest(
 
   const relay = await sdk.createRelayRequest(circuit, inputs as any, {
     dappName: options?.dappName ?? 'OpenStoa',
-    dappIcon: options?.dappIcon ?? 'https://stg-community.zkproofport.app/icon.png',
+    dappIcon: options?.dappIcon ?? (
+      process.env.APP_ENV === 'production' ? 'https://www.openstoa.xyz/icon.png'
+        : process.env.APP_ENV === 'staging' ? 'https://stg-community.zkproofport.app/icon.png'
+        : 'http://localhost:3200/icon.png'
+    ),
     message: options?.message ?? defaultMessage,
   });
   return { requestId: relay.requestId, deepLink: relay.deepLink };
