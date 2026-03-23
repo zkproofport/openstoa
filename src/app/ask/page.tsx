@@ -407,7 +407,7 @@ export default function AskPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            maxWidth: 800,
+            maxWidth: 1200,
             margin: '0 auto',
             padding: '12px 32px',
           }}
@@ -502,7 +502,7 @@ export default function AskPage() {
       <main
         style={{
           flex: 1,
-          maxWidth: 800,
+          maxWidth: 1200,
           width: '100%',
           margin: '0 auto',
           padding: '0 32px 60px',
@@ -816,7 +816,7 @@ export default function AskPage() {
           left: '50%',
           transform: 'translateX(-50%)',
           width: '100%',
-          maxWidth: 800,
+          maxWidth: 640,
           zIndex: 50,
           background: 'rgba(5,8,16,0.95)',
           backdropFilter: 'blur(16px)',
