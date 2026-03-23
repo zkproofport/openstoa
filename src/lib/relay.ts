@@ -28,6 +28,7 @@ export async function createRelayProofRequest(
     circuitType?: CircuitType;
     countryList?: string[];
     isIncluded?: boolean;
+    domain?: string;
   },
 ): Promise<{ requestId: string; deepLink: string }> {
   const sdk = createSDK();
@@ -37,12 +38,24 @@ export async function createRelayProofRequest(
     inputs.countryList = options?.countryList ?? [];
     inputs.isIncluded = options?.isIncluded ?? true;
   }
+  if (circuit === 'oidc_domain_attestation' && options?.domain) {
+    inputs.domain = options.domain;
+  }
+
+  // Default message per circuit type
+  let defaultMessage: string;
+  if (circuit === 'oidc_domain_attestation') {
+    defaultMessage = 'Login with Google to access OpenStoa';
+  } else if (circuit === 'coinbase_country_attestation') {
+    defaultMessage = 'Verify your country via Coinbase attestation for OpenStoa';
+  } else {
+    defaultMessage = 'Verify your Coinbase KYC to access OpenStoa';
+  }
+
   const relay = await sdk.createRelayRequest(circuit, inputs as any, {
     dappName: options?.dappName ?? 'OpenStoa',
     dappIcon: options?.dappIcon ?? 'https://stg-community.zkproofport.app/icon.png',
-    message: options?.message ?? (circuit === 'coinbase_country_attestation'
-      ? 'Verify your country via Coinbase attestation for OpenStoa'
-      : 'Verify your Coinbase KYC to access OpenStoa'),
+    message: options?.message ?? defaultMessage,
   });
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }

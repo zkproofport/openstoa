@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
     let scope = COMMUNITY_SCOPE;
     let countryList: string[] | undefined;
     let isIncluded: boolean | undefined;
+    let domain: string | undefined;
 
     try {
       const body = await request.json();
@@ -76,13 +77,14 @@ export async function POST(request: NextRequest) {
       if (body.scope) scope = body.scope;
       if (Array.isArray(body.countryList)) countryList = body.countryList;
       if (typeof body.isIncluded === 'boolean') isIncluded = body.isIncluded;
+      if (typeof body.domain === 'string') domain = body.domain;
     } catch {
       // No body or invalid JSON — use defaults (login flow sends no body)
     }
 
-    logger.info(ROUTE, 'Creating relay proof request', { circuitType, scope, countryList, isIncluded });
+    logger.info(ROUTE, 'Creating relay proof request', { circuitType, scope, countryList, isIncluded, domain });
 
-    const { requestId, deepLink } = await createRelayProofRequest(scope, { circuitType, countryList, isIncluded });
+    const { requestId, deepLink } = await createRelayProofRequest(scope, { circuitType, countryList, isIncluded, domain });
 
     logger.info(ROUTE, 'Relay proof request created', { requestId, circuitType, scope });
     return NextResponse.json({
