@@ -294,26 +294,15 @@ export default function CommunityLayout({
               overflow: 'hidden',
             }}
           >
-            {/* Header */}
+            {/* Close button bar */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
+              justifyContent: 'flex-end',
+              padding: '8px 16px',
               borderBottom: '1px solid var(--border)',
               flexShrink: 0,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>💬</span>
-                <span style={{
-                  fontSize: 14,
-                  fontWeight: 700,
-                  fontFamily: 'var(--font-mono)',
-                  textTransform: 'uppercase' as const,
-                  letterSpacing: '0.08em',
-                  color: 'var(--foreground)',
-                }}>Live Chat</span>
-              </div>
               <button
                 onClick={() => setMobileChatOpen(false)}
                 style={{
