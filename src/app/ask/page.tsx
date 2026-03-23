@@ -221,10 +221,10 @@ export default function AskPage() {
       const container = scrollContainerRef.current;
       if (!container) return;
       const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distFromBottom <= 200) {
+      if (distFromBottom <= 300) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
       }
-    }, 150);
+    }, 100);
   }, [messages, loading, streamingContent]);
 
   function autoResize() {
@@ -370,10 +370,13 @@ export default function AskPage() {
           {!isEmpty && (
             <div style={{ paddingTop: 24, paddingBottom: 16 }}>
               {messages.map((msg, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 20, gap: 10, alignItems: 'flex-start' }}>
-                  {msg.role === 'assistant' && <AiAvatar />}
+                <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 20 }}>
                   {msg.role === 'assistant' ? (
                     <AssistantBubble>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                        <AiAvatar />
+                        <span style={{ fontSize: 11, color: '#555', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
+                      </div>
                       <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                         <CopyButton text={msg.content} />
@@ -389,9 +392,12 @@ export default function AskPage() {
 
               {/* Streaming */}
               {loading && streamingContent && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
-                  <AiAvatar />
+                <div style={{ marginBottom: 20 }}>
                   <AssistantBubble>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <AiAvatar />
+                      <span style={{ fontSize: 11, color: '#555', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
+                    </div>
                     <div dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                   </AssistantBubble>
                 </div>
@@ -399,9 +405,13 @@ export default function AskPage() {
 
               {/* Typing indicator */}
               {loading && !streamingContent && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
-                  <AiAvatar />
-                  <AssistantBubble><TypingIndicator /></AssistantBubble>
+                <div style={{ marginBottom: 20 }}>
+                  <AssistantBubble>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <AiAvatar />
+                      <TypingIndicator />
+                    </div>
+                  </AssistantBubble>
                 </div>
               )}
 
