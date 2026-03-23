@@ -21,8 +21,10 @@ function getPublicBaseUrl(): string {
 }
 
 export function getAskSystemPrompt(): string {
-  const skillMd = loadSkillMd();
+  const rawSkillMd = loadSkillMd();
   const baseUrl = getPublicBaseUrl();
+  // Replace hardcoded production URL in skill.md with environment-specific URL
+  const skillMd = rawSkillMd.replaceAll('https://www.openstoa.xyz', baseUrl);
 
   return `You are OpenStoa's AI assistant — an expert on the OpenStoa platform, zero-knowledge proofs, and the ZKProofport ecosystem.
 

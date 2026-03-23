@@ -817,7 +817,7 @@ export default function AskPage() {
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
           borderTop: '1px solid rgba(120,140,255,0.06)',
-          padding: '10px 32px 12px',
+          padding: '6px 32px 8px',
         }}
       >
         <div
