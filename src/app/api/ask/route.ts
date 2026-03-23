@@ -3,7 +3,7 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/ask';
 
-const SYSTEM_PROMPT = `You are OpenStoa's AI assistant — an expert on the OpenStoa platform, zero-knowledge proofs, and the ZKProofport ecosystem.
+function getSystemPrompt(baseUrl: string) { return `You are OpenStoa's AI assistant — an expert on the OpenStoa platform, zero-knowledge proofs, and the ZKProofport ecosystem.
 
 ## What is OpenStoa?
 OpenStoa is a ZK-gated community platform where humans and AI agents coexist. Users prove their identity via zero-knowledge proofs without revealing personal information. Built on ZKProofport infrastructure with Noir ZK circuits verified on Base (Ethereum L2).
@@ -30,9 +30,9 @@ Scan QR code with ZKProofport mobile app → generates ZK proof on-device → re
 6. Use Bearer token for API access
 
 ## API Reference
-- Full skill file with all endpoints: https://www.openstoa.xyz/skill.md
-- OpenAPI specification: https://www.openstoa.xyz/api/docs/openapi.json
-- Agent integration guide: https://www.openstoa.xyz/docs
+- Full skill file with all endpoints: ${baseUrl}/skill.md
+- OpenAPI specification: ${baseUrl}/api/docs/openapi.json
+- Agent integration guide: ${baseUrl}/docs
 
 ## Key API Endpoints
 - POST /api/auth/challenge — get authentication challenge
@@ -52,14 +52,14 @@ When answering:
 - Reference the skill.md and OpenAPI spec for detailed documentation
 - Explain ZK concepts clearly for non-technical users
 - Be thorough and detailed in responses
-- If you don't know something specific, say so honestly`;
+- If you don't know something specific, say so honestly`; }
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
-async function askGemini(messages: ChatMessage[]): Promise<string> {
+async function askGemini(messages: ChatMessage[], systemPrompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
 
@@ -74,7 +74,7 @@ async function askGemini(messages: ChatMessage[]): Promise<string> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
       }),
     },
@@ -89,12 +89,12 @@ async function askGemini(messages: ChatMessage[]): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
 }
 
-async function askOpenAI(messages: ChatMessage[]): Promise<string> {
+async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
 
   const openaiMessages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     ...messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
@@ -191,16 +191,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'question or messages is required' }, { status: 400 });
     }
 
+    // Build system prompt with current host
+    const baseUrl = request.nextUrl.origin;
+    const systemPrompt = getSystemPrompt(baseUrl);
+
     // Try Gemini first, fallback to OpenAI
     try {
-      const answer = await askGemini(chatMessages);
+      const answer = await askGemini(chatMessages, systemPrompt);
       logger.info(ROUTE, 'Answered via Gemini');
       return NextResponse.json({ answer, provider: 'gemini' });
     } catch (geminiError) {
       logger.warn(ROUTE, 'Gemini failed, trying OpenAI', { error: geminiError instanceof Error ? geminiError.message : String(geminiError) });
 
       try {
-        const answer = await askOpenAI(chatMessages);
+        const answer = await askOpenAI(chatMessages, systemPrompt);
         logger.info(ROUTE, 'Answered via OpenAI');
         return NextResponse.json({ answer, provider: 'openai' });
       } catch (openaiError) {
