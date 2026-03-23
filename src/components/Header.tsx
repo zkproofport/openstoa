@@ -13,16 +13,38 @@ interface HeaderProps {
   menuOpen?: boolean;
 }
 
+function getCachedSession(): UserSession | null {
+  try {
+    const cached = localStorage.getItem('os-session');
+    return cached ? JSON.parse(cached) : null;
+  } catch { return null; }
+}
+
+function setCachedSession(data: UserSession | null) {
+  try {
+    if (data) localStorage.setItem('os-session', JSON.stringify(data));
+    else localStorage.removeItem('os-session');
+  } catch {}
+}
+
 export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
-  const [user, setUser] = useState<UserSession | null>(null);
+  const [user, setUser] = useState<UserSession | null>(() => getCachedSession());
+  const [sessionChecked, setSessionChecked] = useState(() => !!getCachedSession());
 
   useEffect(() => {
     fetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
-        if (data?.userId) setUser(data);
+        if (data?.userId) {
+          setUser(data);
+          setCachedSession(data);
+        } else {
+          setUser(null);
+          setCachedSession(null);
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setSessionChecked(true));
   }, []);
 
   return (
@@ -183,7 +205,9 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             Docs
           </Link>
 
-          {user ? (
+          {!sessionChecked ? (
+            <span style={{ width: 70, height: 30 }} />
+          ) : user ? (
             <Link
               href="/my"
               style={{

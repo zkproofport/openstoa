@@ -126,6 +126,7 @@ export default function MyPage() {
     setLoggingOut(true);
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
+      try { localStorage.removeItem('os-session'); } catch {}
       router.push('/');
     } catch {
       setLoggingOut(false);
