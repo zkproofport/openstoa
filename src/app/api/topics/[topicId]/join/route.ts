@@ -8,6 +8,7 @@ import {
   extractIsIncluded,
   extractDomain,
   computeScopeHash,
+  normalizePublicInputs,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
 import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
@@ -246,11 +247,14 @@ export async function POST(
           );
         }
 
+        // Normalize publicInputs (SDK may return single hex string instead of array)
+        const normalizedInputs = normalizePublicInputs(publicInputs);
+
         // Verify scope matches community scope
         const circuitId = effectiveProofType === 'country' ? 'coinbase_country_attestation'
           : effectiveProofType === 'kyc' ? 'coinbase_attestation'
           : 'oidc_domain_attestation'; // workspace, google_workspace, microsoft_365 all use oidc
-        const scope = extractScope(publicInputs, circuitId);
+        const scope = extractScope(normalizedInputs, circuitId);
         const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
         if (scope !== expectedScope) {
           logger.warn(ROUTE, 'Proof scope mismatch', { userId: session.userId, topicId, scope, expectedScope });
@@ -262,7 +266,7 @@ export async function POST(
 
         // Type-specific verification
         if (effectiveProofType === 'country') {
-          const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
+          const isIncluded = extractIsIncluded(normalizedInputs, 'coinbase_country_attestation');
           if (!isIncluded) {
             logger.warn(ROUTE, 'Country not in allowed list', { userId: session.userId, topicId });
             return NextResponse.json({ error: 'Country not allowed for this topic' }, { status: 403 });
@@ -272,7 +276,7 @@ export async function POST(
         // KYC: scope check is sufficient — just verifying proof exists with correct scope
         // google_workspace / microsoft_365 / workspace: verify domain matches (if requiredDomain is set)
         if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace') {
-          const domain = extractDomain(publicInputs, 'oidc_domain_attestation');
+          const domain = extractDomain(normalizedInputs, 'oidc_domain_attestation');
 
           // Only check domain if requiredDomain is set; otherwise any workspace domain is accepted
           if (requiredDomain && domain !== requiredDomain) {
@@ -287,7 +291,7 @@ export async function POST(
         // Save verification to Redis cache (privacy-first: hashed domain only, no PII in DB)
         const cacheType = circuitToCacheType(circuitId);
         const domainForCache = (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
-          ? extractDomain(publicInputs, 'oidc_domain_attestation') ?? undefined
+          ? extractDomain(normalizedInputs, 'oidc_domain_attestation') ?? undefined
           : undefined;
         await saveVerificationCache(session.userId, cacheType, { domain: domainForCache });
         logger.info(ROUTE, 'Verification cached', { userId: session.userId, cacheType, hasDomain: !!domainForCache });

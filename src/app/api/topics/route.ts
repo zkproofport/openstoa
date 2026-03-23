@@ -10,6 +10,7 @@ import {
   extractIsIncluded,
   extractDomain,
   computeScopeHash,
+  normalizePublicInputs,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
 import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
@@ -363,8 +364,11 @@ export async function POST(request: NextRequest) {
           : effectiveProofType === 'kyc' ? 'coinbase_attestation'
           : 'oidc_domain_attestation';
 
+        // Normalize publicInputs (SDK may return single hex string instead of array)
+        const normalizedInputs = normalizePublicInputs(publicInputs);
+
         // Verify scope matches community scope
-        const scope = extractScope(publicInputs, circuitId);
+        const scope = extractScope(normalizedInputs, circuitId);
         const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
         if (scope !== expectedScope) {
           logger.warn(ROUTE, 'Creator proof scope mismatch', { userId: session.userId, scope, expectedScope });
@@ -376,7 +380,7 @@ export async function POST(request: NextRequest) {
 
         // Type-specific verification
         if (effectiveProofType === 'country') {
-          const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
+          const isIncluded = extractIsIncluded(normalizedInputs, 'coinbase_country_attestation');
           if (!isIncluded) {
             logger.warn(ROUTE, 'Creator country not in allowed list', { userId: session.userId });
             return NextResponse.json(
@@ -387,7 +391,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace') {
-          const domain = extractDomain(publicInputs, 'oidc_domain_attestation');
+          const domain = extractDomain(normalizedInputs, 'oidc_domain_attestation');
           const trimmedRequired = requiredDomain?.trim();
           if (trimmedRequired && domain !== trimmedRequired) {
             logger.warn(ROUTE, 'Creator domain mismatch', { userId: session.userId, domain, requiredDomain: trimmedRequired });

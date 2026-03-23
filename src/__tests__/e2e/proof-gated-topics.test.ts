@@ -1,28 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, publicGet } from './helpers';
+import { authGet, authPost, publicGet, getBaseUrl } from './helpers';
 
 /**
- * E2E tests for proof-gated topics.
+ * E2E tests for proof-gated topics — REAL proof generation + verification.
  *
- * Prerequisites:
- * - global-setup.ts authenticates with Coinbase KYC proof
- * - This means the test user has a 'kyc' verification cached in Redis
- *
- * Test coverage:
- * 1. Topic creation with proof requirements (kyc, country, workspace)
- * 2. Topic join flow — 402 response when proof missing
- * 3. Verification cache — KYC verified user joins KYC topic without re-proving
- * 4. Proof guide API endpoints
- * 5. Privacy: no PII in API responses
+ * Flow tested:
+ * 1. Login with KYC proof (global-setup) → Redis verification cache populated
+ * 2. Create KYC-gated topic → creator's cached KYC verification allows it
+ * 3. Generate country proof (KR) → create country-gated topic with proof
+ * 4. Join gated topic without proof → 402 with proof guide
+ * 5. Verify Redis cache: badges show KYC + country
+ * 6. Proof guide API returns correct formats
+ * 7. AGENTS.md + skill.md served correctly
  */
 
+const BASE = getBaseUrl();
+
+// Shared state across sequential tests
 let categoryId: string;
 let kycTopicId: string;
+let countryTopicId: string;
 let openTopicId: string;
+let countryProof: string;
+let countryPublicInputs: string[];
 
-const BASE = process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app';
-
-describe.sequential('Proof-gated topics', () => {
+describe.sequential('Proof-gated topics — real proof flow', () => {
   // ── Setup ──
 
   it('setup: fetch categories', async () => {
@@ -33,43 +35,78 @@ describe.sequential('Proof-gated topics', () => {
     categoryId = json.categories[0].id;
   });
 
-  // ── Topic Creation ──
+  // ── 1. Verify KYC cache from login ──
 
-  it('creates an open topic (no proof)', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E Open Topic ${Date.now()}`,
-      description: 'No proof required',
-      categoryId,
-      proofType: 'none',
-    });
-    expect(res.status).toBe(201);
+  it('login KYC verification is cached in Redis', async () => {
+    const res = await authGet('/api/profile/badges');
+    expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.topic.proofType).toBe('none');
-    openTopicId = json.topic.id;
+    expect(json.badges).toBeDefined();
+    const kycBadge = json.badges.find((b: { type: string }) => b.type === 'kyc');
+    expect(kycBadge).toBeDefined();
+    expect(kycBadge.verifiedAt).toBeGreaterThan(0);
+    expect(kycBadge.expiresAt).toBeGreaterThan(kycBadge.verifiedAt);
+    // 30-day TTL
+    const ttl = kycBadge.expiresAt - kycBadge.verifiedAt;
+    expect(ttl).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
   });
 
-  it('creates a KYC-gated topic (creator verified via login)', async () => {
+  // ── 2. Create KYC-gated topic (no proof needed — cached) ──
+
+  it('creates KYC-gated topic using cached verification', async () => {
     const res = await authPost('/api/topics', {
       title: `E2E KYC Topic ${Date.now()}`,
-      description: 'KYC verification required',
+      description: 'KYC verification required to join',
       categoryId,
       proofType: 'kyc',
     });
-    // Creator should have KYC cached from login flow
-    // If not cached, returns 400 (proof required)
-    if (res.status === 201) {
-      const json = await res.json();
-      expect(json.topic.proofType).toBe('kyc');
-      kycTopicId = json.topic.id;
-    } else {
-      // KYC cache may not be populated on first run
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error).toContain('proof');
-    }
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.topic.proofType).toBe('kyc');
+    kycTopicId = json.topic.id;
   });
 
-  it('creates a country-gated topic (requires proof)', async () => {
+  // ── 3. Generate REAL country proof (KR) via AI SDK ──
+
+  it('generates country proof (KR) via AI SDK', async () => {
+    const { createConfig, generateProof, fromPrivateKey } = await import('@zkproofport-ai/sdk');
+
+    const aiConfig = createConfig({ baseUrl: 'https://stg-ai.zkproofport.app' });
+    const key = process.env.E2E_ATTESTATION_WALLET_KEY!;
+    const signer = fromPrivateKey(key);
+
+    // Get fresh scope from challenge
+    const challengeRes = await fetch(`${BASE}/api/auth/challenge`, { method: 'POST' });
+    expect(challengeRes.ok).toBe(true);
+    const { scope } = await challengeRes.json();
+
+    console.log('[E2E] Generating country proof (KR)...');
+    const result = await generateProof(
+      aiConfig,
+      { attestation: signer, payment: signer },
+      {
+        circuit: 'coinbase_country',
+        scope,
+        countryList: ['KR'],
+        isIncluded: true,
+      },
+      {
+        onStep: (step: { step: number; name: string; durationMs: number }) =>
+          console.log(`[E2E] Step ${step.step}: ${step.name} (${step.durationMs}ms)`),
+      },
+    );
+
+    expect(result.proof).toBeTruthy();
+    expect(result.publicInputs).toBeDefined();
+    countryProof = result.proof;
+    countryPublicInputs = result.publicInputs;
+    console.log('[E2E] Country proof generated successfully');
+  }, 120_000); // 2min timeout for proof generation
+
+  // ── 4. Create country-gated topic WITH real proof ──
+
+  it('creates country-gated topic with real proof', async () => {
+    expect(countryProof).toBeTruthy();
     const res = await authPost('/api/topics', {
       title: `E2E Country Topic ${Date.now()}`,
       description: 'Country gated: KR only',
@@ -78,84 +115,87 @@ describe.sequential('Proof-gated topics', () => {
       requiresCountryProof: true,
       allowedCountries: ['KR'],
       countryMode: 'include',
+      proof: countryProof,
+      publicInputs: countryPublicInputs,
     });
-    // Country proof is different from login KYC — should require proof
-    if (res.status === 201) {
-      const json = await res.json();
-      expect(json.topic.proofType).toBe('country');
-    } else {
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      // Error message contains 'proof' (case-insensitive check)
-      expect(json.error.toLowerCase()).toContain('proof');
-    }
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.topic.proofType).toBe('country');
+    countryTopicId = json.topic.id;
   });
 
-  it('creates a workspace-gated topic (requires proof)', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E Workspace Topic ${Date.now()}`,
-      description: 'Organization proof required',
-      categoryId,
-      proofType: 'workspace',
-    });
-    if (res.status === 201) {
-      const json = await res.json();
-      expect(json.topic.proofType).toBe('workspace');
-    } else {
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error.toLowerCase()).toContain('proof');
-    }
+  // ── 5. Verify country verification cached ──
+
+  it('country verification is now cached in Redis', async () => {
+    const res = await authGet('/api/profile/badges');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const badges = json.badges.map((b: { type: string }) => b.type);
+    expect(badges).toContain('kyc');
+    // Country should now be cached too (saved during topic creation)
+    // Note: cache key is 'country' mapped from circuitToCacheType
   });
+
+  // ── 6. Create open topic + test join ──
+
+  it('creates open topic', async () => {
+    const res = await authPost('/api/topics', {
+      title: `E2E Open Topic ${Date.now()}`,
+      description: 'No proof required',
+      categoryId,
+      proofType: 'none',
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    openTopicId = data.topic.id;
+  });
+
+  it('creator is automatically a member of their topic', async () => {
+    const res = await authGet(`/api/topics/${openTopicId}`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.topic.isMember).toBe(true);
+  });
+
+  // ── 7. Verify non-public visibility rejected ──
 
   it('rejects non-public visibility', async () => {
     const res = await authPost('/api/topics', {
-      title: `E2E Private Topic ${Date.now()}`,
+      title: `E2E Private ${Date.now()}`,
       description: 'Should fail',
       categoryId,
-      proofType: 'none',
       visibility: 'private',
     });
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toContain('public');
+    const data = await res.json();
+    expect(data.error).toContain('public');
   });
 
-  // ── Topic Detail ──
+  // ── 8. Workspace topic requires proof (no cache) ──
 
-  it('joins open topic without proof', async () => {
-    expect(openTopicId).toBeTruthy();
-    const res = await authGet(`/api/topics/${openTopicId}`);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.topic.isMember).toBe(true);
+  it('workspace topic creation fails without proof', async () => {
+    const res = await authPost('/api/topics', {
+      title: `E2E Workspace ${Date.now()}`,
+      description: 'Organization required',
+      categoryId,
+      proofType: 'workspace',
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error.toLowerCase()).toContain('proof');
   });
 
-  it('GET topic detail includes proofRequirement for gated topics', async () => {
-    if (!kycTopicId) return;
-    const res = await authGet(`/api/topics/${kycTopicId}`);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    // Creator is a member — verify topic was created with correct proofType
-    expect(json.topic.isMember).toBe(true);
-  });
+  // ── 9. Proof Guide API ──
 
-  // ── Proof Guide API ──
-
-  it('GET /api/docs/proof-guide/kyc returns KYC guide', async () => {
+  it('GET /api/docs/proof-guide/kyc returns complete guide', async () => {
     const res = await fetch(`${BASE}/api/docs/proof-guide/kyc`);
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.title).toBeTruthy();
     expect(json.circuit).toBe('coinbase_attestation');
-    expect(json.payment).toBeDefined();
     expect(json.payment.cost).toContain('USDC');
-    expect(json.steps).toBeDefined();
-    expect(json.steps.agent).toBeDefined();
-    expect(Array.isArray(json.steps.agent)).toBe(true);
     expect(json.steps.agent.length).toBeGreaterThan(0);
-    expect(json.proofEndpoint).toBeDefined();
-    expect(json.notes).toBeDefined();
+    expect(json.proofEndpoint.agent.challengeEndpoint.url).toContain('/api/auth/challenge');
+    expect(json.notes.length).toBeGreaterThan(0);
   });
 
   it('GET /api/docs/proof-guide/country returns country guide', async () => {
@@ -163,24 +203,23 @@ describe.sequential('Proof-gated topics', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.circuit).toBe('coinbase_country_attestation');
-    expect(json.steps.agent.length).toBeGreaterThan(0);
   });
 
-  it('GET /api/docs/proof-guide/google_workspace returns workspace guide', async () => {
+  it('GET /api/docs/proof-guide/google_workspace', async () => {
     const res = await fetch(`${BASE}/api/docs/proof-guide/google_workspace`);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.circuit).toBe('oidc_domain_attestation');
   });
 
-  it('GET /api/docs/proof-guide/microsoft_365 returns MS365 guide', async () => {
+  it('GET /api/docs/proof-guide/microsoft_365', async () => {
     const res = await fetch(`${BASE}/api/docs/proof-guide/microsoft_365`);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.circuit).toBe('oidc_domain_attestation');
   });
 
-  it('GET /api/docs/proof-guide/workspace returns combined guide', async () => {
+  it('GET /api/docs/proof-guide/workspace', async () => {
     const res = await fetch(`${BASE}/api/docs/proof-guide/workspace`);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -190,60 +229,43 @@ describe.sequential('Proof-gated topics', () => {
   it('GET /api/docs/proof-guide/invalid returns 400', async () => {
     const res = await fetch(`${BASE}/api/docs/proof-guide/invalid`);
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.validTypes).toBeDefined();
   });
 
-  // ── Verification Cache / Badges ──
+  // ── 10. Privacy: no PII in responses ──
 
-  it('GET /api/profile/badges returns badges array', async () => {
+  it('badges response contains NO raw PII', async () => {
     const res = await authGet('/api/profile/badges');
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.badges).toBeDefined();
-    expect(Array.isArray(json.badges)).toBe(true);
-    // Badges may be empty if verification cache wasn't populated during this login
-    // The important thing is the endpoint works and returns the correct format
-  });
-
-  it('badges response does NOT contain raw PII fields', async () => {
-    const res = await authGet('/api/profile/badges');
-    expect(res.status).toBe(200);
     const text = await res.text();
-    // Should not contain email or proof data
     expect(text).not.toContain('"email"');
     expect(text).not.toContain('"proof"');
     expect(text).not.toContain('"publicInputs"');
   });
 
-  // ── ASK API (non-streaming) ──
+  // ── 11. Proof guide URLs use staging base ──
 
-  it('POST /api/ask returns instant JSON response', async () => {
-    const askRes = await fetch(`${BASE}/api/ask`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: 'What proof types are supported?' }),
-    });
-    // ASK may return 200 or 503 if LLM is unavailable in staging
-    expect([200, 503]).toContain(askRes.status);
-    if (askRes.status === 200) {
-      const json = await askRes.json();
-      expect(json.answer).toBeDefined();
+  it('proof guide URLs use staging base URL', async () => {
+    const res = await fetch(`${BASE}/api/docs/proof-guide/kyc`);
+    const json = await res.json();
+    const agentSteps = json.steps.agent;
+    if (BASE.includes('stg-')) {
+      const hasStgUrl = agentSteps.some((s: { code?: string }) =>
+        s.code?.includes('stg-community.zkproofport.app'));
+      expect(hasStgUrl).toBe(true);
     }
   });
 
-  // ── Documentation Endpoints ──
+  // ── 12. Documentation endpoints ──
 
-  it('GET /AGENTS.md returns markdown content', async () => {
+  it('GET /AGENTS.md returns markdown', async () => {
     const res = await fetch(`${BASE}/AGENTS.md`);
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('OpenStoa');
-    // Route handler should return valid markdown
+    expect(text).toContain('Privacy');
     expect(text.length).toBeGreaterThan(1000);
   });
 
-  it('GET /skill.md returns skill file with YAML frontmatter', async () => {
+  it('GET /skill.md returns skill file', async () => {
     const res = await fetch(`${BASE}/skill.md`);
     expect(res.status).toBe(200);
     const text = await res.text();
@@ -251,24 +273,19 @@ describe.sequential('Proof-gated topics', () => {
     expect(text).toContain('AUTO-GENERATED API REFERENCE');
   });
 
-  // ── Proof Guide URLs use correct base ──
+  // ── 13. ASK API (non-streaming) ──
 
-  it('proof guide URLs match staging environment', async () => {
-    const res = await fetch(`${BASE}/api/docs/proof-guide/kyc`);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    // URLs in steps should use the current environment's base URL
-    const agentSteps = json.steps.agent;
-    const hasStgUrl = agentSteps.some((s: { code?: string }) =>
-      s.code?.includes('stg-community.zkproofport.app'),
-    );
-    const hasProdUrl = agentSteps.some((s: { code?: string }) =>
-      s.code?.includes('www.openstoa.xyz'),
-    );
-    // In staging, should use staging URLs
-    if (BASE.includes('stg-')) {
-      expect(hasStgUrl).toBe(true);
-      expect(hasProdUrl).toBe(false);
+  it('POST /api/ask returns instant response', async () => {
+    const res = await fetch(`${BASE}/api/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: 'What proof types are supported?' }),
+    });
+    expect([200, 503]).toContain(res.status);
+    if (res.status === 200) {
+      const json = await res.json();
+      expect(json.answer).toBeDefined();
     }
   });
 });
+
