@@ -70,7 +70,7 @@ function renderMarkdown(raw: string): string {
         const codeId = `code-${Date.now()}-${i}`;
         const copyBtn = `<button onclick="(function(b){var t=document.getElementById('${codeId}');if(t){navigator.clipboard.writeText(t.textContent||'');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},2000)}})(this)" style="font-size:11px;font-family:var(--font-mono);color:#666;background:none;border:1px solid rgba(120,140,255,0.15);border-radius:4px;padding:2px 8px;cursor:pointer;transition:color 0.15s">Copy</button>`;
         output.push(
-          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:12px;color:#c8d0ff;white-space:pre-wrap;word-break:break-all;line-height:1.55;padding:8px 12px 12px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
+          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:12px;color:#c8d0ff;white-space:pre-wrap;overflow-wrap:break-word;line-height:1.55;padding:8px 12px 12px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
         );
         codeLang = '';
         codeLines = [];
@@ -213,21 +213,36 @@ export default function AskPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-scroll: debounce with clear+restart, not skip
+  // Auto-scroll: debounce with clear+restart
+  const userScrolledUpRef = useRef(false);
+
+  // Track if user manually scrolled up
   useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    function onScroll() {
+      const dist = container!.scrollHeight - container!.scrollTop - container!.clientHeight;
+      userScrolledUpRef.current = dist > 400;
+    }
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (userScrolledUpRef.current) return; // respect user scroll
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
       scrollTimerRef.current = null;
       const container = scrollContainerRef.current;
-      if (!container) return;
-      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distFromBottom <= 300) {
-        // During streaming use instant scroll, otherwise smooth
-        const isStreaming = !!streamingContent;
-        container.scrollTo({ top: container.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
-      }
-    }, 80);
+      if (!container || userScrolledUpRef.current) return;
+      container.scrollTo({ top: container.scrollHeight, behavior: streamingContent ? 'auto' : 'smooth' });
+    }, 60);
   }, [messages, loading, streamingContent]);
+
+  // Reset scroll lock when new message is sent
+  useEffect(() => {
+    if (loading) userScrolledUpRef.current = false;
+  }, [loading]);
 
   function autoResize() {
     const el = textareaRef.current;
