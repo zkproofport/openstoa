@@ -234,7 +234,7 @@ function AssistantMessage({ content, isStreaming }: { content: string; isStreami
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
-          maxWidth: '78%',
+          maxWidth: '85%',
           padding: '14px 18px',
           borderRadius: '4px 18px 18px 18px',
           background: 'rgba(255,255,255,0.04)',
@@ -263,9 +263,23 @@ export default function AskPage() {
   const [followUps, setFollowUps] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Debounced auto-scroll: only scroll every 150ms, and only if near the bottom
+    if (scrollTimerRef.current) return;
+    scrollTimerRef.current = setTimeout(() => {
+      scrollTimerRef.current = null;
+      const el = messagesEndRef.current;
+      if (!el) return;
+      const container = el.closest('[data-chat-scroll]') ?? document.documentElement;
+      const scrollable = container === document.documentElement ? document.documentElement : (container as HTMLElement);
+      const distanceFromBottom = scrollable.scrollHeight - scrollable.scrollTop - scrollable.clientHeight;
+      // Only auto-scroll if user is within 150px of the bottom
+      if (distanceFromBottom <= 150) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    }, 150);
   }, [messages, loading, streamingContent]);
 
   function autoResize() {
@@ -391,9 +405,9 @@ export default function AskPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            maxWidth: 800,
+            maxWidth: 1200,
             margin: '0 auto',
-            padding: '12px 20px',
+            padding: '12px 32px',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -486,10 +500,10 @@ export default function AskPage() {
       <main
         style={{
           flex: 1,
-          maxWidth: 800,
+          maxWidth: 1200,
           width: '100%',
           margin: '0 auto',
-          padding: '0 20px',
+          padding: '0 32px',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -598,7 +612,7 @@ export default function AskPage() {
 
         {/* Message list */}
         {!isEmpty && (
-          <div style={{ paddingTop: 32, paddingBottom: 16 }}>
+          <div data-chat-scroll style={{ paddingTop: 32, paddingBottom: 200 }}>
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -637,7 +651,7 @@ export default function AskPage() {
                 ) : (
                   <div
                     style={{
-                      maxWidth: '78%',
+                      maxWidth: '85%',
                       padding: '10px 16px',
                       borderRadius: '18px 18px 4px 18px',
                       background: 'rgba(120,140,255,0.18)',
@@ -801,12 +815,12 @@ export default function AskPage() {
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
           borderTop: '1px solid rgba(120,140,255,0.06)',
-          padding: '16px 20px 20px',
+          padding: '16px 32px 20px',
         }}
       >
         <div
           style={{
-            maxWidth: 800,
+            maxWidth: 1200,
             margin: '0 auto',
             display: 'flex',
             alignItems: 'flex-end',
