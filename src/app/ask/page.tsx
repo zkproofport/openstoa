@@ -407,7 +407,7 @@ export default function AskPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            maxWidth: 1200,
+            maxWidth: 800,
             margin: '0 auto',
             padding: '12px 32px',
           }}
@@ -502,10 +502,10 @@ export default function AskPage() {
       <main
         style={{
           flex: 1,
-          maxWidth: 1200,
+          maxWidth: 800,
           width: '100%',
           margin: '0 auto',
-          padding: '0 32px',
+          padding: '0 32px 60px',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -614,7 +614,7 @@ export default function AskPage() {
 
         {/* Message list */}
         {!isEmpty && (
-          <div data-chat-scroll style={{ paddingTop: 32, paddingBottom: 200 }}>
+          <div data-chat-scroll style={{ paddingTop: 32, paddingBottom: 16 }}>
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -811,26 +811,29 @@ export default function AskPage() {
       {/* Input area */}
       <div
         style={{
-          position: 'sticky',
+          position: 'fixed',
           bottom: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '100%',
+          maxWidth: 800,
+          zIndex: 50,
           background: 'rgba(5,8,16,0.95)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
           borderTop: '1px solid rgba(120,140,255,0.06)',
-          padding: '6px 32px 8px',
+          padding: '8px 20px 10px',
         }}
       >
         <div
           style={{
-            maxWidth: 1200,
-            margin: '0 auto',
             display: 'flex',
             alignItems: 'flex-end',
             gap: 10,
             background: 'rgba(255,255,255,0.04)',
             border: '1px solid rgba(120,140,255,0.15)',
-            borderRadius: 8,
-            padding: '4px 6px 4px 12px',
+            borderRadius: 10,
+            padding: '8px 10px 8px 16px',
             transition: 'border-color 0.15s',
           }}
           onFocusCapture={(e) => {
@@ -868,8 +871,8 @@ export default function AskPage() {
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || loading}
             style={{
-              width: 28,
-              height: 28,
+              width: 32,
+              height: 32,
               borderRadius: 8,
               border: 'none',
               background: input.trim() && !loading ? '#788cff' : 'rgba(120,140,255,0.12)',
