@@ -247,9 +247,14 @@ function AssistantMessage({ content, isStreaming }: { content: string; isStreami
           lineHeight: 1.65,
           wordBreak: 'break-word',
         }}
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-      />
-      {!isStreaming && content && <CopyButton text={content} />}
+      >
+        <div dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+        {!isStreaming && content && (
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <CopyButton text={content} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -505,7 +510,7 @@ export default function AskPage() {
           maxWidth: 1200,
           width: '100%',
           margin: '0 auto',
-          padding: '0 32px 60px',
+          padding: '0 32px 120px',
           display: 'flex',
           flexDirection: 'column',
         }}
