@@ -187,6 +187,17 @@ export async function GET(
 
     logger.info(ROUTE, 'Session created, sending 200', { requestId, nullifier, needsNickname });
 
+    // Save verification record
+    const { saveVerification } = await import('@/lib/verification');
+    const { extractDomain } = await import('@/lib/proof');
+    const proofType = circuit === 'oidc_domain_attestation' ? 'oidc' :
+                      circuit === 'coinbase_country_attestation' ? 'country' : 'kyc';
+    let domain: string | undefined;
+    if (circuit === 'oidc_domain_attestation') {
+      domain = extractDomain(result.publicInputs, circuit) ?? undefined;
+    }
+    await saveVerification(nullifier, proofType, { domain });
+
     const response = NextResponse.json({
       status: 'completed',
       userId: nullifier,

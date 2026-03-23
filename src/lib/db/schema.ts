@@ -160,3 +160,31 @@ export const chatMessages = pgTable('chat_messages', {
   topicIdx: index('chat_msg_topic_idx').on(table.topicId),
   topicCreatedIdx: index('chat_msg_topic_created_idx').on(table.topicId, table.createdAt),
 }));
+
+export const userVerifications = pgTable('user_verifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  proofType: varchar('proof_type', { length: 30 }).notNull(), // 'kyc' | 'country' | 'google_workspace' | 'microsoft_365'
+  domain: text('domain'), // extracted domain for workspace/ms365
+  country: text('country'), // extracted country ISO code for country proof
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  proof: text('proof'), // proof hex (for re-verification)
+  publicInputs: text('public_inputs'), // public inputs JSON
+}, (table) => ({
+  userProofType: uniqueIndex('user_verification_user_proof_idx').on(table.userId, table.proofType),
+  userIdx: index('user_verification_user_idx').on(table.userId),
+}));
+
+export const inviteTokens = pgTable('invite_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
+  token: text('token').unique().notNull(), // random 16-char hex
+  createdBy: text('created_by').references(() => users.id).notNull(),
+  usedBy: text('used_by').references(() => users.id), // null until used
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  tokenIdx: uniqueIndex('invite_token_idx').on(table.token),
+}));

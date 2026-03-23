@@ -5,6 +5,36 @@ import { posts, comments, topicMembers, users, postTags, tags, votes, topics } f
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
+type Badge = { type: string; label: string; country?: string; domain?: string };
+
+async function getBadgesForUsers(userIds: string[]): Promise<Map<string, Badge[]>> {
+  const result = new Map<string, Badge[]>();
+  if (userIds.length === 0) return result;
+
+  const now = new Date();
+  const verifications = await db.query.userVerifications.findMany({
+    where: (v, { inArray, and: a, gt }) => a(
+      inArray(v.userId, userIds),
+      gt(v.expiresAt, now),
+    ),
+  });
+
+  for (const v of verifications) {
+    const badges = result.get(v.userId) ?? [];
+    if (v.proofType === 'kyc') {
+      badges.push({ type: 'kyc', label: 'KYC Verified' });
+    } else if (v.proofType === 'country' && v.country) {
+      badges.push({ type: 'country', country: v.country, label: v.country });
+    } else if (v.proofType === 'google_workspace' && v.domain) {
+      badges.push({ type: 'google_workspace', domain: v.domain, label: v.domain });
+    } else if (v.proofType === 'microsoft_365' && v.domain) {
+      badges.push({ type: 'microsoft_365', domain: v.domain, label: v.domain });
+    }
+    result.set(v.userId, badges);
+  }
+  return result;
+}
+
 const ROUTE = '/api/posts/[postId]';
 
 /**
@@ -167,10 +197,22 @@ export async function GET(
       // Strip topicVisibility from response
       const { topicVisibility: _, ...postWithoutVisibility } = post;
 
+      // Collect all user IDs for badge lookup
+      const guestUserIds = [...new Set([
+        post.authorId,
+        ...postComments.map((c) => c.authorId),
+      ].filter(Boolean))] as string[];
+      const guestBadgeMap = await getBadgesForUsers(guestUserIds);
+
+      const guestCommentsWithBadges = postComments.map((c) => ({
+        ...c,
+        badges: guestBadgeMap.get(c.authorId) ?? [],
+      }));
+
       logger.info(ROUTE, 'Guest post detail fetched', { postId, commentCount: postComments.length });
       return NextResponse.json({
-        post: { ...postWithoutVisibility, tags: postTagResults },
-        comments: postComments,
+        post: { ...postWithoutVisibility, tags: postTagResults, badges: guestBadgeMap.get(post.authorId) ?? [] },
+        comments: guestCommentsWithBadges,
       });
     }
 
@@ -252,10 +294,22 @@ export async function GET(
       .innerJoin(tags, eq(postTags.tagId, tags.id))
       .where(eq(postTags.postId, postId));
 
+    // Collect all user IDs for badge lookup
+    const allUserIds = [...new Set([
+      post.authorId,
+      ...postComments.map((c) => c.authorId),
+    ].filter(Boolean))] as string[];
+    const badgeMap = await getBadgesForUsers(allUserIds);
+
+    const commentsWithBadges = postComments.map((c) => ({
+      ...c,
+      badges: badgeMap.get(c.authorId) ?? [],
+    }));
+
     logger.info(ROUTE, 'Post detail fetched', { userId: session.userId, postId, commentCount: postComments.length });
     return NextResponse.json({
-      post: { ...post, tags: postTagResults },
-      comments: postComments,
+      post: { ...post, tags: postTagResults, badges: badgeMap.get(post.authorId) ?? [] },
+      comments: commentsWithBadges,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

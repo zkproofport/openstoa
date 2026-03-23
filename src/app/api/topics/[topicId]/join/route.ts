@@ -10,6 +10,7 @@ import {
   computeScopeHash,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
+import { hasValidVerification } from '@/lib/verification';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/join';
@@ -136,53 +137,69 @@ export async function POST(
     }
 
     // Determine effective proof type
-    const effectiveProofType = (topic as any).proofType || (topic.requiresCountryProof ? 'country' : 'none');
+    const effectiveProofType = topic.proofType || (topic.requiresCountryProof ? 'country' : 'none');
 
     if (effectiveProofType !== 'none') {
       logger.info(ROUTE, 'Topic requires proof', { userId: session.userId, topicId, proofType: effectiveProofType });
 
-      const body = await request.json();
-      const { proof, publicInputs } = body;
+      const requiredDomain = topic.requiredDomain ?? undefined;
 
-      if (!proof || !publicInputs) {
-        logger.warn(ROUTE, 'Missing proof fields', { userId: session.userId, topicId });
-        return NextResponse.json(
-          { error: `Proof required for this topic (type: ${effectiveProofType})` },
-          { status: 400 },
-        );
-      }
+      // Check if user already has a valid verification for this proof type
+      const alreadyVerified = await hasValidVerification(
+        session.userId,
+        effectiveProofType,
+        effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' ? requiredDomain : undefined,
+      );
 
-      // Verify scope matches community scope
-      const scope = extractScope(publicInputs, effectiveProofType === 'country' ? 'coinbase_country_attestation' :
-        effectiveProofType === 'kyc' ? 'coinbase_attestation' : 'oidc_domain_attestation');
-      const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
-      if (scope !== expectedScope) {
-        logger.warn(ROUTE, 'Proof scope mismatch', { userId: session.userId, topicId, scope, expectedScope });
-        return NextResponse.json(
-          { error: 'Proof scope mismatch' },
-          { status: 400 },
-        );
-      }
+      if (alreadyVerified) {
+        logger.info(ROUTE, 'User has existing valid verification, skipping proof', { userId: session.userId, topicId, proofType: effectiveProofType });
+      } else {
+        const body = await request.json();
+        const { proof, publicInputs } = body;
 
-      // Type-specific verification
-      if (effectiveProofType === 'country') {
-        const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
-        if (!isIncluded) {
-          logger.warn(ROUTE, 'Country not in allowed list', { userId: session.userId, topicId });
-          return NextResponse.json({ error: 'Country not allowed for this topic' }, { status: 403 });
-        }
-      }
-
-      if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365') {
-        const domain = extractDomain(publicInputs, 'oidc_domain_attestation');
-        const requiredDomain = (topic as any).requiredDomain;
-
-        if (requiredDomain && domain !== requiredDomain) {
-          logger.warn(ROUTE, 'Domain mismatch', { userId: session.userId, topicId, domain, requiredDomain });
+        if (!proof || !publicInputs) {
+          logger.warn(ROUTE, 'Missing proof fields', { userId: session.userId, topicId });
           return NextResponse.json(
-            { error: `Domain mismatch: expected ${requiredDomain}, got ${domain}` },
-            { status: 403 },
+            { error: `Proof required for this topic (type: ${effectiveProofType})` },
+            { status: 400 },
           );
+        }
+
+        // Verify scope matches community scope
+        const circuitId = effectiveProofType === 'country' ? 'coinbase_country_attestation'
+          : effectiveProofType === 'kyc' ? 'coinbase_attestation'
+          : 'oidc_domain_attestation';
+        const scope = extractScope(publicInputs, circuitId);
+        const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
+        if (scope !== expectedScope) {
+          logger.warn(ROUTE, 'Proof scope mismatch', { userId: session.userId, topicId, scope, expectedScope });
+          return NextResponse.json(
+            { error: 'Proof scope mismatch' },
+            { status: 400 },
+          );
+        }
+
+        // Type-specific verification
+        if (effectiveProofType === 'country') {
+          const isIncluded = extractIsIncluded(publicInputs, 'coinbase_country_attestation');
+          if (!isIncluded) {
+            logger.warn(ROUTE, 'Country not in allowed list', { userId: session.userId, topicId });
+            return NextResponse.json({ error: 'Country not allowed for this topic' }, { status: 403 });
+          }
+        }
+
+        // KYC: scope check is sufficient — just verifying proof exists with correct scope
+        // google_workspace / microsoft_365: verify domain matches
+        if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365') {
+          const domain = extractDomain(publicInputs, 'oidc_domain_attestation');
+
+          if (requiredDomain && domain !== requiredDomain) {
+            logger.warn(ROUTE, 'Domain mismatch', { userId: session.userId, topicId, domain, requiredDomain });
+            return NextResponse.json(
+              { error: `Domain mismatch: expected ${requiredDomain}, got ${domain}` },
+              { status: 403 },
+            );
+          }
         }
       }
     }

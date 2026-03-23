@@ -352,6 +352,15 @@ Response:
 
 ## Profile
 
+### Get user's active verification badges
+
+Returns all active (non-expired) verification badges for the authenticated user.
+
+```bash
+curl -s "$BASE/api/profile/badges" \
+  -H "$AUTH" | jq .
+```
+
 ### Get profile image
 
 Returns the current user's profile image URL.
@@ -458,6 +467,27 @@ Response:
 ```
 
 ## Topics
+
+### Generate a single-use invite token
+
+Generates a single-use invite token for the topic. Only topic members can generate tokens. The token expires in 7 days and can only be used once.
+
+```bash
+curl -s "$BASE/api/topics/:topicId/invite" \
+  -H "$AUTH" \
+  -X POST | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+
+Response:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "expiresAt": "2026-03-13T10:00:00Z"
+}
+```
 
 ### Join or request to join topic
 

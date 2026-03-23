@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers } from '@/lib/db/schema';
+import { topics, topicMembers, inviteTokens } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -131,9 +131,23 @@ export async function GET(
 
     logger.info(ROUTE, 'Looking up invite code', { userId: session.userId, inviteCode });
 
-    const topic = await db.query.topics.findFirst({
+    // Check fixed inviteCode first, then single-use tokens
+    let topic = await db.query.topics.findFirst({
       where: eq(topics.inviteCode, inviteCode),
     });
+
+    if (!topic) {
+      // Try single-use invite token
+      const now = new Date();
+      const token = await db.query.inviteTokens.findFirst({
+        where: eq(inviteTokens.token, inviteCode),
+      });
+      if (token && !token.usedBy && token.expiresAt > now) {
+        topic = await db.query.topics.findFirst({
+          where: eq(topics.id, token.topicId),
+        });
+      }
+    }
 
     if (!topic) {
       logger.warn(ROUTE, 'Invalid invite code', { inviteCode });
@@ -184,9 +198,28 @@ export async function POST(
 
     const { inviteCode } = await params;
 
-    const topic = await db.query.topics.findFirst({
+    // Check fixed inviteCode first, then single-use tokens
+    let topic = await db.query.topics.findFirst({
       where: eq(topics.inviteCode, inviteCode),
     });
+
+    let singleUseTokenId: string | null = null;
+
+    if (!topic) {
+      // Try single-use invite token
+      const now = new Date();
+      const token = await db.query.inviteTokens.findFirst({
+        where: eq(inviteTokens.token, inviteCode),
+      });
+      if (token && !token.usedBy && token.expiresAt > now) {
+        topic = await db.query.topics.findFirst({
+          where: eq(topics.id, token.topicId),
+        });
+        if (topic) {
+          singleUseTokenId = token.id;
+        }
+      }
+    }
 
     if (!topic) {
       logger.warn(ROUTE, 'Invalid invite code', { inviteCode });
@@ -213,7 +246,15 @@ export async function POST(
       role: 'member',
     });
 
-    logger.info(ROUTE, 'User joined topic via invite code', { userId: session.userId, topicId: topic.id, visibility: topic.visibility });
+    // Mark single-use token as used
+    if (singleUseTokenId) {
+      await db
+        .update(inviteTokens)
+        .set({ usedBy: session.userId, usedAt: new Date() })
+        .where(eq(inviteTokens.id, singleUseTokenId));
+    }
+
+    logger.info(ROUTE, 'User joined topic via invite code', { userId: session.userId, topicId: topic.id, visibility: topic.visibility, singleUse: !!singleUseTokenId });
     return NextResponse.json({ success: true, topicId: topic.id }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

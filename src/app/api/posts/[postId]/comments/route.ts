@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, comments, topicMembers, users } from '@/lib/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { posts, comments, topicMembers, users, userVerifications } from '@/lib/db/schema';
+import { eq, and, sql, gt } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]/comments';
@@ -114,15 +114,31 @@ export async function POST(
     // Increment commentCount on post
     await db.update(posts).set({ commentCount: sql`${posts.commentCount} + 1` }).where(eq(posts.id, postId));
 
-    // Fetch author nickname for the response
+    // Fetch author info and badges for the response
     const author = await db.query.users.findFirst({
       where: eq(users.id, session.userId),
       columns: { nickname: true, profileImage: true },
     });
 
+    const now = new Date();
+    const authorVerifications = await db.query.userVerifications.findMany({
+      where: and(
+        eq(userVerifications.userId, session.userId),
+        gt(userVerifications.expiresAt, now),
+      ),
+    });
+
+    const badges = authorVerifications.flatMap((v) => {
+      if (v.proofType === 'kyc') return [{ type: 'kyc', label: 'KYC Verified' }];
+      if (v.proofType === 'country' && v.country) return [{ type: 'country', country: v.country, label: v.country }];
+      if (v.proofType === 'google_workspace' && v.domain) return [{ type: 'google_workspace', domain: v.domain, label: v.domain }];
+      if (v.proofType === 'microsoft_365' && v.domain) return [{ type: 'microsoft_365', domain: v.domain, label: v.domain }];
+      return [];
+    });
+
     logger.info(ROUTE, 'Comment created', { userId: session.userId, postId, commentId: comment.id });
     return NextResponse.json({
-      comment: { ...comment, authorNickname: author?.nickname ?? 'anon', authorProfileImage: author?.profileImage ?? null },
+      comment: { ...comment, authorNickname: author?.nickname ?? 'anon', authorProfileImage: author?.profileImage ?? null, badges },
     }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

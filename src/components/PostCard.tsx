@@ -6,6 +6,7 @@ import SNSContent from '@/components/SNSContent';
 import Avatar from '@/components/Avatar';
 import { relativeTime } from '@/lib/utils';
 import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon, PinIcon, RecordIcon } from '@/components/icons';
+import Badge from '@/components/Badge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ export interface PostCardPost {
   /** Topic breadcrumb — shown when rendering in a cross-topic feed */
   topicTitle?: string;
   topicId?: string;
+  badges?: Array<{ type: string; label: string; country?: string; domain?: string }>;
 }
 
 export interface PostCardProps {
@@ -419,10 +421,13 @@ export default function PostCard({
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
             <Avatar src={post.authorProfileImage} name={post.authorNickname ?? ''} size={24} style={{ marginTop: 1 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 600, color: '#e5e7eb' }}>
                   {post.authorNickname}
                 </span>
+                {post.badges && post.badges.length > 0 && post.badges.map((b, i) => (
+                  <Badge key={i} type={b.type} country={b.country} domain={b.domain} />
+                ))}
                 <span style={{ color: '#4b5563' }}>·</span>
                 <span style={{ color: '#6b7280', fontFamily: 'var(--font-mono)' }}>
                   {relativeTime(post.createdAt)}

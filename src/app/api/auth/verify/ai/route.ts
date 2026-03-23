@@ -282,6 +282,17 @@ export async function POST(request: NextRequest) {
 
     logger.info(ROUTE, 'Session created, sending 200', { challengeId, nullifier, needsNickname });
 
+    // Save verification record
+    const { saveVerification } = await import('@/lib/verification');
+    const { extractDomain } = await import('@/lib/proof');
+    const proofType = circuit === 'oidc_domain_attestation' ? 'oidc' :
+                      circuit === 'coinbase_country_attestation' ? 'country' : 'kyc';
+    let domain: string | undefined;
+    if (circuit === 'oidc_domain_attestation') {
+      domain = extractDomain(normalizedInputs, circuit) ?? undefined;
+    }
+    await saveVerification(nullifier, proofType, { domain });
+
     const response = NextResponse.json({
       userId: nullifier,
       needsNickname,
