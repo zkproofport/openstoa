@@ -162,6 +162,70 @@ AI Agent (CLI)  ──→  prove.ts          ──→  ZK Proof  ──→  Ope
                                            Workspace/M365)
 ```
 
+---
+
+## Day 2 (March 23) — Mobile Login Fix, Verification Badges, Invites
+
+### Session 12: Mobile OIDC Login Debugging
+
+**Issue**: Mobile app generates OIDC proof successfully, but OpenStoa keeps polling forever — login never completes.
+
+**Investigation**: Analyzed relay logs and community Cloud Run logs simultaneously. Relay showed `status=completed` with proof data, but community backend kept polling.
+
+**Root cause found**: `poll/[requestId]/route.ts` hardcoded `'coinbase_attestation'` for scope/nullifier extraction (lines 144, 156). When an OIDC proof arrived, it extracted scope at coinbase offsets (64-95) instead of OIDC offsets (83-114) → scope mismatch → 400 error → ProofGate silently retried forever.
+
+**Fix**: Replaced hardcoded circuit with `detectCircuit(result.publicInputs, result.verifierAddress)`.
+
+**Human**: "proofport-ai/sdk 에서는 정상 파싱해서 로그인 되던거 아니야?" — Correctly identified that the AI login path (verify/ai) already used `detectCircuit`, but the mobile path (poll) didn't.
+
+### Session 13: Mobile App Domain Auto-extraction
+
+**Issue**: Mobile app required domain input for OIDC proof generation — button disabled without domain.
+
+**Changes**:
+- `DomainInputScreen.tsx`: Domain optional for all modes (any email, workspace, ms365)
+- `ProofGenerationScreen.tsx`: Skip domain required error, log auto-extraction
+- `useOidcDomain.ts`: Auto-extract domain from JWT email if not provided
+- `oidcDomain.ts`: Fallback to `email.substring(atIndex + 1)` when `params.domain` is empty
+- Domain mismatch check only when domain explicitly provided
+
+**Human verified**: proofport-ai backend already had domain auto-extraction (`oidcProver.ts:200`).
+
+### Session 14: Verification Badge System
+
+**Human**: "각 유저별로 증명의 마지막 검증 시간을 기록하고 주기적으로 재검증. KYC 뱃지, 나라 뱃지, 도메인 뱃지. 일회용 invite 링크."
+
+**Implemented** (parallel agents):
+
+**Backend (verification-backend agent)**:
+- DB: `user_verifications` table (proofType, domain, country, 30-day expiry)
+- DB: `invite_tokens` table (single-use, 7-day expiry)
+- `verification.ts`: saveVerification, getActiveVerifications, hasValidVerification helpers
+- Auth routes: save verification on successful login (both AI + mobile)
+- `GET /api/profile/badges` endpoint
+
+**Frontend + API (invite-badges agent)**:
+- `POST /api/topics/{topicId}/invite`: generate single-use invite token
+- Join by invite: supports both fixed inviteCode + single-use tokens, auto-dispose after use
+- Topic join: all proof types (kyc/country/workspace/ms365) with existing-verification bypass
+- Posts/comments API: include author badges in responses
+- `Badge.tsx` component: visual badges (KYC ✓, Country 🌍, Workspace/MS365 📧)
+- `PostCard.tsx`: badges rendered next to author nickname
+
+**Pre-commit hook**: Auto-generated migration `0001_salty_hedge_knight.sql` + skill.md/openapi-spec.json
+
+### Session 15: Infrastructure Fixes
+
+- **Logo image 307**: `/images/` path not in middleware PUBLIC_PREFIXES → redirected to login. Fixed.
+- **Chat header duplication**: Mobile overlay had its own "LIVE CHAT" header + ChatPanel header. Removed duplicate.
+- **Relay OIDC message**: Changed "Verify your Coinbase KYC" → "Login with Google" for OIDC circuit.
+- **Relay domain passthrough**: Added domain parameter to proof-request for topic gating.
+- **LLM API keys on staging**: Added `GEMINI_API_KEY` + `OPENAI_API_KEY` to deploy workflow with environment-prefixed secrets.
+- **Category auto-seed**: 4 default categories seeded on boot via instrumentation.ts.
+- **generate-skill.ts STATIC_HEADER**: Updated to OIDC-based description (was still Coinbase KYC).
+
+---
+
 ## Key Learnings
 
 1. **Circuit public input layout must match the actual Noir circuit** — SDK had 420-field layout but circuit produces 148 fields. Always check `main.nr` for ground truth.
@@ -169,3 +233,6 @@ AI Agent (CLI)  ──→  prove.ts          ──→  ZK Proof  ──→  Ope
 3. **Google Device Code Flow requires "TV and Limited Input" client type** — web client IDs don't work.
 4. **Auto-generation patterns must be respected** — `generate-skill.ts` produces both `skill.md` and `openapi-spec.json`. Don't bypass by importing differently.
 5. **SDK changes should be upstream** — don't hardcode extraction logic in applications. Fix the SDK, publish, install.
+6. **Never hardcode circuit types in endpoints** — the poll endpoint hardcoded `coinbase_attestation` for scope extraction, causing OIDC login failure. Always use `detectCircuit()`.
+7. **Domain auto-extraction from JWT** — already implemented in proofport-ai (`oidcProver.ts`). Mobile app needed the same pattern.
+8. **Pre-commit hooks save time** — schema changes auto-generate migrations, API changes auto-generate skill.md + openapi-spec.json. No manual steps to forget.

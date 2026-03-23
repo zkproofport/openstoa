@@ -754,7 +754,7 @@ export default function TopicPage() {
       {/* ── Feed ── */}
       <div>
         {/* Composer (expanded) -- hidden for guests */}
-        {sessionChecked && !isGuest && composing && (
+        {sessionChecked && !isGuest && topic?.isMember && composing && (
           <div style={{
             background: 'var(--surface, #0c0e18)',
             border: '1px solid rgba(59,130,246,0.3)',
@@ -891,7 +891,7 @@ export default function TopicPage() {
       </div>
 
       {/* Floating compose button -- hidden for guests */}
-      {sessionChecked && !isGuest && !composing && (
+      {sessionChecked && !isGuest && topic?.isMember && !composing && (
         <button
           onClick={() => setComposing(true)}
           style={{
