@@ -33,15 +33,11 @@ function escapeHtml(str: string): string {
 
 function renderInline(text: string): string {
   return text
-    // Bold **text** or __text__
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic *text* or _text_
     .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
     .replace(/_([^_\n]+?)_/g, '<em>$1</em>')
-    // Inline code `code`
     .replace(/`([^`\n]+?)`/g, '<code style="background:rgba(120,140,255,0.12);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:0.88em;color:#a8b8ff">$1</code>')
-    // Links [text](url)
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#788cff;text-decoration:underline;text-underline-offset:2px">$1</a>');
 }
 
@@ -62,12 +58,11 @@ function renderMarkdown(raw: string): string {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Fenced code block start/end
     if (line.trimStart().startsWith('```')) {
       if (!inCode) {
         flushList();
         inCode = true;
-        codeLang = line.slice(3).trim();
+        codeLang = line.slice(line.indexOf('```') + 3).trim();
         codeLines = [];
       } else {
         inCode = false;
@@ -83,62 +78,40 @@ function renderMarkdown(raw: string): string {
       continue;
     }
 
-    if (inCode) {
-      codeLines.push(line);
-      continue;
-    }
+    if (inCode) { codeLines.push(line); continue; }
 
-    // Heading # / ## / ###
     const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
     if (headingMatch) {
       flushList();
       const level = headingMatch[1].length;
       const text = renderInline(escapeHtml(headingMatch[2]));
       const sizes = ['18px', '16px', '14px'];
-      output.push(
-        `<div style="font-size:${sizes[level - 1]};font-weight:700;color:#e8e8f0;margin:16px 0 6px;letter-spacing:-0.01em">${text}</div>`,
-      );
+      output.push(`<div style="font-size:${sizes[level - 1]};font-weight:700;color:#e8e8f0;margin:16px 0 6px;letter-spacing:-0.01em">${text}</div>`);
       continue;
     }
 
-    // Horizontal rule ---
     if (/^---+$/.test(line.trim())) {
       flushList();
       output.push('<hr style="border:none;border-top:1px solid rgba(120,140,255,0.1);margin:12px 0" />');
       continue;
     }
 
-    // Unordered list - item or * item
     const listMatch = line.match(/^[\-\*]\s+(.+)/);
     if (listMatch) {
-      if (!inList) {
-        output.push('<ul style="margin:6px 0;padding-left:20px;list-style:none">');
-        inList = true;
-      }
-      output.push(
-        `<li style="margin:3px 0;display:flex;gap:8px;align-items:baseline"><span style="color:rgba(120,140,255,0.5);flex-shrink:0">•</span><span>${renderInline(escapeHtml(listMatch[1]))}</span></li>`,
-      );
+      if (!inList) { output.push('<ul style="margin:6px 0;padding-left:20px;list-style:none">'); inList = true; }
+      output.push(`<li style="margin:3px 0;display:flex;gap:8px;align-items:baseline"><span style="color:rgba(120,140,255,0.5);flex-shrink:0">•</span><span>${renderInline(escapeHtml(listMatch[1]))}</span></li>`);
       continue;
     }
 
-    // Ordered list 1. item
     const orderedMatch = line.match(/^\d+\.\s+(.+)/);
     if (orderedMatch) {
       flushList();
-      output.push(
-        `<div style="margin:3px 0;padding-left:4px">${renderInline(escapeHtml(orderedMatch[1]))}</div>`,
-      );
+      output.push(`<div style="margin:3px 0;padding-left:4px">${renderInline(escapeHtml(orderedMatch[1]))}</div>`);
       continue;
     }
 
-    // Empty line
-    if (line.trim() === '') {
-      flushList();
-      output.push('<div style="height:8px"></div>');
-      continue;
-    }
+    if (line.trim() === '') { flushList(); output.push('<div style="height:8px"></div>'); continue; }
 
-    // Normal paragraph line
     flushList();
     output.push(`<div style="margin:2px 0;line-height:1.65">${renderInline(escapeHtml(line))}</div>`);
   }
@@ -156,110 +129,77 @@ function TypingIndicator() {
         <span
           key={i}
           style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: '#788cff',
+            width: 6, height: 6, borderRadius: '50%', background: '#788cff',
             display: 'inline-block',
             animation: `typing-bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
           }}
         />
       ))}
-      <style>{`
-        @keyframes typing-bounce {
-          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-          30% { transform: translateY(-6px); opacity: 1; }
-        }
-      `}</style>
+      <style>{`@keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }`}</style>
     </div>
   );
 }
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard not available
-    }
-  }
-
   return (
     <button
-      onClick={handleCopy}
+      onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {} }}
       title="Copy response"
       style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        padding: '4px 6px',
-        borderRadius: 5,
+        background: 'none', border: 'none', cursor: 'pointer',
+        padding: '4px 6px', borderRadius: 5,
         color: copied ? '#788cff' : '#444',
-        fontSize: 11,
-        fontFamily: 'var(--font-mono)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
+        fontSize: 11, fontFamily: 'var(--font-mono)',
+        display: 'flex', alignItems: 'center', gap: 4,
         transition: 'color 0.15s',
-        marginTop: 6,
-        marginLeft: 'auto',
       }}
       onMouseEnter={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = '#777'; }}
       onMouseLeave={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = '#444'; }}
     >
       {copied ? (
-        <>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Copied!
-        </>
+        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Copied!</>
       ) : (
-        <>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-          Copy
-        </>
+        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>Copy</>
       )}
     </button>
   );
 }
 
-function AssistantMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+function AssistantBubble({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div
-        style={{
-          maxWidth: '85%',
-          padding: '14px 18px',
-          borderRadius: '4px 18px 18px 18px',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          color: '#c8c8d8',
-          fontSize: 14,
-          fontFamily: 'var(--font-sans)',
-          lineHeight: 1.65,
-          wordBreak: 'break-word',
-        }}
-      >
-        <div dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
-        {!isStreaming && content && (
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <CopyButton text={content} />
-          </div>
-        )}
-      </div>
+    <div style={{
+      width: '100%', padding: '14px 18px',
+      borderRadius: '4px 18px 18px 18px',
+      background: 'rgba(255,255,255,0.04)',
+      border: '1px solid rgba(255,255,255,0.06)',
+      color: '#c8c8d8', fontSize: 14,
+      fontFamily: 'var(--font-sans)', lineHeight: 1.65,
+      wordBreak: 'break-word',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function AiAvatar() {
+  return (
+    <div style={{
+      width: 28, height: 28, borderRadius: '50%',
+      background: 'rgba(120,140,255,0.15)', border: '1px solid rgba(120,140,255,0.3)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0, marginTop: 2,
+    }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
     </div>
   );
 }
 
 // ---- Main page ----
+
+const CONTENT_WIDTH = 640;
 
 export default function AskPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -269,22 +209,20 @@ export default function AskPage() {
   const [error, setError] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Debounced auto-scroll
   useEffect(() => {
-    // Debounced auto-scroll: only scroll every 150ms, and only if near the bottom
     if (scrollTimerRef.current) return;
     scrollTimerRef.current = setTimeout(() => {
       scrollTimerRef.current = null;
-      const el = messagesEndRef.current;
-      if (!el) return;
-      const container = el.closest('[data-chat-scroll]') ?? document.documentElement;
-      const scrollable = container === document.documentElement ? document.documentElement : (container as HTMLElement);
-      const distanceFromBottom = scrollable.scrollHeight - scrollable.scrollTop - scrollable.clientHeight;
-      // Only auto-scroll if user is within 150px of the bottom
-      if (distanceFromBottom <= 150) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distFromBottom <= 200) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
       }
     }, 150);
   }, [messages, loading, streamingContent]);
@@ -293,14 +231,12 @@ export default function AskPage() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }
 
   const pickFollowUps = useCallback((turnIndex: number) => {
     const pool = FOLLOW_UP_QUESTIONS[turnIndex % FOLLOW_UP_QUESTIONS.length];
-    // Pick 3 unique random items
-    const shuffled = [...pool].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 3);
+    return [...pool].sort(() => Math.random() - 0.5).slice(0, 3);
   }, []);
 
   async function sendMessage(text: string) {
@@ -315,10 +251,7 @@ export default function AskPage() {
     setLoading(true);
     setStreamingContent('');
     setFollowUps([]);
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     try {
       const res = await fetch('/api/ask/stream', {
@@ -343,25 +276,17 @@ export default function AskPage() {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
-
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const jsonStr = line.slice(6).trim();
           if (!jsonStr || jsonStr === '[DONE]') continue;
           try {
             const chunk = JSON.parse(jsonStr);
-            if (chunk.error) {
-              setError(chunk.error);
-            } else if (chunk.text) {
-              accumulated += chunk.text;
-              setStreamingContent(accumulated);
-            }
-          } catch {
-            // skip malformed
-          }
+            if (chunk.error) setError(chunk.error);
+            else if (chunk.text) { accumulated += chunk.text; setStreamingContent(accumulated); }
+          } catch {}
         }
       }
 
@@ -378,546 +303,171 @@ export default function AskPage() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
   }
 
   const isEmpty = messages.length === 0 && !loading && !streamingContent;
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'rgb(5,8,16)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* Header */}
-      <header
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-          borderBottom: '1px solid rgba(120,140,255,0.08)',
-          background: 'rgba(5,8,16,0.92)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            maxWidth: 1200,
-            margin: '0 auto',
-            padding: '12px 32px',
-          }}
-        >
+    <div style={{ height: '100vh', background: 'rgb(5,8,16)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* ── Header ── */}
+      <header style={{
+        flexShrink: 0, borderBottom: '1px solid rgba(120,140,255,0.08)',
+        background: 'rgba(5,8,16,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: CONTENT_WIDTH, margin: '0 auto', padding: '12px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Link
-              href="/topics"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                color: '#666',
-                textDecoration: 'none',
-                fontSize: 13,
-                fontFamily: 'var(--font-mono)',
-                transition: 'color 0.15s',
-              }}
+            <Link href="/topics" style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#666', textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-mono)', transition: 'color 0.15s' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#999'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12" />
-                <polyline points="12 19 5 12 12 5" />
-              </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
               Topics
             </Link>
             <span style={{ color: 'rgba(120,140,255,0.2)', fontSize: 16 }}>/</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: '50%',
-                  background: 'rgba(120,140,255,0.15)',
-                  border: '1px solid rgba(120,140,255,0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </div>
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontWeight: 600,
-                  fontSize: 14,
-                  color: '#e8e8f0',
-                  letterSpacing: '-0.01em',
-                }}
-              >
-                OpenStoa AI
-              </span>
+              <AiAvatar />
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 14, color: '#e8e8f0', letterSpacing: '-0.01em' }}>OpenStoa AI</span>
             </div>
           </div>
-
           {messages.length > 0 && (
-            <button
-              onClick={() => { setMessages([]); setError(null); setFollowUps([]); }}
-              style={{
-                background: 'none',
-                border: '1px solid rgba(120,140,255,0.15)',
-                borderRadius: 6,
-                color: '#555',
-                fontSize: 11,
-                fontFamily: 'var(--font-mono)',
-                cursor: 'pointer',
-                padding: '5px 10px',
-                letterSpacing: '0.04em',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.color = '#999';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.3)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.color = '#555';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
-              }}
-            >
-              New chat
-            </button>
+            <button onClick={() => { setMessages([]); setError(null); setFollowUps([]); }}
+              style={{ background: 'none', border: '1px solid rgba(120,140,255,0.15)', borderRadius: 6, color: '#555', fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer', padding: '5px 10px', letterSpacing: '0.04em', transition: 'all 0.15s' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#999'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.3)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#555'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)'; }}
+            >New chat</button>
           )}
         </div>
       </header>
 
-      {/* Main chat area */}
-      <main
-        style={{
-          flex: 1,
-          maxWidth: 1200,
-          width: '100%',
-          margin: '0 auto',
-          padding: '0 32px 120px',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {/* Empty state */}
-        {isEmpty && (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingTop: 80,
-              paddingBottom: 40,
-            }}
-          >
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: '50%',
-                background: 'rgba(120,140,255,0.12)',
-                border: '1px solid rgba(120,140,255,0.25)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 20,
-              }}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </div>
-            <h1
-              style={{
-                fontFamily: 'var(--font-sans)',
-                fontWeight: 700,
-                fontSize: 22,
-                color: '#e8e8f0',
-                margin: '0 0 8px',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Ask OpenStoa AI
-            </h1>
-            <p
-              style={{
-                color: '#555',
-                fontSize: 14,
-                fontFamily: 'var(--font-sans)',
-                margin: '0 0 40px',
-                textAlign: 'center',
-                lineHeight: 1.6,
-              }}
-            >
-              Ask anything about OpenStoa — proofs, authentication, topics, and more.
-            </p>
+      {/* ── Scrollable messages area ── */}
+      <div ref={scrollContainerRef} style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ maxWidth: CONTENT_WIDTH, margin: '0 auto', padding: '0 20px' }}>
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 10,
-                width: '100%',
-                maxWidth: 560,
-              }}
-              className="suggested-grid"
-            >
-              {SUGGESTED_QUESTIONS.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => sendMessage(q)}
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(120,140,255,0.12)',
-                    borderRadius: 10,
-                    padding: '14px 16px',
-                    color: '#888',
-                    fontSize: 13,
-                    fontFamily: 'var(--font-sans)',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    lineHeight: 1.5,
-                    transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.07)';
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
-                    (e.currentTarget as HTMLElement).style.color = '#bbb';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.12)';
-                    (e.currentTarget as HTMLElement).style.color = '#888';
-                  }}
-                >
-                  {q}
-                </button>
+          {/* Empty state */}
+          {isEmpty && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 100, paddingBottom: 40 }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(120,140,255,0.12)', border: '1px solid rgba(120,140,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+              </div>
+              <h1 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 22, color: '#e8e8f0', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Ask OpenStoa AI</h1>
+              <p style={{ color: '#555', fontSize: 14, fontFamily: 'var(--font-sans)', margin: '0 0 40px', textAlign: 'center', lineHeight: 1.6 }}>
+                Ask anything about OpenStoa — proofs, authentication, topics, and more.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%', maxWidth: 520 }} className="suggested-grid">
+                {SUGGESTED_QUESTIONS.map((q) => (
+                  <button key={q} onClick={() => sendMessage(q)}
+                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(120,140,255,0.12)', borderRadius: 10, padding: '14px 16px', color: '#888', fontSize: 13, fontFamily: 'var(--font-sans)', textAlign: 'left', cursor: 'pointer', lineHeight: 1.5, transition: 'all 0.15s' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.07)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)'; (e.currentTarget as HTMLElement).style.color = '#bbb'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.12)'; (e.currentTarget as HTMLElement).style.color = '#888'; }}
+                  >{q}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Message list */}
+          {!isEmpty && (
+            <div style={{ paddingTop: 24, paddingBottom: 16 }}>
+              {messages.map((msg, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 20, gap: 10, alignItems: 'flex-start' }}>
+                  {msg.role === 'assistant' && <AiAvatar />}
+                  {msg.role === 'assistant' ? (
+                    <AssistantBubble>
+                      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <CopyButton text={msg.content} />
+                      </div>
+                    </AssistantBubble>
+                  ) : (
+                    <div style={{ maxWidth: '85%', padding: '10px 16px', borderRadius: '18px 18px 4px 18px', background: 'rgba(120,140,255,0.18)', border: '1px solid rgba(120,140,255,0.3)', color: '#d0d4ff', fontSize: 14, fontFamily: 'var(--font-sans)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {msg.content}
+                    </div>
+                  )}
+                </div>
               ))}
+
+              {/* Streaming */}
+              {loading && streamingContent && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
+                  <AiAvatar />
+                  <AssistantBubble>
+                    <div dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
+                  </AssistantBubble>
+                </div>
+              )}
+
+              {/* Typing indicator */}
+              {loading && !streamingContent && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
+                  <AiAvatar />
+                  <AssistantBubble><TypingIndicator /></AssistantBubble>
+                </div>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div style={{ padding: '12px 16px', background: 'rgba(255,80,80,0.06)', border: '1px solid rgba(255,80,80,0.2)', borderRadius: 8, color: '#ff6b6b', fontSize: 13, fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
+                  {error}
+                </div>
+              )}
+
+              {/* Follow-up suggestions */}
+              {!loading && followUps.length > 0 && (
+                <div style={{ marginBottom: 16, paddingLeft: 38 }}>
+                  <div style={{ fontSize: 11, color: '#444', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', marginBottom: 8 }}>SUGGESTED</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {followUps.map((q) => (
+                      <button key={q} onClick={() => sendMessage(q)}
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(120,140,255,0.12)', borderRadius: 20, padding: '6px 14px', color: '#666', fontSize: 12, fontFamily: 'var(--font-sans)', cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.07)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)'; (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.12)'; (e.currentTarget as HTMLElement).style.color = '#666'; }}
+                      >{q}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
             </div>
-          </div>
-        )}
-
-        {/* Message list */}
-        {!isEmpty && (
-          <div data-chat-scroll style={{ paddingTop: 32, paddingBottom: 16 }}>
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  marginBottom: 20,
-                  gap: 10,
-                  alignItems: 'flex-start',
-                }}
-              >
-                {msg.role === 'assistant' && (
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      background: 'rgba(120,140,255,0.15)',
-                      border: '1px solid rgba(120,140,255,0.3)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      marginTop: 2,
-                    }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                      <line x1="12" y1="17" x2="12.01" y2="17" />
-                    </svg>
-                  </div>
-                )}
-                {msg.role === 'assistant' ? (
-                  <AssistantMessage content={msg.content} isStreaming={false} />
-                ) : (
-                  <div
-                    style={{
-                      maxWidth: '85%',
-                      padding: '10px 16px',
-                      borderRadius: '18px 18px 4px 18px',
-                      background: 'rgba(120,140,255,0.18)',
-                      border: '1px solid rgba(120,140,255,0.3)',
-                      color: '#d0d4ff',
-                      fontSize: 14,
-                      fontFamily: 'var(--font-sans)',
-                      lineHeight: 1.65,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {msg.content}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Streaming in-progress */}
-            {loading && streamingContent && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
-                <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: 'rgba(120,140,255,0.15)',
-                    border: '1px solid rgba(120,140,255,0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: 2,
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                  </svg>
-                </div>
-                <AssistantMessage content={streamingContent} isStreaming={true} />
-              </div>
-            )}
-
-            {/* Typing indicator (before first token arrives) */}
-            {loading && !streamingContent && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
-                <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: 'rgba(120,140,255,0.15)',
-                    border: '1px solid rgba(120,140,255,0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: 2,
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                  </svg>
-                </div>
-                <div
-                  style={{
-                    padding: '14px 18px',
-                    borderRadius: '4px 18px 18px 18px',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                  }}
-                >
-                  <TypingIndicator />
-                </div>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div
-                style={{
-                  padding: '12px 16px',
-                  background: 'rgba(255,80,80,0.06)',
-                  border: '1px solid rgba(255,80,80,0.2)',
-                  borderRadius: 8,
-                  color: '#ff6b6b',
-                  fontSize: 13,
-                  fontFamily: 'var(--font-sans)',
-                  marginBottom: 16,
-                }}
-              >
-                {error}
-              </div>
-            )}
-
-            {/* Follow-up suggested questions */}
-            {!loading && followUps.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: '#444',
-                    fontFamily: 'var(--font-mono)',
-                    letterSpacing: '0.05em',
-                    marginBottom: 8,
-                    paddingLeft: 38,
-                  }}
-                >
-                  SUGGESTED
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 38 }}>
-                  {followUps.map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => sendMessage(q)}
-                      style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(120,140,255,0.12)',
-                        borderRadius: 20,
-                        padding: '6px 14px',
-                        color: '#666',
-                        fontSize: 12,
-                        fontFamily: 'var(--font-sans)',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                        whiteSpace: 'nowrap',
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.07)';
-                        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
-                        (e.currentTarget as HTMLElement).style.color = '#aaa';
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
-                        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.12)';
-                        (e.currentTarget as HTMLElement).style.color = '#666';
-                      }}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </main>
-
-      {/* Input area */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '100%',
-          maxWidth: 640,
-          zIndex: 50,
-          background: 'rgba(5,8,16,0.95)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          borderTop: '1px solid rgba(120,140,255,0.06)',
-          padding: '8px 20px 10px',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: 10,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(120,140,255,0.15)',
-            borderRadius: 10,
-            padding: '8px 10px 8px 16px',
-            transition: 'border-color 0.15s',
-          }}
-          onFocusCapture={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.35)';
-          }}
-          onBlurCapture={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
-          }}
-        >
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => { setInput(e.target.value); autoResize(); }}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything about OpenStoa…"
-            rows={1}
-            maxLength={2000}
-            style={{
-              flex: 1,
-              background: 'none',
-              border: 'none',
-              outline: 'none',
-              color: '#e8e8f0',
-              fontSize: 14,
-              fontFamily: 'var(--font-sans)',
-              resize: 'none',
-              lineHeight: 1.55,
-              padding: 0,
-              minHeight: 20,
-              maxHeight: 80,
-              overflow: 'auto',
-            }}
-          />
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || loading}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              border: 'none',
-              background: input.trim() && !loading ? '#788cff' : 'rgba(120,140,255,0.12)',
-              color: input.trim() && !loading ? '#fff' : '#444',
-              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              transition: 'all 0.15s',
-            }}
-            aria-label="Send message"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
+          )}
         </div>
-        <p
-          style={{
-            textAlign: 'center',
-            color: '#333',
-            fontSize: 11,
-            fontFamily: 'var(--font-mono)',
-            margin: '4px 0 0',
-            letterSpacing: '0.02em',
-          }}
-        >
-          Enter to send · Shift+Enter for new line
-        </p>
       </div>
 
-      <style>{`
-        @media (max-width: 600px) {
-          .suggested-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
+      {/* ── Input area (natural flex bottom — NOT fixed/sticky) ── */}
+      <div style={{ flexShrink: 0, borderTop: '1px solid rgba(120,140,255,0.06)', background: 'rgba(5,8,16,0.95)' }}>
+        <div style={{ maxWidth: CONTENT_WIDTH, margin: '0 auto', padding: '8px 20px 10px' }}>
+          <div
+            style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(120,140,255,0.15)', borderRadius: 10, padding: '8px 10px 8px 16px', transition: 'border-color 0.15s' }}
+            onFocusCapture={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.35)'; }}
+            onBlurCapture={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)'; }}
+          >
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => { setInput(e.target.value); autoResize(); }}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask anything about OpenStoa…"
+              rows={1}
+              maxLength={2000}
+              style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: '#e8e8f0', fontSize: 14, fontFamily: 'var(--font-sans)', resize: 'none', lineHeight: 1.55, padding: 0, minHeight: 22, maxHeight: 120, overflow: 'auto' }}
+            />
+            <button
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || loading}
+              style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: input.trim() && !loading ? '#788cff' : 'rgba(120,140,255,0.12)', color: input.trim() && !loading ? '#fff' : '#444', cursor: input.trim() && !loading ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}
+              aria-label="Send message"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+            </button>
+          </div>
+          <p style={{ textAlign: 'center', color: '#333', fontSize: 11, fontFamily: 'var(--font-mono)', margin: '4px 0 0', letterSpacing: '0.02em' }}>
+            Enter to send · Shift+Enter for new line
+          </p>
+        </div>
+      </div>
+
+      <style>{`@media (max-width: 600px) { .suggested-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
 }
