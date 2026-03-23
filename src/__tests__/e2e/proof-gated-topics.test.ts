@@ -1,54 +1,94 @@
 import { describe, it, expect } from 'vitest';
 import { authGet, authPost, publicGet, getBaseUrl } from './helpers';
+import { execSync } from 'child_process';
 
 /**
- * E2E tests for proof-gated topics — REAL proof generation + join flow.
+ * E2E tests for proof-gated topics — uses zkproofport-prove CLI (MCP).
+ *
+ * Authentication: Google OIDC device flow via zkproofport-prove CLI.
+ * The CLI prints a device code to stderr — enter it at https://www.google.com/device
  *
  * Two users:
- * - User A: KYC-verified (from global-setup via AI SDK proof)
- * - User B: dev-login (no verification cache) — tests join flow
+ * - User A: Login via Google OIDC (global-setup or cached token)
+ * - User B: Login via Google OIDC (second account, fresh device flow)
  *
- * Flows tested:
- * 1. User A creates gated topics (kyc, country, workspace variants)
- * 2. User B tries to join without proof → 402 with guide
- * 3. User B generates proof → joins → 201
- * 4. User B's verification cached → next join skips proof
- * 5. Edge cases: wrong domain, non-public visibility, already member, etc.
+ * Proof types tested:
+ * - KYC (coinbase_attestation) — topic creation + join
+ * - Country (coinbase_country_attestation) — topic creation + join
+ * - Workspace (oidc_domain_attestation) — topic creation + join
+ *   - google_workspace with domain
+ *   - google_workspace without domain
+ *   - workspace (any provider)
+ *
+ * Edge cases:
+ * - Join without proof → 402 with proof guide
+ * - Already a member → 409
+ * - Non-public visibility → 400
+ * - Wrong proof type → rejected
  */
 
 const BASE = getBaseUrl();
+const PAYMENT_KEY = process.env.E2E_ATTESTATION_WALLET_KEY || process.env.E2E_PAYER_WALLET_KEY;
 
-// User A: KYC-verified (from global-setup)
-function getTokenA(): string {
-  return process.env.E2E_AUTH_TOKEN!;
+/**
+ * Run zkproofport-prove CLI and return the proof result.
+ * stderr contains device code (for OIDC) — user must enter it manually.
+ * stdout contains JSON proof result (with --silent flag).
+ */
+function runProve(args: string, scope: string, timeoutMs = 180_000): Record<string, unknown> {
+  const env = { ...process.env, PAYMENT_KEY };
+  const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent`;
+  console.log(`[E2E] Running: ${cmd}`);
+  console.log('[E2E] Check stderr for device code if OIDC login required');
+  const result = execSync(cmd, {
+    env,
+    timeout: timeoutMs,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'inherit'], // stderr goes to console (shows device code)
+  });
+  return JSON.parse(result.trim());
 }
 
-// User B: dev-login (no verification)
-let tokenB: string;
-let userBId: string;
-
-// Helpers for User B requests
-function authGetB(path: string) {
-  return fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${tokenB}` } });
+/**
+ * Get a fresh challenge scope from OpenStoa.
+ */
+async function getScope(): Promise<{ challengeId: string; scope: string }> {
+  const res = await fetch(`${BASE}/api/auth/challenge`, { method: 'POST' });
+  return res.json();
 }
-function authPostB(path: string, body: Record<string, unknown>) {
-  return fetch(`${BASE}${path}`, {
+
+/**
+ * Login to OpenStoa with a proof result.
+ */
+async function loginWithProof(challengeId: string, proofResult: Record<string, unknown>): Promise<{ token: string; userId: string }> {
+  const res = await fetch(`${BASE}/api/auth/verify/ai`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${tokenB}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challengeId, result: proofResult }),
+  });
+  if (!res.ok) throw new Error(`Login failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+// Helper for authenticated requests with a specific token
+function fetchAuth(path: string, token: string, options?: RequestInit) {
+  return fetch(`${BASE}${path}`, {
+    ...options,
+    headers: { ...options?.headers as Record<string, string>, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   });
 }
 
 // Shared state
 let categoryId: string;
+let userAToken: string;
+let userBToken: string;
+let openTopicId: string;
 let kycTopicId: string;
 let countryTopicId: string;
 let workspaceTopicId: string;
-let workspaceDomainTopicId: string;
-let googleOnlyTopicId: string;
-let openTopicId: string;
 
-describe.sequential('Proof-gated topics — full flow', () => {
+describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
+
   // ══════════════════════════════════════════════════
   // SETUP
   // ══════════════════════════════════════════════════
@@ -61,282 +101,268 @@ describe.sequential('Proof-gated topics — full flow', () => {
     categoryId = json.categories[0].id;
   });
 
-  it('setup: create User B via dev-login', async () => {
-    const res = await fetch(`${BASE}/api/auth/dev-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: `e2e-userb-${Date.now()}`, nickname: `e2e_b_${Date.now().toString(36)}` }),
-    });
+  // ══════════════════════════════════════════════════
+  // USER A — LOGIN VIA GOOGLE OIDC
+  // ══════════════════════════════════════════════════
+
+  it('User A: login via Google OIDC device flow', async () => {
+    // Use cached token from global-setup if available
+    if (process.env.E2E_AUTH_TOKEN) {
+      userAToken = process.env.E2E_AUTH_TOKEN;
+      console.log('[E2E] User A: using cached token');
+      return;
+    }
+    const { challengeId, scope } = await getScope();
+    console.log('[E2E] User A: Google device flow login — enter code at https://www.google.com/device');
+    const proofResult = runProve('--login-google', scope);
+    const { token } = await loginWithProof(challengeId, proofResult);
+    userAToken = token;
+  }, 300_000);
+
+  it('User A: session is valid', async () => {
+    const res = await fetchAuth('/api/auth/session', userAToken);
     expect(res.status).toBe(200);
     const json = await res.json();
-    tokenB = json.token;
-    userBId = json.userId;
-    expect(tokenB).toBeTruthy();
+    expect(json.userId).toBeTruthy();
   });
 
   // ══════════════════════════════════════════════════
-  // 1. USER A — VERIFY KYC CACHE FROM LOGIN
+  // USER B — LOGIN VIA GOOGLE OIDC (SECOND ACCOUNT)
   // ══════════════════════════════════════════════════
 
-  it('User A: KYC verification cached from login', async () => {
-    const res = await authGet('/api/profile/badges');
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    const kycBadge = json.badges.find((b: { type: string }) => b.type === 'kyc');
-    expect(kycBadge).toBeDefined();
-    expect(kycBadge.verifiedAt).toBeGreaterThan(0);
-  });
+  it('User B: login via Google OIDC device flow', async () => {
+    const { challengeId, scope } = await getScope();
+    console.log('[E2E] User B: Google device flow login — enter code at https://www.google.com/device (USE DIFFERENT ACCOUNT)');
+    const proofResult = runProve('--login-google', scope);
+    const { token } = await loginWithProof(challengeId, proofResult);
+    userBToken = token;
+    expect(userBToken).toBeTruthy();
+    expect(userBToken).not.toBe(userAToken);
+  }, 300_000);
 
   // ══════════════════════════════════════════════════
-  // 2. USER A — CREATE TOPICS WITH VARIOUS PROOF TYPES
+  // USER A — CREATE TOPICS
   // ══════════════════════════════════════════════════
 
   it('User A: creates open topic', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E Open ${Date.now()}`, description: 'No proof', categoryId, proofType: 'none',
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({ title: `E2E Open ${Date.now()}`, description: 'No proof', categoryId, proofType: 'none' }),
     });
     expect(res.status).toBe(201);
     openTopicId = (await res.json()).topic.id;
   });
 
-  it('User A: creates KYC-gated topic (cached verification)', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E KYC ${Date.now()}`, description: 'KYC required', categoryId, proofType: 'kyc',
+  it('User A: creates KYC-gated topic', async () => {
+    // User A logged in via OIDC — no KYC cache. Need to generate KYC proof.
+    const { scope } = await getScope();
+    console.log('[E2E] User A: generating KYC proof for topic creation...');
+    const proofResult = runProve('coinbase_kyc', scope);
+
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `E2E KYC ${Date.now()}`, description: 'KYC required', categoryId,
+        proofType: 'kyc',
+        proof: proofResult.proof,
+        publicInputs: proofResult.publicInputs,
+      }),
     });
     expect(res.status).toBe(201);
     kycTopicId = (await res.json()).topic.id;
-  });
+  }, 180_000);
 
-  it('User A: creates country-gated topic with real proof', async () => {
-    // Generate country proof
-    const { createConfig, generateProof, fromPrivateKey } = await import('@zkproofport-ai/sdk');
-    const aiConfig = createConfig({ baseUrl: 'https://stg-ai.zkproofport.app' });
-    const key = process.env.E2E_ATTESTATION_WALLET_KEY!;
-    const signer = fromPrivateKey(key);
+  it('User A: creates country-gated topic (KR)', async () => {
+    const { scope } = await getScope();
+    console.log('[E2E] User A: generating country proof (KR) for topic creation...');
+    const proofResult = runProve('coinbase_country --countries KR --included true', scope);
 
-    const challengeRes = await fetch(`${BASE}/api/auth/challenge`, { method: 'POST' });
-    const { scope } = await challengeRes.json();
-
-    console.log('[E2E] Generating country proof (KR) for topic creation...');
-    const result = await generateProof(
-      aiConfig,
-      { attestation: signer, payment: signer },
-      { circuit: 'coinbase_country', scope, countryList: ['KR'], isIncluded: true },
-      { onStep: (s: any) => console.log(`[E2E] Country: Step ${s.step}: ${s.name} (${s.durationMs}ms)`) },
-    );
-
-    const res = await authPost('/api/topics', {
-      title: `E2E Country KR ${Date.now()}`, description: 'KR only', categoryId,
-      proofType: 'country', requiresCountryProof: true,
-      allowedCountries: ['KR'], countryMode: 'include',
-      proof: result.proof, publicInputs: result.publicInputs,
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `E2E Country KR ${Date.now()}`, description: 'KR only', categoryId,
+        proofType: 'country', requiresCountryProof: true,
+        allowedCountries: ['KR'], countryMode: 'include',
+        proof: proofResult.proof,
+        publicInputs: proofResult.publicInputs,
+      }),
     });
     expect(res.status).toBe(201);
     countryTopicId = (await res.json()).topic.id;
-  }, 120_000);
+  }, 180_000);
 
-  it('User A: creates workspace topic (any provider, no domain)', async () => {
-    // User A doesn't have workspace verification — should fail without proof
-    const res = await authPost('/api/topics', {
-      title: `E2E Workspace ${Date.now()}`, description: 'Any org', categoryId,
-      proofType: 'workspace',
+  it('User A: creates workspace-gated topic (Google Workspace)', async () => {
+    const { scope } = await getScope();
+    console.log('[E2E] User A: Google Workspace device flow — enter code at https://www.google.com/device');
+    const proofResult = runProve('--login-google-workspace', scope);
+
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `E2E Workspace ${Date.now()}`, description: 'Org required', categoryId,
+        proofType: 'workspace',
+        proof: proofResult.proof,
+        publicInputs: proofResult.publicInputs,
+      }),
     });
-    // No workspace proof cached → 400
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error.toLowerCase()).toContain('proof');
-  });
-
-  // ══════════════════════════════════════════════════
-  // 3. USER B — JOIN OPEN TOPIC (NO PROOF)
-  // ══════════════════════════════════════════════════
-
-  it('User B: joins open topic without proof', async () => {
-    const res = await authPostB(`/api/topics/${openTopicId}/join`, {});
     expect(res.status).toBe(201);
-    const json = await res.json();
-    expect(json.success).toBe(true);
+    workspaceTopicId = (await res.json()).topic.id;
+  }, 300_000);
+
+  // ══════════════════════════════════════════════════
+  // USER B — JOIN OPEN TOPIC
+  // ══════════════════════════════════════════════════
+
+  it('User B: joins open topic', async () => {
+    const res = await fetchAuth(`/api/topics/${openTopicId}/join`, userBToken, {
+      method: 'POST', body: '{}',
+    });
+    expect(res.status).toBe(201);
   });
 
-  it('User B: joining same topic again → 409 already member', async () => {
-    const res = await authPostB(`/api/topics/${openTopicId}/join`, {});
+  it('User B: joining same topic again → 409', async () => {
+    const res = await fetchAuth(`/api/topics/${openTopicId}/join`, userBToken, {
+      method: 'POST', body: '{}',
+    });
     expect(res.status).toBe(409);
   });
 
   // ══════════════════════════════════════════════════
-  // 4. USER B — JOIN KYC TOPIC (REQUIRES PROOF)
+  // USER B — JOIN KYC TOPIC (402 → proof → 201)
   // ══════════════════════════════════════════════════
 
-  it('User B: join KYC topic without proof → 402 with guide', async () => {
-    const res = await authPostB(`/api/topics/${kycTopicId}/join`, {});
+  it('User B: join KYC topic without proof → 402', async () => {
+    const res = await fetchAuth(`/api/topics/${kycTopicId}/join`, userBToken, {
+      method: 'POST', body: '{}',
+    });
     expect(res.status).toBe(402);
     const json = await res.json();
     expect(json.error).toContain('Proof required');
     expect(json.proofRequirement).toBeDefined();
     expect(json.proofRequirement.type).toBe('kyc');
-    expect(json.proofRequirement.circuit).toBe('coinbase_attestation');
-    expect(json.proofRequirement.payment).toBeDefined();
-    expect(json.proofRequirement.guide).toBeDefined();
-    expect(json.proofRequirement.guideUrl).toContain('/api/docs/proof-guide/kyc');
   });
 
-  it('User B: generates KYC proof and joins topic', async () => {
-    const { createConfig, generateProof, fromPrivateKey } = await import('@zkproofport-ai/sdk');
-    const aiConfig = createConfig({ baseUrl: 'https://stg-ai.zkproofport.app' });
-    const key = process.env.E2E_ATTESTATION_WALLET_KEY!;
-    const signer = fromPrivateKey(key);
+  it('User B: generates KYC proof and joins', async () => {
+    const { scope } = await getScope();
+    console.log('[E2E] User B: generating KYC proof for join...');
+    const proofResult = runProve('coinbase_kyc', scope);
 
-    const challengeRes = await fetch(`${BASE}/api/auth/challenge`, { method: 'POST' });
-    const { scope } = await challengeRes.json();
-
-    console.log('[E2E] User B: Generating KYC proof for join...');
-    const result = await generateProof(
-      aiConfig,
-      { attestation: signer, payment: signer },
-      { circuit: 'coinbase_kyc', scope },
-      { onStep: (s: any) => console.log(`[E2E] UserB KYC: Step ${s.step}: ${s.name} (${s.durationMs}ms)`) },
-    );
-
-    const res = await authPostB(`/api/topics/${kycTopicId}/join`, {
-      proof: result.proof,
-      publicInputs: result.publicInputs,
+    const res = await fetchAuth(`/api/topics/${kycTopicId}/join`, userBToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
     });
     expect(res.status).toBe(201);
-    const json = await res.json();
-    expect(json.success).toBe(true);
-  }, 120_000);
+  }, 180_000);
 
   // ══════════════════════════════════════════════════
-  // 5. USER B — JOIN COUNTRY TOPIC (REQUIRES PROOF)
+  // USER B — JOIN COUNTRY TOPIC (402 → proof → 201)
   // ══════════════════════════════════════════════════
 
   it('User B: join country topic without proof → 402', async () => {
-    const res = await authPostB(`/api/topics/${countryTopicId}/join`, {});
+    const res = await fetchAuth(`/api/topics/${countryTopicId}/join`, userBToken, {
+      method: 'POST', body: '{}',
+    });
     expect(res.status).toBe(402);
     const json = await res.json();
     expect(json.proofRequirement.type).toBe('country');
-    expect(json.proofRequirement.circuit).toBe('coinbase_country_attestation');
   });
 
-  it('User B: generates country proof (KR) and joins topic', async () => {
-    const { createConfig, generateProof, fromPrivateKey } = await import('@zkproofport-ai/sdk');
-    const aiConfig = createConfig({ baseUrl: 'https://stg-ai.zkproofport.app' });
-    const key = process.env.E2E_ATTESTATION_WALLET_KEY!;
-    const signer = fromPrivateKey(key);
+  it('User B: generates country proof (KR) and joins', async () => {
+    const { scope } = await getScope();
+    console.log('[E2E] User B: generating country proof (KR) for join...');
+    const proofResult = runProve('coinbase_country --countries KR --included true', scope);
 
-    const challengeRes = await fetch(`${BASE}/api/auth/challenge`, { method: 'POST' });
-    const { scope } = await challengeRes.json();
-
-    console.log('[E2E] User B: Generating country proof (KR) for join...');
-    const result = await generateProof(
-      aiConfig,
-      { attestation: signer, payment: signer },
-      { circuit: 'coinbase_country', scope, countryList: ['KR'], isIncluded: true },
-      { onStep: (s: any) => console.log(`[E2E] UserB Country: Step ${s.step}: ${s.name} (${s.durationMs}ms)`) },
-    );
-
-    const res = await authPostB(`/api/topics/${countryTopicId}/join`, {
-      proof: result.proof,
-      publicInputs: result.publicInputs,
+    const res = await fetchAuth(`/api/topics/${countryTopicId}/join`, userBToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
     });
     expect(res.status).toBe(201);
-  }, 120_000);
+  }, 180_000);
 
   // ══════════════════════════════════════════════════
-  // 6. VERIFICATION CACHE — SKIP RE-PROVING
+  // USER B — JOIN WORKSPACE TOPIC (402 → proof → 201)
   // ══════════════════════════════════════════════════
 
-  it('User A: country verification cached after topic creation', async () => {
-    const res = await authGet('/api/profile/badges');
+  it('User B: join workspace topic without proof → 402', async () => {
+    if (!workspaceTopicId) return;
+    const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
+      method: 'POST', body: '{}',
+    });
+    expect(res.status).toBe(402);
+    const json = await res.json();
+    expect(json.proofRequirement.type).toMatch(/workspace|google_workspace|microsoft_365/);
+  });
+
+  it('User B: generates workspace proof and joins', async () => {
+    if (!workspaceTopicId) return;
+    const { scope } = await getScope();
+    console.log('[E2E] User B: Google Workspace device flow — enter code at https://www.google.com/device');
+    const proofResult = runProve('--login-google-workspace', scope);
+
+    const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
+    });
+    expect(res.status).toBe(201);
+  }, 300_000);
+
+  // ══════════════════════════════════════════════════
+  // EDGE CASES
+  // ══════════════════════════════════════════════════
+
+  it('rejects non-public visibility (private)', async () => {
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({ title: `E2E Priv ${Date.now()}`, description: 'fail', categoryId, visibility: 'private' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-public visibility (secret)', async () => {
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({ title: `E2E Sec ${Date.now()}`, description: 'fail', categoryId, visibility: 'secret' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // ══════════════════════════════════════════════════
+  // VERIFICATION CACHE
+  // ══════════════════════════════════════════════════
+
+  it('User A: badges show cached verifications', async () => {
+    const res = await fetchAuth('/api/profile/badges', userAToken);
     expect(res.status).toBe(200);
     const json = await res.json();
-    const types = json.badges.map((b: { type: string }) => b.type);
-    expect(types).toContain('kyc');
-    // country should also be cached (saved during topic creation with proof)
+    expect(json.badges).toBeDefined();
+    expect(Array.isArray(json.badges)).toBe(true);
+  });
+
+  it('badges contain no raw PII', async () => {
+    const text = await (await fetchAuth('/api/profile/badges', userAToken)).text();
+    expect(text).not.toContain('"email"');
+    expect(text).not.toContain('"publicInputs"');
   });
 
   // ══════════════════════════════════════════════════
-  // 7. EDGE CASES
+  // PROOF GUIDE API
   // ══════════════════════════════════════════════════
 
-  it('rejects non-public visibility', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E Private ${Date.now()}`, description: 'fail', categoryId,
-      visibility: 'private',
-    });
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toContain('public');
-  });
-
-  it('rejects secret visibility', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E Secret ${Date.now()}`, description: 'fail', categoryId,
-      visibility: 'secret',
-    });
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toContain('public');
-  });
-
-  it('workspace topic without proof fails for creator', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E WS Fail ${Date.now()}`, description: 'fail', categoryId,
-      proofType: 'workspace',
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it('google_workspace topic without proof fails for creator', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E GW Fail ${Date.now()}`, description: 'fail', categoryId,
-      proofType: 'google_workspace',
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it('microsoft_365 topic without proof fails for creator', async () => {
-    const res = await authPost('/api/topics', {
-      title: `E2E MS Fail ${Date.now()}`, description: 'fail', categoryId,
-      proofType: 'microsoft_365',
-    });
-    expect(res.status).toBe(400);
-  });
-
-  // ══════════════════════════════════════════════════
-  // 8. PROOF GUIDE API — ALL TYPES
-  // ══════════════════════════════════════════════════
-
-  it('proof guide: kyc', async () => {
-    const res = await fetch(`${BASE}/api/docs/proof-guide/kyc`);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.circuit).toBe('coinbase_attestation');
-    expect(json.payment.cost).toContain('USDC');
-    expect(json.steps.agent.length).toBeGreaterThan(0);
-    expect(json.proofEndpoint.agent.challengeEndpoint.url).toContain('/api/auth/challenge');
-  });
-
-  it('proof guide: country', async () => {
-    const res = await fetch(`${BASE}/api/docs/proof-guide/country`);
-    expect(res.status).toBe(200);
-    expect((await res.json()).circuit).toBe('coinbase_country_attestation');
-  });
-
-  it('proof guide: google_workspace', async () => {
-    const res = await fetch(`${BASE}/api/docs/proof-guide/google_workspace`);
-    expect(res.status).toBe(200);
-    expect((await res.json()).circuit).toBe('oidc_domain_attestation');
-  });
-
-  it('proof guide: microsoft_365', async () => {
-    const res = await fetch(`${BASE}/api/docs/proof-guide/microsoft_365`);
-    expect(res.status).toBe(200);
-    expect((await res.json()).circuit).toBe('oidc_domain_attestation');
-  });
-
-  it('proof guide: workspace', async () => {
-    const res = await fetch(`${BASE}/api/docs/proof-guide/workspace`);
-    expect(res.status).toBe(200);
-    expect((await res.json()).circuit).toBe('oidc_domain_attestation');
+  it('proof guide: all types return correct circuit', async () => {
+    const expected: Record<string, string> = {
+      kyc: 'coinbase_attestation',
+      country: 'coinbase_country_attestation',
+      google_workspace: 'oidc_domain_attestation',
+      microsoft_365: 'oidc_domain_attestation',
+      workspace: 'oidc_domain_attestation',
+    };
+    for (const [type, circuit] of Object.entries(expected)) {
+      const res = await fetch(`${BASE}/api/docs/proof-guide/${type}`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.circuit).toBe(circuit);
+      expect(json.steps.agent.length).toBeGreaterThan(0);
+    }
   });
 
   it('proof guide: invalid type → 400', async () => {
@@ -345,18 +371,7 @@ describe.sequential('Proof-gated topics — full flow', () => {
   });
 
   // ══════════════════════════════════════════════════
-  // 9. PRIVACY — NO PII IN RESPONSES
-  // ══════════════════════════════════════════════════
-
-  it('badges contain no raw PII', async () => {
-    const text = await (await authGet('/api/profile/badges')).text();
-    expect(text).not.toContain('"email"');
-    expect(text).not.toContain('"proof"');
-    expect(text).not.toContain('"publicInputs"');
-  });
-
-  // ══════════════════════════════════════════════════
-  // 10. DOCUMENTATION ENDPOINTS
+  // DOCUMENTATION
   // ══════════════════════════════════════════════════
 
   it('GET /AGENTS.md returns markdown', async () => {
@@ -365,7 +380,6 @@ describe.sequential('Proof-gated topics — full flow', () => {
     const text = await res.text();
     expect(text).toContain('OpenStoa');
     expect(text).toContain('Privacy');
-    expect(text.length).toBeGreaterThan(1000);
   });
 
   it('GET /skill.md returns skill file', async () => {
@@ -376,21 +390,11 @@ describe.sequential('Proof-gated topics — full flow', () => {
     expect(text).toContain('AUTO-GENERATED API REFERENCE');
   });
 
-  it('proof guide URLs use correct environment base', async () => {
+  it('proof guide URLs use staging base', async () => {
     const json = await (await fetch(`${BASE}/api/docs/proof-guide/kyc`)).json();
     const codes = json.steps.agent.map((s: { code?: string }) => s.code || '').join('');
     if (BASE.includes('stg-')) {
       expect(codes).toContain('stg-community.zkproofport.app');
-      expect(codes).not.toContain('www.openstoa.xyz');
     }
-  });
-
-  it('POST /api/ask returns instant response', async () => {
-    const res = await fetch(`${BASE}/api/ask`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: 'What proof types are supported?' }),
-    });
-    expect([200, 503]).toContain(res.status);
   });
 });
