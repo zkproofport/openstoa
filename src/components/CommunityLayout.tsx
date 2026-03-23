@@ -17,6 +17,8 @@ interface CommunityLayoutProps {
   onCategorySelect?: (slug: string | null) => void;
   onTagSelect?: (slug: string | null) => void;
   activeTag?: string | null;
+  viewMode?: 'all' | 'my';
+  onViewChange?: (view: 'all' | 'my') => void;
   /** Pass topic-specific data for the right sidebar when on a topic page */
   topicId?: string;
   topicTitle?: string;
@@ -43,6 +45,8 @@ export default function CommunityLayout({
   onCategorySelect,
   onTagSelect,
   activeTag,
+  viewMode,
+  onViewChange,
   topicId,
   topicTitle,
   topicDescription,
@@ -152,6 +156,11 @@ export default function CommunityLayout({
           isGuest={isGuest}
           sessionChecked={sessionChecked}
           activeCategory={activeCategory}
+          viewMode={viewMode}
+          onViewChange={(view) => {
+            if (onViewChange) onViewChange(view);
+            setMobileMenuOpen(false);
+          }}
           onCategorySelect={(slug) => {
             if (onCategorySelect) {
               onCategorySelect(slug);
@@ -202,6 +211,8 @@ export default function CommunityLayout({
             isGuest={isGuest}
             sessionChecked={sessionChecked}
             activeCategory={activeCategory}
+            viewMode={viewMode}
+            onViewChange={onViewChange}
             onCategorySelect={onCategorySelect ?? ((slug) => {
               router.push(slug ? `/topics?category=${encodeURIComponent(slug)}` : '/topics');
             })}

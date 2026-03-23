@@ -35,6 +35,9 @@ function TopicsPageInner() {
   const [activeTag, setActiveTag] = useState<string | null>(
     searchParams.get('tag'),
   );
+  const [viewMode, setViewMode] = useState<'all' | 'my'>(
+    searchParams.get('view') === 'my' ? 'my' : 'all',
+  );
   const observerRef = useRef<HTMLDivElement | null>(null);
   const LIMIT = 20;
 
@@ -72,9 +75,8 @@ function TopicsPageInner() {
 
     try {
       // Build feed URL
-      const view = searchParams.get('view');
       let url = `/api/feed?sort=${sort}&limit=${LIMIT}&offset=${currentOffset}`;
-      if (view === 'my') {
+      if (viewMode === 'my') {
         url += '&view=my';
       }
       if (category) {
@@ -117,7 +119,7 @@ function TopicsPageInner() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, []);
+  }, [viewMode]);
 
   // ── Initial load & filter changes ──
   useEffect(() => {
@@ -147,6 +149,13 @@ function TopicsPageInner() {
   function handleCategorySelect(slug: string | null) {
     setActiveCategory(slug);
     setActiveTag(null); // Reset tag when category changes
+    setViewMode('all'); // Switch back to all when selecting a category
+  }
+
+  function handleViewChange(view: 'all' | 'my') {
+    setViewMode(view);
+    setActiveCategory(null);
+    setActiveTag(null);
   }
 
   function handleTagSelect(slug: string | null) {
@@ -161,6 +170,8 @@ function TopicsPageInner() {
       onCategorySelect={handleCategorySelect}
       onTagSelect={handleTagSelect}
       activeTag={activeTag}
+      viewMode={viewMode}
+      onViewChange={handleViewChange}
     >
       {/* Guest banner */}
       {isGuest && (

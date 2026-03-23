@@ -42,6 +42,8 @@ interface LeftSidebarProps {
   onCategorySelect?: (slug: string | null) => void;
   onTagSelect?: (slug: string | null) => void;
   activeTag?: string | null;
+  viewMode?: 'all' | 'my';
+  onViewChange?: (view: 'all' | 'my') => void;
 }
 
 // ─── Fallback categories ─────────────────────────────────────────────────────
@@ -109,6 +111,8 @@ export default function LeftSidebar({
   onCategorySelect,
   onTagSelect,
   activeTag,
+  viewMode,
+  onViewChange,
 }: LeftSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -329,7 +333,9 @@ export default function LeftSidebar({
         {/* All / Home item */}
         <button
           onClick={() => {
-            if (onCategorySelect) {
+            if (onViewChange) {
+              onViewChange('all');
+            } else if (onCategorySelect) {
               onCategorySelect(null);
             } else {
               router.push('/topics');
@@ -338,8 +344,8 @@ export default function LeftSidebar({
           onMouseEnter={() => setHoveredItem('all')}
           onMouseLeave={() => setHoveredItem(null)}
           style={{
-            ...sidebarItemStyle(!activeCategory && !activeTopicId),
-            ...(hoveredItem === 'all' && !(!activeCategory && !activeTopicId)
+            ...sidebarItemStyle(viewMode !== 'my' && !activeCategory && !activeTopicId),
+            ...(hoveredItem === 'all' && !(viewMode !== 'my' && !activeCategory && !activeTopicId)
               ? { background: 'var(--surface-hover)' }
               : {}),
           }}
@@ -354,13 +360,17 @@ export default function LeftSidebar({
         {!isGuest && (
           <button
             onClick={() => {
-              window.location.href = '/topics?view=my';
+              if (onViewChange) {
+                onViewChange('my');
+              } else {
+                window.location.href = '/topics?view=my';
+              }
             }}
             onMouseEnter={() => setHoveredItem('my-topics')}
             onMouseLeave={() => setHoveredItem(null)}
             style={{
-              ...sidebarItemStyle(false),
-              ...(hoveredItem === 'my-topics' ? { background: 'var(--surface-hover)' } : {}),
+              ...sidebarItemStyle(viewMode === 'my'),
+              ...(hoveredItem === 'my-topics' && viewMode !== 'my' ? { background: 'var(--surface-hover)' } : {}),
             }}
           >
             <span style={{ fontSize: 15, width: 20, textAlign: 'center' as const }}>⭐</span>
