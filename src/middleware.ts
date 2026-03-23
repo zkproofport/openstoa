@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   '/api/docs/openapi.json',
   '/api/beta-signup',
   '/api/ask',
+  '/api/ask/stream',
   '/ask',
   '/docs',
   '/icon.png',

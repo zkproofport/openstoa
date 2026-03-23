@@ -288,7 +288,7 @@ export default function AskPage() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 80) + 'px';
   }
 
   const pickFollowUps = useCallback((turnIndex: number) => {
@@ -829,8 +829,8 @@ export default function AskPage() {
             gap: 10,
             background: 'rgba(255,255,255,0.04)',
             border: '1px solid rgba(120,140,255,0.15)',
-            borderRadius: 12,
-            padding: '6px 8px 6px 14px',
+            borderRadius: 8,
+            padding: '4px 6px 4px 12px',
             transition: 'border-color 0.15s',
           }}
           onFocusCapture={(e) => {
@@ -859,8 +859,8 @@ export default function AskPage() {
               resize: 'none',
               lineHeight: 1.55,
               padding: 0,
-              minHeight: 24,
-              maxHeight: 160,
+              minHeight: 20,
+              maxHeight: 80,
               overflow: 'auto',
             }}
           />
@@ -868,8 +868,8 @@ export default function AskPage() {
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || loading}
             style={{
-              width: 34,
-              height: 34,
+              width: 28,
+              height: 28,
               borderRadius: 8,
               border: 'none',
               background: input.trim() && !loading ? '#788cff' : 'rgba(120,140,255,0.12)',
@@ -895,7 +895,7 @@ export default function AskPage() {
             color: '#333',
             fontSize: 11,
             fontFamily: 'var(--font-mono)',
-            margin: '8px 0 0',
+            margin: '4px 0 0',
             letterSpacing: '0.02em',
           }}
         >
