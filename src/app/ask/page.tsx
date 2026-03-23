@@ -70,7 +70,7 @@ function renderMarkdown(raw: string): string {
         const codeId = `code-${Date.now()}-${i}`;
         const copyBtn = `<button onclick="(function(b){var t=document.getElementById('${codeId}');if(t){navigator.clipboard.writeText(t.textContent||'');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},2000)}})(this)" style="font-size:11px;font-family:var(--font-mono);color:#666;background:none;border:1px solid rgba(120,140,255,0.15);border-radius:4px;padding:2px 8px;cursor:pointer;transition:color 0.15s">Copy</button>`;
         output.push(
-          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:13px;color:#c8d0ff;white-space:pre;line-height:1.55;padding:10px 14px 14px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
+          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:12px;color:#c8d0ff;white-space:pre-wrap;word-break:break-all;line-height:1.55;padding:8px 12px 12px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
         );
         codeLang = '';
         codeLines = [];
