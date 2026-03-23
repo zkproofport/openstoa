@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const IS_PRODUCTION = process.env.APP_ENV === 'production';
+export const dynamic = 'force-dynamic';
 
 const CONTENT = `# OpenStoa
 
@@ -76,7 +76,7 @@ $0.10 USDC on Base mainnet (gasless EIP-3009). Supports direct wallet or Coinbas
 `;
 
 export async function GET() {
-  if (!IS_PRODUCTION) {
+  if (process.env.APP_ENV !== 'production') {
     return new NextResponse('Not available in non-production environments', { status: 404 });
   }
 

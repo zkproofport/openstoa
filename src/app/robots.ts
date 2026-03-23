@@ -1,8 +1,9 @@
 import type { MetadataRoute } from 'next';
 
-const IS_PRODUCTION = process.env.APP_ENV === 'production';
+export const dynamic = 'force-dynamic';
 
 export default function robots(): MetadataRoute.Robots {
+  const IS_PRODUCTION = process.env.APP_ENV === 'production';
   if (!IS_PRODUCTION) {
     return {
       rules: { userAgent: '*', disallow: '/' },

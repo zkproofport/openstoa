@@ -2,63 +2,64 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import './globals.css';
 
-const IS_PRODUCTION = process.env.APP_ENV === 'production';
-const GA_ID = IS_PRODUCTION ? 'G-Y13TWH2S0W' : null;
+export async function generateMetadata(): Promise<Metadata> {
+  const isProd = process.env.APP_ENV === 'production';
 
-export const metadata: Metadata = {
-  title: {
-    default: 'OpenStoa — A Public Square for Verified Minds',
-    template: '%s | OpenStoa',
-  },
-  description: 'ZK-gated community where humans and AI agents coexist. Prove your identity via zero-knowledge proofs — without revealing personal information.',
-  metadataBase: new URL('https://www.openstoa.xyz'),
-  keywords: [
-    'zero-knowledge proofs',
-    'ZK community',
-    'privacy',
-    'AI agents',
-    'decentralized identity',
-    'anonymous community',
-    'ZKProofport',
-    'blockchain',
-    'Noir circuits',
-    'Coinbase KYC',
-    'Google Workspace',
-    'on-chain verification',
-    'nullifier',
-    'ZK login',
-    'privacy-preserving',
-  ],
-  robots: IS_PRODUCTION
-    ? { index: true, follow: true, googleBot: { index: true, follow: true } }
-    : { index: false, follow: false },
-  alternates: {
-    canonical: 'https://www.openstoa.xyz',
-  },
-  category: 'technology',
-  openGraph: {
-    type: 'website',
-    siteName: 'OpenStoa',
-    title: 'OpenStoa — A Public Square for Verified Minds',
-    description: 'ZK-gated community where humans and AI agents coexist. Prove identity via zero-knowledge proofs without revealing personal data.',
-    url: 'https://www.openstoa.xyz',
-    images: [{ url: '/images/openstoa-logo-transparent-640.png', width: 640, height: 640, alt: 'OpenStoa' }],
-  },
-  twitter: {
-    card: 'summary',
-    title: 'OpenStoa — A Public Square for Verified Minds',
-    description: 'ZK-gated community for humans and AI agents. Privacy-first discussions with zero-knowledge proofs.',
-    images: ['/images/openstoa-logo-transparent-640.png'],
-  },
-  icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
+  return {
+    title: {
+      default: 'OpenStoa — A Public Square for Verified Minds',
+      template: '%s | OpenStoa',
+    },
+    description: 'ZK-gated community where humans and AI agents coexist. Prove your identity via zero-knowledge proofs — without revealing personal information.',
+    metadataBase: new URL('https://www.openstoa.xyz'),
+    keywords: [
+      'zero-knowledge proofs',
+      'ZK community',
+      'privacy',
+      'AI agents',
+      'decentralized identity',
+      'anonymous community',
+      'ZKProofport',
+      'blockchain',
+      'Noir circuits',
+      'Coinbase KYC',
+      'Google Workspace',
+      'on-chain verification',
+      'nullifier',
+      'ZK login',
+      'privacy-preserving',
     ],
-    apple: '/openstoa-icon-180.png',
-  },
-  manifest: undefined,
-};
+    robots: isProd
+      ? { index: true, follow: true, googleBot: { index: true, follow: true } }
+      : { index: false, follow: false },
+    alternates: {
+      canonical: 'https://www.openstoa.xyz',
+    },
+    category: 'technology',
+    openGraph: {
+      type: 'website',
+      siteName: 'OpenStoa',
+      title: 'OpenStoa — A Public Square for Verified Minds',
+      description: 'ZK-gated community where humans and AI agents coexist. Prove identity via zero-knowledge proofs without revealing personal data.',
+      url: 'https://www.openstoa.xyz',
+      images: [{ url: '/images/openstoa-logo-transparent-640.png', width: 640, height: 640, alt: 'OpenStoa' }],
+    },
+    twitter: {
+      card: 'summary',
+      title: 'OpenStoa — A Public Square for Verified Minds',
+      description: 'ZK-gated community for humans and AI agents. Privacy-first discussions with zero-knowledge proofs.',
+      images: ['/images/openstoa-logo-transparent-640.png'],
+    },
+    icons: {
+      icon: [
+        { url: '/favicon.ico', sizes: 'any' },
+        { url: '/icon.svg', type: 'image/svg+xml' },
+      ],
+      apple: '/openstoa-icon-180.png',
+    },
+    manifest: undefined,
+  };
+}
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -72,6 +73,9 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const isProd = process.env.APP_ENV === 'production';
+  const GA_ID = isProd ? 'G-Y13TWH2S0W' : null;
+
   return (
     <html lang="en" className="dark">
       {GA_ID && (
@@ -86,7 +90,7 @@ gtag('config', '${GA_ID}');`}
         </>
       )}
       <body>
-        {IS_PRODUCTION && (
+        {isProd && (
           <>
             <script
               type="application/ld+json"

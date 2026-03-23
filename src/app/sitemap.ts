@@ -3,11 +3,12 @@ import { db } from '@/lib/db';
 import { topics } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-const IS_PRODUCTION = process.env.APP_ENV === 'production';
+export const dynamic = 'force-dynamic';
+
 const BASE_URL = 'https://www.openstoa.xyz';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  if (!IS_PRODUCTION) return [];
+  if (process.env.APP_ENV !== 'production') return [];
   const staticPages: MetadataRoute.Sitemap = [
     {
       url: BASE_URL,
