@@ -19,6 +19,10 @@ const PUBLIC_PATHS = [
   '/docs',
   '/icon.png',
   '/skill.md',
+  '/AGENTS.md',
+  '/robots.txt',
+  '/sitemap.xml',
+  '/llms.txt',
 ];
 
 const PUBLIC_PREFIXES = [
