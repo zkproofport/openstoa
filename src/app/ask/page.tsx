@@ -213,18 +213,20 @@ export default function AskPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounced auto-scroll
+  // Auto-scroll: debounce with clear+restart, not skip
   useEffect(() => {
-    if (scrollTimerRef.current) return;
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
       scrollTimerRef.current = null;
       const container = scrollContainerRef.current;
       if (!container) return;
       const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
       if (distFromBottom <= 300) {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        // During streaming use instant scroll, otherwise smooth
+        const isStreaming = !!streamingContent;
+        container.scrollTo({ top: container.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
       }
-    }, 100);
+    }, 80);
   }, [messages, loading, streamingContent]);
 
   function autoResize() {
