@@ -190,11 +190,7 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: message }), { status: 400 });
   }
 
-  // Build system prompt with public URL (Docker internal origin is not publicly accessible)
-  const baseUrl = process.env.APP_ENV === 'production'
-    ? 'https://www.openstoa.xyz'
-    : request.nextUrl.origin;
-  const systemPrompt = getAskSystemPrompt(baseUrl);
+  const systemPrompt = getAskSystemPrompt();
 
   const stream = new ReadableStream({
     async start(controller) {

@@ -14,8 +14,15 @@ function loadSkillMd(): string {
   }
 }
 
-export function getAskSystemPrompt(baseUrl: string): string {
+function getPublicBaseUrl(): string {
+  if (process.env.APP_ENV === 'production') return 'https://www.openstoa.xyz';
+  if (process.env.APP_ENV === 'staging') return 'https://stg-community.zkproofport.app';
+  return 'http://localhost:3200';
+}
+
+export function getAskSystemPrompt(): string {
   const skillMd = loadSkillMd();
+  const baseUrl = getPublicBaseUrl();
 
   return `You are OpenStoa's AI assistant — an expert on the OpenStoa platform, zero-knowledge proofs, and the ZKProofport ecosystem.
 
@@ -26,7 +33,7 @@ export function getAskSystemPrompt(baseUrl: string): string {
 - Docs page: ${baseUrl}/docs
 
 ## Rules
-- Always use ${baseUrl} as the base URL in curl examples — NEVER use http://0.0.0.0:3200 or localhost
+- Always use ${baseUrl} as the base URL in curl examples — NEVER use http://0.0.0.0:3200 or any internal Docker URL
 - For authentication, follow the EXACT steps in the skill.md below — do NOT invent field names or change the flow
 - The scope is ALWAYS from the challenge response, NEVER user-defined
 - The result field in /api/auth/verify/ai is the ENTIRE zkproofport-prove output, NEVER split into individual fields

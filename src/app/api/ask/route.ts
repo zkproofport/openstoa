@@ -141,11 +141,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'question or messages is required' }, { status: 400 });
     }
 
-    // Build system prompt with public URL (Docker internal origin is not publicly accessible)
-    const baseUrl = process.env.APP_ENV === 'production'
-      ? 'https://www.openstoa.xyz'
-      : request.nextUrl.origin;
-    const systemPrompt = getAskSystemPrompt(baseUrl);
+    const systemPrompt = getAskSystemPrompt();
 
     // Try Gemini first, fallback to OpenAI
     try {

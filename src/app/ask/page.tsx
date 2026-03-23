@@ -63,7 +63,7 @@ function renderMarkdown(raw: string): string {
     const line = lines[i];
 
     // Fenced code block start/end
-    if (line.startsWith('```')) {
+    if (line.trimStart().startsWith('```')) {
       if (!inCode) {
         flushList();
         inCode = true;
@@ -71,9 +71,11 @@ function renderMarkdown(raw: string): string {
         codeLines = [];
       } else {
         inCode = false;
-        const langLabel = codeLang ? `<span style="color:#555;font-size:11px;font-family:var(--font-mono);display:block;margin-bottom:6px">${escapeHtml(codeLang)}</span>` : '';
+        const langLabel = codeLang ? `<span style="color:#555;font-size:11px;font-family:var(--font-mono)">${escapeHtml(codeLang)}</span>` : '';
+        const codeId = `code-${Date.now()}-${i}`;
+        const copyBtn = `<button onclick="(function(b){var t=document.getElementById('${codeId}');if(t){navigator.clipboard.writeText(t.textContent||'');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},2000)}})(this)" style="font-size:11px;font-family:var(--font-mono);color:#666;background:none;border:1px solid rgba(120,140,255,0.15);border-radius:4px;padding:2px 8px;cursor:pointer;transition:color 0.15s">Copy</button>`;
         output.push(
-          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;padding:14px 16px;margin:10px 0;overflow-x:auto">${langLabel}<pre style="margin:0;font-family:var(--font-mono);font-size:13px;color:#c8d0ff;white-space:pre;line-height:1.55">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
+          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:13px;color:#c8d0ff;white-space:pre;line-height:1.55;padding:10px 14px 14px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
         );
         codeLang = '';
         codeLines = [];
@@ -286,7 +288,7 @@ export default function AskPage() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 100) + 'px';
   }
 
   const pickFollowUps = useCallback((turnIndex: number) => {
@@ -815,7 +817,7 @@ export default function AskPage() {
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
           borderTop: '1px solid rgba(120,140,255,0.06)',
-          padding: '16px 32px 20px',
+          padding: '10px 32px 12px',
         }}
       >
         <div
@@ -828,7 +830,7 @@ export default function AskPage() {
             background: 'rgba(255,255,255,0.04)',
             border: '1px solid rgba(120,140,255,0.15)',
             borderRadius: 12,
-            padding: '10px 10px 10px 16px',
+            padding: '6px 8px 6px 14px',
             transition: 'border-color 0.15s',
           }}
           onFocusCapture={(e) => {
