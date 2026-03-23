@@ -72,7 +72,11 @@ function TopicsPageInner() {
 
     try {
       // Build feed URL
+      const view = searchParams.get('view');
       let url = `/api/feed?sort=${sort}&limit=${LIMIT}&offset=${currentOffset}`;
+      if (view === 'my') {
+        url += '&view=my';
+      }
       if (category) {
         url += `&category=${encodeURIComponent(category)}`;
       }

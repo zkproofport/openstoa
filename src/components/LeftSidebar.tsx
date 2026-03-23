@@ -350,6 +350,24 @@ export default function LeftSidebar({
           <span>All</span>
         </button>
 
+        {/* My Topics — only visible when logged in */}
+        {!isGuest && (
+          <button
+            onClick={() => {
+              router.push('/topics?view=my');
+            }}
+            onMouseEnter={() => setHoveredItem('my-topics')}
+            onMouseLeave={() => setHoveredItem(null)}
+            style={{
+              ...sidebarItemStyle(false),
+              ...(hoveredItem === 'my-topics' ? { background: 'var(--surface-hover)' } : {}),
+            }}
+          >
+            <span style={{ fontSize: 15, width: 20, textAlign: 'center' as const }}>⭐</span>
+            <span>My Topics</span>
+          </button>
+        )}
+
         {categories.map((cat) => {
           const isActive = activeCategory === cat.slug;
           const catTopics = (topicsByCategory[cat.slug] ?? []).slice(0, 3);

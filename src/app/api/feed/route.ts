@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
     const sort = url.searchParams.get('sort') ?? 'hot';
     const tagSlug = url.searchParams.get('tag') ?? null;
     const categorySlug = url.searchParams.get('category') ?? null;
+    const view = url.searchParams.get('view') ?? null; // 'my' = only joined topics
 
     // --- Resolve tag filter ---
     let tagFilteredPostIds: string[] | null = null;
@@ -164,10 +165,22 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Authenticated path ---
-    logger.info(ROUTE, 'Authenticated user fetching feed', { userId: session.userId });
+    logger.info(ROUTE, 'Authenticated user fetching feed', { userId: session.userId, view });
 
-    // Accessible topics: public topics UNION topics where user is a member
-    const accessibleTopicIds = await resolveAccessibleTopicIds(session.userId, categoryTopicIds);
+    // view=my: only show posts from topics the user has joined
+    let accessibleTopicIds: string[];
+    if (view === 'my') {
+      const memberships = await db.query.topicMembers.findMany({
+        where: eq(topicMembers.userId, session.userId),
+      });
+      accessibleTopicIds = memberships.map(m => m.topicId);
+      if (categoryTopicIds) {
+        accessibleTopicIds = accessibleTopicIds.filter(id => categoryTopicIds.includes(id));
+      }
+    } else {
+      // Accessible topics: public topics UNION topics where user is a member
+      accessibleTopicIds = await resolveAccessibleTopicIds(session.userId, categoryTopicIds);
+    }
 
     if (accessibleTopicIds.length === 0) {
       return NextResponse.json({ posts: [] });
