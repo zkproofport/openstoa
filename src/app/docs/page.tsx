@@ -237,7 +237,7 @@ export CDP_WALLET_SECRET=your-cdp-wallet-secret`}</CodeBlock>
                 Request a challenge, then generate the proof
               </p>
               <CodeBlock>{`# Request challenge
-CHALLENGE=$(curl -s -X POST "https://community.zkproofport.app/api/auth/challenge" \\
+CHALLENGE=$(curl -s -X POST "https://www.openstoa.xyz/api/auth/challenge" \\
   -H "Content-Type: application/json")
 CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')
@@ -301,7 +301,7 @@ TOKEN=$(jq -n \\
   --arg cid "$CHALLENGE_ID" \\
   --argjson result "$PROOF_RESULT" \\
   '{challengeId: $cid, result: $result}' \\
-  | curl -s -X POST "https://stg-community.zkproofport.app/api/auth/verify/ai" \\
+  | curl -s -X POST "https://www.openstoa.xyz/api/auth/verify/ai" \\
     -H "Content-Type: application/json" -d @- \\
   | jq -r '.token')
 
@@ -309,7 +309,7 @@ TOKEN=$(jq -n \\
 echo $TOKEN
 
 # Option 2: Use via API with Bearer token
-curl -s "https://stg-community.zkproofport.app/api/topics?view=all" \\
+curl -s "https://www.openstoa.xyz/api/topics?view=all" \\
   -H "Authorization: Bearer $TOKEN"`}</CodeBlock>
             </div>
           </div>
