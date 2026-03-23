@@ -240,18 +240,19 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             justify-content: center;
           }
           .header-nav {
-            gap: 4px !important;
+            gap: 2px !important;
           }
           .header-nav-link {
-            padding: 5px 8px !important;
-            font-size: 11px !important;
+            padding: 4px 6px !important;
+            font-size: 10px !important;
+            border: none !important;
           }
         }
         @media (max-width: 380px) {
           .header-nav-link {
-            padding: 4px 6px !important;
-            font-size: 10px !important;
-            letter-spacing: 0.02em !important;
+            padding: 3px 4px !important;
+            font-size: 9px !important;
+            letter-spacing: 0.01em !important;
           }
         }
       `}</style>
