@@ -15,11 +15,6 @@ interface HeaderProps {
 
 export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
   const [user, setUser] = useState<UserSession | null>(null);
-  const [askOpen, setAskOpen] = useState(false);
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [askLoading, setAskLoading] = useState(false);
-  const [askError, setAskError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -29,41 +24,6 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
       })
       .catch(() => {});
   }, []);
-
-  function openAsk() {
-    setAskOpen(true);
-    setQuestion('');
-    setAnswer(null);
-    setAskError(null);
-  }
-
-  function closeAsk() {
-    setAskOpen(false);
-  }
-
-  async function submitAsk() {
-    if (!question.trim() || askLoading) return;
-    setAskLoading(true);
-    setAnswer(null);
-    setAskError(null);
-    try {
-      const res = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: question.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setAskError(data.error || 'Something went wrong');
-      } else {
-        setAnswer(data.answer);
-      }
-    } catch {
-      setAskError('Network error. Please try again.');
-    } finally {
-      setAskLoading(false);
-    }
-  }
 
   return (
     <header
@@ -144,14 +104,14 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
         </div>
 
         <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="header-nav">
-          <button
-            onClick={openAsk}
+          <Link
+            href="/ask"
             className="header-nav-link"
             style={{
-              color: '#788cff', fontSize: 12, background: 'none',
+              color: '#788cff', fontSize: 12, textDecoration: 'none',
               fontFamily: 'var(--font-mono)', fontWeight: 500,
               letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              transition: 'all 0.15s', cursor: 'pointer',
+              transition: 'all 0.15s',
               padding: '6px 14px', borderRadius: 6,
               border: '1px solid rgba(120,140,255,0.25)',
               display: 'flex', alignItems: 'center', gap: 5,
@@ -171,7 +131,7 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
             Ask
-          </button>
+          </Link>
 
           <Link
             href="/recorded"
@@ -271,143 +231,6 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
           )}
         </nav>
       </div>
-
-      {/* Ask modal */}
-      {askOpen && (
-        <div
-          onClick={closeAsk}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            background: 'rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 16px',
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'rgb(10,14,26)',
-              border: '1px solid rgba(120,140,255,0.2)',
-              borderRadius: 12,
-              padding: '28px 28px 24px',
-              width: '100%', maxWidth: 560,
-              boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-            }}
-          >
-            {/* Header row */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 11,
-                letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: '#788cff', fontWeight: 600,
-              }}>
-                Ask OpenStoa AI
-              </span>
-              <button
-                onClick={closeAsk}
-                style={{
-                  background: 'none', border: 'none', color: '#666',
-                  cursor: 'pointer', padding: 4, borderRadius: 4,
-                  lineHeight: 1, transition: 'color 0.12s',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#ccc'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
-                aria-label="Close"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Input */}
-            <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitAsk();
-              }}
-              placeholder="What would you like to know about OpenStoa?"
-              rows={3}
-              maxLength={1000}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(120,140,255,0.15)',
-                borderRadius: 8, padding: '12px 14px',
-                color: '#e8e8f0', fontSize: 14,
-                fontFamily: 'var(--font-sans)',
-                resize: 'none', outline: 'none',
-                transition: 'border-color 0.15s',
-                lineHeight: 1.55,
-              }}
-              onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.4)'; }}
-              onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)'; }}
-              autoFocus
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, marginBottom: 16 }}>
-              <span style={{ fontSize: 11, color: '#444', fontFamily: 'var(--font-mono)' }}>
-                {question.length}/1000
-              </span>
-              <span style={{ fontSize: 11, color: '#555', fontFamily: 'var(--font-mono)' }}>
-                ⌘↵ to submit
-              </span>
-            </div>
-
-            {/* Submit button */}
-            <button
-              onClick={submitAsk}
-              disabled={!question.trim() || askLoading}
-              style={{
-                width: '100%', padding: '10px 0',
-                background: question.trim() && !askLoading ? 'rgba(120,140,255,0.15)' : 'rgba(120,140,255,0.05)',
-                border: '1px solid rgba(120,140,255,0.25)',
-                borderRadius: 8, color: question.trim() && !askLoading ? '#788cff' : '#444',
-                fontFamily: 'var(--font-mono)', fontSize: 12,
-                letterSpacing: '0.05em', textTransform: 'uppercase',
-                cursor: question.trim() && !askLoading ? 'pointer' : 'not-allowed',
-                transition: 'all 0.15s',
-              }}
-            >
-              {askLoading ? 'Thinking…' : 'Ask'}
-            </button>
-
-            {/* Answer */}
-            {answer && (
-              <div style={{
-                marginTop: 20,
-                padding: '16px 18px',
-                background: 'rgba(120,140,255,0.05)',
-                border: '1px solid rgba(120,140,255,0.12)',
-                borderRadius: 8,
-                color: '#c8c8d8', fontSize: 14,
-                fontFamily: 'var(--font-sans)', lineHeight: 1.65,
-                whiteSpace: 'pre-wrap',
-                maxHeight: 280, overflowY: 'auto',
-              }}>
-                {answer}
-              </div>
-            )}
-
-            {/* Error */}
-            {askError && (
-              <div style={{
-                marginTop: 16,
-                padding: '12px 16px',
-                background: 'rgba(255,80,80,0.06)',
-                border: '1px solid rgba(255,80,80,0.2)',
-                borderRadius: 8,
-                color: '#ff6b6b', fontSize: 13,
-                fontFamily: 'var(--font-sans)',
-              }}>
-                {askError}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       <style>{`
         @media (max-width: 767px) {

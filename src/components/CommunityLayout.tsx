@@ -294,15 +294,20 @@ export default function CommunityLayout({
               overflow: 'hidden',
             }}
           >
-            {/* Close button bar */}
+            {/* Close button — rendered by ChatPanel via onClose prop when hideHeader=false,
+                or shown here as minimal bar when hideHeader=true */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'flex-end',
-              padding: '8px 16px',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
               borderBottom: '1px solid var(--border)',
               flexShrink: 0,
             }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>💬</span>
+                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' as const, letterSpacing: '0.08em', color: 'var(--foreground)' }}>Live Chat</span>
+              </div>
               <button
                 onClick={() => setMobileChatOpen(false)}
                 style={{
@@ -322,7 +327,7 @@ export default function CommunityLayout({
             </div>
             {/* Chat content — fills remaining space */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember ?? false} fullHeight />
+              <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember ?? false} fullHeight hideHeader onClose={() => setMobileChatOpen(false)} />
             </div>
           </div>
         </>

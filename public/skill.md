@@ -1435,14 +1435,20 @@ Response:
 
 ### Ask a question about OpenStoa
 
-AI-powered Q&A about OpenStoa features, usage, and community guidelines. Uses Gemini (primary) with OpenAI fallback.
+AI-powered Q&A about OpenStoa features, usage, and community guidelines. Supports multi-turn conversation. Uses Gemini (primary) with OpenAI fallback.
 
 ```bash
 curl -s "$BASE/api/ask" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{
-  "question": "..."
+  "question": "...",
+  "messages": [
+    {
+      "role": "user",
+      "content": "..."
+    }
+  ]
 }' | jq .
 ```
 

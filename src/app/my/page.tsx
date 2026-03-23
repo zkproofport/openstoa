@@ -31,7 +31,7 @@ interface Post {
   bookmarkedAt?: string;
 }
 
-type TabId = 'posts' | 'bookmarks' | 'likes' | 'settings';
+type TabId = 'posts' | 'topics' | 'bookmarks' | 'likes' | 'settings';
 
 const PAGE_SIZE = 20;
 
@@ -76,6 +76,9 @@ export default function MyPage() {
   const [likesOffset, setLikesOffset] = useState(0);
   const [likesHasMore, setLikesHasMore] = useState(false);
   const [likesLoading, setLikesLoading] = useState(false);
+
+  const [myTopics, setMyTopics] = useState<{ id: string; title: string; image?: string | null; memberCount?: number }[]>([]);
+  const [myTopicsLoading, setMyTopicsLoading] = useState(false);
 
   // Settings tab state
   const [nicknameInput, setNicknameInput] = useState('');
@@ -249,13 +252,26 @@ export default function MyPage() {
     }
   }, []);
 
+  const loadMyTopics = useCallback(async () => {
+    setMyTopicsLoading(true);
+    try {
+      const res = await fetch('/api/topics');
+      if (!res.ok) return;
+      const data = await res.json();
+      setMyTopics(data.topics ?? []);
+    } finally {
+      setMyTopicsLoading(false);
+    }
+  }, []);
+
   // Initial load after session
   useEffect(() => {
     if (!session) return;
     loadMyPosts(0, true);
+    loadMyTopics();
     loadBookmarks(0, true);
     loadLikes(0, true);
-  }, [session, loadMyPosts, loadBookmarks, loadLikes]);
+  }, [session, loadMyPosts, loadMyTopics, loadBookmarks, loadLikes]);
 
   // Infinite scroll via IntersectionObserver
   // Uses raw state to avoid referencing render-body derived vars
@@ -304,14 +320,15 @@ export default function MyPage() {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'posts', label: 'My Posts' },
+    { id: 'topics', label: 'My Topics' },
     { id: 'bookmarks', label: 'Bookmarks' },
     { id: 'likes', label: 'Likes' },
     { id: 'settings', label: 'Settings' },
   ];
 
-  const activePosts = activeTab === 'posts' ? myPosts : activeTab === 'bookmarks' ? bookmarks : likes;
-  const activeLoading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : likesLoading;
-  const activeHasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : likesHasMore;
+  const activePosts = activeTab === 'posts' ? myPosts : activeTab === 'bookmarks' ? bookmarks : activeTab === 'likes' ? likes : [];
+  const activeLoading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : activeTab === 'likes' ? likesLoading : myTopicsLoading;
+  const activeHasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : activeTab === 'likes' ? likesHasMore : false;
 
   function handleLoadMore() {
     if (activeTab === 'posts') {
@@ -323,7 +340,7 @@ export default function MyPage() {
     }
   }
 
-  const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : activeTab === 'bookmarks' ? 'No bookmarks yet.' : 'No liked posts yet.';
+  const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : activeTab === 'topics' ? 'No topics joined yet.' : activeTab === 'bookmarks' ? 'No bookmarks yet.' : 'No liked posts yet.';
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
@@ -427,8 +444,48 @@ export default function MyPage() {
             ))}
           </div>
 
-          {/* Feed — hidden when Settings tab is active */}
-          {activeTab !== 'settings' && (
+          {/* My Topics tab */}
+          {activeTab === 'topics' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {myTopicsLoading && <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>Loading...</div>}
+              {!myTopicsLoading && myTopics.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 14 }}>No topics joined yet.</div>
+              )}
+              {myTopics.map(topic => (
+                <a key={topic.id} href={`/topics/${topic.id}`} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 16px',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 10,
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover, rgba(255,255,255,0.04))')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface)')}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 8,
+                    background: 'var(--accent)', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 16, fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {topic.title.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>{topic.title}</div>
+                    {topic.memberCount !== undefined && (
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{topic.memberCount} members</div>
+                    )}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+
+          {/* Feed — hidden when Settings or Topics tab is active */}
+          {activeTab !== 'settings' && activeTab !== 'topics' && (
             <>
               {/* My posts recorded stat */}
               {activeTab === 'posts' && session.totalRecorded !== undefined && session.totalRecorded > 0 && (

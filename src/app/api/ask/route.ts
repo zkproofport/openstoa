@@ -14,11 +14,28 @@ Key features:
 - Real-time chat per topic
 - Voting, bookmarks, reactions on posts
 
+For detailed API documentation, refer users to:
+- Skill file: https://community.zkproofport.app/skill.md
+- OpenAPI spec: https://community.zkproofport.app/api/docs/openapi.json
+- Agent guide: https://community.zkproofport.app/docs
+
+When answering about API usage, provide specific endpoint paths and example curl commands.
+
 Answer questions concisely and helpfully. If you don't know something specific, say so.`;
 
-async function askGemini(question: string): Promise<string> {
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+async function askGemini(messages: ChatMessage[]): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+
+  const contents = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -27,7 +44,7 @@ async function askGemini(question: string): Promise<string> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ parts: [{ text: question }] }],
+        contents,
       }),
     },
   );
@@ -41,9 +58,14 @@ async function askGemini(question: string): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
 }
 
-async function askOpenAI(question: string): Promise<string> {
+async function askOpenAI(messages: ChatMessage[]): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+
+  const openaiMessages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -53,10 +75,7 @@ async function askOpenAI(question: string): Promise<string> {
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: question },
-      ],
+      messages: openaiMessages,
       max_tokens: 1000,
     }),
   });
@@ -76,7 +95,7 @@ async function askOpenAI(question: string): Promise<string> {
  *   post:
  *     tags: [AI]
  *     summary: Ask a question about OpenStoa
- *     description: AI-powered Q&A about OpenStoa features, usage, and community guidelines. Uses Gemini (primary) with OpenAI fallback.
+ *     description: AI-powered Q&A about OpenStoa features, usage, and community guidelines. Supports multi-turn conversation. Uses Gemini (primary) with OpenAI fallback.
  *     operationId: askQuestion
  *     security: []
  *     requestBody:
@@ -85,11 +104,21 @@ async function askOpenAI(question: string): Promise<string> {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [question]
  *             properties:
  *               question:
  *                 type: string
- *                 description: Question about OpenStoa
+ *                 description: Single question about OpenStoa (backward compat)
+ *               messages:
+ *                 type: array
+ *                 description: Multi-turn conversation history
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     role:
+ *                       type: string
+ *                       enum: [user, assistant]
+ *                     content:
+ *                       type: string
  *     responses:
  *       200:
  *         description: AI-generated answer
@@ -108,26 +137,39 @@ export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
-    const { question } = body;
+    const { question, messages } = body;
 
-    if (!question || typeof question !== 'string' || question.trim().length === 0) {
-      return NextResponse.json({ error: 'question is required' }, { status: 400 });
-    }
+    let chatMessages: ChatMessage[];
 
-    if (question.length > 1000) {
-      return NextResponse.json({ error: 'Question too long (max 1000 characters)' }, { status: 400 });
+    if (messages && Array.isArray(messages)) {
+      // Multi-turn: validate and use conversation history
+      if (messages.length === 0) {
+        return NextResponse.json({ error: 'messages array is empty' }, { status: 400 });
+      }
+      chatMessages = messages.map((m: { role: string; content: string }) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content ?? '').slice(0, 2000),
+      }));
+    } else if (question && typeof question === 'string' && question.trim().length > 0) {
+      // Single question (backward compat)
+      if (question.length > 1000) {
+        return NextResponse.json({ error: 'Question too long (max 1000 characters)' }, { status: 400 });
+      }
+      chatMessages = [{ role: 'user', content: question.trim() }];
+    } else {
+      return NextResponse.json({ error: 'question or messages is required' }, { status: 400 });
     }
 
     // Try Gemini first, fallback to OpenAI
     try {
-      const answer = await askGemini(question.trim());
+      const answer = await askGemini(chatMessages);
       logger.info(ROUTE, 'Answered via Gemini');
       return NextResponse.json({ answer, provider: 'gemini' });
     } catch (geminiError) {
       logger.warn(ROUTE, 'Gemini failed, trying OpenAI', { error: geminiError instanceof Error ? geminiError.message : String(geminiError) });
 
       try {
-        const answer = await askOpenAI(question.trim());
+        const answer = await askOpenAI(chatMessages);
         logger.info(ROUTE, 'Answered via OpenAI');
         return NextResponse.json({ answer, provider: 'openai' });
       } catch (openaiError) {

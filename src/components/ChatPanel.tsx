@@ -29,6 +29,10 @@ interface ChatPanelProps {
   isMember: boolean;
   /** When true, panel fills its parent height (used in mobile full-screen) */
   fullHeight?: boolean;
+  /** Hide the header (used when parent provides its own header) */
+  hideHeader?: boolean;
+  /** Close handler for mobile overlay */
+  onClose?: () => void;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -196,7 +200,7 @@ function MessageRow({ msg }: { msg: ChatMessage }) {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: ChatPanelProps) {
+export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hideHeader, onClose }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
@@ -324,12 +328,15 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: Ch
   if (isGuest || !isMember) {
     return (
       <div style={fullHeight ? panelFullHeightStyle : panelStyle}>
-        <div style={headerStyle}>
-          <div style={headerLeftStyle}>
-            <span style={{ fontSize: 14 }}>💬</span>
-            <span style={headerTitleStyle}>Live Chat</span>
+        {!hideHeader && (
+          <div style={headerStyle}>
+            <div style={headerLeftStyle}>
+              <span style={{ fontSize: 14 }}>💬</span>
+              <span style={headerTitleStyle}>Live Chat</span>
+            </div>
+            {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
           </div>
-        </div>
+        )}
         <div style={{
           padding: '20px 14px',
           textAlign: 'center',
@@ -347,6 +354,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: Ch
   return (
     <div style={fullHeight ? panelFullHeightStyle : panelStyle}>
       {/* Header */}
+      {!hideHeader && (
       <div style={headerStyle}>
         <div style={headerLeftStyle}>
           <span style={{ fontSize: 14 }}>💬</span>
@@ -356,6 +364,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: Ch
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
           {presence.users.length > 0 && <PresenceDots users={presence.users} />}
           <div style={{
             width: 7,
@@ -366,6 +375,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight }: Ch
           }} />
         </div>
       </div>
+      )}
 
       {/* Messages */}
       <div style={fullHeight ? {
