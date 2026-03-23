@@ -5,6 +5,7 @@ import {
   extractNullifier,
   extractScope,
   computeScopeHash,
+  detectCircuit,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
 import { createSession, setSessionCookie } from '@/lib/session';
@@ -139,12 +140,16 @@ export async function GET(
       });
     }
 
+    // Detect circuit type from public inputs or relay result
+    const circuit = detectCircuit(result.publicInputs, result.verifierAddress);
+    logger.info(ROUTE, 'Circuit detected', { requestId, circuit });
+
     // Verify scope
-    logger.info(ROUTE, 'Extracting scope', { requestId });
-    const scope = extractScope(result.publicInputs, 'coinbase_attestation');
+    logger.info(ROUTE, 'Extracting scope', { requestId, circuit });
+    const scope = extractScope(result.publicInputs, circuit);
     const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
     if (scope !== expectedScope) {
-      logger.warn(ROUTE, 'Scope mismatch', { requestId, scope, expectedScope });
+      logger.warn(ROUTE, 'Scope mismatch', { requestId, scope, expectedScope, circuit });
       return NextResponse.json(
         { error: 'Scope mismatch' },
         { status: 400 },
@@ -152,8 +157,8 @@ export async function GET(
     }
 
     // Extract nullifier as userId
-    logger.info(ROUTE, 'Extracting nullifier', { requestId });
-    const nullifier = extractNullifier(result.publicInputs, 'coinbase_attestation');
+    logger.info(ROUTE, 'Extracting nullifier', { requestId, circuit });
+    const nullifier = extractNullifier(result.publicInputs, circuit);
     logger.info(ROUTE, 'Nullifier extracted', { requestId, nullifier });
 
     // Create or get user
