@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { getVerifiedDomain, getDomainBadges, saveDomainBadge, deleteDomainBadge } from '@/lib/verification-cache';
+import { getAvailableDomain, getShownDomains, setDomainShown, clearShownDomains } from '@/lib/verification-cache';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/profile/domain-badge';
@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
   }
 
   const [currentDomains, availableDomain] = await Promise.all([
-    getDomainBadges(session.userId),
-    getVerifiedDomain(session.userId),
+    getShownDomains(session.userId),
+    getAvailableDomain(session.userId),
   ]);
 
   return NextResponse.json({
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const domain = await getVerifiedDomain(session.userId);
+  const domain = await getAvailableDomain(session.userId);
   if (!domain) {
     logger.warn(ROUTE, 'Opt-in attempted without workspace verification', { userId: session.userId });
     return NextResponse.json(
@@ -105,8 +105,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await saveDomainBadge(session.userId, domain);
-  const allDomains = await getDomainBadges(session.userId);
+  await setDomainShown(session.userId, domain, true);
+  const allDomains = await getShownDomains(session.userId);
   logger.info(ROUTE, 'Domain badge opt-in', { userId: session.userId, domain, totalDomains: allDomains.length });
 
   return NextResponse.json({ success: true, domain, domains: allDomains });
@@ -166,8 +166,12 @@ export async function DELETE(request: NextRequest) {
     // No body — remove all
   }
 
-  await deleteDomainBadge(session.userId, domainToRemove);
-  const remaining = await getDomainBadges(session.userId);
+  if (domainToRemove) {
+    await setDomainShown(session.userId, domainToRemove, false);
+  } else {
+    await clearShownDomains(session.userId);
+  }
+  const remaining = await getShownDomains(session.userId);
   logger.info(ROUTE, 'Domain badge opt-out', { userId: session.userId, removed: domainToRemove ?? 'all', remaining: remaining.length });
 
   return NextResponse.json({ success: true, domains: remaining });

@@ -86,6 +86,7 @@ export interface VerificationRecord {
   domainHash?: string;
   countryHash?: string;
   domain?: string; // plaintext domain — stored in Redis only (30-day TTL), used for domain badge opt-in
+  shownDomains?: string[]; // domains opted-in for public badge display — lives inside oidc_domain record
 }
 
 /**
@@ -211,70 +212,79 @@ function cacheTypeToBadges(cacheType: string, domains?: string[]): Badge[] {
   }
 }
 
-// --- Domain badge opt-in/out (multi-domain via Redis SET) ---
-
-const DOMAIN_BADGE_PREFIX = 'community:domain-badge';
-
-function domainBadgeKey(userId: string): string {
-  return `${DOMAIN_BADGE_PREFIX}:${userId}`;
-}
+// --- Domain badge opt-in/out (merged into oidc_domain record) ---
 
 /**
- * Opt-in: add a domain to the user's public badge set.
- * Uses Redis SET (SADD) — multiple domains supported.
+ * Toggle domain visibility in the user's oidc_domain verification record.
+ * Reads the record, adds/removes the domain from shownDomains, writes back with remaining TTL.
  */
-export async function saveDomainBadge(userId: string, domain: string): Promise<void> {
-  const key = domainBadgeKey(userId);
-  await redis.sadd(key, domain.toLowerCase().trim());
-  await redis.expire(key, VERIFICATION_TTL);
-}
+export async function setDomainShown(userId: string, domain: string, shown: boolean): Promise<void> {
+  const key = cacheKey(userId, 'oidc_domain');
+  const data = await redis.get(key);
+  if (!data) return;
 
-/**
- * Opt-out: remove a specific domain, or all domains if no domain specified.
- */
-export async function deleteDomainBadge(userId: string, domain?: string): Promise<void> {
-  if (domain) {
-    await redis.srem(domainBadgeKey(userId), domain.toLowerCase().trim());
+  const record: VerificationRecord = JSON.parse(data);
+  if (record.expiresAt <= Date.now()) return;
+
+  const normalized = domain.toLowerCase().trim();
+  const current = record.shownDomains ?? [];
+
+  if (shown) {
+    if (!current.includes(normalized)) {
+      record.shownDomains = [...current, normalized];
+    } else {
+      return; // already shown, no-op
+    }
   } else {
-    await redis.del(domainBadgeKey(userId));
-  }
-}
-
-/**
- * Get all opted-in domains for a single user (empty array if none).
- */
-export async function getDomainBadges(userId: string): Promise<string[]> {
-  return redis.smembers(domainBadgeKey(userId));
-}
-
-/**
- * Batch get domain badges for multiple users via Redis pipeline.
- */
-async function getBatchDomainBadges(userIds: string[]): Promise<Map<string, string[]>> {
-  const result = new Map<string, string[]>();
-  if (userIds.length === 0) return result;
-
-  const pipeline = redis.pipeline();
-  for (const uid of userIds) {
-    pipeline.smembers(domainBadgeKey(uid));
-  }
-  const responses = await pipeline.exec();
-  if (!responses) return result;
-
-  for (let i = 0; i < userIds.length; i++) {
-    const [err, domains] = responses[i];
-    if (!err && Array.isArray(domains) && domains.length > 0) {
-      result.set(userIds[i], domains as string[]);
+    if (domain) {
+      record.shownDomains = current.filter(d => d !== normalized);
+    } else {
+      record.shownDomains = [];
     }
   }
-  return result;
+
+  // Preserve remaining TTL
+  const remainingTtl = await redis.ttl(key);
+  if (remainingTtl <= 0) return;
+
+  await redis.set(key, JSON.stringify(record), 'EX', remainingTtl);
+}
+
+/**
+ * Clear all shown domains from the oidc_domain record.
+ */
+export async function clearShownDomains(userId: string): Promise<void> {
+  const key = cacheKey(userId, 'oidc_domain');
+  const data = await redis.get(key);
+  if (!data) return;
+
+  const record: VerificationRecord = JSON.parse(data);
+  if (record.expiresAt <= Date.now()) return;
+
+  record.shownDomains = [];
+
+  const remainingTtl = await redis.ttl(key);
+  if (remainingTtl <= 0) return;
+
+  await redis.set(key, JSON.stringify(record), 'EX', remainingTtl);
+}
+
+/**
+ * Get all opted-in (shown) domains for a user from the oidc_domain record.
+ */
+export async function getShownDomains(userId: string): Promise<string[]> {
+  const data = await redis.get(cacheKey(userId, 'oidc_domain'));
+  if (!data) return [];
+  const record: VerificationRecord = JSON.parse(data);
+  if (record.expiresAt <= Date.now()) return [];
+  return record.shownDomains ?? [];
 }
 
 /**
  * Get the plaintext domain from the oidc_domain verification record (for opt-in flow).
  * Returns null if no valid verification or domain not stored.
  */
-export async function getVerifiedDomain(userId: string): Promise<string | null> {
+export async function getAvailableDomain(userId: string): Promise<string | null> {
   const data = await redis.get(cacheKey(userId, 'oidc_domain'));
   if (!data) return null;
   const record: VerificationRecord = JSON.parse(data);
@@ -284,21 +294,23 @@ export async function getVerifiedDomain(userId: string): Promise<string | null> 
 
 /**
  * Get badges for a single user from Redis cache.
+ * shownDomains is read from the oidc_domain record directly — no extra Redis query.
  */
 export async function getUserBadges(userId: string): Promise<Badge[]> {
-  const [verifications, domains] = await Promise.all([
-    getActiveVerificationsCache(userId),
-    getDomainBadges(userId),
-  ]);
+  const verifications = await getActiveVerificationsCache(userId);
   return verifications.flatMap(v => {
-    const d = (v.proofType === 'oidc_domain' && domains.length > 0) ? domains : undefined;
-    return cacheTypeToBadges(v.proofType, d);
+    if (v.proofType === 'oidc_domain') {
+      const shown = v.record.shownDomains ?? [];
+      return cacheTypeToBadges(v.proofType, shown.length > 0 ? shown : undefined);
+    }
+    return cacheTypeToBadges(v.proofType);
   });
 }
 
 /**
  * Batch get badges for multiple users (for post/comment badge display).
- * Uses Redis MGET + pipeline for efficiency.
+ * Uses a single Redis MGET call — shownDomains is read from the oidc_domain record directly.
+ * No extra Redis queries needed (no separate domain badge key).
  */
 export async function getBatchUserBadges(
   userIds: string[],
@@ -317,11 +329,8 @@ export async function getBatchUserBadges(
     }
   }
 
-  // Fetch verification records and domain badges in parallel
-  const [verificationValues, domainBadges] = await Promise.all([
-    redis.mget(...verificationKeys),
-    getBatchDomainBadges(unique),
-  ]);
+  // Single MGET call — no separate domain badge query needed
+  const verificationValues = await redis.mget(...verificationKeys);
   const now = Date.now();
 
   for (let i = 0; i < unique.length; i++) {
@@ -332,9 +341,12 @@ export async function getBatchUserBadges(
       if (val) {
         const record: VerificationRecord = JSON.parse(val);
         if (record.expiresAt > now) {
-          const domains = (cacheTypes[j] === 'oidc_domain' && domainBadges.has(uid))
-            ? domainBadges.get(uid) : undefined;
-          badges.push(...cacheTypeToBadges(cacheTypes[j], domains));
+          if (cacheTypes[j] === 'oidc_domain') {
+            const shown = record.shownDomains ?? [];
+            badges.push(...cacheTypeToBadges(cacheTypes[j], shown.length > 0 ? shown : undefined));
+          } else {
+            badges.push(...cacheTypeToBadges(cacheTypes[j]));
+          }
         }
       }
     }

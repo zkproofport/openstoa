@@ -13,8 +13,11 @@ const ROUTE = '/api/test/clear-verification-cache';
  * Requires admin role in DB — safe for all environments.
  *
  * Query params:
- *   ?type=kyc|country|oidc_domain|oidc_login|domain_badge  (clear specific type)
+ *   ?type=kyc|country|oidc_domain|oidc_login  (clear specific type)
  *   (no type) → clear all
+ *
+ * Note: domain_badge is no longer a separate key — it lives inside the oidc_domain record.
+ * Clearing oidc_domain automatically clears shown domains.
  */
 export async function DELETE(request: NextRequest) {
   const session = await getSession(request);
@@ -38,10 +41,7 @@ export async function DELETE(request: NextRequest) {
   const cacheTypes = ['kyc', 'country', 'oidc_domain', 'oidc_login'];
 
   if (type) {
-    if (type === 'domain_badge') {
-      await redis.del(`community:domain-badge:${session.userId}`);
-      logger.info(ROUTE, 'Cleared domain badge', { userId: session.userId });
-    } else if (cacheTypes.includes(type)) {
+    if (cacheTypes.includes(type)) {
       await redis.del(`${prefix}:${session.userId}:${type}`);
       logger.info(ROUTE, 'Cleared verification cache', { userId: session.userId, type });
     } else {
@@ -51,10 +51,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   // Clear all
-  const keys = [
-    ...cacheTypes.map(ct => `${prefix}:${session.userId}:${ct}`),
-    `community:domain-badge:${session.userId}`,
-  ];
+  const keys = cacheTypes.map(ct => `${prefix}:${session.userId}:${ct}`);
   await redis.del(...keys);
   logger.info(ROUTE, 'Cleared all verification caches', { userId: session.userId, count: keys.length });
 
