@@ -471,9 +471,9 @@ export default function NewTopicPage() {
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === 'affiliation') {
-                  // Default to workspace (both providers)
-                  setProofType('workspace');
-                  setWorkspaceGoogle(false);
+                  // Default to google_workspace (user must pick one)
+                  setProofType('google_workspace');
+                  setWorkspaceGoogle(true);
                   setWorkspaceMs(false);
                 } else {
                   setProofType(val as 'none' | 'kyc' | 'country');
@@ -692,10 +692,10 @@ export default function NewTopicPage() {
 
             {(proofType === 'workspace' || proofType === 'google_workspace' || proofType === 'microsoft_365') && (
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Provider selection */}
+                {/* Provider selection (radio — single select) */}
                 <div>
                   <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
-                    Accepted providers
+                    Select provider
                   </p>
                   <div className="flex gap-3">
                     <label style={{
@@ -703,23 +703,22 @@ export default function NewTopicPage() {
                       alignItems: 'center',
                       gap: 8,
                       padding: '8px 14px',
-                      background: workspaceGoogle ? 'rgba(59,130,246,0.06)' : '#111',
-                      border: `1px solid ${workspaceGoogle ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                      background: proofType === 'google_workspace' ? 'rgba(59,130,246,0.06)' : '#111',
+                      border: `1px solid ${proofType === 'google_workspace' ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
                       borderRadius: 8,
                       cursor: 'pointer',
                       transition: 'all 0.12s',
                       fontSize: 14,
                     }}>
                       <input
-                        type="checkbox"
-                        checked={workspaceGoogle}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setWorkspaceGoogle(checked);
-                          // Derive proofType from checkbox state
-                          if (checked && !workspaceMs) setProofType('google_workspace');
-                          else if (!checked && workspaceMs) setProofType('microsoft_365');
-                          else setProofType('workspace'); // both or neither = workspace
+                        type="radio"
+                        name="workspaceProvider"
+                        checked={proofType === 'google_workspace'}
+                        onChange={() => {
+                          setProofType('google_workspace');
+                          setProofData(null);
+                          setProofDone(false);
+                          setProofGateKey((k) => k + 1);
                         }}
                         style={{ accentColor: 'var(--accent)' }}
                       />
@@ -730,23 +729,22 @@ export default function NewTopicPage() {
                       alignItems: 'center',
                       gap: 8,
                       padding: '8px 14px',
-                      background: workspaceMs ? 'rgba(59,130,246,0.06)' : '#111',
-                      border: `1px solid ${workspaceMs ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                      background: proofType === 'microsoft_365' ? 'rgba(59,130,246,0.06)' : '#111',
+                      border: `1px solid ${proofType === 'microsoft_365' ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
                       borderRadius: 8,
                       cursor: 'pointer',
                       transition: 'all 0.12s',
                       fontSize: 14,
                     }}>
                       <input
-                        type="checkbox"
-                        checked={workspaceMs}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setWorkspaceMs(checked);
-                          // Derive proofType from checkbox state
-                          if (checked && !workspaceGoogle) setProofType('microsoft_365');
-                          else if (!checked && workspaceGoogle) setProofType('google_workspace');
-                          else setProofType('workspace'); // both or neither = workspace
+                        type="radio"
+                        name="workspaceProvider"
+                        checked={proofType === 'microsoft_365'}
+                        onChange={() => {
+                          setProofType('microsoft_365');
+                          setProofData(null);
+                          setProofDone(false);
+                          setProofGateKey((k) => k + 1);
                         }}
                         style={{ accentColor: 'var(--accent)' }}
                       />
@@ -754,13 +752,11 @@ export default function NewTopicPage() {
                     </label>
                   </div>
                   <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
-                    {!workspaceGoogle && !workspaceMs
-                      ? 'Both providers accepted (Google Workspace or Microsoft 365)'
-                      : workspaceGoogle && workspaceMs
-                      ? 'Both providers accepted (Google Workspace or Microsoft 365)'
-                      : workspaceGoogle
+                    {proofType === 'google_workspace'
                       ? 'Only Google Workspace accounts accepted'
-                      : 'Only Microsoft 365 accounts accepted'}
+                      : proofType === 'microsoft_365'
+                      ? 'Only Microsoft 365 accounts accepted'
+                      : 'Select a provider to continue'}
                   </p>
                 </div>
 
@@ -823,10 +819,11 @@ export default function NewTopicPage() {
                       circuitType="oidc_domain_attestation"
                       scope="zkproofport-community"
                       domain={requiredDomain.trim() || undefined}
+                      provider={proofType === 'microsoft_365' ? 'microsoft' : 'google'}
                       mode="proof"
                       autoStart={false}
                       qrSize={200}
-                      label="Scan with ZKProofport app to verify your organization"
+                      label={`Scan with ZKProofport app to verify your ${proofType === 'microsoft_365' ? 'Microsoft 365' : 'Google Workspace'} affiliation`}
                       onProofData={({ proof, publicInputs, circuit }) => {
                         setProofData({ proof, publicInputs, circuit });
                         setProofDone(true);

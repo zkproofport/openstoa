@@ -11,6 +11,8 @@ interface ProofGateProps {
   isIncluded?: boolean;
   /** Domain for workspace/MS365 proof (e.g., 'company.com') */
   domain?: string;
+  /** OIDC provider — determines which login flow the app shows */
+  provider?: 'google' | 'microsoft';
 
   /**
    * 'login' — polls `/api/auth/poll/{id}` (no query param), calls onLogin on completion
@@ -43,6 +45,7 @@ export default function ProofGate({
   countryList,
   isIncluded,
   domain,
+  provider,
   mode = 'login',
   onLogin,
   onProofData,
@@ -89,6 +92,7 @@ export default function ProofGate({
       if (countryList) body.countryList = countryList;
       if (isIncluded !== undefined) body.isIncluded = isIncluded;
       if (domain) body.domain = domain;
+      if (provider) body.provider = provider;
 
       const res = await fetch('/api/auth/proof-request', {
         method: 'POST',

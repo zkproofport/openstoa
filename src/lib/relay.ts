@@ -29,6 +29,7 @@ export async function createRelayProofRequest(
     countryList?: string[];
     isIncluded?: boolean;
     domain?: string;
+    provider?: 'google' | 'microsoft';
   },
 ): Promise<{ requestId: string; deepLink: string }> {
   const sdk = createSDK();
@@ -38,14 +39,16 @@ export async function createRelayProofRequest(
     inputs.countryList = options?.countryList ?? [];
     inputs.isIncluded = options?.isIncluded ?? true;
   }
-  if (circuit === 'oidc_domain_attestation' && options?.domain) {
-    inputs.domain = options.domain;
+  if (circuit === 'oidc_domain_attestation') {
+    if (options?.domain) inputs.domain = options.domain;
+    if (options?.provider) inputs.provider = options.provider;
   }
 
   // Default message per circuit type
   let defaultMessage: string;
   if (circuit === 'oidc_domain_attestation') {
-    defaultMessage = 'Login with Google to access OpenStoa';
+    const providerName = options?.provider === 'microsoft' ? 'Microsoft 365' : options?.provider === 'google' ? 'Google Workspace' : 'your organization';
+    defaultMessage = `Verify ${providerName} affiliation for OpenStoa`;
   } else if (circuit === 'coinbase_country_attestation') {
     defaultMessage = 'Verify your country via Coinbase attestation for OpenStoa';
   } else {
