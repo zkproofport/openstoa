@@ -116,10 +116,12 @@ export async function enterMicrosoftCode(page: Page, code: string): Promise<void
     const title = await page.title();
     console.log(`[stealth] MS step ${step}: ${title} (${url.slice(0, 80)}...)`);
 
-    // Check for completion
-    if (title.includes('signed in') || title.includes('로그인') ||
-        url.includes('appverify') || url.includes('kmsi')) {
-      // May need one more Continue click
+    // Check for completion — "You have signed in" or "close this window"
+    const pageText = await page.textContent('body').catch(() => '');
+    if (pageText?.includes('signed in') || pageText?.includes('close this window') ||
+        pageText?.includes('로그인되었습니다') || pageText?.includes('창을 닫아도')) {
+      console.log('[stealth] MS sign-in complete!');
+      return;
     }
 
     // Try submit/continue buttons (MS uses input[type="submit"] not button)

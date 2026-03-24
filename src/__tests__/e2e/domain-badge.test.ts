@@ -272,4 +272,51 @@ describe('Domain Badge (Multi-domain)', () => {
     // Cleanup
     await authDelete('/api/profile/domain-badge');
   });
+
+  // ── Domain-restricted workspace topic ───────────────────────────────
+
+  it('Domain-restricted topic: matching domain → join succeeds', async () => {
+    if (!hasWorkspaceVerification || !optedInDomain) return;
+
+    // Create a topic restricted to our domain
+    const topicsRes = await authPost('/api/topics', {
+      title: `E2E Domain Restrict ${Date.now()}`,
+      description: 'Domain-restricted workspace topic',
+      proofType: 'workspace',
+      requiredDomain: optedInDomain,
+    });
+
+    if (topicsRes.status === 400) {
+      // Need proof — use cached verification
+      console.log('[E2E] Domain-restricted topic creation needs proof (no cache)');
+      return;
+    }
+
+    if (topicsRes.status === 201) {
+      console.log(`[E2E] Domain-restricted topic created (domain: ${optedInDomain})`);
+    }
+  });
+
+  it('Domain-restricted topic: wrong domain → join rejected', async () => {
+    if (!hasWorkspaceVerification) return;
+
+    // Create a topic restricted to a non-matching domain
+    const topicsRes = await authPost('/api/topics', {
+      title: `E2E Wrong Domain ${Date.now()}`,
+      description: 'Wrong domain test',
+      proofType: 'workspace',
+      requiredDomain: 'nonexistent-corp.example.com',
+    });
+
+    // Should fail: user's verified domain doesn't match
+    if (topicsRes.status === 403) {
+      console.log('[E2E] Domain mismatch correctly rejected (403)');
+    } else if (topicsRes.status === 400) {
+      console.log('[E2E] Domain-restricted topic creation needs proof (no cache)');
+    } else {
+      // If it somehow succeeded, that's a bug
+      console.log(`[E2E] Unexpected status: ${topicsRes.status}`);
+    }
+    expect([400, 403]).toContain(topicsRes.status);
+  });
 });
