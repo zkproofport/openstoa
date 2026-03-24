@@ -8,7 +8,7 @@ const BASE = getBaseUrl();
 const CACHE_DIR = resolve(__dirname, '../../..');
 const CACHE_A = resolve(CACHE_DIR, '.e2e-token-cache-a.json');
 const CACHE_B = resolve(CACHE_DIR, '.e2e-token-cache-b.json');
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL = 23 * 60 * 60 * 1000; // 23 hours (JWT is 24h, leave 1h margin)
 
 // ─── Token cache ─────────────────────────────────────────────────────
 interface TokenCache { token: string; userId: string; createdAt: number; }
