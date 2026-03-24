@@ -125,12 +125,22 @@ export async function middleware(request: NextRequest) {
 
     return NextResponse.next();
   } catch {
+    // Invalid/expired token — clear the stale cookie
+    const clearCookie = (res: NextResponse) => {
+      res.cookies.set('zk-community-session', '', { maxAge: 0, path: '/' });
+      return res;
+    };
+
+    // Guest-accessible paths: allow through as guest (clear stale cookie)
+    if (guestAccessible) {
+      return clearCookie(NextResponse.next());
+    }
     if (isApiRoute(pathname)) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+      return clearCookie(NextResponse.json({ error: 'Invalid session' }, { status: 401 }));
     }
     const loginUrl = new URL('/', request.url);
     loginUrl.searchParams.set('returnTo', pathname);
-    return NextResponse.redirect(loginUrl);
+    return clearCookie(NextResponse.redirect(loginUrl));
   }
 }
 
