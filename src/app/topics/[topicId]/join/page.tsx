@@ -38,8 +38,8 @@ export default function JoinPage() {
     proof: string;
     publicInputs: string[];
   } | null>(null);
-  // For workspace (either) topics, joiner picks their provider
-  const [joinProvider, setJoinProvider] = useState<'google' | 'microsoft'>('google');
+  // For workspace (either) topics, joiner picks their provider — null until selected
+  const [joinProvider, setJoinProvider] = useState<'google' | 'microsoft' | null>(null);
 
   useEffect(() => {
     loadTopicInfo();
@@ -273,39 +273,49 @@ export default function JoinPage() {
                 </div>
               )}
 
-              <ProofGate
-                circuitType={
-                  effectiveProofType === 'kyc' ? 'coinbase_attestation' :
-                  effectiveProofType === 'country' ? 'coinbase_country_attestation' :
-                  'oidc_domain_attestation'
-                }
-                scope="zkproofport-community"
-                countryList={effectiveProofType === 'country' ? (topicInfo.allowedCountries ?? []) : undefined}
-                isIncluded={effectiveProofType === 'country' ? true : undefined}
-                domain={
-                  (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
-                    ? topicInfo.requiredDomain
-                    : undefined
-                }
-                provider={
-                  effectiveProofType === 'google_workspace' ? 'google' :
-                  effectiveProofType === 'microsoft_365' ? 'microsoft' :
-                  effectiveProofType === 'workspace' ? joinProvider :
-                  undefined
-                }
-                mode="proof"
-                qrSize={224}
-                label={
-                  effectiveProofType === 'kyc' ? 'Scan with ZKProofport app to verify KYC' :
-                  effectiveProofType === 'country' ? 'Scan with ZKProofport app to verify your country' :
-                  effectiveProofType === 'workspace' ? `Scan with ZKProofport app to verify your ${joinProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace'} affiliation` :
-                  'Scan with ZKProofport app to verify your organization'
-                }
-                onProofData={({ proof, publicInputs }) => {
-                  setProofData({ proof, publicInputs });
-                  setProofDone(true);
-                }}
-              />
+              {/* Show ProofGate only when provider is determined (workspace requires explicit selection) */}
+              {(effectiveProofType !== 'workspace' || joinProvider) && (
+                <ProofGate
+                  key={joinProvider ?? effectiveProofType}
+                  circuitType={
+                    effectiveProofType === 'kyc' ? 'coinbase_attestation' :
+                    effectiveProofType === 'country' ? 'coinbase_country_attestation' :
+                    'oidc_domain_attestation'
+                  }
+                  scope="zkproofport-community"
+                  countryList={effectiveProofType === 'country' ? (topicInfo.allowedCountries ?? []) : undefined}
+                  isIncluded={effectiveProofType === 'country' ? true : undefined}
+                  domain={
+                    (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
+                      ? topicInfo.requiredDomain
+                      : undefined
+                  }
+                  provider={
+                    effectiveProofType === 'google_workspace' ? 'google' :
+                    effectiveProofType === 'microsoft_365' ? 'microsoft' :
+                    effectiveProofType === 'workspace' ? (joinProvider ?? undefined) :
+                    undefined
+                  }
+                  mode="proof"
+                  autoStart={false}
+                  qrSize={224}
+                  label={
+                    effectiveProofType === 'kyc' ? 'Scan with ZKProofport app to verify KYC' :
+                    effectiveProofType === 'country' ? 'Scan with ZKProofport app to verify your country' :
+                    effectiveProofType === 'workspace' ? `Scan with ZKProofport app to verify your ${joinProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace'} affiliation` :
+                    'Scan with ZKProofport app to verify your organization'
+                  }
+                  onProofData={({ proof, publicInputs }) => {
+                    setProofData({ proof, publicInputs });
+                    setProofDone(true);
+                  }}
+                />
+              )}
+              {effectiveProofType === 'workspace' && !joinProvider && (
+                <p style={{ fontSize: 14, color: 'var(--muted)', textAlign: 'center', margin: '16px 0 0' }}>
+                  Select a provider above to start verification
+                </p>
+              )}
             </div>
           )}
 

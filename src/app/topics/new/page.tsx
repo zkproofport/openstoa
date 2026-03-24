@@ -13,7 +13,7 @@ export default function NewTopicPage() {
   const [description, setDescription] = useState('');
   const [proofType, setProofType] = useState<'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace'>('none');
   // When "Either" is selected, the creator must pick a provider for their own proof
-  const [creatorProvider, setCreatorProvider] = useState<'google' | 'microsoft'>('google');
+  const [creatorProvider, setCreatorProvider] = useState<'google' | 'microsoft' | null>(null);
   const [countryCodes, setCountryCodes] = useState('');
   const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
   const [requiredDomain, setRequiredDomain] = useState('');
@@ -833,25 +833,32 @@ export default function NewTopicPage() {
                     borderRadius: 10,
                     textAlign: 'center',
                   }}>
-                    <ProofGate
-                      key={proofGateKey}
-                      circuitType="oidc_domain_attestation"
-                      scope="zkproofport-community"
-                      domain={requiredDomain.trim() || undefined}
-                      provider={proofType === 'microsoft_365' ? 'microsoft' : proofType === 'workspace' ? creatorProvider : 'google'}
-                      mode="proof"
-                      autoStart={false}
-                      qrSize={200}
-                      label={`Scan with ZKProofport app to verify your ${
-                        proofType === 'microsoft_365' ? 'Microsoft 365'
-                        : proofType === 'workspace' ? (creatorProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace')
-                        : 'Google Workspace'
-                      } affiliation`}
-                      onProofData={({ proof, publicInputs, circuit }) => {
-                        setProofData({ proof, publicInputs, circuit });
-                        setProofDone(true);
-                      }}
-                    />
+                    {/* Show ProofGate only when provider is determined */}
+                    {(proofType !== 'workspace' || creatorProvider) ? (
+                      <ProofGate
+                        key={`${proofGateKey}-${creatorProvider}`}
+                        circuitType="oidc_domain_attestation"
+                        scope="zkproofport-community"
+                        domain={requiredDomain.trim() || undefined}
+                        provider={proofType === 'microsoft_365' ? 'microsoft' : proofType === 'workspace' ? (creatorProvider ?? undefined) : 'google'}
+                        mode="proof"
+                        autoStart={false}
+                        qrSize={200}
+                        label={`Scan with ZKProofport app to verify your ${
+                          proofType === 'microsoft_365' ? 'Microsoft 365'
+                          : proofType === 'workspace' ? (creatorProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace')
+                          : 'Google Workspace'
+                        } affiliation`}
+                        onProofData={({ proof, publicInputs, circuit }) => {
+                          setProofData({ proof, publicInputs, circuit });
+                          setProofDone(true);
+                        }}
+                      />
+                    ) : (
+                      <p style={{ fontSize: 14, color: 'var(--muted)', textAlign: 'center' }}>
+                        Select a provider above to start verification
+                      </p>
+                    )}
                   </div>
                 )}
                 {proofDone && (
