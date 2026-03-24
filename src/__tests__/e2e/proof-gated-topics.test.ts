@@ -3,6 +3,7 @@ import { publicGet, getBaseUrl } from './helpers';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { runProveWithAutoDeviceFlow } from './device-flow-helper';
 
 const BASE = getBaseUrl();
 const CACHE_DIR = resolve(__dirname, '../../..');
@@ -33,20 +34,8 @@ function getProveEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PAYMENT_KEY: key, ATTESTATION_KEY: key };
 }
 
-function runProveOidc(args: string, scope: string): Record<string, unknown> {
-  const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent`;
-  console.log(`[E2E] OIDC: ${cmd}`);
-  console.log('[E2E] >>> Enter device code at https://www.google.com/device <<<');
-  try {
-    const result = execSync(cmd, { env: getProveEnv(), timeout: 300_000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
-    return JSON.parse(result.trim());
-  } catch (err: unknown) {
-    const execErr = err as { stderr?: string; stdout?: string; message?: string };
-    console.error(`[E2E] OIDC proof failed: ${execErr.message}`);
-    if (execErr.stderr) console.error(`[E2E] stderr: ${execErr.stderr}`);
-    if (execErr.stdout) console.error(`[E2E] stdout: ${execErr.stdout}`);
-    throw err;
-  }
+async function runProveOidc(args: string, scope: string): Promise<Record<string, unknown>> {
+  return runProveWithAutoDeviceFlow(args, scope, getProveEnv());
 }
 
 function runProveCoinbase(args: string, scope: string): Record<string, unknown> {
@@ -88,7 +77,7 @@ async function loginOrCache(cacheFile: string, label: string): Promise<string> {
   }
   const { challengeId, scope } = await getScope();
   console.log(`[E2E] === ${label} LOGIN ===`);
-  const proofResult = runProveOidc('--login-google', scope);
+  const proofResult = await runProveOidc('--login-google', scope);
   const { token, userId } = await loginWithProof(challengeId, proofResult);
   saveCache(cacheFile, token, userId);
   console.log(`[E2E] ${label} logged in (userId: ${userId.slice(0, 10)}...)`);
@@ -184,7 +173,7 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   it.skip('User A: creates workspace-gated topic with Google Workspace proof', async () => {
     // Skip: test account has no Google Workspace. Enable when available.
     const { scope } = await getScope();
-    const proofResult = runProveOidc('--login-google-workspace', scope);
+    const proofResult = await runProveOidc('--login-google-workspace', scope);
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
       body: JSON.stringify({ title: `E2E GW Topic ${Date.now()}`, description: 'Google Workspace required', categoryId, proofType: 'google_workspace', proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
@@ -195,7 +184,7 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   it('User A: creates workspace-gated topic with Microsoft 365 proof', async () => {
     const { scope } = await getScope();
     console.log('[E2E] User A: Microsoft 365 device flow for topic creation');
-    const proofResult = runProveOidc('--login-microsoft-365', scope);
+    const proofResult = await runProveOidc('--login-microsoft-365', scope);
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
       body: JSON.stringify({ title: `E2E MS365 Topic ${Date.now()}`, description: 'Org required', categoryId, proofType: 'workspace', proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
@@ -308,7 +297,7 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     // Skip: test account has no Google Workspace
     expect(workspaceTopicId).toBeTruthy();
     const { scope } = await getScope();
-    const proofResult = runProveOidc('--login-google-workspace', scope);
+    const proofResult = await runProveOidc('--login-google-workspace', scope);
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
       method: 'POST',
       body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
@@ -320,7 +309,7 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     expect(workspaceTopicId).toBeTruthy();
     const { scope } = await getScope();
     console.log('[E2E] User B: Microsoft 365 device flow for join');
-    const proofResult = runProveOidc('--login-microsoft-365', scope);
+    const proofResult = await runProveOidc('--login-microsoft-365', scope);
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
       method: 'POST',
       body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),

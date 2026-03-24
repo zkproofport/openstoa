@@ -12,9 +12,8 @@ export default function NewTopicPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [proofType, setProofType] = useState<'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace'>('none');
-  // Workspace provider selection (for affiliation proof)
-  const [workspaceGoogle, setWorkspaceGoogle] = useState(false);
-  const [workspaceMs, setWorkspaceMs] = useState(false);
+  // When "Either" is selected, the creator must pick a provider for their own proof
+  const [creatorProvider, setCreatorProvider] = useState<'google' | 'microsoft'>('google');
   const [countryCodes, setCountryCodes] = useState('');
   const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
   const [requiredDomain, setRequiredDomain] = useState('');
@@ -471,14 +470,10 @@ export default function NewTopicPage() {
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === 'affiliation') {
-                  // Default to google_workspace (user must pick one)
+                  // Default to google_workspace
                   setProofType('google_workspace');
-                  setWorkspaceGoogle(true);
-                  setWorkspaceMs(false);
                 } else {
                   setProofType(val as 'none' | 'kyc' | 'country');
-                  setWorkspaceGoogle(false);
-                  setWorkspaceMs(false);
                 }
                 // Reset proof state on any proof type change
                 setProofData(null);
@@ -692,73 +687,97 @@ export default function NewTopicPage() {
 
             {(proofType === 'workspace' || proofType === 'google_workspace' || proofType === 'microsoft_365') && (
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Provider selection (radio — single select) */}
+                {/* Provider selection (3 options) */}
                 <div>
                   <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
-                    Select provider
+                    Accepted providers
                   </p>
-                  <div className="flex gap-3">
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '8px 14px',
-                      background: proofType === 'google_workspace' ? 'rgba(59,130,246,0.06)' : '#111',
-                      border: `1px solid ${proofType === 'google_workspace' ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      transition: 'all 0.12s',
-                      fontSize: 14,
-                    }}>
-                      <input
-                        type="radio"
-                        name="workspaceProvider"
-                        checked={proofType === 'google_workspace'}
-                        onChange={() => {
-                          setProofType('google_workspace');
-                          setProofData(null);
-                          setProofDone(false);
-                          setProofGateKey((k) => k + 1);
-                        }}
-                        style={{ accentColor: 'var(--accent)' }}
-                      />
-                      Google Workspace
-                    </label>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '8px 14px',
-                      background: proofType === 'microsoft_365' ? 'rgba(59,130,246,0.06)' : '#111',
-                      border: `1px solid ${proofType === 'microsoft_365' ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      transition: 'all 0.12s',
-                      fontSize: 14,
-                    }}>
-                      <input
-                        type="radio"
-                        name="workspaceProvider"
-                        checked={proofType === 'microsoft_365'}
-                        onChange={() => {
-                          setProofType('microsoft_365');
-                          setProofData(null);
-                          setProofDone(false);
-                          setProofGateKey((k) => k + 1);
-                        }}
-                        style={{ accentColor: 'var(--accent)' }}
-                      />
-                      Microsoft 365
-                    </label>
+                  <div className="flex gap-3 flex-wrap">
+                    {([
+                      { value: 'google_workspace' as const, label: 'Google Workspace' },
+                      { value: 'microsoft_365' as const, label: 'Microsoft 365' },
+                      { value: 'workspace' as const, label: 'Either (both)' },
+                    ]).map((opt) => (
+                      <label key={opt.value} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 14px',
+                        background: proofType === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
+                        border: `1px solid ${proofType === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        transition: 'all 0.12s',
+                        fontSize: 14,
+                      }}>
+                        <input
+                          type="radio"
+                          name="workspaceProvider"
+                          checked={proofType === opt.value}
+                          onChange={() => {
+                            setProofType(opt.value);
+                            setProofData(null);
+                            setProofDone(false);
+                            setProofGateKey((k) => k + 1);
+                          }}
+                          style={{ accentColor: 'var(--accent)' }}
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
                   </div>
                   <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
                     {proofType === 'google_workspace'
                       ? 'Only Google Workspace accounts accepted'
                       : proofType === 'microsoft_365'
                       ? 'Only Microsoft 365 accounts accepted'
+                      : proofType === 'workspace'
+                      ? 'Members can use either Google Workspace or Microsoft 365'
                       : 'Select a provider to continue'}
                   </p>
                 </div>
+
+                {/* When "Either" is selected, creator must choose which provider to verify with */}
+                {proofType === 'workspace' && (
+                  <div>
+                    <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
+                      Verify your affiliation with:
+                    </p>
+                    <div className="flex gap-3">
+                      {([
+                        { value: 'google' as const, label: 'Google Workspace' },
+                        { value: 'microsoft' as const, label: 'Microsoft 365' },
+                      ]).map((opt) => (
+                        <label key={opt.value} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 14px',
+                          background: creatorProvider === opt.value ? 'rgba(34,197,94,0.06)' : '#111',
+                          border: `1px solid ${creatorProvider === opt.value ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          transition: 'all 0.12s',
+                          fontSize: 14,
+                        }}>
+                          <input
+                            type="radio"
+                            name="creatorProvider"
+                            checked={creatorProvider === opt.value}
+                            onChange={() => {
+                              setCreatorProvider(opt.value);
+                              setProofData(null);
+                              setProofDone(false);
+                              setProofGateKey((k) => k + 1);
+                            }}
+                            style={{ accentColor: '#22c55e' }}
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Domain input (optional) */}
                 <div>
@@ -819,11 +838,15 @@ export default function NewTopicPage() {
                       circuitType="oidc_domain_attestation"
                       scope="zkproofport-community"
                       domain={requiredDomain.trim() || undefined}
-                      provider={proofType === 'microsoft_365' ? 'microsoft' : 'google'}
+                      provider={proofType === 'microsoft_365' ? 'microsoft' : proofType === 'workspace' ? creatorProvider : 'google'}
                       mode="proof"
                       autoStart={false}
                       qrSize={200}
-                      label={`Scan with ZKProofport app to verify your ${proofType === 'microsoft_365' ? 'Microsoft 365' : 'Google Workspace'} affiliation`}
+                      label={`Scan with ZKProofport app to verify your ${
+                        proofType === 'microsoft_365' ? 'Microsoft 365'
+                        : proofType === 'workspace' ? (creatorProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace')
+                        : 'Google Workspace'
+                      } affiliation`}
                       onProofData={({ proof, publicInputs, circuit }) => {
                         setProofData({ proof, publicInputs, circuit });
                         setProofDone(true);

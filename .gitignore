@@ -13,3 +13,4 @@ src/generated/
 .e2e-token-cache-b.json
 .omc/
 .omc/
+.playwright-profile/

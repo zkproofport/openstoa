@@ -38,6 +38,8 @@ export default function JoinPage() {
     proof: string;
     publicInputs: string[];
   } | null>(null);
+  // For workspace (either) topics, joiner picks their provider
+  const [joinProvider, setJoinProvider] = useState<'google' | 'microsoft'>('google');
 
   useEffect(() => {
     loadTopicInfo();
@@ -230,6 +232,47 @@ export default function JoinPage() {
                   : 'This topic requires proof verification via ZKProofport.'}
               </p>
 
+              {/* Provider chooser for workspace (either) topics */}
+              {effectiveProofType === 'workspace' && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
+                    Verify with:
+                  </p>
+                  <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                    {([
+                      { value: 'google' as const, label: 'Google Workspace' },
+                      { value: 'microsoft' as const, label: 'Microsoft 365' },
+                    ]).map((opt) => (
+                      <label key={opt.value} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 14px',
+                        background: joinProvider === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
+                        border: `1px solid ${joinProvider === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        transition: 'all 0.12s',
+                        fontSize: 14,
+                      }}>
+                        <input
+                          type="radio"
+                          name="joinProvider"
+                          checked={joinProvider === opt.value}
+                          onChange={() => {
+                            setJoinProvider(opt.value);
+                            setProofData(null);
+                            setProofDone(false);
+                          }}
+                          style={{ accentColor: 'var(--accent)' }}
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <ProofGate
                 circuitType={
                   effectiveProofType === 'kyc' ? 'coinbase_attestation' :
@@ -244,11 +287,18 @@ export default function JoinPage() {
                     ? topicInfo.requiredDomain
                     : undefined
                 }
+                provider={
+                  effectiveProofType === 'google_workspace' ? 'google' :
+                  effectiveProofType === 'microsoft_365' ? 'microsoft' :
+                  effectiveProofType === 'workspace' ? joinProvider :
+                  undefined
+                }
                 mode="proof"
                 qrSize={224}
                 label={
                   effectiveProofType === 'kyc' ? 'Scan with ZKProofport app to verify KYC' :
                   effectiveProofType === 'country' ? 'Scan with ZKProofport app to verify your country' :
+                  effectiveProofType === 'workspace' ? `Scan with ZKProofport app to verify your ${joinProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace'} affiliation` :
                   'Scan with ZKProofport app to verify your organization'
                 }
                 onProofData={({ proof, publicInputs }) => {
