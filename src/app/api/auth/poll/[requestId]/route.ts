@@ -188,9 +188,9 @@ export async function GET(
     logger.info(ROUTE, 'Session created, sending 200', { requestId, nullifier, needsNickname });
 
     // Save verification to Redis cache (privacy-first: no PII in DB)
-    const { saveVerificationCache, circuitToCacheType } = await import('@/lib/verification-cache');
+    const { saveVerificationCache, circuitToCacheTypeForLogin } = await import('@/lib/verification-cache');
     const { extractDomain } = await import('@/lib/proof');
-    const cacheType = circuitToCacheType(circuit);
+    const cacheType = circuitToCacheTypeForLogin(circuit);
     let domain: string | undefined;
     if (circuit === 'oidc_domain_attestation') {
       domain = extractDomain(result.publicInputs, circuit) ?? undefined;

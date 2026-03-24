@@ -46,11 +46,30 @@ export function toCacheType(proofType: string): string {
 
 /**
  * Map circuit name → cache key type.
+ * For login OIDC, use circuitToCacheTypeForLogin() instead.
  */
 export function circuitToCacheType(circuit: string): string {
   switch (circuit) {
     case 'oidc_domain_attestation':
       return 'oidc_domain';
+    case 'coinbase_country_attestation':
+      return 'country';
+    case 'coinbase_attestation':
+      return 'kyc';
+    default:
+      return circuit;
+  }
+}
+
+/**
+ * Map circuit name → cache key for LOGIN context.
+ * OIDC login (--login-google) caches as 'oidc_login', NOT 'oidc_domain'.
+ * This prevents personal Gmail logins from satisfying workspace proof requirements.
+ */
+export function circuitToCacheTypeForLogin(circuit: string): string {
+  switch (circuit) {
+    case 'oidc_domain_attestation':
+      return 'oidc_login'; // NOT oidc_domain — login ≠ workspace proof
     case 'coinbase_country_attestation':
       return 'country';
     case 'coinbase_attestation':
@@ -144,7 +163,7 @@ export async function getVerificationCache(
 export async function getActiveVerificationsCache(
   userId: string,
 ): Promise<{ proofType: string; record: VerificationRecord }[]> {
-  const cacheTypes = ['kyc', 'country', 'oidc_domain'];
+  const cacheTypes = ['kyc', 'country', 'oidc_domain', 'oidc_login'];
   const results: { proofType: string; record: VerificationRecord }[] = [];
 
   const keys = cacheTypes.map(ct => cacheKey(userId, ct));
@@ -175,6 +194,7 @@ function cacheTypeToBadges(cacheType: string): Badge[] {
     case 'kyc': return [{ type: 'kyc', label: 'KYC Verified' }];
     case 'country': return [{ type: 'country', label: 'Country Verified' }];
     case 'oidc_domain': return [{ type: 'workspace', label: 'Org Verified' }];
+    case 'oidc_login': return [{ type: 'oidc', label: 'OIDC Verified' }];
     default: return [];
   }
 }
@@ -198,7 +218,7 @@ export async function getBatchUserBadges(
   if (userIds.length === 0) return result;
 
   const unique = [...new Set(userIds)];
-  const cacheTypes = ['kyc', 'country', 'oidc_domain'];
+  const cacheTypes = ['kyc', 'country', 'oidc_domain', 'oidc_login'];
 
   // Build all keys: userId × cacheType
   const keys: string[] = [];
