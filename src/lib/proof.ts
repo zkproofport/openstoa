@@ -3,8 +3,8 @@ import { createSDK } from './relay';
 import {
   extractScopeFromPublicInputs,
   extractNullifierFromPublicInputs,
+  extractDomainFromPublicInputs,
   COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
-  OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT,
 } from '@zkproofport-app/sdk';
 import type { RelayProofResult } from '@zkproofport-app/sdk';
 
@@ -56,20 +56,13 @@ export function extractIsIncluded(publicInputs: string[], circuit: string): bool
   return BigInt(isIncludedField) === 1n;
 }
 
+/**
+ * Extract domain from OIDC domain attestation public inputs.
+ * Delegates to @zkproofport-app/sdk's extractDomainFromPublicInputs.
+ * For AI agent path, use @zkproofport-ai/sdk's version instead.
+ */
 export function extractDomain(publicInputs: string[], circuit: string): string | null {
-  if (circuit !== 'oidc_domain_attestation') return null;
-  // Noir BoundedVec<u8, 64> serializes as [storage[0..64], len] — storage FIRST, len LAST.
-  // SDK layout DOMAIN_LEN (18) is actually storage[0], real len is at DOMAIN_END + 1 (83)
-  // BUT SCOPE_START is also 83, so len overlaps. Use DOMAIN_END (82) as the len field.
-  // Correct: storage starts at index 18, len at index 82, so storage is [18..81] (64 bytes)
-  const storageStart = OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.DOMAIN_LEN; // 18 = first byte of storage
-  const lenIdx = OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.DOMAIN_END; // 82 = BoundedVec len field
-  if (publicInputs.length <= lenIdx) return null;
-  const domainLen = Number(BigInt(publicInputs[lenIdx]));
-  if (domainLen <= 0 || domainLen > 64) return null;
-  const domainFields = publicInputs.slice(storageStart, storageStart + domainLen);
-  const bytes = domainFields.map(f => Number(BigInt(f) & 0xFFn));
-  return String.fromCharCode(...bytes);
+  return extractDomainFromPublicInputs(publicInputs, circuit);
 }
 
 // Known verifier addresses → circuit mapping (Base Mainnet)

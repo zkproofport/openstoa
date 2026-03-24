@@ -284,11 +284,13 @@ export async function POST(request: NextRequest) {
 
     // Save verification to Redis cache (privacy-first: no PII in DB)
     const { saveVerificationCache, circuitToCacheTypeForLogin } = await import('@/lib/verification-cache');
-    const { extractDomain } = await import('@/lib/proof');
+    const { extractDomainFromPublicInputs: extractDomainAI } = await import('@zkproofport-ai/sdk');
     const cacheType = circuitToCacheTypeForLogin(circuit);
     let domain: string | undefined;
     if (circuit === 'oidc_domain_attestation') {
-      domain = extractDomain(normalizedInputs, circuit) ?? undefined;
+      // AI path: use @zkproofport-ai/sdk with original hex string
+      const rawPublicInputs = typeof result.publicInputs === 'string' ? result.publicInputs : result.publicInputs.join('');
+      domain = extractDomainAI(rawPublicInputs) ?? undefined;
     }
     await saveVerificationCache(nullifier, cacheType, { domain });
 

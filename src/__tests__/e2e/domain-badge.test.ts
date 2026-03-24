@@ -205,4 +205,71 @@ describe('Domain Badge (Multi-domain)', () => {
     }
     console.log(`[E2E] Members list has badges (${membersData.members.length} members checked)`);
   });
+
+  // ── Domain extraction validation ────────────────────────────────────
+
+  it('Extracted domain is a valid domain format', async () => {
+    if (!hasWorkspaceVerification) return;
+
+    const res = await authGet('/api/profile/domain-badge');
+    const data = await res.json();
+    const domain = data.availableDomain;
+    if (!domain) return;
+
+    // Domain must contain at least one dot and no spaces
+    expect(domain).toMatch(/^[a-z0-9.-]+\.[a-z]{2,}$/i);
+    // Domain must not be truncated (previous bug: first 2 chars missing)
+    expect(domain.length).toBeGreaterThanOrEqual(3);
+    console.log(`[E2E] Domain format valid: ${domain}`);
+  });
+
+  it('Opted-in domain matches availableDomain', async () => {
+    if (!hasWorkspaceVerification) return;
+
+    // Opt in
+    const optInRes = await authPost('/api/profile/domain-badge');
+    if (optInRes.status !== 200) return;
+    const optInData = await optInRes.json();
+
+    // Get status
+    const statusRes = await authGet('/api/profile/domain-badge');
+    const statusData = await statusRes.json();
+
+    // The opted-in domain should match availableDomain
+    expect(statusData.domains).toContain(optInData.domain);
+    expect(optInData.domain).toBe(statusData.availableDomain);
+    console.log(`[E2E] Domain consistency check: opted=${optInData.domain}, available=${statusData.availableDomain}`);
+
+    // Cleanup: opt out
+    await authDelete('/api/profile/domain-badge');
+  });
+
+  it('Domain badge appears in post badges with correct domain', async () => {
+    if (!hasWorkspaceVerification || !optedInDomain) return;
+
+    // Re-opt-in for this test
+    await authPost('/api/profile/domain-badge');
+
+    const res = await authGet('/api/feed?limit=20');
+    expect(res.status).toBe(200);
+    const data = await res.json();
+
+    // Find workspace badges with domain
+    const domainBadges = data.posts?.flatMap((p: { badges?: Array<{ type: string; domain?: string }> }) =>
+      (p.badges ?? []).filter((b: { type: string; domain?: string }) => b.type === 'workspace' && b.domain),
+    ) ?? [];
+
+    if (domainBadges.length > 0) {
+      for (const badge of domainBadges) {
+        // Every domain badge should be a valid domain format
+        expect(badge.domain).toMatch(/^[a-z0-9.-]+\.[a-z]{2,}$/i);
+      }
+      console.log(`[E2E] Found ${domainBadges.length} domain badges in feed, all valid format`);
+    } else {
+      console.log('[E2E] No domain badges in feed posts — user may not have posts');
+    }
+
+    // Cleanup
+    await authDelete('/api/profile/domain-badge');
+  });
 });
