@@ -31,6 +31,7 @@ export async function runProveWithAutoDeviceFlow(
   args: string,
   scope: string,
   env: NodeJS.ProcessEnv,
+  accountIndex = 0,
 ): Promise<Record<string, unknown>> {
   const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent`;
   console.log(`[E2E] OIDC (auto): ${cmd}`);
@@ -78,7 +79,7 @@ export async function runProveWithAutoDeviceFlow(
           console.log(`[E2E] Detected ${provider} device code: ${code}`);
 
           // Launch Playwright to enter the code — don't block on failure
-          enterDeviceCode(provider, code).catch((err) => {
+          enterDeviceCode(provider, code, accountIndex).catch((err) => {
             console.error(`[E2E] Playwright auto-entry failed, manual entry required: ${err}`);
             console.log(`[E2E] >>> Enter code ${code} manually <<<`);
           });

@@ -34,8 +34,8 @@ function getProveEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PAYMENT_KEY: key, ATTESTATION_KEY: key };
 }
 
-async function runProveOidc(args: string, scope: string): Promise<Record<string, unknown>> {
-  return runProveWithAutoDeviceFlow(args, scope, getProveEnv());
+async function runProveOidc(args: string, scope: string, accountIndex = 0): Promise<Record<string, unknown>> {
+  return runProveWithAutoDeviceFlow(args, scope, getProveEnv(), accountIndex);
 }
 
 function runProveCoinbase(args: string, scope: string): Record<string, unknown> {
@@ -69,7 +69,7 @@ function fetchAuth(path: string, token: string, options?: RequestInit) {
   });
 }
 
-async function loginOrCache(cacheFile: string, label: string): Promise<string> {
+async function loginOrCache(cacheFile: string, label: string, accountIndex = 0): Promise<string> {
   const cached = loadCache(cacheFile);
   if (cached) {
     console.log(`[E2E] ${label}: using cached token (userId: ${cached.userId.slice(0, 10)}...)`);
@@ -77,7 +77,7 @@ async function loginOrCache(cacheFile: string, label: string): Promise<string> {
   }
   const { challengeId, scope } = await getScope();
   console.log(`[E2E] === ${label} LOGIN ===`);
-  const proofResult = await runProveOidc('--login-google', scope);
+  const proofResult = await runProveOidc('--login-google', scope, accountIndex);
   const { token, userId } = await loginWithProof(challengeId, proofResult);
   saveCache(cacheFile, token, userId);
   console.log(`[E2E] ${label} logged in (userId: ${userId.slice(0, 10)}...)`);
@@ -115,7 +115,7 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
 
   it('User B: login via Google OIDC (DIFFERENT ACCOUNT)', async () => {
     console.log('[E2E] >>> Use a DIFFERENT Google account for User B! <<<');
-    userBToken = await loginOrCache(CACHE_B, 'User B');
+    userBToken = await loginOrCache(CACHE_B, 'User B', 1);
     expect(userBToken).not.toBe(userAToken);
     // Verify different users
     const resA = await (await fetchAuth('/api/auth/session', userAToken)).json();
@@ -309,7 +309,7 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     expect(workspaceTopicId).toBeTruthy();
     const { scope } = await getScope();
     console.log('[E2E] User B: Microsoft 365 device flow for join');
-    const proofResult = await runProveOidc('--login-microsoft-365', scope);
+    const proofResult = await runProveOidc('--login-microsoft-365', scope, 1);
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
       method: 'POST',
       body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
