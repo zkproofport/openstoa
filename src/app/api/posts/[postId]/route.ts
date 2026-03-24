@@ -234,11 +234,18 @@ export async function GET(
     });
 
     if (!membership) {
-      logger.warn(ROUTE, 'User is not a member of the post topic', { userId: session.userId, postId, topicId: post.topicId });
-      return NextResponse.json(
-        { error: 'Not a member of this topic' },
-        { status: 403 },
-      );
+      // Public topics: allow reading for non-members
+      const topicCheck = await db.query.topics.findFirst({
+        where: eq(topics.id, post.topicId),
+        columns: { visibility: true },
+      });
+      if (!topicCheck || topicCheck.visibility !== 'public') {
+        logger.warn(ROUTE, 'User is not a member of the post topic', { userId: session.userId, postId, topicId: post.topicId });
+        return NextResponse.json(
+          { error: 'Not a member of this topic' },
+          { status: 403 },
+        );
+      }
     }
 
     // Atomically increment viewCount

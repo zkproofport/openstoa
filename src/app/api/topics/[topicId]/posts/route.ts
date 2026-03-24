@@ -223,7 +223,7 @@ export async function GET(
       return NextResponse.json({ posts: guestPostsWithBadges });
     }
 
-    // --- Authenticated access (existing behavior) ---
+    // --- Authenticated access ---
 
     // Check membership
     const membership = await db.query.topicMembers.findFirst({
@@ -234,11 +234,18 @@ export async function GET(
     });
 
     if (!membership) {
-      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, topicId });
-      return NextResponse.json(
-        { error: 'Not a member of this topic' },
-        { status: 403 },
-      );
+      // Public topics: allow reading for non-members (write still requires membership)
+      const topicCheck = await db.query.topics.findFirst({
+        where: eq(topics.id, topicId),
+        columns: { visibility: true },
+      });
+      if (!topicCheck || topicCheck.visibility !== 'public') {
+        logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, topicId });
+        return NextResponse.json(
+          { error: 'Not a member of this topic' },
+          { status: 403 },
+        );
+      }
     }
 
     // Pagination + tag filter
