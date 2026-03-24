@@ -78,8 +78,11 @@ export function detectCircuit(publicInputs: string[], verifierAddress?: string):
     if (circuit) return circuit;
   }
   // 2. Fallback to public input count
+  // oidc_domain_attestation: 148 fields (BoundedVec<u8,64> + scope + nullifier + provider)
+  // coinbase_country_attestation: 150 fields
+  // coinbase_attestation: 128 fields
   const len = publicInputs.length;
-  if (len >= 420) return 'oidc_domain_attestation';
+  if (len === 148) return 'oidc_domain_attestation';
   if (len > 128) return 'coinbase_country_attestation';
   return 'coinbase_attestation';
 }

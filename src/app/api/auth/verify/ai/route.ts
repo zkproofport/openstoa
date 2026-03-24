@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { consumeChallenge } from '@/lib/challenge';
-import { normalizePublicInputs, COMMUNITY_SCOPE, detectCircuit } from '@/lib/proof';
+import { COMMUNITY_SCOPE } from '@/lib/proof';
 import {
+  verifyProof,
   extractScopeFromPublicInputs,
   extractNullifierFromPublicInputs,
-} from '@zkproofport-app/sdk';
+  extractDomainFromPublicInputs,
+} from '@zkproofport-ai/sdk';
+// Note: normalizePublicInputs and detectCircuit no longer needed — ai-sdk handles hex strings directly
 import { createSession, setSessionCookie } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { verifyProof } from '@zkproofport-ai/sdk';
 
 const ROUTE = '/api/auth/verify/ai';
 
@@ -232,14 +234,13 @@ export async function POST(request: NextRequest) {
 
     logger.info(ROUTE, 'Proof verified on-chain', { challengeId });
 
-    // Normalize publicInputs for scope/nullifier extraction
-    const normalizedInputs = normalizePublicInputs(result.publicInputs);
-
-    // Determine circuit from verifier address (primary) or public input count (fallback)
-    const circuit = detectCircuit(normalizedInputs, result.verification?.verifierAddress);
+    // AI path: use @zkproofport-ai/sdk for all extraction (hex string input, auto circuit detection)
+    const rawPublicInputs = typeof result.publicInputs === 'string'
+      ? result.publicInputs
+      : result.publicInputs.join('');
 
     // Verify scope
-    const scope = extractScopeFromPublicInputs(normalizedInputs, circuit);
+    const scope = extractScopeFromPublicInputs(rawPublicInputs);
     const expectedScope = ethers.keccak256(ethers.toUtf8Bytes(COMMUNITY_SCOPE));
     if (!scope || scope !== expectedScope) {
       logger.warn(ROUTE, 'Scope mismatch', { challengeId, scope, expectedScope });
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract nullifier as userId
-    const nullifier = extractNullifierFromPublicInputs(normalizedInputs, circuit);
+    const nullifier = extractNullifierFromPublicInputs(rawPublicInputs);
     if (!nullifier) {
       logger.warn(ROUTE, 'Failed to extract nullifier', { challengeId });
       return NextResponse.json(
@@ -284,13 +285,17 @@ export async function POST(request: NextRequest) {
 
     // Save verification to Redis cache (privacy-first: no PII in DB)
     const { saveVerificationCache, circuitToCacheTypeForLogin } = await import('@/lib/verification-cache');
-    const { extractDomainFromPublicInputs: extractDomainAI } = await import('@zkproofport-ai/sdk');
+    // Detect circuit from field count for cache type mapping
+    const fieldCount = rawPublicInputs.startsWith('0x')
+      ? (rawPublicInputs.length - 2) / 64
+      : rawPublicInputs.length / 64;
+    const circuit = fieldCount === 148 ? 'oidc_domain_attestation'
+      : fieldCount === 150 ? 'coinbase_country_attestation'
+      : 'coinbase_attestation';
     const cacheType = circuitToCacheTypeForLogin(circuit);
     let domain: string | undefined;
     if (circuit === 'oidc_domain_attestation') {
-      // AI path: use @zkproofport-ai/sdk with original hex string
-      const rawPublicInputs = typeof result.publicInputs === 'string' ? result.publicInputs : result.publicInputs.join('');
-      domain = extractDomainAI(rawPublicInputs) ?? undefined;
+      domain = extractDomainFromPublicInputs(rawPublicInputs) ?? undefined;
     }
     await saveVerificationCache(nullifier, cacheType, { domain });
 
