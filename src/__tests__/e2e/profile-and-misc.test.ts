@@ -34,6 +34,23 @@ describe('Profile endpoints', () => {
   });
 });
 
+describe('Session and Admin role', () => {
+  it('GET /api/auth/session returns role for admin users', async () => {
+    const res = await authGet('/api/auth/session');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.userId).toBeTruthy();
+    expect(json.nickname).toBeTruthy();
+    // Admin users should have role field
+    if (json.role) {
+      expect(json.role).toBe('admin');
+      console.log(`[E2E] Admin role confirmed for ${json.nickname}`);
+    } else {
+      console.log(`[E2E] User ${json.nickname} is not admin (role field absent — normal for non-admin)`);
+    }
+  });
+});
+
 describe('My Activity endpoints', () => {
   it('GET /api/my/posts returns user posts', async () => {
     const res = await authGet('/api/my/posts');

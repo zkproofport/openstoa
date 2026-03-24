@@ -41,16 +41,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ authenticated: false });
     }
 
-    // Fetch totalRecorded from users table
-    const user = await db.select({ totalRecorded: users.totalRecorded }).from(users).where(eq(users.id, session.userId)).limit(1);
+    // Fetch totalRecorded and role from users table
+    const user = await db.select({ totalRecorded: users.totalRecorded, role: users.role }).from(users).where(eq(users.id, session.userId)).limit(1);
     const totalRecorded = user[0]?.totalRecorded ?? 0;
+    const role = user[0]?.role ?? 'user';
 
-    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname: session.nickname, totalRecorded });
+    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname: session.nickname, totalRecorded, role });
     return NextResponse.json({
       userId: session.userId,
       nickname: session.nickname,
       verifiedAt: session.verifiedAt,
       totalRecorded,
+      ...(role === 'admin' ? { role } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

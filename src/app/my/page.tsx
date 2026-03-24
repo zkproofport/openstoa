@@ -16,6 +16,7 @@ interface UserSession {
   nickname?: string;
   profileImage?: string | null;
   totalRecorded?: number;
+  role?: string;
 }
 
 interface Post {
@@ -426,6 +427,19 @@ export default function MyPage() {
               marginBottom: 4,
             }}>
               {displayName}
+              {session.role === 'admin' && (
+                <span style={{
+                  marginLeft: 8,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  background: 'rgba(234,179,8,0.15)',
+                  border: '1px solid rgba(234,179,8,0.3)',
+                  color: '#eab308',
+                  verticalAlign: 'middle',
+                }}>Admin</span>
+              )}
             </div>
             <div style={{
               fontFamily: 'monospace',
