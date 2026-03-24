@@ -85,6 +85,7 @@ export interface VerificationRecord {
   expiresAt: number;  // Unix timestamp ms
   domainHash?: string;
   countryHash?: string;
+  domain?: string; // plaintext domain — stored in Redis only (30-day TTL), used for domain badge opt-in
 }
 
 /**
@@ -103,6 +104,7 @@ export async function saveVerificationCache(
   };
   if (options?.domain) {
     record.domainHash = hashValue(options.domain);
+    record.domain = options.domain.toLowerCase().trim();
   }
   if (options?.country) {
     record.countryHash = hashValue(options.country);
@@ -188,29 +190,115 @@ export async function getActiveVerificationsCache(
 export interface Badge {
   type: string;
   label: string;
+  domain?: string; // plaintext domain — only present when user opted in to domain badge
 }
 
-function cacheTypeToBadges(cacheType: string): Badge[] {
+/**
+ * Convert cache type + opted-in domains to badge(s).
+ * For oidc_domain with multiple domains, returns one badge per domain.
+ */
+function cacheTypeToBadges(cacheType: string, domains?: string[]): Badge[] {
   switch (cacheType) {
     case 'kyc': return [{ type: 'kyc', label: 'KYC Verified' }];
     case 'country': return [{ type: 'country', label: 'Country Verified' }];
-    case 'oidc_domain': return [{ type: 'workspace', label: 'Org Verified' }];
+    case 'oidc_domain':
+      if (domains && domains.length > 0) {
+        return domains.map(d => ({ type: 'workspace', label: d, domain: d }));
+      }
+      return [{ type: 'workspace', label: 'Org Verified' }];
     case 'oidc_login': return [{ type: 'oidc', label: 'OIDC Verified' }];
     default: return [];
   }
+}
+
+// --- Domain badge opt-in/out (multi-domain via Redis SET) ---
+
+const DOMAIN_BADGE_PREFIX = 'community:domain-badge';
+
+function domainBadgeKey(userId: string): string {
+  return `${DOMAIN_BADGE_PREFIX}:${userId}`;
+}
+
+/**
+ * Opt-in: add a domain to the user's public badge set.
+ * Uses Redis SET (SADD) — multiple domains supported.
+ */
+export async function saveDomainBadge(userId: string, domain: string): Promise<void> {
+  const key = domainBadgeKey(userId);
+  await redis.sadd(key, domain.toLowerCase().trim());
+  await redis.expire(key, VERIFICATION_TTL);
+}
+
+/**
+ * Opt-out: remove a specific domain, or all domains if no domain specified.
+ */
+export async function deleteDomainBadge(userId: string, domain?: string): Promise<void> {
+  if (domain) {
+    await redis.srem(domainBadgeKey(userId), domain.toLowerCase().trim());
+  } else {
+    await redis.del(domainBadgeKey(userId));
+  }
+}
+
+/**
+ * Get all opted-in domains for a single user (empty array if none).
+ */
+export async function getDomainBadges(userId: string): Promise<string[]> {
+  return redis.smembers(domainBadgeKey(userId));
+}
+
+/**
+ * Batch get domain badges for multiple users via Redis pipeline.
+ */
+async function getBatchDomainBadges(userIds: string[]): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (userIds.length === 0) return result;
+
+  const pipeline = redis.pipeline();
+  for (const uid of userIds) {
+    pipeline.smembers(domainBadgeKey(uid));
+  }
+  const responses = await pipeline.exec();
+  if (!responses) return result;
+
+  for (let i = 0; i < userIds.length; i++) {
+    const [err, domains] = responses[i];
+    if (!err && Array.isArray(domains) && domains.length > 0) {
+      result.set(userIds[i], domains as string[]);
+    }
+  }
+  return result;
+}
+
+/**
+ * Get the plaintext domain from the oidc_domain verification record (for opt-in flow).
+ * Returns null if no valid verification or domain not stored.
+ */
+export async function getVerifiedDomain(userId: string): Promise<string | null> {
+  const data = await redis.get(cacheKey(userId, 'oidc_domain'));
+  if (!data) return null;
+  const record: VerificationRecord = JSON.parse(data);
+  if (record.expiresAt <= Date.now()) return null;
+  return record.domain ?? null;
 }
 
 /**
  * Get badges for a single user from Redis cache.
  */
 export async function getUserBadges(userId: string): Promise<Badge[]> {
-  const verifications = await getActiveVerificationsCache(userId);
-  return verifications.flatMap(v => cacheTypeToBadges(v.proofType));
+  const [verifications, domains] = await Promise.all([
+    getActiveVerificationsCache(userId),
+    getDomainBadges(userId),
+  ]);
+  return verifications.flatMap(v => {
+    const d = (v.proofType === 'oidc_domain' && domains.length > 0) ? domains : undefined;
+    return cacheTypeToBadges(v.proofType, d);
+  });
 }
 
 /**
  * Batch get badges for multiple users (for post/comment badge display).
- * Uses Redis MGET for efficiency.
+ * Uses Redis MGET + pipeline for efficiency.
  */
 export async function getBatchUserBadges(
   userIds: string[],
@@ -222,25 +310,31 @@ export async function getBatchUserBadges(
   const cacheTypes = ['kyc', 'country', 'oidc_domain', 'oidc_login'];
 
   // Build all keys: userId × cacheType
-  const keys: string[] = [];
+  const verificationKeys: string[] = [];
   for (const uid of unique) {
     for (const ct of cacheTypes) {
-      keys.push(cacheKey(uid, ct));
+      verificationKeys.push(cacheKey(uid, ct));
     }
   }
 
-  const values = await redis.mget(...keys);
+  // Fetch verification records and domain badges in parallel
+  const [verificationValues, domainBadges] = await Promise.all([
+    redis.mget(...verificationKeys),
+    getBatchDomainBadges(unique),
+  ]);
   const now = Date.now();
 
   for (let i = 0; i < unique.length; i++) {
     const uid = unique[i];
     const badges: Badge[] = [];
     for (let j = 0; j < cacheTypes.length; j++) {
-      const val = values[i * cacheTypes.length + j];
+      const val = verificationValues[i * cacheTypes.length + j];
       if (val) {
         const record: VerificationRecord = JSON.parse(val);
         if (record.expiresAt > now) {
-          badges.push(...cacheTypeToBadges(cacheTypes[j]));
+          const domains = (cacheTypes[j] === 'oidc_domain' && domainBadges.has(uid))
+            ? domainBadges.get(uid) : undefined;
+          badges.push(...cacheTypeToBadges(cacheTypes[j], domains));
         }
       }
     }

@@ -85,6 +85,12 @@ export default function MyPage() {
   const [nicknameSaving, setNicknameSaving] = useState(false);
   const [nicknameFeedback, setNicknameFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  // Domain badge state (multi-domain)
+  const [domainBadgeDomains, setDomainBadgeDomains] = useState<string[]>([]);
+  const [domainBadgeAvailable, setDomainBadgeAvailable] = useState<string | null>(null);
+  const [domainBadgeLoading, setDomainBadgeLoading] = useState(false);
+  const [domainBadgeToggling, setDomainBadgeToggling] = useState(false);
+
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageFeedback, setImageFeedback] = useState<string | null>(null);
@@ -162,6 +168,48 @@ export default function MyPage() {
     } finally {
       setNicknameSaving(false);
     }
+  }
+
+  // Load domain badge status when settings tab is opened
+  useEffect(() => {
+    if (activeTab !== 'settings') return;
+    setDomainBadgeLoading(true);
+    fetch('/api/profile/domain-badge')
+      .then((r) => r.json())
+      .then((data) => {
+        setDomainBadgeDomains(data.domains ?? []);
+        setDomainBadgeAvailable(data.availableDomain ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setDomainBadgeLoading(false));
+  }, [activeTab]);
+
+  async function handleDomainBadgeAdd() {
+    setDomainBadgeToggling(true);
+    try {
+      const res = await fetch('/api/profile/domain-badge', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setDomainBadgeDomains(data.domains ?? []);
+      }
+    } catch {}
+    setDomainBadgeToggling(false);
+  }
+
+  async function handleDomainBadgeRemove(domain: string) {
+    setDomainBadgeToggling(true);
+    try {
+      const res = await fetch('/api/profile/domain-badge', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDomainBadgeDomains(data.domains ?? []);
+      }
+    } catch {}
+    setDomainBadgeToggling(false);
   }
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -706,6 +754,115 @@ export default function MyPage() {
                 {nicknameFeedback && (
                   <div style={{ marginTop: 8, fontSize: 15, color: nicknameFeedback.ok ? '#4ade80' : '#f87171' }}>
                     {nicknameFeedback.msg}
+                  </div>
+                )}
+              </div>
+
+              {/* Domain Badge section (multi-domain) */}
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                  Domain Badges
+                </h3>
+                {domainBadgeLoading ? (
+                  <div style={{ fontSize: 14, color: '#6b7280' }}>Loading...</div>
+                ) : (domainBadgeDomains.length > 0 || domainBadgeAvailable) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Active domain badges */}
+                    {domainBadgeDomains.map((d) => (
+                      <div key={d} style={{
+                        padding: '12px 16px',
+                        background: 'rgba(139,92,246,0.06)',
+                        border: '1px solid rgba(139,92,246,0.3)',
+                        borderRadius: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                      }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
+                          fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                          background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#8b5cf6',
+                        }}>
+                          {'📧'} {d}
+                        </span>
+                        <span style={{ flex: 1, fontSize: 13, color: '#6b7280' }}>visible to others</span>
+                        <button
+                          onClick={() => handleDomainBadgeRemove(d)}
+                          disabled={domainBadgeToggling}
+                          style={{
+                            background: 'rgba(239,68,68,0.1)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(239,68,68,0.25)',
+                            borderRadius: 6,
+                            padding: '4px 12px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: domainBadgeToggling ? 'not-allowed' : 'pointer',
+                            opacity: domainBadgeToggling ? 0.5 : 1,
+                            transition: 'all 0.12s',
+                            flexShrink: 0,
+                          }}
+                        >
+                          Hide
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Add available domain (if not already opted in) */}
+                    {domainBadgeAvailable && !domainBadgeDomains.includes(domainBadgeAvailable) && (
+                      <div style={{
+                        padding: '12px 16px',
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                      }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: '#e5e7eb' }}>
+                            {domainBadgeAvailable}
+                          </span>
+                          <span style={{ fontSize: 13, color: '#6b7280', marginLeft: 8 }}>
+                            verified — show as badge?
+                          </span>
+                        </span>
+                        <button
+                          onClick={handleDomainBadgeAdd}
+                          disabled={domainBadgeToggling}
+                          style={{
+                            background: 'rgba(139,92,246,0.15)',
+                            color: '#8b5cf6',
+                            border: '1px solid rgba(139,92,246,0.3)',
+                            borderRadius: 6,
+                            padding: '4px 12px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: domainBadgeToggling ? 'not-allowed' : 'pointer',
+                            opacity: domainBadgeToggling ? 0.5 : 1,
+                            transition: 'all 0.12s',
+                            flexShrink: 0,
+                          }}
+                        >
+                          Show
+                        </button>
+                      </div>
+                    )}
+
+                    <p style={{ fontSize: 12, color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
+                      Domain badges are shown next to your name in posts, comments, and member lists. Verify more workspace domains to add additional badges.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '16px 20px',
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 10,
+                  }}>
+                    <p style={{ fontSize: 14, color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
+                      No workspace verification found. Join a workspace-gated topic with a domain proof to unlock this feature.
+                    </p>
                   </div>
                 )}
               </div>

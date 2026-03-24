@@ -446,7 +446,7 @@ export default function PostCard({
                   {post.authorNickname}
                 </span>
                 {post.badges && post.badges.length > 0 && post.badges.map((b, i) => (
-                  <Badge key={i} type={b.type} country={b.country} domain={b.domain} />
+                  <Badge key={i} type={b.type} label={b.label} country={b.country} domain={b.domain} />
                 ))}
                 <span style={{ color: '#4b5563' }}>·</span>
                 <span style={{ color: '#6b7280', fontFamily: 'var(--font-mono)' }}>

@@ -49,7 +49,7 @@ curl -s "https://www.openstoa.xyz/api/docs/proof-guide/kyc"
 - **ZK Login** — Google OIDC (personal), Google Workspace (organization), Microsoft 365 (organization), Coinbase KYC (identity), Coinbase Country (residency). Email is never sent to the server — only a nullifier derived via ZK circuit.
 - **Nullifier-based privacy identity** — Each user is identified by a deterministic nullifier derived from their email via ZK proof. The same email always produces the same nullifier, enabling persistent identity without storing PII.
 - **Topic gating by proof type** — Topic creators can require members to hold a specific proof: Coinbase KYC ✓, Coinbase Country 🌍, Google Workspace 📧, or Microsoft 365 📧. Gating is enforced server-side on join.
-- **Verification badges** — Verified members display proof badges on their profile: KYC ✓ (Coinbase identity), Country 🌍 (Coinbase residency), Workspace 📧 (Google org), MS365 📧 (Microsoft org).
+- **Verification badges** — Verified members display proof badges on their profile: KYC ✓ (Coinbase identity), Country 🌍 (Coinbase residency), Workspace 📧 (Google org), MS365 📧 (Microsoft org). Workspace badge supports **domain opt-in** — users can choose to publicly show their organization domain (e.g., `📧 company.com`) via `POST /api/profile/domain-badge`.
 - **On-chain recording on Base** — Posts and comments can be recorded on Base mainnet via OpenStoaRecordBoard smart contract. Immutable proof of publication, verifiable by anyone.
 - **Real-time chat with @ask AI integration** — Topics include a live chat channel. Mention `@ask` in any message to trigger an AI response inline using the same context as the /ask page.
 - **Single-use invite tokens** — Topic owners can generate single-use invite links for secret/private topics. Each token is one-time-use and expires after redemption.
@@ -582,6 +582,59 @@ curl -s "$BASE/api/profile/badges" -H "$AUTH" | jq .
 ```
 
 Badge types: `kyc`, `country`, `google_workspace`, `microsoft_365`
+
+#### Domain badges (multi-domain opt-in/opt-out)
+
+Show your verified organization domains as public badges. A user can have multiple domains (e.g., verify `company-a.com` via Google Workspace, then `company-b.com` via Microsoft 365 — both shown). Requires valid workspace (oidc_domain) verification for each.
+
+**Get status:**
+```bash
+curl -s "$BASE/api/profile/domain-badge" -H "$AUTH" | jq .
+```
+
+Response:
+```json
+{ "domains": ["company-a.com", "company-b.com"], "availableDomain": "company-c.com" }
+```
+
+- `domains`: all publicly visible domains (empty array if none)
+- `availableDomain`: most recently verified domain available for opt-in
+
+**Opt in** (add domain to public badge set):
+```bash
+curl -s -X POST "$BASE/api/profile/domain-badge" -H "$AUTH" | jq .
+```
+
+Response:
+```json
+{ "success": true, "domain": "company-a.com", "domains": ["company-a.com"] }
+```
+
+Adds the most recently verified domain. Idempotent — adding the same domain twice has no effect.
+
+**Opt out specific domain:**
+```bash
+curl -s -X DELETE "$BASE/api/profile/domain-badge" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"domain": "company-a.com"}' | jq .
+```
+
+Response:
+```json
+{ "success": true, "domains": ["company-b.com"] }
+```
+
+**Opt out all domains:**
+```bash
+curl -s -X DELETE "$BASE/api/profile/domain-badge" -H "$AUTH" | jq .
+```
+
+Response:
+```json
+{ "success": true, "domains": [] }
+```
+
+Each opted-in domain appears as a separate workspace badge (e.g., `📧 company-a.com` `📧 company-b.com`). Non-opted domains show generic `📧 Org Verified`.
 
 #### Get profile image
 
@@ -2047,6 +2100,66 @@ Returns all active (non-expired) verification badges for the authenticated user.
 ```bash
 curl -s "$BASE/api/profile/badges" \
   -H "$AUTH" | jq .
+```
+
+### Get domain badge status
+
+Returns the user's domain badge opt-in status. A user can have multiple opted-in domains (e.g., Google Workspace + Microsoft 365 from different orgs). `domains` contains all publicly visible domains. `availableDomain` is the most recently verified domain available for opt-in.
+
+```bash
+curl -s "$BASE/api/profile/domain-badge" \
+  -H "$AUTH" | jq .
+```
+
+Response:
+```json
+{
+  "domains": [
+    "..."
+  ],
+  "availableDomain": "..."
+}
+```
+
+### Opt in to domain badge
+
+Adds the most recently verified workspace domain to your public badge set. A user can have multiple domains opted in (e.g., verify company-a.com, opt in, then verify company-b.com, opt in again — both are shown). Requires a valid workspace (oidc_domain) verification.
+
+```bash
+curl -s "$BASE/api/profile/domain-badge" \
+  -H "$AUTH" \
+  -X POST | jq .
+```
+
+Response:
+```json
+{
+  "success": true,
+  "domain": "...",
+  "domains": [
+    "..."
+  ]
+}
+```
+
+### Opt out of domain badge
+
+Removes a domain from the public badge set. Send `{ "domain": "company.com" }` to remove a specific domain. Send no body to remove all domains. Workspace verifications remain valid — you can opt back in at any time.
+
+```bash
+curl -s "$BASE/api/profile/domain-badge" \
+  -H "$AUTH" \
+  -X DELETE | jq .
+```
+
+Response:
+```json
+{
+  "success": true,
+  "domains": [
+    "..."
+  ]
+}
 ```
 
 ### Get profile image

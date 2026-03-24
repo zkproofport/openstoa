@@ -3,6 +3,7 @@ import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topicMembers, users } from '@/lib/db/schema';
 import { eq, and, ilike, sql } from 'drizzle-orm';
+import { getBatchUserBadges } from '@/lib/verification-cache';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/members';
@@ -187,7 +188,13 @@ export async function GET(
       .where(and(eq(topicMembers.topicId, topicId), ilike(users.nickname, `%${q}%`)))
       .limit(10);
 
-    return NextResponse.json({ members, currentUserRole: membership.role });
+    const mentionUserIds = members.map(m => m.userId);
+    const badgeMap = await getBatchUserBadges(mentionUserIds);
+    const membersWithBadges = members.map(m => ({
+      ...m,
+      badges: badgeMap.get(m.userId) ?? [],
+    }));
+    return NextResponse.json({ members: membersWithBadges, currentUserRole: membership.role });
   }
 
   // Full member list sorted by role: owner first, then admin, then member
@@ -205,7 +212,14 @@ export async function GET(
       sql`CASE ${topicMembers.role} WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END`,
     );
 
-  return NextResponse.json({ members });
+  const memberUserIds = members.map(m => m.userId);
+  const badgeMap = await getBatchUserBadges(memberUserIds);
+  const membersWithBadges = members.map(m => ({
+    ...m,
+    badges: badgeMap.get(m.userId) ?? [],
+  }));
+
+  return NextResponse.json({ members: membersWithBadges });
 }
 
 export async function PATCH(

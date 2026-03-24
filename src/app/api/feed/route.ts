@@ -3,6 +3,7 @@ import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, users, votes, topics, topicMembers, tags, postTags, categories } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { getBatchUserBadges } from '@/lib/verification-cache';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/feed';
@@ -160,8 +161,15 @@ export async function GET(request: NextRequest) {
         .limit(limit)
         .offset(offset);
 
+      const guestAuthorIds = feedPosts.map(p => p.authorId).filter(Boolean);
+      const guestBadgeMap = await getBatchUserBadges(guestAuthorIds);
+      const guestPostsWithBadges = feedPosts.map(p => ({
+        ...p,
+        badges: p.authorId ? (guestBadgeMap.get(p.authorId) ?? []) : [],
+      }));
+
       logger.info(ROUTE, 'Guest feed fetched', { count: feedPosts.length });
-      return NextResponse.json({ posts: feedPosts });
+      return NextResponse.json({ posts: guestPostsWithBadges });
     }
 
     // --- Authenticated path ---
@@ -217,8 +225,15 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
+    const authAuthorIds = feedPosts.map(p => p.authorId).filter(Boolean);
+    const authBadgeMap = await getBatchUserBadges(authAuthorIds);
+    const authPostsWithBadges = feedPosts.map(p => ({
+      ...p,
+      badges: p.authorId ? (authBadgeMap.get(p.authorId) ?? []) : [],
+    }));
+
     logger.info(ROUTE, 'Authenticated feed fetched', { userId: session.userId, count: feedPosts.length });
-    return NextResponse.json({ posts: feedPosts });
+    return NextResponse.json({ posts: authPostsWithBadges });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });

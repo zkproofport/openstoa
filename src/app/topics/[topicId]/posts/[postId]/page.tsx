@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import Avatar from '@/components/Avatar';
+import Badge from '@/components/Badge';
 import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
 import ImageLightbox from '@/components/ImageLightbox';
@@ -37,6 +38,7 @@ interface Comment {
   authorProfileImage?: string | null;
   authorId: string;
   createdAt: string;
+  badges?: Array<{ type: string; label: string; domain?: string; country?: string }>;
 }
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
@@ -664,8 +666,13 @@ export default function PostPage() {
                       <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
                     </span>
                     <div>
-                      <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                        {comment.authorNickname}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                          {comment.authorNickname}
+                        </span>
+                        {comment.badges && comment.badges.length > 0 && comment.badges.map((b, i) => (
+                          <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
+                        ))}
                       </span>
                       <span style={{ fontSize: 15, color: 'var(--muted)', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
                         {truncateId(comment.authorId, 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}

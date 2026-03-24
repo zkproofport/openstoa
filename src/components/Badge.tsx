@@ -2,6 +2,7 @@
 
 interface BadgeProps {
   type: string;
+  label?: string;
   domain?: string;
   country?: string;
 }
@@ -9,15 +10,18 @@ interface BadgeProps {
 const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
   kyc: { icon: '✓', color: '#22c55e' },
   country: { icon: '🌍', color: '#3b82f6' },
-  google_workspace: { icon: '📧', color: '#8b5cf6' },
-  microsoft_365: { icon: '📧', color: '#0078d4' },
+  workspace: { icon: '📧', color: '#8b5cf6' },
+  oidc: { icon: '✓', color: '#6366f1' },
 };
 
-export default function Badge({ type, domain, country }: BadgeProps) {
+export default function Badge({ type, label: labelProp, domain, country }: BadgeProps) {
   const config = BADGE_CONFIG[type] || { icon: '?', color: '#666' };
-  const label = type === 'kyc' ? 'KYC'
+  const label = labelProp
+    ?? (type === 'kyc' ? 'KYC'
     : type === 'country' ? (country || 'Country')
-    : domain || type;
+    : type === 'workspace' ? (domain || 'Org Verified')
+    : type === 'oidc' ? 'OIDC Verified'
+    : type);
 
   return (
     <span style={{

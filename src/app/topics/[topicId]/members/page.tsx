@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import Avatar from '@/components/Avatar';
+import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 
 interface Member {
@@ -12,6 +13,7 @@ interface Member {
   nickname: string;
   role: 'owner' | 'admin' | 'member';
   profileImage?: string | null;
+  badges?: Array<{ type: string; label: string; domain?: string; country?: string }>;
 }
 
 interface JoinRequest {
@@ -456,9 +458,14 @@ export default function MembersPage() {
               <Avatar src={member.profileImage} name={member.nickname} size={40} />
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }}>
-                  {member.nickname}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }}>
+                    {member.nickname}
+                  </span>
+                  {member.badges && member.badges.length > 0 && member.badges.map((b, i) => (
+                    <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
+                  ))}
+                </div>
               </div>
 
               {/* Role badge */}
