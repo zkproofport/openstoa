@@ -378,6 +378,26 @@ export default function LeftSidebar({
           </button>
         )}
 
+        {/* Explore Topics */}
+        <Link
+          href="/topics/explore"
+          onMouseEnter={() => setHoveredItem('explore-topics')}
+          onMouseLeave={() => setHoveredItem(null)}
+          style={{
+            ...sidebarItemStyle(pathname === '/topics/explore'),
+            ...(hoveredItem === 'explore-topics' && pathname !== '/topics/explore'
+              ? { background: 'var(--surface-hover)' }
+              : {}),
+            textDecoration: 'none',
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ width: 20, textAlign: 'center' as const, flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <span>Explore Topics</span>
+        </Link>
+
         {categories.map((cat) => {
           const isActive = activeCategory === cat.slug;
           const catTopics = (topicsByCategory[cat.slug] ?? []).slice(0, 3);

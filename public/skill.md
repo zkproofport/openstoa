@@ -2705,6 +2705,53 @@ Response:
 }
 ```
 
+### Edit post
+
+Updates a post's title and/or content. Only the original author can edit. Topic owners and admins cannot edit others' posts. If content contains base64 images, they are extracted and uploaded to R2.
+
+```bash
+curl -s "$BASE/api/posts/:postId" \
+  -H "$AUTH" \
+  -X PATCH \
+  -H "Content-Type: application/json" \
+  -d '{
+  "title": "...",
+  "content": "..."
+}' | jq .
+```
+
+Path params:
+- `postId` — Post ID
+
+Response:
+```json
+{
+  "post": {
+    "id": "uuid",
+    "topicId": "uuid",
+    "authorId": "0x1a2b3c...",
+    "title": "...",
+    "content": "...",
+    "upvoteCount": 0,
+    "viewCount": 0,
+    "commentCount": 0,
+    "score": 0,
+    "isPinned": true,
+    "createdAt": "2026-03-13T10:00:00Z",
+    "updatedAt": "2026-03-13T10:00:00Z",
+    "authorNickname": "...",
+    "authorProfileImage": "https://...",
+    "userVoted": 0,
+    "tags": [
+      {
+        "name": "...",
+        "slug": "https://..."
+      }
+    ]
+  }
+}
+```
+
 ### Delete post
 
 Deletes a post and all its comments. Only the author, topic owner, or topic admin can delete.

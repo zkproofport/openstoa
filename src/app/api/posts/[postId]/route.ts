@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, comments, topicMembers, users, postTags, tags, votes, topics } from '@/lib/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
 import { getBatchUserBadges } from '@/lib/verification-cache';
 type Badge = { type: string; label: string };
@@ -51,6 +52,53 @@ const ROUTE = '/api/posts/[postId]';
  *                   description: Comments on the post
  *                   items:
  *                     $ref: '#/components/schemas/Comment'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *   patch:
+ *     tags: [Posts]
+ *     summary: Edit post
+ *     description: >-
+ *       Updates a post's title and/or content. Only the original author can edit.
+ *       Topic owners and admins cannot edit others' posts.
+ *       If content contains base64 images, they are extracted and uploaded to R2.
+ *     operationId: editPost
+ *     parameters:
+ *       - name: postId
+ *         in: path
+ *         required: true
+ *         description: Post ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Updated post title (optional)
+ *               content:
+ *                 type: string
+ *                 description: Updated post content (optional)
+ *     responses:
+ *       200:
+ *         description: Post updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 post:
+ *                   $ref: '#/components/schemas/Post'
+ *       400:
+ *         description: Bad request (no fields to update)
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
@@ -355,6 +403,92 @@ export async function DELETE(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ postId: string }> },
+) {
+  logger.info(ROUTE, 'PATCH request received');
+  try {
+    const session = await getSession(request);
+    if (!session) {
+      logger.warn(ROUTE, 'Unauthenticated PATCH request');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { postId } = await params;
+    const body = await request.json();
+    const { title, content } = body;
+
+    // At least one field must be provided
+    if (!title && !content) {
+      logger.warn(ROUTE, 'No fields to update', { userId: session.userId, postId });
+      return NextResponse.json({ error: 'At least one of title or content is required' }, { status: 400 });
+    }
+
+    logger.info(ROUTE, 'Editing post', { userId: session.userId, postId });
+
+    // Check post exists
+    const postResults = await db
+      .select({ id: posts.id, authorId: posts.authorId, topicId: posts.topicId })
+      .from(posts)
+      .where(eq(posts.id, postId));
+
+    if (postResults.length === 0) {
+      logger.warn(ROUTE, 'Post not found for edit', { postId });
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+
+    const post = postResults[0];
+
+    // Only the author can edit
+    if (post.authorId !== session.userId) {
+      logger.warn(ROUTE, 'Non-author edit attempt', { userId: session.userId, authorId: post.authorId, postId });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Check topic membership
+    const membership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, post.topicId),
+        eq(topicMembers.userId, session.userId),
+      ),
+    });
+
+    if (!membership) {
+      logger.warn(ROUTE, 'User is not a member of the post topic', { userId: session.userId, postId, topicId: post.topicId });
+      return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
+    }
+
+    // Build update payload
+    const updateData: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+
+    if (title && typeof title === 'string') {
+      updateData.title = title;
+    }
+
+    if (content && typeof content === 'string') {
+      // Extract base64 images from content and upload to R2
+      updateData.content = await extractAndUploadBase64Images(content, session.userId);
+    }
+
+    // Update the post
+    const [updatedPost] = await db
+      .update(posts)
+      .set(updateData)
+      .where(eq(posts.id, postId))
+      .returning();
+
+    logger.info(ROUTE, 'Post edited', { userId: session.userId, postId });
+    return NextResponse.json({ post: updatedPost });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

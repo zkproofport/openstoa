@@ -61,6 +61,32 @@ export async function secondUserPost(path: string, body?: unknown): Promise<Resp
   });
 }
 
+/** Make an authenticated PATCH request as the second user */
+export async function secondUserPatch(path: string, body?: unknown): Promise<Response> {
+  const { token } = await getSecondUserToken();
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+/** Make an authenticated DELETE request as the second user */
+export async function secondUserDelete(path: string, body?: unknown): Promise<Response> {
+  const { token } = await getSecondUserToken();
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      Authorization: `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
 /** Make an authenticated GET request */
 export async function authGet(path: string): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
