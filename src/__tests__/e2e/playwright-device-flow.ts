@@ -29,7 +29,7 @@ export async function createContext(): Promise<BrowserContext> {
   });
 }
 
-export async function enterGoogleCode(page: Page, code: string, accountIndex = 0): Promise<void> {
+export async function enterGoogleCode(page: Page, code: string, accountEmail?: string): Promise<void> {
   await page.goto(DEVICE_URLS.google, { waitUntil: 'networkidle' });
   console.log(`[stealth] Page loaded: ${page.url()}`);
 
@@ -77,12 +77,17 @@ export async function enterGoogleCode(page: Page, code: string, accountIndex = 0
       continue;
     }
 
-    // Check for account selection (click Nth account based on accountIndex)
-    const accountButtons = page.locator('[data-identifier], [data-email], .account-select-item, li[role="presentation"]');
-    const accountButton = accountButtons.nth(accountIndex);
+    // Check for account selection (by email or first available)
+    let accountButton;
+    if (accountEmail) {
+      accountButton = page.locator(`[data-identifier="${accountEmail}"], [data-email="${accountEmail}"]`).first();
+    }
+    if (!accountButton || !(await accountButton.isVisible({ timeout: 1000 }).catch(() => false))) {
+      accountButton = page.locator('[data-identifier], [data-email], .account-select-item, li[role="presentation"]').first();
+    }
     if (await accountButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       await accountButton.click();
-      console.log(`[stealth] Selected account #${accountIndex} at step ${step}`);
+      console.log(`[stealth] Selected account ${accountEmail || 'first'} at step ${step}`);
       continue;
     }
 
@@ -95,7 +100,7 @@ export async function enterGoogleCode(page: Page, code: string, accountIndex = 0
   console.log(`[stealth] Page title: ${await page.title()}`);
 }
 
-export async function enterMicrosoftCode(page: Page, code: string, accountIndex = 0): Promise<void> {
+export async function enterMicrosoftCode(page: Page, code: string, accountEmail?: string): Promise<void> {
   await page.goto(DEVICE_URLS.microsoft, { waitUntil: 'networkidle' });
   console.log(`[stealth] Page loaded: ${page.url()}`);
 
@@ -133,12 +138,17 @@ export async function enterMicrosoftCode(page: Page, code: string, accountIndex 
       continue;
     }
 
-    // Check for account selection tiles (select Nth account)
-    const accountTiles = page.locator('.table[role="presentation"] td, .identity-card, [data-test-id="accountList"] > div, .row.tile');
-    const accountTile = accountTiles.nth(accountIndex);
+    // Check for account selection tiles (by email or first)
+    let accountTile;
+    if (accountEmail) {
+      accountTile = page.locator(`[data-test-id="${accountEmail}"], :text("${accountEmail}")`).first();
+    }
+    if (!accountTile || !(await accountTile.isVisible({ timeout: 1000 }).catch(() => false))) {
+      accountTile = page.locator('.table[role="presentation"] td, .identity-card, [data-test-id="accountList"] > div, .row.tile').first();
+    }
     if (await accountTile.isVisible({ timeout: 2000 }).catch(() => false)) {
       await accountTile.click();
-      console.log(`[stealth] Selected account #${accountIndex} at MS step ${step}`);
+      console.log(`[stealth] Selected account ${accountEmail || 'first'} at MS step ${step}`);
       continue;
     }
 
@@ -151,17 +161,17 @@ export async function enterMicrosoftCode(page: Page, code: string, accountIndex 
   console.log(`[stealth] Page title: ${await page.title()}`);
 }
 
-export async function enterDeviceCode(provider: 'google' | 'microsoft', code: string, accountIndex = 0): Promise<void> {
-  console.log(`[stealth] Opening ${provider} device flow for code: ${code} (account #${accountIndex})`);
+export async function enterDeviceCode(provider: 'google' | 'microsoft', code: string, accountEmail?: string): Promise<void> {
+  console.log(`[stealth] Opening ${provider} device flow for code: ${code} (account: ${accountEmail || 'default'})`);
 
   const context = await createContext();
   const page = await context.newPage();
 
   try {
     if (provider === 'google') {
-      await enterGoogleCode(page, code, accountIndex);
+      await enterGoogleCode(page, code, accountEmail);
     } else {
-      await enterMicrosoftCode(page, code, accountIndex);
+      await enterMicrosoftCode(page, code, accountEmail);
     }
     console.log('[stealth] Device code entry completed successfully');
   } catch (err) {

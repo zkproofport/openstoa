@@ -31,7 +31,7 @@ export async function runProveWithAutoDeviceFlow(
   args: string,
   scope: string,
   env: NodeJS.ProcessEnv,
-  accountIndex = 0,
+  accountEmail?: string,
 ): Promise<Record<string, unknown>> {
   const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent`;
   console.log(`[E2E] OIDC (auto): ${cmd}`);
@@ -46,6 +46,7 @@ export async function runProveWithAutoDeviceFlow(
     let stderr = '';
     let detectedProvider: 'google' | 'microsoft' | null = null;
     let deviceCodeHandled = false;
+    let playwrightDone: Promise<void> = Promise.resolve();
 
     const timeout = setTimeout(() => {
       child.kill('SIGTERM');
@@ -78,8 +79,8 @@ export async function runProveWithAutoDeviceFlow(
           const provider = detectedProvider || 'google'; // default to google if URL not seen yet
           console.log(`[E2E] Detected ${provider} device code: ${code}`);
 
-          // Launch Playwright to enter the code — don't block on failure
-          enterDeviceCode(provider, code, accountIndex).catch((err) => {
+          // Launch Playwright to enter the code — track promise for cleanup
+          playwrightDone = enterDeviceCode(provider, code, accountEmail).catch((err) => {
             console.error(`[E2E] Playwright auto-entry failed, manual entry required: ${err}`);
             console.log(`[E2E] >>> Enter code ${code} manually <<<`);
           });
@@ -87,8 +88,10 @@ export async function runProveWithAutoDeviceFlow(
       }
     });
 
-    child.on('close', (exitCode) => {
+    child.on('close', async (exitCode) => {
       clearTimeout(timeout);
+      // Wait for Playwright to fully close before resolving (prevents profile lock)
+      await playwrightDone;
 
       if (exitCode !== 0) {
         console.error(`[E2E] OIDC proof failed (exit ${exitCode})`);
