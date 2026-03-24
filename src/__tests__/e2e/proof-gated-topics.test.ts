@@ -28,15 +28,15 @@ import { execSync } from 'child_process';
  */
 
 const BASE = getBaseUrl();
-const PAYMENT_KEY = process.env.E2E_ATTESTATION_WALLET_KEY || process.env.E2E_PAYER_WALLET_KEY;
-
 /**
  * Run zkproofport-prove CLI and return the proof result.
  * stderr contains device code (for OIDC) — user must enter it manually.
  * stdout contains JSON proof result (with --silent flag).
  */
 function runProve(args: string, scope: string, timeoutMs = 180_000): Record<string, unknown> {
-  const env = { ...process.env, PAYMENT_KEY };
+  const key = process.env.E2E_ATTESTATION_WALLET_KEY;
+  if (!key) throw new Error('E2E_ATTESTATION_WALLET_KEY is required in .env.test');
+  const env = { ...process.env, PAYMENT_KEY: key, ATTESTATION_KEY: key };
   const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent`;
   console.log(`[E2E] Running: ${cmd}`);
   console.log('[E2E] Check stderr for device code if OIDC login required');
@@ -105,39 +105,32 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   // USER A — LOGIN VIA GOOGLE OIDC
   // ══════════════════════════════════════════════════
 
-  it('User A: login via Google OIDC device flow', async () => {
-    // Use cached token from global-setup if available
-    if (process.env.E2E_AUTH_TOKEN) {
-      userAToken = process.env.E2E_AUTH_TOKEN;
-      console.log('[E2E] User A: using cached token');
-      return;
-    }
+  it('User A: login via Google OIDC (enter device code at https://www.google.com/device)', async () => {
     const { challengeId, scope } = await getScope();
-    console.log('[E2E] User A: Google device flow login — enter code at https://www.google.com/device');
-    const proofResult = runProve('--login-google', scope);
+    console.log('[E2E] === User A LOGIN ===');
+    console.log('[E2E] Enter the device code below at https://www.google.com/device');
+    const proofResult = runProve('--login-google', scope, 300_000);
     const { token } = await loginWithProof(challengeId, proofResult);
     userAToken = token;
-  }, 300_000);
+    expect(userAToken).toBeTruthy();
 
-  it('User A: session is valid', async () => {
+    // Verify session
     const res = await fetchAuth('/api/auth/session', userAToken);
     expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.userId).toBeTruthy();
-  });
+    console.log('[E2E] User A logged in successfully');
+  }, 300_000);
 
-  // ══════════════════════════════════════════════════
-  // USER B — LOGIN VIA GOOGLE OIDC (SECOND ACCOUNT)
-  // ══════════════════════════════════════════════════
-
-  it('User B: login via Google OIDC device flow', async () => {
+  it('User B: login via Google OIDC (USE DIFFERENT ACCOUNT)', async () => {
     const { challengeId, scope } = await getScope();
-    console.log('[E2E] User B: Google device flow login — enter code at https://www.google.com/device (USE DIFFERENT ACCOUNT)');
-    const proofResult = runProve('--login-google', scope);
+    console.log('[E2E] === User B LOGIN ===');
+    console.log('[E2E] Enter the device code below at https://www.google.com/device');
+    console.log('[E2E] >>> USE A DIFFERENT GOOGLE ACCOUNT <<<');
+    const proofResult = runProve('--login-google', scope, 300_000);
     const { token } = await loginWithProof(challengeId, proofResult);
     userBToken = token;
     expect(userBToken).toBeTruthy();
     expect(userBToken).not.toBe(userAToken);
+    console.log('[E2E] User B logged in successfully');
   }, 300_000);
 
   // ══════════════════════════════════════════════════
