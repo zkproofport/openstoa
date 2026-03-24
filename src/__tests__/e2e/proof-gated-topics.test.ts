@@ -162,15 +162,15 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     countryTopicId = (await res.json()).topic.id;
   }, 180_000);
 
-  it('User A: workspace topic without proof → 400 (login cache ≠ workspace proof)', async () => {
-    // OIDC login caches as 'oidc_login', NOT 'oidc_domain'
-    // So workspace topic creation should FAIL without explicit workspace proof
+  it('User A: workspace topic without proof → 400 (after clearing oidc_domain cache)', async () => {
+    // Clear oidc_domain cache so we can verify that oidc_login alone doesn't satisfy workspace
+    await fetchAuth('/api/test/clear-verification-cache?type=oidc_domain', userAToken, { method: 'DELETE' });
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
       body: JSON.stringify({ title: `E2E Workspace Fail ${Date.now()}`, description: 'Should fail', categoryId, proofType: 'workspace' }),
     });
     expect(res.status).toBe(400);
-    console.log('[E2E] Workspace topic correctly rejected without workspace proof');
+    console.log('[E2E] 400 — workspace topic correctly rejected (oidc_login ≠ oidc_domain)');
   });
 
   it.skip('User A: creates workspace-gated topic with Google Workspace proof', async () => {
@@ -285,13 +285,15 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   // USER B — JOIN WORKSPACE TOPIC
   // ══════════════════════════════════════════════════
 
-  it('User B: join workspace topic without proof → 402', async () => {
+  it('User B: join workspace topic without proof → 402 (after clearing oidc_domain cache)', async () => {
     expect(workspaceTopicId).toBeTruthy();
+    // Clear oidc_domain cache so we can verify that proof is required
+    await fetchAuth('/api/test/clear-verification-cache?type=oidc_domain', userBToken, { method: 'DELETE' });
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, { method: 'POST', body: '{}' });
     expect(res.status).toBe(402);
     const json = await res.json();
     expect(json.proofRequirement).toBeDefined();
-    console.log('[E2E] 402 — workspace proof required (login cache ≠ workspace)');
+    console.log('[E2E] 402 — workspace proof required (oidc_login ≠ oidc_domain)');
   });
 
   it.skip('User B: generates Google Workspace proof and joins', async () => {
