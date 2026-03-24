@@ -10,18 +10,13 @@ const ROUTE = '/api/test/clear-verification-cache';
 
 /**
  * Admin-only endpoint: clears verification cache for the authenticated user.
- * Only available in non-production environments.
- * Requires admin role in DB.
+ * Requires admin role in DB — safe for all environments.
  *
  * Query params:
  *   ?type=kyc|country|oidc_domain|oidc_login|domain_badge  (clear specific type)
  *   (no type) → clear all
  */
 export async function DELETE(request: NextRequest) {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 404 });
-  }
-
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
