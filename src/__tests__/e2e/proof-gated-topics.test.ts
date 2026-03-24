@@ -37,8 +37,16 @@ function runProveOidc(args: string, scope: string): Record<string, unknown> {
   const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent`;
   console.log(`[E2E] OIDC: ${cmd}`);
   console.log('[E2E] >>> Enter device code at https://www.google.com/device <<<');
-  const result = execSync(cmd, { env: getProveEnv(), timeout: 300_000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'inherit'] });
-  return JSON.parse(result.trim());
+  try {
+    const result = execSync(cmd, { env: getProveEnv(), timeout: 300_000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    return JSON.parse(result.trim());
+  } catch (err: unknown) {
+    const execErr = err as { stderr?: string; stdout?: string; message?: string };
+    console.error(`[E2E] OIDC proof failed: ${execErr.message}`);
+    if (execErr.stderr) console.error(`[E2E] stderr: ${execErr.stderr}`);
+    if (execErr.stdout) console.error(`[E2E] stdout: ${execErr.stdout}`);
+    throw err;
+  }
 }
 
 function runProveCoinbase(args: string, scope: string): Record<string, unknown> {
