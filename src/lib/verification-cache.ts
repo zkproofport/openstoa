@@ -79,6 +79,14 @@ export function circuitToCacheTypeForLogin(circuit: string): string {
   }
 }
 
+/**
+ * Clear stale oidc_domain cache when user logs in via OIDC.
+ * Prevents old login cache from being mistaken for workspace proof.
+ */
+export async function clearStaleOidcDomainCache(userId: string): Promise<void> {
+  await redis.del(cacheKey(userId, 'oidc_domain'));
+}
+
 export interface VerificationRecord {
   verifiedAt: number; // Unix timestamp ms
   expiresAt: number;  // Unix timestamp ms

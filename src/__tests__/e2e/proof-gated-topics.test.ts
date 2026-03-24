@@ -162,15 +162,28 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     countryTopicId = (await res.json()).topic.id;
   }, 180_000);
 
-  it('User A: creates workspace-gated topic (OIDC cache)', async () => {
+  it('User A: workspace topic without proof → 400 (login cache ≠ workspace proof)', async () => {
+    // OIDC login caches as 'oidc_login', NOT 'oidc_domain'
+    // So workspace topic creation should FAIL without explicit workspace proof
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
-      body: JSON.stringify({ title: `E2E Workspace ${Date.now()}`, description: 'Org required', categoryId, proofType: 'workspace' }),
+      body: JSON.stringify({ title: `E2E Workspace Fail ${Date.now()}`, description: 'Should fail', categoryId, proofType: 'workspace' }),
+    });
+    expect(res.status).toBe(400);
+    console.log('[E2E] Workspace topic correctly rejected without workspace proof');
+  });
+
+  it('User A: creates workspace-gated topic with workspace proof', async () => {
+    const { scope } = await getScope();
+    console.log('[E2E] User A: Google Workspace device flow for topic creation');
+    const proofResult = runProveOidc('--login-google-workspace', scope);
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({ title: `E2E Workspace ${Date.now()}`, description: 'Org required', categoryId, proofType: 'workspace', proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
     });
     expect(res.status).toBe(201);
     workspaceTopicId = (await res.json()).topic.id;
-    console.log('[E2E] Workspace topic created using login OIDC cache');
-  });
+  }, 300_000);
 
   // ══════════════════════════════════════════════════
   // USER B — JOIN OPEN TOPIC
@@ -261,16 +274,27 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   // USER B — JOIN WORKSPACE TOPIC
   // ══════════════════════════════════════════════════
 
-  it('User B: join workspace topic → 201 (OIDC cache) or 402', async () => {
+  it('User B: join workspace topic without proof → 402', async () => {
     expect(workspaceTopicId).toBeTruthy();
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, { method: 'POST', body: '{}' });
-    expect([201, 402]).toContain(res.status);
-    if (res.status === 201) {
-      console.log('[E2E] User B joined workspace topic using OIDC cache');
-    } else {
-      console.log('[E2E] 402 — workspace proof required');
-    }
+    expect(res.status).toBe(402);
+    const json = await res.json();
+    expect(json.proofRequirement).toBeDefined();
+    console.log('[E2E] 402 — workspace proof required (login cache ≠ workspace)');
   });
+
+  it('User B: generates workspace proof and joins', async () => {
+    expect(workspaceTopicId).toBeTruthy();
+    const { scope } = await getScope();
+    console.log('[E2E] User B: Google Workspace device flow for join');
+    const proofResult = runProveOidc('--login-google-workspace', scope);
+    const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
+    });
+    expect(res.status).toBe(201);
+    console.log('[E2E] User B joined workspace topic with workspace proof');
+  }, 300_000);
 
   // ══════════════════════════════════════════════════
   // EDGE CASES
