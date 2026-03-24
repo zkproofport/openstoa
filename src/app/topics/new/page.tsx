@@ -27,20 +27,20 @@ export default function NewTopicPage() {
   const [categories, setCategories] = useState<{id: string; name: string; slug: string; icon: string; description?: string}[]>([]);
   const [categoryId, setCategoryId] = useState<string>('');
 
-  // Country proof state
-  const [countryProofData, setCountryProofData] = useState<{
+  // Proof data state (shared across all proof types: kyc, country, workspace)
+  const [proofData, setProofData] = useState<{
     proof: string;
     publicInputs: string[];
     circuit: string;
   } | null>(null);
   const [proofDone, setProofDone] = useState(false);
-  // Key to force ProofGate remount when country params change
+  // Key to force ProofGate remount when proof params change
   const [proofGateKey, setProofGateKey] = useState(0);
 
   // Reset proof when country settings change
   useEffect(() => {
     if (proofType === 'country') {
-      setCountryProofData(null);
+      setProofData(null);
       setProofDone(false);
       setProofGateKey((k) => k + 1);
     }
@@ -145,7 +145,7 @@ export default function NewTopicPage() {
           requiredDomain: (proofType === 'google_workspace' || proofType === 'microsoft_365' || proofType === 'workspace') ? (requiredDomain.trim() || undefined) : undefined,
           image: imageUrl,
           visibility,
-          ...(countryProofData ? { proof: countryProofData.proof, publicInputs: countryProofData.publicInputs, circuit: countryProofData.circuit } : {}),
+          ...(proofData ? { proof: proofData.proof, publicInputs: proofData.publicInputs, circuit: proofData.circuit } : {}),
         }),
       });
 
@@ -162,7 +162,8 @@ export default function NewTopicPage() {
     }
   }
 
-  const canSubmit = title.trim().length > 0 && categoryId !== '' && !loading && (proofType !== 'country' || proofDone);
+  const needsProof = proofType !== 'none';
+  const canSubmit = title.trim().length > 0 && categoryId !== '' && !loading && (!needsProof || proofDone);
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
@@ -479,10 +480,10 @@ export default function NewTopicPage() {
                   setWorkspaceGoogle(false);
                   setWorkspaceMs(false);
                 }
-                if (val !== 'country') {
-                  setCountryProofData(null);
-                  setProofDone(false);
-                }
+                // Reset proof state on any proof type change
+                setProofData(null);
+                setProofDone(false);
+                setProofGateKey((k) => k + 1);
                 if (val !== 'affiliation') {
                   setRequiredDomain('');
                 }
@@ -556,7 +557,7 @@ export default function NewTopicPage() {
                       setCountryCodes(e.target.value);
                       // Reset proof when country codes change
                       if (proofDone) {
-                        setCountryProofData(null);
+                        setProofData(null);
                         setProofDone(false);
                         setProofGateKey((k) => k + 1);
                       }
@@ -624,7 +625,7 @@ export default function NewTopicPage() {
                       qrSize={200}
                       label="Scan with ZKProofport app to prove your country"
                       onProofData={({ proof, publicInputs, circuit }) => {
-                        setCountryProofData({ proof, publicInputs, circuit });
+                        setProofData({ proof, publicInputs, circuit });
                         setProofDone(true);
                       }}
                     />
@@ -642,6 +643,48 @@ export default function NewTopicPage() {
                   }}>
                     <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
                     <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>Country proof verified</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {proofType === 'kyc' && (
+              <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {!proofDone && (
+                  <div style={{
+                    padding: '16px',
+                    background: '#0a0a0a',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    textAlign: 'center',
+                  }}>
+                    <ProofGate
+                      key={proofGateKey}
+                      circuitType="coinbase_attestation"
+                      scope="zkproofport-community"
+                      mode="proof"
+                      autoStart={false}
+                      qrSize={200}
+                      label="Scan with ZKProofport app to verify KYC"
+                      onProofData={({ proof, publicInputs, circuit }) => {
+                        setProofData({ proof, publicInputs, circuit });
+                        setProofDone(true);
+                      }}
+                    />
+                  </div>
+                )}
+                {proofDone && (
+                  <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(34,197,94,0.08)',
+                    border: '1px solid rgba(34,197,94,0.25)',
+                    borderRadius: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}>
+                    <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
+                    <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>KYC proof verified</span>
                   </div>
                 )}
               </div>
@@ -734,7 +777,15 @@ export default function NewTopicPage() {
                     id="requiredDomain"
                     type="text"
                     value={requiredDomain}
-                    onChange={(e) => setRequiredDomain(e.target.value)}
+                    onChange={(e) => {
+                      setRequiredDomain(e.target.value);
+                      // Reset proof when domain changes
+                      if (proofDone) {
+                        setProofData(null);
+                        setProofDone(false);
+                        setProofGateKey((k) => k + 1);
+                      }
+                    }}
                     placeholder="company.com"
                     style={{
                       width: '100%',
@@ -757,6 +808,46 @@ export default function NewTopicPage() {
                       : 'Leave empty to allow any organization domain'}
                   </p>
                 </div>
+
+                {/* Workspace proof verification */}
+                {!proofDone && (
+                  <div style={{
+                    padding: '16px',
+                    background: '#0a0a0a',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    textAlign: 'center',
+                  }}>
+                    <ProofGate
+                      key={proofGateKey}
+                      circuitType="oidc_domain_attestation"
+                      scope="zkproofport-community"
+                      domain={requiredDomain.trim() || undefined}
+                      mode="proof"
+                      autoStart={false}
+                      qrSize={200}
+                      label="Scan with ZKProofport app to verify your organization"
+                      onProofData={({ proof, publicInputs, circuit }) => {
+                        setProofData({ proof, publicInputs, circuit });
+                        setProofDone(true);
+                      }}
+                    />
+                  </div>
+                )}
+                {proofDone && (
+                  <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(34,197,94,0.08)',
+                    border: '1px solid rgba(34,197,94,0.25)',
+                    borderRadius: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}>
+                    <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
+                    <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>Organization proof verified</span>
+                  </div>
+                )}
               </div>
             )}
 
