@@ -134,7 +134,7 @@ export default function PostCard({
   onDelete,
   onPin,
   onRecord,
-  expandable = false,
+  expandable = true,
 }: PostCardProps) {
   // Determine if we have "rich" features (topic-page mode)
   const hasRichFeatures = showAuthor || reactionsProp !== undefined || onDelete || onPin;
@@ -474,6 +474,24 @@ export default function PostCard({
           )}
           {post.title}
         </h3>
+
+        {/* Media thumbnail preview (first image or video) */}
+        {!expanded && (() => {
+          const imgMatch = post.content.match(/<img[^>]+src=["']([^"']+)["']/i);
+          const ytMatch = post.content.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+          const mediaSrc = imgMatch?.[1] || (ytMatch?.[1] ? `https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg` : null);
+          if (!mediaSrc) return null;
+          return (
+            <div style={{ marginBottom: 10, borderRadius: 8, overflow: 'hidden', maxHeight: 200, position: 'relative' }}>
+              <img src={mediaSrc} alt="" style={{ width: '100%', height: 'auto', maxHeight: 200, objectFit: 'cover', display: 'block' }} />
+              {ytMatch && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 48, height: 48, background: 'rgba(255,0,0,0.85)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ color: '#fff', fontSize: 20, marginLeft: 3 }}>&#9654;</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Body preview */}
         <div>

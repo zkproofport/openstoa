@@ -360,18 +360,17 @@ export default function SNSContent({
         </button>
       )}
 
-      {/* Rich media (only in expanded/full mode) */}
+      {/* GIFs shown in both truncate and full mode */}
+      {gifUrls.length > 0 && (
+        <GifImages urls={truncate ? gifUrls.slice(0, 1) : gifUrls} />
+      )}
+
+      {/* Link preview and video embeds only in full mode */}
       {!truncate && (
         <>
-          {/* GIFs */}
-          <GifImages urls={gifUrls} />
-
-          {/* Link preview — shown only when no image embeds and no GIFs */}
           {previewUrl && gifUrls.length === 0 && (
             <LinkPreview url={previewUrl} />
           )}
-
-          {/* Video embeds (auto-detected from content) */}
           <VideoEmbeds embeds={videoEmbeds} />
         </>
       )}
