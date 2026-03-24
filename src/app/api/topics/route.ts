@@ -350,15 +350,8 @@ export async function POST(request: NextRequest) {
           ? (requiredDomain?.trim() || undefined) : undefined,
       );
 
-      if (!creatorVerified) {
-        if (!proof || !publicInputs) {
-          logger.warn(ROUTE, 'Missing proof fields for topic creation', { userId: session.userId, proofType: effectiveProofType });
-          return NextResponse.json(
-            { error: `Proof required to create a ${effectiveProofType}-gated topic` },
-            { status: 400 },
-          );
-        }
-
+      // If proof is provided, always verify and refresh cache (ensures domain field is stored)
+      if (proof && publicInputs) {
         // Determine circuit from proofType
         const circuitId = effectiveProofType === 'country' ? 'coinbase_country_attestation'
           : effectiveProofType === 'kyc' ? 'coinbase_attestation'
@@ -400,12 +393,18 @@ export async function POST(request: NextRequest) {
               { status: 403 },
             );
           }
-          // Cache with extracted domain
+          // Cache with extracted domain (always refresh to ensure domain field exists)
           await saveVerificationCache(session.userId, circuitToCacheType(circuitId), { domain: domain ?? undefined });
         } else {
           // Cache KYC/country verification
           await saveVerificationCache(session.userId, circuitToCacheType(circuitId));
         }
+      } else if (!creatorVerified) {
+        logger.warn(ROUTE, 'Missing proof fields for topic creation', { userId: session.userId, proofType: effectiveProofType });
+        return NextResponse.json(
+          { error: `Proof required to create a ${effectiveProofType}-gated topic` },
+          { status: 400 },
+        );
       }
     }
 

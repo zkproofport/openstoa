@@ -220,33 +220,17 @@ export async function POST(
           ? requiredDomain : undefined,
       );
 
-      if (alreadyVerified) {
-        logger.info(ROUTE, 'User has existing valid verification, skipping proof', { userId: session.userId, topicId, proofType: effectiveProofType });
-      } else {
-        let body: Record<string, unknown> = {};
-        try {
-          body = await request.json();
-        } catch {
-          // No body provided
-        }
-        const { proof, publicInputs } = body as { proof?: string; publicInputs?: string[] };
+      // Try to read proof from request body
+      let body: Record<string, unknown> = {};
+      try {
+        body = await request.json();
+      } catch {
+        // No body provided
+      }
+      const { proof, publicInputs } = body as { proof?: string; publicInputs?: string[] };
 
-        if (!proof || !publicInputs) {
-          // Return 402 with proof requirement info
-          logger.info(ROUTE, 'Proof required but not provided, returning 402', { userId: session.userId, topicId, proofType: effectiveProofType });
-          const proofRequirement = buildProofRequirement(effectiveProofType, {
-            domain: topic.requiredDomain,
-            allowedCountries: topic.allowedCountries,
-          });
-          return NextResponse.json(
-            {
-              error: 'Proof required to join this topic',
-              proofRequirement,
-            },
-            { status: 402 },
-          );
-        }
-
+      // If proof is provided, always verify and refresh cache (ensures domain field is stored)
+      if (proof && publicInputs) {
         // Normalize publicInputs (SDK may return single hex string instead of array)
         const normalizedInputs = normalizePublicInputs(publicInputs);
 
@@ -273,7 +257,6 @@ export async function POST(
           }
         }
 
-        // KYC: scope check is sufficient — just verifying proof exists with correct scope
         // google_workspace / microsoft_365 / workspace: verify domain matches (if requiredDomain is set)
         if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace') {
           const domain = extractDomain(normalizedInputs, 'oidc_domain_attestation');
@@ -288,13 +271,29 @@ export async function POST(
           }
         }
 
-        // Save verification to Redis cache (privacy-first: hashed domain only, no PII in DB)
+        // Save verification to Redis cache (always refresh to ensure domain field exists)
         const cacheType = circuitToCacheType(circuitId);
         const domainForCache = (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
           ? extractDomain(normalizedInputs, 'oidc_domain_attestation') ?? undefined
           : undefined;
         await saveVerificationCache(session.userId, cacheType, { domain: domainForCache });
         logger.info(ROUTE, 'Verification cached', { userId: session.userId, cacheType, hasDomain: !!domainForCache });
+      } else if (!alreadyVerified) {
+        // No proof and no cached verification — return 402 with proof requirement
+        logger.info(ROUTE, 'Proof required but not provided, returning 402', { userId: session.userId, topicId, proofType: effectiveProofType });
+        const proofRequirement = buildProofRequirement(effectiveProofType, {
+          domain: topic.requiredDomain,
+          allowedCountries: topic.allowedCountries,
+        });
+        return NextResponse.json(
+          {
+            error: 'Proof required to join this topic',
+            proofRequirement,
+          },
+          { status: 402 },
+        );
+      } else {
+        logger.info(ROUTE, 'User has existing valid verification, skipping proof', { userId: session.userId, topicId, proofType: effectiveProofType });
       }
     }
 
