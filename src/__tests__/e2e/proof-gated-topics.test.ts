@@ -173,13 +173,24 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     console.log('[E2E] Workspace topic correctly rejected without workspace proof');
   });
 
-  it('User A: creates workspace-gated topic with workspace proof', async () => {
+  it.skip('User A: creates workspace-gated topic with Google Workspace proof', async () => {
+    // Skip: test account has no Google Workspace. Enable when available.
     const { scope } = await getScope();
-    console.log('[E2E] User A: Google Workspace device flow for topic creation');
     const proofResult = runProveOidc('--login-google-workspace', scope);
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
-      body: JSON.stringify({ title: `E2E Workspace ${Date.now()}`, description: 'Org required', categoryId, proofType: 'workspace', proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
+      body: JSON.stringify({ title: `E2E GW Topic ${Date.now()}`, description: 'Google Workspace required', categoryId, proofType: 'google_workspace', proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
+    });
+    expect(res.status).toBe(201);
+  }, 300_000);
+
+  it('User A: creates workspace-gated topic with Microsoft 365 proof', async () => {
+    const { scope } = await getScope();
+    console.log('[E2E] User A: Microsoft 365 device flow for topic creation');
+    const proofResult = runProveOidc('--login-microsoft-365', scope);
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({ title: `E2E MS365 Topic ${Date.now()}`, description: 'Org required', categoryId, proofType: 'workspace', proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
     });
     expect(res.status).toBe(201);
     workspaceTopicId = (await res.json()).topic.id;
@@ -283,17 +294,29 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     console.log('[E2E] 402 — workspace proof required (login cache ≠ workspace)');
   });
 
-  it('User B: generates workspace proof and joins', async () => {
+  it.skip('User B: generates Google Workspace proof and joins', async () => {
+    // Skip: test account has no Google Workspace
     expect(workspaceTopicId).toBeTruthy();
     const { scope } = await getScope();
-    console.log('[E2E] User B: Google Workspace device flow for join');
     const proofResult = runProveOidc('--login-google-workspace', scope);
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
       method: 'POST',
       body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
     });
     expect(res.status).toBe(201);
-    console.log('[E2E] User B joined workspace topic with workspace proof');
+  }, 300_000);
+
+  it('User B: generates Microsoft 365 proof and joins', async () => {
+    expect(workspaceTopicId).toBeTruthy();
+    const { scope } = await getScope();
+    console.log('[E2E] User B: Microsoft 365 device flow for join');
+    const proofResult = runProveOidc('--login-microsoft-365', scope);
+    const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
+    });
+    expect(res.status).toBe(201);
+    console.log('[E2E] User B joined workspace topic with MS365 proof');
   }, 300_000);
 
   // ══════════════════════════════════════════════════
