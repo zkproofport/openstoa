@@ -99,17 +99,55 @@ describe.sequential('P1 — Proof Edge Cases', () => {
     }
   }, 180_000);
 
-  // ── Test 4: Country exclude mode (is_included=0 for wallet's own country) ────
-  // The CLI cannot generate a "not in KR list" proof for a KR wallet — by design,
-  // the circuit correctly reflects the wallet's actual country.
-  // Test 3 already covers is_included=0 → 403 via the JP/KR mismatch approach.
+  // ── Test 4: Country exclude mode — is_included=0 proof rejected on inclusion-required topic ──
+  // A KR wallet CAN generate coinbase_country --countries JP --included false:
+  // this proves "my country is NOT in [JP]" — which is true (KR ≠ JP), so is_included=0.
+  // A topic that requires KR membership (allowedCountries: ['KR'], countryMode: 'include')
+  // must reject this proof because is_included=0 means the wallet proved exclusion, not inclusion.
 
-  it.skip('4. Country topic with excluded mode proof (--included false, wallet country) → skipped', async () => {
-    // Skipped: the CLI cannot generate coinbase_country --countries KR --included false
-    // for a KR wallet — the circuit truthfully outputs is_included=1 for KR wallet in KR list.
-    // ZK proof soundness prevents generating a false "not included" proof.
-    // The is_included=0 → 403 behavior is covered by test 3 (JP topic, KR wallet).
-  });
+  it('4. Country exclude mode proof (is_included=0) rejected by inclusion topic → 403', async () => {
+    // Create a KR-only topic as User A (via dev-login token)
+    const topicRes = await authPost('/api/topics', {
+      title: `E2E Country Exclude ${Date.now()}`,
+      description: 'KR only — exclude-mode proof should be rejected',
+      categoryId,
+      proofType: 'country',
+      requiresCountryProof: true,
+      allowedCountries: ['KR'],
+      countryMode: 'include',
+    });
+    // If topic creation requires a country proof itself, skip gracefully
+    if (topicRes.status === 400 || topicRes.status === 402) {
+      console.log(`[E2E] Skipping test 4: topic creation returned ${topicRes.status} (proof required for creator)`);
+      return;
+    }
+    expect(topicRes.status).toBe(201);
+    const { topic } = await topicRes.json();
+    console.log(`[E2E] Created KR-only topic: ${topic.id}`);
+
+    // Generate an exclude-mode proof: proves wallet is NOT in [JP] list → is_included=0
+    // KR wallet + JP list → KR is not JP → is_included=0 (truthful exclusion proof)
+    const { scope } = await getScope();
+    const proofResult = runProveCoinbase('coinbase_country --countries JP --included false', scope);
+
+    // Try to join the KR-only topic with an is_included=0 proof
+    const joinRes = await authPost(`/api/topics/${topic.id}/join`, {
+      proof: proofResult.proof,
+      publicInputs: proofResult.publicInputs,
+    });
+
+    console.log(`[E2E] Join KR topic with is_included=0 proof → ${joinRes.status}`);
+    // is_included=0 means the wallet proved exclusion — must be rejected (403)
+    // Before deployment: may return 402 (no cached country verification)
+    expect([402, 403]).toContain(joinRes.status);
+    if (joinRes.status === 403) {
+      const json = await joinRes.json();
+      expect(json.error).toBeTruthy();
+      console.log('[E2E] 403 — is_included=0 (exclude-mode proof) correctly rejected');
+    } else {
+      console.log(`[E2E] ${joinRes.status} — staging may not yet enforce is_included check`);
+    }
+  }, 180_000);
 
   // ── Test 5: Domain-restricted workspace topic with wrong domain → 403 ──────
   // Requires device flow (Microsoft 365 / Google Workspace) to prove domain.

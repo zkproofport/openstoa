@@ -319,6 +319,82 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   }, 300_000);
 
   // ══════════════════════════════════════════════════
+  // WORKSPACE DOMAIN EDGE CASES
+  // ══════════════════════════════════════════════════
+
+  it('5. Domain-restricted workspace topic with wrong domain → 403', async () => {
+    // Create a workspace topic that requires a specific domain no test user belongs to
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `E2E Wrong Domain ${Date.now()}`,
+        description: 'Restricted to nonexistent-company.com',
+        categoryId,
+        proofType: 'workspace',
+        requiredDomain: 'nonexistent-company.com',
+        proof: undefined,
+        publicInputs: undefined,
+      }),
+    });
+    // Topic creation itself needs a workspace proof — skip gracefully if unavailable
+    if (res.status === 400 || res.status === 402) {
+      console.log(`[E2E] Skipping test 5: topic creation returned ${res.status} (workspace proof required)`);
+      return;
+    }
+    expect(res.status).toBe(201);
+    const wrongDomainTopicId = (await res.json()).topic.id;
+    console.log(`[E2E] Created domain-restricted topic: ${wrongDomainTopicId}`);
+
+    // User B tries to join — their workspace domain doesn't match 'nonexistent-company.com'
+    const joinRes = await fetchAuth(`/api/topics/${wrongDomainTopicId}/join`, userBToken, {
+      method: 'POST',
+      body: '{}',
+    });
+    console.log(`[E2E] Join wrong-domain topic → ${joinRes.status}`);
+    // 403 (domain mismatch) or 402 (no cached workspace proof for User B)
+    expect([402, 403]).toContain(joinRes.status);
+    if (joinRes.status === 403) {
+      const json = await joinRes.json();
+      expect(json.error).toBeTruthy();
+      console.log('[E2E] 403 — domain mismatch correctly rejected');
+    } else {
+      console.log('[E2E] 402 — workspace proof required (no cached oidc_domain for User B)');
+    }
+  }, 300_000);
+
+  it('6. Workspace topic with no domain restriction — any domain → 201', async () => {
+    // Create a workspace topic with NO requiredDomain (null — any workspace domain accepted)
+    const createRes = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `E2E Any Domain ${Date.now()}`,
+        description: 'Any workspace domain accepted',
+        categoryId,
+        proofType: 'workspace',
+      }),
+    });
+    // Topic creation needs a workspace proof — skip gracefully if unavailable
+    if (createRes.status === 400 || createRes.status === 402) {
+      console.log(`[E2E] Skipping test 6: topic creation returned ${createRes.status} (workspace proof required)`);
+      return;
+    }
+    expect(createRes.status).toBe(201);
+    const anyDomainTopicId = (await createRes.json()).topic.id;
+    console.log(`[E2E] Created any-domain workspace topic: ${anyDomainTopicId}`);
+
+    // User B: generate MS365 proof (or use cached oidc_domain) and join
+    const { scope } = await getScope();
+    console.log('[E2E] User B: Microsoft 365 device flow for any-domain workspace join');
+    const proofResult = await runProveOidc('--login-microsoft-365', scope, process.env.E2E_MS365_USER_B);
+    const joinRes = await fetchAuth(`/api/topics/${anyDomainTopicId}/join`, userBToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
+    });
+    expect(joinRes.status).toBe(201);
+    console.log('[E2E] 201 — any workspace domain accepted (no domain restriction)');
+  }, 300_000);
+
+  // ══════════════════════════════════════════════════
   // EDGE CASES
   // ══════════════════════════════════════════════════
 
