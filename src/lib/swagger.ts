@@ -239,6 +239,16 @@ const options: swaggerJsdoc.Options = {
               nullable: true,
               description: "Commenter's profile image URL",
             },
+            isDeleted: {
+              type: 'boolean',
+              description: 'Whether the comment has been soft-deleted',
+            },
+            deletedBy: {
+              type: 'string',
+              nullable: true,
+              enum: ['author', 'admin'],
+              description: 'Who deleted the comment (author or admin/owner)',
+            },
           },
         },
         Member: {
