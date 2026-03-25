@@ -195,7 +195,7 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
     const res = await authPost(`/api/posts/${postId}/pin`);
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.pinned).toBe(true);
+    expect(json.isPinned).toBe(true);
   });
 
   it('12. Post pin — non-owner/non-admin pin attempt -> 403', async () => {
