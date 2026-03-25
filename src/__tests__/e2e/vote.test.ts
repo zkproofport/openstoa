@@ -138,18 +138,12 @@ describe.sequential('Votes (Upvote/Downvote)', () => {
 
   // ── User B votes (non-member) ───────────────────────────────────────────
 
-  it('6. Non-member (User B) votes on post -> 200 (no membership check on vote endpoint)', async () => {
-    // The vote route only checks authentication, not topic membership.
-    // Non-member votes are accepted at the API level.
+  it('6. Non-member (User B) votes on post -> 403 (membership check enforced)', async () => {
+    // The vote route checks topic membership — non-members are rejected.
     const voteRes = await secondUserPost(`/api/posts/${postId}/vote`, { value: 1 });
-    expect(voteRes.status).toBe(200);
+    expect(voteRes.status).toBe(403);
     const voteJson = await voteRes.json();
-    expect(voteJson.vote).toEqual({ value: 1 });
-    expect(typeof voteJson.upvoteCount).toBe('number');
-
-    // Clean up: cancel User B's vote
-    const cancelRes = await secondUserPost(`/api/posts/${postId}/vote`, { value: 1 });
-    expect(cancelRes.status).toBe(200);
+    expect(voteJson.error).toBeTruthy();
   });
 
   // ── Guest (unauthenticated) ─────────────────────────────────────────────

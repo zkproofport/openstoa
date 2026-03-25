@@ -10,6 +10,7 @@ vi.mock('@/lib/db', () => ({
     query: {
       votes: { findFirst: vi.fn() },
       posts: { findFirst: vi.fn() },
+      topicMembers: { findFirst: vi.fn() },
     },
     delete: vi.fn().mockReturnValue({ where: vi.fn() }),
     update: vi.fn().mockReturnValue({
@@ -118,6 +119,29 @@ describe('POST /api/posts/[postId]/vote', () => {
     expect(json.error).toBe('Post not found');
   });
 
+  it('returns 403 when user is not a member of the topic', async () => {
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+
+    const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({
+      id: 'post-1',
+      topicId: 'topic-1',
+      upvoteCount: 0,
+    } as never);
+    vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue(undefined);
+
+    const { POST } = await import('@/app/api/posts/[postId]/vote/route');
+    const res = await POST(
+      makeRequest('post-1', { value: 1 }),
+      { params: Promise.resolve({ postId: 'post-1' }) },
+    );
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBe('Not a member of this topic');
+  });
+
   it('returns 200 with upvoteCount when new vote is cast', async () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
@@ -125,7 +149,13 @@ describe('POST /api/posts/[postId]/vote', () => {
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({
       id: 'post-1',
+      topicId: 'topic-1',
       upvoteCount: 0,
+    } as never);
+    vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({
+      topicId: 'topic-1',
+      userId: 'user-1',
+      joinedAt: new Date(),
     } as never);
     vi.mocked(db.query.votes.findFirst).mockResolvedValue(undefined);
 
