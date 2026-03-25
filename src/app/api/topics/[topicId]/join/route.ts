@@ -228,7 +228,7 @@ export async function POST(
       } catch {
         // No body provided
       }
-      const { proof, publicInputs } = body as { proof?: string; publicInputs?: string[] };
+      const { proof, publicInputs } = body as { proof?: string; publicInputs?: string | string[] };
 
       // Validate proof data format
       if (proof !== undefined) {
@@ -237,8 +237,10 @@ export async function POST(
         }
       }
       if (publicInputs !== undefined) {
-        if (typeof publicInputs !== 'string' || publicInputs.trim() === '') {
-          return NextResponse.json({ error: 'Invalid publicInputs: must be a non-empty string' }, { status: 400 });
+        const isEmptyString = typeof publicInputs === 'string' && publicInputs.trim() === '';
+        const isEmptyArray = Array.isArray(publicInputs) && publicInputs.length === 0;
+        if (isEmptyString || isEmptyArray) {
+          return NextResponse.json({ error: 'Invalid publicInputs: must be non-empty' }, { status: 400 });
         }
       }
 
