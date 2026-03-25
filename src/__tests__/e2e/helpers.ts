@@ -1,3 +1,6 @@
+import { readFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
+
 const BASE_URL = process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app';
 
 export function getBaseUrl(): string {
@@ -168,6 +171,41 @@ export async function publicPut(path: string, body?: unknown): Promise<Response>
 /** Make an unauthenticated DELETE request */
 export async function publicDelete(path: string): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+}
+
+// ── Admin user helpers (uses proof-gated login cache — admin role) ──
+
+let adminTokenCache: string | null = null;
+
+/** Get admin token from proof-gated login cache (.e2e-token-cache-a.json) */
+function getAdminToken(): string {
+  if (adminTokenCache) return adminTokenCache;
+  const cacheFile = resolve(__dirname, '../../../.e2e-token-cache-a.json');
+  if (!existsSync(cacheFile)) {
+    throw new Error('Admin token not available — run proof-gated-topics.test.ts first to create .e2e-token-cache-a.json');
+  }
+  const cached = JSON.parse(readFileSync(cacheFile, 'utf-8'));
+  adminTokenCache = cached.token;
+  return adminTokenCache!;
+}
+
+/** Make an authenticated POST request as admin */
+export async function adminPost(path: string, body?: unknown): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAdminToken()}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+/** Make an authenticated GET request as admin */
+export async function adminGet(path: string): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${getAdminToken()}` },
+  });
 }
 
 /** Make an unauthenticated PATCH request */
