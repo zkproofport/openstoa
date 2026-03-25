@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { bookmarks } from '@/lib/db/schema';
+import { bookmarks, posts, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -109,6 +109,28 @@ export async function POST(
     const { postId } = await params;
 
     logger.info(ROUTE, 'Toggling bookmark', { userId: session.userId, postId });
+
+    // Verify post exists and check topic membership
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+    });
+
+    if (!post) {
+      logger.warn(ROUTE, 'Post not found', { postId });
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+
+    const membership = await db.query.topicMembers.findFirst({
+      where: and(
+        eq(topicMembers.topicId, post.topicId),
+        eq(topicMembers.userId, session.userId),
+      ),
+    });
+
+    if (!membership) {
+      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, postId, topicId: post.topicId });
+      return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
+    }
 
     const existing = await db.query.bookmarks.findFirst({
       where: and(

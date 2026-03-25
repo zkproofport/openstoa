@@ -306,6 +306,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (title.length > 100) {
+      return NextResponse.json(
+        { error: 'Title must be 100 characters or less' },
+        { status: 400 },
+      );
+    }
+
     // Only public visibility is currently supported
     if (visibility && visibility !== 'public') {
       logger.warn(ROUTE, 'Non-public visibility attempted', { userId: session.userId, visibility });

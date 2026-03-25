@@ -9,6 +9,8 @@ vi.mock('@/lib/db', () => ({
   db: {
     query: {
       bookmarks: { findFirst: vi.fn() },
+      posts: { findFirst: vi.fn() },
+      topicMembers: { findFirst: vi.fn() },
     },
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
     insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
@@ -117,6 +119,8 @@ describe('POST /api/posts/[postId]/bookmark', () => {
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({ topicId: 'topic-1', userId: 'user-1', role: 'member' } as never);
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue(undefined);
 
     const { POST } = await import('@/app/api/posts/[postId]/bookmark/route');
@@ -135,6 +139,8 @@ describe('POST /api/posts/[postId]/bookmark', () => {
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({ topicId: 'topic-1', userId: 'user-1', role: 'member' } as never);
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue({
       userId: 'user-1',
       postId: 'post-1',

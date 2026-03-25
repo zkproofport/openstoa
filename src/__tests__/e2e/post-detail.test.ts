@@ -3,6 +3,7 @@ import {
   authPost,
   authGet,
   publicGet,
+  publicPost,
   secondUserPost,
   getSecondUserToken,
 } from './helpers';
@@ -84,10 +85,10 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
     const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=new`);
     expect(res.status).toBe(200);
     const json = await res.json();
-    const postList: Array<{ createdAt: string }> = json.posts;
+    const postList: Array<{ createdAt: string; isPinned?: boolean }> = json.posts;
     expect(Array.isArray(postList)).toBe(true);
     // Pinned posts come first; among non-pinned, verify descending createdAt
-    const nonPinned = postList.filter((p: { isPinned?: boolean }) => !p.isPinned);
+    const nonPinned = postList.filter((p) => !p.isPinned);
     for (let i = 1; i < nonPinned.length; i++) {
       const prev = new Date(nonPinned[i - 1].createdAt).getTime();
       const curr = new Date(nonPinned[i].createdAt).getTime();
@@ -190,9 +191,24 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
 
   // ── 6. Post pin — endpoint not yet implemented ───────────────────────
 
-  it.todo('11. Post pin — owner can pin post -> 200 (endpoint POST /api/posts/:postId/pin not implemented)');
+  it('11. Post pin — owner pins post -> 200, pinned: true', async () => {
+    const res = await authPost(`/api/posts/${postId}/pin`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.pinned).toBe(true);
+  });
 
-  it.todo('12. Post pin — admin can pin post -> 200 (endpoint POST /api/posts/:postId/pin not implemented)');
+  it('12. Post pin — non-owner/non-admin pin attempt -> 403', async () => {
+    const res = await secondUserPost(`/api/posts/${postId}/pin`);
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
 
-  it.todo('13. Post pin — non-owner/non-admin pin attempt -> 403 (endpoint POST /api/posts/:postId/pin not implemented)');
+  it('13. Post pin — guest pin attempt -> 401', async () => {
+    const res = await publicPost(`/api/posts/${postId}/pin`);
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
 });

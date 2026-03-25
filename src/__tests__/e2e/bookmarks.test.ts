@@ -116,13 +116,12 @@ describe.sequential('Bookmarks', () => {
     expect(json.posts.length).toBeLessThanOrEqual(1);
   });
 
-  it('8. Non-member (User B) can bookmark (no membership check on bookmark route)', async () => {
-    // NOTE: The bookmark route only checks authentication, NOT topic membership.
-    // A non-member who is authenticated can bookmark any post. This documents current behavior.
+  it('8. Non-member (User B) bookmark attempt -> 403 (membership check required)', async () => {
+    // User B is authenticated but not a member of the topic.
     const res = await secondUserPost(`/api/posts/${postId}/bookmark`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
     const json = await res.json();
-    expect(typeof json.bookmarked).toBe('boolean');
+    expect(json.error).toBeTruthy();
   });
 
   it('9. Guest (unauthenticated) bookmark attempt -> 401', async () => {

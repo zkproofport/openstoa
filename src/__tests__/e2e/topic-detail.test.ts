@@ -215,7 +215,16 @@ describe.sequential('Topic Detail — list filters, sort, paging', () => {
 
   // ── 6. Topic title length limit ──────────────────────────────────────
 
-  it.todo(
-    '13. Create topic — title exceeding 100 chars -> 400 (UI enforces maxLength=100; server has no length check)',
-  );
+  it('13. Create topic — title exceeding 100 chars -> 400', async () => {
+    const longTitle = 'A'.repeat(101);
+    const res = await authPost('/api/topics', {
+      title: longTitle,
+      description: 'Topic with title too long',
+      visibility: 'public',
+      categoryId,
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
 });

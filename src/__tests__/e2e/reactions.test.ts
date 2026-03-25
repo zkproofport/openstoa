@@ -111,15 +111,12 @@ describe.sequential('Reactions (Emoji)', () => {
     expect(thumbs.userReacted).toBe(true);
   });
 
-  it('5. Non-member (User B) react attempt -> 401 (not authenticated via session) or allowed (no membership check)', async () => {
-    // NOTE: The reactions route only checks authentication, NOT topic membership.
-    // A non-member who is authenticated can react. This test documents current behavior.
+  it('5. Non-member (User B) react attempt -> 403 (membership check required)', async () => {
     // User B is authenticated but not a member of the topic.
     const res = await secondUserPost(`/api/posts/${postId}/reactions`, { emoji: '🎉' });
-    // Route only requires auth (not membership) — non-member authenticated user CAN react
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
     const json = await res.json();
-    expect(typeof json.added).toBe('boolean');
+    expect(json.error).toBeTruthy();
   });
 
   it('6. Guest (unauthenticated) react attempt -> 401', async () => {
