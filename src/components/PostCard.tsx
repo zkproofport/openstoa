@@ -333,26 +333,6 @@ export default function PostCard({
             {post.title}
           </h3>
 
-          {/* Media thumbnail preview (first image or video) */}
-          {!expanded && (() => {
-            // Extract first image
-            const imgMatch = post.content.match(/<img[^>]+src=["']([^"']+)["']/i);
-            // Extract first YouTube video ID
-            const ytMatch = post.content.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
-            const mediaSrc = imgMatch?.[1] || (ytMatch?.[1] ? `https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg` : null);
-            if (!mediaSrc) return null;
-            return (
-              <div style={{ marginBottom: 10, borderRadius: 8, overflow: 'hidden', maxHeight: 200, position: 'relative' }}>
-                <img src={mediaSrc} alt="" style={{ width: '100%', height: 'auto', maxHeight: 200, objectFit: 'cover', display: 'block' }} />
-                {ytMatch && (
-                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 48, height: 48, background: 'rgba(255,0,0,0.85)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ color: '#fff', fontSize: 20, marginLeft: 3 }}>▶</span>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
           {/* Content preview */}
           <div style={{ marginBottom: 10 }}>
             <SNSContent
@@ -362,6 +342,101 @@ export default function PostCard({
               onToggleExpand={handleToggleExpand}
             />
           </div>
+
+          {/* Media gallery — compact thumbnails (only when truncated) */}
+          {!expanded && (() => {
+            const mediaItems: Array<{ type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string }> = [];
+
+            const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+            let imgM;
+            while ((imgM = imgRegex.exec(post.content)) !== null) {
+              mediaItems.push({ type: 'image', src: imgM[1], thumbnail: imgM[1] });
+            }
+
+            const ytRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/g;
+            let ytM;
+            while ((ytM = ytRegex.exec(post.content)) !== null) {
+              mediaItems.push({
+                type: 'youtube',
+                src: ytM[1],
+                thumbnail: `https://img.youtube.com/vi/${ytM[1]}/mqdefault.jpg`,
+              });
+            }
+
+            const vimeoRegex = /vimeo\.com\/(\d+)/g;
+            let vimeoM;
+            while ((vimeoM = vimeoRegex.exec(post.content)) !== null) {
+              mediaItems.push({
+                type: 'vimeo',
+                src: vimeoM[1],
+                thumbnail: '',
+              });
+            }
+
+            if (mediaItems.length === 0) return null;
+
+            const displayItems = mediaItems.slice(0, 3);
+            const remaining = mediaItems.length - 3;
+
+            return (
+              <div style={{
+                display: 'flex',
+                gap: 6,
+                marginTop: 8,
+              }}>
+                {displayItems.map((item, i) => (
+                  <div key={i} style={{
+                    position: 'relative',
+                    width: 80,
+                    height: 80,
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    flexShrink: 0,
+                  }}>
+                    {item.thumbnail ? (
+                      <img
+                        src={item.thumbnail}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: '100%', height: '100%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#6b7280', fontSize: 12,
+                      }}>
+                        Video
+                      </div>
+                    )}
+                    {(item.type === 'youtube' || item.type === 'vimeo') && (
+                      <div style={{
+                        position: 'absolute', top: '50%', left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: 28, height: 28,
+                        background: 'rgba(0,0,0,0.6)',
+                        borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{ color: '#fff', fontSize: 12, marginLeft: 2 }}>&#9654;</span>
+                      </div>
+                    )}
+                    {i === 2 && remaining > 0 && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        background: 'rgba(0,0,0,0.6)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: 14, fontWeight: 600,
+                      }}>
+                        +{remaining}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Meta row */}
           <div style={{
@@ -475,24 +550,6 @@ export default function PostCard({
           {post.title}
         </h3>
 
-        {/* Media thumbnail preview (first image or video) */}
-        {!expanded && (() => {
-          const imgMatch = post.content.match(/<img[^>]+src=["']([^"']+)["']/i);
-          const ytMatch = post.content.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
-          const mediaSrc = imgMatch?.[1] || (ytMatch?.[1] ? `https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg` : null);
-          if (!mediaSrc) return null;
-          return (
-            <div style={{ marginBottom: 10, borderRadius: 8, overflow: 'hidden', maxHeight: 200, position: 'relative' }}>
-              <img src={mediaSrc} alt="" style={{ width: '100%', height: 'auto', maxHeight: 200, objectFit: 'cover', display: 'block' }} />
-              {ytMatch && (
-                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 48, height: 48, background: 'rgba(255,0,0,0.85)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ color: '#fff', fontSize: 20, marginLeft: 3 }}>&#9654;</span>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
         {/* Body preview */}
         <div>
           <SNSContent
@@ -502,6 +559,106 @@ export default function PostCard({
             onToggleExpand={expandable ? handleToggleExpand : undefined}
           />
         </div>
+
+        {/* Media gallery — compact thumbnails (only when truncated) */}
+        {!expanded && (() => {
+          const mediaItems: Array<{ type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string }> = [];
+
+          // Extract images
+          const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+          let imgM;
+          while ((imgM = imgRegex.exec(post.content)) !== null) {
+            mediaItems.push({ type: 'image', src: imgM[1], thumbnail: imgM[1] });
+          }
+
+          // Extract YouTube
+          const ytRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/g;
+          let ytM;
+          while ((ytM = ytRegex.exec(post.content)) !== null) {
+            mediaItems.push({
+              type: 'youtube',
+              src: ytM[1],
+              thumbnail: `https://img.youtube.com/vi/${ytM[1]}/mqdefault.jpg`,
+            });
+          }
+
+          // Extract Vimeo
+          const vimeoRegex = /vimeo\.com\/(\d+)/g;
+          let vimeoM;
+          while ((vimeoM = vimeoRegex.exec(post.content)) !== null) {
+            mediaItems.push({
+              type: 'vimeo',
+              src: vimeoM[1],
+              thumbnail: '',
+            });
+          }
+
+          if (mediaItems.length === 0) return null;
+
+          const displayItems = mediaItems.slice(0, 3);
+          const remaining = mediaItems.length - 3;
+
+          return (
+            <div style={{
+              display: 'flex',
+              gap: 6,
+              marginTop: 8,
+            }}>
+              {displayItems.map((item, i) => (
+                <div key={i} style={{
+                  position: 'relative',
+                  width: 80,
+                  height: 80,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  flexShrink: 0,
+                }}>
+                  {item.thumbnail ? (
+                    <img
+                      src={item.thumbnail}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: '100%', height: '100%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#6b7280', fontSize: 12,
+                    }}>
+                      Video
+                    </div>
+                  )}
+                  {/* Play icon for videos */}
+                  {(item.type === 'youtube' || item.type === 'vimeo') && (
+                    <div style={{
+                      position: 'absolute', top: '50%', left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: 28, height: 28,
+                      background: 'rgba(0,0,0,0.6)',
+                      borderRadius: '50%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span style={{ color: '#fff', fontSize: 12, marginLeft: 2 }}>&#9654;</span>
+                    </div>
+                  )}
+                  {/* +N remaining indicator on last item */}
+                  {i === 2 && remaining > 0 && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      background: 'rgba(0,0,0,0.6)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontSize: 14, fontWeight: 600,
+                    }}>
+                      +{remaining}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </Link>
 
       {/* Recorded on Base badge */}

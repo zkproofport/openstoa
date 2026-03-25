@@ -360,9 +360,9 @@ export default function SNSContent({
         </button>
       )}
 
-      {/* GIFs shown in both truncate and full mode */}
-      {gifUrls.length > 0 && (
-        <GifImages urls={truncate ? gifUrls.slice(0, 1) : gifUrls} />
+      {/* GIFs only in full mode — in truncate mode, PostCard gallery handles preview */}
+      {!truncate && gifUrls.length > 0 && (
+        <GifImages urls={gifUrls} />
       )}
 
       {/* Link preview and video embeds only in full mode */}
