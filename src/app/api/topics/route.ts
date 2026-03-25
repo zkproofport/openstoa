@@ -9,6 +9,7 @@ import {
   extractScope,
   extractIsIncluded,
   extractDomain,
+  extractCountryList,
   computeScopeHash,
   normalizePublicInputs,
   COMMUNITY_SCOPE,
@@ -387,6 +388,25 @@ export async function POST(request: NextRequest) {
               { error: 'Your country is not allowed to create this topic' },
               { status: 403 },
             );
+          }
+
+          // Verify creator's country_list matches topic's allowedCountries
+          const proofCountryList = extractCountryList(normalizedInputs, 'coinbase_country_attestation');
+          const topicCountries = allowedCountries || [];
+          if (topicCountries.length > 0) {
+            const proofSet = new Set(proofCountryList.map((c: string) => c.toUpperCase()));
+            const topicSet = new Set(topicCountries.map((c: string) => c.toUpperCase()));
+            if (proofSet.size !== topicSet.size || ![...proofSet].every((c: string) => topicSet.has(c))) {
+              logger.warn(ROUTE, 'Creator country list mismatch', {
+                userId: session.userId,
+                proofCountries: proofCountryList,
+                topicCountries,
+              });
+              return NextResponse.json(
+                { error: 'Country list mismatch: your proof does not match the topic countries' },
+                { status: 403 },
+              );
+            }
           }
         }
 
