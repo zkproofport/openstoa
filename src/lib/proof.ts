@@ -29,7 +29,7 @@ export async function verifyProofFromRelay(
 }
 
 
-const SUPPORTED_CIRCUITS = ['coinbase_attestation', 'coinbase_country_attestation'];
+const SUPPORTED_CIRCUITS = ['coinbase_attestation', 'coinbase_country_attestation', 'oidc_domain_attestation'];
 
 export function extractNullifier(publicInputs: string[], circuit: string): string {
   if (!SUPPORTED_CIRCUITS.includes(circuit)) {
