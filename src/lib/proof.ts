@@ -29,13 +29,21 @@ export async function verifyProofFromRelay(
 }
 
 
+const SUPPORTED_CIRCUITS = ['coinbase_attestation', 'coinbase_country_attestation'];
+
 export function extractNullifier(publicInputs: string[], circuit: string): string {
+  if (!SUPPORTED_CIRCUITS.includes(circuit)) {
+    throw new Error(`Unsupported circuit for nullifier extraction: ${circuit}`);
+  }
   const nullifier = extractNullifierFromPublicInputs(publicInputs, circuit);
   if (!nullifier) throw new Error(`Failed to extract nullifier for circuit: ${circuit}`);
   return nullifier;
 }
 
 export function extractScope(publicInputs: string[], circuit: string): string {
+  if (!SUPPORTED_CIRCUITS.includes(circuit)) {
+    throw new Error(`Unsupported circuit for scope extraction: ${circuit}`);
+  }
   const scope = extractScopeFromPublicInputs(publicInputs, circuit);
   if (!scope) throw new Error(`Failed to extract scope for circuit: ${circuit}`);
   return scope;
@@ -54,6 +62,31 @@ export function extractIsIncluded(publicInputs: string[], circuit: string): bool
     throw new Error('publicInputs too short: missing is_included field');
   }
   return BigInt(isIncludedField) === 1n;
+}
+
+/**
+ * Extract country list from coinbase_country_attestation public inputs.
+ * country_list occupies indices 64-83 (20 bytes, up to 10 countries).
+ * country_list_length at index 84 indicates how many are used.
+ * Each country is 2 ASCII bytes (ISO 3166-1 alpha-2).
+ */
+export function extractCountryList(publicInputs: string[], circuit: string): string[] {
+  if (circuit !== 'coinbase_country_attestation') {
+    throw new Error(`Unsupported circuit for country_list extraction: ${circuit}`);
+  }
+  const lengthField = publicInputs[COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.COUNTRY_LIST_LENGTH];
+  if (lengthField === undefined) {
+    throw new Error('publicInputs too short: missing country_list_length field');
+  }
+  const countryCount = Number(BigInt(lengthField));
+  const countries: string[] = [];
+  const start = COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.COUNTRY_LIST_START;
+  for (let i = 0; i < countryCount * 2; i += 2) {
+    const byte1 = Number(BigInt(publicInputs[start + i]));
+    const byte2 = Number(BigInt(publicInputs[start + i + 1]));
+    countries.push(String.fromCharCode(byte1) + String.fromCharCode(byte2));
+  }
+  return countries;
 }
 
 /**

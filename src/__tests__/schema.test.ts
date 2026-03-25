@@ -16,20 +16,20 @@ describe('schema: exports', () => {
   });
 });
 
-describe('schema: table name prefix', () => {
-  it('should use community_ prefix for core tables', () => {
-    expect(getTableName(schema.users)).toBe('community_users');
-    expect(getTableName(schema.topics)).toBe('community_topics');
-    expect(getTableName(schema.topicMembers)).toBe('community_topic_members');
-    expect(getTableName(schema.posts)).toBe('community_posts');
-    expect(getTableName(schema.comments)).toBe('community_comments');
+describe('schema: table names', () => {
+  it('should have correct names for core tables', () => {
+    expect(getTableName(schema.users)).toBe('users');
+    expect(getTableName(schema.topics)).toBe('topics');
+    expect(getTableName(schema.topicMembers)).toBe('topic_members');
+    expect(getTableName(schema.posts)).toBe('posts');
+    expect(getTableName(schema.comments)).toBe('comments');
   });
 
-  it('should use community_ prefix for SNS tables', () => {
-    expect(getTableName(schema.tags)).toBe('community_tags');
-    expect(getTableName(schema.postTags)).toBe('community_post_tags');
-    expect(getTableName(schema.bookmarks)).toBe('community_bookmarks');
-    expect(getTableName(schema.votes)).toBe('community_votes');
+  it('should have correct names for SNS tables', () => {
+    expect(getTableName(schema.tags)).toBe('tags');
+    expect(getTableName(schema.postTags)).toBe('post_tags');
+    expect(getTableName(schema.bookmarks)).toBe('bookmarks');
+    expect(getTableName(schema.votes)).toBe('votes');
   });
 });
 

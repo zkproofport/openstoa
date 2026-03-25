@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractNullifier, extractScope, computeScopeHash } from '@/lib/proof';
+import { extractNullifier, extractScope, computeScopeHash, extractCountryList } from '@/lib/proof';
 import { ethers } from 'ethers';
 
 // Generate mock publicInputs: 128 hex strings for coinbase_attestation
@@ -170,5 +170,55 @@ describe('computeScopeHash', () => {
     const hash1 = computeScopeHash('test-scope');
     const hash2 = computeScopeHash('test-scope');
     expect(hash1).toBe(hash2);
+  });
+});
+
+// Build a coinbase_country_attestation publicInputs array with given countries encoded
+// at indices 64-83 (country_list) and 84 (country_list_length).
+function buildCountryInputs(countries: string[]): string[] {
+  // 150 fields total for coinbase_country_attestation
+  const inputs: string[] = new Array(150).fill('0x' + '00'.padStart(64, '0'));
+  let byteIdx = 0;
+  for (const country of countries) {
+    inputs[64 + byteIdx] = '0x' + country.charCodeAt(0).toString(16).padStart(64, '0');
+    inputs[64 + byteIdx + 1] = '0x' + country.charCodeAt(1).toString(16).padStart(64, '0');
+    byteIdx += 2;
+  }
+  // country_list_length = number of countries
+  inputs[84] = '0x' + countries.length.toString(16).padStart(64, '0');
+  return inputs;
+}
+
+describe('extractCountryList', () => {
+  it('should extract a single country', () => {
+    const inputs = buildCountryInputs(['KR']);
+    const result = extractCountryList(inputs, 'coinbase_country_attestation');
+    expect(result).toEqual(['KR']);
+  });
+
+  it('should extract multiple countries', () => {
+    const inputs = buildCountryInputs(['US', 'JP', 'KR']);
+    const result = extractCountryList(inputs, 'coinbase_country_attestation');
+    expect(result).toEqual(['US', 'JP', 'KR']);
+  });
+
+  it('should return empty array when country_list_length is 0', () => {
+    const inputs = buildCountryInputs([]);
+    const result = extractCountryList(inputs, 'coinbase_country_attestation');
+    expect(result).toEqual([]);
+  });
+
+  it('should throw for unsupported circuit', () => {
+    const inputs = buildCountryInputs(['KR']);
+    expect(() => extractCountryList(inputs, 'coinbase_attestation')).toThrow(
+      'Unsupported circuit for country_list extraction',
+    );
+  });
+
+  it('should throw when publicInputs is too short', () => {
+    const shortInputs = new Array(80).fill('0x' + '00'.padStart(64, '0'));
+    expect(() => extractCountryList(shortInputs, 'coinbase_country_attestation')).toThrow(
+      'publicInputs too short: missing country_list_length field',
+    );
   });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/session', () => ({
-  getSessionFromCookies: vi.fn(),
+  getSession: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -37,8 +37,8 @@ describe('GET /api/posts/[postId]/bookmark', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue(null);
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue(null);
 
     const { GET } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await GET(
@@ -52,8 +52,8 @@ describe('GET /api/posts/[postId]/bookmark', () => {
   });
 
   it('returns bookmarked: false when bookmark does not exist', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue(undefined);
@@ -70,8 +70,8 @@ describe('GET /api/posts/[postId]/bookmark', () => {
   });
 
   it('returns bookmarked: true when bookmark exists', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue({
@@ -98,8 +98,8 @@ describe('POST /api/posts/[postId]/bookmark', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue(null);
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue(null);
 
     const { POST } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await POST(
@@ -113,8 +113,8 @@ describe('POST /api/posts/[postId]/bookmark', () => {
   });
 
   it('returns bookmarked: true when bookmark did not exist (adds bookmark)', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue(undefined);
@@ -131,8 +131,8 @@ describe('POST /api/posts/[postId]/bookmark', () => {
   });
 
   it('returns bookmarked: false when bookmark existed (removes bookmark)', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue({

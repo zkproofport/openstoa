@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/session', () => ({
-  getSessionFromCookies: vi.fn(),
+  getSession: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -41,8 +41,8 @@ describe('POST /api/posts/[postId]/vote', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue(null);
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue(null);
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
@@ -56,8 +56,8 @@ describe('POST /api/posts/[postId]/vote', () => {
   });
 
   it('returns 400 when vote value is 0', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
@@ -71,8 +71,8 @@ describe('POST /api/posts/[postId]/vote', () => {
   });
 
   it('returns 400 when vote value is 2', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
@@ -86,8 +86,8 @@ describe('POST /api/posts/[postId]/vote', () => {
   });
 
   it('returns 400 when vote value is not 1 or -1 (string)', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
@@ -101,8 +101,8 @@ describe('POST /api/posts/[postId]/vote', () => {
   });
 
   it('returns 404 when post does not exist', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue(undefined);
@@ -119,8 +119,8 @@ describe('POST /api/posts/[postId]/vote', () => {
   });
 
   it('returns 200 with upvoteCount when new vote is cast', async () => {
-    const { getSessionFromCookies } = await import('@/lib/session');
-    vi.mocked(getSessionFromCookies).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({

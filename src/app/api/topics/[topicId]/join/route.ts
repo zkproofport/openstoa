@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import {
   extractScope,
   extractIsIncluded,
+  extractCountryList,
   extractDomain,
   computeScopeHash,
   normalizePublicInputs,
@@ -229,6 +230,18 @@ export async function POST(
       }
       const { proof, publicInputs } = body as { proof?: string; publicInputs?: string[] };
 
+      // Validate proof data format
+      if (proof !== undefined) {
+        if (typeof proof !== 'string' || proof.trim() === '') {
+          return NextResponse.json({ error: 'Invalid proof: must be a non-empty string' }, { status: 400 });
+        }
+      }
+      if (publicInputs !== undefined) {
+        if (typeof publicInputs !== 'string' || publicInputs.trim() === '') {
+          return NextResponse.json({ error: 'Invalid publicInputs: must be a non-empty string' }, { status: 400 });
+        }
+      }
+
       // If proof is provided, always verify and refresh cache (ensures domain field is stored)
       if (proof && publicInputs) {
         // Normalize publicInputs (SDK may return single hex string instead of array)
@@ -254,6 +267,25 @@ export async function POST(
           if (!isIncluded) {
             logger.warn(ROUTE, 'Country not in allowed list', { userId: session.userId, topicId });
             return NextResponse.json({ error: 'Country not allowed for this topic' }, { status: 403 });
+          }
+
+          // Verify the proof's country_list matches the topic's allowedCountries
+          const topicCountries = topic.allowedCountries || [];
+          if (topicCountries.length > 0) {
+            const proofCountryList = extractCountryList(normalizedInputs, 'coinbase_country_attestation');
+            const proofSet = new Set(proofCountryList.map(c => c.toUpperCase()));
+            const topicSet = new Set(topicCountries.map(c => c.toUpperCase()));
+            if (proofSet.size !== topicSet.size || ![...proofSet].every(c => topicSet.has(c))) {
+              logger.warn(ROUTE, 'Country list mismatch', {
+                userId: session.userId, topicId,
+                proofCountries: proofCountryList,
+                topicCountries,
+              });
+              return NextResponse.json(
+                { error: 'Country list mismatch: proof was generated for different countries' },
+                { status: 403 },
+              );
+            }
           }
         }
 

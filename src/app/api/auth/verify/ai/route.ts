@@ -134,6 +134,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate proof data format
+    if (typeof result.proof !== 'string' || result.proof.trim() === '') {
+      return NextResponse.json({ error: 'Invalid proof: must be a non-empty string' }, { status: 400 });
+    }
+    if (typeof result.publicInputs !== 'string' || result.publicInputs.trim() === '') {
+      return NextResponse.json({ error: 'Invalid publicInputs: must be a non-empty string' }, { status: 400 });
+    }
+
     logger.info(ROUTE, 'Consuming challenge', { challengeId });
 
     const challengeValid = await consumeChallenge(challengeId);

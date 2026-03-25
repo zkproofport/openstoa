@@ -337,9 +337,13 @@ export async function POST(request: NextRequest) {
 
     // Validate proofType
     const validProofTypes = ['none', 'kyc', 'country', 'google_workspace', 'microsoft_365', 'workspace'];
-    const effectiveProofType = proofType && validProofTypes.includes(proofType)
-      ? proofType
-      : (requiresCountryProof ? 'country' : 'none');
+    if (proofType && !validProofTypes.includes(proofType)) {
+      return NextResponse.json(
+        { error: `Invalid proofType. Must be one of: ${validProofTypes.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    const effectiveProofType = proofType || (requiresCountryProof ? 'country' : 'none');
 
     // Creator must satisfy the proof condition they're setting
     if (effectiveProofType !== 'none') {
