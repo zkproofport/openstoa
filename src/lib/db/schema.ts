@@ -34,8 +34,11 @@ export const topics = pgTable('topics', {
   inviteCode: text('invite_code').unique().notNull(),
   visibility: varchar('visibility', { length: 10 }).notNull().default('public'), // 'public' | 'private' | 'secret'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   score: real('score').notNull().default(0),
   lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow(),
+  blindedAt: timestamp('blinded_at', { withTimezone: true }),
+  blindedBy: varchar('blinded_by', { length: 10 }), // 'owner' | 'admin'
 });
 
 export const topicMembers = pgTable('topic_members', {

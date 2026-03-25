@@ -185,9 +185,10 @@ export async function GET(request: NextRequest) {
 
       const memberCountMap = Object.fromEntries(memberCounts.map((m) => [m.topicId, m.count]));
 
-      // Guests see public + private, never secret; optionally filter by category
+      // Guests see public + private, never secret, never blinded; optionally filter by category
       const visibleTopics = allTopics.filter((t) =>
         t.visibility !== 'secret' &&
+        !t.blindedAt &&
         (!filterCategoryId || t.categoryId === filterCategoryId),
       );
 
@@ -232,9 +233,10 @@ export async function GET(request: NextRequest) {
       const memberCountMap = Object.fromEntries(memberCounts.map((m) => [m.topicId, m.count]));
       const userTopicIds = new Set(userMemberships.map((m) => m.topicId));
 
-      // Filter out secret topics unless the user is a member; optionally filter by category
+      // Filter out secret topics unless the user is a member; exclude blinded; optionally filter by category
       const visibleTopics = allTopics.filter((t) =>
         (t.visibility !== 'secret' || userTopicIds.has(t.id)) &&
+        !t.blindedAt &&
         (!filterCategoryId || t.categoryId === filterCategoryId),
       );
 
@@ -271,6 +273,7 @@ export async function GET(request: NextRequest) {
     const userTopicsWithCategory = userTopics.map((t) => ({
       ...t,
       category: t.categoryId ? categoryMap[t.categoryId] ?? null : null,
+      isBlinded: !!t.blindedAt,
     }));
 
     logger.info(ROUTE, 'Topics fetched', { userId: session.userId, count: userTopicsWithCategory.length });

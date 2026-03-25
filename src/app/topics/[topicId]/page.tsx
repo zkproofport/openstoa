@@ -24,6 +24,8 @@ interface Topic {
   isMember: boolean;
   creatorId?: string;
   createdAt: string;
+  blindedAt?: string | null;
+  blindedBy?: string | null;
 }
 
 interface Reaction {
@@ -449,6 +451,26 @@ export default function TopicPage() {
         </div>
       )}
 
+      {/* Blinded banner */}
+      {topic.blindedAt && (
+        <div
+          style={{
+            padding: '10px 16px',
+            background: 'rgba(239,68,68,0.06)',
+            border: '1px solid rgba(239,68,68,0.15)',
+            borderRadius: 8,
+            marginBottom: 16,
+            fontSize: 14,
+            color: '#f87171',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span>{topic.blindedBy === 'admin' ? 'This topic has been hidden by admin.' : 'This topic has been hidden.'}</span>
+        </div>
+      )}
+
       {/* Topic header */}
       <div style={{
         padding: '18px 22px',
@@ -519,6 +541,41 @@ export default function TopicPage() {
               >
                 {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
               </span>
+            )}
+            {!isGuest && currentUserRole === 'owner' && (
+              <Link
+                href={`/topics/${topicId}/edit`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: '#9ca3af',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 6,
+                  padding: '3px 10px',
+                  textDecoration: 'none',
+                  transition: 'all 0.12s',
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.3)';
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = '#9ca3af';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                Edit
+              </Link>
             )}
             {!isGuest && (currentUserRole === 'owner' || currentUserRole === 'admin') && (
               <Link

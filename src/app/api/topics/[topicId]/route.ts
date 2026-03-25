@@ -5,6 +5,7 @@ import { topics, topicMembers, categories } from '@/lib/db/schema';
 import { eq, and, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { buildProofRequirement } from '@/lib/proof-guides';
+import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
 const ROUTE = '/api/topics/[topicId]';
 
@@ -195,7 +196,144 @@ export async function GET(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
+    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/**
+ * @openapi
+ * /api/topics/{topicId}:
+ *   patch:
+ *     tags: [Topics]
+ *     summary: Edit topic
+ *     description: >-
+ *       Only the topic owner can edit. Editable fields: title, description, image.
+ *       At least one field must be provided.
+ *     operationId: editTopic
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: New topic title
+ *               description:
+ *                 type: string
+ *                 nullable: true
+ *                 description: New topic description
+ *               image:
+ *                 type: string
+ *                 nullable: true
+ *                 description: New topic image URL (or base64 data URI)
+ *     responses:
+ *       200:
+ *         description: Topic updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 topic:
+ *                   $ref: '#/components/schemas/Topic'
+ *       400:
+ *         description: No fields to update
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Not the topic owner
+ *       404:
+ *         description: Topic not found
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+) {
+  logger.info(ROUTE, 'PATCH request received');
+  try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { topicId } = await params;
+
+    const topic = await db.query.topics.findFirst({
+      where: eq(topics.id, topicId),
+    });
+
+    if (!topic) {
+      return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    }
+
+    if (topic.creatorId !== session.userId) {
+      logger.warn(ROUTE, 'Non-owner attempted to edit topic', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Only the topic owner can edit' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { title, description, image } = body;
+
+    // At least one field must be provided
+    const hasTitle = title !== undefined && title !== null;
+    const hasDescription = description !== undefined;
+    const hasImage = image !== undefined;
+
+    if (!hasTitle && !hasDescription && !hasImage) {
+      return NextResponse.json({ error: 'At least one field (title, description, image) is required' }, { status: 400 });
+    }
+
+    const updateData: Record<string, unknown> = {};
+    updateData.updatedAt = new Date();
+
+    if (hasTitle) {
+      if (typeof title !== 'string' || !title.trim()) {
+        return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 });
+      }
+      updateData.title = title.trim();
+    }
+
+    if (hasDescription) {
+      updateData.description = description ? String(description).trim() : null;
+    }
+
+    if (hasImage) {
+      let imageValue = image;
+      // If image contains base64 data, extract and upload to R2
+      if (imageValue && typeof imageValue === 'string' && imageValue.includes('base64,')) {
+        imageValue = await extractAndUploadBase64Images(
+          `<img src="${imageValue}">`,
+          session.userId,
+        );
+        // Extract the URL from the processed HTML
+        const urlMatch = imageValue.match(/src="([^"]+)"/);
+        imageValue = urlMatch ? urlMatch[1] : image;
+      }
+      updateData.image = imageValue || null;
+    }
+
+    const [updated] = await db
+      .update(topics)
+      .set(updateData)
+      .where(eq(topics.id, topicId))
+      .returning();
+
+    logger.info(ROUTE, 'Topic updated', { userId: session.userId, topicId, fields: Object.keys(updateData) });
+    return NextResponse.json({ topic: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

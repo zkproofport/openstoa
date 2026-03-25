@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, users, votes, topics, topicMembers, tags, postTags, categories } from '@/lib/db/schema';
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, isNull } from 'drizzle-orm';
 import { getBatchUserBadges } from '@/lib/verification-cache';
 import { logger } from '@/lib/logger';
 
@@ -250,14 +250,14 @@ async function resolvePublicTopicIds(categoryTopicIds: string[] | null): Promise
     const rows = await db
       .select({ id: topics.id })
       .from(topics)
-      .where(and(eq(topics.visibility, 'public'), inArray(topics.id, categoryTopicIds)));
+      .where(and(eq(topics.visibility, 'public'), isNull(topics.blindedAt), inArray(topics.id, categoryTopicIds)));
     return rows.map((r) => r.id);
   }
 
   const rows = await db
     .select({ id: topics.id })
     .from(topics)
-    .where(eq(topics.visibility, 'public'));
+    .where(and(eq(topics.visibility, 'public'), isNull(topics.blindedAt)));
   return rows.map((r) => r.id);
 }
 
@@ -266,18 +266,19 @@ async function resolvePublicTopicIds(categoryTopicIds: string[] | null): Promise
  * optionally filtered by category.
  */
 async function resolveAccessibleTopicIds(userId: string, categoryTopicIds: string[] | null): Promise<string[]> {
-  // Get user's member topics
+  // Get user's member topics (exclude blinded)
   const memberships = await db
     .select({ topicId: topicMembers.topicId })
     .from(topicMembers)
-    .where(eq(topicMembers.userId, userId));
+    .innerJoin(topics, eq(topicMembers.topicId, topics.id))
+    .where(and(eq(topicMembers.userId, userId), isNull(topics.blindedAt)));
   const memberTopicIds = memberships.map((m) => m.topicId);
 
-  // Get public topics
+  // Get public non-blinded topics
   const publicRows = await db
     .select({ id: topics.id })
     .from(topics)
-    .where(eq(topics.visibility, 'public'));
+    .where(and(eq(topics.visibility, 'public'), isNull(topics.blindedAt)));
   const publicTopicIds = publicRows.map((r) => r.id);
 
   // Union (deduplicate)

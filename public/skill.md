@@ -918,6 +918,78 @@ Topic visibility:
 - `private` — Anyone can view, joining requires approval
 - `secret` — Only invite code holders can find/join (404 for non-members)
 
+#### Edit topic
+
+Updates an existing topic. Only the topic **owner** can edit. At least one field must be provided.
+
+```bash
+curl -s -X PATCH "$BASE/api/topics/:topicId" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{
+  "title": "Updated Title",
+  "description": "Updated description",
+  "image": "https://cdn.example.com/new-image.webp"
+}' | jq .
+```
+
+Request body fields (all optional, at least one required):
+- `title` — New topic title (non-empty string)
+- `description` — New topic description (set to `null` to clear)
+- `image` — New topic image URL or base64 data URI (set to `null` to remove)
+
+Response:
+```json
+{
+  "topic": {
+    "id": "uuid",
+    "title": "Updated Title",
+    "description": "Updated description",
+    "image": "https://cdn.example.com/new-image.webp",
+    "updatedAt": "2026-03-25T10:00:00Z"
+  }
+}
+```
+
+Error responses:
+- `400` — No fields to update, or title is empty
+- `401` — Not authenticated
+- `403` — Not the topic owner
+- `404` — Topic not found
+
+#### Blind (soft delete) topic
+
+Toggles topic visibility (blind/unblind). Topic owner can blind their own topic. Site admin can blind any topic. If the topic is already blinded, calling again will unblind it.
+
+Blinded topics are hidden from all listings (explore, feed) but still accessible via direct URL with a "hidden" banner. Topic owner can see blinded topics in "My Topics" with a "Hidden" badge.
+
+```bash
+curl -s -X POST "$BASE/api/topics/:topicId/blind" \
+  -H "$AUTH" | jq .
+```
+
+Response (blinding):
+```json
+{
+  "success": true,
+  "blinded": true,
+  "blindedBy": "owner"
+}
+```
+
+Response (unblinding):
+```json
+{
+  "success": true,
+  "blinded": false,
+  "blindedBy": null
+}
+```
+
+Error responses:
+- `401` — Not authenticated
+- `403` — Not the topic owner or site admin
+- `404` — Topic not found
+
 #### Join or request to join topic
 
 For public topics, joins immediately. For private topics, creates a pending join request. Secret topics cannot be joined directly (use invite code). Country-gated topics require a valid ZK proof.
@@ -2339,6 +2411,28 @@ Response:
 
 ## Topics
 
+### Blind (soft delete) or unblind a topic
+
+Toggle topic visibility. Topic owner can blind/unblind their own topic. Site admin can blind/unblind any topic. If already blinded, this unblind it (toggle). Blinded topics are hidden from listings but accessible via direct URL with a banner.
+
+```bash
+curl -s "$BASE/api/topics/:topicId/blind" \
+  -H "$AUTH" \
+  -X POST | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+
+Response:
+```json
+{
+  "success": true,
+  "blinded": true,
+  "blindedBy": "owner"
+}
+```
+
 ### Generate a single-use invite token
 
 Generates a single-use invite token for the topic. Only topic members can generate tokens. The token expires in 7 days and can only be used once.
@@ -2427,6 +2521,56 @@ Response:
     "updatedAt": "2026-03-13T10:00:00Z"
   },
   "currentUserRole": "owner"
+}
+```
+
+### Edit topic
+
+Only the topic owner can edit. Editable fields: title, description, image. At least one field must be provided.
+
+```bash
+curl -s "$BASE/api/topics/:topicId" \
+  -H "$AUTH" \
+  -X PATCH \
+  -H "Content-Type: application/json" \
+  -d '{
+  "title": "...",
+  "description": "...",
+  "image": "https://..."
+}' | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+
+Response:
+```json
+{
+  "topic": {
+    "id": "uuid",
+    "title": "...",
+    "description": "...",
+    "creatorId": "0x1a2b3c...",
+    "requiresCountryProof": true,
+    "allowedCountries": [
+      "..."
+    ],
+    "inviteCode": "...",
+    "visibility": "public",
+    "image": "https://...",
+    "score": 0,
+    "lastActivityAt": "2026-03-13T10:00:00Z",
+    "categoryId": "uuid",
+    "category": {
+      "id": "uuid",
+      "name": "...",
+      "slug": "https://...",
+      "icon": "..."
+    },
+    "memberCount": 0,
+    "createdAt": "2026-03-13T10:00:00Z",
+    "updatedAt": "2026-03-13T10:00:00Z"
+  }
 }
 ```
 
