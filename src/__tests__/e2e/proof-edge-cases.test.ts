@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { execSync } from 'child_process';
-import { authPost, publicPost, getBaseUrl } from './helpers';
+import { authPost, publicPost, secondUserPost, getBaseUrl } from './helpers';
 
 const BASE = getBaseUrl();
 
@@ -64,7 +64,11 @@ describe.sequential('P1 — Proof Edge Cases', () => {
   // (before deploy, when no cached verification exists for this new topic).
 
   it('3. Country topic with disallowed country → 403 (country list mismatch)', async () => {
-    // Create a JP-only topic as User A (via dev-login token)
+    // Generate KR proof for creator (User A) — valid inclusion proof
+    const { scope: creatorScope } = await getScope();
+    const creatorProof = runProveCoinbase('coinbase_country --countries KR --included true', creatorScope);
+
+    // User A creates a JP-only topic (creator has KR proof, topic requires JP)
     const topicRes = await authPost('/api/topics', {
       title: `E2E Country Mismatch ${Date.now()}`,
       description: 'JP only — KR should be rejected',
@@ -73,38 +77,28 @@ describe.sequential('P1 — Proof Edge Cases', () => {
       requiresCountryProof: true,
       allowedCountries: ['JP'],
       countryMode: 'include',
+      proof: creatorProof.proof,
+      publicInputs: creatorProof.publicInputs,
     });
-    // If topic creation requires a country proof itself, skip gracefully
-    if (topicRes.status === 400 || topicRes.status === 402) {
-      console.log(`[E2E] Skipping test 3: topic creation returned ${topicRes.status} (proof required for creator)`);
-      return;
-    }
     expect(topicRes.status).toBe(201);
     const { topic } = await topicRes.json();
     console.log(`[E2E] Created JP-only topic: ${topic.id}`);
 
-    // Generate a KR country proof (wallet is KR, included=true in KR list)
-    const { scope } = await getScope();
-    const proofResult = runProveCoinbase('coinbase_country --countries KR --included true', scope);
+    // Generate a KR country proof for User B (wallet is KR, included=true in KR list)
+    const { scope: joinScope } = await getScope();
+    const joinerProof = runProveCoinbase('coinbase_country --countries KR --included true', joinScope);
 
-    // Try to join the JP topic with a KR proof
-    const joinRes = await authPost(`/api/topics/${topic.id}/join`, {
-      proof: proofResult.proof,
-      publicInputs: proofResult.publicInputs,
+    // User B tries to join the JP topic with a KR proof → 403 (country list mismatch)
+    const joinRes = await secondUserPost(`/api/topics/${topic.id}/join`, {
+      proof: joinerProof.proof,
+      publicInputs: joinerProof.publicInputs,
     });
 
-    console.log(`[E2E] Join JP topic with KR proof → ${joinRes.status}`);
-    // After deployment: 403 (country list mismatch — proof has KR, topic requires JP)
-    // Before deployment: 402 (no cached country verification for this user+topic combo)
-    //                 or 201 (old behavior: only checks is_included, not country match)
-    expect([402, 403]).toContain(joinRes.status);
-    if (joinRes.status === 403) {
-      const json = await joinRes.json();
-      expect(json.error).toBeTruthy();
-      console.log('[E2E] 403 — country mismatch correctly rejected (fix deployed)');
-    } else {
-      console.log(`[E2E] ${joinRes.status} — staging not yet updated with country-matching fix`);
-    }
+    console.log(`[E2E] User B join JP topic with KR proof → ${joinRes.status}`);
+    expect(joinRes.status).toBe(403);
+    const json = await joinRes.json();
+    expect(json.error).toContain('Country list mismatch');
+    console.log('[E2E] 403 — country list mismatch correctly rejected');
   }, 180_000);
 
   // ── Test 4: Country exclude mode — is_included=0 proof rejected on inclusion-required topic ──
@@ -114,7 +108,11 @@ describe.sequential('P1 — Proof Edge Cases', () => {
   // must reject this proof because is_included=0 means the wallet proved exclusion, not inclusion.
 
   it('4. Country exclude mode proof (is_included=0) rejected by inclusion topic → 403', async () => {
-    // Create a KR-only topic as User A (via dev-login token)
+    // Generate KR proof for creator (to satisfy topic creation requirement)
+    const { scope: creatorScope } = await getScope();
+    const creatorProof = runProveCoinbase('coinbase_country --countries KR --included true', creatorScope);
+
+    // Create a KR-only topic with creator's proof
     const topicRes = await authPost('/api/topics', {
       title: `E2E Country Exclude ${Date.now()}`,
       description: 'KR only — exclude-mode proof should be rejected',
@@ -123,12 +121,9 @@ describe.sequential('P1 — Proof Edge Cases', () => {
       requiresCountryProof: true,
       allowedCountries: ['KR'],
       countryMode: 'include',
+      proof: creatorProof.proof,
+      publicInputs: creatorProof.publicInputs,
     });
-    // If topic creation requires a country proof itself, skip gracefully
-    if (topicRes.status === 400 || topicRes.status === 402) {
-      console.log(`[E2E] Skipping test 4: topic creation returned ${topicRes.status} (proof required for creator)`);
-      return;
-    }
     expect(topicRes.status).toBe(201);
     const { topic } = await topicRes.json();
     console.log(`[E2E] Created KR-only topic: ${topic.id}`);
@@ -138,23 +133,17 @@ describe.sequential('P1 — Proof Edge Cases', () => {
     const { scope } = await getScope();
     const proofResult = runProveCoinbase('coinbase_country --countries JP --included false', scope);
 
-    // Try to join the KR-only topic with an is_included=0 proof
-    const joinRes = await authPost(`/api/topics/${topic.id}/join`, {
+    // User B tries to join the KR-only topic with an is_included=0 proof
+    const joinRes = await secondUserPost(`/api/topics/${topic.id}/join`, {
       proof: proofResult.proof,
       publicInputs: proofResult.publicInputs,
     });
 
     console.log(`[E2E] Join KR topic with is_included=0 proof → ${joinRes.status}`);
-    // is_included=0 means the wallet proved exclusion — must be rejected (403)
-    // Before deployment: may return 402 (no cached country verification)
-    expect([402, 403]).toContain(joinRes.status);
-    if (joinRes.status === 403) {
-      const json = await joinRes.json();
-      expect(json.error).toBeTruthy();
-      console.log('[E2E] 403 — is_included=0 (exclude-mode proof) correctly rejected');
-    } else {
-      console.log(`[E2E] ${joinRes.status} — staging may not yet enforce is_included check`);
-    }
+    expect(joinRes.status).toBe(403);
+    const json = await joinRes.json();
+    expect(json.error).toBeTruthy();
+    console.log('[E2E] 403 — is_included=0 (exclude-mode proof) correctly rejected');
   }, 180_000);
 
   // ── Test 5: Domain-restricted workspace topic with wrong domain → 403 ──────
