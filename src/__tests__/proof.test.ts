@@ -92,6 +92,14 @@ describe('extractNullifier', () => {
     );
   });
 
+  it('should not throw for all supported circuits', () => {
+    const supportedCircuits = ['coinbase_attestation', 'coinbase_country_attestation', 'oidc_domain_attestation'];
+    for (const circuit of supportedCircuits) {
+      const inputs = generateMockPublicInputs(150);
+      expect(() => extractNullifier(inputs, circuit)).not.toThrow('Unsupported circuit');
+    }
+  });
+
   it('should produce deterministic results', () => {
     const nullifierBytes = Array.from({ length: 32 }, (_, i) => i);
     const scopeBytes = Array.from({ length: 32 }, () => 0);
@@ -149,6 +157,14 @@ describe('extractScope', () => {
     expect(() => extractScope(inputs, 'unknown_circuit')).toThrow(
       'Unsupported circuit for scope extraction',
     );
+  });
+
+  it('should not throw for all supported circuits', () => {
+    const supportedCircuits = ['coinbase_attestation', 'coinbase_country_attestation', 'oidc_domain_attestation'];
+    for (const circuit of supportedCircuits) {
+      const inputs = generateMockPublicInputs(150);
+      expect(() => extractScope(inputs, circuit)).not.toThrow('Unsupported circuit');
+    }
   });
 });
 
