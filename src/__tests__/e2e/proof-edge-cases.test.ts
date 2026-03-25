@@ -45,9 +45,17 @@ describe.sequential('P1 — Proof Edge Cases', () => {
   });
 
   // ── Test 2: Create topic with invalid proofType → 400 ─────────────────────
-  // Fix implemented locally (server-side proofType validation). Pending deployment to staging.
 
-  it.todo('2. Create topic with invalid proofType → 400 (fix implemented locally, pending staging deployment)');
+  it('2. Create topic with invalid proofType → 400', async () => {
+    const res = await authPost('/api/topics', {
+      title: 'Invalid ProofType Test',
+      categoryId,
+      proofType: 'invalid_type',
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
 
   // ── Test 3: Country topic — disallowed country → 403 ──────────────────────
   // Fix implemented locally: join handler now verifies that the proof's country_list
