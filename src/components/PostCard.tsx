@@ -142,6 +142,7 @@ export default function PostCard({
   // State for rich features
   const [shareText, setShareText] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [contentOverflows, setContentOverflows] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -340,11 +341,12 @@ export default function PostCard({
               truncate={!expanded}
               maxLines={3}
               onToggleExpand={handleToggleExpand}
+              onOverflowChange={setContentOverflows}
             />
           </div>
 
-          {/* Media gallery — compact thumbnails (only when truncated) */}
-          {!expanded && (() => {
+          {/* Media gallery — compact thumbnails (only when content overflows) */}
+          {!expanded && contentOverflows && (() => {
             const mediaItems: Array<{ type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string }> = [];
 
             const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
@@ -557,11 +559,12 @@ export default function PostCard({
             truncate={expandable ? !expanded : true}
             maxLines={3}
             onToggleExpand={expandable ? handleToggleExpand : undefined}
+            onOverflowChange={setContentOverflows}
           />
         </div>
 
-        {/* Media gallery — compact thumbnails (only when truncated) */}
-        {!expanded && (() => {
+        {/* Media gallery — compact thumbnails (only when content overflows) */}
+        {!expanded && contentOverflows && (() => {
           const mediaItems: Array<{ type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string }> = [];
 
           // Extract images

@@ -16,6 +16,7 @@ interface SNSContentProps {
   truncate?: boolean;
   maxLines?: number;
   onToggleExpand?: () => void;
+  onOverflowChange?: (isOverflowing: boolean) => void;
 }
 
 // ─── URL Auto-linking in HTML ───────────────────────────────────────────────
@@ -266,6 +267,7 @@ export default function SNSContent({
   truncate,
   maxLines = 4,
   onToggleExpand,
+  onOverflowChange,
 }: SNSContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
@@ -296,9 +298,11 @@ export default function SNSContent({
   useEffect(() => {
     if (truncate && contentRef.current) {
       const el = contentRef.current;
-      setIsOverflowing(el.scrollHeight > 200 + 2);
+      const overflowing = el.scrollHeight > 200 + 2;
+      setIsOverflowing(overflowing);
+      onOverflowChange?.(overflowing);
     }
-  }, [truncate, html]);
+  }, [truncate, html, onOverflowChange]);
 
   return (
     <div style={{
