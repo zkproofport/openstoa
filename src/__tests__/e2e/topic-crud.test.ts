@@ -159,59 +159,27 @@ describe.sequential('Topic CRUD + Permission + Blind', () => {
 
   // ── Topic Blind ─────────────────────────────────────────────────────
 
-  it('10. Owner blinds topic -> 200, blinded: true', async () => {
+  it('10. Owner cannot blind topic (admin-only) -> 403', async () => {
     const res = await authPost(`/api/topics/${publicTopicId}/blind`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
     const json = await res.json();
-    expect(json.success).toBe(true);
-    expect(json.blinded).toBe(true);
-    expect(json.blindedBy).toBeTruthy();
+    expect(json.error).toBeTruthy();
   });
 
-  it('11. Owner unblinds topic (toggle) -> 200, blinded: false', async () => {
-    const res = await authPost(`/api/topics/${publicTopicId}/blind`);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    expect(json.blinded).toBe(false);
-    expect(json.blindedBy).toBeNull();
-  });
-
-  it('12. Non-owner blinds topic -> 403', async () => {
+  it('11. Non-owner cannot blind topic -> 403', async () => {
     const res = await secondUserPost(`/api/topics/${publicTopicId}/blind`);
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toBeTruthy();
   });
 
-  it('13. Guest (unauthenticated) blinds topic -> 401', async () => {
+  it('12. Guest (unauthenticated) blinds topic -> 401', async () => {
     const res = await publicPost(`/api/topics/${publicTopicId}/blind`);
     expect(res.status).toBe(401);
     const json = await res.json();
     expect(json.error).toBeTruthy();
   });
 
-  it('14. Blinded topic is excluded from topic list', async () => {
-    // First, blind the topic
-    const blindRes = await authPost(`/api/topics/${publicTopicId}/blind`);
-    expect(blindRes.status).toBe(200);
-    const blindJson = await blindRes.json();
-    expect(blindJson.blinded).toBe(true);
-
-    // Fetch all topics and verify the blinded topic is excluded
-    const listRes = await publicGet('/api/topics?view=all');
-    expect(listRes.status).toBe(200);
-    const listJson = await listRes.json();
-    const topics = listJson.topics || listJson;
-    expect(Array.isArray(topics)).toBe(true);
-
-    const found = topics.find((t: { id: string }) => t.id === publicTopicId);
-    expect(found).toBeUndefined();
-
-    // Clean up: unblind for any subsequent tests
-    const unblindRes = await authPost(`/api/topics/${publicTopicId}/blind`);
-    expect(unblindRes.status).toBe(200);
-    const unblindJson = await unblindRes.json();
-    expect(unblindJson.blinded).toBe(false);
-  });
+  it.todo('13. Admin blinds topic -> 200 (requires site admin test user)');
+  it.todo('14. Blinded topic excluded from list (requires site admin test user)');
 });

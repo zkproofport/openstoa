@@ -8,48 +8,8 @@ import { logger } from '@/lib/logger';
 const ROUTE = '/api/topics/[topicId]/blind';
 
 /**
- * @openapi
- * /api/topics/{topicId}/blind:
- *   post:
- *     tags: [Topics]
- *     summary: Blind (soft delete) or unblind a topic
- *     description: >-
- *       Toggle topic visibility. Topic owner can blind/unblind their own topic.
- *       Site admin can blind/unblind any topic. If already blinded, this unblind it (toggle).
- *       Blinded topics are hidden from listings but accessible via direct URL with a banner.
- *     operationId: blindTopic
- *     parameters:
- *       - name: topicId
- *         in: path
- *         required: true
- *         description: Topic ID
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Topic blinded or unblinded
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 blinded:
- *                   type: boolean
- *                   description: Whether the topic is now blinded
- *                 blindedBy:
- *                   type: string
- *                   nullable: true
- *                   enum: [owner, admin]
- *                   description: Who blinded the topic (null if unblinded)
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- *       403:
- *         description: Not authorized to blind this topic
- *       404:
- *         description: Topic not found
+ * @openapi-admin
+ * Admin-only: blind/unblind topic. Not exposed in public API docs.
  */
 export async function POST(
   request: NextRequest,
@@ -72,20 +32,13 @@ export async function POST(
       return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
     }
 
-    // Check authorization: owner or site admin
-    const isOwner = topic.creatorId === session.userId;
-
-    let isAdmin = false;
-    if (!isOwner) {
-      const user = await db.query.users.findFirst({
-        where: eq(users.id, session.userId),
-      });
-      isAdmin = user?.role === 'admin';
-    }
-
-    if (!isOwner && !isAdmin) {
-      logger.warn(ROUTE, 'Unauthorized blind attempt', { userId: session.userId, topicId });
-      return NextResponse.json({ error: 'Only the topic owner or site admin can blind a topic' }, { status: 403 });
+    // Only site admin can blind topics
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, session.userId),
+    });
+    if (user?.role !== 'admin') {
+      logger.warn(ROUTE, 'Non-admin blind attempt', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Only site admin can blind a topic' }, { status: 403 });
     }
 
     // Toggle: if already blinded, unblind
@@ -100,7 +53,7 @@ export async function POST(
     }
 
     // Blind the topic
-    const blindedBy = isOwner ? 'owner' : 'admin';
+    const blindedBy = 'admin';
     await db
       .update(topics)
       .set({ blindedAt: new Date(), blindedBy })
