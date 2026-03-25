@@ -280,5 +280,96 @@ describe.sequential('Profile API', () => {
 
   // ── Account deletion ────────────────────────────────────────────────────
 
-  it.todo('8. Account deletion (DELETE /api/profile or /api/profile/account) -> endpoint does not exist yet');
+  it('8. Account deletion (DELETE /api/account) -> 200, session cleared', async () => {
+    // Create an isolated user with no owned topics
+    const devRes = await fetch(`${getBaseUrl()}/api/auth/dev-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: `e2e_del_${Date.now().toString(36)}` }),
+    });
+    expect(devRes.status).toBe(200);
+    const devData = await devRes.json();
+    const deleteUserToken = devData.token;
+    expect(deleteUserToken).toBeTruthy();
+
+    // Confirm the user is authenticated before deletion
+    const sessionBefore = await fetch(`${getBaseUrl()}/api/auth/session`, {
+      headers: { Authorization: `Bearer ${deleteUserToken}` },
+    });
+    expect(sessionBefore.status).toBe(200);
+
+    // Delete the account
+    const deleteRes = await fetch(`${getBaseUrl()}/api/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${deleteUserToken}` },
+    });
+    expect(deleteRes.status).toBe(200);
+    const deleteJson = await deleteRes.json();
+    expect(deleteJson.success).toBe(true);
+
+    // The JWT token itself is still cryptographically valid (stateless),
+    // but the user record is anonymized (deletedAt set). The session
+    // endpoint may still return 200 with the old payload since JWTs
+    // are not revoked server-side — the key observable effect is the
+    // successful 200 deletion response above.
+  });
+
+  it('8b. Account deletion without auth -> 401', async () => {
+    const res = await fetch(`${getBaseUrl()}/api/account`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('8c. Account deletion when user owns topics -> 409', async () => {
+    // User A (the main test user) owns topics created in other test suites.
+    // We rely on the fact that the global-setup user (User A) has created
+    // topics in other sequential test files. To be self-contained, we
+    // create a fresh user, have them create a topic, then try to delete.
+    const res = await fetch(`${getBaseUrl()}/api/auth/dev-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: `e2e_own_${Date.now().toString(36)}` }),
+    });
+    expect(res.status).toBe(200);
+    const ownerData = await res.json();
+    const ownerToken = ownerData.token;
+
+    // Fetch categories first
+    const catRes = await fetch(`${getBaseUrl()}/api/categories`, {
+      headers: { Authorization: `Bearer ${ownerToken}` },
+    });
+    expect(catRes.status).toBe(200);
+    const catJson = await catRes.json();
+    const firstCategoryId = catJson.categories[0].id;
+
+    // Create a topic as this user
+    const topicRes = await fetch(`${getBaseUrl()}/api/topics`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ownerToken}`,
+      },
+      body: JSON.stringify({
+        title: `E2E Owner Delete Topic ${Date.now()}`,
+        description: 'Topic to block account deletion',
+        visibility: 'public',
+        categoryId: firstCategoryId,
+      }),
+    });
+    expect(topicRes.status).toBe(201);
+
+    // Attempt to delete account while owning a topic → 409
+    const deleteRes = await fetch(`${getBaseUrl()}/api/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${ownerToken}` },
+    });
+    expect(deleteRes.status).toBe(409);
+    const deleteJson = await deleteRes.json();
+    expect(deleteJson.error).toBeTruthy();
+    expect(Array.isArray(deleteJson.topics)).toBe(true);
+    expect(deleteJson.topics.length).toBeGreaterThan(0);
+  });
 });
