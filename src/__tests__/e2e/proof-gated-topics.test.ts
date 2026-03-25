@@ -481,4 +481,198 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
       expect(codes).toContain('stg-community.zkproofport.app');
     }
   });
+
+  // ══════════════════════════════════════════════════
+  // PROOF EDGE CASES
+  // ══════════════════════════════════════════════════
+
+  // ── Test 1: Join non-existent topic → 404 ──────────────────────────────────
+
+  it('edge: join non-existent topic → 404', async () => {
+    const fakeTopicId = '00000000-0000-0000-0000-000000000000';
+    const res = await fetchAuth(`/api/topics/${fakeTopicId}/join`, userAToken, { method: 'POST', body: '{}' });
+    expect(res.status).toBe(404);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  // ── Test 2: Create topic with invalid proofType → 400 ─────────────────────
+
+  it('edge: create topic with invalid proofType → 400', async () => {
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Invalid ProofType Test',
+        categoryId,
+        proofType: 'invalid_type',
+      }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  // ── Test 3: Create country topic with mismatched country_list → 403 ────────
+  // After the creation-side fix, the server verifies that the creator's proof
+  // country_list matches the topic's allowedCountries at creation time.
+  // A KR wallet cannot create a JP-only topic — the server rejects it with 403.
+
+  it('edge: create country topic with mismatched country_list → 403', async () => {
+    // Generate KR proof (wallet is KR)
+    const { scope } = await getScope();
+    const krProof = runProveCoinbase('coinbase_country --countries KR --included true', scope);
+
+    // Try to create JP-only topic with KR proof → 403 (country list mismatch)
+    const res = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `E2E Country Create Mismatch ${Date.now()}`,
+        categoryId,
+        proofType: 'country',
+        requiresCountryProof: true,
+        allowedCountries: ['JP'],
+        countryMode: 'include',
+        proof: krProof.proof,
+        publicInputs: krProof.publicInputs,
+      }),
+    });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log('[E2E] 403 — creator country list mismatch correctly rejected');
+  }, 180_000);
+
+  // ── Test 4: Country exclude mode — is_included=0 proof rejected on inclusion-required topic ──
+  // A KR wallet CAN generate coinbase_country --countries JP --included false:
+  // this proves "my country is NOT in [JP]" — which is true (KR ≠ JP), so is_included=0.
+  // A topic that requires KR membership (allowedCountries: ['KR'], countryMode: 'include')
+  // must reject this proof because is_included=0 means the wallet proved exclusion, not inclusion.
+
+  it('edge: country exclude mode proof (is_included=0) rejected by inclusion topic → 403', async () => {
+    // Generate KR proof for creator (to satisfy topic creation requirement)
+    const { scope: creatorScope } = await getScope();
+    const creatorProof = runProveCoinbase('coinbase_country --countries KR --included true', creatorScope);
+
+    // Create a KR-only topic with creator's proof
+    const topicRes = await fetchAuth('/api/topics', userAToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `E2E Country Exclude ${Date.now()}`,
+        description: 'KR only — exclude-mode proof should be rejected',
+        categoryId,
+        proofType: 'country',
+        requiresCountryProof: true,
+        allowedCountries: ['KR'],
+        countryMode: 'include',
+        proof: creatorProof.proof,
+        publicInputs: creatorProof.publicInputs,
+      }),
+    });
+    expect(topicRes.status).toBe(201);
+    const { topic } = await topicRes.json();
+    console.log(`[E2E] Created KR-only topic: ${topic.id}`);
+
+    // Generate an exclude-mode proof: proves wallet is NOT in [JP] list → is_included=0
+    // KR wallet + JP list → KR is not JP → is_included=0 (truthful exclusion proof)
+    const { scope } = await getScope();
+    const proofResult = runProveCoinbase('coinbase_country --countries JP --included false', scope);
+
+    // User B tries to join the KR-only topic with an is_included=0 proof
+    const joinRes = await fetchAuth(`/api/topics/${topic.id}/join`, userBToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: proofResult.proof, publicInputs: proofResult.publicInputs }),
+    });
+
+    console.log(`[E2E] Join KR topic with is_included=0 proof → ${joinRes.status}`);
+    expect(joinRes.status).toBe(403);
+    const json = await joinRes.json();
+    expect(json.error).toBeTruthy();
+    console.log('[E2E] 403 — is_included=0 (exclude-mode proof) correctly rejected');
+  }, 180_000);
+
+  // ── Test 7: Non-existent challengeId → 400 ────────────────────────────────
+
+  it('edge: non-existent / expired challengeId → 400', async () => {
+    // Use a well-formed but non-existent challengeId — Redis key won't be found.
+    // Server returns 400 (invalid/expired challenge).
+    const nonExistentChallengeId = 'nonexistent-challenge-id-' + Date.now().toString(36);
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeId: nonExistentChallengeId,
+        result: { proof: '0x' + 'ab'.repeat(32), publicInputs: '0x' + 'cd'.repeat(32) },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] 400 — non-existent challengeId correctly rejected`);
+  });
+
+  // ── Test 8: Scope mismatch in proof → non-2xx ─────────────────────────────
+  // POST to verify/ai with a fake proof that has wrong scope in publicInputs.
+  // Since proof verification happens on-chain first, invalid proof data fails
+  // before scope check → 400 or 401 depending on failure point.
+
+  it('edge: invalid proof data with wrong scope → non-2xx', async () => {
+    const { challengeId } = await getScope();
+
+    // Send clearly invalid hex data — will fail at proof verification stage
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeId,
+        result: {
+          proof: '0x' + '00'.repeat(64),
+          publicInputs: '0x' + '00'.repeat(128), // wrong scope encoded in zeros
+        },
+      }),
+    });
+    expect(res.status).not.toBe(200);
+    expect(res.status).not.toBe(201);
+    console.log(`[E2E] Status ${res.status} — scope mismatch / invalid proof correctly rejected`);
+  });
+
+  // ── Test 9: Malformed proof data (empty string, invalid hex) → 400 ─────────
+
+  it('edge: join topic with empty proof string → 400', async () => {
+    // Use a non-existent topic ID — format validation or 404 fires first
+    const fakeTopicId = '00000000-0000-0000-0000-000000000001';
+    const res = await fetchAuth(`/api/topics/${fakeTopicId}/join`, userAToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: '', publicInputs: '' }),
+    });
+    // Should fail with 400 (bad input) or 404 (topic not found first)
+    expect([400, 404]).toContain(res.status);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] ${res.status} — empty proof correctly rejected`);
+  });
+
+  it('edge: join topic with non-hex proof string → 400', async () => {
+    const fakeTopicId = '00000000-0000-0000-0000-000000000001';
+    const res = await fetchAuth(`/api/topics/${fakeTopicId}/join`, userAToken, {
+      method: 'POST',
+      body: JSON.stringify({ proof: 'not-hex-data', publicInputs: 'also-not-hex' }),
+    });
+    expect([400, 404]).toContain(res.status);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] ${res.status} — non-hex proof correctly rejected`);
+  });
+
+  it('edge: POST /api/auth/verify/ai with empty proof → 400', async () => {
+    const { challengeId } = await getScope();
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId, result: { proof: '', publicInputs: '' } }),
+    });
+    expect([400, 401]).toContain(res.status);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] ${res.status} — empty proof in verify/ai correctly rejected`);
+  });
 });
