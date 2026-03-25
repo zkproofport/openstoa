@@ -296,12 +296,41 @@ export default function SNSContent({
   }, [firstUrl]);
 
   useEffect(() => {
-    if (truncate && contentRef.current) {
-      const el = contentRef.current;
+    if (!truncate || !contentRef.current) return;
+    const el = contentRef.current;
+
+    const checkOverflow = () => {
       const overflowing = el.scrollHeight > 200 + 2;
       setIsOverflowing(overflowing);
       onOverflowChange?.(overflowing);
+    };
+
+    // Initial check
+    checkOverflow();
+
+    // Re-check after images load (they change scrollHeight)
+    const imgs = el.querySelectorAll('img');
+    imgs.forEach((img) => {
+      if (!img.complete) {
+        img.addEventListener('load', checkOverflow, { once: true });
+        img.addEventListener('error', checkOverflow, { once: true });
+      }
+    });
+
+    // ResizeObserver as fallback for any layout shifts
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(checkOverflow);
+      ro.observe(el);
     }
+
+    return () => {
+      imgs.forEach((img) => {
+        img.removeEventListener('load', checkOverflow);
+        img.removeEventListener('error', checkOverflow);
+      });
+      ro?.disconnect();
+    };
   }, [truncate, html, onOverflowChange]);
 
   return (
