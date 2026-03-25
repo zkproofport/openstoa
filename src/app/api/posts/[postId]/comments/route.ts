@@ -3,7 +3,8 @@ import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, comments, topicMembers, users } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import { getUserBadges } from '@/lib/verification-cache';
+import { getUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/posts/[postId]/comments';
@@ -121,7 +122,14 @@ export async function POST(
       columns: { nickname: true, profileImage: true },
     });
 
-    const badges = await getUserBadges(session.userId);
+    // Get topic proofType for badge filtering
+    const topicForBadge = await db.query.topics.findFirst({
+      where: eq(topics.id, post.topicId),
+      columns: { proofType: true },
+    });
+
+    const allBadges = await getUserBadges(session.userId);
+    const badges = filterBadgesByTopicProofType(allBadges, topicForBadge?.proofType ?? null);
 
     logger.info(ROUTE, 'Comment created', { userId: session.userId, postId, commentId: comment.id });
     return NextResponse.json({

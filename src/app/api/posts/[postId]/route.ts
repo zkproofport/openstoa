@@ -6,7 +6,7 @@ import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
-import { getBatchUserBadges } from '@/lib/verification-cache';
+import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 type Badge = { type: string; label: string };
 
 const ROUTE = '/api/posts/[postId]';
@@ -170,6 +170,7 @@ export async function GET(
           userVoted: sql<number | null>`null`,
           topicTitle: topics.title,
           topicVisibility: topics.visibility,
+          topicProofType: topics.proofType,
         })
         .from(posts)
         .leftJoin(users, eq(posts.authorId, users.id))
@@ -217,8 +218,8 @@ export async function GET(
         .innerJoin(tags, eq(postTags.tagId, tags.id))
         .where(eq(postTags.postId, postId));
 
-      // Strip topicVisibility from response
-      const { topicVisibility: _, ...postWithoutVisibility } = post;
+      // Strip internal fields from response
+      const { topicVisibility: _, topicProofType: topicPT, ...postWithoutVisibility } = post;
 
       // Collect all user IDs for badge lookup (only non-deleted comments)
       const guestUserIds = [...new Set([
@@ -246,13 +247,13 @@ export async function GET(
           ...c,
           isDeleted: false,
           deletedBy: null,
-          badges: guestBadgeMap.get(c.authorId) ?? [],
+          badges: filterBadgesByTopicProofType(guestBadgeMap.get(c.authorId) ?? [], topicPT),
         };
       });
 
       logger.info(ROUTE, 'Guest post detail fetched', { postId, commentCount: postComments.length });
       return NextResponse.json({
-        post: { ...postWithoutVisibility, tags: postTagResults, badges: guestBadgeMap.get(post.authorId) ?? [] },
+        post: { ...postWithoutVisibility, tags: postTagResults, badges: filterBadgesByTopicProofType(guestBadgeMap.get(post.authorId) ?? [], topicPT) },
         comments: guestCommentsWithBadges,
       });
     }
@@ -279,6 +280,7 @@ export async function GET(
         score: posts.score,
         userVoted: sql<number | null>`${votes.value}`,
         topicTitle: topics.title,
+        topicProofType: topics.proofType,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
@@ -351,6 +353,8 @@ export async function GET(
     ].filter(Boolean))] as string[];
     const badgeMap = await getBatchUserBadges(allUserIds);
 
+    const { topicProofType: authTopicPT, ...postWithoutProofType } = post;
+
     const commentsWithBadges = postComments.map((c) => {
       if (c.deletedAt) {
         return {
@@ -370,13 +374,13 @@ export async function GET(
         ...c,
         isDeleted: false,
         deletedBy: null,
-        badges: badgeMap.get(c.authorId) ?? [],
+        badges: filterBadgesByTopicProofType(badgeMap.get(c.authorId) ?? [], authTopicPT),
       };
     });
 
     logger.info(ROUTE, 'Post detail fetched', { userId: session.userId, postId, commentCount: postComments.length });
     return NextResponse.json({
-      post: { ...post, tags: postTagResults, badges: badgeMap.get(post.authorId) ?? [] },
+      post: { ...postWithoutProofType, tags: postTagResults, badges: filterBadgesByTopicProofType(badgeMap.get(post.authorId) ?? [], authTopicPT) },
       comments: commentsWithBadges,
     });
   } catch (error) {

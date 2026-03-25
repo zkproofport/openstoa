@@ -3,7 +3,8 @@ import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topicMembers, users } from '@/lib/db/schema';
 import { eq, and, ilike, sql } from 'drizzle-orm';
-import { getBatchUserBadges } from '@/lib/verification-cache';
+import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/members';
@@ -172,6 +173,13 @@ export async function GET(
     return NextResponse.json({ error: 'Not a member' }, { status: 403 });
   }
 
+  // Get topic proofType for badge filtering
+  const topicForBadge = await db.query.topics.findFirst({
+    where: eq(topics.id, topicId),
+    columns: { proofType: true },
+  });
+  const topicProofType = topicForBadge?.proofType ?? null;
+
   logger.info(ROUTE, 'Fetching members', { topicId, q });
 
   if (q) {
@@ -192,7 +200,7 @@ export async function GET(
     const badgeMap = await getBatchUserBadges(mentionUserIds);
     const membersWithBadges = members.map(m => ({
       ...m,
-      badges: badgeMap.get(m.userId) ?? [],
+      badges: filterBadgesByTopicProofType(badgeMap.get(m.userId) ?? [], topicProofType),
     }));
     return NextResponse.json({ members: membersWithBadges, currentUserRole: membership.role });
   }
@@ -216,7 +224,7 @@ export async function GET(
   const badgeMap = await getBatchUserBadges(memberUserIds);
   const membersWithBadges = members.map(m => ({
     ...m,
-    badges: badgeMap.get(m.userId) ?? [],
+    badges: filterBadgesByTopicProofType(badgeMap.get(m.userId) ?? [], topicProofType),
   }));
 
   return NextResponse.json({ members: membersWithBadges });

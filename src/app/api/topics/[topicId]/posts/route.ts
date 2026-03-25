@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger';
 import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
-import { getBatchUserBadges, type Badge } from '@/lib/verification-cache';
+import { getBatchUserBadges, filterBadgesByTopicProofType, type Badge } from '@/lib/verification-cache';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -216,7 +216,7 @@ export async function GET(
       const guestBadgeMap = await getBatchUserBadges(guestAuthorIds);
       const guestPostsWithBadges = topicPosts.map((p) => ({
         ...p,
-        badges: guestBadgeMap.get(p.authorId) ?? [],
+        badges: filterBadgesByTopicProofType(guestBadgeMap.get(p.authorId) ?? [], topic.proofType),
       }));
 
       logger.info(ROUTE, 'Guest posts fetched', { topicId, count: topicPosts.length });
@@ -310,11 +310,17 @@ export async function GET(
       .limit(limit)
       .offset(offset);
 
+    // Get topic proofType for badge filtering
+    const topicForBadge = await db.query.topics.findFirst({
+      where: eq(topics.id, topicId),
+      columns: { proofType: true },
+    });
+
     const authorIds = [...new Set(topicPosts.map((p) => p.authorId).filter(Boolean))] as string[];
     const badgeMap = await getBatchUserBadges(authorIds);
     const postsWithBadges = topicPosts.map((p) => ({
       ...p,
-      badges: badgeMap.get(p.authorId) ?? [],
+      badges: filterBadgesByTopicProofType(badgeMap.get(p.authorId) ?? [], topicForBadge?.proofType ?? null),
     }));
 
     logger.info(ROUTE, 'Posts fetched', { userId: session.userId, topicId, count: topicPosts.length });

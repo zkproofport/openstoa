@@ -200,14 +200,14 @@ export interface Badge {
  */
 function cacheTypeToBadges(cacheType: string, domains?: string[]): Badge[] {
   switch (cacheType) {
-    case 'kyc': return [{ type: 'kyc', label: 'KYC Verified' }];
-    case 'country': return [{ type: 'country', label: 'Country Verified' }];
+    case 'kyc': return [{ type: 'kyc', label: 'KYC' }];
+    case 'country': return [{ type: 'country', label: 'Country' }];
     case 'oidc_domain':
       if (domains && domains.length > 0) {
         return domains.map(d => ({ type: 'workspace', label: d, domain: d }));
       }
-      return [{ type: 'workspace', label: 'Org Verified' }];
-    case 'oidc_login': return [{ type: 'oidc', label: 'OIDC Verified' }];
+      return [{ type: 'workspace', label: 'Org' }];
+    case 'oidc_login': return [{ type: 'oidc', label: 'OIDC' }];
     default: return [];
   }
 }
@@ -305,6 +305,32 @@ export async function getUserBadges(userId: string): Promise<Badge[]> {
     }
     return cacheTypeToBadges(v.proofType);
   });
+}
+
+/**
+ * Filter badges by the topic's proofType.
+ * - 'none' (open topic) → no badges
+ * - 'kyc' → only KYC badges
+ * - 'country' → only Country badges
+ * - 'google_workspace'/'microsoft_365'/'workspace' → only opt-in domain badges (with domain field)
+ *   Generic "Org Verified" is excluded — only domain badges where user opted in are shown.
+ */
+export function filterBadgesByTopicProofType(badges: Badge[], topicProofType: string | null): Badge[] {
+  if (!topicProofType || topicProofType === 'none') return [];
+
+  switch (topicProofType) {
+    case 'kyc':
+      return badges.filter(b => b.type === 'kyc');
+    case 'country':
+      return badges.filter(b => b.type === 'country');
+    case 'google_workspace':
+    case 'microsoft_365':
+    case 'workspace':
+      // Only opt-in domain badges (with actual domain value), not generic "Org Verified"
+      return badges.filter(b => (b.type === 'workspace' || b.type === 'oidc_domain') && b.domain);
+    default:
+      return [];
+  }
 }
 
 /**

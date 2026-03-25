@@ -20,6 +20,7 @@ import {
   getUserBadges,
   getBatchUserBadges,
   saveVerificationCache,
+  filterBadgesByTopicProofType,
 } from '@/lib/verification-cache';
 
 describe('Domain Badge — merged into oidc_domain record', () => {
@@ -268,7 +269,7 @@ describe('Domain Badge — Badge display integration', () => {
       const badges = await getUserBadges('user1');
 
       expect(badges).toEqual([
-        { type: 'workspace', label: 'Org Verified' },
+        { type: 'workspace', label: 'Org' },
       ]);
     });
 
@@ -311,7 +312,7 @@ describe('Domain Badge — Badge display integration', () => {
       const badges = await getUserBadges('user1');
 
       expect(badges).toHaveLength(2);
-      expect(badges[0]).toEqual({ type: 'kyc', label: 'KYC Verified' });
+      expect(badges[0]).toEqual({ type: 'kyc', label: 'KYC' });
       expect(badges[1]).toEqual({ type: 'workspace', label: 'company.com', domain: 'company.com' });
     });
   });
@@ -340,7 +341,7 @@ describe('Domain Badge — Badge display integration', () => {
 
       const result = await getBatchUserBadges(['user1', 'user2']);
 
-      expect(result.get('user1')).toEqual([{ type: 'kyc', label: 'KYC Verified' }]);
+      expect(result.get('user1')).toEqual([{ type: 'kyc', label: 'KYC' }]);
       expect(result.get('user2')).toEqual([{ type: 'workspace', label: 'org.com', domain: 'org.com' }]);
     });
 
@@ -367,7 +368,7 @@ describe('Domain Badge — Badge display integration', () => {
       mockRedis.mget.mockResolvedValueOnce([null, null, oidcRecord, null]);
 
       const result = await getBatchUserBadges(['user1']);
-      expect(result.get('user1')).toEqual([{ type: 'workspace', label: 'Org Verified' }]);
+      expect(result.get('user1')).toEqual([{ type: 'workspace', label: 'Org' }]);
     });
   });
 });
@@ -396,5 +397,76 @@ describe('saveVerificationCache — domain plaintext storage', () => {
 
     expect(record.domainHash).toBeUndefined();
     expect(record.domain).toBeUndefined();
+  });
+});
+
+describe('filterBadgesByTopicProofType', () => {
+  const allBadges = [
+    { type: 'kyc', label: 'KYC' },
+    { type: 'country', label: 'Country' },
+    { type: 'workspace', label: 'company.com', domain: 'company.com' },
+    { type: 'workspace', label: 'Org' }, // generic, no domain
+    { type: 'oidc', label: 'OIDC' },
+  ];
+
+  it('returns empty array for null proofType (open topic)', () => {
+    expect(filterBadgesByTopicProofType(allBadges, null)).toEqual([]);
+  });
+
+  it('returns empty array for "none" proofType (open topic)', () => {
+    expect(filterBadgesByTopicProofType(allBadges, 'none')).toEqual([]);
+  });
+
+  it('returns only KYC badges for kyc proofType', () => {
+    const result = filterBadgesByTopicProofType(allBadges, 'kyc');
+    expect(result).toEqual([{ type: 'kyc', label: 'KYC' }]);
+  });
+
+  it('returns only Country badges for country proofType', () => {
+    const result = filterBadgesByTopicProofType(allBadges, 'country');
+    expect(result).toEqual([{ type: 'country', label: 'Country' }]);
+  });
+
+  it('returns only opt-in domain badges for google_workspace proofType', () => {
+    const result = filterBadgesByTopicProofType(allBadges, 'google_workspace');
+    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
+    // Generic "Org" badge without domain must be excluded
+    expect(result.find(b => !b.domain)).toBeUndefined();
+  });
+
+  it('returns only opt-in domain badges for microsoft_365 proofType', () => {
+    const result = filterBadgesByTopicProofType(allBadges, 'microsoft_365');
+    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
+  });
+
+  it('returns only opt-in domain badges for workspace proofType', () => {
+    const result = filterBadgesByTopicProofType(allBadges, 'workspace');
+    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
+  });
+
+  it('returns empty array for unknown proofType', () => {
+    expect(filterBadgesByTopicProofType(allBadges, 'unknown_type')).toEqual([]);
+  });
+
+  it('returns empty array when badges is empty', () => {
+    expect(filterBadgesByTopicProofType([], 'kyc')).toEqual([]);
+  });
+
+  it('returns empty when user has no matching badge for topic proofType', () => {
+    const kycOnly = [{ type: 'kyc', label: 'KYC' }];
+    expect(filterBadgesByTopicProofType(kycOnly, 'country')).toEqual([]);
+  });
+
+  it('handles multiple domain badges (user opted in to multiple domains)', () => {
+    const multiBadges = [
+      { type: 'workspace', label: 'foo.com', domain: 'foo.com' },
+      { type: 'workspace', label: 'bar.org', domain: 'bar.org' },
+      { type: 'kyc', label: 'KYC' },
+    ];
+    const result = filterBadgesByTopicProofType(multiBadges, 'workspace');
+    expect(result).toEqual([
+      { type: 'workspace', label: 'foo.com', domain: 'foo.com' },
+      { type: 'workspace', label: 'bar.org', domain: 'bar.org' },
+    ]);
   });
 });

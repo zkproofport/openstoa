@@ -3,7 +3,7 @@ import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, users, votes, topics, topicMembers, tags, postTags, categories } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray, isNull } from 'drizzle-orm';
-import { getBatchUserBadges } from '@/lib/verification-cache';
+import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/feed';
@@ -152,6 +152,7 @@ export async function GET(request: NextRequest) {
           isPinned: posts.isPinned,
           recordCount: posts.recordCount,
           userVoted: sql<number | null>`null`,
+          topicProofType: topics.proofType,
         })
         .from(posts)
         .innerJoin(topics, eq(posts.topicId, topics.id))
@@ -163,10 +164,13 @@ export async function GET(request: NextRequest) {
 
       const guestAuthorIds = feedPosts.map(p => p.authorId).filter(Boolean);
       const guestBadgeMap = await getBatchUserBadges(guestAuthorIds);
-      const guestPostsWithBadges = feedPosts.map(p => ({
-        ...p,
-        badges: p.authorId ? (guestBadgeMap.get(p.authorId) ?? []) : [],
-      }));
+      const guestPostsWithBadges = feedPosts.map(p => {
+        const { topicProofType, ...postData } = p;
+        return {
+          ...postData,
+          badges: p.authorId ? filterBadgesByTopicProofType(guestBadgeMap.get(p.authorId) ?? [], topicProofType) : [],
+        };
+      });
 
       logger.info(ROUTE, 'Guest feed fetched', { count: feedPosts.length });
       return NextResponse.json({ posts: guestPostsWithBadges });
@@ -215,6 +219,7 @@ export async function GET(request: NextRequest) {
         isPinned: posts.isPinned,
         recordCount: posts.recordCount,
         userVoted: sql<number | null>`${votes.value}`,
+        topicProofType: topics.proofType,
       })
       .from(posts)
       .innerJoin(topics, eq(posts.topicId, topics.id))
@@ -227,10 +232,13 @@ export async function GET(request: NextRequest) {
 
     const authAuthorIds = feedPosts.map(p => p.authorId).filter(Boolean);
     const authBadgeMap = await getBatchUserBadges(authAuthorIds);
-    const authPostsWithBadges = feedPosts.map(p => ({
-      ...p,
-      badges: p.authorId ? (authBadgeMap.get(p.authorId) ?? []) : [],
-    }));
+    const authPostsWithBadges = feedPosts.map(p => {
+      const { topicProofType, ...postData } = p;
+      return {
+        ...postData,
+        badges: p.authorId ? filterBadgesByTopicProofType(authBadgeMap.get(p.authorId) ?? [], topicProofType) : [],
+      };
+    });
 
     logger.info(ROUTE, 'Authenticated feed fetched', { userId: session.userId, count: feedPosts.length });
     return NextResponse.json({ posts: authPostsWithBadges });

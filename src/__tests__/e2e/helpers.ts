@@ -30,7 +30,7 @@ export async function getSecondUserToken(): Promise<{ token: string; userId: str
   const res = await fetch(`${BASE_URL}/api/auth/dev-login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nickname: `e2e_second_${Date.now().toString(36)}` }),
+    body: JSON.stringify({ nickname: `e2e_second_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}` }),
   });
 
   if (!res.ok) {
