@@ -2871,6 +2871,27 @@ Response:
 
 ## Comments
 
+### Soft-delete a comment
+
+Marks a comment as deleted (soft delete). The comment author can delete their own comment. Topic owners and admins can delete any comment in their topic. Deleted comments remain in the database but are displayed as "Deleted comment" or "Deleted by admin".
+
+```bash
+curl -s "$BASE/api/comments/:commentId" \
+  -H "$AUTH" \
+  -X DELETE | jq .
+```
+
+Path params:
+- `commentId` — Comment ID
+
+Response:
+```json
+{
+  "success": true,
+  "deletedBy": "author"
+}
+```
+
 ### Create comment on post
 
 Creates a comment on a post. Increments the post's comment count.

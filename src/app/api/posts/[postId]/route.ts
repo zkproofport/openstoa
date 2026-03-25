@@ -192,7 +192,7 @@ export async function GET(
       // Increment viewCount
       await db.update(posts).set({ viewCount: sql`${posts.viewCount} + 1` }).where(eq(posts.id, postId));
 
-      // Get comments
+      // Get comments (including soft-deleted)
       const postComments = await db
         .select({
           id: comments.id,
@@ -202,6 +202,8 @@ export async function GET(
           createdAt: comments.createdAt,
           authorNickname: users.nickname,
           authorProfileImage: users.profileImage,
+          deletedAt: comments.deletedAt,
+          deletedBy: comments.deletedBy,
         })
         .from(comments)
         .leftJoin(users, eq(comments.authorId, users.id))
@@ -218,17 +220,35 @@ export async function GET(
       // Strip topicVisibility from response
       const { topicVisibility: _, ...postWithoutVisibility } = post;
 
-      // Collect all user IDs for badge lookup
+      // Collect all user IDs for badge lookup (only non-deleted comments)
       const guestUserIds = [...new Set([
         post.authorId,
-        ...postComments.map((c) => c.authorId),
+        ...postComments.filter((c) => !c.deletedAt).map((c) => c.authorId),
       ].filter(Boolean))] as string[];
       const guestBadgeMap = await getBatchUserBadges(guestUserIds);
 
-      const guestCommentsWithBadges = postComments.map((c) => ({
-        ...c,
-        badges: guestBadgeMap.get(c.authorId) ?? [],
-      }));
+      const guestCommentsWithBadges = postComments.map((c) => {
+        if (c.deletedAt) {
+          return {
+            id: c.id,
+            postId: c.postId,
+            authorId: null,
+            content: '',
+            createdAt: c.createdAt,
+            authorNickname: null,
+            authorProfileImage: null,
+            isDeleted: true,
+            deletedBy: c.deletedBy,
+            badges: [],
+          };
+        }
+        return {
+          ...c,
+          isDeleted: false,
+          deletedBy: null,
+          badges: guestBadgeMap.get(c.authorId) ?? [],
+        };
+      });
 
       logger.info(ROUTE, 'Guest post detail fetched', { postId, commentCount: postComments.length });
       return NextResponse.json({
@@ -299,7 +319,7 @@ export async function GET(
     // Atomically increment viewCount
     await db.update(posts).set({ viewCount: sql`${posts.viewCount} + 1` }).where(eq(posts.id, postId));
 
-    // Get comments with author nicknames
+    // Get comments with author nicknames (including soft-deleted)
     const postComments = await db
       .select({
         id: comments.id,
@@ -309,6 +329,8 @@ export async function GET(
         createdAt: comments.createdAt,
         authorNickname: users.nickname,
         authorProfileImage: users.profileImage,
+        deletedAt: comments.deletedAt,
+        deletedBy: comments.deletedBy,
       })
       .from(comments)
       .leftJoin(users, eq(comments.authorId, users.id))
@@ -322,17 +344,35 @@ export async function GET(
       .innerJoin(tags, eq(postTags.tagId, tags.id))
       .where(eq(postTags.postId, postId));
 
-    // Collect all user IDs for badge lookup
+    // Collect all user IDs for badge lookup (only non-deleted comments)
     const allUserIds = [...new Set([
       post.authorId,
-      ...postComments.map((c) => c.authorId),
+      ...postComments.filter((c) => !c.deletedAt).map((c) => c.authorId),
     ].filter(Boolean))] as string[];
     const badgeMap = await getBatchUserBadges(allUserIds);
 
-    const commentsWithBadges = postComments.map((c) => ({
-      ...c,
-      badges: badgeMap.get(c.authorId) ?? [],
-    }));
+    const commentsWithBadges = postComments.map((c) => {
+      if (c.deletedAt) {
+        return {
+          id: c.id,
+          postId: c.postId,
+          authorId: null,
+          content: '',
+          createdAt: c.createdAt,
+          authorNickname: null,
+          authorProfileImage: null,
+          isDeleted: true,
+          deletedBy: c.deletedBy,
+          badges: [],
+        };
+      }
+      return {
+        ...c,
+        isDeleted: false,
+        deletedBy: null,
+        badges: badgeMap.get(c.authorId) ?? [],
+      };
+    });
 
     logger.info(ROUTE, 'Post detail fetched', { userId: session.userId, postId, commentCount: postComments.length });
     return NextResponse.json({

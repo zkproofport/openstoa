@@ -108,7 +108,7 @@ export async function middleware(request: NextRequest) {
     // /topics/* requires session WITH nickname (not a temp anon_ nickname)
     // Skip nickname check for guest-accessible paths (they work without auth,
     // so they should also work with a valid token that has no nickname yet)
-    if (!guestAccessible && (pathname.startsWith('/topics') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/posts') || pathname.startsWith('/api/tags') || pathname.startsWith('/api/bookmarks') || pathname.startsWith('/api/upload'))) {
+    if (!guestAccessible && (pathname.startsWith('/topics') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/posts') || pathname.startsWith('/api/comments') || pathname.startsWith('/api/tags') || pathname.startsWith('/api/bookmarks') || pathname.startsWith('/api/upload'))) {
       const nickname = payload.nickname as string;
       if (!nickname || nickname.startsWith('anon_')) {
         if (isApiRoute(pathname)) {

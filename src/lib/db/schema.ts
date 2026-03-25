@@ -81,6 +81,8 @@ export const comments = pgTable('comments', {
   authorId: text('author_id').references(() => users.id).notNull(),
   content: text('content').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedBy: varchar('deleted_by', { length: 10 }), // 'author' | 'admin' | null
 });
 
 export const tags = pgTable('tags', {

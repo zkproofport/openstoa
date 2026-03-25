@@ -34,11 +34,13 @@ interface Post {
 interface Comment {
   id: string;
   content: string;
-  authorNickname: string;
+  authorNickname: string | null;
   authorProfileImage?: string | null;
-  authorId: string;
+  authorId: string | null;
   createdAt: string;
   badges?: Array<{ type: string; label: string; domain?: string; country?: string }>;
+  isDeleted?: boolean;
+  deletedBy?: string | null;
 }
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
@@ -75,6 +77,8 @@ export default function PostPage() {
   // Guest mode
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   function handleImageClick(src: string) {
     if (window.innerWidth <= 768 || 'ontouchstart' in window) {
@@ -90,6 +94,8 @@ export default function PostPage() {
       .then((data) => {
         if (!data?.userId) {
           setIsGuest(true);
+        } else {
+          setCurrentUserId(data.userId);
         }
       })
       .catch(() => {
@@ -272,6 +278,28 @@ export default function PostPage() {
       setCommentError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (deletingCommentId) return;
+    setDeletingCommentId(commentId);
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === commentId
+              ? { ...c, isDeleted: true, deletedBy: data.deletedBy, content: '', authorNickname: null, authorProfileImage: null, authorId: null, badges: [] }
+              : c,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error('Delete comment failed:', err);
+    } finally {
+      setDeletingCommentId(null);
     }
   }
 
@@ -645,52 +673,85 @@ export default function PostPage() {
                 <div
                   key={comment.id}
                   style={{
-                    padding: '16px 20px',
-                    background: 'var(--surface, #0c0e18)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 10,
+                    padding: comment.isDeleted ? '12px 16px' : '16px 20px',
+                    background: comment.isDeleted ? 'rgba(255,255,255,0.02)' : 'var(--surface, #0c0e18)',
+                    border: comment.isDeleted ? '1px solid rgba(255,255,255,0.04)' : '1px solid var(--border)',
+                    borderRadius: comment.isDeleted ? 8 : 10,
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <span
-                      onClick={() => comment.authorProfileImage && handleImageClick(comment.authorProfileImage)}
-                      style={{ cursor: comment.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
-                    >
-                      <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
-                    </span>
-                    <div>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                          {comment.authorNickname}
-                        </span>
-                        {comment.badges && comment.badges.length > 0 && comment.badges.map((b, i) => (
-                          <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
-                        ))}
-                      </span>
-                      <span style={{ fontSize: 15, color: 'var(--muted)', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
-                        {truncateId(comment.authorId, 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  </div>
-                  <p
-                    style={{
-                      fontSize: 14,
-                      lineHeight: 1.7,
+                  {comment.isDeleted ? (
+                    <p style={{
                       margin: 0,
-                      color: 'var(--foreground)',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {comment.content}
-                  </p>
+                      color: '#6b7280',
+                      fontStyle: 'italic',
+                      fontSize: 14,
+                    }}>
+                      {comment.deletedBy === 'admin' ? 'Deleted by admin' : 'Deleted comment'}
+                    </p>
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <span
+                          onClick={() => comment.authorProfileImage && handleImageClick(comment.authorProfileImage)}
+                          style={{ cursor: comment.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
+                        >
+                          <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
+                        </span>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                              {comment.authorNickname}
+                            </span>
+                            {comment.badges && comment.badges.length > 0 && comment.badges.map((b, i) => (
+                              <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
+                            ))}
+                          </span>
+                          <span style={{ fontSize: 15, color: 'var(--muted)', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
+                            {truncateId(comment.authorId ?? '', 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {!isGuest && currentUserId && comment.authorId === currentUserId && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(comment.id)}
+                            disabled={deletingCommentId === comment.id}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: deletingCommentId === comment.id ? 'not-allowed' : 'pointer',
+                              padding: 4,
+                              color: 'var(--muted)',
+                              opacity: deletingCommentId === comment.id ? 0.5 : 0.6,
+                              transition: 'opacity 0.15s',
+                              flexShrink: 0,
+                            }}
+                            title="Delete comment"
+                          >
+                            <TrashIcon size={14} />
+                          </button>
+                        )}
+                      </div>
+                      <p
+                        style={{
+                          fontSize: 14,
+                          lineHeight: 1.7,
+                          margin: 0,
+                          color: 'var(--foreground)',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {comment.content}
+                      </p>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
