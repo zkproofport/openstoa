@@ -372,4 +372,230 @@ describe.sequential('Profile API', () => {
     expect(Array.isArray(deleteJson.topics)).toBe(true);
     expect(deleteJson.topics.length).toBeGreaterThan(0);
   });
+
+  it('8d. Account deletion preserves votes — upvoteCount unchanged after deletion', async () => {
+    // Set up: User A creates a topic and post that User C will vote on
+    const catRes = await fetch(`${getBaseUrl()}/api/categories`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect(catRes.status).toBe(200);
+    const catJson = await catRes.json();
+    const categoryId = catJson.categories[0].id;
+
+    const topicRes = await fetch(`${getBaseUrl()}/api/topics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+      body: JSON.stringify({
+        title: `E2E Vote Preserve Topic ${Date.now()}`,
+        description: 'Topic for vote preservation test',
+        visibility: 'public',
+        categoryId,
+      }),
+    });
+    expect(topicRes.status).toBe(201);
+    const topicJson = await topicRes.json();
+    const topicId = topicJson.topic.id;
+
+    const postRes = await fetch(`${getBaseUrl()}/api/topics/${topicId}/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+      body: JSON.stringify({
+        title: `E2E Vote Preserve Post ${Date.now()}`,
+        content: 'Post to test vote preservation after account deletion.',
+      }),
+    });
+    expect(postRes.status).toBe(201);
+    const postJson = await postRes.json();
+    const postId = postJson.post.id;
+
+    // Create isolated User C
+    const userCRes = await fetch(`${getBaseUrl()}/api/auth/dev-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: `e2e_vp_${Date.now().toString(36)}` }),
+    });
+    expect(userCRes.status).toBe(200);
+    const userCToken = userCRes.ok ? (await userCRes.json()).token : null;
+    expect(userCToken).toBeTruthy();
+
+    // User C upvotes the post
+    const voteRes = await fetch(`${getBaseUrl()}/api/posts/${postId}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userCToken}` },
+      body: JSON.stringify({ value: 1 }),
+    });
+    expect(voteRes.status).toBe(200);
+    const voteJson = await voteRes.json();
+    const upvoteCountAfterVote = voteJson.upvoteCount;
+    expect(typeof upvoteCountAfterVote).toBe('number');
+
+    // Delete User C's account
+    const deleteRes = await fetch(`${getBaseUrl()}/api/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userCToken}` },
+    });
+    expect(deleteRes.status).toBe(200);
+    expect((await deleteRes.json()).success).toBe(true);
+
+    // Verify upvoteCount is unchanged after deletion (vote was preserved)
+    const postAfterRes = await fetch(`${getBaseUrl()}/api/posts/${postId}`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect(postAfterRes.status).toBe(200);
+    const postAfterJson = await postAfterRes.json();
+    const postAfter = postAfterJson.post ?? postAfterJson;
+    expect(postAfter.upvoteCount).toBe(upvoteCountAfterVote);
+  });
+
+  it('8e. Account deletion preserves posts — post still accessible after deletion', async () => {
+    // Create isolated User C
+    const catRes = await fetch(`${getBaseUrl()}/api/categories`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect(catRes.status).toBe(200);
+    const catJson = await catRes.json();
+    const categoryId = catJson.categories[0].id;
+
+    // User C creates a topic and a post, then deletes account
+    // Note: User C cannot delete while owning a topic, so we need another user to own the topic
+    // and User C just creates a post in User A's topic.
+    const topicRes = await fetch(`${getBaseUrl()}/api/topics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+      body: JSON.stringify({
+        title: `E2E Post Preserve Topic ${Date.now()}`,
+        description: 'Topic for post preservation test',
+        visibility: 'public',
+        categoryId,
+      }),
+    });
+    expect(topicRes.status).toBe(201);
+    const topicId = (await topicRes.json()).topic.id;
+
+    // Create User C
+    const userCRes = await fetch(`${getBaseUrl()}/api/auth/dev-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: `e2e_pp_${Date.now().toString(36)}` }),
+    });
+    expect(userCRes.status).toBe(200);
+    const userCData = await userCRes.json();
+    const userCToken = userCData.token;
+    expect(userCToken).toBeTruthy();
+
+    // User C joins the topic
+    const joinRes = await fetch(`${getBaseUrl()}/api/topics/${topicId}/join`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userCToken}` },
+    });
+    expect([200, 201, 409]).toContain(joinRes.status);
+
+    // User C creates a post in User A's topic
+    const postRes = await fetch(`${getBaseUrl()}/api/topics/${topicId}/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userCToken}` },
+      body: JSON.stringify({
+        title: `E2E Post Preserve ${Date.now()}`,
+        content: 'This post should survive account deletion.',
+      }),
+    });
+    expect(postRes.status).toBe(201);
+    const postId = (await postRes.json()).post.id;
+    expect(postId).toBeTruthy();
+
+    // Delete User C's account
+    const deleteRes = await fetch(`${getBaseUrl()}/api/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userCToken}` },
+    });
+    expect(deleteRes.status).toBe(200);
+
+    // Verify post still exists and is accessible
+    const postAfterRes = await fetch(`${getBaseUrl()}/api/posts/${postId}`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect(postAfterRes.status).toBe(200);
+    const postAfterJson = await postAfterRes.json();
+    const postAfter = postAfterJson.post ?? postAfterJson;
+    expect(postAfter.id).toBe(postId);
+  });
+
+  it('8f. Account deletion anonymizes author nickname — post shows [Withdrawn User]_xxx', async () => {
+    // Create isolated User C with a known nickname
+    const catRes = await fetch(`${getBaseUrl()}/api/categories`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect(catRes.status).toBe(200);
+    const catJson = await catRes.json();
+    const categoryId = catJson.categories[0].id;
+
+    // User A owns the topic so User C can be deleted without 409
+    const topicRes = await fetch(`${getBaseUrl()}/api/topics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+      body: JSON.stringify({
+        title: `E2E Anon Author Topic ${Date.now()}`,
+        description: 'Topic for author anonymization test',
+        visibility: 'public',
+        categoryId,
+      }),
+    });
+    expect(topicRes.status).toBe(201);
+    const topicId = (await topicRes.json()).topic.id;
+
+    const userCNickname = `e2e_an_${Date.now().toString(36)}`;
+    const userCRes = await fetch(`${getBaseUrl()}/api/auth/dev-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: userCNickname }),
+    });
+    expect(userCRes.status).toBe(200);
+    const userCToken = (await userCRes.json()).token;
+    expect(userCToken).toBeTruthy();
+
+    // User C joins the topic
+    const joinRes = await fetch(`${getBaseUrl()}/api/topics/${topicId}/join`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userCToken}` },
+    });
+    expect([200, 201, 409]).toContain(joinRes.status);
+
+    // User C creates a post in the topic
+    const postRes = await fetch(`${getBaseUrl()}/api/topics/${topicId}/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userCToken}` },
+      body: JSON.stringify({
+        title: `E2E Anon Author Post ${Date.now()}`,
+        content: 'This post should show withdrawn user nickname.',
+      }),
+    });
+    expect(postRes.status).toBe(201);
+    const postId = (await postRes.json()).post.id;
+
+    // Confirm authorNickname is User C's nickname before deletion
+    const postBeforeRes = await fetch(`${getBaseUrl()}/api/posts/${postId}`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect(postBeforeRes.status).toBe(200);
+    const postBeforeJson = await postBeforeRes.json();
+    const postBeforeData = postBeforeJson.post ?? postBeforeJson;
+    expect(postBeforeData.authorNickname).toBe(userCNickname);
+
+    // Delete User C's account
+    const deleteRes = await fetch(`${getBaseUrl()}/api/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userCToken}` },
+    });
+    expect(deleteRes.status).toBe(200);
+
+    // Verify author nickname is now anonymized
+    const postAfterRes = await fetch(`${getBaseUrl()}/api/posts/${postId}`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect(postAfterRes.status).toBe(200);
+    const postAfterJson = await postAfterRes.json();
+    const postAfter = postAfterJson.post ?? postAfterJson;
+    expect(postAfter.authorNickname).toMatch(/^\[Withdrawn User\]_/);
+    expect(postAfter.authorNickname).not.toBe(userCNickname);
+  });
 });

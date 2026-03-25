@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { users, topicMembers, topics, votes, bookmarks } from '@/lib/db/schema';
+import { users, topicMembers, topics, bookmarks } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { cookies } from 'next/headers';
@@ -16,8 +16,8 @@ const ROUTE = '/api/account';
  *     summary: Delete user account
  *     description: >-
  *       Permanently deletes the user account. Anonymizes the user's nickname to '[Withdrawn User]_<random>',
- *       sets deletedAt, removes all memberships/votes/bookmarks, and clears the session. Posts and comments
- *       are preserved but orphaned. Fails if the user owns any topics (must transfer ownership first).
+ *       sets deletedAt, removes all memberships and bookmarks, and clears the session. Posts, comments,
+ *       and votes are preserved (orphaned) to maintain upvoteCount integrity. Fails if the user owns any topics (must transfer ownership first).
  *     operationId: deleteAccount
  *     responses:
  *       200:
@@ -84,15 +84,11 @@ export async function DELETE(request: NextRequest) {
   await db.delete(topicMembers).where(eq(topicMembers.userId, userId));
   logger.info(ROUTE, 'DELETE account: deleted topic memberships', { userId });
 
-  // 4. Delete user's votes
-  await db.delete(votes).where(eq(votes.userId, userId));
-  logger.info(ROUTE, 'DELETE account: deleted user votes', { userId });
-
-  // 5. Delete user's bookmarks
+  // 4. Delete user's bookmarks
   await db.delete(bookmarks).where(eq(bookmarks.userId, userId));
   logger.info(ROUTE, 'DELETE account: deleted user bookmarks', { userId });
 
-  // 6. Anonymize user record (keep posts/comments intact)
+  // 5. Anonymize user record (keep posts/comments/votes intact)
   const randomSuffix = Math.random().toString(36).slice(2, 10);
   await db.update(users).set({
     nickname: `[Withdrawn User]_${randomSuffix}`,
@@ -100,7 +96,7 @@ export async function DELETE(request: NextRequest) {
   }).where(eq(users.id, userId));
   logger.info(ROUTE, 'DELETE account: user record anonymized', { userId });
 
-  // 7. Clear session cookie
+  // 6. Clear session cookie
   const cookieStore = await cookies();
   cookieStore.delete('session');
 

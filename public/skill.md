@@ -2184,7 +2184,7 @@ Response:
 
 ### Delete user account
 
-Permanently deletes the user account. Anonymizes the user's nickname to '[Withdrawn User]_<random>', sets deletedAt, removes all memberships/votes/bookmarks, and clears the session. Posts and comments are preserved but orphaned. Fails if the user owns any topics (must transfer ownership first).
+Permanently deletes the user account. Anonymizes the user's nickname to '[Withdrawn User]_<random>', sets deletedAt, removes all memberships and bookmarks, and clears the session. Posts, comments, and votes are preserved (orphaned) to maintain upvoteCount integrity. Fails if the user owns any topics (must transfer ownership first).
 
 ```bash
 curl -s "$BASE/api/account" \
