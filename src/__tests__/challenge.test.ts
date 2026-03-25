@@ -96,4 +96,47 @@ describe('consumeChallenge', () => {
     const second = await consumeChallenge('one-time-challenge');
     expect(second).toBe(false);
   });
+
+  it('should propagate Redis error in consumeChallenge', async () => {
+    mockRedis.eval.mockRejectedValueOnce(new Error('Redis timeout'));
+    await expect(consumeChallenge('test-id')).rejects.toThrow('Redis timeout');
+  });
+
+  it('should return false when Redis eval returns null (expired challenge)', async () => {
+    mockRedis.eval.mockResolvedValue(null);
+    const result = await consumeChallenge('very-old-challenge');
+    expect(result).toBe(false);
+  });
+
+  it('should handle concurrent consumption attempts atomically', async () => {
+    // First call wins
+    mockRedis.eval.mockResolvedValueOnce('1');
+    // All subsequent calls lose (already consumed)
+    mockRedis.eval.mockResolvedValue(null);
+
+    const results = await Promise.all([
+      consumeChallenge('race-challenge'),
+      consumeChallenge('race-challenge'),
+      consumeChallenge('race-challenge'),
+    ]);
+
+    const successes = results.filter(r => r === true);
+    expect(successes.length).toBe(1); // exactly one winner
+  });
+
+  it('should propagate Redis errors', async () => {
+    mockRedis.eval.mockRejectedValue(new Error('Redis connection refused'));
+    await expect(consumeChallenge('error-challenge')).rejects.toThrow('Redis connection refused');
+  });
+});
+
+describe('createChallenge Redis errors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should propagate Redis error in createChallenge', async () => {
+    mockRedis.set.mockRejectedValueOnce(new Error('Redis connection lost'));
+    await expect(createChallenge()).rejects.toThrow('Redis connection lost');
+  });
 });

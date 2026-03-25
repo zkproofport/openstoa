@@ -1,8 +1,12 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 
 // Set env before importing module
 beforeAll(() => {
   process.env.COMMUNITY_JWT_SECRET = 'test-secret-key-for-jwt-signing-minimum-length';
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('session', () => {
@@ -74,5 +78,86 @@ describe('session', () => {
     // Should have exp claim (24h)
     expect(payload!.exp).toBeDefined();
     expect(payload!.iat).toBeDefined();
+  });
+
+  it('should return null for an expired token', async () => {
+    vi.useFakeTimers();
+    const { createSession, verifySession } = await import('@/lib/session');
+
+    const now = new Date('2026-01-01T00:00:00Z');
+    vi.setSystemTime(now);
+    const token = await createSession('user-expired', 'expireduser');
+
+    vi.setSystemTime(new Date(now.getTime() + 25 * 60 * 60 * 1000));
+    const payload = await verifySession(token);
+    expect(payload).toBeNull();
+  });
+
+  it('should return null for a random non-JWT string', async () => {
+    const { verifySession } = await import('@/lib/session');
+
+    const payload = await verifySession('notavalidtoken');
+    expect(payload).toBeNull();
+  });
+
+  it('should return null for a token with only one part', async () => {
+    const { verifySession } = await import('@/lib/session');
+
+    const payload = await verifySession('eyJhbGciOiJIUzI1NiJ9');
+    expect(payload).toBeNull();
+  });
+
+  it('should return null for a token signed with wrong secret', async () => {
+    const { verifySession } = await import('@/lib/session');
+    const { SignJWT } = await import('jose');
+
+    const wrongSecret = new TextEncoder().encode('wrong-secret-key-definitely-not-correct');
+    const token = await new SignJWT({ userId: 'hacker', nickname: 'hax' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('24h')
+      .sign(wrongSecret);
+
+    const payload = await verifySession(token);
+    expect(payload).toBeNull();
+  });
+
+  it('should return null for a pre-expired token signed with correct secret', async () => {
+    const { SignJWT } = await import('jose');
+    const secret = new TextEncoder().encode('test-secret-key-for-jwt-signing-minimum-length');
+    const token = await new SignJWT({ userId: 'expired-user', nickname: 'expired', verifiedAt: Date.now() })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) - 60) // expired 60 seconds ago
+      .sign(secret);
+
+    const { verifySession } = await import('@/lib/session');
+    const payload = await verifySession(token);
+    expect(payload).toBeNull();
+  });
+
+  it('should return null for a token with only dots', async () => {
+    const { verifySession } = await import('@/lib/session');
+
+    const payload = await verifySession('...');
+    expect(payload).toBeNull();
+  });
+
+  it('should return null for a structurally valid but content-invalid token', async () => {
+    const { verifySession } = await import('@/lib/session');
+
+    const payload = await verifySession('eyJhbGciOiJIUzI1NiJ9.INVALID.INVALID');
+    expect(payload).toBeNull();
+  });
+
+  it('should throw when COMMUNITY_JWT_SECRET is not set', async () => {
+    const originalSecret = process.env.COMMUNITY_JWT_SECRET;
+    delete process.env.COMMUNITY_JWT_SECRET;
+
+    vi.resetModules();
+    const { createSession } = await import('@/lib/session');
+    await expect(createSession('user', 'nick')).rejects.toThrow('COMMUNITY_JWT_SECRET');
+
+    process.env.COMMUNITY_JWT_SECRET = originalSecret;
   });
 });
