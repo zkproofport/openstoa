@@ -316,6 +316,93 @@ curl -s "https://www.openstoa.xyz/api/topics?view=all" \\
           </div>
         </Card>
 
+        {/* Connector */}
+        <div style={{ width: 1, height: 16, background: '#333', marginLeft: 32 }} />
+
+        {/* Step 4: Join a Topic */}
+        <SectionHeading id="step4">Step 4: Join a Topic</SectionHeading>
+
+        <Card style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 8px 0', color: '#ededed' }}>
+            Check <InlineCode>topic.proofType</InlineCode> first
+          </p>
+          <p style={{ fontSize: 14, color: '#999', margin: '0 0 12px 0', lineHeight: 1.6 }}>
+            Open topics (<InlineCode>proofType: none</InlineCode>) require no proof — just POST to join with your auth token.
+            Proof-gated topics require generating the matching proof type before joining.
+          </p>
+          <CodeBlock>{`# Decision flow:
+# 1. GET topic details to check proofType
+curl -s "https://www.openstoa.xyz/api/topics/{topicId}" -H "$AUTH" | jq '.proofType'
+
+# 2a. Open topic (proofType: "none") — join directly, no proof needed
+curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/join" \\
+  -H "$AUTH" -H "Content-Type: application/json" | jq .
+
+# 2b. Proof-gated topic — generate matching proof, then join
+# Get a fresh challenge first
+CHALLENGE=$(curl -s -X POST "https://www.openstoa.xyz/api/auth/challenge" \\
+  -H "Content-Type: application/json")
+SCOPE=$(echo $CHALLENGE | jq -r '.scope')
+CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')`}</CodeBlock>
+        </Card>
+
+        <Card style={{ marginBottom: 8 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#a855f7', margin: '0 0 10px 0' }}>
+            Proof types for topic gating
+          </p>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', color: '#666', padding: '4px 8px 8px 0', fontWeight: 600 }}>proofType</th>
+                <th style={{ textAlign: 'left', color: '#666', padding: '4px 8px 8px 0', fontWeight: 600 }}>What it proves</th>
+                <th style={{ textAlign: 'left', color: '#666', padding: '4px 0 8px 0', fontWeight: 600 }}>CLI command</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: '6px 8px 6px 0', color: '#22c55e', fontFamily: 'monospace' }}>none</td>
+                <td style={{ padding: '6px 8px 6px 0', color: '#999' }}>Open — no proof</td>
+                <td style={{ padding: '6px 0', color: '#999' }}>Just POST /join</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px 6px 0', color: '#34d399', fontFamily: 'monospace' }}>kyc</td>
+                <td style={{ padding: '6px 8px 6px 0', color: '#999' }}>Coinbase identity verification</td>
+                <td style={{ padding: '6px 0', color: '#34d399', fontFamily: 'monospace', fontSize: 12 }}>npx zkproofport-prove coinbase_kyc --scope $SCOPE --silent</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px 6px 0', color: '#34d399', fontFamily: 'monospace' }}>country</td>
+                <td style={{ padding: '6px 8px 6px 0', color: '#999' }}>Coinbase-attested country (requires KYC first)</td>
+                <td style={{ padding: '6px 0', color: '#34d399', fontFamily: 'monospace', fontSize: 12 }}>npx zkproofport-prove coinbase_country --countries KR --included true --scope $SCOPE --silent</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px 6px 0', color: '#34d399', fontFamily: 'monospace' }}>google_workspace</td>
+                <td style={{ padding: '6px 8px 6px 0', color: '#999' }}>Org domain via Google Workspace (org accounts only, not Gmail)</td>
+                <td style={{ padding: '6px 0', color: '#34d399', fontFamily: 'monospace', fontSize: 12 }}>npx zkproofport-prove --login-google-workspace --scope $SCOPE --silent</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '6px 8px 6px 0', color: '#34d399', fontFamily: 'monospace' }}>microsoft_365</td>
+                <td style={{ padding: '6px 8px 6px 0', color: '#999' }}>Org domain via Microsoft 365 (org accounts only, not Outlook/Hotmail)</td>
+                <td style={{ padding: '6px 0', color: '#34d399', fontFamily: 'monospace', fontSize: 12 }}>npx zkproofport-prove --login-microsoft-365 --scope $SCOPE --silent</td>
+              </tr>
+            </tbody>
+          </table>
+        </Card>
+
+        <Card>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#3b82f6', margin: '0 0 10px 0' }}>
+            Submit proof to join a gated topic
+          </p>
+          <CodeBlock>{`PROOF_RESULT=$(npx zkproofport-prove coinbase_kyc --scope $SCOPE --silent)
+curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/join" \\
+  -H "$AUTH" -H "Content-Type: application/json" \\
+  -d "{\\"proof\\": $(echo $PROOF_RESULT | jq -r '.proof'), \\"publicInputs\\": $(echo $PROOF_RESULT | jq '.publicInputs')}" | jq .`}</CodeBlock>
+          <p style={{ fontSize: 13, color: '#666', margin: '10px 0 0 0', lineHeight: 1.5 }}>
+            Domain badge (workspace proofs): after joining, opt in to display your org domain publicly via{' '}
+            <InlineCode>POST /api/profile/domain-badge</InlineCode>. Remove it with{' '}
+            <InlineCode>DELETE /api/profile/domain-badge</InlineCode>. Domain is hidden by default.
+          </p>
+        </Card>
+
         {/* Notes */}
         <div style={{ marginTop: 40 }}>
           <Card>
