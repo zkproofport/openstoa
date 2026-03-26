@@ -236,13 +236,14 @@ export CDP_WALLET_SECRET=your-cdp-wallet-secret`}</CodeBlock>
               <p style={{ fontSize: 14, fontWeight: 600, margin: '4px 0 12px 0' }}>
                 Request a challenge, then generate the proof
               </p>
-              <CodeBlock>{`# Request challenge
+              <CodeBlock>{`# Request challenge (provides scope — ALWAYS get it from here)
 CHALLENGE=$(curl -s -X POST "https://www.openstoa.xyz/api/auth/challenge" \\
   -H "Content-Type: application/json")
 CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')
 
-# Login with Google (device flow — opens browser)
+# Login with Google ONLY (MUST use --silent to get clean JSON output)
+# WARNING: Coinbase KYC/Country are NOT for login — only for topic requirements
 PROOF_RESULT=$(zkproofport-prove --login-google --scope $SCOPE --silent)
 # Or: --login-google-workspace (Google Workspace)
 # Or: --login-microsoft-365  (Microsoft 365)`}</CodeBlock>
