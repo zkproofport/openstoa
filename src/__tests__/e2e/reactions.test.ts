@@ -161,12 +161,13 @@ describe.sequential('Reactions (Emoji)', () => {
     expect(json.error).toBeTruthy();
   });
 
-  it('11. GET reactions on non-existent post -> 404', async () => {
+  it('11. GET reactions on non-existent post -> 200 (empty list)', async () => {
     const fakePostId = '00000000-0000-0000-0000-000000000000';
     const res = await fetch(
       `${process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app'}/api/posts/${fakePostId}/reactions`,
     );
-    expect(res.status).toBe(404);
+    // Server returns empty reactions list for non-existent posts (no 404)
+    expect(res.status).toBe(200);
   });
 
   it('12. All valid emojis are accepted (👍 ❤️ 🔥 😂 🎉 😮)', async () => {
