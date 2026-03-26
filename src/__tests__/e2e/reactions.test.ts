@@ -144,4 +144,38 @@ describe.sequential('Reactions (Emoji)', () => {
       expect(reaction.userReacted).toBe(false);
     }
   });
+
+  it('9. Missing emoji field in reaction POST -> 400', async () => {
+    const res = await authPost(`/api/posts/${postId}/reactions`, {});
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('10. POST reaction to non-existent post -> 404', async () => {
+    const fakePostId = '00000000-0000-0000-0000-000000000000';
+    const res = await authPost(`/api/posts/${fakePostId}/reactions`, { emoji: '👍' });
+    // Non-existent post should return 404 (or 403 if membership check fires first)
+    expect([403, 404]).toContain(res.status);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('11. GET reactions on non-existent post -> 404', async () => {
+    const fakePostId = '00000000-0000-0000-0000-000000000000';
+    const res = await fetch(
+      `${process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app'}/api/posts/${fakePostId}/reactions`,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('12. All valid emojis are accepted (👍 ❤️ 🔥 😂 🎉 😮)', async () => {
+    const validEmojis = ['😂', '🎉', '😮'];
+    for (const emoji of validEmojis) {
+      const res = await authPost(`/api/posts/${postId}/reactions`, { emoji });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(typeof json.added).toBe('boolean');
+    }
+  });
 });

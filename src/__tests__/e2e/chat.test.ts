@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   authPost,
   authGet,
+  publicPost,
+  publicGet,
   secondUserPost,
   getSecondUserToken,
 } from './helpers';
@@ -118,5 +120,39 @@ describe.sequential('Chat — send, history, @ask, non-member', () => {
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toBeTruthy();
+  });
+
+  it('5. Empty message -> 400', async () => {
+    const res = await authPost(`/api/topics/${topicId}/chat`, {
+      message: '',
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('6. Missing message field -> 400', async () => {
+    const res = await authPost(`/api/topics/${topicId}/chat`, {});
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('7. Guest POST chat -> 401', async () => {
+    const res = await publicPost(`/api/topics/${topicId}/chat`, {
+      message: 'Guest should be rejected',
+    });
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('8. GET chat history — paging with limit/offset', async () => {
+    const res = await authGet(`/api/topics/${topicId}/chat?limit=1&offset=0`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.messages)).toBe(true);
+    expect(json.messages.length).toBeLessThanOrEqual(1);
+    expect(typeof json.total).toBe('number');
   });
 });

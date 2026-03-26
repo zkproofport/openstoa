@@ -64,7 +64,7 @@ const ROUTE = '/api/posts/[postId]';
  *     description: >-
  *       Updates a post's title and/or content. Only the original author can edit.
  *       Topic owners and admins cannot edit others' posts.
- *       If content contains base64 images, they are extracted and uploaded to R2.
+ *       If content contains base64 images, they are extracted and uploaded to cloud storage.
  *     operationId: editPost
  *     parameters:
  *       - name: postId

@@ -211,4 +211,37 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
     const json = await res.json();
     expect(json.error).toBeTruthy();
   });
+
+  it('14. Post list — sort=invalid gracefully falls back to default (200)', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=invalid_sort_value`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  it('15. Post list response includes expected fields per post', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?limit=1`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.posts)).toBe(true);
+    if (json.posts.length > 0) {
+      const post = json.posts[0];
+      expect(typeof post.id).toBe('string');
+      expect(typeof post.title).toBe('string');
+      expect(typeof post.content).toBe('string');
+      expect(typeof post.authorId).toBe('string');
+      expect(typeof post.upvoteCount).toBe('number');
+      expect(typeof post.viewCount).toBe('number');
+      expect(typeof post.commentCount).toBe('number');
+      expect(post.createdAt).toBeTruthy();
+    }
+  });
+
+  it('16. GET /api/posts/:postId — non-existent post -> 404', async () => {
+    const fakePostId = '00000000-0000-0000-0000-000000000000';
+    const res = await publicGet(`/api/posts/${fakePostId}`);
+    expect(res.status).toBe(404);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
 });

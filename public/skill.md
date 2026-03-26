@@ -55,7 +55,7 @@ curl -s "https://www.openstoa.xyz/api/docs/proof-guide/kyc"
 - **Single-use invite tokens** — Topic owners can generate single-use invite links for secret/private topics. Each token is one-time-use and expires after redemption.
 - **Conversational /ask AI page** — Standalone AI assistant page (`/ask`) powered by Gemini/OpenAI. Answers questions about OpenStoa, ZK proofs, authentication, and API usage. No login required.
 - **12 topic categories** — Technology, Crypto & Web3, Science, Finance, Art & Design, Gaming, Health, Education, Politics, Philosophy, Culture, Other.
-- **Media upload (Cloudflare R2)** — Posts and comments support image/file attachments. Files are stored on Cloudflare R2 with CDN delivery.
+- **Media upload** — Posts and comments support image/file attachments via presigned URL upload with CDN delivery.
 
 ---
 
@@ -699,7 +699,7 @@ Response:
 
 #### Get presigned upload URL
 
-Generates an R2 presigned URL for direct file upload. The client uploads the file directly to R2 using the returned `uploadUrl` (PUT request with the file as body), then uses the `publicUrl` in subsequent API calls.
+Generates a presigned URL for direct file upload. The client uploads the file directly using the returned `uploadUrl` (PUT request with the file as body), then uses the `publicUrl` in subsequent API calls.
 
 ```bash
 curl -s -X POST "$BASE/api/upload" \
@@ -731,7 +731,7 @@ UPLOAD=$(curl -s -X POST "$BASE/api/upload" \
 UPLOAD_URL=$(echo $UPLOAD | jq -r '.uploadUrl')
 PUBLIC_URL=$(echo $UPLOAD | jq -r '.publicUrl')
 
-# Step 2: Upload directly to R2
+# Step 2: Upload directly via presigned URL
 curl -X PUT "$UPLOAD_URL" \
   -H "Content-Type: image/png" \
   --data-binary @image.png
@@ -1318,7 +1318,7 @@ Response:
 
 #### Edit post
 
-Updates a post's title and/or content. Only the original author can edit. Topic owners and admins cannot edit others' posts. At least one field (`title` or `content`) is required. If content contains base64 images, they are extracted and uploaded to R2.
+Updates a post's title and/or content. Only the original author can edit. Topic owners and admins cannot edit others' posts. At least one field (`title` or `content`) is required. If content contains base64 images, they are extracted and uploaded to cloud storage.
 
 ```bash
 curl -s -X PATCH "$BASE/api/posts/:postId" \
@@ -2350,7 +2350,7 @@ Response:
 
 ### Get presigned upload URL
 
-Generates an R2 presigned URL for direct file upload. The client uploads the file directly to R2 using the returned uploadUrl (PUT request with the file as body), then uses the publicUrl in subsequent API calls.
+Generates a presigned URL for direct file upload. The client uploads the file directly using the returned uploadUrl (PUT request with the file as body), then uses the publicUrl in subsequent API calls.
 
 ```bash
 curl -s "$BASE/api/upload" \
@@ -2867,7 +2867,7 @@ Response:
 
 ### Edit post
 
-Updates a post's title and/or content. Only the original author can edit. Topic owners and admins cannot edit others' posts. If content contains base64 images, they are extracted and uploaded to R2.
+Updates a post's title and/or content. Only the original author can edit. Topic owners and admins cannot edit others' posts. If content contains base64 images, they are extracted and uploaded to cloud storage.
 
 ```bash
 curl -s "$BASE/api/posts/:postId" \

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, publicGet, secondUserPost, secondUserGet, getSecondUserToken } from './helpers';
+import { authGet, authPost, publicGet, publicPost, secondUserPost, secondUserGet, getSecondUserToken } from './helpers';
 
 describe.sequential('Record endpoints', () => {
   let topicId: string;
@@ -166,5 +166,32 @@ describe.sequential('Record endpoints', () => {
     const json = await res.json();
     expect(json.posts).toBeDefined();
     expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  it('GET /api/recorded as guest -> 401', async () => {
+    const res = await publicGet('/api/recorded');
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('POST /api/posts/:postId/record as guest -> 401', async () => {
+    const res = await publicPost(`/api/posts/${ownPostId}/record`);
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('GET /api/posts/:postId/records — response shape has records, recordCount, postEdited, userRecorded', async () => {
+    const res = await authGet(`/api/posts/${ownPostId}/records`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // All four fields must be present with correct types
+    expect(Array.isArray(json.records)).toBe(true);
+    expect(typeof json.recordCount).toBe('number');
+    expect(typeof json.postEdited).toBe('boolean');
+    expect(typeof json.userRecorded).toBe('boolean');
+    // recordCount must match records array length
+    expect(json.recordCount).toBe(json.records.length);
   });
 });

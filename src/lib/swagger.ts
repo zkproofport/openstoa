@@ -24,7 +24,7 @@ const options: swaggerJsdoc.Options = {
       },
       { name: 'Account', description: 'User account management including deletion' },
       { name: 'Profile', description: 'User profile — nickname and profile image' },
-      { name: 'Upload', description: 'File upload via R2 presigned URLs' },
+      { name: 'Upload', description: 'File upload via presigned URLs' },
       {
         name: 'Topics',
         description:
@@ -187,7 +187,7 @@ const options: swaggerJsdoc.Options = {
             topicId: { type: 'string', format: 'uuid', description: 'Parent topic ID' },
             authorId: { type: 'string', description: "Author's user ID" },
             title: { type: 'string', description: 'Post title' },
-            content: { type: 'string', description: 'Post body (markdown supported)' },
+            content: { type: 'string', description: 'Post body (HTML, base64 images auto-uploaded to CDN)' },
             upvoteCount: { type: 'integer', description: 'Net upvote count' },
             viewCount: {
               type: 'integer',

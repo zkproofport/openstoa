@@ -14,8 +14,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
  *     tags: [Upload]
  *     summary: Get presigned upload URL
  *     description: >-
- *       Generates an R2 presigned URL for direct file upload. The client uploads the file directly
- *       to R2 using the returned uploadUrl (PUT request with the file as body), then uses the
+ *       Generates a presigned URL for direct file upload. The client uploads the file directly
+ *       using the returned uploadUrl (PUT request with the file as body), then uses the
  *       publicUrl in subsequent API calls.
  *     operationId: createUploadUrl
  *     requestBody:
