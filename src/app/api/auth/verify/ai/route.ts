@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { consumeChallenge } from '@/lib/challenge';
+import { consumeChallenge, markPaymentTxUsed } from '@/lib/challenge';
 import { COMMUNITY_SCOPE } from '@/lib/proof';
 import {
   verifyProof,
@@ -112,7 +112,10 @@ export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
-    const { challengeId, result, paymentTxHash, teeAttestation } = body;
+    const { challengeId, result } = body;
+    // paymentTxHash/teeAttestation can be top-level or inside result (CLI returns them in result)
+    const paymentTxHash = body.paymentTxHash ?? result?.paymentTxHash;
+    const teeAttestation = body.teeAttestation ?? result?.attestation;
 
     if (!challengeId || !result) {
       logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasResult: !!result });
@@ -144,8 +147,8 @@ export async function POST(request: NextRequest) {
 
     logger.info(ROUTE, 'Consuming challenge', { challengeId });
 
-    const challengeValid = await consumeChallenge(challengeId);
-    if (!challengeValid) {
+    const challengeCreatedAt = await consumeChallenge(challengeId);
+    if (challengeCreatedAt === null) {
       logger.warn(ROUTE, 'Invalid or expired challenge', { challengeId });
       return NextResponse.json(
         { error: 'Invalid or expired challenge' },
@@ -166,6 +169,16 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Check 1a: Prevent paymentTxHash reuse
+      const isNewTx = await markPaymentTxUsed(paymentTxHash);
+      if (!isNewTx) {
+        logger.warn(ROUTE, 'Production: paymentTxHash already used', { challengeId, paymentTxHash });
+        return NextResponse.json(
+          { error: 'Payment transaction has already been used' },
+          { status: 400 },
+        );
+      }
+
       const mainnetProvider = new ethers.JsonRpcProvider('https://mainnet.base.org');
       const tx = await mainnetProvider.getTransaction(paymentTxHash);
       if (!tx) {
@@ -174,6 +187,21 @@ export async function POST(request: NextRequest) {
           { error: 'Payment transaction not found on Base mainnet' },
           { status: 400 },
         );
+      }
+
+      // Check 1b: TX must be recent (block timestamp >= challenge creation - 60s tolerance)
+      if (tx.blockNumber) {
+        const block = await mainnetProvider.getBlock(tx.blockNumber);
+        if (block && block.timestamp < challengeCreatedAt - 60) {
+          logger.warn(ROUTE, 'Production: payment TX too old', {
+            challengeId, paymentTxHash,
+            txTimestamp: block.timestamp, challengeCreatedAt,
+          });
+          return NextResponse.json(
+            { error: 'Payment transaction is older than the challenge' },
+            { status: 400 },
+          );
+        }
       }
 
       logger.info(ROUTE, 'Production: payment TX verified on Base mainnet', { challengeId, paymentTxHash });
