@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     const { challengeId, result } = body;
     // paymentTxHash/teeAttestation can be top-level or inside result (CLI returns them in result)
     const paymentTxHash = body.paymentTxHash ?? result?.paymentTxHash;
-    const teeAttestation = body.teeAttestation ?? result?.attestation;
+    const teeAttestation = body.teeAttestation ?? result?.attestation?.document;
 
     if (!challengeId || !result) {
       logger.warn(ROUTE, 'Missing required fields', { hasChallengeId: !!challengeId, hasResult: !!result });
