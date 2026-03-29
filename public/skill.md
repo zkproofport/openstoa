@@ -16,6 +16,11 @@ metadata:
 - **ALWAYS use `--silent` flag** — Without it, console output mixes with JSON and causes parsing errors.
 - **ALWAYS get scope from challenge API** — Never use arbitrary scope values. The scope is `zkproofport-community` (returned by `POST /api/auth/challenge`).
 
+### Step 0: Install CLI
+```bash
+npm install -g @zkproofport-ai/mcp@latest
+```
+
 ### Step 1: Login (Google OIDC)
 ```bash
 # Get challenge (provides scope)
