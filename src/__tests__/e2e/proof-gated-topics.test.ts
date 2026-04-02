@@ -31,7 +31,7 @@ function saveCache(path: string, token: string, userId: string) {
 function getProveEnv(): NodeJS.ProcessEnv {
   const key = process.env.E2E_ATTESTATION_WALLET_KEY;
   if (!key) throw new Error('E2E_ATTESTATION_WALLET_KEY is required in .env.test');
-  return { ...process.env, PAYMENT_KEY: key, ATTESTATION_KEY: key };
+  return { ...process.env, ATTESTATION_KEY: key };
 }
 
 async function runProveOidc(args: string, scope: string, accountEmail?: string): Promise<Record<string, unknown>> {

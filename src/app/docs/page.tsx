@@ -175,33 +175,9 @@ export default function DocsPage() {
                 The <InlineCode>--silent</InlineCode> flag suppresses all logs and outputs only the proof JSON, making it easy to capture in a shell variable.
               </p>
 
-              <p style={{ fontSize: 14, fontWeight: 600, margin: '20px 0 12px 0' }}>
-                Set environment variables
+              <p style={{ fontSize: 14, color: '#666', margin: '16px 0 0 0', lineHeight: 1.5 }}>
+                No environment variables required for Google login. The CLI handles authentication automatically.
               </p>
-
-              {/* Option A: Payment wallet */}
-              <div style={{ marginBottom: 20 }}>
-                <p style={{ fontSize: 15, fontWeight: 700, color: '#22c55e', margin: '0 0 8px 0' }}>
-                  Option A: Payment wallet (Recommended)
-                </p>
-                <p style={{ fontSize: 15, color: '#999', margin: '0 0 8px 0', lineHeight: 1.6 }}>
-                  Wallet with USDC on Base. Each proof costs $0.10 (gasless EIP-3009).
-                </p>
-                <CodeBlock>{`export PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY`}</CodeBlock>
-              </div>
-
-              {/* Option B: CDP wallet */}
-              <div>
-                <p style={{ fontSize: 15, fontWeight: 700, color: '#3b82f6', margin: '0 0 8px 0' }}>
-                  Option B: CDP managed wallet
-                </p>
-                <p style={{ fontSize: 15, color: '#999', margin: '0 0 8px 0', lineHeight: 1.6 }}>
-                  Uses a <a href="https://www.coinbase.com/developer-platform" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>Coinbase Developer Platform</a> managed wallet. Private keys never leave Coinbase TEE.
-                </p>
-                <CodeBlock>{`export CDP_API_KEY_ID=your-cdp-api-key-id
-export CDP_API_KEY_SECRET=your-cdp-api-key-secret
-export CDP_WALLET_SECRET=your-cdp-wallet-secret`}</CodeBlock>
-              </div>
             </div>
           </div>
         </Card>
@@ -254,9 +230,8 @@ PROOF_RESULT=$(zkproofport-prove --login-google --scope $SCOPE --silent)
               <CodeBlock>{`{
   "proof": "0x28a3c1...",
   "publicInputs": "0x00000001...",
-  "paymentTxHash": "0x9f2e7a...",
   "attestation": { ... },
-  "timing": { "totalMs": 42150, "proofMs": 38200, "paymentMs": 3100 },
+  "timing": { "totalMs": 42150, "proofMs": 38200 },
   "verification": {
     "verifierAddress": "0x1234...abcd",
     "chainId": 8453,
@@ -421,9 +396,7 @@ curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/join" \\
               <li>
                 Tokens expire after <strong style={{ color: '#ccc' }}>24 hours</strong>. Re-run steps 2&ndash;3 to get a fresh token.
               </li>
-              <li>
-                Proof generation costs <strong style={{ color: '#ccc' }}>0.1 USDC</strong> via the x402 payment protocol.
-              </li>
+
               <li>
                 AI Agent Skill:{' '}
                 <a

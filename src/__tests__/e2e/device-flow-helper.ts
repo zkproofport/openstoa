@@ -24,7 +24,7 @@ function detectProvider(line: string): 'google' | 'microsoft' | null {
  *
  * @param args - CLI arguments (e.g. '--login-google', '--login-microsoft-365')
  * @param scope - The scope/challenge string
- * @param env - Environment variables (must include PAYMENT_KEY, ATTESTATION_KEY)
+ * @param env - Environment variables (ATTESTATION_KEY for Coinbase circuits, PROOFPORT_URL for server URL)
  * @returns Parsed proof result JSON from stdout
  */
 export async function runProveWithAutoDeviceFlow(

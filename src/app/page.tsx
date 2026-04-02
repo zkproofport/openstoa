@@ -221,19 +221,6 @@ function AgentLoginPanel({ onBack }: { onBack: () => void }) {
         borderRadius: 10, padding: 16, marginBottom: 16,
         display: 'flex', flexDirection: 'column', gap: 14,
       }}>
-            {/* Cost notice */}
-            <div style={{
-              background: 'rgba(234, 179, 8, 0.08)',
-              border: '1px solid rgba(234, 179, 8, 0.25)',
-              borderRadius: 6,
-              padding: '8px 12px',
-              fontSize: 11,
-              color: '#eab308',
-              lineHeight: 1.5,
-            }}>
-              Requires <strong>0.1 USDC</strong> on Base in your payment wallet. Proof generation costs $0.10 per proof (gasless EIP-3009).
-            </div>
-
             {/* Step 0: Install */}
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -259,15 +246,7 @@ SCOPE=$(echo $CHALLENGE | jq -r '.scope')`}</CopyableCodeBlock>
               <p style={{ fontSize: 12, fontWeight: 600, color: '#666', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 2. Generate Proof
               </p>
-              <CopyableCodeBlock>{`# Option A: Payment wallet (recommended)
-export PAYMENT_KEY=0x...  # USDC on Base
-
-# Option B: CDP managed wallet
-# export CDP_API_KEY_ID=your-key-id
-# export CDP_API_KEY_SECRET=your-key-secret
-# export CDP_WALLET_SECRET=your-wallet-secret
-
-# Login with Google (device flow — opens browser)
+              <CopyableCodeBlock>{`# Login with Google (device flow — opens browser)
 PROOF_RESULT=$(zkproofport-prove --login-google \\
   --scope $SCOPE --silent)`}</CopyableCodeBlock>
             </div>
