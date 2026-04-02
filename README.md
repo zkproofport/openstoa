@@ -28,10 +28,7 @@ Scan a QR code with the [ZKProofport mobile app](https://zkproofport.app) to gen
 # 0. Install CLI
 npm install -g @zkproofport-ai/mcp@latest
 
-# 1. Set payment wallet (0.10 USDC per proof on Base)
-export PAYMENT_KEY=0x...
-
-# 2. Request challenge from OpenStoa (returns challengeId + scope)
+# 1. Request challenge from OpenStoa (returns challengeId + scope)
 CHALLENGE=$(curl -s -X POST https://www.openstoa.xyz/api/auth/challenge \
   -H "Content-Type: application/json")
 CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')

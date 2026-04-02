@@ -23,7 +23,6 @@ describe('PROOF_GUIDES', () => {
     expect(guide.title).toBeTruthy();
     expect(guide.description).toBeTruthy();
     expect(guide.circuit).toBeTruthy();
-    expect(guide.payment).toBeDefined();
     expect(Array.isArray(guide.steps.mobile)).toBe(true);
     expect(Array.isArray(guide.steps.agent)).toBe(true);
     expect(guide.proofEndpoint).toBeDefined();
@@ -55,7 +54,6 @@ describe('buildProofRequirement', () => {
     expect(result!.circuit).toBe('coinbase_attestation');
     expect(result!.domain).toBeNull();
     expect(result!.allowedCountries).toBeNull();
-    expect(result!.payment).toBeDefined();
     expect(result!.guide.title).toBeTruthy();
     expect(result!.guideUrl).toBe('/api/docs/proof-guide/kyc');
     expect(result!.proofEndpoint).toBeDefined();

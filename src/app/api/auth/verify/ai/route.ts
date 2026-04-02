@@ -42,7 +42,7 @@ const ROUTE = '/api/auth/verify/ai';
  *                 description: Challenge ID from /api/auth/challenge
  *               paymentTxHash:
  *                 type: string
- *                 description: Payment transaction hash from proof generation
+ *                 description: Optional: Payment transaction hash (legacy field, not required)
  *               teeAttestation:
  *                 type: string
  *                 description: Raw Nitro TEE attestation document (base64)

@@ -88,7 +88,7 @@ const ROUTE = '/api/topics/[topicId]/join';
  *       402:
  *         description: >-
  *           Proof required to join this topic. Response includes full proof generation guide with
- *           CLI commands, payment info (0.1 USDC via x402), challenge endpoint, and step-by-step
+ *           CLI commands, challenge endpoint, and step-by-step
  *           instructions for both mobile app and AI agent workflows.
  *         content:
  *           application/json:
@@ -101,8 +101,7 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                 proofRequirement:
  *                   type: object
  *                   description: >-
- *                     Complete proof generation guide. Includes payment options (PAYMENT_KEY wallet
- *                     or CDP managed wallet), challenge endpoint (POST /api/auth/challenge),
+ *                     Complete proof generation guide. Includes challenge endpoint (POST /api/auth/challenge),
  *                     CLI prove commands (zkproofport-prove), and join endpoint details.
  *                   properties:
  *                     type:
@@ -125,23 +124,6 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                       items:
  *                         type: string
  *                       description: ISO 3166-1 alpha-2 country codes (for country proof type)
- *                     payment:
- *                       type: object
- *                       description: Payment info — 0.1 USDC per proof via x402 protocol
- *                       properties:
- *                         cost:
- *                           type: string
- *                           example: 0.1 USDC per proof
- *                         options:
- *                           type: array
- *                           description: Payment wallet (PAYMENT_KEY) or CDP managed wallet
- *                           items:
- *                             type: object
- *                             properties:
- *                               name:
- *                                 type: string
- *                               envVars:
- *                                 type: object
  *                     guide:
  *                       type: object
  *                       description: Step-by-step instructions for mobile and agent workflows with CLI commands

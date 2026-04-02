@@ -41,15 +41,6 @@ export interface ProofGuide {
   title: string;
   description: string;
   circuit: string;
-  payment: {
-    cost: string;
-    description: string;
-    options: {
-      name: string;
-      description: string;
-      envVars: { [key: string]: string };
-    }[];
-  };
   steps: {
     mobile: ProofGuideStep[];
     agent: ProofGuideStep[];
@@ -66,29 +57,6 @@ function getBaseUrl(): string {
 
 const BASE_URL = getBaseUrl();
 const COMMUNITY_SCOPE = 'zkproofport-community';
-
-const PAYMENT_INFO: ProofGuide['payment'] = {
-  cost: '0.1 USDC per proof',
-  description: 'Proof generation costs $0.10 USDC on Base network via x402 payment protocol (gasless EIP-3009).',
-  options: [
-    {
-      name: 'Option A: Payment wallet (Recommended)',
-      description: 'Your own wallet with USDC on Base. Each proof costs $0.10 (gasless EIP-3009).',
-      envVars: {
-        PAYMENT_KEY: '0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY',
-      },
-    },
-    {
-      name: 'Option B: CDP managed wallet',
-      description: 'Uses a Coinbase Developer Platform managed wallet. Private keys never leave Coinbase TEE. See https://www.coinbase.com/developer-platform',
-      envVars: {
-        CDP_API_KEY_ID: 'your-cdp-api-key-id',
-        CDP_API_KEY_SECRET: 'your-cdp-api-key-secret',
-        CDP_WALLET_SECRET: 'your-cdp-wallet-secret',
-      },
-    },
-  ],
-};
 
 function makeProofEndpoint(
   circuitType: string,
@@ -136,7 +104,6 @@ export const PROOF_GUIDES: Record<string, ProofGuide> = {
     title: 'Coinbase KYC Verification',
     description: 'Prove that you have completed identity verification (KYC) on Coinbase without revealing any personal information. Requires a Coinbase account with completed KYC and an EAS attestation on Base.',
     circuit: 'coinbase_attestation',
-    payment: PAYMENT_INFO,
     steps: {
       mobile: [
         {
@@ -164,11 +131,6 @@ export const PROOF_GUIDES: Record<string, ProofGuide> = {
         },
         {
           step: 1,
-          title: 'Set Payment Environment Variables',
-          description: 'Each proof costs 0.1 USDC on Base. Choose one payment method:\n\nOption A: Payment wallet (Recommended)\nexport PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY\n\nOption B: CDP managed wallet\nexport CDP_API_KEY_ID=your-cdp-api-key-id\nexport CDP_API_KEY_SECRET=your-cdp-api-key-secret\nexport CDP_WALLET_SECRET=your-cdp-wallet-secret',
-        },
-        {
-          step: 2,
           title: 'Get Challenge',
           description: 'Request a challenge from the OpenStoa API. This returns a challengeId and scope needed for proof generation.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
@@ -177,13 +139,13 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
-          step: 3,
+          step: 2,
           title: 'Generate Proof',
           description: 'Generate a KYC proof using the CLI. This opens a browser for Coinbase attestation verification, then generates a ZK proof. The --silent flag outputs only JSON.',
           code: `PROOF_RESULT=$(zkproofport-prove --login-google --scope $SCOPE --silent)`,
         },
         {
-          step: 4,
+          step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint.',
           code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
@@ -199,7 +161,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     proofEndpoint: makeProofEndpoint('coinbase_attestation', '--login-google'),
     notes: [
       'Requires a Coinbase account with completed KYC verification.',
-      'Proof generation costs 0.1 USDC via x402 payment protocol (gasless EIP-3009).',
       'The proof only reveals that KYC is complete — no personal data is exposed.',
       'Proofs are verified on-chain via the ZKProofport verifier contract on Base.',
     ],
@@ -209,7 +170,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Coinbase Country Attestation',
     description: 'Prove your country of residence via Coinbase EAS attestation without revealing your identity. The topic owner may restrict which countries are allowed or blocked.',
     circuit: 'coinbase_country_attestation',
-    payment: PAYMENT_INFO,
     steps: {
       mobile: [
         {
@@ -237,11 +197,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         },
         {
           step: 1,
-          title: 'Set Payment Environment Variables',
-          description: 'Each proof costs 0.1 USDC on Base. Choose one payment method:\n\nOption A: Payment wallet (Recommended)\nexport PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY\n\nOption B: CDP managed wallet\nexport CDP_API_KEY_ID=your-cdp-api-key-id\nexport CDP_API_KEY_SECRET=your-cdp-api-key-secret\nexport CDP_WALLET_SECRET=your-cdp-wallet-secret',
-        },
-        {
-          step: 2,
           title: 'Get Challenge',
           description: 'Request a challenge from the OpenStoa API.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
@@ -250,13 +205,13 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
-          step: 3,
+          step: 2,
           title: 'Generate Country Proof',
           description: 'Generate a country attestation proof. The --login-google flag triggers Coinbase attestation verification. The country list and mode are embedded in the proof by the topic requirements.',
           code: `PROOF_RESULT=$(zkproofport-prove --login-google --scope $SCOPE --silent)`,
         },
         {
-          step: 4,
+          step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. The server validates that your country is in the allowed list.',
           code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
@@ -272,7 +227,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     proofEndpoint: makeProofEndpoint('coinbase_country_attestation', '--login-google'),
     notes: [
       'Requires a Coinbase account with country attestation on Base (EAS).',
-      'Proof generation costs 0.1 USDC via x402 payment protocol.',
       'The proof reveals only whether your country is in/not in the allowed list — not which country you are in.',
       'The topic owner defines the allowed/blocked country list (ISO 3166-1 alpha-2 codes).',
     ],
@@ -282,7 +236,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Google Workspace Domain Verification',
     description: 'Prove your organization membership by verifying your Google Workspace email domain without revealing your email address. Uses OIDC domain attestation circuit.',
     circuit: 'oidc_domain_attestation',
-    payment: PAYMENT_INFO,
     steps: {
       mobile: [
         {
@@ -310,11 +263,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         },
         {
           step: 1,
-          title: 'Set Payment Environment Variables',
-          description: 'Each proof costs 0.1 USDC on Base. Choose one payment method:\n\nOption A: Payment wallet (Recommended)\nexport PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY\n\nOption B: CDP managed wallet\nexport CDP_API_KEY_ID=your-cdp-api-key-id\nexport CDP_API_KEY_SECRET=your-cdp-api-key-secret\nexport CDP_WALLET_SECRET=your-cdp-wallet-secret',
-        },
-        {
-          step: 2,
           title: 'Get Challenge',
           description: 'Request a challenge from the OpenStoa API.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
@@ -323,13 +271,13 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
-          step: 3,
+          step: 2,
           title: 'Generate Google Workspace Proof',
           description: 'Generate a domain attestation proof using your Google Workspace account. The --login-google-workspace flag triggers Google OAuth with workspace account. A browser window will open for Google sign-in (device flow).',
           code: `PROOF_RESULT=$(zkproofport-prove --login-google-workspace --scope $SCOPE --silent)`,
         },
         {
-          step: 4,
+          step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. If the topic has a required domain (e.g., company.com), the domain extracted from your proof must match.',
           code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
@@ -345,7 +293,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     proofEndpoint: makeProofEndpoint('oidc_domain_attestation', '--login-google-workspace', { provider: 'google' }),
     notes: [
       'Requires a Google Workspace account (e.g., you@company.com). Regular @gmail.com accounts will not work for domain-restricted topics.',
-      'Proof generation costs 0.1 USDC via x402 payment protocol (gasless EIP-3009).',
       'The proof reveals only your email domain (e.g., company.com) — not your full email address.',
       'If the topic specifies a required domain, your workspace domain must match exactly.',
       'If no domain is specified, any Google Workspace domain is accepted.',
@@ -356,7 +303,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Microsoft 365 Domain Verification',
     description: 'Prove your organization membership by verifying your Microsoft 365 email domain without revealing your email address. Uses OIDC domain attestation circuit.',
     circuit: 'oidc_domain_attestation',
-    payment: PAYMENT_INFO,
     steps: {
       mobile: [
         {
@@ -384,11 +330,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         },
         {
           step: 1,
-          title: 'Set Payment Environment Variables',
-          description: 'Each proof costs 0.1 USDC on Base. Choose one payment method:\n\nOption A: Payment wallet (Recommended)\nexport PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY\n\nOption B: CDP managed wallet\nexport CDP_API_KEY_ID=your-cdp-api-key-id\nexport CDP_API_KEY_SECRET=your-cdp-api-key-secret\nexport CDP_WALLET_SECRET=your-cdp-wallet-secret',
-        },
-        {
-          step: 2,
           title: 'Get Challenge',
           description: 'Request a challenge from the OpenStoa API.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
@@ -397,13 +338,13 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
-          step: 3,
+          step: 2,
           title: 'Generate Microsoft 365 Proof',
           description: 'Generate a domain attestation proof using your Microsoft 365 account. The --login-microsoft-365 flag triggers Microsoft OAuth. A browser window will open for Microsoft sign-in (device flow).',
           code: `PROOF_RESULT=$(zkproofport-prove --login-microsoft-365 --scope $SCOPE --silent)`,
         },
         {
-          step: 4,
+          step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. If the topic has a required domain, your domain must match.',
           code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
@@ -419,7 +360,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     proofEndpoint: makeProofEndpoint('oidc_domain_attestation', '--login-microsoft-365', { provider: 'microsoft' }),
     notes: [
       'Requires a Microsoft 365 organizational account (e.g., you@company.com). Personal @outlook.com accounts will not work for domain-restricted topics.',
-      'Proof generation costs 0.1 USDC via x402 payment protocol (gasless EIP-3009).',
       'The proof reveals only your email domain (e.g., company.com) — not your full email address.',
       'If the topic specifies a required domain, your Microsoft 365 domain must match exactly.',
       'If no domain is specified, any Microsoft 365 domain is accepted.',
@@ -430,7 +370,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Organization Membership Verification',
     description: 'Prove your organization membership via either Google Workspace or Microsoft 365 without revealing your email address. You can use either provider — the topic accepts both.',
     circuit: 'oidc_domain_attestation',
-    payment: PAYMENT_INFO,
     steps: {
       mobile: [
         {
@@ -458,11 +397,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         },
         {
           step: 1,
-          title: 'Set Payment Environment Variables',
-          description: 'Each proof costs 0.1 USDC on Base. Choose one payment method:\n\nOption A: Payment wallet (Recommended)\nexport PAYMENT_KEY=0x_YOUR_PAYMENT_WALLET_PRIVATE_KEY\n\nOption B: CDP managed wallet\nexport CDP_API_KEY_ID=your-cdp-api-key-id\nexport CDP_API_KEY_SECRET=your-cdp-api-key-secret\nexport CDP_WALLET_SECRET=your-cdp-wallet-secret',
-        },
-        {
-          step: 2,
           title: 'Get Challenge',
           description: 'Request a challenge from the OpenStoa API.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
@@ -471,7 +405,7 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
-          step: 3,
+          step: 2,
           title: 'Generate Organization Proof (Choose One Provider)',
           description: 'Generate a domain attestation proof using either Google Workspace or Microsoft 365. Choose the flag matching your organization account. A browser window will open for sign-in (device flow).',
           code: `# Option A: Google Workspace
@@ -481,7 +415,7 @@ PROOF_RESULT=$(zkproofport-prove --login-google-workspace --scope $SCOPE --silen
 # PROOF_RESULT=$(zkproofport-prove --login-microsoft-365 --scope $SCOPE --silent)`,
         },
         {
-          step: 4,
+          step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. Either provider is accepted by this topic.',
           code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
@@ -498,7 +432,6 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     notes: [
       'This topic accepts EITHER Google Workspace or Microsoft 365 accounts.',
       'Use --login-google-workspace for Google, --login-microsoft-365 for Microsoft.',
-      'Proof generation costs 0.1 USDC via x402 payment protocol (gasless EIP-3009).',
       'The proof reveals only your email domain (e.g., company.com) — not your full email address.',
       'If the topic specifies a required domain, your domain must match regardless of provider.',
       'If no domain is specified, any organizational domain is accepted.',
@@ -550,7 +483,6 @@ export function buildProofRequirement(
     circuit: guide.circuit,
     domain: options?.domain ?? null,
     allowedCountries: options?.allowedCountries ?? null,
-    payment: guide.payment,
     guide: {
       title: guide.title,
       description: guide.description,

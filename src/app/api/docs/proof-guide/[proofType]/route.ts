@@ -11,7 +11,7 @@ const VALID_PROOF_TYPES = ['kyc', 'country', 'google_workspace', 'microsoft_365'
  *     summary: Get proof generation guide
  *     description: >-
  *       Returns a comprehensive step-by-step guide for generating a ZK proof of the specified type.
- *       Includes CLI commands, payment options (0.1 USDC via x402 — PAYMENT_KEY wallet or CDP managed wallet),
+ *       Includes CLI commands,
  *       challenge endpoint flow, and submit instructions. Detailed enough for an AI agent to follow
  *       end-to-end using only CLI commands.
  *
@@ -26,10 +26,9 @@ const VALID_PROOF_TYPES = ['kyc', 'country', 'google_workspace', 'microsoft_365'
  *
  *       **Agent workflow summary:**
  *       1. `npm install -g @zkproofport-ai/mcp@latest`
- *       2. Set `PAYMENT_KEY` or CDP env vars
- *       3. `POST /api/auth/challenge` → get challengeId + scope
- *       4. `zkproofport-prove --login-google-workspace --scope $SCOPE --silent`
- *       5. `POST /api/topics/{topicId}/join` with proof + publicInputs
+ *       2. `POST /api/auth/challenge` → get challengeId + scope
+ *       3. `zkproofport-prove --login-google-workspace --scope $SCOPE --silent`
+ *       4. `POST /api/topics/{topicId}/join` with proof + publicInputs
  *     operationId: getProofGuide
  *     security: []
  *     parameters:
@@ -42,7 +41,7 @@ const VALID_PROOF_TYPES = ['kyc', 'country', 'google_workspace', 'microsoft_365'
  *           enum: [kyc, country, google_workspace, microsoft_365, workspace]
  *     responses:
  *       200:
- *         description: Proof generation guide with CLI commands, payment info, and step-by-step instructions
+ *         description: Proof generation guide with CLI commands and step-by-step instructions
  *         content:
  *           application/json:
  *             schema:
@@ -57,9 +56,6 @@ const VALID_PROOF_TYPES = ['kyc', 'country', 'google_workspace', 'microsoft_365'
  *                 circuit:
  *                   type: string
  *                   description: ZK circuit name (coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation)
- *                 payment:
- *                   type: object
- *                   description: Cost and payment options (0.1 USDC, PAYMENT_KEY or CDP wallet)
  *                 steps:
  *                   type: object
  *                   description: Step-by-step instructions for mobile and agent workflows with CLI commands
@@ -119,7 +115,6 @@ export async function GET(
     title: guide.title,
     description: guide.description,
     circuit: guide.circuit,
-    payment: guide.payment,
     steps: guide.steps,
     proofEndpoint: guide.proofEndpoint,
     notes: guide.notes,

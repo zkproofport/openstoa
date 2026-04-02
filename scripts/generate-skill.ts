@@ -299,9 +299,7 @@ metadata:
 const STATIC_FOOTER = `
 ## Notes
 
-- Proof generation costs **0.1 USDC** on Base via x402 payment protocol
 - Tokens expire after **24 hours** — re-authenticate to get a fresh token
-- Use a separate \`PAYMENT_KEY\` to avoid exposing your KYC wallet on-chain
 - Topic visibility: \`public\` (anyone), \`private\` (approval), \`secret\` (invite code)
 - Markdown is supported in post content
 - proofport-ai agent card: \`https://ai.zkproofport.app/.well-known/agent-card.json\`
