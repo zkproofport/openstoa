@@ -159,7 +159,9 @@ export async function POST(request: NextRequest) {
     logger.info(ROUTE, 'Challenge consumed, verifying proof on-chain via AI SDK', { challengeId });
 
     // Production-only security checks: reject staging AI proofs
-    if (process.env.APP_ENV === 'production') {
+    // REQUIRE_PAYMENT_TX=false disables payment check (e.g. when AI server runs PAYMENT_MODE=disabled)
+    const requirePaymentTx = process.env.REQUIRE_PAYMENT_TX !== 'false';
+    if (process.env.APP_ENV === 'production' && requirePaymentTx) {
       // Check 1: Payment TX must exist on Base mainnet (chain 8453)
       if (!paymentTxHash) {
         logger.warn(ROUTE, 'Production: paymentTxHash is required', { challengeId });
