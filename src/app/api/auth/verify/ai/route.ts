@@ -278,12 +278,12 @@ export async function POST(request: NextRequest) {
       : result.publicInputs.join('');
 
     // Login requires generic Google OIDC proof only (proofType: "google_login")
-    // Reject: kyc, country, google_workspace, microsoft_365
+    // Reject: kyc, country, google_workspace, microsoft_365, and missing proofType
     const proofType = result.proofType;
-    if (proofType && proofType !== 'google_login') {
-      logger.warn(ROUTE, 'Non-Google-login proof rejected', { challengeId, proofType });
+    if (proofType !== 'google_login') {
+      logger.warn(ROUTE, 'Non-Google-login proof rejected', { challengeId, proofType: proofType ?? 'missing' });
       return NextResponse.json(
-        { error: `Login requires Google OIDC proof (--login-google). Received proofType: ${proofType}` },
+        { error: `Login requires Google OIDC proof (--login-google). Received proofType: ${proofType ?? 'missing'}` },
         { status: 400 },
       );
     }
