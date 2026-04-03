@@ -277,6 +277,17 @@ export async function POST(request: NextRequest) {
       ? result.publicInputs
       : result.publicInputs.join('');
 
+    // Login requires generic Google OIDC proof only (proofType: "google_login")
+    // Reject: kyc, country, google_workspace, microsoft_365
+    const proofType = result.proofType;
+    if (proofType && proofType !== 'google_login') {
+      logger.warn(ROUTE, 'Non-Google-login proof rejected', { challengeId, proofType });
+      return NextResponse.json(
+        { error: `Login requires Google OIDC proof (--login-google). Received proofType: ${proofType}` },
+        { status: 400 },
+      );
+    }
+
     // Verify scope
     const scope = extractScopeFromPublicInputs(rawPublicInputs);
     const expectedScope = ethers.keccak256(ethers.toUtf8Bytes(COMMUNITY_SCOPE));
@@ -323,13 +334,7 @@ export async function POST(request: NextRequest) {
 
     // Save verification to Redis cache (privacy-first: no PII in DB)
     const { saveVerificationCache, circuitToCacheTypeForLogin } = await import('@/lib/verification-cache');
-    // Detect circuit from field count for cache type mapping
-    const fieldCount = rawPublicInputs.startsWith('0x')
-      ? (rawPublicInputs.length - 2) / 64
-      : rawPublicInputs.length / 64;
-    const circuit = fieldCount === 148 ? 'oidc_domain_attestation'
-      : fieldCount === 150 ? 'coinbase_country_attestation'
-      : 'coinbase_attestation';
+    const circuit = result.circuit || 'oidc_domain_attestation';
     const cacheType = circuitToCacheTypeForLogin(circuit);
     let domain: string | undefined;
     if (circuit === 'oidc_domain_attestation') {
