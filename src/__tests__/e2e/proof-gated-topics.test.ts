@@ -676,7 +676,7 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     console.log(`[E2E] ${res.status} — empty proof in verify/ai correctly rejected`);
   });
 
-  it('edge: KYC proof rejected for login (proofType: kyc) → 400', async () => {
+  it('edge: KYC proof rejected for login (proofType: kyc) → 400', { timeout: 60_000 }, async () => {
     const { challengeId, scope } = await getScope();
     console.log('[E2E] Generating KYC proof to test login rejection...');
     const proofResult = runProveCoinbase('coinbase_kyc', scope);
