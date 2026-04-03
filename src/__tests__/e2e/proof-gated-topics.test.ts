@@ -675,4 +675,37 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     expect(json.error).toBeTruthy();
     console.log(`[E2E] ${res.status} — empty proof in verify/ai correctly rejected`);
   });
+
+  it('edge: KYC proof rejected for login (proofType: kyc) → 400', async () => {
+    const { challengeId, scope } = await getScope();
+    console.log('[E2E] Generating KYC proof to test login rejection...');
+    const proofResult = runProveCoinbase('coinbase_kyc', scope);
+    expect(proofResult.proofType).toBe('kyc');
+    console.log(`[E2E] KYC proof generated, proofType: ${proofResult.proofType}`);
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId, result: proofResult }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain('proofType');
+    console.log(`[E2E] ${res.status} — KYC proof correctly rejected for login: ${json.error}`);
+  });
+
+  it('edge: missing proofType rejected for login → 400', async () => {
+    const { challengeId } = await getScope();
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeId,
+        result: { proof: '0x1234', publicInputs: '0x5678', verification: { chainId: 8453, verifierAddress: '0x0000', rpcUrl: 'https://mainnet.base.org' } },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] ${res.status} — missing proofType correctly rejected: ${json.error}`);
+  });
 });
