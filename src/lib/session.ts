@@ -15,13 +15,15 @@ export interface SessionPayload extends JWTPayload {
   nickname: string;
   verifiedAt: number;
   role?: string;
+  isAI?: boolean;
 }
 
-export async function createSession(userId: string, nickname: string): Promise<string> {
+export async function createSession(userId: string, nickname: string, options?: { isAI?: boolean }): Promise<string> {
   const token = await new SignJWT({
     userId,
     nickname,
     verifiedAt: Date.now(),
+    ...(options?.isAI && { isAI: true }),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()

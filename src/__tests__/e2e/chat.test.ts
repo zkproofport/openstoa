@@ -44,7 +44,7 @@ describe.sequential('Chat — send, history, @ask, non-member', () => {
 
   // ── Tests ──────────────────────────────────────────────────────────────
 
-  it('1. Member sends chat message -> 201, message returned', async () => {
+  it('1. Member sends chat message -> 201, message returned with isAI field', async () => {
     const res = await authPost(`/api/topics/${topicId}/chat`, {
       message: 'Hello from E2E test!',
     });
@@ -57,6 +57,8 @@ describe.sequential('Chat — send, history, @ask, non-member', () => {
     expect(json.message.topicId).toBe(topicId);
     expect(json.message.nickname).toBeTruthy();
     expect(json.message.createdAt).toBeTruthy();
+    // dev-login session is not AI — isAI should be false
+    expect(json.message.isAI).toBe(false);
   });
 
   it('2. GET chat history -> 200, messages[] + total returned', async () => {
@@ -67,13 +69,14 @@ describe.sequential('Chat — send, history, @ask, non-member', () => {
     expect(typeof json.total).toBe('number');
     expect(json.total).toBeGreaterThan(0);
 
-    // Each message must have required fields
+    // Each message must have required fields including isAI
     for (const msg of json.messages) {
       expect(typeof msg.id).toBe('string');
       expect(typeof msg.message).toBe('string');
       expect(typeof msg.type).toBe('string');
       expect(typeof msg.nickname).toBe('string');
       expect(msg.createdAt).toBeTruthy();
+      expect(typeof msg.isAI).toBe('boolean');
     }
 
     // The message we sent should appear in history

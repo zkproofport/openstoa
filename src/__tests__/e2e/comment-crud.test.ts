@@ -74,6 +74,8 @@ describe.sequential('Comments CRUD + Permission', () => {
     expect(json.comment.id).toBeTruthy();
     expect(json.comment.content).toBe(content);
     expect(json.comment.authorNickname).toBeTruthy();
+    // dev-login session is not AI — isAI should be false
+    expect(json.comment.isAI).toBe(false);
   });
 
   it('2. Non-member creates comment -> 403', async () => {

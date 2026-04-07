@@ -233,6 +233,7 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
       expect(typeof post.upvoteCount).toBe('number');
       expect(typeof post.viewCount).toBe('number');
       expect(typeof post.commentCount).toBe('number');
+      expect(typeof post.isAI).toBe('boolean');
       expect(post.createdAt).toBeTruthy();
     }
   });

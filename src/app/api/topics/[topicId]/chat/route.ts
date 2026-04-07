@@ -99,6 +99,7 @@ export async function GET(
           userId: chatMessages.userId,
           message: chatMessages.message,
           type: chatMessages.type,
+          isAI: chatMessages.isAI,
           createdAt: chatMessages.createdAt,
           nickname: users.nickname,
           profileImage: users.profileImage,
@@ -221,6 +222,7 @@ export async function POST(
         userId: session.userId,
         message: message.trim(),
         type: 'message',
+        isAI: session.isAI ?? false,
       })
       .returning();
 
@@ -232,6 +234,7 @@ export async function POST(
       profileImage: user?.profileImage ?? null,
       message: inserted.message,
       type: inserted.type,
+      isAI: inserted.isAI,
       createdAt: inserted.createdAt,
     };
 

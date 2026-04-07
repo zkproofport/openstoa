@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
+import Badge from '@/components/Badge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ interface ChatMessage {
   profileImage?: string;
   message: string;
   type: 'message' | 'join' | 'leave';
+  isAI?: boolean;
   createdAt: string;
 }
 
@@ -172,8 +174,12 @@ function MessageRow({ msg }: { msg: ChatMessage }) {
           fontWeight: 700,
           color: 'var(--accent)',
           flexShrink: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
         }}>
           {msg.nickname}
+          {msg.isAI && <Badge type="ai" />}
         </span>
         <span style={{
           fontSize: 13,

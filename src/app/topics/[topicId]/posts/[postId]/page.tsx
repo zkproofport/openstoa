@@ -29,6 +29,7 @@ interface Post {
   commentCount: number;
   tags?: { name: string; slug: string }[];
   userVoted?: number | null;
+  isAI?: boolean;
 }
 
 interface Comment {
@@ -41,6 +42,7 @@ interface Comment {
   badges?: Array<{ type: string; label: string; domain?: string; country?: string }>;
   isDeleted?: boolean;
   deletedBy?: string | null;
+  isAI?: boolean;
 }
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
@@ -430,8 +432,9 @@ export default function PostPage() {
               <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
             </span>
             <div>
-              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)' }}>
+              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 {post.authorNickname}
+                {post.isAI && <Badge type="ai" />}
               </p>
               <p style={{ fontSize: 15, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
                 {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -709,6 +712,7 @@ export default function PostPage() {
                             <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
                               {comment.authorNickname}
                             </span>
+                            {comment.isAI && <Badge type="ai" />}
                             {comment.badges && comment.badges.length > 0 && comment.badges.map((b, i) => (
                               <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
                             ))}

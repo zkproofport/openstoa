@@ -76,6 +76,7 @@ export const posts = pgTable('posts', {
   score: real('score').notNull().default(0),
   isPinned: boolean('is_pinned').notNull().default(false),
   recordCount: integer('record_count').notNull().default(0),
+  isAI: boolean('is_ai').notNull().default(false),
 });
 
 export const comments = pgTable('comments', {
@@ -86,6 +87,7 @@ export const comments = pgTable('comments', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   deletedBy: varchar('deleted_by', { length: 10 }), // 'author' | 'admin' | null
+  isAI: boolean('is_ai').notNull().default(false),
 });
 
 export const tags = pgTable('tags', {
@@ -160,6 +162,7 @@ export const chatMessages = pgTable('chat_messages', {
   userId: text('user_id').references(() => users.id).notNull(),
   message: text('message').notNull(),
   type: varchar('type', { length: 10 }).notNull().default('message'), // 'message' | 'join' | 'leave'
+  isAI: boolean('is_ai').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   topicIdx: index('chat_msg_topic_idx').on(table.topicId),

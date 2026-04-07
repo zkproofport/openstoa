@@ -35,6 +35,7 @@ export interface PostCardPost {
   topicTitle?: string;
   topicId?: string;
   badges?: Array<{ type: string; label: string; country?: string; domain?: string }>;
+  isAI?: boolean;
 }
 
 export interface PostCardProps {
@@ -522,6 +523,7 @@ export default function PostCard({
                 <span style={{ fontWeight: 600, color: '#e5e7eb' }}>
                   {post.authorNickname}
                 </span>
+                {post.isAI && <Badge type="ai" />}
                 {post.badges && post.badges.length > 0 && post.badges.map((b, i) => (
                   <Badge key={i} type={b.type} label={b.label} country={b.country} domain={b.domain} />
                 ))}

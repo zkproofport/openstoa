@@ -110,6 +110,7 @@ export async function POST(
         postId,
         authorId: session.userId,
         content,
+        isAI: session.isAI ?? false,
       })
       .returning();
 

@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
     }
 
     const nickname = existingUser?.nickname ?? `anon_${nullifier.slice(2, 10)}`;
-    const token = await createSession(nullifier, nickname);
+    const token = await createSession(nullifier, nickname, { isAI: true });
 
     logger.info(ROUTE, 'Session created, sending 200', { challengeId, nullifier, needsNickname });
 

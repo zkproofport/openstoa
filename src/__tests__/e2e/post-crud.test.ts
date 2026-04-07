@@ -66,6 +66,8 @@ describe.sequential('Post CRUD + Permission', () => {
     expect(json.post.id).toBeTruthy();
     expect(json.post.title).toBe(title);
     expect(json.post.content).toBe(content);
+    // dev-login session is not AI — isAI should be false
+    expect(json.post.isAI).toBe(false);
     postId = json.post.id;
   });
 

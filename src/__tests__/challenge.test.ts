@@ -27,15 +27,22 @@ describe('createChallenge', () => {
     expect(result.expiresIn).toBe(300);
   });
 
-  it('should store challenge in Redis with TTL', async () => {
+  it('should store challenge in Redis with TTL (timestamp value)', async () => {
+    const before = Math.floor(Date.now() / 1000);
     const result = await createChallenge();
+    const after = Math.floor(Date.now() / 1000);
 
     expect(mockRedis.set).toHaveBeenCalledWith(
       `community:challenge:${result.challengeId}`,
-      '1',
+      expect.any(String),
       'EX',
       300,
     );
+
+    // Verify stored value is a valid unix timestamp
+    const storedValue = Number(mockRedis.set.mock.calls[0][1]);
+    expect(storedValue).toBeGreaterThanOrEqual(before);
+    expect(storedValue).toBeLessThanOrEqual(after);
   });
 
   it('should generate unique challengeIds', async () => {
@@ -58,12 +65,12 @@ describe('consumeChallenge', () => {
     vi.clearAllMocks();
   });
 
-  it('should return true for a valid challenge', async () => {
-    mockRedis.eval.mockResolvedValue('1');
+  it('should return timestamp (number) for a valid challenge', async () => {
+    mockRedis.eval.mockResolvedValue('1712345678');
 
     const result = await consumeChallenge('test-challenge-id');
 
-    expect(result).toBe(true);
+    expect(result).toBe(1712345678);
     expect(mockRedis.eval).toHaveBeenCalledWith(
       expect.stringContaining("redis.call('get'"),
       1,
@@ -71,12 +78,12 @@ describe('consumeChallenge', () => {
     );
   });
 
-  it('should return false for an expired/missing challenge', async () => {
+  it('should return null for an expired/missing challenge', async () => {
     mockRedis.eval.mockResolvedValue(null);
 
     const result = await consumeChallenge('expired-challenge-id');
 
-    expect(result).toBe(false);
+    expect(result).toBeNull();
     expect(mockRedis.eval).toHaveBeenCalledWith(
       expect.stringContaining("redis.call('get'"),
       1,
@@ -84,17 +91,17 @@ describe('consumeChallenge', () => {
     );
   });
 
-  it('should return false on second consumption (replay prevention)', async () => {
-    // First call: challenge exists, atomic get+del returns value
-    mockRedis.eval.mockResolvedValueOnce('1');
+  it('should return null on second consumption (replay prevention)', async () => {
+    // First call: challenge exists, atomic get+del returns timestamp
+    mockRedis.eval.mockResolvedValueOnce('1712345678');
     // Second call: challenge already consumed, returns null
     mockRedis.eval.mockResolvedValueOnce(null);
 
     const first = await consumeChallenge('one-time-challenge');
-    expect(first).toBe(true);
+    expect(first).toBe(1712345678);
 
     const second = await consumeChallenge('one-time-challenge');
-    expect(second).toBe(false);
+    expect(second).toBeNull();
   });
 
   it('should propagate Redis error in consumeChallenge', async () => {
@@ -102,15 +109,15 @@ describe('consumeChallenge', () => {
     await expect(consumeChallenge('test-id')).rejects.toThrow('Redis timeout');
   });
 
-  it('should return false when Redis eval returns null (expired challenge)', async () => {
+  it('should return null when Redis eval returns null (expired challenge)', async () => {
     mockRedis.eval.mockResolvedValue(null);
     const result = await consumeChallenge('very-old-challenge');
-    expect(result).toBe(false);
+    expect(result).toBeNull();
   });
 
   it('should handle concurrent consumption attempts atomically', async () => {
     // First call wins
-    mockRedis.eval.mockResolvedValueOnce('1');
+    mockRedis.eval.mockResolvedValueOnce('1712345678');
     // All subsequent calls lose (already consumed)
     mockRedis.eval.mockResolvedValue(null);
 
@@ -120,7 +127,7 @@ describe('consumeChallenge', () => {
       consumeChallenge('race-challenge'),
     ]);
 
-    const successes = results.filter(r => r === true);
+    const successes = results.filter(r => r !== null);
     expect(successes.length).toBe(1); // exactly one winner
   });
 

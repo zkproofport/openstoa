@@ -151,6 +151,7 @@ export async function GET(request: NextRequest) {
           score: posts.score,
           isPinned: posts.isPinned,
           recordCount: posts.recordCount,
+          isAI: posts.isAI,
           userVoted: sql<number | null>`null`,
           topicProofType: topics.proofType,
         })
@@ -218,6 +219,7 @@ export async function GET(request: NextRequest) {
         score: posts.score,
         isPinned: posts.isPinned,
         recordCount: posts.recordCount,
+        isAI: posts.isAI,
         userVoted: sql<number | null>`${votes.value}`,
         topicProofType: topics.proofType,
       })

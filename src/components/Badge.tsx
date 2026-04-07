@@ -12,6 +12,7 @@ const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
   country: { icon: '🌍', color: '#3b82f6' },
   workspace: { icon: '📧', color: '#8b5cf6' },
   oidc: { icon: '✓', color: '#6366f1' },
+  ai: { icon: '🤖', color: '#f59e0b' },
 };
 
 export default function Badge({ type, label: labelProp, domain, country }: BadgeProps) {
@@ -21,6 +22,7 @@ export default function Badge({ type, label: labelProp, domain, country }: Badge
     : type === 'country' ? (country || 'Country')
     : type === 'workspace' ? (domain || 'Org Verified')
     : type === 'oidc' ? 'OIDC Verified'
+    : type === 'ai' ? 'AI'
     : type);
 
   return (

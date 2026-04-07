@@ -167,6 +167,7 @@ export async function GET(
           viewCount: posts.viewCount,
           commentCount: posts.commentCount,
           score: posts.score,
+          isAI: posts.isAI,
           userVoted: sql<number | null>`null`,
           topicTitle: topics.title,
           topicVisibility: topics.visibility,
@@ -205,6 +206,7 @@ export async function GET(
           authorProfileImage: users.profileImage,
           deletedAt: comments.deletedAt,
           deletedBy: comments.deletedBy,
+          isAI: comments.isAI,
         })
         .from(comments)
         .leftJoin(users, eq(comments.authorId, users.id))
@@ -278,6 +280,7 @@ export async function GET(
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,
         score: posts.score,
+        isAI: posts.isAI,
         userVoted: sql<number | null>`${votes.value}`,
         topicTitle: topics.title,
         topicProofType: topics.proofType,
@@ -333,6 +336,7 @@ export async function GET(
         authorProfileImage: users.profileImage,
         deletedAt: comments.deletedAt,
         deletedBy: comments.deletedBy,
+        isAI: comments.isAI,
       })
       .from(comments)
       .leftJoin(users, eq(comments.authorId, users.id))

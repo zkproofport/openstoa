@@ -150,6 +150,37 @@ describe('session', () => {
     expect(payload).toBeNull();
   });
 
+  it('should include isAI=true in payload when created with isAI option', async () => {
+    const { createSession, verifySession } = await import('@/lib/session');
+
+    const token = await createSession('ai-user-123', 'ai_agent', { isAI: true });
+    const payload = await verifySession(token);
+
+    expect(payload).not.toBeNull();
+    expect(payload!.userId).toBe('ai-user-123');
+    expect(payload!.isAI).toBe(true);
+  });
+
+  it('should not include isAI in payload when created without isAI option', async () => {
+    const { createSession, verifySession } = await import('@/lib/session');
+
+    const token = await createSession('human-user-123', 'human_user');
+    const payload = await verifySession(token);
+
+    expect(payload).not.toBeNull();
+    expect(payload!.isAI).toBeUndefined();
+  });
+
+  it('should not include isAI in payload when isAI is false', async () => {
+    const { createSession, verifySession } = await import('@/lib/session');
+
+    const token = await createSession('human-user-456', 'human_user2', { isAI: false });
+    const payload = await verifySession(token);
+
+    expect(payload).not.toBeNull();
+    expect(payload!.isAI).toBeUndefined();
+  });
+
   it('should throw when COMMUNITY_JWT_SECRET is not set', async () => {
     const originalSecret = process.env.COMMUNITY_JWT_SECRET;
     delete process.env.COMMUNITY_JWT_SECRET;

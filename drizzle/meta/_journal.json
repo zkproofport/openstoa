@@ -29,6 +29,13 @@
       "when": 1774419488677,
       "tag": "0003_black_mystique",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775562022183,
+      "tag": "0004_wandering_moonstone",
+      "breakpoints": true
     }
   ]
 }

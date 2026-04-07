@@ -200,6 +200,7 @@ export async function GET(
           score: posts.score,
           isPinned: posts.isPinned,
           recordCount: posts.recordCount,
+          isAI: posts.isAI,
           userVoted: sql<number | null>`null`,
         })
         .from(posts)
@@ -297,6 +298,7 @@ export async function GET(
         score: posts.score,
         isPinned: posts.isPinned,
         recordCount: posts.recordCount,
+        isAI: posts.isAI,
         userVoted: sql<number | null>`${votes.value}`,
       })
       .from(posts)
@@ -386,6 +388,7 @@ export async function POST(
         authorId: session.userId,
         title,
         content: processedContent,
+        isAI: session.isAI ?? false,
       })
       .returning();
 
