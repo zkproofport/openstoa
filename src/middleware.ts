@@ -33,6 +33,7 @@ const PUBLIC_PREFIXES = [
   '/api/auth/poll/',
   '/api/docs/',
   '/docs',
+  '/.well-known/',
 ];
 
 // Paths accessible without authentication (guests can browse).
