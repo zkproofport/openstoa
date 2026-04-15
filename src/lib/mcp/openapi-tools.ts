@@ -77,7 +77,7 @@ function inferZodType(schema: Record<string, unknown>): z.ZodTypeAny {
   } else if (type === 'array') {
     zodType = z.array(z.unknown());
   } else if (type === 'object') {
-    zodType = z.record(z.unknown());
+    zodType = z.record(z.string(), z.unknown());
   } else {
     zodType = z.string();
   }
