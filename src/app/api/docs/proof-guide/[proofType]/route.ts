@@ -115,6 +115,7 @@ export async function GET(
     title: guide.title,
     description: guide.description,
     circuit: guide.circuit,
+    mcp: guide.mcp,
     steps: guide.steps,
     proofEndpoint: guide.proofEndpoint,
     notes: guide.notes,

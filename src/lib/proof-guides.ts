@@ -531,6 +531,7 @@ export function buildProofRequirement(
     circuit: guide.circuit,
     domain: options?.domain ?? null,
     allowedCountries: options?.allowedCountries ?? null,
+    mcp: guide.mcp,
     guide: {
       title: guide.title,
       description: guide.description,
