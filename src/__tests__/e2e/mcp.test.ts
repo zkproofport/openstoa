@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const BASE_URL = process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app';
-const MCP_URL = new URL('/api/mcp', BASE_URL);
+const MCP_URL = new URL('/mcp', BASE_URL);
 
 let client: Client;
 let transport: StreamableHTTPClientTransport;

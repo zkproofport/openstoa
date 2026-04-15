@@ -6,7 +6,7 @@ import { registerOpenApiTools } from '@/lib/mcp/openapi-tools';
 import { logger } from '@/lib/logger';
 import openApiSpec from '@/generated/openapi-spec.json';
 
-const ROUTE = '/api/mcp';
+const ROUTE = '/mcp';
 
 // Active transports keyed by MCP session ID
 const transports = new Map<string, WebStandardStreamableHTTPServerTransport>();
