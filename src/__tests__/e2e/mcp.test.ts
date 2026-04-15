@@ -53,7 +53,7 @@ describe.sequential('MCP server E2E', () => {
     expect(text).toContain('authenticate');
   });
 
-  it('authenticate tool (step 1) returns a challengeId + scope via real /api/auth/challenge', async () => {
+  it('authenticate tool phase 1 returns pending_user_login with device URL + code', async () => {
     const result = await client.callTool({ name: 'authenticate', arguments: {} });
     expect(result.isError).not.toBe(true);
 
@@ -61,27 +61,18 @@ describe.sequential('MCP server E2E', () => {
     expect(content.type).toBe('text');
 
     const payload = JSON.parse(content.text) as {
-      challengeId?: string;
-      scope?: string;
-      expiresIn?: number;
+      status?: string;
+      verificationUrl?: string;
+      userCode?: string;
+      instructions?: string;
       error?: string;
     };
 
     expect(payload.error).toBeUndefined();
-    expect(payload.challengeId).toMatch(/^[a-f0-9-]{10,}$/i);
-    expect(payload.scope).toBe('zkproofport-community');
-    expect(payload.expiresIn).toBeGreaterThan(0);
-  });
-
-  it('authenticate tool (step 2) rejects missing result', async () => {
-    const result = await client.callTool({
-      name: 'authenticate',
-      arguments: { challengeId: 'some-id' },
-    });
-    expect(result.isError).toBe(true);
-    const content = (result.content as Array<{ type: string; text: string }>)[0];
-    const payload = JSON.parse(content.text) as { error?: string };
-    expect(payload.error).toMatch(/result is required/i);
+    expect(payload.status).toBe('pending_user_login');
+    expect(payload.verificationUrl).toMatch(/^https:\/\/(www\.)?google\.com\/device/);
+    expect(payload.userCode).toMatch(/^[A-Z0-9-]{6,}$/);
+    expect(payload.instructions).toContain('browser');
   });
 
   it('OpenAPI tool (get_categories) calls the real API without auth', async () => {
@@ -114,6 +105,10 @@ describe.sequential('MCP server E2E', () => {
     const { tools } = await client.listTools();
 
     const paramless = tools.filter((t) => {
+      // authenticate spawns a ~5-minute Google device flow subprocess as a
+      // side effect, so skip it here — phase 1 is already covered above and
+      // the full flow is covered by the manual MCP e2e script.
+      if (t.name === 'authenticate') return false;
       const schema = t.inputSchema as { required?: string[] } | undefined;
       return !schema?.required || schema.required.length === 0;
     });
