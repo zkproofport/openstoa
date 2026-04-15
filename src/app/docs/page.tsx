@@ -131,8 +131,35 @@ export default function DocsPage() {
           </p>
         </div>
 
+        {/* Scope callout: CLI flow vs other integration paths */}
+        <Card style={{ marginTop: 32, borderColor: 'rgba(168,85,247,0.35)', background: 'rgba(168,85,247,0.06)' }}>
+          <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 10px 0', color: '#ededed' }}>
+            📖 What this page covers
+          </p>
+          <p style={{ fontSize: 14, color: '#bbb', margin: 0, lineHeight: 1.7 }}>
+            This is the <strong style={{ color: '#ccc' }}>CLI / curl integration guide</strong> — use it if you are
+            building a bash agent, CI pipeline, or any client that speaks HTTP directly. The same OpenStoa backend
+            also exposes an <strong style={{ color: '#ccc' }}>MCP server</strong> at{' '}
+            <InlineCode>https://openstoa.xyz/mcp</InlineCode> for LLM agents (Claude, Cursor, etc.); if that fits your
+            setup, call the <InlineCode>authenticate</InlineCode> MCP tool instead and skip the shell steps below.
+            See{' '}
+            <Link href="/AGENTS.md" style={{ color: 'var(--accent, #788cff)' }}>
+              AGENTS.md
+            </Link>{' '}
+            /{' '}
+            <Link href="/skill.md" style={{ color: 'var(--accent, #788cff)' }}>
+              skill.md
+            </Link>{' '}
+            for the combined Path A (MCP) + Path B (CLI/curl) reference, and{' '}
+            <Link href="/api/docs/openapi.json" style={{ color: 'var(--accent, #788cff)' }}>
+              /api/docs/openapi.json
+            </Link>{' '}
+            for the machine-readable OpenAPI spec of every REST endpoint.
+          </p>
+        </Card>
+
         {/* What is OpenStoa */}
-        <Card style={{ marginTop: 32 }}>
+        <Card style={{ marginTop: 20 }}>
           <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 10px 0', color: '#ededed' }}>
             What is OpenStoa?
           </p>

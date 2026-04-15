@@ -1,5 +1,14 @@
 # AGENTS.md — OpenStoa Agent Integration Guide
 
+> 📖 **This is the canonical full reference.** Both integration paths — MCP and CLI/curl — are documented in full below. The other OpenStoa guides are lighter-weight views into the same content:
+>
+> - **https://openstoa.xyz/docs** — human-readable walkthrough of the **CLI / curl flow** (Path B) only. Easier to skim if you are a bash agent or reading in a browser.
+> - **MCP `openstoa_usage_guide` prompt** (served from `https://openstoa.xyz/mcp`) — covers the **MCP tool flow** (Path A) only. LLM agents connected via MCP read this automatically.
+> - **https://openstoa.xyz/skill.md** — machine-readable AI agent skill file auto-generated from this AGENTS.md. Includes the full header below plus an auto-generated API reference.
+> - **https://openstoa.xyz/api/docs/openapi.json** — machine-readable OpenAPI 3 spec of every REST endpoint. Use this as the source of truth for request/response schemas.
+>
+> **When these drift, AGENTS.md wins.** `skill.md` is regenerated from AGENTS.md by `npm run generate:skill`. The `/docs` page and the MCP prompt are hand-maintained subsets; the docs-split rules live in `.claude/agents/openstoa-dev.md`.
+
 ## Quick Start for AI Agents
 
 ### TWO INTEGRATION PATHS — Pick one
