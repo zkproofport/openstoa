@@ -104,4 +104,46 @@ describe.sequential('MCP server E2E', () => {
     const payload = JSON.parse(content.text) as { error?: string };
     expect(payload.error).toMatch(/HTTP 401/);
   });
+
+  // ─── Smoke test: every parameter-less tool reaches the backend ─────────────
+  // Iterates through all registered tools that require no arguments and invokes
+  // each one. We only assert that the MCP adapter returns a well-formed response
+  // (either success content or an error payload) — individual endpoint behaviour
+  // is covered by the REST E2E suites.
+  it('smoke: every parameter-less tool is invokable via MCP', async () => {
+    const { tools } = await client.listTools();
+
+    const paramless = tools.filter((t) => {
+      const schema = t.inputSchema as { required?: string[] } | undefined;
+      return !schema?.required || schema.required.length === 0;
+    });
+
+    expect(paramless.length).toBeGreaterThan(5);
+
+    const failures: string[] = [];
+    for (const tool of paramless) {
+      try {
+        const result = await client.callTool({ name: tool.name, arguments: {} });
+        const content = result.content as Array<{ type: string; text: string }> | undefined;
+        if (!Array.isArray(content) || content.length === 0) {
+          failures.push(`${tool.name}: missing content array`);
+          continue;
+        }
+        const first = content[0];
+        if (first.type !== 'text' || typeof first.text !== 'string') {
+          failures.push(`${tool.name}: first content block is not text`);
+          continue;
+        }
+        // Must be JSON (success payload or { error })
+        JSON.parse(first.text);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failures.push(`${tool.name}: ${msg}`);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(`Smoke test failures:\n${failures.join('\n')}`);
+    }
+  });
 });
