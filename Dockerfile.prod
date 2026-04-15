@@ -21,6 +21,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
+# The /mcp route spawns `zkproofport-prove` as a subprocess. That child uses
+# node's built-in resolver to load @modelcontextprotocol/sdk + its transitive
+# deps (cross-spawn, etc.), which Next's standalone tracer cannot follow. Ship
+# the full node_modules tree for runtime resolution.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 USER nextjs
 EXPOSE 3200
 ENV PORT=3200
