@@ -18,6 +18,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1005.0",
     "@aws-sdk/s3-request-presigner": "^3.1005.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/pg": "^8.18.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@zkproofport-ai/mcp": "^0.2.9",
