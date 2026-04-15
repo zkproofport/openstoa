@@ -1,15 +1,10 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 const mockSend = vi.fn().mockResolvedValue({});
-const mockGetSignedUrl = vi.fn().mockResolvedValue('https://presigned-url.example.com');
 
 vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: vi.fn().mockImplementation(() => ({ send: mockSend })),
   PutObjectCommand: vi.fn().mockImplementation((input) => input),
-}));
-
-vi.mock('@aws-sdk/s3-request-presigner', () => ({
-  getSignedUrl: mockGetSignedUrl,
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -27,57 +22,8 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockSend.mockResolvedValue({});
-  mockGetSignedUrl.mockResolvedValue('https://presigned-url.example.com');
   // Reset the module-level singleton so each test gets a fresh client
   vi.resetModules();
-});
-
-describe('getPresignedUploadUrl', () => {
-  it('returns uploadUrl and publicUrl', async () => {
-    const { getPresignedUploadUrl } = await import('@/lib/r2');
-
-    const result = await getPresignedUploadUrl({
-      filename: 'photo.jpg',
-      contentType: 'image/jpeg',
-      userId: 'user-1',
-      purpose: 'post',
-    });
-
-    expect(result.uploadUrl).toBe('https://presigned-url.example.com');
-    expect(result.publicUrl).toMatch(/^https:\/\/cdn\.example\.com\//);
-  });
-
-  it('includes the purpose folder in publicUrl', async () => {
-    const { getPresignedUploadUrl } = await import('@/lib/r2');
-
-    const postResult = await getPresignedUploadUrl({
-      filename: 'img.png',
-      contentType: 'image/png',
-      userId: 'u1',
-      purpose: 'post',
-    });
-    expect(postResult.publicUrl).toContain('/posts/');
-
-    vi.resetModules();
-    const { getPresignedUploadUrl: gp2 } = await import('@/lib/r2');
-    const topicResult = await gp2({
-      filename: 'cover.png',
-      contentType: 'image/png',
-      userId: 'u1',
-      purpose: 'topic',
-    });
-    expect(topicResult.publicUrl).toContain('/topics/');
-
-    vi.resetModules();
-    const { getPresignedUploadUrl: gp3 } = await import('@/lib/r2');
-    const avatarResult = await gp3({
-      filename: 'avatar.png',
-      contentType: 'image/png',
-      userId: 'u1',
-      purpose: 'avatar',
-    });
-    expect(avatarResult.publicUrl).toContain('/avatars/');
-  });
 });
 
 describe('uploadToR2', () => {
@@ -101,6 +47,23 @@ describe('uploadToR2', () => {
     // filename should start with 'inline-' and end with '.jpg'
     expect(url).toMatch(/inline-[0-9a-f-]+\.jpg/);
   });
+
+  it('includes the purpose folder in publicUrl', async () => {
+    const { uploadToR2 } = await import('@/lib/r2');
+
+    const postUrl = await uploadToR2(Buffer.from('x'), 'image/png', 'u1', 'post', 'img.png');
+    expect(postUrl).toContain('/posts/');
+
+    vi.resetModules();
+    const { uploadToR2: upload2 } = await import('@/lib/r2');
+    const topicUrl = await upload2(Buffer.from('x'), 'image/png', 'u1', 'topic', 'cover.png');
+    expect(topicUrl).toContain('/topics/');
+
+    vi.resetModules();
+    const { uploadToR2: upload3 } = await import('@/lib/r2');
+    const avatarUrl = await upload3(Buffer.from('x'), 'image/png', 'u1', 'avatar', 'avatar.png');
+    expect(avatarUrl).toContain('/avatars/');
+  });
 });
 
 describe('missing env vars', () => {
@@ -109,15 +72,10 @@ describe('missing env vars', () => {
     delete process.env.R2_ACCOUNT_ID;
 
     vi.resetModules();
-    const { getPresignedUploadUrl } = await import('@/lib/r2');
+    const { uploadToR2 } = await import('@/lib/r2');
 
     await expect(
-      getPresignedUploadUrl({
-        filename: 'x.jpg',
-        contentType: 'image/jpeg',
-        userId: 'u1',
-        purpose: 'post',
-      }),
+      uploadToR2(Buffer.from('x'), 'image/jpeg', 'u1', 'post'),
     ).rejects.toThrow('R2_ACCOUNT_ID');
 
     process.env.R2_ACCOUNT_ID = savedAccountId;

@@ -121,6 +121,13 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'imageUrl is required and must be a string' }, { status: 400 });
     }
 
+    const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
+    if (!R2_PUBLIC_URL) throw new Error('R2_PUBLIC_URL environment variable is required');
+    if (!imageUrl.startsWith(R2_PUBLIC_URL)) {
+      logger.warn(ROUTE, 'Invalid imageUrl domain', { userId: session.userId, imageUrl });
+      return NextResponse.json({ error: 'Image URL must be from the upload CDN' }, { status: 400 });
+    }
+
     await db
       .update(users)
       .set({ profileImage: imageUrl })

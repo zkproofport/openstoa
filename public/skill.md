@@ -2396,35 +2396,6 @@ Response:
 }
 ```
 
-## Upload
-
-### Get presigned upload URL
-
-Generates a presigned URL for direct file upload. The client uploads the file directly using the returned uploadUrl (PUT request with the file as body), then uses the publicUrl in subsequent API calls.
-
-```bash
-curl -s "$BASE/api/upload" \
-  -H "$AUTH" \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{
-  "filename": "...",
-  "contentType": "...",
-  "size": 0,
-  "purpose": "post",
-  "width": 0,
-  "height": 0
-}' | jq .
-```
-
-Response:
-```json
-{
-  "uploadUrl": "https://...",
-  "publicUrl": "https://..."
-}
-```
-
 ## Topics
 
 ### Generate a single-use invite token

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { getPresignedUploadUrl, type UploadPurpose } from '@/lib/r2';
+import { uploadToR2, type UploadPurpose } from '@/lib/r2';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/upload';
@@ -12,53 +12,40 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
  * /api/upload:
  *   post:
  *     tags: [Upload]
- *     summary: Get presigned upload URL
+ *     summary: Upload image file
  *     description: >-
- *       Generates a presigned URL for direct file upload. The client uploads the file directly
- *       using the returned uploadUrl (PUT request with the file as body), then uses the
- *       publicUrl in subsequent API calls.
- *     operationId: createUploadUrl
+ *       Uploads an image file directly to the CDN via the server. Send the file as
+ *       multipart/form-data. Returns the permanent public URL for the uploaded image.
+ *     operationId: uploadImage
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [filename, contentType]
+ *             required: [file]
  *             properties:
- *               filename:
+ *               file:
  *                 type: string
- *                 description: Original filename
- *               contentType:
- *                 type: string
- *                 description: MIME type (must start with "image/")
- *               size:
- *                 type: number
- *                 description: File size in bytes (optional)
+ *                 format: binary
+ *                 description: Image file to upload (image/* MIME types only, max 10MB)
  *               purpose:
  *                 type: string
  *                 enum: [post, topic, avatar]
- *                 description: Upload purpose for path organization
- *               width:
- *                 type: number
- *                 description: Image width in pixels (optional)
- *               height:
- *                 type: number
- *                 description: Image height in pixels (optional)
+ *                 description: Upload purpose for path organization (default: post)
  *     responses:
  *       200:
- *         description: Presigned upload URL generated
+ *         description: File uploaded successfully
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 uploadUrl:
- *                   type: string
- *                   description: Presigned PUT URL for direct upload (10 min TTL)
  *                 publicUrl:
  *                   type: string
  *                   description: Permanent public URL for the uploaded file
+ *       400:
+ *         description: Invalid request (missing file, wrong MIME type, or file too large)
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */
@@ -71,48 +58,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { filename, contentType, size, purpose, width, height } = body;
-
-    if (!filename || typeof filename !== 'string') {
-      logger.warn(ROUTE, 'Missing filename', { userId: session.userId });
-      return NextResponse.json({ error: 'filename is required' }, { status: 400 });
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      logger.warn(ROUTE, 'Failed to parse multipart/form-data', { userId: session.userId });
+      return NextResponse.json({ error: 'Request must be multipart/form-data' }, { status: 400 });
     }
 
-    if (!contentType || typeof contentType !== 'string') {
-      logger.warn(ROUTE, 'Missing contentType', { userId: session.userId });
-      return NextResponse.json({ error: 'contentType is required' }, { status: 400 });
+    const file = formData.get('file');
+    if (!file || !(file instanceof File)) {
+      logger.warn(ROUTE, 'Missing file field', { userId: session.userId });
+      return NextResponse.json({ error: 'file is required' }, { status: 400 });
     }
 
-    if (!contentType.startsWith('image/')) {
+    const contentType = file.type;
+    if (!contentType || !contentType.startsWith('image/')) {
       logger.warn(ROUTE, 'Invalid contentType', { userId: session.userId, contentType });
       return NextResponse.json({ error: 'Only image uploads are supported' }, { status: 400 });
     }
 
-    if (typeof size === 'number' && size > MAX_FILE_SIZE) {
-      logger.warn(ROUTE, 'File too large', { userId: session.userId, size });
+    if (file.size > MAX_FILE_SIZE) {
+      logger.warn(ROUTE, 'File too large', { userId: session.userId, size: file.size });
       return NextResponse.json({ error: 'File size must not exceed 10MB' }, { status: 400 });
     }
 
     const VALID_PURPOSES: UploadPurpose[] = ['post', 'topic', 'avatar'];
-    const resolvedPurpose: UploadPurpose = VALID_PURPOSES.includes(purpose) ? purpose : 'post';
+    const purposeField = formData.get('purpose');
+    const resolvedPurpose: UploadPurpose =
+      typeof purposeField === 'string' && VALID_PURPOSES.includes(purposeField as UploadPurpose)
+        ? (purposeField as UploadPurpose)
+        : 'post';
 
-    const metadata: Record<string, string> = {};
-    if (typeof width === 'number') metadata['width'] = String(width);
-    if (typeof height === 'number') metadata['height'] = String(height);
+    const buffer = Buffer.from(await file.arrayBuffer());
 
-    logger.info(ROUTE, 'Generating presigned URL', { userId: session.userId, contentType, purpose: resolvedPurpose, width, height });
-
-    const { uploadUrl, publicUrl } = await getPresignedUploadUrl({
-      filename,
-      contentType,
+    logger.info(ROUTE, 'Uploading file to R2', {
       userId: session.userId,
+      contentType,
       purpose: resolvedPurpose,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      size: file.size,
+      filename: file.name,
     });
 
-    logger.info(ROUTE, 'Presigned URL generated', { userId: session.userId, publicUrl });
-    return NextResponse.json({ uploadUrl, publicUrl });
+    const publicUrl = await uploadToR2(buffer, contentType, session.userId, resolvedPurpose, file.name || undefined);
+
+    logger.info(ROUTE, 'Upload complete', { userId: session.userId, publicUrl });
+    return NextResponse.json({ publicUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });
