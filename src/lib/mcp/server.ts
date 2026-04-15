@@ -78,10 +78,14 @@ The session token is stored server-side automatically and injected into every su
 
 ### STEP 3: Join a Topic
 
-- **Public topic**: Call \`post_topics_topicId_join\` with \`{ "topicId": "..." }\`
-  ← Joins immediately
-- **Private topic** (requires ZK proof of affiliation): Call \`post_topics_topicId_join\`
-  ← Returns a join request; topic owner must approve
+- **Public topic (no proof required)**: Call \`post_topics_topicId_join\` with \`{ "topicId": "..." }\`
+  ← Joins immediately (201) or creates a pending request for private topics (202).
+
+- **Google Workspace / workspace gated topic**: Call \`join_topic_with_google_workspace\` with \`{ "topicId": "..." }\` — follows the same two-call pattern as authenticate (device flow → proof → auto-join). If a cached verification exists, joins on the first call without a device flow.
+
+- **Microsoft 365 gated topic**: Call \`join_topic_with_microsoft_365\` with \`{ "topicId": "..." }\` — same two-call pattern with Microsoft device flow.
+
+- **Coinbase KYC / country gated topic**: The proof MUST be generated client-side (requires the user's wallet private key). Generate the proof with the \`zkproofport-prove\` CLI, then call \`post_topics_topicId_join\` with \`{ "topicId": "...", "proof": "0x...", "publicInputs": "0x..." }\`. See \`get_docs_proof_guide_proofType\` for step-by-step instructions per proof type.
 
 ---
 

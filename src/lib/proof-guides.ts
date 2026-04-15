@@ -37,10 +37,30 @@ export interface ProofEndpoint {
   };
 }
 
+export interface ProofMcpGuidance {
+  /** MCP tool an agent should call instead of the shell CLI flow, or null if none. */
+  preferredTool: string | null;
+  /**
+   * Short explanation of how the MCP tool works, or (when preferredTool is null)
+   * why MCP cannot wrap this proof type and the agent must use the CLI.
+   */
+  explanation: string;
+  /** Concrete example JSON-RPC tool call the agent should issue. */
+  exampleToolCall?: {
+    name: string;
+    arguments: Record<string, unknown>;
+  };
+}
+
 export interface ProofGuide {
   title: string;
   description: string;
   circuit: string;
+  /**
+   * How MCP-connected agents should handle this proof type. Read this BEFORE
+   * falling back to the CLI steps below.
+   */
+  mcp: ProofMcpGuidance;
   steps: {
     mobile: ProofGuideStep[];
     agent: ProofGuideStep[];
@@ -104,6 +124,11 @@ export const PROOF_GUIDES: Record<string, ProofGuide> = {
     title: 'Coinbase KYC Verification',
     description: 'Prove that you have completed identity verification (KYC) on Coinbase without revealing any personal information. Requires a Coinbase account with completed KYC and an EAS attestation on Base.',
     circuit: 'coinbase_attestation',
+    mcp: {
+      preferredTool: null,
+      explanation:
+        'KYC proofs sign a signal with the private key of the wallet that holds the Coinbase EAS attestation on Base. That private key must never leave the user — OpenStoa cannot hold it server-side, so MCP cannot wrap this flow. The caller MUST generate the proof locally (CLI steps below) and then submit it via the auto-generated `post_topics_topicId_join` MCP tool with `{ topicId, proof, publicInputs }` arguments. The server accepts the proof, verifies it on-chain, and performs the join.',
+    },
     steps: {
       mobile: [
         {
@@ -170,6 +195,11 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Coinbase Country Attestation',
     description: 'Prove your country of residence via Coinbase EAS attestation without revealing your identity. The topic owner may restrict which countries are allowed or blocked.',
     circuit: 'coinbase_country_attestation',
+    mcp: {
+      preferredTool: null,
+      explanation:
+        'Country attestation proofs also sign with the Coinbase EAS-attested wallet private key, so MCP cannot generate them server-side (same reason as kyc). Generate the proof with the CLI and submit via `post_topics_topicId_join` with `{ topicId, proof, publicInputs }`. The server enforces the topic\'s allowedCountries list against the public inputs.',
+    },
     steps: {
       mobile: [
         {
@@ -236,6 +266,12 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Google Workspace Domain Verification',
     description: 'Prove your organization membership by verifying your Google Workspace email domain without revealing your email address. Uses OIDC domain attestation circuit.',
     circuit: 'oidc_domain_attestation',
+    mcp: {
+      preferredTool: 'join_topic_with_google_workspace',
+      explanation:
+        'MCP agents should call `join_topic_with_google_workspace` with `{ topicId }` twice (same pattern as the authenticate tool). The server drives the Google Workspace device flow, generates the proof inside AWS Nitro Enclave, and submits it to the join endpoint — no CLI install, no shell, no proof bytes. If the server already has a cached verification, the first call joins immediately without a second round-trip.',
+      exampleToolCall: { name: 'join_topic_with_google_workspace', arguments: { topicId: '<topic-uuid>' } },
+    },
     steps: {
       mobile: [
         {
@@ -303,6 +339,12 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Microsoft 365 Domain Verification',
     description: 'Prove your organization membership by verifying your Microsoft 365 email domain without revealing your email address. Uses OIDC domain attestation circuit.',
     circuit: 'oidc_domain_attestation',
+    mcp: {
+      preferredTool: 'join_topic_with_microsoft_365',
+      explanation:
+        'MCP agents should call `join_topic_with_microsoft_365` with `{ topicId }` twice. The server drives the Microsoft 365 device flow, generates the proof inside AWS Nitro Enclave, and submits it to the join endpoint. If a cached verification exists, the first call joins immediately.',
+      exampleToolCall: { name: 'join_topic_with_microsoft_365', arguments: { topicId: '<topic-uuid>' } },
+    },
     steps: {
       mobile: [
         {
@@ -370,6 +412,12 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
     title: 'Organization Membership Verification',
     description: 'Prove your organization membership via either Google Workspace or Microsoft 365 without revealing your email address. You can use either provider — the topic accepts both.',
     circuit: 'oidc_domain_attestation',
+    mcp: {
+      preferredTool: 'join_topic_with_google_workspace',
+      explanation:
+        'This topic accepts either Google Workspace or Microsoft 365. MCP agents should call `join_topic_with_google_workspace` or `join_topic_with_microsoft_365` with `{ topicId }` twice — pick whichever provider the human user has. Both tools follow the same two-call pattern as authenticate.',
+      exampleToolCall: { name: 'join_topic_with_google_workspace', arguments: { topicId: '<topic-uuid>' } },
+    },
     steps: {
       mobile: [
         {

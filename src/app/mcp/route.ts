@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { createMcpServer } from '@/lib/mcp/server';
 import { registerAuthTool, clearSessionToken } from '@/lib/mcp/auth';
+import { registerTopicJoinTools } from '@/lib/mcp/topic-join';
 import { registerOpenApiTools } from '@/lib/mcp/openapi-tools';
 import { logger } from '@/lib/logger';
 import openApiSpec from '@/generated/openapi-spec.json';
@@ -48,6 +49,7 @@ async function handleMcpRequest(request: NextRequest): Promise<Response> {
   const getSessionId = () => transport.sessionId ?? 'unknown';
 
   registerAuthTool(server, getSessionId, baseUrl);
+  registerTopicJoinTools(server, getSessionId, baseUrl);
   registerOpenApiTools(
     server,
     openApiSpec as Parameters<typeof registerOpenApiTools>[1],
