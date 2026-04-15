@@ -97,8 +97,8 @@ describe.sequential('MCP server E2E', () => {
   });
 
   it('OpenAPI tool without auth returns 401 for protected endpoint', async () => {
-    const result = await client.callTool({ name: 'get_topics', arguments: {} });
-    // /api/topics requires session → expect error wrapped by tool handler
+    // /api/bookmarks requires a session (not guest-accessible)
+    const result = await client.callTool({ name: 'get_bookmarks', arguments: {} });
     expect(result.isError).toBe(true);
     const content = (result.content as Array<{ type: string; text: string }>)[0];
     const payload = JSON.parse(content.text) as { error?: string };
