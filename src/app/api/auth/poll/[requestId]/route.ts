@@ -42,6 +42,13 @@ const ROUTE = '/api/auth/poll/[requestId]';
  *         schema:
  *           type: string
  *           enum: [proof]
+ *       - name: format
+ *         in: query
+ *         required: false
+ *         description: Set to "token" to also include the JWT in the response body (for native mobile clients that cannot use cookies). Cookie is still set for web compatibility.
+ *         schema:
+ *           type: string
+ *           enum: [token]
  *     responses:
  *       200:
  *         description: Poll result — status may be pending, failed, or completed
@@ -97,6 +104,7 @@ export async function GET(
 
     const url = new URL(request.url);
     const mode = url.searchParams.get('mode');
+    const format = url.searchParams.get('format');
 
     logger.info(ROUTE, 'Polling relay for proof result', { requestId });
 
@@ -197,11 +205,15 @@ export async function GET(
     }
     await saveVerificationCache(nullifier, cacheType, { domain });
 
-    const response = NextResponse.json({
+    const responseBody: Record<string, unknown> = {
       status: 'completed',
       userId: nullifier,
       needsNickname,
-    });
+    };
+    if (format === 'token') {
+      responseBody.token = token;
+    }
+    const response = NextResponse.json(responseBody);
 
     setSessionCookie(response, token);
     return response;

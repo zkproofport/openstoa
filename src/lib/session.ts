@@ -27,7 +27,7 @@ export async function createSession(userId: string, nickname: string, options?: 
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime('7d')
     .sign(getSecret());
 
   return token;
@@ -67,7 +67,7 @@ export function setSessionCookie(response: NextResponse, token: string): void {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24, // 24 hours
+    maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
   });
 }

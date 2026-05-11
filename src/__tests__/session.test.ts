@@ -75,7 +75,7 @@ describe('session', () => {
     expect(payload!.nickname).toBe('charlie');
     expect(payload!.verifiedAt).toBeGreaterThanOrEqual(before);
     expect(payload!.verifiedAt).toBeLessThanOrEqual(after);
-    // Should have exp claim (24h)
+    // Should have exp claim (7d)
     expect(payload!.exp).toBeDefined();
     expect(payload!.iat).toBeDefined();
   });
@@ -88,7 +88,8 @@ describe('session', () => {
     vi.setSystemTime(now);
     const token = await createSession('user-expired', 'expireduser');
 
-    vi.setSystemTime(new Date(now.getTime() + 25 * 60 * 60 * 1000));
+    // Tokens now last 7 days; advance 8 days to confirm expiry.
+    vi.setSystemTime(new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000));
     const payload = await verifySession(token);
     expect(payload).toBeNull();
   });
