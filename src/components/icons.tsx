@@ -1,3 +1,23 @@
+export function ArrowUpIcon({ filled, size = 16 }: { filled?: boolean; size?: number }) {
+  const stroke = filled ? '#22c55e' : 'currentColor';
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? stroke : 'none'} stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 19V5" />
+      <path d="M5 12l7-7 7 7" />
+    </svg>
+  );
+}
+
+export function ArrowDownIcon({ filled, size = 16 }: { filled?: boolean; size?: number }) {
+  const stroke = filled ? '#3b82f6' : 'currentColor';
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? stroke : 'none'} stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12l7 7 7-7" />
+    </svg>
+  );
+}
+
 export function HeartIcon({ filled, size = 18 }: { filled?: boolean; size?: number }) {
   if (filled) {
     return (

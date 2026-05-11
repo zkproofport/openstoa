@@ -99,6 +99,37 @@ function extractFavicon(html: string, baseUrl: string): string | null {
  *                   type: string
  *                   description: Canonical URL
  */
+// Real-browser UA. YouTube and many news sites serve a different/empty
+// `<head>` (or block the request entirely) when the UA looks like a generic
+// scraper, which is why the previous `OpenStoaBot/1.0` request returned no
+// og:image and the mobile chat preview never rendered.
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+
+function isYouTubeUrl(parsed: URL): boolean {
+  const h = parsed.hostname;
+  return h === 'youtube.com' || h.endsWith('.youtube.com') || h === 'youtu.be' || h.endsWith('.youtu.be');
+}
+
+async function fetchYouTubeOEmbed(url: string): Promise<OGData | null> {
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const r = await fetch(oembedUrl, { headers: { 'User-Agent': BROWSER_UA } });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { title?: string; author_name?: string; thumbnail_url?: string };
+    return {
+      title: j.title ?? null,
+      description: j.author_name ? `by ${j.author_name}` : null,
+      image: j.thumbnail_url ?? null,
+      siteName: 'YouTube',
+      favicon: 'https://www.youtube.com/s/desktop/favicon.ico',
+      url,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get('url');
   if (!url) {
@@ -117,6 +148,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid protocol' }, { status: 400 });
   }
 
+  // YouTube short-circuit: use the official oEmbed endpoint instead of
+  // scraping the mobile/desktop SPA shell, which often returns no useful
+  // meta tags or 429s the server.
+  if (isYouTubeUrl(parsed)) {
+    const og = await fetchYouTubeOEmbed(url);
+    if (og) {
+      return NextResponse.json(og, {
+        headers: { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' },
+      });
+    }
+    // fall through to generic scrape if oEmbed somehow fails
+  }
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -124,7 +168,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; OpenStoaBot/1.0; +https://zkproofport.app)',
+        'User-Agent': BROWSER_UA,
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'en-US,en;q=0.9',
       },

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import SNSContent from '@/components/SNSContent';
 import Avatar from '@/components/Avatar';
 import { relativeTime } from '@/lib/utils';
-import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon, PinIcon, RecordIcon } from '@/components/icons';
+import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon, PinIcon, RecordIcon } from '@/components/icons';
 import Badge from '@/components/Badge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -450,7 +450,7 @@ export default function PostCard({
             color: '#6b7280',
           }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <HeartIcon size={14} />
+              <ArrowUpIcon size={14} />
               {post.upvoteCount ?? 0}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -726,13 +726,41 @@ export default function PostCard({
         gap: 0,
         marginTop: 6,
       }}>
-        {/* Like */}
-        <ActionButton
-          icon={<HeartIcon filled={resolvedUserVoted === 1} />}
-          count={post.upvoteCount ?? 0}
-          color="#ef4444"
-          active={resolvedUserVoted === 1}
-        />
+        {/* Vote pill — display-only here (interactive voting lives on the
+            post detail page). Keep the same Reddit/HN style as detail so
+            the visual is consistent across surfaces. */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 10px',
+            borderRadius: 16,
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            marginRight: 8,
+          }}
+        >
+          <ArrowUpIcon size={14} filled={resolvedUserVoted === 1} />
+          <span
+            style={{
+              fontSize: 13,
+              fontFamily: 'var(--font-mono)',
+              fontWeight: resolvedUserVoted ? 700 : 600,
+              color:
+                resolvedUserVoted === 1
+                  ? '#22c55e'
+                  : resolvedUserVoted === -1
+                  ? '#3b82f6'
+                  : 'var(--muted)',
+              minWidth: 14,
+              textAlign: 'center',
+            }}
+          >
+            {post.upvoteCount ?? 0}
+          </span>
+          <ArrowDownIcon size={14} filled={resolvedUserVoted === -1} />
+        </div>
 
         {/* Comment */}
         <ActionButton

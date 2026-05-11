@@ -9,7 +9,7 @@ import Badge from '@/components/Badge';
 import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
 import ImageLightbox from '@/components/ImageLightbox';
-import { HeartIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
+import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
 import { formatDate, truncateId } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -475,35 +475,70 @@ export default function PostPage() {
             paddingTop: 16,
             borderTop: '1px solid var(--border)',
           }}>
-            {/* Like — disabled for guests */}
-            {!isGuest ? (
+            {/* Vote pill — Reddit/HN style ↑/↓ */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                borderRadius: 16,
+                background: 'var(--card-bg, rgba(255,255,255,0.03))',
+                border: '1px solid var(--border, rgba(255,255,255,0.08))',
+              }}
+            >
               <button
                 type="button"
-                onClick={() => handleVote(1)}
-                disabled={voteLoading}
+                onClick={() => !isGuest && handleVote(1)}
+                disabled={isGuest || voteLoading}
+                aria-label="Upvote"
                 style={{
                   background: 'none',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: isGuest ? 'default' : 'pointer',
+                  padding: 2,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  color: userVote === 1 ? '#ef4444' : 'var(--muted)',
-                  fontSize: 14,
-                  fontFamily: 'var(--font-mono)',
-                  padding: 0,
-                  transition: 'color 0.15s',
+                  color: userVote === 1 ? '#22c55e' : 'var(--muted)',
                 }}
               >
-                <HeartIcon filled={userVote === 1} />
-                {upvoteCount > 0 && upvoteCount}
+                <ArrowUpIcon filled={userVote === 1} />
               </button>
-            ) : (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'var(--font-mono)' }}>
-                <HeartIcon filled={false} />
-                {upvoteCount > 0 && upvoteCount}
+              <span
+                style={{
+                  fontSize: 14,
+                  fontFamily: 'var(--font-mono)',
+                  minWidth: 16,
+                  textAlign: 'center',
+                  fontWeight: userVote ? 700 : 600,
+                  color:
+                    userVote === 1
+                      ? '#22c55e'
+                      : userVote === -1
+                      ? '#3b82f6'
+                      : 'var(--muted)',
+                }}
+              >
+                {upvoteCount}
               </span>
-            )}
+              <button
+                type="button"
+                onClick={() => !isGuest && handleVote(-1)}
+                disabled={isGuest || voteLoading}
+                aria-label="Downvote"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: isGuest ? 'default' : 'pointer',
+                  padding: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: userVote === -1 ? '#3b82f6' : 'var(--muted)',
+                }}
+              >
+                <ArrowDownIcon filled={userVote === -1} />
+              </button>
+            </div>
 
             {/* Comments */}
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'var(--font-mono)' }}>
