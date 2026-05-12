@@ -151,7 +151,10 @@ export async function GET(
     if (!session) {
       logger.info(ROUTE, 'Guest fetching post detail', { postId });
 
-      // Get post with author (no votes join for guests)
+      // Get post with author (no votes join for guests). `recordCount`
+      // is included so the read-only view still shows the on-chain
+      // tally; guests can't toggle it but the number is part of the
+      // public post shape.
       const postResults = await db
         .select({
           id: posts.id,
@@ -166,6 +169,7 @@ export async function GET(
           upvoteCount: posts.upvoteCount,
           viewCount: posts.viewCount,
           commentCount: posts.commentCount,
+          recordCount: posts.recordCount,
           score: posts.score,
           isAI: posts.isAI,
           userVoted: sql<number | null>`null`,
