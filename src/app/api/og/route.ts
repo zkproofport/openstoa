@@ -111,6 +111,21 @@ function isYouTubeUrl(parsed: URL): boolean {
   return h === 'youtube.com' || h.endsWith('.youtube.com') || h === 'youtu.be' || h.endsWith('.youtu.be');
 }
 
+// Rewrite absolute image/favicon URLs through our own image proxy
+// (`/api/og/image?src=...`) so clients never talk directly to the upstream
+// CDN. This is what makes flaky hosts (GitHub OG dynamic renderer,
+// LinkedIn media CDN, etc.) actually display on iOS — the Simulator's
+// QUIC negotiation stalls on those origins while our Node server reaches
+// them fine over HTTP/2. Idempotent: already-proxied URLs are left alone.
+function proxyImageUrls(og: OGData): OGData {
+  const rewrite = (u: string | null): string | null => {
+    if (!u) return u;
+    if (!u.startsWith('http')) return u;
+    return `/api/og/image?src=${encodeURIComponent(u)}`;
+  };
+  return { ...og, image: rewrite(og.image), favicon: rewrite(og.favicon) };
+}
+
 async function fetchYouTubeOEmbed(url: string): Promise<OGData | null> {
   try {
     const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
@@ -154,7 +169,7 @@ export async function GET(req: NextRequest) {
   if (isYouTubeUrl(parsed)) {
     const og = await fetchYouTubeOEmbed(url);
     if (og) {
-      return NextResponse.json(og, {
+      return NextResponse.json(proxyImageUrls(og), {
         headers: { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' },
       });
     }
@@ -191,7 +206,7 @@ export async function GET(req: NextRequest) {
         favicon: `${parsed.origin}/favicon.ico`,
         url,
       };
-      return NextResponse.json(data, {
+      return NextResponse.json(proxyImageUrls(data), {
         headers: { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' },
       });
     }
@@ -239,7 +254,9 @@ export async function GET(req: NextRequest) {
       url,
     };
 
-    // Resolve relative image URLs
+    // Resolve protocol-relative / root-relative image URLs to absolute
+    // before handing them to the proxy rewriter (the proxy expects an
+    // absolute http(s) URL).
     if (ogData.image && !ogData.image.startsWith('http')) {
       if (ogData.image.startsWith('//')) {
         ogData.image = `https:${ogData.image}`;
@@ -248,7 +265,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(ogData, {
+    return NextResponse.json(proxyImageUrls(ogData), {
       headers: {
         'Cache-Control': 'public, max-age=3600, s-maxage=3600',
       },

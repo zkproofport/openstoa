@@ -3537,6 +3537,17 @@ Response:
 
 ## OG
 
+### Proxy an external image for OG link previews
+
+Fetches an external image via the server (HTTP/2, browser UA) and streams it back to the client. Used by the mobile client to dodge per-CDN networking quirks (e.g. iOS Simulator hanging on certain QUIC negotiations with GitHub / LinkedIn image hosts).
+
+```bash
+curl -s "$BASE/api/og/image?src=..." | jq .
+```
+
+Query params:
+- `src` **(required)** — Absolute http/https image URL to proxy
+
 ### Fetch Open Graph metadata
 
 Server-side Open Graph metadata scraper. Fetches and parses OG tags from a given URL for link preview rendering. Results are cached for 1 hour.

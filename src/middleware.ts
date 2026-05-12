@@ -17,6 +17,12 @@ const PUBLIC_PATHS = [
   '/api/beta-signup',
   '/api/ask',
   '/api/ask/stream',
+  // OG link previews + image proxy are pure server-side reads of public
+  // web content. No reason to gate them behind auth (and the image proxy
+  // gets used as a plain <Image src=...> URL by the mobile client, which
+  // wouldn't carry the Bearer token).
+  '/api/og',
+  '/api/og/image',
   '/ask',
   '/docs',
   '/icon.png',
