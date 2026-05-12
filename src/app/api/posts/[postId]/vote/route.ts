@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { votes, posts, topicMembers } from '@/lib/db/schema';
+import { votes, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -93,18 +93,10 @@ export async function POST(
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
 
-    // Check topic membership
-    const membership = await db.query.topicMembers.findFirst({
-      where: and(
-        eq(topicMembers.topicId, post.topicId),
-        eq(topicMembers.userId, session.userId),
-      ),
-    });
-
-    if (!membership) {
-      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, postId, topicId: post.topicId });
-      return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
-    }
+    // Topic membership is NOT required to vote — any authenticated user
+    // can upvote/downvote a post they can see in the feed (Reddit-style).
+    // Posting/commenting still requires membership; that remains enforced
+    // by the post/comment endpoints.
 
     // Check existing vote
     const existingVote = await db.query.votes.findFirst({
