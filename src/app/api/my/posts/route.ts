@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, users } from '@/lib/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { posts, users, votes } from '@/lib/db/schema';
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { attachReactionsToPosts } from '@/lib/reactions';
+import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/my/posts';
@@ -73,20 +75,29 @@ export async function GET(request: NextRequest) {
         upvoteCount: posts.upvoteCount,
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,
+        recordCount: posts.recordCount,
         score: posts.score,
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
+        userVoted: sql<number | null>`${votes.value}`,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
+      .leftJoin(
+        votes,
+        and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)),
+      )
       .where(eq(posts.authorId, session.userId))
       .orderBy(desc(posts.createdAt))
       .limit(limit)
       .offset(offset);
 
+    const withFlags = await attachUserFlagsToPosts(result, session.userId);
+    const withReactions = await attachReactionsToPosts(withFlags, session.userId);
+
     logger.info(ROUTE, 'My posts fetched', { userId: session.userId, count: result.length });
-    return NextResponse.json({ posts: result });
+    return NextResponse.json({ posts: withReactions });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });

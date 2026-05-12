@@ -5,6 +5,7 @@ import { posts, users, votes, topics, topicMembers, tags, postTags, categories }
 import { eq, and, desc, sql, inArray, isNull } from 'drizzle-orm';
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { attachReactionsToPosts } from '@/lib/reactions';
+import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/feed';
@@ -245,7 +246,8 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const authPostsWithReactions = await attachReactionsToPosts(authPostsWithBadges, session.userId);
+    const authWithFlags = await attachUserFlagsToPosts(authPostsWithBadges, session.userId);
+    const authPostsWithReactions = await attachReactionsToPosts(authWithFlags, session.userId);
 
     logger.info(ROUTE, 'Authenticated feed fetched', { userId: session.userId, count: feedPosts.length });
     return NextResponse.json({ posts: authPostsWithReactions });

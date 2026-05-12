@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, comments, topicMembers, users, postTags, tags, votes, topics } from '@/lib/db/schema';
+import { posts, comments, topicMembers, users, postTags, tags, votes, topics, records, bookmarks } from '@/lib/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
@@ -264,7 +264,11 @@ export async function GET(
 
     logger.info(ROUTE, 'Fetching post detail', { userId: session.userId, postId });
 
-    // Get post with author
+    // Get post with author. `userBookmarked` / `userRecorded` are joined
+    // here so the mobile post-detail screen renders the correct filled
+    // icons without an extra round-trip per state — the dedicated
+    // /bookmark GET is still around for the first paint but the cache
+    // patch from a toggle flows through this query on the next refetch.
     const postResults = await db
       .select({
         id: posts.id,
@@ -279,15 +283,26 @@ export async function GET(
         upvoteCount: posts.upvoteCount,
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,
+        recordCount: posts.recordCount,
         score: posts.score,
         isAI: posts.isAI,
         userVoted: sql<number | null>`${votes.value}`,
+        userBookmarked: sql<boolean>`${bookmarks.postId} IS NOT NULL`,
+        userRecorded: sql<boolean>`${records.id} IS NOT NULL`,
         topicTitle: topics.title,
         topicProofType: topics.proofType,
       })
       .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
       .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
+      .leftJoin(
+        bookmarks,
+        and(eq(bookmarks.postId, posts.id), eq(bookmarks.userId, session.userId)),
+      )
+      .leftJoin(
+        records,
+        and(eq(records.postId, posts.id), eq(records.recorderNullifier, session.userId)),
+      )
       .leftJoin(topics, eq(posts.topicId, topics.id))
       .where(eq(posts.id, postId));
 

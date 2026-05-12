@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, records, users, topics, votes } from '@/lib/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { attachReactionsToPosts } from '@/lib/reactions';
+import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/my/recorded';
@@ -97,14 +98,10 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    // Every post in this list was, by definition, recorded by the
-    // current user. Stamp the flag so PostCard's record icon renders
-    // active and stays coherent with patchPostInAllCaches updates.
-    const flagged = recordedPosts.map((p) => ({ ...p, userRecorded: true }));
-    const postsWithReactions = await attachReactionsToPosts(
-      flagged,
-      session.userId,
-    );
+    // Same helpers used by every other list endpoint, so the response
+    // shape stays identical.
+    const flagged = await attachUserFlagsToPosts(recordedPosts, session.userId);
+    const postsWithReactions = await attachReactionsToPosts(flagged, session.userId);
 
     logger.info(ROUTE, 'Recorded posts fetched', {
       userId: session.userId,

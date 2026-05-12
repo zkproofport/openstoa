@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, users, topics, votes } from '@/lib/db/schema';
 import { eq, and, desc, gt, sql } from 'drizzle-orm';
 import { attachReactionsToPosts } from '@/lib/reactions';
+import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/my/recorded-on-mine';
@@ -95,7 +96,8 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    const postsWithReactions = await attachReactionsToPosts(rows, session.userId);
+    const flagged = await attachUserFlagsToPosts(rows, session.userId);
+    const postsWithReactions = await attachReactionsToPosts(flagged, session.userId);
 
     logger.info(ROUTE, 'My recorded posts fetched', {
       userId: session.userId,

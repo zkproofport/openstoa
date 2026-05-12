@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { bookmarks, posts, users } from '@/lib/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { bookmarks, posts, users, votes, topics } from '@/lib/db/schema';
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { attachReactionsToPosts } from '@/lib/reactions';
+import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/bookmarks';
@@ -80,28 +82,37 @@ export async function GET(request: NextRequest) {
         upvoteCount: posts.upvoteCount,
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,
+        recordCount: posts.recordCount,
         score: posts.score,
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
         bookmarkedAt: bookmarks.createdAt,
+        userVoted: sql<number | null>`${votes.value}`,
+        topicTitle: topics.title,
       })
       .from(bookmarks)
       .innerJoin(posts, eq(bookmarks.postId, posts.id))
       .leftJoin(users, eq(posts.authorId, users.id))
+      .leftJoin(topics, eq(posts.topicId, topics.id))
+      .leftJoin(
+        votes,
+        and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)),
+      )
       .where(eq(bookmarks.userId, session.userId))
       .orderBy(desc(bookmarks.createdAt))
       .limit(limit)
       .offset(offset);
 
-    // Every post in this list is, by definition, bookmarked by the
-    // current user. Stamp the flag explicitly so PostCard renders the
-    // filled bookmark icon and any cache patch (toggle from another
-    // surface) keeps the value coherent.
-    const postsWithFlag = result.map((p) => ({ ...p, userBookmarked: true }));
+    // Helper batches the bookmark + record flag lookup. Bookmark is
+    // tautologically true here (every row is in the bookmarks table)
+    // but using the same helper keeps the field set identical across
+    // every list response.
+    const withFlags = await attachUserFlagsToPosts(result, session.userId);
+    const withReactions = await attachReactionsToPosts(withFlags, session.userId);
 
     logger.info(ROUTE, 'Bookmarked posts fetched', { userId: session.userId, count: result.length });
-    return NextResponse.json({ posts: postsWithFlag });
+    return NextResponse.json({ posts: withReactions });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });

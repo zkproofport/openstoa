@@ -9,6 +9,7 @@ import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
 import { getBatchUserBadges, filterBadgesByTopicProofType, type Badge } from '@/lib/verification-cache';
 import { attachReactionsToPosts } from '@/lib/reactions';
+import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -328,7 +329,8 @@ export async function GET(
       badges: filterBadgesByTopicProofType(badgeMap.get(p.authorId) ?? [], topicForBadge?.proofType ?? null),
     }));
 
-    const postsWithReactions = await attachReactionsToPosts(postsWithBadges, session.userId);
+    const postsWithFlags = await attachUserFlagsToPosts(postsWithBadges, session.userId);
+    const postsWithReactions = await attachReactionsToPosts(postsWithFlags, session.userId);
 
     logger.info(ROUTE, 'Posts fetched', { userId: session.userId, topicId, count: topicPosts.length });
     return NextResponse.json({ posts: postsWithReactions });
