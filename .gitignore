@@ -1,16 +1,33 @@
+# Dependencies
 node_modules/
+
+# Build artifacts
 .next/
 dist/
+build/
+*.tsbuildinfo
+
+# Generated
+src/generated/
+
+# Environment files
 .env
 .env.local
 .env.test
-*.tsbuildinfo
-src/generated/
+.env.*.local
 
-# E2E test cache
+# Test caches
 .e2e-token-cache.json
 .e2e-token-cache-a.json
 .e2e-token-cache-b.json
-.omc/
-.omc/
+coverage/
 .playwright-profile/
+
+# OMC state (ephemeral session data, including nested e.g. packages/mobile/.omc)
+.omc/
+
+# OS / editor noise
+.DS_Store
+*.log
+.idea/
+*.swp

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { chatMessages, topicMembers, users } from '@/lib/db/schema';
-import { eq, and, desc, count } from 'drizzle-orm';
+import { eq, and, desc, count, gt, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
@@ -15,8 +15,16 @@ const ROUTE = '/api/topics/[topicId]/chat';
  *     tags: [Chat]
  *     summary: Get chat history
  *     description: >-
- *       Returns paginated chat messages for a topic. Only topic members can access.
- *       Messages are returned in descending order (newest first).
+ *       Returns chat messages for a topic. Only topic members can access.
+ *       Supports two pagination modes:
+ *         - `since=<iso>` returns messages strictly newer than the given
+ *           timestamp, in chronological order. Used by clients on reconnect
+ *           to fetch only the messages they missed.
+ *         - `before=<messageId>` returns messages strictly older than the
+ *           given message id, in reverse-chronological order. Used for
+ *           infinite scroll upward (loading older history).
+ *       Without either parameter, returns the latest `limit` messages
+ *       (newest-first), as before.
  *     operationId: getChatHistory
  *     parameters:
  *       - name: topicId
@@ -29,17 +37,24 @@ const ROUTE = '/api/topics/[topicId]/chat';
  *       - name: limit
  *         in: query
  *         required: false
- *         description: Number of messages to return (default 50, max 100)
+ *         description: Number of messages to return (default 50, max 500)
  *         schema:
  *           type: integer
  *           default: 50
- *       - name: offset
+ *       - name: since
  *         in: query
  *         required: false
- *         description: Number of messages to skip
+ *         description: ISO timestamp; return messages with createdAt > since
  *         schema:
- *           type: integer
- *           default: 0
+ *           type: string
+ *           format: date-time
+ *       - name: before
+ *         in: query
+ *         required: false
+ *         description: Message id; return messages older than this one
+ *         schema:
+ *           type: string
+ *           format: uuid
  *     responses:
  *       200:
  *         description: Chat messages
@@ -88,8 +103,41 @@ export async function GET(
     }
 
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 100);
-    const offset = parseInt(searchParams.get('offset') ?? '0', 10);
+    const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 500);
+    const sinceParam = searchParams.get('since');
+    const beforeParam = searchParams.get('before');
+
+    // Build where clause based on pagination mode.
+    let whereClause = eq(chatMessages.topicId, topicId);
+    let orderByCol = desc(chatMessages.createdAt);
+
+    if (sinceParam) {
+      const sinceDate = new Date(sinceParam);
+      if (Number.isNaN(sinceDate.getTime())) {
+        return NextResponse.json({ error: 'Invalid since timestamp' }, { status: 400 });
+      }
+      whereClause = and(
+        eq(chatMessages.topicId, topicId),
+        gt(chatMessages.createdAt, sinceDate),
+      )!;
+      // Chronological for delta sync — client appends as-is.
+      orderByCol = chatMessages.createdAt as never;
+    } else if (beforeParam) {
+      // Look up the anchor message's createdAt to page strictly older items.
+      const anchor = await db.query.chatMessages.findFirst({
+        where: eq(chatMessages.id, beforeParam),
+        columns: { createdAt: true },
+      });
+      if (!anchor || !anchor.createdAt) {
+        return NextResponse.json({ error: 'before message not found' }, { status: 400 });
+      }
+      whereClause = and(
+        eq(chatMessages.topicId, topicId),
+        lt(chatMessages.createdAt, anchor.createdAt),
+      )!;
+      // Newest-first; client reverses for chronological display.
+      orderByCol = desc(chatMessages.createdAt);
+    }
 
     const [messages, [{ value: total }]] = await Promise.all([
       db
@@ -106,17 +154,21 @@ export async function GET(
         })
         .from(chatMessages)
         .innerJoin(users, eq(chatMessages.userId, users.id))
-        .where(eq(chatMessages.topicId, topicId))
-        .orderBy(desc(chatMessages.createdAt))
-        .limit(limit)
-        .offset(offset),
+        .where(whereClause)
+        .orderBy(orderByCol)
+        .limit(limit),
       db
         .select({ value: count() })
         .from(chatMessages)
         .where(eq(chatMessages.topicId, topicId)),
     ]);
 
-    logger.info(ROUTE, 'Chat history fetched', { userId: session.userId, topicId, count: messages.length });
+    logger.info(ROUTE, 'Chat history fetched', {
+      userId: session.userId,
+      topicId,
+      count: messages.length,
+      mode: sinceParam ? 'since' : beforeParam ? 'before' : 'latest',
+    });
     return NextResponse.json({ messages, total });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -241,44 +293,11 @@ export async function POST(
     const redis = getRedis();
     await redis.publish(`chat:topic:${topicId}`, JSON.stringify({ event: 'message', data: payload }));
 
-    // Handle @ask command
-    if (message.trim().startsWith('@ask ')) {
-      const question = message.trim().slice(5).trim();
-      if (question) {
-        try {
-          const askRes = await fetch(`${request.nextUrl.origin}/api/ask`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question }),
-          });
-          if (askRes.ok) {
-            const { answer } = await askRes.json();
-            const [aiMsg] = await db.insert(chatMessages).values({
-              topicId,
-              userId: session.userId,
-              message: `🤖 ${answer}`,
-              type: 'ai',
-            }).returning();
-            await redis.publish(`chat:topic:${topicId}`, JSON.stringify({
-              event: 'message',
-              data: {
-                id: aiMsg.id,
-                topicId: aiMsg.topicId,
-                userId: aiMsg.userId,
-                nickname: 'OpenStoa AI',
-                profileImage: null,
-                message: aiMsg.message,
-                type: aiMsg.type,
-                createdAt: aiMsg.createdAt,
-              },
-            }));
-            logger.info(ROUTE, '@ask AI response published', { topicId, messageId: aiMsg.id });
-          }
-        } catch (e) {
-          logger.warn(ROUTE, '@ask handler failed', { error: e instanceof Error ? e.message : String(e) });
-        }
-      }
-    }
+    // NOTE: The inline @ask AI command was intentionally removed. AI inside
+    // topic chat will return later as a first-class participant (a real
+    // user account with isAI=true joining the topic via the normal
+    // members flow), not as a magic string parser on the send endpoint.
+    // The standalone /ask page is unaffected.
 
     logger.info(ROUTE, 'Message sent and published', { userId: session.userId, topicId, messageId: inserted.id });
     return NextResponse.json({ message: payload }, { status: 201 });

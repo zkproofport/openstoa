@@ -84,36 +84,31 @@ describe.sequential('Chat — send, history, @ask, non-member', () => {
     expect(found).toBeDefined();
   });
 
-  it('3. @ask mention triggers AI response (type: ai message stored)', async () => {
+  it('3. @ask prefix is now a plain message (no AI auto-reply)', async () => {
+    // The legacy @ask magic command was removed. Sending a message that
+    // starts with "@ask " should be stored verbatim with type='message'
+    // and must NOT trigger an automatic AI reply. AI participation will
+    // return as a first-class topic member (isAI user), not as a parser
+    // on the send endpoint.
     const res = await authPost(`/api/topics/${topicId}/chat`, {
       message: '@ask What is OpenStoa?',
     });
     expect(res.status).toBe(201);
     const json = await res.json();
-    // The user's own message is returned immediately
     expect(json.message.message).toBe('@ask What is OpenStoa?');
     expect(json.message.type).toBe('message');
 
-    // Poll chat history — the AI response should appear shortly after
-    // (it's async but happens in the same request handler)
-    await new Promise((resolve) => setTimeout(resolve, 2000)); // wait for AI to respond
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
     const historyRes = await authGet(`/api/topics/${topicId}/chat`);
     expect(historyRes.status).toBe(200);
     const historyJson = await historyRes.json();
 
-    // Look for an AI-type message with the 🤖 prefix
     const aiMsg = historyJson.messages.find(
-      (m: { type: string; message: string }) => m.type === 'ai' && m.message.startsWith('🤖'),
+      (m: { type: string }) => m.type === 'ai',
     );
-    // AI response may not appear if GEMINI_API_KEY / OPENAI_API_KEY is not configured on staging.
-    // Accept gracefully: either an ai message exists OR it doesn't (config-dependent).
-    if (aiMsg) {
-      expect(aiMsg.message.length).toBeGreaterThan(2); // more than just '🤖 '
-    } else {
-      console.warn('[E2E] @ask: no AI response found — LLM API key may not be configured on staging');
-    }
-  }, 15000); // 15s timeout for LLM call
+    expect(aiMsg).toBeUndefined();
+  });
 
   it('4. Non-member (User B) chat attempt -> 403', async () => {
     // User B has not joined the topic

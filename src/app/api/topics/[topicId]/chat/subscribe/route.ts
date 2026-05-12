@@ -171,6 +171,22 @@ export async function GET(
       try {
         const redis = getRedis();
 
+        // Subscribe FIRST so this SSE stream receives all events including
+        // the user's own join broadcast that we publish just below. The
+        // previous order (publish → subscribe) caused the connecting user
+        // to silently miss their own join system message, producing the
+        // "left appears but join doesn't" inconsistency.
+        await sub.subscribe(channelKey);
+
+        sub.on('message', (_channel: string, messageStr: string) => {
+          try {
+            const parsed = JSON.parse(messageStr) as { event: string; data: object };
+            send(parsed.event, parsed.data);
+          } catch (err) {
+            logger.warn(ROUTE, 'Failed to parse Redis message', { error: String(err) });
+          }
+        });
+
         // Add to presence
         await redis.hset(
           presenceKey,
@@ -186,7 +202,7 @@ export async function GET(
           type: 'join',
         }).returning();
 
-        // Publish join event as 'message' type so clients receive it uniformly
+        // Publish join event — now received by this stream too
         const joinPayload = {
           id: joinRow.id,
           topicId: joinRow.topicId,
@@ -211,18 +227,6 @@ export async function GET(
         send('presence', { users: presenceUsers, count: presenceUsers.length });
 
         logger.info(ROUTE, 'User joined chat', { userId: session.userId, topicId });
-
-        // Subscribe to Redis channel
-        await sub.subscribe(channelKey);
-
-        sub.on('message', (_channel: string, messageStr: string) => {
-          try {
-            const parsed = JSON.parse(messageStr) as { event: string; data: object };
-            send(parsed.event, parsed.data);
-          } catch (err) {
-            logger.warn(ROUTE, 'Failed to parse Redis message', { error: String(err) });
-          }
-        });
 
         sub.on('error', (err: Error) => {
           logger.error(ROUTE, 'Redis subscriber error', { error: err.message, userId: session.userId, topicId });

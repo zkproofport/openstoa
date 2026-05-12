@@ -3665,18 +3665,19 @@ Response:
 
 ### Get chat history
 
-Returns paginated chat messages for a topic. Only topic members can access. Messages are returned in descending order (newest first).
+Returns chat messages for a topic. Only topic members can access. Supports two pagination modes: - `since=<iso>` returns messages strictly newer than the given timestamp, in chronological order. Used by clients on reconnect to fetch only the messages they missed. - `before=<messageId>` returns messages strictly older than the given message id, in reverse-chronological order. Used for infinite scroll upward (loading older history). Without either parameter, returns the latest `limit` messages (newest-first), as before.
 
 ```bash
-curl -s "$BASE/api/topics/:topicId/chat?limit=...&offset=..." \
+curl -s "$BASE/api/topics/:topicId/chat?limit=...&since=...&before=..." \
   -H "$AUTH" | jq .
 ```
 
 Path params:
 - `topicId` — Topic ID
 Query params:
-- `limit` — Number of messages to return (default 50, max 100)
-- `offset` — Number of messages to skip
+- `limit` — Number of messages to return (default 50, max 500)
+- `since` — ISO timestamp; return messages with createdAt > since
+- `before` — Message id; return messages older than this one
 
 Response:
 ```json
