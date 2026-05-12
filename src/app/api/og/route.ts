@@ -209,8 +209,11 @@ export async function GET(req: NextRequest) {
       if (done) break;
       totalBytes += value.length;
       html += new TextDecoder().decode(value);
-      // Stop once we've read past </head> or past max bytes
-      if (totalBytes > MAX_BYTES || html.toLowerCase().includes('</head>')) {
+      // Read up to MAX_BYTES regardless of </head> position. Next.js sites
+      // (including openstoa.xyz) inline their metadata via post-hydration
+      // scripts that appear AFTER </head> — bailing on </head> made us
+      // skip those og:* tags and return an empty preview payload.
+      if (totalBytes > MAX_BYTES) {
         reader.cancel();
         break;
       }
