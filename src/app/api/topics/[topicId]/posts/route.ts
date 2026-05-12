@@ -8,6 +8,7 @@ import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
 import { getBatchUserBadges, filterBadgesByTopicProofType, type Badge } from '@/lib/verification-cache';
+import { attachReactionsToPosts } from '@/lib/reactions';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -220,8 +221,10 @@ export async function GET(
         badges: filterBadgesByTopicProofType(guestBadgeMap.get(p.authorId) ?? [], topic.proofType),
       }));
 
+      const guestPostsWithReactions = await attachReactionsToPosts(guestPostsWithBadges, null);
+
       logger.info(ROUTE, 'Guest posts fetched', { topicId, count: topicPosts.length });
-      return NextResponse.json({ posts: guestPostsWithBadges });
+      return NextResponse.json({ posts: guestPostsWithReactions });
     }
 
     // --- Authenticated access ---
@@ -325,8 +328,10 @@ export async function GET(
       badges: filterBadgesByTopicProofType(badgeMap.get(p.authorId) ?? [], topicForBadge?.proofType ?? null),
     }));
 
+    const postsWithReactions = await attachReactionsToPosts(postsWithBadges, session.userId);
+
     logger.info(ROUTE, 'Posts fetched', { userId: session.userId, topicId, count: topicPosts.length });
-    return NextResponse.json({ posts: postsWithBadges });
+    return NextResponse.json({ posts: postsWithReactions });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in GET', { error: message });

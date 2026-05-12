@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, users, votes, topics, topicMembers, tags, postTags, categories } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray, isNull } from 'drizzle-orm';
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { attachReactionsToPosts } from '@/lib/reactions';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/feed';
@@ -173,8 +174,10 @@ export async function GET(request: NextRequest) {
         };
       });
 
+      const guestPostsWithReactions = await attachReactionsToPosts(guestPostsWithBadges, null);
+
       logger.info(ROUTE, 'Guest feed fetched', { count: feedPosts.length });
-      return NextResponse.json({ posts: guestPostsWithBadges });
+      return NextResponse.json({ posts: guestPostsWithReactions });
     }
 
     // --- Authenticated path ---
@@ -242,8 +245,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const authPostsWithReactions = await attachReactionsToPosts(authPostsWithBadges, session.userId);
+
     logger.info(ROUTE, 'Authenticated feed fetched', { userId: session.userId, count: feedPosts.length });
-    return NextResponse.json({ posts: authPostsWithBadges });
+    return NextResponse.json({ posts: authPostsWithReactions });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });

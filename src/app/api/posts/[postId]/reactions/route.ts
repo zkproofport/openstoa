@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { reactions, posts, topicMembers } from '@/lib/db/schema';
+import { reactions, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -148,7 +148,11 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid emoji' }, { status: 400 });
     }
 
-    // Verify post exists and check topic membership
+    // Verify post exists. Topic membership is NOT required to react —
+    // emoji reactions are a lightweight expressive action with no body
+    // and zero impact on the topic itself, matching the same policy we
+    // use for votes and bookmarks. Posting and commenting still require
+    // membership.
     const post = await db.query.posts.findFirst({
       where: eq(posts.id, postId),
     });
@@ -156,18 +160,6 @@ export async function POST(
     if (!post) {
       logger.warn(ROUTE, 'Post not found', { postId });
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
-    }
-
-    const membership = await db.query.topicMembers.findFirst({
-      where: and(
-        eq(topicMembers.topicId, post.topicId),
-        eq(topicMembers.userId, session.userId),
-      ),
-    });
-
-    if (!membership) {
-      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, postId, topicId: post.topicId });
-      return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
     }
 
     // Check if reaction already exists
