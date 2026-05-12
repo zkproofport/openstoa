@@ -1,26 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { bookmarks, posts, users } from '@/lib/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { posts, users, topics, votes } from '@/lib/db/schema';
+import { eq, and, desc, gt, sql } from 'drizzle-orm';
+import { attachReactionsToPosts } from '@/lib/reactions';
 import { logger } from '@/lib/logger';
 
-const ROUTE = '/api/bookmarks';
+const ROUTE = '/api/my/recorded-on-mine';
 
 /**
  * @openapi
- * /api/bookmarks:
+ * /api/my/recorded-on-mine:
  *   get:
- *     tags: [Bookmarks]
- *     summary: List bookmarked posts
+ *     tags: [MyActivity]
+ *     summary: List the current user's posts that have been recorded on-chain
  *     description: >-
- *       Lists all posts bookmarked by the current user, sorted by bookmark time (newest first).
- *     operationId: listBookmarks
+ *       Returns posts authored by the current user that have at least one
+ *       on-chain record (recordCount > 0), sorted by recordCount desc.
+ *       This is the "my achievement" view, distinct from /api/my/recorded
+ *       which lists posts the user themselves has recorded.
+ *     operationId: listMyPostsRecorded
  *     parameters:
  *       - name: limit
  *         in: query
  *         required: false
- *         description: Number of posts to return (max 100)
  *         schema:
  *           type: integer
  *           default: 20
@@ -28,13 +31,12 @@ const ROUTE = '/api/bookmarks';
  *       - name: offset
  *         in: query
  *         required: false
- *         description: Number of posts to skip
  *         schema:
  *           type: integer
  *           default: 0
  *     responses:
  *       '200':
- *         description: Bookmarked posts
+ *         description: My posts with on-chain records
  *         content:
  *           application/json:
  *             schema:
@@ -42,16 +44,8 @@ const ROUTE = '/api/bookmarks';
  *               properties:
  *                 posts:
  *                   type: array
- *                   description: Bookmarked posts with bookmarkedAt timestamp
  *                   items:
- *                     allOf:
- *                       - $ref: '#/components/schemas/Post'
- *                       - type: object
- *                         properties:
- *                           bookmarkedAt:
- *                             type: string
- *                             format: date-time
- *                             description: When the post was bookmarked
+ *                     $ref: '#/components/schemas/Post'
  *       '401':
  *         $ref: '#/components/responses/Unauthorized'
  */
@@ -68,40 +62,46 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(searchParams.get('offset') ?? '0', 10);
 
-    logger.info(ROUTE, 'Fetching bookmarked posts', { userId: session.userId, limit, offset });
-
-    const result = await db
+    const rows = await db
       .select({
         id: posts.id,
         topicId: posts.topicId,
         authorId: posts.authorId,
         title: posts.title,
         content: posts.content,
+        createdAt: posts.createdAt,
+        authorNickname: users.nickname,
+        authorProfileImage: users.profileImage,
         upvoteCount: posts.upvoteCount,
         viewCount: posts.viewCount,
         commentCount: posts.commentCount,
-        score: posts.score,
-        createdAt: posts.createdAt,
-        updatedAt: posts.updatedAt,
-        authorNickname: users.nickname,
-        bookmarkedAt: bookmarks.createdAt,
+        recordCount: posts.recordCount,
+        isPinned: posts.isPinned,
+        isAI: posts.isAI,
+        userVoted: sql<number | null>`${votes.value}`,
+        topicTitle: topics.title,
       })
-      .from(bookmarks)
-      .innerJoin(posts, eq(bookmarks.postId, posts.id))
+      .from(posts)
       .leftJoin(users, eq(posts.authorId, users.id))
-      .where(eq(bookmarks.userId, session.userId))
-      .orderBy(desc(bookmarks.createdAt))
+      .leftJoin(topics, eq(posts.topicId, topics.id))
+      .leftJoin(
+        votes,
+        and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)),
+      )
+      .where(
+        and(eq(posts.authorId, session.userId), gt(posts.recordCount, 0)),
+      )
+      .orderBy(desc(posts.recordCount), desc(posts.createdAt))
       .limit(limit)
       .offset(offset);
 
-    // Every post in this list is, by definition, bookmarked by the
-    // current user. Stamp the flag explicitly so PostCard renders the
-    // filled bookmark icon and any cache patch (toggle from another
-    // surface) keeps the value coherent.
-    const postsWithFlag = result.map((p) => ({ ...p, userBookmarked: true }));
+    const postsWithReactions = await attachReactionsToPosts(rows, session.userId);
 
-    logger.info(ROUTE, 'Bookmarked posts fetched', { userId: session.userId, count: result.length });
-    return NextResponse.json({ posts: postsWithFlag });
+    logger.info(ROUTE, 'My recorded posts fetched', {
+      userId: session.userId,
+      count: rows.length,
+    });
+    return NextResponse.json({ posts: postsWithReactions });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });

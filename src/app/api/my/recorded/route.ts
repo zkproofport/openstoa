@@ -97,8 +97,12 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
+    // Every post in this list was, by definition, recorded by the
+    // current user. Stamp the flag so PostCard's record icon renders
+    // active and stays coherent with patchPostInAllCaches updates.
+    const flagged = recordedPosts.map((p) => ({ ...p, userRecorded: true }));
     const postsWithReactions = await attachReactionsToPosts(
-      recordedPosts,
+      flagged,
       session.userId,
     );
 
