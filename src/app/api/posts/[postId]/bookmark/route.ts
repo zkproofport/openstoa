@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { bookmarks, posts, topicMembers } from '@/lib/db/schema';
+import { bookmarks, posts } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -110,7 +110,10 @@ export async function POST(
 
     logger.info(ROUTE, 'Toggling bookmark', { userId: session.userId, postId });
 
-    // Verify post exists and check topic membership
+    // Verify post exists. Topic membership is NOT required to bookmark —
+    // saving a post for later is a personal action with zero impact on
+    // the topic itself (matches Reddit/Twitter "save" semantics and our
+    // own vote policy). Posting and commenting still require membership.
     const post = await db.query.posts.findFirst({
       where: eq(posts.id, postId),
     });
@@ -118,18 +121,6 @@ export async function POST(
     if (!post) {
       logger.warn(ROUTE, 'Post not found', { postId });
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
-    }
-
-    const membership = await db.query.topicMembers.findFirst({
-      where: and(
-        eq(topicMembers.topicId, post.topicId),
-        eq(topicMembers.userId, session.userId),
-      ),
-    });
-
-    if (!membership) {
-      logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, postId, topicId: post.topicId });
-      return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
     }
 
     const existing = await db.query.bookmarks.findFirst({
