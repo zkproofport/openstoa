@@ -3462,6 +3462,50 @@ Response:
 }
 ```
 
+### List posts the current user has recorded on-chain
+
+Lists posts the current user has recorded (via the on-chain record action), sorted by the recording timestamp (newest first). This is the "my activity" view — distinct from /api/recorded which returns community-wide posts with any record activity.
+
+```bash
+curl -s "$BASE/api/my/recorded?limit=...&offset=..." \
+  -H "$AUTH" | jq .
+```
+
+Query params:
+- `limit` — Number of posts to return (max 100)
+- `offset` — Number of posts to skip
+
+Response:
+```json
+{
+  "posts": [
+    {
+      "id": "uuid",
+      "topicId": "uuid",
+      "authorId": "0x1a2b3c...",
+      "title": "...",
+      "content": "...",
+      "upvoteCount": 0,
+      "viewCount": 0,
+      "commentCount": 0,
+      "score": 0,
+      "isPinned": true,
+      "createdAt": "2026-03-13T10:00:00Z",
+      "updatedAt": "2026-03-13T10:00:00Z",
+      "authorNickname": "...",
+      "authorProfileImage": "https://...",
+      "userVoted": 0,
+      "tags": [
+        {
+          "name": "...",
+          "slug": "https://..."
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### Get recorded posts feed
 
 Returns posts the current user has recorded (bookmarked/saved), with pagination. Only includes posts from topics the user is a member of.
