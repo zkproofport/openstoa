@@ -3924,6 +3924,26 @@ curl -s "$BASE/api/stats" | jq .
 
 ## Records
 
+### Check whether the current user can record this post
+
+Reports whether the calling user is currently allowed to record this post on-chain, and if not, the specific reason (already recorded, daily limit hit, post too new, etc.). Clients use this to disable / annotate the record action BEFORE the user taps, so we never hit them with a confirmation prompt followed by a 403 rejection.
+
+```bash
+curl -s "$BASE/api/posts/:postId/record-status" \
+  -H "$AUTH" | jq .
+```
+
+Path params:
+- `postId` — string
+
+Response:
+```json
+{
+  "allowed": true,
+  "reason": "..."
+}
+```
+
 ### Record a post on-chain
 
 Records a post's content hash on-chain via the service wallet. Subject to policy checks: must not be your own post, post must be at least 1 hour old, you may not record the same post twice, and a daily limit of 3 recordings applies.
