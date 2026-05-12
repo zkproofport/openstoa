@@ -384,7 +384,14 @@ export async function GET(
 
     logger.info(ROUTE, 'Post detail fetched', { userId: session.userId, postId, commentCount: postComments.length });
     return NextResponse.json({
-      post: { ...postWithoutProofType, tags: postTagResults, badges: filterBadgesByTopicProofType(badgeMap.get(post.authorId) ?? [], authTopicPT) },
+      post: {
+        ...postWithoutProofType,
+        tags: postTagResults,
+        badges: filterBadgesByTopicProofType(badgeMap.get(post.authorId) ?? [], authTopicPT),
+        // Used by the mobile post detail to render a "Joined" badge next
+        // to the topic title (parity with the topic list card).
+        isJoinedTopic: !!membership,
+      },
       comments: commentsWithBadges,
     });
   } catch (error) {
