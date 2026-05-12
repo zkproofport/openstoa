@@ -5,6 +5,7 @@ import { posts, records, users, topics, votes } from '@/lib/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
+import { txExplorerUrl } from '@/lib/explorer';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/my/recorded';
@@ -84,6 +85,11 @@ export async function GET(request: NextRequest) {
         userVoted: sql<number | null>`${votes.value}`,
         topicTitle: topics.title,
         recordedAt: records.createdAt,
+        // Capture the specific record THIS user created on this post —
+        // there's exactly one because of the (postId, recorderNullifier)
+        // unique index. The mobile profile screen renders a tappable
+        // BaseScan link straight from `myTxExplorerUrl`.
+        myTxHash: records.txHash,
       })
       .from(records)
       .innerJoin(posts, eq(records.postId, posts.id))
@@ -98,10 +104,12 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    // Same helpers used by every other list endpoint, so the response
-    // shape stays identical.
     const flagged = await attachUserFlagsToPosts(recordedPosts, session.userId);
-    const postsWithReactions = await attachReactionsToPosts(flagged, session.userId);
+    const withReactions = await attachReactionsToPosts(flagged, session.userId);
+    const postsWithReactions = withReactions.map((p) => ({
+      ...p,
+      myTxExplorerUrl: txExplorerUrl(p.myTxHash),
+    }));
 
     logger.info(ROUTE, 'Recorded posts fetched', {
       userId: session.userId,

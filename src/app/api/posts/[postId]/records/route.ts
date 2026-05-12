@@ -5,6 +5,7 @@ import { posts, records, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { isContentHashMatch } from '@/lib/record';
+import { txExplorerUrl } from '@/lib/explorer';
 
 const ROUTE = '/api/posts/[postId]/records';
 
@@ -125,6 +126,9 @@ export async function GET(
         recorderNickname: record.recorderNickname ?? null,
         recorderProfileImage: record.recorderProfileImage ?? null,
         txHash: record.txHash,
+        // Pre-resolved BaseScan link; clients open it directly without
+        // having to know which chain we're on.
+        txExplorerUrl: txExplorerUrl(record.txHash),
         contentHash: record.contentHash,
         contentHashMatch,
         createdAt: record.createdAt,

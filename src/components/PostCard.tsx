@@ -258,6 +258,14 @@ export default function PostCard({
     e.preventDefault();
     e.stopPropagation();
     if (recording || recorded) return;
+    // Recording is an irreversible on-chain action — confirm before
+    // spending a service-wallet gas slot. Same wording as the mobile
+    // Alert so the UX reads the same way across platforms.
+    const ok = window.confirm(
+      'Record this post on-chain?\n\n' +
+        "This writes a permanent on-chain attestation on Base via OpenStoa's service wallet (no fee charged to you). It can take 5–15 seconds to confirm and cannot be undone.",
+    );
+    if (!ok) return;
     setRecording(true);
     setRecordError(null);
     try {

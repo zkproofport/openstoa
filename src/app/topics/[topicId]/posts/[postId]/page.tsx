@@ -10,6 +10,7 @@ import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
 import ImageLightbox from '@/components/ImageLightbox';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
+import { PostRecordsSection } from '@/components/PostRecordsSection';
 import { formatDate, truncateId } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -689,6 +690,14 @@ export default function PostPage() {
             )}
           </div>
         </article>
+
+        {/* On-chain record receipts (collapsible) — sits between the
+            post body and the comments so it's discoverable without
+            pushing comments off the page. */}
+        <PostRecordsSection
+          postId={post.id}
+          recordCount={(post as { recordCount?: number }).recordCount ?? 0}
+        />
 
         {/* Comments section */}
         <div>
