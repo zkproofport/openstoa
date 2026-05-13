@@ -1,5 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authPut, authDelete, publicGet, publicPost } from './helpers';
+import { authGet, authPost, authPut, authDelete, publicGet, publicPost, getBaseUrl, getAuthToken } from './helpers';
+
+/**
+ * Upload a tiny PNG to R2 and return its public URL. `/api/profile/image`
+ * only accepts URLs served from our R2 bucket (R2_PUBLIC_URL prefix check),
+ * so we can't just hand it a `https://example.com/...` placeholder.
+ */
+async function uploadAvatar(): Promise<string> {
+  const bytes = new Uint8Array(
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  );
+  const form = new FormData();
+  form.append('file', new Blob([bytes], { type: 'image/png' }), `profile-avatar-${Date.now()}.png`);
+  form.append('purpose', 'avatar');
+  const res = await fetch(`${getBaseUrl()}/api/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getAuthToken()}` },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`avatar upload failed: ${res.status}`);
+  return (await res.json() as { publicUrl: string }).publicUrl;
+}
 
 describe('Profile endpoints', () => {
   it('GET /api/profile/image returns current profile image', async () => {
@@ -19,11 +43,12 @@ describe('Profile endpoints', () => {
   });
 
   it('PUT /api/profile/image sets profile image URL', async () => {
-    const res = await authPut('/api/profile/image', { imageUrl: 'https://example.com/test.png' });
+    const avatarUrl = await uploadAvatar();
+    const res = await authPut('/api/profile/image', { imageUrl: avatarUrl });
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.profileImage).toBe('https://example.com/test.png');
+    expect(json.profileImage).toBe(avatarUrl);
   });
 
   it('DELETE /api/profile/image removes profile image', async () => {
@@ -93,16 +118,28 @@ describe('Tags endpoint', () => {
 });
 
 describe('Upload endpoint', () => {
-  it('POST /api/upload returns presigned URL', async () => {
-    const res = await authPost('/api/upload', {
-      filename: 'test.png',
-      contentType: 'image/png',
-      purpose: 'post',
+  it('POST /api/upload (multipart) returns publicUrl on the CDN', async () => {
+    // The endpoint switched from a presigned-URL handshake to direct
+    // multipart upload — the JSON-body shape (`filename`, `contentType`,
+    // `size`) is no longer accepted.
+    const bytes = new Uint8Array(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    );
+    const form = new FormData();
+    form.append('file', new Blob([bytes], { type: 'image/png' }), 'test.png');
+    form.append('purpose', 'post');
+    const res = await fetch(`${getBaseUrl()}/api/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+      body: form,
     });
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.uploadUrl).toBeTruthy();
-    expect(json.publicUrl).toBeTruthy();
+    expect(typeof json.publicUrl).toBe('string');
+    expect(json.publicUrl.length).toBeGreaterThan(0);
   });
 });
 

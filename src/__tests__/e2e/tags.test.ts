@@ -88,14 +88,27 @@ describe.sequential('Tags — list, search, create with posts, filter posts by t
     expect(postId).toBeTruthy();
   });
 
-  it('5. Create post with max 5 tags — only first 5 accepted', async () => {
+  it('5a. Create post with >5 tags is rejected (max 5, strict cap)', async () => {
+    // Server enforces a strict 5-tag cap and returns 400 — silent truncation
+    // was changed to explicit rejection so callers don't lose data quietly.
     const manyTags = ['tag-a', 'tag-b', 'tag-c', 'tag-d', 'tag-e', 'tag-f'];
     const res = await authPost(`/api/topics/${topicId}/posts`, {
       title: `E2E Post Max Tags ${Date.now()}`,
       content: 'Post with too many tags.',
       tags: manyTags,
     });
-    // Server accepts up to 5, ignores extras — 201 with first 5
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/tag/i);
+  });
+
+  it('5b. Create post with exactly 5 tags -> 201', async () => {
+    const tags = ['e2e-ta', 'e2e-tb', 'e2e-tc', 'e2e-td', 'e2e-te'];
+    const res = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `E2E Post Five Tags ${Date.now()}`,
+      content: 'Post with exactly 5 tags.',
+      tags,
+    });
     expect(res.status).toBe(201);
     const json = await res.json();
     expect(json.post).toBeDefined();
@@ -115,8 +128,11 @@ describe.sequential('Tags — list, search, create with posts, filter posts by t
   // ── 3. GET /api/tags?q=keyword — search ────────────────────────────
 
   it('7. GET /api/tags?q=keyword -> 200, returns matching tags (prefix search)', async () => {
-    // The tag we created in test 4 should match
-    const prefix = tagSlug.substring(0, 6); // e.g. 'e2e-ta'
+    // Use the full slug as the prefix so we don't compete with the dozens
+    // of other `e2e-tag-…` rows the suite has piled up over time — the
+    // server caps results at 10, and a 6-char prefix drops our just-created
+    // tag below the cut.
+    const prefix = tagSlug;
     const res = await publicGet(`/api/tags?q=${encodeURIComponent(prefix)}`);
     expect(res.status).toBe(200);
     const json = await res.json();

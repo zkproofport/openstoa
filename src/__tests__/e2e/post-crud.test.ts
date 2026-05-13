@@ -206,11 +206,12 @@ describe.sequential('Post CRUD + Permission', () => {
     const deleteRes = await authDelete(`/api/posts/${disposablePostId}`);
     expect(deleteRes.status).toBe(200);
     const deleteJson = await deleteRes.json();
-    expect(deleteJson.success).toBe(true);
+    expect(deleteJson.isDeleted).toBe(true);
 
-    // Confirm deletion
+    // Soft-delete: row stays, but isDeleted flips
     const getRes = await authGet(`/api/posts/${disposablePostId}`);
-    expect(getRes.status).toBe(404);
+    expect(getRes.status).toBe(200);
+    expect((await getRes.json()).post.isDeleted).toBe(true);
   });
 
   it('10. Non-author deletes post -> 403', async () => {
@@ -240,11 +241,12 @@ describe.sequential('Post CRUD + Permission', () => {
     const deleteRes = await authDelete(`/api/posts/${userBPostId}`);
     expect(deleteRes.status).toBe(200);
     const deleteJson = await deleteRes.json();
-    expect(deleteJson.success).toBe(true);
+    expect(deleteJson.isDeleted).toBe(true);
 
-    // Confirm deletion
+    // Soft-delete: row stays, but isDeleted flips
     const getRes = await authGet(`/api/posts/${userBPostId}`);
-    expect(getRes.status).toBe(404);
+    expect(getRes.status).toBe(200);
+    expect((await getRes.json()).post.isDeleted).toBe(true);
   });
 
   // ── Guest (unauthenticated) edit/delete ────────────────────────────────

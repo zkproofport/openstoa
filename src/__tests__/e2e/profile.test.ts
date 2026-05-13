@@ -21,6 +21,31 @@ async function authPutNickname(nickname: string): Promise<Response> {
   });
 }
 
+/**
+ * Upload a tiny PNG to R2 and return its public URL. The profile-image
+ * endpoint only accepts URLs served from our own R2 bucket (R2_PUBLIC_URL
+ * prefix check), so external placeholders like `https://example.com/...`
+ * are rejected with 400.
+ */
+async function uploadTinyAvatar(label: string): Promise<string> {
+  const bytes = new Uint8Array(
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  );
+  const form = new FormData();
+  form.append('file', new Blob([bytes], { type: 'image/png' }), `${label}.png`);
+  form.append('purpose', 'avatar');
+  const res = await fetch(`${getBaseUrl()}/api/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getAuthToken()}` },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`avatar upload failed: ${res.status} ${await res.text()}`);
+  return (await res.json() as { publicUrl: string }).publicUrl;
+}
+
 // Profile-specific helper: PUT /api/profile/image
 async function authPutImage(imageUrl: string): Promise<Response> {
   return fetch(`${getBaseUrl()}/api/profile/image`, {
@@ -197,13 +222,18 @@ describe.sequential('Profile API', () => {
 
   // ── Profile image ───────────────────────────────────────────────────────
 
+  // Track the URLs assigned across the 5/6/6b sequence so each step can
+  // reference what the previous one stored.
+  let firstAvatar: string;
+  let secondAvatar: string;
+
   it('5. Set profile image URL -> 200, returns imageUrl', async () => {
-    const imageUrl = 'https://example.com/test-avatar.png';
-    const res = await authPutImage(imageUrl);
+    firstAvatar = await uploadTinyAvatar(`profile-avatar-${Date.now()}`);
+    const res = await authPutImage(firstAvatar);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.profileImage).toBe(imageUrl);
+    expect(json.profileImage).toBe(firstAvatar);
   });
 
   it('6. Get profile image -> 200, returns previously set URL', async () => {
@@ -212,16 +242,16 @@ describe.sequential('Profile API', () => {
     });
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.profileImage).toBe('https://example.com/test-avatar.png');
+    expect(json.profileImage).toBe(firstAvatar);
   });
 
   it('6b. Update profile image to new URL -> 200', async () => {
-    const newImageUrl = 'https://example.com/test-avatar-v2.png';
-    const res = await authPutImage(newImageUrl);
+    secondAvatar = await uploadTinyAvatar(`profile-avatar-v2-${Date.now()}`);
+    const res = await authPutImage(secondAvatar);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.profileImage).toBe(newImageUrl);
+    expect(json.profileImage).toBe(secondAvatar);
   });
 
   it('6c. Remove profile image (DELETE) -> 200', async () => {

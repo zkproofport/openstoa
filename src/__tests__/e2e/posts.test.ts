@@ -149,14 +149,15 @@ describe.sequential('Posts endpoints', () => {
     const newPostId = createJson.post.id;
     expect(newPostId).toBeTruthy();
 
-    // Delete the post
+    // Delete the post (soft-delete: row stays, body cleared, isDeleted: true)
     const deleteRes = await authDelete(`/api/posts/${newPostId}`);
     expect(deleteRes.status).toBe(200);
     const deleteJson = await deleteRes.json();
-    expect(deleteJson.success).toBe(true);
+    expect(deleteJson.isDeleted).toBe(true);
 
-    // Confirm it is gone
+    // Soft-deleted post is still fetchable but flagged isDeleted
     const getRes = await authGet(`/api/posts/${newPostId}`);
-    expect(getRes.status).toBe(404);
+    expect(getRes.status).toBe(200);
+    expect((await getRes.json()).post.isDeleted).toBe(true);
   });
 });
