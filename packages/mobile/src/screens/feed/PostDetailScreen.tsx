@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   FlatList,
@@ -161,6 +162,8 @@ function makeStyles(colors: ThemeColors) {
     authorInfo: { flex: 1 },
     authorName: { fontSize: 14, fontWeight: '600', color: colors.text.primary },
     authorMeta: { fontSize: 12, color: colors.text.tertiary, marginTop: 2 },
+    headerKebab: { paddingHorizontal: 8, paddingVertical: 4 },
+    headerKebabGlyph: { fontSize: 20, color: colors.text.tertiary, lineHeight: 22 },
 
     // Title
     postTitle: {
@@ -873,6 +876,76 @@ export function PostDetailScreen() {
   const isGuest = !sessionUserId;
   const isAuthor = !!(sessionUserId && sessionUserId === post.authorId);
 
+  // Author-only kebab menu: edit (locked once the post is on-chain) +
+  // soft delete. Uses ActionSheetIOS on iOS and a stacked Alert on
+  // Android to stay native-feeling without pulling in an extra modal lib.
+  const canEdit = isAuthor && recordCount === 0;
+  const openAuthorMenu = useCallback(() => {
+    const options: string[] = [];
+    const handlers: (() => void)[] = [];
+    if (canEdit) {
+      options.push(t('openstoa.postDetail.editPost'));
+      handlers.push(() =>
+        (navigation as unknown as { navigate: (n: string, p: object) => void }).navigate(
+          'PostCreate',
+          { topicId: post.topicId, topicTitle: post.topicTitle, editPostId: postId },
+        ),
+      );
+    } else if (isAuthor && recordCount > 0) {
+      options.push(t('openstoa.postDetail.editLocked'));
+      handlers.push(() =>
+        Alert.alert(
+          t('openstoa.postDetail.editLockedTitle'),
+          t('openstoa.postDetail.editLockedMessage'),
+        ),
+      );
+    }
+    options.push(t('openstoa.postDetail.deletePost'));
+    handlers.push(() => {
+      Alert.alert(
+        t('openstoa.postDetail.deleteConfirmTitle'),
+        t('openstoa.postDetail.deleteConfirmMessage'),
+        [
+          { text: t('openstoa.common.cancel'), style: 'cancel' },
+          {
+            text: t('openstoa.postDetail.deletePost'),
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await client.delete(`/api/posts/${postId}`);
+                queryClient.invalidateQueries({ queryKey: ['feed'] });
+                queryClient.invalidateQueries({ queryKey: ['topic', post.topicId, 'posts'] });
+                navigation.goBack();
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                Alert.alert(t('openstoa.postDetail.deleteFailed'), msg);
+              }
+            },
+          },
+        ],
+      );
+    });
+    const cancelLabel = t('openstoa.common.cancel');
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [cancelLabel, ...options],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: options.length, // last item = delete
+        },
+        (i) => {
+          if (i === 0) return;
+          handlers[i - 1]?.();
+        },
+      );
+    } else {
+      Alert.alert(t('openstoa.postDetail.postActions'), undefined, [
+        ...options.map((label, i) => ({ text: label, onPress: handlers[i] })),
+        { text: cancelLabel, style: 'cancel' as const },
+      ]);
+    }
+  }, [canEdit, isAuthor, recordCount, navigation, postId, post.topicId, post.topicTitle, t, client, queryClient]);
+
   // ---------------------------------------------------------------------------
   // FlatList header = full post body
   // ---------------------------------------------------------------------------
@@ -933,6 +1006,17 @@ export function PostDetailScreen() {
               {truncateId(post.authorId, 6, 4)} · {formatRelativeTime(post.createdAt)}
             </Text>
           </View>
+          {/* Author-only overflow menu — edit (locked once the post is
+              recorded on-chain) + delete. Hidden for non-authors. */}
+          {isAuthor ? (
+            <TouchableOpacity
+              style={styles.headerKebab}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={openAuthorMenu}
+            >
+              <Text style={styles.headerKebabGlyph}>⋯</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 

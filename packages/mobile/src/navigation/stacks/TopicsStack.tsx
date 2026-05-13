@@ -16,7 +16,7 @@ export type TopicsStackParamList = {
   TopicsHome: undefined;
   TopicDetail: { topicId: string };
   TopicCreate: undefined;
-  PostCreate: { topicId: string; topicTitle?: string };
+  PostCreate: { topicId: string; topicTitle?: string; editPostId?: string };
   PostDetail: { postId: string };
   TopicMembers: { topicId: string };
   TopicEdit: { topicId: string };

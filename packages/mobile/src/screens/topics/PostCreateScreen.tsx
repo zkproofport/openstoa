@@ -493,7 +493,8 @@ export function PostCreateScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Props['route']>();
-  const { topicId, topicTitle } = route.params;
+  const { topicId, topicTitle, editPostId } = route.params;
+  const isEditing = !!editPostId;
   const client = useOpenStoaClient();
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
@@ -513,12 +514,15 @@ export function PostCreateScreen() {
   const [videoInput, setVideoInput] = useState('');
   const [videoError, setVideoError] = useState('');
 
-  // Draft persistence. Hydrate on first mount; never overwrite after.
+  // Draft persistence — only for new posts. Edit mode loads from the
+  // server and skips the local draft so the user's existing-post copy
+  // doesn't bleed into a brand-new compose session.
   const draftKey = `openstoa.postCreate.${topicId}`;
   const { loaded: loadedDraft, hydrated, saved: draftSaved, save: persistDraft, clear: clearDraft } =
     useDraft<DraftState>(draftKey);
   const hydratedOnce = useRef(false);
   useEffect(() => {
+    if (isEditing) return;
     if (!hydrated || hydratedOnce.current) return;
     hydratedOnce.current = true;
     if (loadedDraft) {
@@ -529,13 +533,42 @@ export function PostCreateScreen() {
       setVideos(loadedDraft.videos ?? []);
       setPoll(loadedDraft.poll ?? null);
     }
-  }, [hydrated, loadedDraft]);
+  }, [hydrated, loadedDraft, isEditing]);
 
   // Persist draft whenever any of the user-editable fields change.
   useEffect(() => {
+    if (isEditing) return;
     if (!hydrated) return;
     persistDraft({ title, content, tags, images, videos, poll });
-  }, [hydrated, title, content, tags, images, videos, poll, persistDraft]);
+  }, [hydrated, title, content, tags, images, videos, poll, persistDraft, isEditing]);
+
+  // Edit-mode hydration — fetch the existing post once and prefill the
+  // form. The query uses the same cache key the detail screen uses so
+  // it usually hits the cache without a network round trip.
+  const editPostQuery = useQuery<{ post: Post & { poll?: { question?: string | null; multipleChoice: boolean; closesAt?: string | null; options: { id: string; text: string; position: number }[] } | null } }>({
+    queryKey: editPostId ? ['post', editPostId] : ['post', 'noop'],
+    queryFn: () => client.get(`/api/posts/${editPostId}`),
+    enabled: !!editPostId,
+  });
+  useEffect(() => {
+    if (!isEditing || hydratedOnce.current) return;
+    const p = editPostQuery.data?.post;
+    if (!p) return;
+    hydratedOnce.current = true;
+    setTitle(p.title ?? '');
+    setContent(p.content ?? '');
+    setTags((p.tags ?? []).map((t) => t.name));
+    setImages(p.media?.images ?? []);
+    setVideos(p.media?.videos ?? []);
+    if (p.poll) {
+      setPoll({
+        question: p.poll.question ?? undefined,
+        options: (p.poll.options ?? []).sort((a, b) => a.position - b.position).map((o) => o.text),
+        multipleChoice: p.poll.multipleChoice,
+        closesAt: p.poll.closesAt ?? null,
+      });
+    }
+  }, [isEditing, editPostQuery.data]);
 
   // Tag autocomplete
   const tagQuery = useQuery<{ tags: TagSuggestion[] }>({
@@ -687,12 +720,21 @@ export function PostCreateScreen() {
           closesAt: poll.closesAt ?? undefined,
         };
       }
+      if (isEditing && editPostId) {
+        return client.patch<CreatePostResponse>(`/api/posts/${editPostId}`, body);
+      }
       return client.post<CreatePostResponse>(`/api/topics/${topicId}/posts`, body);
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'posts'] });
-      clearDraft();
-      navigation.replace('PostDetail', { postId: res.post.id });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      if (isEditing && editPostId) {
+        queryClient.invalidateQueries({ queryKey: ['post', editPostId] });
+        navigation.goBack();
+      } else {
+        clearDraft();
+        navigation.replace('PostDetail', { postId: res.post.id });
+      }
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.postCreate.failed'), err.message);

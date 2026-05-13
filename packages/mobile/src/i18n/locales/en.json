@@ -320,7 +320,16 @@
       "recordPostEdited": "Post content has changed since these records were written; older hashes no longer match.",
       "recordContentMismatch": "content edited since",
       "recordPending": "pending…",
-      "viewOnBase": "View on BaseScan"
+      "viewOnBase": "View on BaseScan",
+      "postActions": "Post actions",
+      "editPost": "Edit",
+      "editLocked": "Edit (recorded on-chain)",
+      "editLockedTitle": "Can't edit",
+      "editLockedMessage": "Posts recorded on-chain can't be edited. Please create a new post.",
+      "deletePost": "Delete",
+      "deleteConfirmTitle": "Delete post",
+      "deleteConfirmMessage": "Delete this post? Body and media will be cleared but comments stay.",
+      "deleteFailed": "Couldn't delete"
     },
     "chat": {
       "messagePlaceholder": "Type a message…",

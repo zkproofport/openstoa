@@ -320,7 +320,16 @@
       "recordPostEdited": "기록 이후 본문이 수정되었어요. 일부 해시가 더 이상 일치하지 않습니다.",
       "recordContentMismatch": "기록 이후 본문 수정됨",
       "recordPending": "확정 대기…",
-      "viewOnBase": "BaseScan에서 보기"
+      "viewOnBase": "BaseScan에서 보기",
+      "postActions": "글 메뉴",
+      "editPost": "수정",
+      "editLocked": "수정 (온체인 기록됨)",
+      "editLockedTitle": "수정할 수 없어요",
+      "editLockedMessage": "온체인에 기록된 글은 수정할 수 없어요. 새 글로 작성해 주세요.",
+      "deletePost": "삭제",
+      "deleteConfirmTitle": "글 삭제",
+      "deleteConfirmMessage": "이 글을 삭제할까요? 본문과 미디어는 지워지고 댓글은 그대로 유지돼요.",
+      "deleteFailed": "삭제하지 못했어요"
     },
     "chat": {
       "messagePlaceholder": "메시지 입력…",
