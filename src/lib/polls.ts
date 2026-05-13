@@ -1,3 +1,6 @@
+// Note: this file actually houses poll helpers — the video URL helpers
+// live in `./videoUrls.ts`. Keep the imports tight so polls don't drag in
+// unrelated regex helpers.
 import { db } from './db';
 import { polls, pollOptions, pollVotes } from './db/schema';
 import { eq, inArray, sql } from 'drizzle-orm';

@@ -11,6 +11,7 @@ import { getBatchUserBadges, filterBadgesByTopicProofType, type Badge } from '@/
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts, createPollForPost } from '@/lib/polls';
+import { isSupportedVideoUrl } from '@/lib/videoUrls';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -442,6 +443,21 @@ export async function POST(
       }
       if (videos.length > MAX_VIDEOS) {
         mediaParseError = `Too many videos (max ${MAX_VIDEOS})`;
+        return null;
+      }
+      // Image URLs must look like http(s) — guards against
+      // `javascript:` / `data:` / arbitrary strings making it past the
+      // composer into the DB. Mobile uploads always come back as R2
+      // https URLs so this never trips for legit flows.
+      const badImage = images.find((u) => !/^https?:\/\//i.test(u));
+      if (badImage) {
+        mediaParseError = `Invalid image URL: ${badImage}`;
+        return null;
+      }
+      // Videos must be YouTube/Vimeo — same regex as the mobile modal.
+      const badVideo = videos.find((u) => !isSupportedVideoUrl(u));
+      if (badVideo) {
+        mediaParseError = `Unsupported video URL (YouTube or Vimeo only): ${badVideo}`;
         return null;
       }
       if (images.length === 0 && videos.length === 0) return null;

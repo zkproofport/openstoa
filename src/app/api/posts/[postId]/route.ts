@@ -8,6 +8,7 @@ import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { attachPollsToPosts } from '@/lib/polls';
+import { isSupportedVideoUrl } from '@/lib/videoUrls';
 type Badge = { type: string; label: string };
 
 const ROUTE = '/api/posts/[postId]';
@@ -646,6 +647,16 @@ export async function PATCH(
         }
         if (videos.length > MAX_VIDEOS) {
           mediaErr = `Too many videos (max ${MAX_VIDEOS})`;
+          return null;
+        }
+        const badImage = images.find((u) => !/^https?:\/\//i.test(u));
+        if (badImage) {
+          mediaErr = `Invalid image URL: ${badImage}`;
+          return null;
+        }
+        const badVideo = videos.find((u) => !isSupportedVideoUrl(u));
+        if (badVideo) {
+          mediaErr = `Unsupported video URL (YouTube or Vimeo only): ${badVideo}`;
           return null;
         }
         if (images.length === 0 && videos.length === 0) return null;
