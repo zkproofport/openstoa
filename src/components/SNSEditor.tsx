@@ -4,8 +4,14 @@ import { useCallback, useRef, useState, useEffect } from 'react';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export interface SNSEditorState {
+  content: string;
+  images: string[];
+  videos: string[];
+}
+
 interface SNSEditorProps {
-  onChange?: (html: string) => void;
+  onChange?: (state: SNSEditorState) => void;
   placeholder?: string;
   minHeight?: number;
   draftKey?: string;
@@ -22,6 +28,14 @@ function isVideoUrl(url: string): boolean {
   return false;
 }
 
+function describeVideo(url: string): string {
+  const yt = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/);
+  if (yt) return `YouTube · ${yt[1]}`;
+  const vimeo = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeo) return `Vimeo · ${vimeo[1]}`;
+  return url;
+}
+
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
 
 const IconImage = () => (
@@ -35,6 +49,13 @@ const IconVideo = () => (
   <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
     <path d="M2 3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9.5l3 2V4.5l-3 2V4a1 1 0 0 0-1-1H2zm0 1h8v8H2V4z"/>
     <path d="M5.5 6v4l3.5-2-3.5-2z"/>
+  </svg>
+);
+
+const IconClose = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="3" y1="3" x2="9" y2="9" />
+    <line x1="9" y1="3" x2="3" y2="9" />
   </svg>
 );
 
@@ -70,7 +91,9 @@ function UploadIndicator({ count, total }: { count: number; total: number }) {
 // ─── Draft Logic ────────────────────────────────────────────────────────────
 
 interface DraftData {
-  html: string;
+  content: string;
+  images: string[];
+  videos: string[];
   savedAt: number;
 }
 
@@ -78,14 +101,19 @@ function useDraftSave(draftKey: string) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const saveDraft = useCallback((html: string) => {
+  const saveDraft = useCallback((state: { content: string; images: string[]; videos: string[] }) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setSaved(false);
     timerRef.current = setTimeout(() => {
       try {
-        const stripped = html.replace(/<[^>]*>/g, '').trim();
-        if (stripped) {
-          localStorage.setItem(draftKey, JSON.stringify({ html, savedAt: Date.now() }));
+        const hasAny = state.content.trim() || state.images.length > 0 || state.videos.length > 0;
+        if (hasAny) {
+          localStorage.setItem(draftKey, JSON.stringify({
+            content: state.content,
+            images: state.images,
+            videos: state.videos,
+            savedAt: Date.now(),
+          }));
           setSaved(true);
           setTimeout(() => setSaved(false), 2000);
         } else {
@@ -99,28 +127,35 @@ function useDraftSave(draftKey: string) {
     try {
       const raw = localStorage.getItem(draftKey);
       if (!raw) return null;
-      const data = JSON.parse(raw) as DraftData;
-      const age = Date.now() - data.savedAt;
+      const data = JSON.parse(raw) as Partial<DraftData> & { html?: string };
+      const savedAt = typeof data.savedAt === 'number' ? data.savedAt : 0;
+      const age = Date.now() - savedAt;
       if (age > 24 * 60 * 60 * 1000) {
         localStorage.removeItem(draftKey);
         return null;
       }
-      return data;
+      // Legacy drafts stored { html, savedAt } — best-effort migration: strip tags.
+      if (typeof data.html === 'string' && typeof data.content !== 'string') {
+        const text = data.html
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/(p|div)>/gi, '\n')
+          .replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>');
+        return { content: text.trim(), images: [], videos: [], savedAt };
+      }
+      return {
+        content: typeof data.content === 'string' ? data.content : '',
+        images: Array.isArray(data.images) ? data.images.filter((x): x is string => typeof x === 'string') : [],
+        videos: Array.isArray(data.videos) ? data.videos.filter((x): x is string => typeof x === 'string') : [],
+        savedAt,
+      };
     } catch { return null; }
   }, [draftKey]);
 
-  const clearDraft = useCallback(() => {
-    try { localStorage.removeItem(draftKey); } catch {}
-  }, [draftKey]);
-
-  return { saved, saveDraft, loadDraft, clearDraft };
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Get the text-only character count from HTML */
-function htmlTextLength(html: string): number {
-  return html.replace(/<[^>]*>/g, '').length;
+  return { saved, saveDraft, loadDraft };
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -132,28 +167,35 @@ export default function SNSEditor({
   draftKey = 'openstoa-draft',
 }: SNSEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const [content, setContent] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [uploadTotal, setUploadTotal] = useState(0);
   const [showVideoInput, setShowVideoInput] = useState(false);
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrlDraft, setVideoUrlDraft] = useState('');
   const [videoError, setVideoError] = useState('');
-  const [isEmpty, setIsEmpty] = useState(true);
-  const [charCount, setCharCount] = useState(0);
 
   const { saved, saveDraft, loadDraft } = useDraftSave(draftKey);
 
-  // Check if editor is empty
-  const checkEmpty = useCallback(() => {
-    const el = editorRef.current;
+  // Emit unified state whenever any piece changes.
+  const emit = useCallback((next: { content: string; images: string[]; videos: string[] }) => {
+    onChange?.(next);
+    saveDraft(next);
+  }, [onChange, saveDraft]);
+
+  // Auto-grow textarea to fit content.
+  const autoGrow = useCallback(() => {
+    const el = textareaRef.current;
     if (!el) return;
-    const text = el.textContent?.trim() ?? '';
-    const hasImages = el.querySelectorAll('img').length > 0;
-    setIsEmpty(!text && !hasImages);
-  }, []);
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(minHeight, el.scrollHeight)}px`;
+  }, [minHeight]);
 
   // Load draft on mount
   const didLoadDraft = useRef(false);
@@ -161,37 +203,34 @@ export default function SNSEditor({
     if (didLoadDraft.current) return;
     didLoadDraft.current = true;
     const draft = loadDraft();
-    if (draft && editorRef.current) {
-      editorRef.current.innerHTML = draft.html;
-      setCharCount(htmlTextLength(draft.html));
-      onChange?.(draft.html);
-      checkEmpty();
+    if (draft) {
+      setContent(draft.content);
+      setImages(draft.images);
+      setVideos(draft.videos);
+      onChange?.({ content: draft.content, images: draft.images, videos: draft.videos });
+      // Defer to next tick so textarea sees the new value.
+      setTimeout(autoGrow, 0);
     }
-  }, [loadDraft, onChange, checkEmpty]);
+  }, [loadDraft, onChange, autoGrow]);
 
-  // Handle editor input
-  const handleInput = useCallback(() => {
-    const el = editorRef.current;
-    if (!el) return;
-    const html = el.innerHTML;
-    checkEmpty();
-    setCharCount(htmlTextLength(html));
-    onChange?.(html);
-    saveDraft(html);
-  }, [checkEmpty, onChange, saveDraft]);
+  // ─── Content updates ────────────────────────────────────────────────────
 
-  // Insert text at cursor position in the editor
-  const insertTextAtCursor = useCallback((text: string) => {
-    const el = editorRef.current;
-    if (!el) return;
-    el.focus();
-    document.execCommand('insertHTML', false, `<div>${text}</div>`);
-    const html = el.innerHTML;
-    checkEmpty();
-    setCharCount(htmlTextLength(html));
-    onChange?.(html);
-    saveDraft(html);
-  }, [checkEmpty, onChange, saveDraft]);
+  const handleContentChange = useCallback((next: string) => {
+    setContent(next);
+    emit({ content: next, images, videos });
+    // Defer so the new value is already in the DOM before measuring.
+    setTimeout(autoGrow, 0);
+  }, [emit, images, videos, autoGrow]);
+
+  const updateImages = useCallback((next: string[]) => {
+    setImages(next);
+    emit({ content, images: next, videos });
+  }, [emit, content, videos]);
+
+  const updateVideos = useCallback((next: string[]) => {
+    setVideos(next);
+    emit({ content, images, videos: next });
+  }, [emit, content, images]);
 
   // ─── Image Upload ───────────────────────────────────────────────────────
 
@@ -221,49 +260,6 @@ export default function SNSEditor({
     }
   }, []);
 
-  const insertImageAtCursor = useCallback((url: string) => {
-    const el = editorRef.current;
-    if (!el) return;
-
-    el.focus();
-    const sel = window.getSelection();
-    const createImg = () => {
-      const img = document.createElement('img');
-      img.src = url;
-      img.alt = '';
-      img.style.maxWidth = '100%';
-      img.style.height = 'auto';
-      img.style.borderRadius = '8px';
-      img.style.display = 'block';
-      img.style.margin = '8px 0';
-      return img;
-    };
-
-    if (!sel || sel.rangeCount === 0) {
-      el.appendChild(createImg());
-      el.appendChild(document.createElement('br'));
-    } else {
-      const range = sel.getRangeAt(0);
-      if (el.contains(range.commonAncestorContainer)) {
-        const img = createImg();
-        range.deleteContents();
-        range.insertNode(img);
-        range.setStartAfter(img);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } else {
-        el.appendChild(createImg());
-        el.appendChild(document.createElement('br'));
-      }
-    }
-
-    const html = el.innerHTML;
-    checkEmpty();
-    onChange?.(html);
-    saveDraft(html);
-  }, [checkEmpty, onChange, saveDraft]);
-
   const handleFiles = useCallback(async (files: File[]) => {
     const imageFiles = files.filter(f => f.type.startsWith('image/') && f.size <= 10 * 1024 * 1024);
     if (imageFiles.length === 0) return;
@@ -279,28 +275,23 @@ export default function SNSEditor({
     );
 
     const newUrls = results.filter((u): u is string => u !== null);
-    for (const url of newUrls) {
-      insertImageAtCursor(url);
+    if (newUrls.length > 0) {
+      const nextImages = [...images, ...newUrls];
+      setImages(nextImages);
+      emit({ content, images: nextImages, videos });
     }
 
     setTimeout(() => {
       setUploading(0);
       setUploadTotal(0);
     }, 500);
-  }, [uploadFile, insertImageAtCursor]);
+  }, [uploadFile, images, content, videos, emit]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length > 0) handleFiles(files);
     e.target.value = '';
   }, [handleFiles]);
-
-  // Intercept formatting shortcuts and paste
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) {
-      e.preventDefault();
-    }
-  }, []);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items);
@@ -310,47 +301,30 @@ export default function SNSEditor({
       e.preventDefault();
       const files = imageItems.map(i => i.getAsFile()).filter((f): f is File => f !== null);
       if (files.length > 0) handleFiles(files);
-      return;
     }
-
-    // Paste as plain text (strip formatting)
-    e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    if (text) {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        try {
-          const range = sel.getRangeAt(0);
-          range.deleteContents();
-          const textNode = document.createTextNode(text);
-          range.insertNode(textNode);
-          range.setStartAfter(textNode);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        } catch {
-          document.execCommand('insertText', false, text);
-        }
-      } else {
-        document.execCommand('insertText', false, text);
-      }
-    }
+    // Otherwise let the textarea handle paste normally.
   }, [handleFiles]);
 
   // ─── Video URL Insert ─────────────────────────────────────────────────
 
   const handleVideoAdd = useCallback(() => {
-    const url = videoUrl.trim();
+    const url = videoUrlDraft.trim();
     if (!url) return;
     if (!isVideoUrl(url)) {
       setVideoError('YouTube or Vimeo URL only');
       return;
     }
-    insertTextAtCursor(url);
-    setVideoUrl('');
+    if (videos.includes(url)) {
+      setVideoError('Already added');
+      return;
+    }
+    const nextVideos = [...videos, url];
+    setVideos(nextVideos);
+    emit({ content, images, videos: nextVideos });
+    setVideoUrlDraft('');
     setVideoError('');
     setShowVideoInput(false);
-  }, [videoUrl, insertTextAtCursor]);
+  }, [videoUrlDraft, videos, content, images, emit]);
 
   // ─── Drag & Drop ────────────────────────────────────────────────────────
 
@@ -374,6 +348,8 @@ export default function SNSEditor({
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
+  const charCount = content.length;
+
   return (
     <div
       ref={containerRef}
@@ -390,34 +366,137 @@ export default function SNSEditor({
         ...(isDragging ? { boxShadow: '0 0 0 3px rgba(59,130,246,0.15)' } : {}),
       }}
     >
-      {/* ContentEditable editor */}
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
+      {/* Plain textarea */}
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => handleContentChange(e.target.value)}
         onPaste={handlePaste}
-        data-placeholder={placeholder}
+        placeholder={placeholder}
+        rows={1}
         style={{
           width: '100%',
           minHeight,
+          resize: 'none',
           background: 'transparent',
           border: 'none',
           outline: 'none',
           color: 'var(--foreground)',
           fontSize: 15,
           lineHeight: 1.85,
-          fontFamily: "-apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
           padding: '16px 18px 12px',
           boxSizing: 'border-box',
           display: 'block',
           wordBreak: 'keep-all',
           overflowWrap: 'break-word',
           whiteSpace: 'pre-wrap',
-          position: 'relative',
         }}
       />
+
+      {/* Image thumbnails */}
+      {images.length > 0 && (
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8,
+          padding: '0 18px 12px',
+        }}>
+          {images.map((url, i) => (
+            <div
+              key={`${url}-${i}`}
+              style={{
+                position: 'relative',
+                width: 96,
+                height: 96,
+                borderRadius: 8,
+                overflow: 'hidden',
+                background: '#0a0a0a',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              <img
+                src={url}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+              <button
+                type="button"
+                aria-label="Remove image"
+                onClick={() => updateImages(images.filter((_, idx) => idx !== i))}
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 4,
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.7)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                }}
+              >
+                <IconClose />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Video chips */}
+      {videos.length > 0 && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          padding: '0 18px 12px',
+        }}>
+          {videos.map((url, i) => (
+            <div
+              key={`${url}-${i}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 10px',
+                background: '#0a0a0a',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 8,
+                fontSize: 13,
+              }}
+            >
+              <span style={{ color: '#9ca3af', flex: 1, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {describeVideo(url)}
+              </span>
+              <button
+                type="button"
+                aria-label="Remove video"
+                onClick={() => updateVideos(videos.filter((_, idx) => idx !== i))}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  color: '#9ca3af',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                }}
+              >
+                <IconClose />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Drag overlay */}
       {isDragging && (
@@ -439,19 +518,13 @@ export default function SNSEditor({
 
       {/* Video URL input */}
       {showVideoInput && (
-        <div style={{ padding: '0 18px 12px' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-          }}>
+        <div style={{ padding: '0 18px 12px' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               autoFocus
               type="url"
-              value={videoUrl}
-              onChange={(e) => { setVideoUrl(e.target.value); setVideoError(''); }}
+              value={videoUrlDraft}
+              onChange={(e) => { setVideoUrlDraft(e.target.value); setVideoError(''); }}
               placeholder="YouTube or Vimeo URL"
               style={{
                 flex: 1,
@@ -467,7 +540,7 @@ export default function SNSEditor({
               }}
               onKeyDown={(e) => {
                 e.stopPropagation();
-                if (e.key === 'Escape') { setShowVideoInput(false); setVideoUrl(''); setVideoError(''); }
+                if (e.key === 'Escape') { setShowVideoInput(false); setVideoUrlDraft(''); setVideoError(''); }
                 if (e.key === 'Enter') { e.preventDefault(); handleVideoAdd(); }
               }}
             />
@@ -488,16 +561,20 @@ export default function SNSEditor({
             >
               Add
             </button>
-            <button type="button" onClick={() => { setShowVideoInput(false); setVideoUrl(''); setVideoError(''); }} style={{
-              background: 'transparent',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: '#6b7280',
-              borderRadius: 7,
-              padding: '8px 12px',
-              fontSize: 13,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}>
+            <button
+              type="button"
+              onClick={() => { setShowVideoInput(false); setVideoUrlDraft(''); setVideoError(''); }}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#6b7280',
+                borderRadius: 7,
+                padding: '8px 12px',
+                fontSize: 13,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
               Cancel
             </button>
           </div>
@@ -592,20 +669,6 @@ export default function SNSEditor({
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
-        }
-        [contenteditable][data-placeholder]:empty::before {
-          content: attr(data-placeholder);
-          color: #4b5563;
-          pointer-events: none;
-          position: absolute;
-          font-style: normal;
-        }
-        [contenteditable] img {
-          max-width: 100%;
-          height: auto;
-          border-radius: 8px;
-          display: block;
-          margin: 8px 0;
         }
       `}</style>
     </div>

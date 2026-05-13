@@ -19,6 +19,9 @@ interface Post {
   id: string;
   title: string;
   content: string;
+  /** Phase A2 unified media. Renderer unions this with whatever can still be
+   *  extracted from legacy HTML in `content`. */
+  media?: { images?: string[]; videos?: string[] } | null;
   authorNickname: string;
   authorProfileImage?: string | null;
   authorId: string;
@@ -465,7 +468,11 @@ export default function PostPage() {
           )}
 
           <div ref={contentAreaRef}>
-            <SNSContent html={post.content} />
+            <SNSContent
+              html={post.content}
+              mediaImages={post.media?.images}
+              mediaVideos={post.media?.videos}
+            />
           </div>
 
           <div style={{

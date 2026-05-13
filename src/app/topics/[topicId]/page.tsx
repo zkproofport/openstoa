@@ -100,7 +100,9 @@ export default function TopicPage() {
   // Composer
   const [composing, setComposing] = useState(false);
   const [postTitle, setPostTitle] = useState('');
-  const [postContentHtml, setPostContentHtml] = useState('');
+  const [postContent, setPostContent] = useState('');
+  const [postImages, setPostImages] = useState<string[]>([]);
+  const [postVideos, setPostVideos] = useState<string[]>([]);
   const [postTags, setPostTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -285,19 +287,13 @@ export default function TopicPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function isHtmlEmpty(html: string): boolean {
-    const stripped = html
-      .replace(/<br\s*\/?>/gi, '')
-      .replace(/<p><br><\/p>/gi, '')
-      .replace(/<div><br><\/div>/gi, '')
-      .replace(/<[^>]*>/g, '')
-      .trim();
-    return stripped.length === 0;
+  function isComposerEmpty(): boolean {
+    return !postContent.trim() && postImages.length === 0 && postVideos.length === 0;
   }
 
   async function handlePostSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!postTitle.trim() || isHtmlEmpty(postContentHtml)) return;
+    if (!postTitle.trim() || isComposerEmpty()) return;
     setSubmitting(true);
     setPostError(null);
     try {
@@ -306,7 +302,8 @@ export default function TopicPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: postTitle.trim(),
-          content: postContentHtml,
+          content: postContent,
+          media: { images: postImages, videos: postVideos },
           tags: postTags.length > 0 ? postTags : undefined,
         }),
       });
@@ -315,7 +312,9 @@ export default function TopicPage() {
         throw new Error(d.error ?? 'Failed to post');
       }
       setPostTitle('');
-      setPostContentHtml('');
+      setPostContent('');
+      setPostImages([]);
+      setPostVideos([]);
       setPostTags([]);
       try { localStorage.removeItem('openstoa-draft'); } catch {}
       setComposing(false);
@@ -864,8 +863,10 @@ export default function TopicPage() {
                 />
                 <SNSEditor
                   placeholder="Write your post..."
-                  onChange={(html) => {
-                    setPostContentHtml(html);
+                  onChange={(state) => {
+                    setPostContent(state.content);
+                    setPostImages(state.images);
+                    setPostVideos(state.videos);
                   }}
                   minHeight={180}
                 />
@@ -883,7 +884,9 @@ export default function TopicPage() {
                     onClick={() => {
                       setComposing(false);
                       setPostTitle('');
-                      setPostContentHtml('');
+                      setPostContent('');
+                      setPostImages([]);
+                      setPostVideos([]);
                       setPostTags([]);
                       try { localStorage.removeItem('openstoa-draft'); } catch {}
                     }}
@@ -901,7 +904,7 @@ export default function TopicPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting}
+                    disabled={!postTitle.trim() || isComposerEmpty() || submitting}
                     style={{
                       background: 'var(--accent)',
                       color: '#fff',
@@ -911,7 +914,7 @@ export default function TopicPage() {
                       fontSize: 14,
                       fontWeight: 600,
                       cursor: 'pointer',
-                      opacity: (!postTitle.trim() || isHtmlEmpty(postContentHtml) || submitting) ? 0.5 : 1,
+                      opacity: (!postTitle.trim() || isComposerEmpty() || submitting) ? 0.5 : 1,
                     }}
                   >
                     {submitting ? 'Posting...' : 'Post'}

@@ -20,6 +20,9 @@ export interface PostCardPost {
   id: string;
   title: string;
   content: string;
+  /** Phase A2 unified media (images + video URLs). Optional so legacy posts
+   *  without an attached media payload still render via content extraction. */
+  media?: { images?: string[]; videos?: string[] } | null;
   upvoteCount?: number;
   commentCount?: number;
   viewCount?: number;
@@ -65,6 +68,60 @@ export interface PostCardProps {
 
   // Expandable content
   expandable?: boolean;
+}
+
+// ─── Media preview extraction ────────────────────────────────────────────────
+
+type MediaPreviewItem = { type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string };
+
+/**
+ * Build the compact thumbnail strip from `post.media` first, falling back to
+ * URLs/imgs still embedded inside legacy `post.content` HTML. Deduplicates by
+ * src so the same image isn't shown twice when a legacy post has been migrated.
+ */
+function extractMediaPreview(post: PostCardPost): MediaPreviewItem[] {
+  const out: MediaPreviewItem[] = [];
+  const seen = new Set<string>();
+  const push = (item: MediaPreviewItem) => {
+    if (seen.has(item.src)) return;
+    seen.add(item.src);
+    out.push(item);
+  };
+
+  // 1) Explicit media from the unified composer.
+  for (const url of post.media?.images ?? []) {
+    push({ type: 'image', src: url, thumbnail: url });
+  }
+  for (const url of post.media?.videos ?? []) {
+    const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+    if (yt) {
+      push({ type: 'youtube', src: yt[1], thumbnail: `https://img.youtube.com/vi/${yt[1]}/mqdefault.jpg` });
+      continue;
+    }
+    const vimeo = url.match(/vimeo\.com\/(\d+)/);
+    if (vimeo) push({ type: 'vimeo', src: vimeo[1], thumbnail: '' });
+  }
+
+  // 2) Legacy HTML extraction — images embedded as <img>, video URLs in text/href.
+  const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  let imgM;
+  while ((imgM = imgRegex.exec(post.content)) !== null) {
+    push({ type: 'image', src: imgM[1], thumbnail: imgM[1] });
+  }
+
+  const ytRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/g;
+  let ytM;
+  while ((ytM = ytRegex.exec(post.content)) !== null) {
+    push({ type: 'youtube', src: ytM[1], thumbnail: `https://img.youtube.com/vi/${ytM[1]}/mqdefault.jpg` });
+  }
+
+  const vimeoRegex = /vimeo\.com\/(\d+)/g;
+  let vimeoM;
+  while ((vimeoM = vimeoRegex.exec(post.content)) !== null) {
+    push({ type: 'vimeo', src: vimeoM[1], thumbnail: '' });
+  }
+
+  return out;
 }
 
 // ─── Action Button ───────────────────────────────────────────────────────────
@@ -347,6 +404,8 @@ export default function PostCard({
           <div style={{ marginBottom: 10 }}>
             <SNSContent
               html={post.content}
+              mediaImages={post.media?.images}
+              mediaVideos={post.media?.videos}
               truncate={!expanded}
               maxLines={3}
               onToggleExpand={handleToggleExpand}
@@ -354,37 +413,14 @@ export default function PostCard({
             />
           </div>
 
-          {/* Media gallery — compact thumbnails (only when content overflows) */}
-          {!expanded && contentOverflows && (() => {
-            const mediaItems: Array<{ type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string }> = [];
-
-            const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-            let imgM;
-            while ((imgM = imgRegex.exec(post.content)) !== null) {
-              mediaItems.push({ type: 'image', src: imgM[1], thumbnail: imgM[1] });
-            }
-
-            const ytRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/g;
-            let ytM;
-            while ((ytM = ytRegex.exec(post.content)) !== null) {
-              mediaItems.push({
-                type: 'youtube',
-                src: ytM[1],
-                thumbnail: `https://img.youtube.com/vi/${ytM[1]}/mqdefault.jpg`,
-              });
-            }
-
-            const vimeoRegex = /vimeo\.com\/(\d+)/g;
-            let vimeoM;
-            while ((vimeoM = vimeoRegex.exec(post.content)) !== null) {
-              mediaItems.push({
-                type: 'vimeo',
-                src: vimeoM[1],
-                thumbnail: '',
-              });
-            }
-
+          {/* Media gallery — compact thumbnails. Show when content overflows
+              OR whenever the post has explicit media attached (new posts with
+              short text + images shouldn't hide the gallery). */}
+          {!expanded && (() => {
+            const mediaItems = extractMediaPreview(post);
             if (mediaItems.length === 0) return null;
+            const hasExplicitMedia = (post.media?.images?.length ?? 0) > 0 || (post.media?.videos?.length ?? 0) > 0;
+            if (!contentOverflows && !hasExplicitMedia) return null;
 
             const displayItems = mediaItems.slice(0, 3);
             const remaining = mediaItems.length - 3;
@@ -566,6 +602,8 @@ export default function PostCard({
         <div>
           <SNSContent
             html={post.content}
+            mediaImages={post.media?.images}
+            mediaVideos={post.media?.videos}
             truncate={expandable ? !expanded : true}
             maxLines={3}
             onToggleExpand={expandable ? handleToggleExpand : undefined}
@@ -573,40 +611,13 @@ export default function PostCard({
           />
         </div>
 
-        {/* Media gallery — compact thumbnails (only when content overflows) */}
-        {!expanded && contentOverflows && (() => {
-          const mediaItems: Array<{ type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string }> = [];
-
-          // Extract images
-          const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-          let imgM;
-          while ((imgM = imgRegex.exec(post.content)) !== null) {
-            mediaItems.push({ type: 'image', src: imgM[1], thumbnail: imgM[1] });
-          }
-
-          // Extract YouTube
-          const ytRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/g;
-          let ytM;
-          while ((ytM = ytRegex.exec(post.content)) !== null) {
-            mediaItems.push({
-              type: 'youtube',
-              src: ytM[1],
-              thumbnail: `https://img.youtube.com/vi/${ytM[1]}/mqdefault.jpg`,
-            });
-          }
-
-          // Extract Vimeo
-          const vimeoRegex = /vimeo\.com\/(\d+)/g;
-          let vimeoM;
-          while ((vimeoM = vimeoRegex.exec(post.content)) !== null) {
-            mediaItems.push({
-              type: 'vimeo',
-              src: vimeoM[1],
-              thumbnail: '',
-            });
-          }
-
+        {/* Media gallery — compact thumbnails. Show when content overflows
+            OR whenever the post has explicit media attached. */}
+        {!expanded && (() => {
+          const mediaItems = extractMediaPreview(post);
           if (mediaItems.length === 0) return null;
+          const hasExplicitMedia = (post.media?.images?.length ?? 0) > 0 || (post.media?.videos?.length ?? 0) > 0;
+          if (!contentOverflows && !hasExplicitMedia) return null;
 
           const displayItems = mediaItems.slice(0, 3);
           const remaining = mediaItems.length - 3;

@@ -12,11 +12,49 @@ interface VideoEmbed {
 }
 
 interface SNSContentProps {
+  /** Post body. May be legacy HTML (contains `<` tags, `<img>`, `<a>`) or
+   *  plain text from the unified composer. Plain text is rendered as-is
+   *  with newlines preserved; HTML is sanitised/auto-linked as before. */
   html: string;
+  /** Phase A2: explicit media attached to the post (separate from `html`).
+   *  Rendered as a gallery in addition to anything still embedded in legacy
+   *  HTML content. */
+  mediaImages?: string[];
+  mediaVideos?: string[];
   truncate?: boolean;
   maxLines?: number;
   onToggleExpand?: () => void;
   onOverflowChange?: (isOverflowing: boolean) => void;
+}
+
+// Treat as HTML if it contains any tag-like sequence; otherwise plain text.
+function looksLikeHtml(s: string): boolean {
+  return /<[a-zA-Z!\/][^>]*>/.test(s);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Convert plain text to HTML preserving newlines, then auto-link URLs upstream.
+function plainTextToHtml(text: string): string {
+  return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+// ─── Video URL parsing for the explicit `mediaVideos` array ─────────────────
+
+function parseVideoUrl(url: string): VideoEmbed | null {
+  for (const { type, regex } of VIDEO_PATTERNS) {
+    regex.lastIndex = 0;
+    const m = regex.exec(url);
+    if (m) return { type, videoId: m[1], url };
+  }
+  return null;
 }
 
 // ─── URL Auto-linking in HTML ───────────────────────────────────────────────
@@ -214,6 +252,33 @@ function GifImages({ urls }: { urls: string[] }) {
   );
 }
 
+// Gallery for explicit `mediaImages` from the unified composer. Matches the
+// mobile PostDetailScreen feel: full-width tiles stacked vertically, clickable
+// via the same delegated image handler on the parent page.
+function MediaImages({ urls }: { urls: string[] }) {
+  if (urls.length === 0) return null;
+  return (
+    <div className="sns-content-body" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {urls.map((url, i) => (
+        <img
+          key={`${url}-${i}`}
+          src={url}
+          alt=""
+          style={{
+            width: '100%',
+            maxHeight: 480,
+            objectFit: 'contain',
+            borderRadius: 10,
+            border: '1px solid rgba(255,255,255,0.06)',
+            background: '#0a0a0a',
+            display: 'block',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ─── Video Embeds ───────────────────────────────────────────────────────────
 
 function VideoEmbeds({ embeds }: { embeds: VideoEmbed[] }) {
@@ -264,6 +329,8 @@ function VideoEmbeds({ embeds }: { embeds: VideoEmbed[] }) {
 
 export default function SNSContent({
   html,
+  mediaImages,
+  mediaVideos,
   truncate,
   maxLines = 4,
   onToggleExpand,
@@ -272,14 +339,48 @@ export default function SNSContent({
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
-  // 1. Extract video URLs from HTML
-  const { videoEmbeds, cleanedHtml: htmlAfterVideos } = useMemo(() => extractVideoUrls(html), [html]);
+  // Plain text from the unified composer is escaped + <br>'d. Legacy HTML
+  // posts go through the existing extraction pipeline unchanged.
+  const normalisedHtml = useMemo(() => {
+    if (!html) return '';
+    return looksLikeHtml(html) ? html : plainTextToHtml(html);
+  }, [html]);
+
+  // 1. Extract video URLs from HTML (legacy posts only — new posts keep video
+  //    URLs in `mediaVideos` so the renderer can show them without parsing).
+  const { videoEmbeds, cleanedHtml: htmlAfterVideos } = useMemo(
+    () => extractVideoUrls(normalisedHtml),
+    [normalisedHtml],
+  );
 
   // 2. Extract GIFs from remaining HTML
   const { gifUrls, cleanedHtml: htmlAfterGifs } = useMemo(() => extractGifs(htmlAfterVideos), [htmlAfterVideos]);
 
   // 3. Auto-link remaining URLs
   const linkedHtml = useMemo(() => autoLinkUrls(htmlAfterGifs), [htmlAfterGifs]);
+
+  // Combine explicit + legacy media for the gallery render.
+  const galleryImages = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const u of mediaImages ?? []) {
+      if (!seen.has(u)) { seen.add(u); out.push(u); }
+    }
+    return out;
+  }, [mediaImages]);
+
+  const galleryVideos = useMemo<VideoEmbed[]>(() => {
+    const seen = new Set<string>(videoEmbeds.map((v) => v.videoId));
+    const out: VideoEmbed[] = [...videoEmbeds];
+    for (const url of mediaVideos ?? []) {
+      const parsed = parseVideoUrl(url);
+      if (parsed && !seen.has(parsed.videoId)) {
+        seen.add(parsed.videoId);
+        out.push(parsed);
+      }
+    }
+    return out;
+  }, [videoEmbeds, mediaVideos]);
 
   // First URL in content for link preview (only in non-truncated mode)
   const firstUrl = useMemo(() => {
@@ -393,7 +494,11 @@ export default function SNSContent({
         </button>
       )}
 
-      {/* GIFs only in full mode — in truncate mode, PostCard gallery handles preview */}
+      {/* Image gallery (new posts) + GIFs (legacy HTML extraction).
+          In truncate mode, PostCard handles preview, so we render nothing extra. */}
+      {!truncate && galleryImages.length > 0 && (
+        <MediaImages urls={galleryImages} />
+      )}
       {!truncate && gifUrls.length > 0 && (
         <GifImages urls={gifUrls} />
       )}
@@ -401,10 +506,10 @@ export default function SNSContent({
       {/* Link preview and video embeds only in full mode */}
       {!truncate && (
         <>
-          {previewUrl && gifUrls.length === 0 && (
+          {previewUrl && gifUrls.length === 0 && galleryImages.length === 0 && (
             <LinkPreview url={previewUrl} />
           )}
-          <VideoEmbeds embeds={videoEmbeds} />
+          <VideoEmbeds embeds={galleryVideos} />
         </>
       )}
 
