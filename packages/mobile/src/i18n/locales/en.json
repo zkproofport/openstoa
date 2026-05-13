@@ -245,7 +245,19 @@
       "body": "Body",
       "bodyPlaceholder": "Write your post",
       "submit": "Post",
-      "failed": "Post failed"
+      "failed": "Post failed",
+      "write": "Write",
+      "preview": "Preview",
+      "addPhoto": "Photo",
+      "addVideo": "Video",
+      "videoLink": "Video link",
+      "videoUrlPlaceholder": "YouTube or Vimeo URL",
+      "videoInvalid": "YouTube/Vimeo links only",
+      "videoAdd": "Add",
+      "videoCancel": "Cancel",
+      "draftSaved": "Draft saved",
+      "previewEmpty": "Nothing to preview yet",
+      "charCount": "{{n}} chars"
     },
     "postDetail": {
       "commentsHeader": "Comments ({{count}})",

@@ -245,7 +245,19 @@
       "body": "본문",
       "bodyPlaceholder": "내용을 입력하세요",
       "submit": "글쓰기",
-      "failed": "작성 실패"
+      "failed": "작성 실패",
+      "write": "작성",
+      "preview": "미리보기",
+      "addPhoto": "사진",
+      "addVideo": "비디오",
+      "videoLink": "비디오 링크",
+      "videoUrlPlaceholder": "YouTube 또는 Vimeo URL",
+      "videoInvalid": "YouTube/Vimeo 링크만 지원해요",
+      "videoAdd": "추가",
+      "videoCancel": "취소",
+      "draftSaved": "임시 저장됨",
+      "previewEmpty": "미리볼 내용이 없어요",
+      "charCount": "{{n}}자"
     },
     "postDetail": {
       "commentsHeader": "댓글 {{count}}",

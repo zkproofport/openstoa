@@ -1,11 +1,13 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Feather from 'react-native-vector-icons/Feather';
 // expo-image-picker is a native module — lazy-load to avoid crashing on
 // stale Metro reloads where the native binary hasn't been rebuilt yet.
 type ImagePickerModule = typeof import('expo-image-picker');
@@ -33,18 +36,23 @@ import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
+import { PostContent } from '../../components/PostContent';
+import { VideoEmbed } from '../../components/VideoEmbed';
+import { useDraft } from '../../hooks/useDraft';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'PostCreate'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'PostCreate'>;
 
 const MAX_TAGS = 5;
+const MAX_IMAGES = 4;
+const MAX_VIDEOS = 4;
 const NICKNAME_RE = /^[a-zA-Z0-9_]{1,30}$/;
 
 interface CreatePostBody {
   title: string;
   content: string;
   tags?: string[];
-  media?: { images?: string[] };
+  media?: { images?: string[]; videos?: string[] };
 }
 
 interface CreatePostResponse {
@@ -57,24 +65,85 @@ interface TagSuggestion {
   postCount: number;
 }
 
+interface DraftState {
+  title: string;
+  content: string;
+  tags: string[];
+  images: string[];
+  videos: string[];
+}
+
+interface VideoMeta {
+  url: string;
+  type: 'youtube' | 'vimeo';
+  videoId: string;
+  label: string;
+}
+
+const YOUTUBE_PATTERNS = [
+  /^(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/watch\?[^\s]*v=([a-zA-Z0-9_-]{11})/,
+  /^(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
+  /^(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+];
+const VIMEO_PATTERN = /^(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/;
+
+function parseVideoUrl(raw: string): VideoMeta | null {
+  const url = raw.trim();
+  if (!url) return null;
+  for (const re of YOUTUBE_PATTERNS) {
+    const m = re.exec(url);
+    if (m) {
+      return { url, type: 'youtube', videoId: m[1], label: `YouTube · ${m[1]}` };
+    }
+  }
+  const vm = VIMEO_PATTERN.exec(url);
+  if (vm) {
+    return { url, type: 'vimeo', videoId: vm[1], label: `Vimeo · ${vm[1]}` };
+  }
+  return null;
+}
+
+function videosToMeta(urls: string[]): VideoMeta[] {
+  return urls.map((u) => parseVideoUrl(u)).filter((v): v is VideoMeta => v !== null);
+}
+
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    flex: {
-      flex: 1,
-      backgroundColor: colors.background.primary,
-    },
-    scroll: {
-      flex: 1,
-    },
-    content: {
-      padding: 20,
-      paddingBottom: 40,
-    },
+    flex: { flex: 1, backgroundColor: colors.background.primary },
+    scroll: { flex: 1 },
+    content: { padding: 20, paddingBottom: 40 },
     topicLabel: {
       fontSize: 12,
       fontWeight: '600',
       color: colors.brand.primary,
-      marginBottom: 16,
+      marginBottom: 12,
+    },
+    // Segmented control
+    segment: {
+      flexDirection: 'row',
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      borderRadius: 10,
+      overflow: 'hidden',
+      marginBottom: 18,
+    },
+    segmentItem: {
+      flex: 1,
+      paddingVertical: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background.secondary,
+    },
+    segmentItemActive: {
+      backgroundColor: colors.brand.primary,
+    },
+    segmentLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text.secondary,
+    },
+    segmentLabelActive: {
+      color: '#FFFFFF',
     },
     label: {
       fontSize: 13,
@@ -82,12 +151,8 @@ function makeStyles(colors: ThemeColors) {
       color: colors.text.secondary,
       marginBottom: 6,
     },
-    labelSpaced: {
-      marginTop: 20,
-    },
-    required: {
-      color: colors.status.danger,
-    },
+    labelSpaced: { marginTop: 20 },
+    required: { color: colors.status.danger },
     input: {
       borderWidth: 1,
       borderColor: colors.border.default,
@@ -101,6 +166,39 @@ function makeStyles(colors: ThemeColors) {
     bodyInput: {
       minHeight: 200,
       paddingTop: 12,
+    },
+    // Bottom toolbar under body
+    bodyToolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 8,
+    },
+    toolbarBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    toolbarBtnLabel: {
+      fontSize: 12,
+      color: colors.text.secondary,
+    },
+    toolbarFlex: { flex: 1 },
+    charCount: {
+      fontSize: 11,
+      color: colors.text.tertiary,
+      fontVariantNumeric: 'tabular-nums',
+    },
+    draftSaved: {
+      fontSize: 11,
+      color: colors.text.tertiary,
+      marginRight: 8,
     },
     // Tag chips
     tagRow: {
@@ -130,11 +228,7 @@ function makeStyles(colors: ThemeColors) {
       color: colors.brand.primary,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
-    tagRemove: {
-      fontSize: 14,
-      color: colors.text.tertiary,
-      lineHeight: 16,
-    },
+    tagRemove: { fontSize: 14, color: colors.text.tertiary, lineHeight: 16 },
     tagInput: {
       flex: 1,
       minWidth: 80,
@@ -149,7 +243,6 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 4,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
-    // Tag suggestions dropdown
     suggestionsBox: {
       borderWidth: 1,
       borderColor: colors.border.default,
@@ -204,29 +297,32 @@ function makeStyles(colors: ThemeColors) {
       fontWeight: '700',
       lineHeight: 14,
     },
-    imageThumbWrap: {
-      position: 'relative',
+    imageThumbWrap: { position: 'relative' },
+    // Video chips
+    videoChipRow: {
+      flexDirection: 'column',
+      gap: 6,
+      marginTop: 8,
     },
-    attachButton: {
-      width: 72,
-      height: 72,
+    videoChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
       borderRadius: 8,
+      backgroundColor: colors.background.secondary,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderStyle: 'dashed',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.background.secondary,
     },
-    attachLabel: {
-      fontSize: 26,
-      color: colors.text.tertiary,
-      lineHeight: 30,
+    videoChipLabel: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      flex: 1,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
-    attachHint: {
-      fontSize: 10,
-      color: colors.text.tertiary,
-      marginTop: 2,
+    videoChipRemove: {
+      paddingHorizontal: 4,
     },
     submitButton: {
       marginTop: 32,
@@ -235,13 +331,113 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 14,
       alignItems: 'center',
     },
-    submitButtonDisabled: {
-      opacity: 0.5,
+    submitButtonDisabled: { opacity: 0.5 },
+    submitLabel: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+    // Modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'center',
+      paddingHorizontal: 24,
     },
-    submitLabel: {
+    modalCard: {
+      backgroundColor: colors.background.primary,
+      borderRadius: 14,
+      padding: 20,
+      gap: 12,
+    },
+    modalTitle: {
       fontSize: 16,
       fontWeight: '700',
+      color: colors.text.primary,
+    },
+    modalInput: {
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: colors.text.primary,
+      backgroundColor: colors.background.secondary,
+    },
+    modalError: {
+      fontSize: 12,
+      color: colors.status.danger,
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 10,
+      marginTop: 4,
+    },
+    modalBtnText: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    modalBtnCancel: {
+      backgroundColor: colors.background.secondary,
+    },
+    modalBtnAdd: {
+      backgroundColor: colors.brand.primary,
+    },
+    modalBtnCancelLabel: {
+      color: colors.text.secondary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    modalBtnAddLabel: {
       color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    // Preview
+    previewTitle: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.text.primary,
+      marginBottom: 10,
+    },
+    previewImagesRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 12,
+    },
+    previewImage: {
+      width: '100%',
+      borderRadius: 10,
+      backgroundColor: colors.background.tertiary,
+      aspectRatio: 16 / 10,
+      marginBottom: 6,
+    },
+    previewVideosWrap: {
+      marginTop: 12,
+      gap: 12,
+    },
+    previewTagsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: 18,
+    },
+    previewTagChip: {
+      backgroundColor: colors.brand.primaryMuted,
+      borderRadius: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    previewTagChipText: {
+      fontSize: 12,
+      color: colors.brand.primary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    previewEmpty: {
+      fontSize: 13,
+      color: colors.text.tertiary,
+      paddingVertical: 40,
+      textAlign: 'center',
     },
   });
 }
@@ -256,13 +452,41 @@ export function PostCreateScreen() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
+  const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [videoInput, setVideoInput] = useState('');
+  const [videoError, setVideoError] = useState('');
+
+  // Draft persistence. Hydrate on first mount; never overwrite after.
+  const draftKey = `openstoa.postCreate.${topicId}`;
+  const { loaded: loadedDraft, hydrated, saved: draftSaved, save: persistDraft, clear: clearDraft } =
+    useDraft<DraftState>(draftKey);
+  const hydratedOnce = useRef(false);
+  useEffect(() => {
+    if (!hydrated || hydratedOnce.current) return;
+    hydratedOnce.current = true;
+    if (loadedDraft) {
+      setTitle(loadedDraft.title ?? '');
+      setContent(loadedDraft.content ?? '');
+      setTags(loadedDraft.tags ?? []);
+      setImages(loadedDraft.images ?? []);
+      setVideos(loadedDraft.videos ?? []);
+    }
+  }, [hydrated, loadedDraft]);
+
+  // Persist draft whenever any of the user-editable fields change.
+  useEffect(() => {
+    if (!hydrated) return;
+    persistDraft({ title, content, tags, images, videos });
+  }, [hydrated, title, content, tags, images, videos, persistDraft]);
 
   // Tag autocomplete
   const tagQuery = useQuery<{ tags: TagSuggestion[] }>({
@@ -354,6 +578,32 @@ export function PostCreateScreen() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  // Video attach
+  const openVideoModal = useCallback(() => {
+    if (videos.length >= MAX_VIDEOS) return;
+    setVideoInput('');
+    setVideoError('');
+    setShowVideoModal(true);
+  }, [videos.length]);
+
+  const submitVideo = useCallback(() => {
+    const meta = parseVideoUrl(videoInput);
+    if (!meta) {
+      setVideoError(t('openstoa.postCreate.videoInvalid'));
+      return;
+    }
+    if (videos.some((v) => v === meta.url)) {
+      setShowVideoModal(false);
+      return;
+    }
+    setVideos((prev) => [...prev, meta.url]);
+    setShowVideoModal(false);
+  }, [videoInput, videos, t]);
+
+  const removeVideo = useCallback((index: number) => {
+    setVideos((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const body: CreatePostBody = {
@@ -361,11 +611,16 @@ export function PostCreateScreen() {
         content: content.trim(),
       };
       if (tags.length > 0) body.tags = tags;
-      if (images.length > 0) body.media = { images };
+      if (images.length > 0 || videos.length > 0) {
+        body.media = {};
+        if (images.length > 0) body.media.images = images;
+        if (videos.length > 0) body.media.videos = videos;
+      }
       return client.post<CreatePostResponse>(`/api/topics/${topicId}/posts`, body);
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'posts'] });
+      clearDraft();
       navigation.replace('PostDetail', { postId: res.post.id });
     },
     onError: (err: Error) => {
@@ -379,6 +634,8 @@ export function PostCreateScreen() {
     !createMutation.isPending &&
     !uploading;
 
+  const videoMetas = useMemo(() => videosToMeta(videos), [videos]);
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -390,136 +647,292 @@ export function PostCreateScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {topicTitle ? (
-          <Text style={styles.topicLabel}>{topicTitle}</Text>
-        ) : null}
+        {topicTitle ? <Text style={styles.topicLabel}>{topicTitle}</Text> : null}
 
-        {/* Title */}
-        <Text style={styles.label}>
-          {t('openstoa.postCreate.title')} <Text style={styles.required}>*</Text>
-        </Text>
-        <TextInput
-          style={styles.input}
-          placeholder={t('openstoa.postCreate.titlePlaceholder')}
-          placeholderTextColor={colors.text.tertiary}
-          value={title}
-          onChangeText={setTitle}
-          returnKeyType="next"
-        />
-
-        {/* Content */}
-        <Text style={[styles.label, styles.labelSpaced]}>
-          {t('openstoa.postCreate.body')} <Text style={styles.required}>*</Text>
-        </Text>
-        <TextInput
-          style={[styles.input, styles.bodyInput]}
-          placeholder={t('openstoa.postCreate.bodyPlaceholder')}
-          placeholderTextColor={colors.text.tertiary}
-          value={content}
-          onChangeText={setContent}
-          multiline
-          textAlignVertical="top"
-        />
-
-        {/* Tags */}
-        <Text style={[styles.label, styles.labelSpaced]}>
-          Tags
-        </Text>
-        <View style={styles.tagRow}>
-          {tags.map((tag, i) => (
-            <View key={tag} style={styles.tagChip}>
-              <Text style={styles.tagChipText}>{tag}</Text>
-              <TouchableOpacity onPress={() => removeTag(i)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-                <Text style={styles.tagRemove}>×</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-          {tags.length < MAX_TAGS ? (
-            <TextInput
-              style={styles.tagInput}
-              value={tagInput}
-              onChangeText={(v) => {
-                setTagInput(v);
-                setShowSuggestions(v.trim().length >= 1);
-              }}
-              placeholder={tags.length === 0 ? 'Add tags…' : ''}
-              placeholderTextColor={colors.text.tertiary}
-              onSubmitEditing={() => addTag(tagInput)}
-              onKeyPress={({ nativeEvent }) => handleTagKeyPress(nativeEvent.key)}
-              blurOnSubmit={false}
-              returnKeyType="done"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          ) : null}
+        {/* Write / Preview segment */}
+        <View style={styles.segment}>
+          <Pressable
+            style={[styles.segmentItem, mode === 'write' && styles.segmentItemActive]}
+            onPress={() => setMode('write')}
+          >
+            <Text style={[styles.segmentLabel, mode === 'write' && styles.segmentLabelActive]}>
+              {t('openstoa.postCreate.write')}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.segmentItem, mode === 'preview' && styles.segmentItemActive]}
+            onPress={() => setMode('preview')}
+          >
+            <Text style={[styles.segmentLabel, mode === 'preview' && styles.segmentLabelActive]}>
+              {t('openstoa.postCreate.preview')}
+            </Text>
+          </Pressable>
         </View>
-        {showSuggestions && suggestions.length > 0 ? (
-          <View style={styles.suggestionsBox}>
-            {suggestions.slice(0, 5).map((s) => (
-              <TouchableOpacity
-                key={s.slug}
-                style={styles.suggestionRow}
-                onPress={() => addTag(s.name)}
-              >
-                <Text style={styles.suggestionName}>{s.name}</Text>
-                <Text style={styles.suggestionCount}>{s.postCount} posts</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-        <Text style={styles.tagHint}>
-          {tags.length}/{MAX_TAGS} · press Enter or comma to add
-        </Text>
 
-        {/* Images */}
-        <Text style={[styles.label, styles.labelSpaced]}>
-          Images
-        </Text>
-        <View style={styles.imageStrip}>
-          {images.map((uri, i) => (
-            <View key={uri} style={styles.imageThumbWrap}>
-              <Image source={{ uri }} style={styles.imageThumb} />
+        {mode === 'write' ? (
+          <>
+            {/* Title */}
+            <Text style={styles.label}>
+              {t('openstoa.postCreate.title')} <Text style={styles.required}>*</Text>
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder={t('openstoa.postCreate.titlePlaceholder')}
+              placeholderTextColor={colors.text.tertiary}
+              value={title}
+              onChangeText={setTitle}
+              returnKeyType="next"
+            />
+
+            {/* Body */}
+            <Text style={[styles.label, styles.labelSpaced]}>
+              {t('openstoa.postCreate.body')} <Text style={styles.required}>*</Text>
+            </Text>
+            <TextInput
+              style={[styles.input, styles.bodyInput]}
+              placeholder={t('openstoa.postCreate.bodyPlaceholder')}
+              placeholderTextColor={colors.text.tertiary}
+              value={content}
+              onChangeText={setContent}
+              multiline
+              textAlignVertical="top"
+            />
+
+            {/* Bottom toolbar — photo, video, char counter */}
+            <View style={styles.bodyToolbar}>
               <TouchableOpacity
-                style={styles.imageRemoveBtn}
-                onPress={() => removeImage(i)}
+                style={styles.toolbarBtn}
+                onPress={openAttachSheet}
+                disabled={uploading || images.length >= MAX_IMAGES}
+                activeOpacity={0.7}
               >
-                <Text style={styles.imageRemoveText}>×</Text>
+                {uploading ? (
+                  <ActivityIndicator size="small" color={colors.text.tertiary} />
+                ) : (
+                  <Feather name="image" size={14} color={colors.text.secondary} />
+                )}
+                <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addPhoto')}</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.toolbarBtn}
+                onPress={openVideoModal}
+                disabled={videos.length >= MAX_VIDEOS}
+                activeOpacity={0.7}
+              >
+                <Feather name="video" size={14} color={colors.text.secondary} />
+                <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addVideo')}</Text>
+              </TouchableOpacity>
+              <View style={styles.toolbarFlex} />
+              {draftSaved ? (
+                <Text style={styles.draftSaved}>{t('openstoa.postCreate.draftSaved')}</Text>
+              ) : null}
+              <Text style={styles.charCount}>
+                {t('openstoa.postCreate.charCount', { n: content.length })}
+              </Text>
             </View>
-          ))}
-          {images.length < 4 ? (
+
+            {/* Image strip */}
+            {images.length > 0 ? (
+              <View style={styles.imageStrip}>
+                {images.map((uri, i) => (
+                  <View key={uri} style={styles.imageThumbWrap}>
+                    <Image source={{ uri }} style={styles.imageThumb} />
+                    <TouchableOpacity
+                      style={styles.imageRemoveBtn}
+                      onPress={() => removeImage(i)}
+                    >
+                      <Text style={styles.imageRemoveText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* Video chips */}
+            {videoMetas.length > 0 ? (
+              <View style={styles.videoChipRow}>
+                {videoMetas.map((v, i) => (
+                  <View key={v.url} style={styles.videoChip}>
+                    <Feather
+                      name={v.type === 'youtube' ? 'youtube' : 'video'}
+                      size={14}
+                      color={colors.text.secondary}
+                    />
+                    <Text style={styles.videoChipLabel} numberOfLines={1}>
+                      {v.label}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.videoChipRemove}
+                      onPress={() => removeVideo(i)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="x" size={14} color={colors.text.tertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* Tags */}
+            <Text style={[styles.label, styles.labelSpaced]}>Tags</Text>
+            <View style={styles.tagRow}>
+              {tags.map((tag, i) => (
+                <View key={tag} style={styles.tagChip}>
+                  <Text style={styles.tagChipText}>{tag}</Text>
+                  <TouchableOpacity onPress={() => removeTag(i)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                    <Text style={styles.tagRemove}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {tags.length < MAX_TAGS ? (
+                <TextInput
+                  style={styles.tagInput}
+                  value={tagInput}
+                  onChangeText={(v) => {
+                    setTagInput(v);
+                    setShowSuggestions(v.trim().length >= 1);
+                  }}
+                  placeholder={tags.length === 0 ? 'Add tags…' : ''}
+                  placeholderTextColor={colors.text.tertiary}
+                  onSubmitEditing={() => addTag(tagInput)}
+                  onKeyPress={({ nativeEvent }) => handleTagKeyPress(nativeEvent.key)}
+                  blurOnSubmit={false}
+                  returnKeyType="done"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              ) : null}
+            </View>
+            {showSuggestions && suggestions.length > 0 ? (
+              <View style={styles.suggestionsBox}>
+                {suggestions.slice(0, 5).map((s) => (
+                  <TouchableOpacity
+                    key={s.slug}
+                    style={styles.suggestionRow}
+                    onPress={() => addTag(s.name)}
+                  >
+                    <Text style={styles.suggestionName}>{s.name}</Text>
+                    <Text style={styles.suggestionCount}>{s.postCount} posts</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+            <Text style={styles.tagHint}>
+              {tags.length}/{MAX_TAGS} · press Enter or comma to add
+            </Text>
+
+            {/* Submit */}
             <TouchableOpacity
-              style={styles.attachButton}
-              onPress={openAttachSheet}
-              disabled={uploading}
-              activeOpacity={0.7}
+              style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
+              onPress={() => createMutation.mutate()}
+              disabled={!canSubmit}
+              activeOpacity={0.8}
             >
-              {uploading ? (
-                <ActivityIndicator size="small" color={colors.text.tertiary} />
+              {createMutation.isPending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <>
-                  <Text style={styles.attachLabel}>+</Text>
-                  <Text style={styles.attachHint}>photo</Text>
-                </>
+                <Text style={styles.submitLabel}>{t('openstoa.postCreate.submit')}</Text>
               )}
             </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* Submit */}
-        <TouchableOpacity
-          style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
-          onPress={() => createMutation.mutate()}
-          disabled={!canSubmit}
-          activeOpacity={0.8}
-        >
-          {createMutation.isPending ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitLabel}>{t('openstoa.postCreate.submit')}</Text>
-          )}
-        </TouchableOpacity>
+          </>
+        ) : (
+          <PreviewBlock
+            title={title}
+            content={content}
+            images={images}
+            videos={videoMetas}
+            tags={tags}
+            styles={styles}
+            emptyLabel={t('openstoa.postCreate.previewEmpty')}
+          />
+        )}
       </ScrollView>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showVideoModal}
+        onRequestClose={() => setShowVideoModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('openstoa.postCreate.videoLink')}</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder={t('openstoa.postCreate.videoUrlPlaceholder')}
+              placeholderTextColor={colors.text.tertiary}
+              value={videoInput}
+              onChangeText={(v) => {
+                setVideoInput(v);
+                if (videoError) setVideoError('');
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+              keyboardType="url"
+              onSubmitEditing={submitVideo}
+            />
+            {videoError ? <Text style={styles.modalError}>{videoError}</Text> : null}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtnText, styles.modalBtnCancel]}
+                onPress={() => setShowVideoModal(false)}
+              >
+                <Text style={styles.modalBtnCancelLabel}>{t('openstoa.postCreate.videoCancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtnText, styles.modalBtnAdd]} onPress={submitVideo}>
+                <Text style={styles.modalBtnAddLabel}>{t('openstoa.postCreate.videoAdd')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
+  );
+}
+
+interface PreviewBlockProps {
+  title: string;
+  content: string;
+  images: string[];
+  videos: VideoMeta[];
+  tags: string[];
+  styles: ReturnType<typeof makeStyles>;
+  emptyLabel: string;
+}
+
+function PreviewBlock({ title, content, images, videos, tags, styles, emptyLabel }: PreviewBlockProps) {
+  const hasAny = title.trim() || content.trim() || images.length > 0 || videos.length > 0 || tags.length > 0;
+  if (!hasAny) {
+    return <Text style={styles.previewEmpty}>{emptyLabel}</Text>;
+  }
+  return (
+    <View>
+      {title.trim() ? <Text style={styles.previewTitle}>{title}</Text> : null}
+      {images.length > 0 ? (
+        <View style={styles.previewImagesRow}>
+          {images.map((uri) => (
+            <Image key={uri} source={{ uri }} style={styles.previewImage} resizeMode="cover" />
+          ))}
+        </View>
+      ) : null}
+      {content.trim() ? <PostContent content={content} /> : null}
+      {videos.length > 0 ? (
+        <View style={styles.previewVideosWrap}>
+          {videos.map((v) => (
+            <VideoEmbed key={v.url} type={v.type} videoId={v.videoId} />
+          ))}
+        </View>
+      ) : null}
+      {tags.length > 0 ? (
+        <View style={styles.previewTagsRow}>
+          {tags.map((tag) => (
+            <View key={tag} style={styles.previewTagChip}>
+              <Text style={styles.previewTagChipText}>{tag}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }

@@ -877,9 +877,36 @@ export function PostDetailScreen() {
   // FlatList header = full post body
   // ---------------------------------------------------------------------------
 
-  const videoItems = extractMediaItems(post.content ?? '').filter(
-    (m) => m.type === 'youtube' || m.type === 'vimeo',
-  );
+  // Unified video list: structured `post.media.videos` first, then any
+  // YouTube/Vimeo URLs still hiding inside legacy HTML content. Deduped by
+  // (type, videoId).
+  const videoItems = (() => {
+    const items: { type: 'youtube' | 'vimeo'; src: string }[] = [];
+    for (const url of post.media?.videos ?? []) {
+      const yt =
+        /(?:youtube\.com\/watch\?[^\s]*v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/.exec(url);
+      if (yt) {
+        items.push({ type: 'youtube', src: yt[1] });
+        continue;
+      }
+      const vm = /vimeo\.com\/(\d+)/.exec(url);
+      if (vm) {
+        items.push({ type: 'vimeo', src: vm[1] });
+      }
+    }
+    const fromContent = extractMediaItems(post.content ?? '').filter(
+      (m): m is { type: 'youtube' | 'vimeo'; src: string; thumbnail: string } =>
+        m.type === 'youtube' || m.type === 'vimeo',
+    );
+    for (const m of fromContent) items.push({ type: m.type, src: m.src });
+    const seen = new Set<string>();
+    return items.filter((v) => {
+      const k = `${v.type}:${v.src}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  })();
 
   const ListHeader = (
     <View>
@@ -941,10 +968,13 @@ export function PostDetailScreen() {
         </View>
       ) : null}
 
-      {/* ── Attached media (images + embeds) ── */}
-      <View style={styles.mediaSection}>
-        <MediaPreview media={post.media} imageHeight={160} imageWidth={240} />
-      </View>
+      {/* ── Attached images (full-width gallery). Videos are already
+              rendered above via the dedicated VideoEmbed players. ── */}
+      {(post.media?.images?.length ?? 0) > 0 ? (
+        <View style={styles.mediaSection}>
+          <MediaPreview media={{ images: post.media!.images }} fullWidth />
+        </View>
+      ) : null}
 
       {/* ── Action bar ── */}
       <View style={styles.actionBar}>

@@ -320,7 +320,37 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   // components fetching the same URL got two different responses). The
   // strip now carries ONLY video items — those don't render inline since
   // `stripVideoUrls` removed their URLs from the body.
-  const mediaItems = useMemo(() => extractMediaItems(rawContent), [rawContent]);
+  // Unified media items: combine content-extracted (legacy posts) with the
+  // new structured `post.media.videos` (Phase A+). Images from `media.images`
+  // render through MediaPreview separately so PostContent doesn't have to
+  // know about them.
+  const mediaItems = useMemo(() => {
+    const fromContent = extractMediaItems(rawContent);
+    const fromMediaVideos: MediaItem[] = [];
+    for (const url of post.media?.videos ?? []) {
+      const yt =
+        /(?:youtube\.com\/watch\?[^\s]*v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/.exec(url);
+      if (yt) {
+        fromMediaVideos.push({
+          type: 'youtube',
+          src: yt[1],
+          thumbnail: `https://img.youtube.com/vi/${yt[1]}/mqdefault.jpg`,
+        });
+        continue;
+      }
+      const vm = /vimeo\.com\/(\d+)/.exec(url);
+      if (vm) {
+        fromMediaVideos.push({ type: 'vimeo', src: vm[1], thumbnail: '' });
+      }
+    }
+    const seen = new Set<string>();
+    return [...fromMediaVideos, ...fromContent].filter((m) => {
+      const k = `${m.type}:${m.src}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [rawContent, post.media?.videos]);
   const stripMedia = useMemo(() => mediaItems.filter((m) => m.type !== 'image'), [mediaItems]);
   const displayMedia: MediaItem[] = stripMedia.slice(0, 3);
   const remainingMedia = stripMedia.length - displayMedia.length;
@@ -337,9 +367,6 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
     hasInlineVideo ||
     rawContent.length > PREVIEW_CHAR_THRESHOLD ||
     rawContent.split('\n').length > PREVIEW_LINES;
-
-  const hasMedia =
-    !!post.media && ((post.media.images?.length ?? 0) > 0 || (post.media.embeds?.length ?? 0) > 0);
 
   return (
     <View style={styles.card}>
@@ -441,10 +468,15 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
         </TouchableOpacity>
       ) : null}
 
-      {/* Media (images strip + embeds) */}
-      <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
-        {hasMedia ? <MediaPreview media={post.media} /> : null}
-      </TouchableOpacity>
+      {/* Media gallery — only the images strip. Videos render as the 80×80
+          thumbnail above when collapsed and as inline VideoEmbeds when
+          expanded; passing them through MediaPreview here would duplicate
+          the player. */}
+      {(post.media?.images?.length ?? 0) > 0 ? (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
+          <MediaPreview media={{ images: post.media!.images }} />
+        </TouchableOpacity>
+      ) : null}
 
       {/* Reactions — display-only Slack-style pill row. Tapping a pill
           opens the post detail where the full picker lives. */}
