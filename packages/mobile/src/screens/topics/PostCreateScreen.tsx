@@ -45,8 +45,8 @@ type Props = NativeStackScreenProps<TopicsStackParamList, 'PostCreate'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'PostCreate'>;
 
 const MAX_TAGS = 5;
-const MAX_IMAGES = 4;
-const MAX_VIDEOS = 4;
+const MAX_IMAGES = 10;
+const MAX_VIDEOS = 3;
 // Tags accept Korean, Latin letters, digits, and underscore. The server-side
 // slug pipeline (api/topics/[topicId]/posts) downcases and rewrites the
 // remainder, so we don't need to be strict here — just bound the length and
@@ -578,24 +578,48 @@ export function PostCreateScreen() {
     }
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!granted) return;
+
+    const remaining = MAX_IMAGES - images.length;
+    if (remaining <= 0) {
+      Alert.alert(
+        t('openstoa.postCreate.imageLimitTitle'),
+        t('openstoa.postCreate.imageLimitMessage', { max: MAX_IMAGES }),
+      );
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
       allowsEditing: false,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
     });
-    if (result.canceled || !result.assets[0]) return;
-    const uri = result.assets[0].uri;
+    if (result.canceled || !result.assets?.length) return;
+
+    if (result.assets.length > remaining) {
+      Alert.alert(
+        t('openstoa.postCreate.imageLimitTitle'),
+        t('openstoa.postCreate.imageLimitMessage', { max: MAX_IMAGES }),
+      );
+      return;
+    }
+
     setUploading(true);
     try {
-      const publicUrl = await client.uploadFile(uri);
-      setImages((prev) => [...prev, publicUrl]);
+      // Parallel upload — every R2 put is independent. Order is preserved
+      // by `Promise.all` so the resulting strip matches the picker order.
+      const urls = await Promise.all(
+        result.assets.map((a) => client.uploadFile(a.uri)),
+      );
+      setImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       Alert.alert('Upload failed', msg);
     } finally {
       setUploading(false);
     }
-  }, [client]);
+  }, [client, images.length, t]);
 
   const openAttachSheet = useCallback(() => {
     if (Platform.OS === 'ios') {

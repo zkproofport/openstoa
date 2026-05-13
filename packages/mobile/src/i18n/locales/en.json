@@ -263,7 +263,9 @@
       "reset": "Reset",
       "resetTitle": "Reset draft",
       "resetMessage": "Clear everything you've written so far? The saved draft will also be removed.",
-      "resetConfirm": "Reset"
+      "resetConfirm": "Reset",
+      "imageLimitTitle": "Image limit",
+      "imageLimitMessage": "You can attach up to {{max}} images."
     },
     "pollEditor": {
       "title": "Poll",

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { Post } from '@openstoa/api-types';
 import { useThemeColors } from '../theme/ThemeContext';
@@ -159,6 +159,23 @@ function makeStyles(colors: ThemeColors) {
       gap: 16,
       paddingTop: 10,
       paddingBottom: 4,
+    },
+    tagsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      paddingTop: 8,
+    },
+    tagChip: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 4,
+      backgroundColor: colors.brand.primaryMuted,
+    },
+    tagChipText: {
+      fontSize: 11,
+      color: colors.brand.primary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
     // Compact reaction pill row shown between the post body and the
     // primary action bar. Display-only here — tapping a pill opens the
@@ -437,6 +454,20 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           interactive vote UI. Wire mutations through the shared cache
           patcher so vote bars stay in sync with the detail view. */}
       {post.poll ? <PollRenderer postId={post.id} poll={post.poll} /> : null}
+
+      {/* Tags chip row — order matches the Twitter/X-style layout the
+          user picked (Title → Body → Media → Poll → Tags). */}
+      {post.tags && post.tags.length > 0 ? (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
+          <View style={styles.tagsRow}>
+            {post.tags.map((tag) => (
+              <View key={tag.slug} style={styles.tagChip}>
+                <Text style={styles.tagChipText}>#{tag.name}</Text>
+              </View>
+            ))}
+          </View>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Reactions — display-only Slack-style pill row. Tapping a pill
           opens the post detail where the full picker lives. */}
