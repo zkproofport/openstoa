@@ -1,0 +1,330 @@
+import React, { useMemo } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { useThemeColors } from '../../theme/ThemeContext';
+import type { ThemeColors } from '../../theme/colors';
+import { formatRelativeTime } from '../../utils/relativeTime';
+import type { ChatMessage, Topic } from '@openstoa/api-types';
+
+interface ChatHistoryResponse {
+  messages: ChatMessage[];
+  total: number;
+}
+
+const AVATAR_SIZE = 44;
+const UNREAD_BADGE_SIZE = 18;
+
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      backgroundColor: colors.background.primary,
+    },
+    listContent: { paddingVertical: 4 },
+    separator: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border.default,
+      marginLeft: 16 + AVATAR_SIZE + 12,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      backgroundColor: colors.background.primary,
+    },
+    avatar: {
+      width: AVATAR_SIZE,
+      height: AVATAR_SIZE,
+      borderRadius: AVATAR_SIZE / 2,
+      backgroundColor: colors.brand.primaryMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+      flexShrink: 0,
+    },
+    avatarText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.brand.primary,
+    },
+    rowContent: { flex: 1 },
+    rowTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      marginBottom: 3,
+    },
+    topicTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text.primary,
+      marginRight: 8,
+    },
+    topicTitleUnread: {
+      fontWeight: '700',
+    },
+    time: {
+      fontSize: 11,
+      color: colors.text.tertiary,
+      flexShrink: 0,
+    },
+    lastMessage: {
+      fontSize: 13,
+      color: colors.text.secondary,
+    },
+    lastMessageUnread: {
+      color: colors.text.primary,
+      fontWeight: '500',
+    },
+    loadingIndicator: {
+      alignSelf: 'flex-start',
+    },
+    // Unread badge
+    unreadBadge: {
+      minWidth: UNREAD_BADGE_SIZE,
+      height: UNREAD_BADGE_SIZE,
+      borderRadius: UNREAD_BADGE_SIZE / 2,
+      backgroundColor: colors.brand.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 5,
+      marginLeft: 6,
+      flexShrink: 0,
+    },
+    unreadBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    rowRight: {
+      flexDirection: 'column',
+      alignItems: 'flex-end',
+      gap: 4,
+      marginLeft: 4,
+      flexShrink: 0,
+    },
+    emptyTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    emptyBody: {
+      fontSize: 13,
+      color: colors.text.secondary,
+      marginTop: 8,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    errorTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.status.danger,
+    },
+    errorBody: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginTop: 6,
+      textAlign: 'center',
+    },
+    retryBtn: {
+      marginTop: 16,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 18,
+      backgroundColor: colors.brand.primary,
+    },
+    retryLabel: { color: '#FFFFFF', fontWeight: '600' },
+  });
+}
+
+// Simple unread heuristic: we track the last-seen message id per topic in
+// memory. A topic row is "unread" when the latest message id differs from
+// the last one the user opened. The badge shows total unread count
+// (capped at 99). This resets when the user navigates into the room.
+const seenMessageIds = new Map<string, string>();
+
+export function ChatListScreen() {
+  const { t } = useTranslation();
+  const client = useOpenStoaClient();
+  const navigation = useNavigation<any>();
+  const { colors } = useThemeColors();
+  const styles = makeStyles(colors);
+
+  // Without view=all, /api/topics returns only joined topics for authenticated
+  // users (verified via openstoa/src/app/api/topics/route.ts).
+  const { data, isLoading, error, refetch, isRefetching } = useQuery({
+    queryKey: ['my-topics'],
+    queryFn: () => client.get<{ topics: Topic[] } | Topic[]>('/api/topics'),
+  });
+
+  const topics: Topic[] = Array.isArray(data) ? data : (data?.topics ?? []);
+
+  // Fetch the latest chat message per topic in parallel. Cached for 30s so
+  // pull-to-refresh on the topics list won't hammer chat history.
+  const chatQueries = useQueries({
+    queries: topics.map((topic) => ({
+      queryKey: ['chat-last', topic.id],
+      queryFn: () =>
+        client.get<ChatHistoryResponse>(`/api/topics/${topic.id}/chat?limit=1`),
+      enabled: !!topic.id,
+      staleTime: 30_000,
+    })),
+  });
+
+  // Sort topics by last message time (most recent first).
+  const sortedTopics = useMemo(() => {
+    return [...topics].sort((a, b) => {
+      const indexA = topics.indexOf(a);
+      const indexB = topics.indexOf(b);
+      const lastMsgA = chatQueries[indexA]?.data?.messages?.[0];
+      const lastMsgB = chatQueries[indexB]?.data?.messages?.[0];
+      if (!lastMsgA && !lastMsgB) {
+        // Fall back to topic creation time
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      if (!lastMsgA) return 1;
+      if (!lastMsgB) return -1;
+      return new Date(lastMsgB.createdAt).getTime() - new Date(lastMsgA.createdAt).getTime();
+    });
+  }, [topics, chatQueries]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.brand.primary} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorTitle}>{t('openstoa.chat.error.title')}</Text>
+        <Text style={styles.errorBody}>{(error as Error).message}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
+          <Text style={styles.retryLabel}>{t('openstoa.common.retry')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (topics.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.emptyTitle}>{t('openstoa.chat.empty.title')}</Text>
+        <Text style={styles.emptyBody}>{t('openstoa.chat.empty.body')}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={sortedTopics}
+      keyExtractor={(topic) => topic.id}
+      refreshing={isRefetching}
+      onRefresh={() => refetch()}
+      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      renderItem={({ item }) => {
+        const originalIndex = topics.indexOf(item);
+        const chatQuery = chatQueries[originalIndex];
+        const lastMessage = chatQuery?.data?.messages?.[0];
+        const chatLoading = chatQuery?.isLoading ?? false;
+
+        // Unread: message present and different from last-seen id
+        const lastSeenId = seenMessageIds.get(item.id);
+        const hasUnread =
+          lastMessage != null &&
+          lastMessage.type === 'message' &&
+          lastMessage.id !== lastSeenId;
+        // We show badge "1" when unread — no per-topic count without
+        // a dedicated unread API; presence of any new message is enough.
+        const unreadCount = hasUnread ? 1 : 0;
+
+        return (
+          <TouchableOpacity
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={() => {
+              // Mark as seen before navigating
+              if (lastMessage) {
+                seenMessageIds.set(item.id, lastMessage.id);
+              }
+              navigation.navigate('ChatRoom', {
+                topicId: item.id,
+                topicTitle: item.title,
+              });
+            }}
+          >
+            {/* Avatar — first letter of topic title */}
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {item.title.slice(0, 1).toUpperCase()}
+              </Text>
+            </View>
+
+            {/* Main content */}
+            <View style={styles.rowContent}>
+              <View style={styles.rowTop}>
+                <Text
+                  style={[styles.topicTitle, hasUnread && styles.topicTitleUnread]}
+                  numberOfLines={1}
+                >
+                  {item.title}
+                </Text>
+              </View>
+
+              {chatLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.text.tertiary}
+                  style={styles.loadingIndicator}
+                />
+              ) : (
+                <Text
+                  style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]}
+                  numberOfLines={1}
+                >
+                  {lastMessage
+                    ? `${lastMessage.nickname}: ${lastMessage.message}`
+                    : t('openstoa.chat.noMessagesYet')}
+                </Text>
+              )}
+            </View>
+
+            {/* Right column: time + unread badge */}
+            <View style={styles.rowRight}>
+              {lastMessage ? (
+                <Text style={styles.time}>
+                  {formatRelativeTime(lastMessage.createdAt)}
+                </Text>
+              ) : null}
+              {unreadCount > 0 ? (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>
+                    {unreadCount > 99 ? '99+' : String(unreadCount)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </TouchableOpacity>
+        );
+      }}
+      contentContainerStyle={styles.listContent}
+    />
+  );
+}

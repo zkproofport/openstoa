@@ -1,0 +1,45 @@
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
+import { ProfileHomeScreen } from '../../screens/profile/ProfileHomeScreen';
+import { EditProfileScreen } from '../../screens/profile/EditProfileScreen';
+import { PostDetailScreen } from '../../screens/feed/PostDetailScreen';
+import { TopicDetailScreen } from '../../screens/topics/TopicDetailScreen';
+import { InAppBrowserScreen } from '../../screens/common/InAppBrowserScreen';
+import { useMiniAppStackScreenOptions } from '../shared';
+
+export type ProfileStackParamList = {
+  ProfileHome: undefined;
+  EditProfile: undefined;
+  // Posts/topics opened from Profile (bookmarks, likes, my-posts, my-topics)
+  // live INSIDE this stack so the back arrow returns to Profile, not Feed.
+  PostDetail: { postId: string };
+  TopicDetail: { topicId: string };
+  // Outbound URLs (BaseScan record links from the Recorded → By me sub-tab,
+  // post content links, etc.) route here instead of Linking.openURL.
+  InAppBrowser: { url: string; title?: string };
+};
+
+const Stack = createNativeStackNavigator<ProfileStackParamList>();
+
+export function ProfileStack() {
+  const { t, i18n } = useTranslation();
+  const screenOptions = useMiniAppStackScreenOptions();
+  return (
+    <Stack.Navigator key={i18n.language} screenOptions={screenOptions}>
+      <Stack.Screen name="ProfileHome" component={ProfileHomeScreen} options={{ title: t('openstoa.tabs.profile') }} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: t('openstoa.profile.editTitle') }} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: t('openstoa.feed.postTitle') }} />
+      <Stack.Screen name="TopicDetail" component={TopicDetailScreen} options={{ title: t('openstoa.topics.detailTitle') }} />
+      <Stack.Screen
+        name="InAppBrowser"
+        component={InAppBrowserScreen}
+        options={({ route }: { route: { params: ProfileStackParamList['InAppBrowser'] } }) => ({
+          title: route.params.title ?? (() => {
+            try { return new URL(route.params.url).host; } catch { return route.params.url; }
+          })(),
+        })}
+      />
+    </Stack.Navigator>
+  );
+}

@@ -1,0 +1,293 @@
+{
+  "openstoa": {
+    "tabs": {
+      "feed": "Feed",
+      "topics": "Topics",
+      "chat": "Chat",
+      "profile": "Profile",
+      "zkproofport": "ZKProofport"
+    },
+    "feed": {
+      "empty": "No posts yet.",
+      "error": "Failed to load feed.",
+      "postTitle": "Post",
+      "searchPlaceholder": "Search posts, topics, tags…",
+      "sort": {
+        "hot": "Hot",
+        "new": "New",
+        "active": "Active",
+        "top": "Top"
+      },
+      "tagAll": "All"
+    },
+    "common": {
+      "retry": "Retry",
+      "cancel": "Cancel",
+      "save": "Save",
+      "delete": "Delete",
+      "ok": "OK"
+    },
+    "postCard": {
+      "author": {
+        "anon": "anon"
+      },
+      "commentsCount": "{{count}} comments",
+      "viewsCount": "{{count}} views",
+      "more": "Show more",
+      "showLess": "Show less"
+    },
+    "relativeTime": {
+      "justNow": "just now",
+      "minutes": "{{n}}m ago",
+      "hours": "{{n}}h ago",
+      "days": "{{n}}d ago",
+      "months": "{{n}}mo ago",
+      "years": "{{n}}y ago"
+    },
+    "profile": {
+      "editTitle": "Edit profile",
+      "editButton": "Edit",
+      "joined": "Joined {{when}}",
+      "domainBadge": {
+        "label": "Domain badge",
+        "enableTitle": "Enable domain badge",
+        "enableMessage": "Verify your organization email with an OIDC proof to enable a domain badge.",
+        "generateProof": "Generate proof",
+        "cancel": "Cancel",
+        "error": "Failed to enable domain badge"
+      },
+      "notSet": "Not set",
+      "badges": "Badges",
+      "tabs": {
+        "posts": "Posts",
+        "topics": "Topics",
+        "likes": "Likes",
+        "bookmarks": "Bookmarks",
+        "recorded": "Recorded"
+      },
+      "empty": {
+        "posts": "No posts yet.",
+        "topics": "No topics joined yet.",
+        "likes": "No likes yet.",
+        "bookmarks": "No bookmarks yet.",
+        "recorded": "You haven't recorded any posts on-chain yet.",
+        "recordedByMe": "You haven't recorded any posts on-chain yet.",
+        "recordedOnMine": "None of your posts have been recorded on-chain yet."
+      },
+      "recordedSub": {
+        "byMe": "By me",
+        "onMine": "On my posts"
+      },
+      "failedToLoad": "Failed to load profile.",
+      "editPhoto": "Edit photo",
+      "recorded": "{{count}} recorded",
+      "postsCount": "posts",
+      "recordedCount": "records",
+      "searchPlaceholder": "Search my posts…"
+    },
+    "editProfile": {
+      "nickname": "Nickname",
+      "nicknamePlaceholder": "Enter nickname",
+      "save": "Save",
+      "saved": {
+        "title": "Saved",
+        "message": "Your nickname has been updated."
+      },
+      "error": {
+        "title": "Error",
+        "empty": "Please enter a nickname.",
+        "same": "This is already your nickname."
+      },
+      "domainBadgeRemoveTitle": "Remove domain badge",
+      "domainBadgeRemoveMessage": "Remove your domain badge?",
+      "remove": "Remove",
+      "enabled": "Enabled",
+      "domainOff": "Domain badge is off.",
+      "domainOffHint": "Verify an organization email to enable it.",
+      "account": "Account",
+      "logout": {
+        "title": "Log out",
+        "message": "Are you sure you want to log out?"
+      },
+      "delete": {
+        "title": "Delete account",
+        "message": "Deleting your account permanently removes all your posts, comments, and badges. Continue?"
+      }
+    },
+    "topics": {
+      "detailTitle": "Topic",
+      "createTitle": "New topic",
+      "newPostTitle": "New post",
+      "headers": {
+        "joined": "Joined",
+        "explore": "Explore"
+      },
+      "join": "Join",
+      "joinedBadge": "Joined",
+      "members": "{{count}} members",
+      "posts": "Posts",
+      "proofRequiredTitle": "Proof Required",
+      "proofRequiredMessage": "Proof generation not yet implemented for this topic.",
+      "joinFailedTitle": "Join Failed",
+      "notFound": "Topic not found.",
+      "newPost": "New Post",
+      "sort": {
+        "hot": "Hot",
+        "new": "New",
+        "active": "Active",
+        "top": "Top"
+      },
+      "category": {
+        "all": "All"
+      },
+      "invite": {
+        "cta": "Join with invite code",
+        "hint": "Enter invite code",
+        "join": "Join",
+        "share": "Invite",
+        "shareSubject": "Join this topic on OpenStoa",
+        "shareBody": "Use this invite code to join: {{code}}",
+        "joinFailedTitle": "Couldn't join",
+        "alreadyMember": "You're already a member of this topic.",
+        "invalidCode": "That invite code is invalid or expired."
+      }
+    },
+    "topicDetail": {
+      "members": "Members",
+      "requests": "Requests",
+      "settings": "Settings",
+      "invite": "Invite",
+      "actions": "Topic actions",
+      "pin": "Pin post",
+      "unpin": "Unpin post",
+      "pinFailed": "Couldn't update pin",
+      "postActions": "Post actions",
+      "searchPlaceholder": "Search posts, tags…",
+      "sort": {
+        "new": "New",
+        "popular": "Popular",
+        "recorded": "Recorded"
+      }
+    },
+    "members": {
+      "title": "Members",
+      "empty": "No members yet.",
+      "role": {
+        "owner": "Owner",
+        "admin": "Admin",
+        "member": "Member"
+      },
+      "promote": "Make admin",
+      "demote": "Remove admin",
+      "kick": "Remove from topic",
+      "kickConfirm": "Remove this member from the topic?",
+      "transfer": "Transfer ownership",
+      "transferConfirm": "Transfer ownership to {{nickname}}? You will become an admin.",
+      "actionsForMember": "{{nickname}}",
+      "actionFailed": "Action failed"
+    },
+    "requests": {
+      "title": "Pending requests",
+      "empty": "No pending requests",
+      "approve": "Approve",
+      "reject": "Reject",
+      "actionFailed": "Action failed"
+    },
+    "topicEdit": {
+      "title": "Edit topic",
+      "titleField": "Title",
+      "descriptionField": "Description",
+      "save": "Save",
+      "saved": "Topic updated",
+      "saveFailed": "Couldn't save",
+      "deleteTopic": "Delete topic",
+      "deleteConfirm": "Delete this topic? This cannot be undone."
+    },
+    "topicCreate": {
+      "title": "Title",
+      "titlePlaceholder": "Enter topic title",
+      "descriptionOptional": "Description (optional)",
+      "descriptionPlaceholder": "Briefly describe this topic",
+      "category": "Category",
+      "proofType": "Proof type",
+      "visibility": "Visibility",
+      "submit": "Create topic",
+      "proofTypes": {
+        "none": "None",
+        "kyc": "KYC (Coinbase)",
+        "country": "Country",
+        "googleWorkspace": "Google Workspace",
+        "microsoft365": "Microsoft 365",
+        "workspace": "Either (Google or Microsoft)"
+      },
+      "visibilityOptions": {
+        "public": "Public",
+        "publicDesc": "Anyone can find and join",
+        "private": "Private",
+        "privateDesc": "Visible to all, requires approval",
+        "secret": "Secret",
+        "secretDesc": "Hidden, invite code only"
+      },
+      "comingSoonTitle": "Coming soon",
+      "comingSoonShort": "Soon",
+      "comingSoonMessage": "This option is not supported yet.",
+      "countryMode": "Country filter",
+      "countryInclude": "Allow only",
+      "countryExclude": "Block",
+      "countryCodes": "ISO country codes (comma-separated)",
+      "requiredDomain": "Domain restriction (optional)",
+      "domainHint": "Leave empty to allow any organization",
+      "createFailed": "Create failed"
+    },
+    "postCreate": {
+      "title": "Title",
+      "titlePlaceholder": "Enter post title",
+      "body": "Body",
+      "bodyPlaceholder": "Write your post",
+      "submit": "Post",
+      "failed": "Post failed"
+    },
+    "postDetail": {
+      "commentsHeader": "Comments ({{count}})",
+      "noComments": "No comments yet. Be the first!",
+      "deleted": "[deleted]",
+      "addCommentPlaceholder": "Add a comment…",
+      "send": "Send",
+      "react": "React",
+      "notFound": "Post not found.",
+      "bookmark": "Save",
+      "bookmarked": "Saved",
+      "commentJoinRequiredTitle": "Join the topic to comment",
+      "commentJoinRequiredMessage": "You need to be a member of this topic to leave a comment.",
+      "commentSendFailedTitle": "Couldn't send comment",
+      "recordConfirmTitle": "Record this post on-chain?",
+      "recordConfirmMessage": "This writes a permanent on-chain attestation on Base via OpenStoa's service wallet (no fee charged to you). It can take 5–15 seconds to confirm and cannot be undone.",
+      "recordConfirmOk": "Record on-chain",
+      "recordFailedTitle": "Couldn't record on-chain",
+      "recordBlockedTitle": "Can't record this one",
+      "recordReason": {
+        "ownPost": "You can't record your own post.",
+        "alreadyRecorded": "You've already recorded this post.",
+        "dailyLimit": "Daily limit reached — you can record up to {{limit}} posts per day. Try again tomorrow.",
+        "tooNew": "Posts need to be at least 1 hour old before they can be recorded. About {{minutes}} minutes to go."
+      },
+      "recordsHeader": "Recorded on Base · {{count}}",
+      "recordPostEdited": "Post content has changed since these records were written; older hashes no longer match.",
+      "recordContentMismatch": "content edited since",
+      "recordPending": "pending…",
+      "viewOnBase": "View on BaseScan"
+    },
+    "chat": {
+      "messagePlaceholder": "Type a message…",
+      "send": "Send",
+      "empty": {
+        "title": "No chat rooms yet",
+        "body": "Join a topic on the Topics tab to start chatting."
+      },
+      "error": {
+        "title": "Couldn't load chats"
+      },
+      "noMessagesYet": "No messages yet"
+    }
+  }
+}

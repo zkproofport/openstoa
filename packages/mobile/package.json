@@ -1,0 +1,32 @@
+{
+  "name": "openstoa-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "react-native": "index.ts",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.81",
+    "@react-navigation/native": ">=7",
+    "@react-navigation/native-stack": ">=7",
+    "@react-navigation/bottom-tabs": ">=7",
+    "react-native-safe-area-context": "*",
+    "react-native-screens": "*",
+    "react-native-vector-icons": "*",
+    "@openstoa/miniapp-bridge": "*",
+    "@openstoa/api-types": "*",
+    "i18next": ">=23",
+    "react-i18next": ">=14"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.59.0",
+    "react-native-sse": "^1.2.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "*",
+    "typescript": "*"
+  }
+}

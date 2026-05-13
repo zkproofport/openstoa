@@ -1,0 +1,293 @@
+{
+  "openstoa": {
+    "tabs": {
+      "feed": "피드",
+      "topics": "토픽",
+      "chat": "채팅",
+      "profile": "프로필",
+      "zkproofport": "ZKProofport"
+    },
+    "feed": {
+      "empty": "아직 게시글이 없어요.",
+      "error": "피드를 불러오지 못했어요.",
+      "postTitle": "게시물",
+      "searchPlaceholder": "게시글, 토픽, 태그 검색…",
+      "sort": {
+        "hot": "인기",
+        "new": "최신",
+        "active": "활성",
+        "top": "추천"
+      },
+      "tagAll": "전체"
+    },
+    "common": {
+      "retry": "다시 시도",
+      "cancel": "취소",
+      "save": "저장",
+      "delete": "삭제",
+      "ok": "확인"
+    },
+    "postCard": {
+      "author": {
+        "anon": "익명"
+      },
+      "commentsCount": "댓글 {{count}}개",
+      "viewsCount": "조회 {{count}}회",
+      "more": "더보기",
+      "showLess": "접기"
+    },
+    "relativeTime": {
+      "justNow": "방금 전",
+      "minutes": "{{n}}분 전",
+      "hours": "{{n}}시간 전",
+      "days": "{{n}}일 전",
+      "months": "{{n}}개월 전",
+      "years": "{{n}}년 전"
+    },
+    "profile": {
+      "editTitle": "프로필 편집",
+      "editButton": "편집",
+      "joined": "{{when}} 가입",
+      "domainBadge": {
+        "label": "도메인 뱃지",
+        "enableTitle": "도메인 뱃지 활성화",
+        "enableMessage": "조직 이메일을 OIDC 증명으로 인증해 도메인 뱃지를 활성화할 수 있어요.",
+        "generateProof": "증명 생성",
+        "cancel": "취소",
+        "error": "도메인 뱃지 활성화에 실패했어요"
+      },
+      "notSet": "미설정",
+      "badges": "뱃지",
+      "tabs": {
+        "posts": "내 글",
+        "topics": "토픽",
+        "likes": "좋아요",
+        "bookmarks": "북마크",
+        "recorded": "온체인 기록"
+      },
+      "empty": {
+        "posts": "작성한 글이 없어요.",
+        "topics": "참여한 토픽이 없어요.",
+        "likes": "좋아요한 글이 없어요.",
+        "bookmarks": "북마크한 글이 없어요.",
+        "recorded": "온체인에 기록한 글이 없어요.",
+        "recordedByMe": "온체인에 기록한 글이 없어요.",
+        "recordedOnMine": "내 글이 아직 온체인에 기록되지 않았어요."
+      },
+      "recordedSub": {
+        "byMe": "내가 기록",
+        "onMine": "내 글 기록됨"
+      },
+      "failedToLoad": "프로필을 불러오지 못했어요.",
+      "editPhoto": "사진 편집",
+      "recorded": "{{count}}개 기록",
+      "postsCount": "개 글",
+      "recordedCount": "회 기록",
+      "searchPlaceholder": "내 글 검색…"
+    },
+    "editProfile": {
+      "nickname": "닉네임",
+      "nicknamePlaceholder": "닉네임 입력",
+      "save": "저장",
+      "saved": {
+        "title": "저장됨",
+        "message": "닉네임이 변경되었어요."
+      },
+      "error": {
+        "title": "오류",
+        "empty": "닉네임을 입력해주세요.",
+        "same": "현재 닉네임과 동일해요."
+      },
+      "domainBadgeRemoveTitle": "도메인 뱃지 해제",
+      "domainBadgeRemoveMessage": "도메인 뱃지를 해제할까요?",
+      "remove": "해제",
+      "enabled": "활성화됨",
+      "domainOff": "도메인 뱃지가 비활성화 상태예요.",
+      "domainOffHint": "조직 이메일 인증 후 활성화할 수 있어요.",
+      "account": "계정",
+      "logout": {
+        "title": "로그아웃",
+        "message": "정말 로그아웃하시겠어요?"
+      },
+      "delete": {
+        "title": "계정 삭제",
+        "message": "계정을 삭제하면 모든 게시글, 댓글, 뱃지가 영구적으로 삭제돼요. 계속할까요?"
+      }
+    },
+    "topics": {
+      "detailTitle": "토픽",
+      "createTitle": "새 토픽",
+      "newPostTitle": "새 글",
+      "headers": {
+        "joined": "가입한 토픽",
+        "explore": "탐색"
+      },
+      "join": "참여",
+      "joinedBadge": "가입됨",
+      "members": "{{count}}명",
+      "posts": "게시글",
+      "proofRequiredTitle": "증명이 필요해요",
+      "proofRequiredMessage": "이 토픽의 증명 생성은 아직 구현되지 않았어요.",
+      "joinFailedTitle": "가입 실패",
+      "notFound": "토픽을 찾을 수 없어요.",
+      "newPost": "글쓰기",
+      "sort": {
+        "hot": "인기",
+        "new": "최신",
+        "active": "활성",
+        "top": "추천"
+      },
+      "category": {
+        "all": "전체"
+      },
+      "invite": {
+        "cta": "초대 코드로 참여",
+        "hint": "초대 코드 입력",
+        "join": "참여",
+        "share": "초대",
+        "shareSubject": "OpenStoa 토픽에 참여하세요",
+        "shareBody": "이 초대 코드로 참여할 수 있어요: {{code}}",
+        "joinFailedTitle": "참여하지 못했어요",
+        "alreadyMember": "이미 이 토픽의 구성원이에요.",
+        "invalidCode": "유효하지 않거나 만료된 초대 코드예요."
+      }
+    },
+    "topicDetail": {
+      "members": "구성원",
+      "requests": "요청",
+      "settings": "설정",
+      "invite": "초대",
+      "actions": "토픽 메뉴",
+      "pin": "글 고정",
+      "unpin": "고정 해제",
+      "pinFailed": "고정 변경에 실패했어요",
+      "postActions": "글 메뉴",
+      "searchPlaceholder": "게시글, 태그 검색…",
+      "sort": {
+        "new": "최신",
+        "popular": "인기",
+        "recorded": "기록됨"
+      }
+    },
+    "members": {
+      "title": "구성원",
+      "empty": "아직 구성원이 없어요.",
+      "role": {
+        "owner": "소유자",
+        "admin": "운영자",
+        "member": "구성원"
+      },
+      "promote": "운영자 지정",
+      "demote": "운영자 해제",
+      "kick": "내보내기",
+      "kickConfirm": "이 구성원을 토픽에서 내보낼까요?",
+      "transfer": "소유권 이전",
+      "transferConfirm": "{{nickname}}에게 소유권을 이전할까요? 이후 운영자가 됩니다.",
+      "actionsForMember": "{{nickname}}",
+      "actionFailed": "작업에 실패했어요"
+    },
+    "requests": {
+      "title": "대기 중인 요청",
+      "empty": "대기 중인 요청이 없어요",
+      "approve": "승인",
+      "reject": "거절",
+      "actionFailed": "작업에 실패했어요"
+    },
+    "topicEdit": {
+      "title": "토픽 편집",
+      "titleField": "제목",
+      "descriptionField": "설명",
+      "save": "저장",
+      "saved": "토픽이 업데이트됐어요",
+      "saveFailed": "저장에 실패했어요",
+      "deleteTopic": "토픽 삭제",
+      "deleteConfirm": "이 토픽을 삭제할까요? 되돌릴 수 없습니다."
+    },
+    "topicCreate": {
+      "title": "제목",
+      "titlePlaceholder": "토픽 제목을 입력하세요",
+      "descriptionOptional": "설명 (선택)",
+      "descriptionPlaceholder": "토픽에 대해 간단히 설명해 주세요",
+      "category": "카테고리",
+      "proofType": "인증 방식",
+      "visibility": "공개 설정",
+      "submit": "토픽 생성",
+      "proofTypes": {
+        "none": "없음",
+        "kyc": "KYC (Coinbase)",
+        "country": "국가 인증",
+        "googleWorkspace": "Google Workspace",
+        "microsoft365": "Microsoft 365",
+        "workspace": "둘 다 허용 (Google 또는 Microsoft)"
+      },
+      "visibilityOptions": {
+        "public": "공개",
+        "publicDesc": "누구나 찾고 참여 가능",
+        "private": "비공개",
+        "privateDesc": "모두에게 노출, 승인 후 참여",
+        "secret": "비밀",
+        "secretDesc": "숨김, 초대 코드만 가능"
+      },
+      "comingSoonTitle": "준비 중",
+      "comingSoonShort": "준비 중",
+      "comingSoonMessage": "이 옵션은 아직 지원되지 않아요.",
+      "countryMode": "국가 필터",
+      "countryInclude": "허용만",
+      "countryExclude": "차단",
+      "countryCodes": "ISO 국가 코드 (쉼표로 구분)",
+      "requiredDomain": "도메인 제한 (선택)",
+      "domainHint": "비워두면 모든 조직 허용",
+      "createFailed": "생성 실패"
+    },
+    "postCreate": {
+      "title": "제목",
+      "titlePlaceholder": "글 제목을 입력하세요",
+      "body": "본문",
+      "bodyPlaceholder": "내용을 입력하세요",
+      "submit": "글쓰기",
+      "failed": "작성 실패"
+    },
+    "postDetail": {
+      "commentsHeader": "댓글 {{count}}",
+      "noComments": "아직 댓글이 없어요. 첫 번째 댓글을 남겨보세요!",
+      "deleted": "[삭제됨]",
+      "addCommentPlaceholder": "댓글 입력…",
+      "send": "보내기",
+      "react": "리액션",
+      "notFound": "글을 찾을 수 없어요.",
+      "bookmark": "저장",
+      "bookmarked": "저장됨",
+      "commentJoinRequiredTitle": "토픽 가입이 필요해요",
+      "commentJoinRequiredMessage": "이 토픽의 멤버여야 댓글을 남길 수 있어요.",
+      "commentSendFailedTitle": "댓글을 보내지 못했어요",
+      "recordConfirmTitle": "이 글을 온체인에 기록할까요?",
+      "recordConfirmMessage": "OpenStoa 서비스 지갑이 Base 체인에 영구 기록 트랜잭션을 작성합니다 (사용자 비용 없음). 확정에 5~15초 정도 걸리며 취소할 수 없습니다.",
+      "recordConfirmOk": "온체인 기록",
+      "recordFailedTitle": "온체인 기록 실패",
+      "recordBlockedTitle": "지금은 기록할 수 없어요",
+      "recordReason": {
+        "ownPost": "내 글은 기록할 수 없어요.",
+        "alreadyRecorded": "이 글은 이미 기록했어요.",
+        "dailyLimit": "오늘 한도에 도달했어요. 하루에 최대 {{limit}}개까지 기록할 수 있어요. 내일 다시 시도해 주세요.",
+        "tooNew": "글이 게시된 지 1시간이 지나야 기록할 수 있어요. 약 {{minutes}}분 남았어요."
+      },
+      "recordsHeader": "Base 온체인 기록 · {{count}}",
+      "recordPostEdited": "기록 이후 본문이 수정되었어요. 일부 해시가 더 이상 일치하지 않습니다.",
+      "recordContentMismatch": "기록 이후 본문 수정됨",
+      "recordPending": "확정 대기…",
+      "viewOnBase": "BaseScan에서 보기"
+    },
+    "chat": {
+      "messagePlaceholder": "메시지 입력…",
+      "send": "보내기",
+      "empty": {
+        "title": "참여 중인 채팅방이 없어요",
+        "body": "토픽 탭에서 토픽에 참여해 채팅을 시작해보세요."
+      },
+      "error": {
+        "title": "채팅을 불러오지 못했어요"
+      },
+      "noMessagesYet": "아직 메시지가 없어요"
+    }
+  }
+}
