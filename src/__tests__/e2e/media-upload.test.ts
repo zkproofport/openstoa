@@ -44,6 +44,20 @@ async function uploadPng(filename: string): Promise<string> {
   return json.publicUrl;
 }
 
+/**
+ * Fetch a URL with a cache-busting query string. Required for any poll that
+ * verifies R2 deletion: the upload route sets
+ * `Cache-Control: public, max-age=31536000, immutable`, so once the
+ * Cloudflare CDN serves the object once it'll keep returning the cached 200
+ * even after R2 has dropped the underlying key. Adding a unique `?_cb=…`
+ * query forces a fresh origin lookup, which surfaces the 404 we actually
+ * want to assert on.
+ */
+async function fetchUncached(url: string): Promise<Response> {
+  const sep = url.includes('?') ? '&' : '?';
+  return fetch(`${url}${sep}_cb=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+}
+
 describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
   // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -159,26 +173,26 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     expect(postRes.status).toBe(201);
     const postId = (await postRes.json()).post.id;
 
-    // Both URLs reachable before the swap.
-    expect((await fetch(oldUrl)).status).toBe(200);
-    expect((await fetch(newUrl)).status).toBe(200);
+    // Skip the "both reachable" pre-check — it would warm the CDN cache for
+    // oldUrl and mask the deletion we're trying to assert (immutable cache).
 
     const patchRes = await authPatch(`/api/posts/${postId}`, {
       media: { images: [newUrl] },
     });
     expect(patchRes.status).toBe(200);
 
-    // CDN is eventually-consistent; poll briefly until the old key 404s.
+    // R2 is eventually-consistent; poll briefly with cache-busting query so
+    // each request hits the origin instead of a stale CDN entry.
     let oldStatus = 200;
     for (let i = 0; i < 10 && oldStatus !== 404 && oldStatus !== 403; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      const r = await fetch(oldUrl);
+      const r = await fetchUncached(oldUrl);
       oldStatus = r.status;
     }
     expect([403, 404]).toContain(oldStatus);
 
     // New URL still reachable.
-    expect((await fetch(newUrl)).status).toBe(200);
+    expect((await fetchUncached(newUrl)).status).toBe(200);
   });
 
   // ── Test 5: DELETE post wipes all attached images ──────────────────────────
@@ -198,12 +212,13 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     const delRes = await authDelete(`/api/posts/${postId}`);
     expect(delRes.status).toBe(200);
 
-    // Poll until both objects 404.
+    // Poll until both objects 404 (cache-busted so CDN-cached 200 doesn't
+    // mask the deletion).
     for (const url of [url1, url2]) {
       let status = 200;
       for (let i = 0; i < 10 && status !== 404 && status !== 403; i++) {
         await new Promise((r) => setTimeout(r, 500));
-        const r = await fetch(url);
+        const r = await fetchUncached(url);
         status = r.status;
       }
       expect([403, 404]).toContain(status);
@@ -214,7 +229,7 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
 
   it('DELETE /api/upload removes uploaded files owned by the caller', async () => {
     const url = await uploadPng('draft-cancel.png');
-    expect((await fetch(url)).status).toBe(200);
+    // Skip pre-fetch — it would warm the CDN cache and mask the deletion.
 
     const cleanupRes = await authDelete('/api/upload', { urls: [url] });
     expect(cleanupRes.status).toBe(200);
@@ -225,7 +240,7 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     let status = 200;
     for (let i = 0; i < 10 && status !== 404 && status !== 403; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      status = (await fetch(url)).status;
+      status = (await fetchUncached(url)).status;
     }
     expect([403, 404]).toContain(status);
   });

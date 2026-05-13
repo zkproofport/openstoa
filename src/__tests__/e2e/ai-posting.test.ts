@@ -70,11 +70,14 @@ describe('AI posting flow (Bearer token)', () => {
     //    so any token can join. (Mirrors what an AI agent's first
     //    "where do I post?" call typically looks like — fetch the
     //    topic list, pick one, or create your own.)
+    const catRes = await fetch(`${getBaseUrl()}/api/categories`);
+    const categoryId = (await catRes.json()).categories[0].id;
     const topicRes = await aiCall('POST', '/api/topics', {
       title: `AI E2E Topic ${TS}`,
       description: 'Bearer-token posting flow validation',
       visibility: 'public',
       proofType: 'none',
+      categoryId,
     });
     expect(topicRes.status).toBe(201);
     const topicJson = await topicRes.json();
@@ -187,7 +190,7 @@ describe('AI posting flow (Bearer token)', () => {
     const delRes = await aiCall('DELETE', `/api/posts/${post.id}`);
     expect(delRes.status).toBe(200);
     const delJson = await delRes.json();
-    expect(delJson.success).toBe(true);
+    expect(delJson.isDeleted).toBe(true);
 
     // Soft delete: row stays but the body should be cleared.
     const detail = await aiCall('GET', `/api/posts/${post.id}`);
@@ -222,11 +225,14 @@ describe('AI posting flow — shape variants', () => {
     const session = await devLogin(`ai_variants_${TS}`);
     token = session.token;
     call = withToken(token);
+    const catRes = await fetch(`${getBaseUrl()}/api/categories`);
+    const categoryId = (await catRes.json()).categories[0].id;
     const topicRes = await call('POST', '/api/topics', {
       title: `AI Variants Topic ${TS}`,
       description: 'shape-variant coverage',
       visibility: 'public',
       proofType: 'none',
+      categoryId,
     });
     expect(topicRes.status).toBe(201);
     topicId = (await topicRes.json()).topic.id;
@@ -342,11 +348,14 @@ describe('AI posting flow — error handling', () => {
   beforeAll(async () => {
     token = (await devLogin(`ai_errors_${TS}`)).token;
     call = withToken(token);
+    const catRes = await fetch(`${getBaseUrl()}/api/categories`);
+    const categoryId = (await catRes.json()).categories[0].id;
     const topicRes = await call('POST', '/api/topics', {
       title: `AI Errors Topic ${TS}`,
       description: 'error-path coverage',
       visibility: 'public',
       proofType: 'none',
+      categoryId,
     });
     topicId = (await topicRes.json()).topic.id;
   });

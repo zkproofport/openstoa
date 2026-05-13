@@ -329,6 +329,7 @@ export async function GET(
         recordCount: posts.recordCount,
         score: posts.score,
         isAI: posts.isAI,
+        isDeleted: posts.isDeleted,
         userVoted: sql<number | null>`${votes.value}`,
         userBookmarked: sql<boolean>`${bookmarks.postId} IS NOT NULL`,
         userRecorded: sql<boolean>`${records.id} IS NOT NULL`,
