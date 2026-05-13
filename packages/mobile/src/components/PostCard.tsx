@@ -428,25 +428,26 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           `post.media.{images,videos}` directly; legacy posts where media
           URLs were inlined in `content` still extract via mediaItems and
           are merged in. */}
-      {/* Feed card image policy:
-            - Legacy posts: images are inlined inside `content` (`<img>`)
-              and PostContent renders them — DO NOT duplicate them in the
-              gallery, that was the picsum.photos "two different copies"
-              divergence we already hit once.
-            - New posts: `post.media.images` is the only image source —
-              PostContent has no <img> tags to render, gallery is the
-              only renderer.
-          Videos always go through MediaGallery (`feed` mode = first one
-          + "+N" badge) since they never render inline. */}
-      {(post.media?.images?.length ?? 0) > 0 ? (
-        <MediaGallery
-          images={post.media!.images!}
-          mode="feed"
-          horizontalPadding={32}
-        />
-      ) : null}
+      {/* Unified media block — image carousel + first video + "+N" badge.
+          Pulls images and videos from BOTH `post.media.{images,videos}`
+          and any URLs hiding inside legacy HTML `content`, deduped by
+          URL/videoId. PostContent renders inline `<img>` tags too — the
+          duplication is intentional so legacy posts still show the
+          gallery preview the user expects. With real R2 URLs the same
+          src means the same picture; if you point a placeholder service
+          (picsum.photos) at the gallery you'll see two different random
+          images and that is the service's behaviour, not a bug here. */}
       <MediaGallery
-        images={[]}
+        images={(() => {
+          const fromMedia = post.media?.images ?? [];
+          const fromContent = mediaItems.filter((m) => m.type === 'image').map((m) => m.src);
+          const seen = new Set<string>();
+          return [...fromMedia, ...fromContent].filter((u) => {
+            if (seen.has(u)) return false;
+            seen.add(u);
+            return true;
+          });
+        })()}
         videos={mediaItems
           .filter((m) => m.type === 'youtube' || m.type === 'vimeo')
           .map((m) => (m.type === 'youtube' ? `https://youtu.be/${m.src}` : `https://vimeo.com/${m.src}`))}

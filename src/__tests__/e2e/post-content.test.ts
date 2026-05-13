@@ -178,7 +178,7 @@ describe.sequential('Post rich content E2E', () => {
   // ── TC6: External image URL ──────────────────────────────────────────────
 
   it('TC6: external image URL preserved in content', async () => {
-    const content = '<p>An image:</p><img src="https://picsum.photos/150" alt="placeholder">';
+    const content = '<p>An image:</p><img src="https://placehold.co/150" alt="placeholder">';
 
     const res = await authPost(`/api/topics/${topicId}/posts`, {
       title: `External Image Post ${TS}`,
@@ -193,7 +193,7 @@ describe.sequential('Post rich content E2E', () => {
     expect(getRes.status).toBe(200);
     const getJson = await getRes.json();
     expect(getJson.post.content).toContain('<img');
-    expect(getJson.post.content).toContain('https://picsum.photos/150');
+    expect(getJson.post.content).toContain('https://placehold.co/150');
   });
 
   // ── TC7: Base64 image auto-upload to R2 CDN ──────────────────────────────
@@ -232,7 +232,7 @@ describe.sequential('Post rich content E2E', () => {
     const content = [
       '<p><strong>Check this out!</strong></p>',
       '<p>https://www.youtube.com/watch?v=dQw4w9WgXcQ</p>',
-      '<p><img src="https://picsum.photos/300/200" alt="placeholder"></p>',
+      '<p><img src="https://placehold.co/300x200" alt="placeholder"></p>',
       '<p>What do you think?</p>',
     ].join('');
 
@@ -252,7 +252,7 @@ describe.sequential('Post rich content E2E', () => {
 
     expect(returned).toContain('<strong>Check this out!</strong>');
     expect(returned).toContain('youtube.com/watch?v=dQw4w9WgXcQ');
-    expect(returned).toContain('https://picsum.photos/300/200');
+    expect(returned).toContain('https://placehold.co/300x200');
     expect(returned).toContain('What do you think?');
   });
 
@@ -285,7 +285,7 @@ describe.sequential('Post rich content E2E', () => {
     const updatedContent = [
       '<p><strong>Updated!</strong> New content with video and image.</p>',
       '<p>https://www.youtube.com/watch?v=oHg5SJYRHA0</p>',
-      '<p><img src="https://picsum.photos/400/300" alt="updated-img"></p>',
+      '<p><img src="https://placehold.co/400x300" alt="updated-img"></p>',
     ].join('');
 
     const res = await authPatch(`/api/posts/${mixedPostId}`, {
@@ -300,7 +300,7 @@ describe.sequential('Post rich content E2E', () => {
 
     expect(returned).toContain('<strong>Updated!</strong>');
     expect(returned).toContain('youtube.com/watch?v=oHg5SJYRHA0');
-    expect(returned).toContain('https://picsum.photos/400/300');
+    expect(returned).toContain('https://placehold.co/400x300');
   });
 
   // ── TC11: Multiple YouTube URLs ──────────────────────────────────────────

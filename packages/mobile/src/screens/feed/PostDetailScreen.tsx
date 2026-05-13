@@ -1053,12 +1053,25 @@ export function PostDetailScreen() {
               the feed card only plays the first. ── */}
       <View style={{ paddingHorizontal: 16 }}>
         <MediaGallery
-          // Detail image policy mirrors the feed card: PostContent already
-          // renders legacy `<img>` tags inline above, so the gallery is
-          // restricted to the explicit `post.media.images` source to
-          // avoid double-fetching the same URL twice (which produced two
-          // different pictures for randomized hosts like picsum.photos).
-          images={post.media?.images ?? []}
+          // Union explicit `post.media.images` with any legacy `<img>` tags
+          // still buried inside `content`. The gallery always renders so
+          // even legacy posts get a swipeable preview. PostContent renders
+          // its own inline copy above — that intentional duplication is
+          // what the user wants. (Randomized placeholder hosts like
+          // picsum.photos will return two different images for the same
+          // URL; real R2 URLs are stable.)
+          images={(() => {
+            const fromMedia = post.media?.images ?? [];
+            const fromContent = extractMediaItems(post.content ?? '')
+              .filter((m) => m.type === 'image')
+              .map((m) => m.src);
+            const seen = new Set<string>();
+            return [...fromMedia, ...fromContent].filter((u) => {
+              if (seen.has(u)) return false;
+              seen.add(u);
+              return true;
+            });
+          })()}
           videos={videoItems.map((v) =>
             v.type === 'youtube'
               ? `https://youtu.be/${v.src}`
