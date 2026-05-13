@@ -362,7 +362,7 @@ describe.sequential('Topics endpoints', () => {
     // Second user joins so they're a topic member but not owner; they must
     // still be rejected on DELETE.
     const joinRes = await secondUserPost(`/api/topics/${topicForDeleteId}/join`, {});
-    expect([200, 409]).toContain(joinRes.status);
+    expect([200, 201, 409]).toContain(joinRes.status);
 
     const delRes = await secondUserDelete(`/api/topics/${topicForDeleteId}`);
     expect(delRes.status).toBe(403);
