@@ -21,10 +21,9 @@ import type { Post, Comment } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { usePostMutations } from '../../hooks/usePostMutations';
-import { MediaPreview } from '../../components/MediaPreview';
+import { MediaGallery } from '../../components/MediaGallery';
 import { PollRenderer } from '../../components/PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls } from '../../components/PostContent';
-import { VideoEmbed } from '../../components/VideoEmbed';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon, TrashIcon } from '../../components/icons';
 import Feather from 'react-native-vector-icons/Feather';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -951,31 +950,32 @@ export function PostDetailScreen() {
         </View>
       ) : null}
 
-      {/* ── Body (video URLs stripped; inline images rendered by PostContent) ── */}
+      {/* ── Body (video URLs stripped from legacy posts; inline images
+              rendered by PostContent for back-compat) ── */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
         <PostContent content={stripVideoUrls(post.content ?? '')} />
       </View>
 
-      {/* ── YouTube/Vimeo inline players ── */}
-      {videoItems.length > 0 ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 10 }}>
-          {videoItems.map((v) => (
-            <VideoEmbed
-              key={`${v.type}:${v.src}`}
-              type={v.type as 'youtube' | 'vimeo'}
-              videoId={v.src}
-            />
-          ))}
-        </View>
-      ) : null}
-
-      {/* ── Attached images (full-width gallery). Videos are already
-              rendered above via the dedicated VideoEmbed players. ── */}
-      {(post.media?.images?.length ?? 0) > 0 ? (
-        <View style={styles.mediaSection}>
-          <MediaPreview media={{ images: post.media!.images }} fullWidth />
-        </View>
-      ) : null}
+      {/* ── Unified media block — swipeable image carousel + every video
+              card inline. Reads `post.media.{images,videos}` first;
+              legacy URLs hiding inside `content` are unioned in via the
+              videoItems extraction above. Detail mode plays every video,
+              the feed card only plays the first. ── */}
+      <View style={{ paddingHorizontal: 16 }}>
+        <MediaGallery
+          images={post.media?.images ?? []}
+          videos={[
+            ...(post.media?.videos ?? []),
+            ...videoItems.map((v) =>
+              v.type === 'youtube'
+                ? `https://youtu.be/${v.src}`
+                : `https://vimeo.com/${v.src}`,
+            ),
+          ]}
+          mode="detail"
+          horizontalPadding={32}
+        />
+      </View>
 
       {/* ── Poll ── */}
       {post.poll ? (

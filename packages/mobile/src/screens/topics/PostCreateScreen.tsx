@@ -37,8 +37,7 @@ import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { PostContent } from '../../components/PostContent';
-import { VideoEmbed } from '../../components/VideoEmbed';
-import { MediaPreview } from '../../components/MediaPreview';
+import { MediaGallery } from '../../components/MediaGallery';
 import { PollEditor, type PollEditorValue } from '../../components/PollEditor';
 import { useDraft } from '../../hooks/useDraft';
 
@@ -433,22 +432,36 @@ function makeStyles(colors: ThemeColors) {
       color: colors.text.primary,
       marginBottom: 10,
     },
-    previewImagesRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 6,
-      marginBottom: 12,
-    },
-    previewImage: {
-      width: '100%',
-      borderRadius: 10,
-      backgroundColor: colors.background.tertiary,
-      aspectRatio: 16 / 10,
-      marginBottom: 6,
-    },
-    previewVideosWrap: {
+    previewPollCard: {
       marginTop: 12,
-      gap: 12,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      borderRadius: 10,
+      backgroundColor: colors.background.secondary,
+      gap: 8,
+    },
+    previewPollQuestion: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    previewPollOption: {
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      borderRadius: 8,
+      backgroundColor: colors.background.primary,
+    },
+    previewPollOptionText: {
+      fontSize: 13,
+      color: colors.text.primary,
+    },
+    previewPollMeta: {
+      fontSize: 11,
+      color: colors.text.tertiary,
+      marginTop: 4,
     },
     previewTagsRow: {
       flexDirection: 'row',
@@ -949,8 +962,10 @@ export function PostCreateScreen() {
             content={content}
             images={images}
             videos={videoMetas}
+            poll={poll}
             tags={tags}
             styles={styles}
+            colors={colors}
             emptyLabel={t('openstoa.postCreate.previewEmpty')}
           />
         )}
@@ -1004,35 +1019,58 @@ interface PreviewBlockProps {
   content: string;
   images: string[];
   videos: VideoMeta[];
+  poll: PollEditorValue | null;
   tags: string[];
   styles: ReturnType<typeof makeStyles>;
   emptyLabel: string;
+  colors: ThemeColors;
 }
 
-function PreviewBlock({ title, content, images, videos, tags, styles, emptyLabel }: PreviewBlockProps) {
-  const hasAny = title.trim() || content.trim() || images.length > 0 || videos.length > 0 || tags.length > 0;
+function PreviewBlock({ title, content, images, videos, poll, tags, styles, emptyLabel, colors }: PreviewBlockProps) {
+  const hasAny =
+    title.trim() ||
+    content.trim() ||
+    images.length > 0 ||
+    videos.length > 0 ||
+    tags.length > 0 ||
+    !!poll;
   if (!hasAny) {
     return <Text style={styles.previewEmpty}>{emptyLabel}</Text>;
   }
+  const pollOptions = poll
+    ? poll.options.map((o) => o.trim()).filter((o) => o.length > 0)
+    : [];
   return (
     <View>
+      {/* Order picked by the user: Title → Body → Media → Poll → Tags
+          (Twitter/X model). The same ordering is mirrored in the feed
+          PostCard and PostDetailScreen so what the user sees in Preview
+          matches the live post pixel-for-pixel. */}
       {title.trim() ? <Text style={styles.previewTitle}>{title}</Text> : null}
-      {/* Reuse the same MediaPreview the PostDetailScreen uses — its
-          full-width gallery has been verified to render R2 image URLs
-          correctly. The earlier hand-rolled <Image aspectRatio=...> path
-          collapsed to a 0-height layout in the ScrollView so the gallery
-          showed nothing but a dead bar. */}
-      {images.length > 0 ? (
-        <View style={{ marginBottom: 12 }}>
-          <MediaPreview media={{ images }} fullWidth />
-        </View>
-      ) : null}
       {content.trim() ? <PostContent content={content} /> : null}
-      {videos.length > 0 ? (
-        <View style={styles.previewVideosWrap}>
-          {videos.map((v) => (
-            <VideoEmbed key={v.url} type={v.type} videoId={v.videoId} />
+      <MediaGallery
+        images={images}
+        videos={videos.map((v) => v.url)}
+        mode="detail"
+      />
+      {poll && pollOptions.length >= 2 ? (
+        <View style={styles.previewPollCard}>
+          {poll.question ? (
+            <Text style={styles.previewPollQuestion}>{poll.question}</Text>
+          ) : null}
+          {pollOptions.map((opt, i) => (
+            <View key={`${opt}-${i}`} style={styles.previewPollOption}>
+              <Text style={styles.previewPollOptionText} numberOfLines={2}>
+                {opt}
+              </Text>
+            </View>
           ))}
+          <Text style={styles.previewPollMeta}>
+            {poll.multipleChoice ? '복수 선택 · ' : ''}
+            {poll.closesAt
+              ? `마감: ${new Date(poll.closesAt).toLocaleString()}`
+              : '무제한'}
+          </Text>
         </View>
       ) : null}
       {tags.length > 0 ? (

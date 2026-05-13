@@ -5,10 +5,9 @@ import type { Post } from '@openstoa/api-types';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { formatRelativeTime } from '../utils/relativeTime';
-import { MediaPreview } from './MediaPreview';
+import { MediaGallery } from './MediaGallery';
 import { PollRenderer } from './PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls, type MediaItem } from './PostContent';
-import { VideoEmbed } from './VideoEmbed';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon } from './icons';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
@@ -352,20 +351,10 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
       return true;
     });
   }, [rawContent, post.media?.videos]);
-  const stripMedia = useMemo(() => mediaItems.filter((m) => m.type !== 'image'), [mediaItems]);
-  const displayMedia: MediaItem[] = stripMedia.slice(0, 3);
-  const remainingMedia = stripMedia.length - displayMedia.length;
-
-  // "Show more" is meaningful when:
-  //   - the text body itself overflows the 5-line / 200dp preview, or
-  //   - the post has video URLs that should be playable inline (those are
-  //     hidden in collapsed mode since `stripVideoUrls` strips them and
-  //     the embed only renders when expanded).
-  // Inline images don't justify a toggle — they're already visible in the
-  // preview window thanks to the maxHeight cap clipping nothing useful.
-  const hasInlineVideo = stripMedia.length > 0;
+  // "Show more" toggles the body text between the 5-line preview and the
+  // full content. Media is its own block now, so it doesn't influence the
+  // toggle eligibility — only the text body length matters.
   const isLong =
-    hasInlineVideo ||
     rawContent.length > PREVIEW_CHAR_THRESHOLD ||
     rawContent.split('\n').length > PREVIEW_LINES;
 
@@ -402,25 +391,8 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
         ) : null}
       </TouchableOpacity>
 
-      {/* Inline playable YouTube/Vimeo cards — only after expansion so the
-          collapsed feed row stays compact (the 80×80 strip below stands in
-          for the embed). Matches web's SNSContent which only renders the
-          iframe in full (non-truncate) mode. */}
-      {expanded && mediaItems.some((m) => m.type === 'youtube' || m.type === 'vimeo') ? (
-        <View style={{ marginTop: 8, gap: 10 }}>
-          {mediaItems
-            .filter((m) => m.type === 'youtube' || m.type === 'vimeo')
-            .map((v) => (
-              <VideoEmbed
-                key={`${v.type}:${v.src}`}
-                type={v.type as 'youtube' | 'vimeo'}
-                videoId={v.src}
-              />
-            ))}
-        </View>
-      ) : null}
-
-      {/* Expand toggle — sibling outside touchable so it doesn't fire onPress */}
+      {/* "Show more" toggle for long bodies. Media is always shown — it's
+          its own block now, not gated on expand state. */}
       {isLong ? (
         <TouchableOpacity
           style={styles.toggleRow}
@@ -433,51 +405,26 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
         </TouchableOpacity>
       ) : null}
 
-      {/* Compact 80×80 media strip — collapsed state only; matches the
-          web PostCard's 3-thumbnail gallery and avoids duplicating media
-          when the user expands the body (PostContent then renders inline
-          images naturally). */}
-      {!expanded && displayMedia.length > 0 ? (
-        <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
-          <View style={styles.mediaStrip}>
-            {displayMedia.map((item, i) => (
-              <View key={`${item.type}:${item.src}:${i}`} style={styles.mediaTile}>
-                {item.thumbnail ? (
-                  <Image
-                    source={{ uri: item.thumbnail }}
-                    style={styles.mediaThumb}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.mediaVideoLabel}>
-                    <Text style={styles.mediaVideoLabelText}>Video</Text>
-                  </View>
-                )}
-                {(item.type === 'youtube' || item.type === 'vimeo') ? (
-                  <View style={styles.mediaPlayOverlay}>
-                    <Text style={styles.mediaPlayGlyph}>▶</Text>
-                  </View>
-                ) : null}
-                {i === displayMedia.length - 1 && remainingMedia > 0 ? (
-                  <View style={styles.mediaMoreOverlay}>
-                    <Text style={styles.mediaMoreText}>+{remainingMedia}</Text>
-                  </View>
-                ) : null}
-              </View>
-            ))}
-          </View>
-        </TouchableOpacity>
-      ) : null}
-
-      {/* Media gallery — only the images strip. Videos render as the 80×80
-          thumbnail above when collapsed and as inline VideoEmbeds when
-          expanded; passing them through MediaPreview here would duplicate
-          the player. */}
-      {(post.media?.images?.length ?? 0) > 0 ? (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
-          <MediaPreview media={{ images: post.media!.images }} />
-        </TouchableOpacity>
-      ) : null}
+      {/* Unified media block — image carousel + first video (with +N
+          badge). Same shape as the Preview screen and PostDetailScreen so
+          the user's draft matches what gets rendered in the feed. Reads
+          `post.media.{images,videos}` directly; legacy posts where media
+          URLs were inlined in `content` still extract via mediaItems and
+          are merged in. */}
+      <MediaGallery
+        images={[
+          ...(post.media?.images ?? []),
+          ...mediaItems.filter((m) => m.type === 'image').map((m) => m.src),
+        ]}
+        videos={[
+          ...(post.media?.videos ?? []),
+          ...mediaItems
+            .filter((m) => m.type === 'youtube' || m.type === 'vimeo')
+            .map((m) => (m.type === 'youtube' ? `https://youtu.be/${m.src}` : `https://vimeo.com/${m.src}`)),
+        ]}
+        mode="feed"
+        horizontalPadding={32}
+      />
 
       {/* Poll — when the post has an attached poll, render the
           interactive vote UI. Wire mutations through the shared cache
