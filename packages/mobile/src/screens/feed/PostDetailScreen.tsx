@@ -964,14 +964,11 @@ export function PostDetailScreen() {
       <View style={{ paddingHorizontal: 16 }}>
         <MediaGallery
           images={post.media?.images ?? []}
-          videos={[
-            ...(post.media?.videos ?? []),
-            ...videoItems.map((v) =>
-              v.type === 'youtube'
-                ? `https://youtu.be/${v.src}`
-                : `https://vimeo.com/${v.src}`,
-            ),
-          ]}
+          videos={videoItems.map((v) =>
+            v.type === 'youtube'
+              ? `https://youtu.be/${v.src}`
+              : `https://vimeo.com/${v.src}`,
+          )}
           mode="detail"
           horizontalPadding={32}
         />

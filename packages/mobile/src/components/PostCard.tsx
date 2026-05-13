@@ -412,16 +412,23 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           URLs were inlined in `content` still extract via mediaItems and
           are merged in. */}
       <MediaGallery
-        images={[
-          ...(post.media?.images ?? []),
-          ...mediaItems.filter((m) => m.type === 'image').map((m) => m.src),
-        ]}
-        videos={[
-          ...(post.media?.videos ?? []),
-          ...mediaItems
-            .filter((m) => m.type === 'youtube' || m.type === 'vimeo')
-            .map((m) => (m.type === 'youtube' ? `https://youtu.be/${m.src}` : `https://vimeo.com/${m.src}`)),
-        ]}
+        // mediaItems already unions+dedupes `post.media.videos` with any
+        // YT/Vimeo URLs hiding inside legacy HTML `content`, so just feed
+        // that single source through to avoid the post-detail double-embed
+        // bug we hit when the same URL came in from both sides.
+        images={(() => {
+          const fromMedia = post.media?.images ?? [];
+          const fromContent = mediaItems.filter((m) => m.type === 'image').map((m) => m.src);
+          const seen = new Set<string>();
+          return [...fromMedia, ...fromContent].filter((u) => {
+            if (seen.has(u)) return false;
+            seen.add(u);
+            return true;
+          });
+        })()}
+        videos={mediaItems
+          .filter((m) => m.type === 'youtube' || m.type === 'vimeo')
+          .map((m) => (m.type === 'youtube' ? `https://youtu.be/${m.src}` : `https://vimeo.com/${m.src}`))}
         mode="feed"
         horizontalPadding={32}
       />

@@ -942,19 +942,6 @@ export function PostCreateScreen() {
               {tags.length}/{MAX_TAGS} · press Enter or comma to add
             </Text>
 
-            {/* Submit */}
-            <TouchableOpacity
-              style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
-              onPress={() => createMutation.mutate()}
-              disabled={!canSubmit}
-              activeOpacity={0.8}
-            >
-              {createMutation.isPending ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.submitLabel}>{t('openstoa.postCreate.submit')}</Text>
-              )}
-            </TouchableOpacity>
           </>
         ) : (
           <PreviewBlock
@@ -969,6 +956,22 @@ export function PostCreateScreen() {
             emptyLabel={t('openstoa.postCreate.previewEmpty')}
           />
         )}
+
+        {/* Submit lives outside the Write/Preview switch so the user can
+            post directly from the Preview screen too — no round-trip back
+            to Write just to tap submit. */}
+        <TouchableOpacity
+          style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
+          onPress={() => createMutation.mutate()}
+          disabled={!canSubmit}
+          activeOpacity={0.8}
+        >
+          {createMutation.isPending ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.submitLabel}>{t('openstoa.postCreate.submit')}</Text>
+          )}
+        </TouchableOpacity>
       </ScrollView>
 
       <Modal
