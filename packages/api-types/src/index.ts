@@ -56,6 +56,31 @@ export interface PostMedia {
   videos?: string[];
 }
 
+export interface PollOption {
+  id: UuidString;
+  text: string;
+  position: number;
+  /** Total vote count for this option. Server-aggregated. */
+  voteCount: number;
+}
+
+export interface Poll {
+  id: UuidString;
+  postId: UuidString;
+  question?: string | null;
+  multipleChoice: boolean;
+  closesAt?: Iso8601 | null;
+  options: PollOption[];
+  /** Sum of all option votes. Cached for cheap %-bar rendering. */
+  totalVotes: number;
+  /** Option IDs the current user has voted for (empty when guest or
+   *  not yet voted). On single-choice polls this array has 0 or 1 ids. */
+  userVotedOptionIds: UuidString[];
+  /** True when the poll is past `closesAt` — server-computed so the client
+   *  doesn't need its own clock. */
+  isClosed: boolean;
+}
+
 export interface Post {
   id: UuidString;
   topicId: UuidString;
@@ -78,6 +103,9 @@ export interface Post {
   userVoted?: 1 | -1 | null;
   userBookmarked?: boolean;
   userRecorded?: boolean;
+  /** Present only when the post has an attached poll. Vote state is
+   *  user-scoped and only populated on authenticated requests. */
+  poll?: Poll | null;
   createdAt: Iso8601;
   updatedAt: Iso8601;
 }

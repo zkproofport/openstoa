@@ -43,6 +43,13 @@
       "when": 1778645962403,
       "tag": "0005_spotty_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778646560287,
+      "tag": "0006_complete_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }

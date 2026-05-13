@@ -5,6 +5,7 @@ import { bookmarks, posts, users, votes, topics } from '@/lib/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
+import { attachPollsToPosts } from '@/lib/polls';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/bookmarks';
@@ -111,6 +112,7 @@ export async function GET(request: NextRequest) {
     // every list response.
     const withFlags = await attachUserFlagsToPosts(result, session.userId);
     const withReactions = await attachReactionsToPosts(withFlags, session.userId);
+    await attachPollsToPosts(withReactions, session.userId);
 
     logger.info(ROUTE, 'Bookmarked posts fetched', { userId: session.userId, count: result.length });
     return NextResponse.json({ posts: withReactions });

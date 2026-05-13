@@ -80,6 +80,43 @@ export const posts = pgTable('posts', {
   isAI: boolean('is_ai').notNull().default(false),
 });
 
+// ──────────────────────────────────────────────────────────────────────
+// Polls — Twitter/X-style multiple-choice attached to a post. Each post
+// gets at most one poll. Options live in a sibling table to keep the
+// row count predictable for analytics and to enforce per-option uniqueness
+// of votes. Votes carry the (poll, option, user) triple; single-choice vs
+// multi-choice is enforced at write time, not at the DB layer, because the
+// uniqueness constraint changes between the two modes.
+// ──────────────────────────────────────────────────────────────────────
+export const polls = pgTable('polls', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }).notNull().unique(),
+  question: text('question'),
+  multipleChoice: boolean('multiple_choice').notNull().default(false),
+  closesAt: timestamp('closes_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+export const pollOptions = pgTable('poll_options', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pollId: uuid('poll_id').references(() => polls.id, { onDelete: 'cascade' }).notNull(),
+  text: text('text').notNull(),
+  position: integer('position').notNull(),
+});
+
+export const pollVotes = pgTable('poll_votes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pollId: uuid('poll_id').references(() => polls.id, { onDelete: 'cascade' }).notNull(),
+  optionId: uuid('option_id').references(() => pollOptions.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // One row per (poll, option, user) — both single- and multi-choice modes
+  // disallow voting for the same option twice. Single-choice further caps
+  // at one row per (poll, user), enforced application-side.
+  uniqueVote: uniqueIndex('poll_vote_unique').on(table.pollId, table.optionId, table.userId),
+}));
+
 export const comments = pgTable('comments', {
   id: uuid('id').primaryKey().defaultRandom(),
   postId: uuid('post_id').references(() => posts.id).notNull(),

@@ -3922,6 +3922,38 @@ Returns total number of topics and unique members.
 curl -s "$BASE/api/stats" | jq .
 ```
 
+## Polls
+
+### Cast or change a poll vote
+
+Records the user's vote(s) on a post's poll. For single-choice polls (`multipleChoice=false`), `optionIds` MUST contain exactly one id and any prior vote by the user is replaced. For multiple-choice polls, every id in `optionIds` becomes a vote; duplicates are deduped; voting for an option you've already voted for is a no-op. Closed polls reject all writes.
+
+```bash
+curl -s "$BASE/api/posts/:postId/poll/vote" \
+  -H "$AUTH" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+  "optionIds": [
+    "uuid"
+  ]
+}' | jq .
+```
+
+Path params:
+- `postId` — string
+
+### Clear the user's poll votes
+
+```bash
+curl -s "$BASE/api/posts/:postId/poll/vote" \
+  -H "$AUTH" \
+  -X DELETE | jq .
+```
+
+Path params:
+- `postId` — string
+
 ## Records
 
 ### Check whether the current user can record this post

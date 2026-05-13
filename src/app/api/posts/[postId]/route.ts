@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { attachPollsToPosts } from '@/lib/polls';
 type Badge = { type: string; label: string };
 
 const ROUTE = '/api/posts/[postId]';
@@ -259,10 +260,13 @@ export async function GET(
       });
 
       logger.info(ROUTE, 'Guest post detail fetched', { postId, commentCount: postComments.length });
-      return NextResponse.json({
-        post: { ...postWithoutVisibility, tags: postTagResults, badges: filterBadgesByTopicProofType(guestBadgeMap.get(post.authorId) ?? [], topicPT) },
-        comments: guestCommentsWithBadges,
-      });
+      const guestPost = {
+        ...postWithoutVisibility,
+        tags: postTagResults,
+        badges: filterBadgesByTopicProofType(guestBadgeMap.get(post.authorId) ?? [], topicPT),
+      };
+      await attachPollsToPosts([guestPost], null);
+      return NextResponse.json({ post: guestPost, comments: guestCommentsWithBadges });
     }
 
     // --- Authenticated access (existing behavior) ---
@@ -404,17 +408,16 @@ export async function GET(
     });
 
     logger.info(ROUTE, 'Post detail fetched', { userId: session.userId, postId, commentCount: postComments.length });
-    return NextResponse.json({
-      post: {
-        ...postWithoutProofType,
-        tags: postTagResults,
-        badges: filterBadgesByTopicProofType(badgeMap.get(post.authorId) ?? [], authTopicPT),
-        // Used by the mobile post detail to render a "Joined" badge next
-        // to the topic title (parity with the topic list card).
-        isJoinedTopic: !!membership,
-      },
-      comments: commentsWithBadges,
-    });
+    const authPost = {
+      ...postWithoutProofType,
+      tags: postTagResults,
+      badges: filterBadgesByTopicProofType(badgeMap.get(post.authorId) ?? [], authTopicPT),
+      // Used by the mobile post detail to render a "Joined" badge next
+      // to the topic title (parity with the topic list card).
+      isJoinedTopic: !!membership,
+    };
+    await attachPollsToPosts([authPost], session.userId);
+    return NextResponse.json({ post: authPost, comments: commentsWithBadges });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });

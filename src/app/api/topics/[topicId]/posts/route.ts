@@ -10,6 +10,7 @@ import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { getBatchUserBadges, filterBadgesByTopicProofType, type Badge } from '@/lib/verification-cache';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
+import { attachPollsToPosts, createPollForPost } from '@/lib/polls';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -224,6 +225,7 @@ export async function GET(
       }));
 
       const guestPostsWithReactions = await attachReactionsToPosts(guestPostsWithBadges, null);
+      await attachPollsToPosts(guestPostsWithReactions, null);
 
       logger.info(ROUTE, 'Guest posts fetched', { topicId, count: topicPosts.length });
       return NextResponse.json({ posts: guestPostsWithReactions });
@@ -333,6 +335,7 @@ export async function GET(
 
     const postsWithFlags = await attachUserFlagsToPosts(postsWithBadges, session.userId);
     const postsWithReactions = await attachReactionsToPosts(postsWithFlags, session.userId);
+    await attachPollsToPosts(postsWithReactions, session.userId);
 
     logger.info(ROUTE, 'Posts fetched', { userId: session.userId, topicId, count: topicPosts.length });
     return NextResponse.json({ posts: postsWithReactions });
@@ -374,7 +377,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { title, content, tags: tagNames, media: mediaIn } = body;
+    const { title, content, tags: tagNames, media: mediaIn, poll: pollIn } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title', { userId: session.userId, topicId });
@@ -446,6 +449,25 @@ export async function POST(
       }
     }
 
+    // Optional attached poll. We do this AFTER the post insert so a poll
+    // validation failure rolls back via the explicit error path without
+    // orphaning. Callers send `poll: { question?, options: string[],
+    // multipleChoice?, closesAt? }`.
+    if (pollIn && typeof pollIn === 'object' && Array.isArray(pollIn.options)) {
+      try {
+        await createPollForPost(post.id, {
+          question: typeof pollIn.question === 'string' ? pollIn.question : undefined,
+          options: pollIn.options as string[],
+          multipleChoice: !!pollIn.multipleChoice,
+          closesAt: typeof pollIn.closesAt === 'string' ? pollIn.closesAt : undefined,
+        });
+      } catch (pollErr) {
+        const msg = pollErr instanceof Error ? pollErr.message : String(pollErr);
+        logger.warn(ROUTE, 'Poll creation failed', { postId: post.id, error: msg });
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+    }
+
     logger.info(ROUTE, 'Post created', { userId: session.userId, topicId, postId: post.id });
 
     // Update topic score asynchronously (non-blocking)
@@ -453,7 +475,11 @@ export async function POST(
       logger.warn(ROUTE, 'Failed to update topic score', { topicId, error: String(err) }),
     );
 
-    return NextResponse.json({ post }, { status: 201 });
+    // Hydrate the poll on the created post so the client can render it
+    // immediately without a follow-up fetch.
+    const responsePost = { ...post } as typeof post & { poll?: import('@/lib/polls').Poll | null };
+    await attachPollsToPosts([responsePost], session.userId);
+    return NextResponse.json({ post: responsePost }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in POST', { error: message });

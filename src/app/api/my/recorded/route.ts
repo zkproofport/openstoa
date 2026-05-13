@@ -5,6 +5,7 @@ import { posts, records, users, topics, votes } from '@/lib/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
+import { attachPollsToPosts } from '@/lib/polls';
 import { txExplorerUrl } from '@/lib/explorer';
 import { logger } from '@/lib/logger';
 
@@ -107,6 +108,7 @@ export async function GET(request: NextRequest) {
 
     const flagged = await attachUserFlagsToPosts(recordedPosts, session.userId);
     const withReactions = await attachReactionsToPosts(flagged, session.userId);
+    await attachPollsToPosts(withReactions, session.userId);
     const postsWithReactions = withReactions.map((p) => ({
       ...p,
       myTxExplorerUrl: txExplorerUrl(p.myTxHash),
