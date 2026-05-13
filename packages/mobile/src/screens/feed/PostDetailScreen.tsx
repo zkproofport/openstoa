@@ -1043,7 +1043,7 @@ export function PostDetailScreen() {
       {/* ── Body (video URLs stripped from legacy posts; inline images
               rendered by PostContent for back-compat) ── */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-        <PostContent content={stripVideoUrls(post.content ?? '')} omitImages />
+        <PostContent content={stripVideoUrls(post.content ?? '')} />
       </View>
 
       {/* ── Unified media block — swipeable image carousel + every video
