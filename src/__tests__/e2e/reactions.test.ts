@@ -111,12 +111,16 @@ describe.sequential('Reactions (Emoji)', () => {
     expect(thumbs.userReacted).toBe(true);
   });
 
-  it('5. Non-member (User B) react attempt -> 403 (membership check required)', async () => {
-    // User B is authenticated but not a member of the topic.
+  it('5. Non-member (User B) can react to a post they can see (lightweight signal)', async () => {
+    // Reaction policy mirrors vote/bookmark: lightweight expressive actions
+    // with zero impact on topic itself don't require membership (see
+    // /api/posts/[postId]/reactions/route.ts). Only posting/commenting
+    // requires membership.
     const res = await secondUserPost(`/api/posts/${postId}/reactions`, { emoji: '🎉' });
-    expect(res.status).toBe(403);
-    const json = await res.json();
-    expect(json.error).toBeTruthy();
+    expect(res.status).toBe(200);
+
+    // Cleanup: toggle the reaction off so later tests aren't perturbed.
+    await secondUserPost(`/api/posts/${postId}/reactions`, { emoji: '🎉' });
   });
 
   it('6. Guest (unauthenticated) react attempt -> 401', async () => {

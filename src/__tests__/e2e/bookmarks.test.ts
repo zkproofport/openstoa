@@ -116,12 +116,18 @@ describe.sequential('Bookmarks', () => {
     expect(json.posts.length).toBeLessThanOrEqual(1);
   });
 
-  it('8. Non-member (User B) bookmark attempt -> 403 (membership check required)', async () => {
-    // User B is authenticated but not a member of the topic.
+  it('8. Non-member (User B) can bookmark a post they can see (no membership required)', async () => {
+    // Bookmarking is an explicitly private "save for later" action — by
+    // policy (see /api/posts/[postId]/bookmark/route.ts) it does NOT require
+    // topic membership, mirroring vote and reaction behavior. Posting and
+    // commenting still require membership; lightweight personal/reactive
+    // actions don't.
     const res = await secondUserPost(`/api/posts/${postId}/bookmark`);
-    expect(res.status).toBe(403);
-    const json = await res.json();
-    expect(json.error).toBeTruthy();
+    expect(res.status).toBe(200);
+
+    // Restore prior state so later tests asserting User B's bookmark count
+    // aren't perturbed by this row.
+    await secondUserPost(`/api/posts/${postId}/bookmark`);
   });
 
   it('9. Guest (unauthenticated) bookmark attempt -> 401', async () => {

@@ -138,12 +138,16 @@ describe.sequential('Votes (Upvote/Downvote)', () => {
 
   // ── User B votes (non-member) ───────────────────────────────────────────
 
-  it('6. Non-member (User B) votes on post -> 403 (membership check enforced)', async () => {
-    // The vote route checks topic membership — non-members are rejected.
+  it('6. Non-member (User B) can vote on a post they can see (Reddit-style)', async () => {
+    // Vote policy: any authenticated user can upvote/downvote a post they
+    // can see in the feed; topic membership is NOT required (see
+    // /api/posts/[postId]/vote/route.ts). Posting/commenting still
+    // require membership, but signal actions like votes/reactions do not.
     const voteRes = await secondUserPost(`/api/posts/${postId}/vote`, { value: 1 });
-    expect(voteRes.status).toBe(403);
-    const voteJson = await voteRes.json();
-    expect(voteJson.error).toBeTruthy();
+    expect(voteRes.status).toBe(200);
+
+    // Cleanup: clear the vote so it doesn't perturb later assertions.
+    await secondUserPost(`/api/posts/${postId}/vote`, { value: 1 });
   });
 
   // ── Guest (unauthenticated) ─────────────────────────────────────────────
