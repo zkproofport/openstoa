@@ -26,6 +26,11 @@ let postAId: string;
 let postBId: string;
 let postCId: string;
 
+// Unique stamp + token shared across search-related tests so each query can
+// be filtered to only THIS suite's rows even on a noisy staging DB.
+let feedStamp: string;
+const FEED_UTF8 = '안녕피드검색';
+
 describe.sequential('Feed endpoints', () => {
   afterAll(async () => {
     // Best-effort cleanup — runs even when an it() above fails.
@@ -88,19 +93,20 @@ describe.sequential('Feed endpoints', () => {
   });
 
   it('setup: post in each topic', async () => {
+    feedStamp = `feedq${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
     const [resA, resB, resC] = await Promise.all([
       authPost(`/api/topics/${topicAId}/posts`, {
-        title: `E2E Feed Post A ${Date.now()}`,
-        content: 'Post in category A',
+        title: `E2E Feed Post A ${feedStamp}`,
+        content: `Post in category A ${feedStamp}`,
         tags: ['e2e-feed-test'],
       }),
       authPost(`/api/topics/${topicBId}/posts`, {
-        title: `E2E Feed Post B ${Date.now()}`,
-        content: 'Post in category B',
+        title: `E2E Feed Post B ${feedStamp}`,
+        content: `Post in category B ${feedStamp} ${FEED_UTF8}`,
       }),
       authPost(`/api/topics/${topicCId}/posts`, {
-        title: `E2E Feed Post C ${Date.now()}`,
-        content: 'Post in category C',
+        title: `E2E Feed Post C ${feedStamp}`,
+        content: `Post in category C ${feedStamp}`,
       }),
     ]);
     expect(resA.status).toBe(201);
@@ -283,9 +289,8 @@ describe.sequential('Feed endpoints', () => {
   // ── Search (q=) ───────────────────────────────────────────────────────
 
   it('GET /api/feed?q matches post title (case-insensitive substring)', async () => {
-    // Post A's title contains "E2E Feed Post A". Search for the distinctive
-    // "Feed Post A" substring with a different case to verify ilike.
-    const res = await publicGet('/api/feed?q=feed+post+a&limit=100');
+    // Search by "Post A " + stamp to find only Post A (case-insensitive ilike).
+    const res = await publicGet(`/api/feed?q=POST+a+${feedStamp}&limit=100`);
     expect(res.status).toBe(200);
     const json = await res.json();
     const postIds = json.posts.map((p: { id: string }) => p.id);
@@ -294,13 +299,92 @@ describe.sequential('Feed endpoints', () => {
     expect(postIds).not.toContain(postCId);
   });
 
-  it('GET /api/feed?q matches post content', async () => {
-    // Post B's content is "Post in category B" — unique enough to grep.
-    const res = await publicGet('/api/feed?q=post+in+category+b&limit=100');
+  it('GET /api/feed?q matches post content (B-only substring)', async () => {
+    const res = await publicGet(`/api/feed?q=category+B+${feedStamp}&limit=100`);
     expect(res.status).toBe(200);
     const json = await res.json();
     const postIds = json.posts.map((p: { id: string }) => p.id);
     expect(postIds).toContain(postBId);
+    expect(postIds).not.toContain(postAId);
+    expect(postIds).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?q matches UTF-8 (Korean) content', async () => {
+    // Post B's content carries 안녕피드검색 — confirms ilike works on non-ASCII.
+    const res = await publicGet(`/api/feed?q=${encodeURIComponent(FEED_UTF8)}&limit=100`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const postIds = json.posts.map((p: { id: string }) => p.id);
+    expect(postIds).toContain(postBId);
+    expect(postIds).not.toContain(postAId);
+    expect(postIds).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?q trims surrounding whitespace', async () => {
+    const padded = `   ${feedStamp}   `;
+    const res = await publicGet(`/api/feed?q=${encodeURIComponent(padded)}&limit=100`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const postIds = json.posts.map((p: { id: string }) => p.id);
+    // Stamp is shared by all three feed posts.
+    expect(postIds).toContain(postAId);
+    expect(postIds).toContain(postBId);
+    expect(postIds).toContain(postCId);
+  });
+
+  it('GET /api/feed?q (whitespace-only) is treated as no filter', async () => {
+    // Empty/whitespace q must not filter to "rows containing %% only".
+    const [withQ, withoutQ] = await Promise.all([
+      publicGet('/api/feed?q=%20%20%20&sort=new&limit=10'),
+      publicGet('/api/feed?sort=new&limit=10'),
+    ]);
+    expect(withQ.status).toBe(200);
+    expect(withoutQ.status).toBe(200);
+    const a = await withQ.json();
+    const b = await withoutQ.json();
+    expect(a.posts.length).toBe(b.posts.length);
+  });
+
+  it('GET /api/feed?q combines with sort=new', async () => {
+    const res = await publicGet(`/api/feed?q=${feedStamp}&sort=new&limit=100`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const posts: Array<{ id: string; createdAt: string }> = json.posts;
+    // Only the three feed posts should match the unique stamp.
+    const ids = posts.map((p) => p.id);
+    for (const id of [postAId, postBId, postCId]) expect(ids).toContain(id);
+    // Newest first.
+    for (let i = 1; i < posts.length; i++) {
+      const prev = new Date(posts[i - 1].createdAt).getTime();
+      const curr = new Date(posts[i].createdAt).getTime();
+      expect(prev).toBeGreaterThanOrEqual(curr);
+    }
+  });
+
+  it('GET /api/feed?q combines with category filter', async () => {
+    const res = await publicGet(
+      `/api/feed?q=${feedStamp}&category=${categoryA.slug}&limit=100`,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids = json.posts.map((p: { id: string }) => p.id);
+    // Stamp matches all three posts, but the category filter narrows to A.
+    expect(ids).toContain(postAId);
+    expect(ids).not.toContain(postBId);
+    expect(ids).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?q combines with tag filter', async () => {
+    const res = await publicGet(
+      `/api/feed?q=${feedStamp}&tag=e2e-feed-test&limit=100`,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids = json.posts.map((p: { id: string }) => p.id);
+    // Only Post A has the e2e-feed-test tag.
+    expect(ids).toContain(postAId);
+    expect(ids).not.toContain(postBId);
+    expect(ids).not.toContain(postCId);
   });
 
   it('GET /api/feed?q with no matches returns empty', async () => {
@@ -308,6 +392,16 @@ describe.sequential('Feed endpoints', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.posts).toEqual([]);
+  });
+
+  it('GET /api/feed?q works for guests (no session) too', async () => {
+    // Same call as the public guest GET above; explicit assertion that
+    // search isn't auth-gated. publicGet has no Authorization header.
+    const res = await publicGet(`/api/feed?q=${feedStamp}&limit=100`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids = json.posts.map((p: { id: string }) => p.id);
+    for (const id of [postAId, postBId, postCId]) expect(ids).toContain(id);
   });
 
   // ── Pagination ────────────────────────────────────────────────────────

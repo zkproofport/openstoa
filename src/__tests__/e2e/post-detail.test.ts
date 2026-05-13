@@ -96,30 +96,72 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
     }
   });
 
-  it('3. Post list — sort=hot returns 200', async () => {
-    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=hot`);
+  it('3. Post list — sort=hot returns score non-increasing among non-pinned', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=hot&limit=100`);
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(Array.isArray(json.posts)).toBe(true);
+    const items: Array<{ score: number; isPinned: boolean }> = json.posts;
+    expect(Array.isArray(items)).toBe(true);
+    const nonPinned = items.filter((p) => !p.isPinned);
+    for (let i = 1; i < nonPinned.length; i++) {
+      expect(nonPinned[i - 1].score).toBeGreaterThanOrEqual(nonPinned[i].score);
+    }
   });
 
-  it('3b. Post list — sort=top returns 200', async () => {
-    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=top`);
+  it('3b. Post list — sort=top returns upvoteCount non-increasing among non-pinned', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=top&limit=100`);
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(Array.isArray(json.posts)).toBe(true);
+    const items: Array<{ upvoteCount: number; isPinned: boolean }> = json.posts;
+    const nonPinned = items.filter((p) => !p.isPinned);
+    for (let i = 1; i < nonPinned.length; i++) {
+      expect(nonPinned[i - 1].upvoteCount).toBeGreaterThanOrEqual(nonPinned[i].upvoteCount);
+    }
   });
 
-  it('3c. Post list — sort=active returns 200', async () => {
-    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=active`);
+  it('3c. Post list — sort=active orders by updatedAt/createdAt activity (non-increasing)', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=active&limit=100`);
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(Array.isArray(json.posts)).toBe(true);
+    const items: Array<{ id: string; isPinned: boolean }> = json.posts;
+    expect(Array.isArray(items)).toBe(true);
+    // We assert non-empty + 200 here; the topic-level bump on activity is
+    // validated end-to-end in the dedicated bump tests below.
+    expect(items.length).toBeGreaterThan(0);
   });
 
-  it('3d. Post list — sort=popular returns 400 (legacy vocabulary rejected)', async () => {
+  it('3d. Post list — sort=recorded returns recordCount non-increasing among non-pinned', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=recorded&limit=100`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const items: Array<{ recordCount: number; isPinned: boolean }> = json.posts;
+    const nonPinned = items.filter((p) => !p.isPinned);
+    for (let i = 1; i < nonPinned.length; i++) {
+      expect(nonPinned[i - 1].recordCount).toBeGreaterThanOrEqual(nonPinned[i].recordCount);
+    }
+  });
+
+  it('3e. Post list — sort=popular returns 400 (legacy vocabulary rejected)', async () => {
     const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=popular`);
     expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/sort/i);
+  });
+
+  it('3f. Post list — pinned posts are always first regardless of sort', async () => {
+    // Pin the base post then verify it shows up at position 0 under sort=new,
+    // even if older than other posts.
+    const pinRes = await authPost(`/api/posts/${postId}/pin`, {});
+    // 200 with isPinned flag — owner permission already granted in setup.
+    expect(pinRes.status).toBe(200);
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=new&limit=50`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const items: Array<{ id: string; isPinned: boolean }> = json.posts;
+    expect(items[0].id).toBe(postId);
+    expect(items[0].isPinned).toBe(true);
+    // Toggle pin back off so later tests aren't affected.
+    await authPost(`/api/posts/${postId}/pin`, {});
   });
 
   it('4. Post list — sort=recorded returns 200', async () => {

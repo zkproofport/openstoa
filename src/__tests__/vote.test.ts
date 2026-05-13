@@ -28,6 +28,14 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('@/lib/postScore', () => ({
+  updatePostScore: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/lib/topicScore', () => ({
+  updateTopicScore: vi.fn().mockResolvedValue(undefined),
+}));
+
 function makeRequest(postId: string, body: Record<string, unknown>) {
   return new NextRequest(`http://localhost:3200/api/posts/${postId}/vote`, {
     method: 'POST',
@@ -180,5 +188,116 @@ describe('POST /api/posts/[postId]/vote', () => {
     const json = await res.json();
     expect(json.vote).toEqual({ value: 1 });
     expect(json.upvoteCount).toBeDefined();
+  });
+
+  // ── Score / topic activity bump invocation contract ──────────────────
+  //
+  // The vote route is the single source for sort=hot scoring. These tests
+  // pin down that EVERY vote branch (new, toggle off, swap sign) triggers
+  // both updatePostScore (post-level score) and updateTopicScore (topic-
+  // level lastActivityAt + score). Removing either call must fail tests.
+
+  it('new vote invokes updatePostScore AND updateTopicScore (with the post topic id)', async () => {
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+
+    const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({
+      id: 'post-1', topicId: 'topic-1', upvoteCount: 0,
+    } as never);
+    vi.mocked(db.query.votes.findFirst).mockResolvedValue(undefined);
+
+    const { updatePostScore } = await import('@/lib/postScore');
+    const { updateTopicScore } = await import('@/lib/topicScore');
+    vi.mocked(updatePostScore).mockClear();
+    vi.mocked(updateTopicScore).mockClear();
+
+    const { POST } = await import('@/app/api/posts/[postId]/vote/route');
+    const res = await POST(
+      makeRequest('post-1', { value: 1 }),
+      { params: Promise.resolve({ postId: 'post-1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    // Fire-and-forget but called synchronously inside the handler before
+    // the response is returned, so the spy should already be hit.
+    expect(updatePostScore).toHaveBeenCalledWith('post-1');
+    expect(updateTopicScore).toHaveBeenCalledWith('topic-1');
+  });
+
+  it('vote toggle-off (same value re-sent) still invokes score updates', async () => {
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+
+    const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({
+      id: 'post-2', topicId: 'topic-2', upvoteCount: 1,
+    } as never);
+    vi.mocked(db.query.votes.findFirst).mockResolvedValue({ value: 1 } as never);
+
+    const { updatePostScore } = await import('@/lib/postScore');
+    const { updateTopicScore } = await import('@/lib/topicScore');
+    vi.mocked(updatePostScore).mockClear();
+    vi.mocked(updateTopicScore).mockClear();
+
+    const { POST } = await import('@/app/api/posts/[postId]/vote/route');
+    const res = await POST(
+      makeRequest('post-2', { value: 1 }),
+      { params: Promise.resolve({ postId: 'post-2' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(updatePostScore).toHaveBeenCalledWith('post-2');
+    expect(updateTopicScore).toHaveBeenCalledWith('topic-2');
+  });
+
+  it('vote sign-swap (+1 -> -1) still invokes score updates', async () => {
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+
+    const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({
+      id: 'post-3', topicId: 'topic-3', upvoteCount: 1,
+    } as never);
+    vi.mocked(db.query.votes.findFirst).mockResolvedValue({ value: 1 } as never);
+
+    const { updatePostScore } = await import('@/lib/postScore');
+    const { updateTopicScore } = await import('@/lib/topicScore');
+    vi.mocked(updatePostScore).mockClear();
+    vi.mocked(updateTopicScore).mockClear();
+
+    const { POST } = await import('@/app/api/posts/[postId]/vote/route');
+    const res = await POST(
+      makeRequest('post-3', { value: -1 }),
+      { params: Promise.resolve({ postId: 'post-3' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(updatePostScore).toHaveBeenCalledWith('post-3');
+    expect(updateTopicScore).toHaveBeenCalledWith('topic-3');
+  });
+
+  it('score update failure is swallowed (fire-and-forget contract)', async () => {
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+
+    const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({
+      id: 'post-4', topicId: 'topic-4', upvoteCount: 0,
+    } as never);
+    vi.mocked(db.query.votes.findFirst).mockResolvedValue(undefined);
+
+    const { updatePostScore } = await import('@/lib/postScore');
+    vi.mocked(updatePostScore).mockRejectedValueOnce(new Error('boom'));
+
+    const { POST } = await import('@/app/api/posts/[postId]/vote/route');
+    const res = await POST(
+      makeRequest('post-4', { value: 1 }),
+      { params: Promise.resolve({ postId: 'post-4' }) },
+    );
+
+    // The user-facing vote action must still succeed even if score
+    // recompute fails. The catch handler logs and moves on.
+    expect(res.status).toBe(200);
   });
 });

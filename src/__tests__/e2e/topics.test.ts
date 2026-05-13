@@ -24,6 +24,7 @@ let topicAId: string;
 let topicBId: string;
 let topicCId: string;
 let searchStamp: string;
+const TOPIC_UTF8 = '안녕토픽검색';
 
 // Topic used to test DELETE by a non-owner
 let topicForDeleteId: string;
@@ -58,23 +59,23 @@ describe.sequential('Topics endpoints', () => {
 
   it('setup: create one topic per category', async () => {
     const stamp = Date.now();
-    searchStamp = String(stamp);
+    searchStamp = `topicq${stamp}`;
     const [resA, resB, resC] = await Promise.all([
       authPost('/api/topics', {
-        title: `E2E Topics Sort A ${stamp}_${Math.random().toString(36).slice(2, 6)}`,
-        description: 'Topic in category A',
+        title: `E2E Topics Sort A ${searchStamp}_${Math.random().toString(36).slice(2, 6)}`,
+        description: `Topic in category A ${searchStamp}`,
         visibility: 'public',
         categoryId: categoryA.id,
       }),
       authPost('/api/topics', {
-        title: `E2E Topics Sort B ${stamp}_${Math.random().toString(36).slice(2, 6)}`,
-        description: 'Topic in category B',
+        title: `E2E Topics Sort B ${searchStamp}_${Math.random().toString(36).slice(2, 6)}`,
+        description: `Topic in category B ${searchStamp} ${TOPIC_UTF8}`,
         visibility: 'public',
         categoryId: categoryB.id,
       }),
       authPost('/api/topics', {
-        title: `E2E Topics Sort C ${stamp}_${Math.random().toString(36).slice(2, 6)}`,
-        description: 'Topic in category C',
+        title: `E2E Topics Sort C ${searchStamp}_${Math.random().toString(36).slice(2, 6)}`,
+        description: `Topic in category C ${searchStamp}`,
         visibility: 'public',
         categoryId: categoryC.id,
       }),
@@ -332,7 +333,7 @@ describe.sequential('Topics endpoints', () => {
 
   // ── Search (q=) ──────────────────────────────────────────────────────
 
-  it('GET /api/topics?view=all&q matches title (unique stamp)', async () => {
+  it('GET /api/topics?view=all&q matches title via unique stamp (auth path)', async () => {
     const res = await authGet(`/api/topics?view=all&q=${searchStamp}`);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -342,12 +343,94 @@ describe.sequential('Topics endpoints', () => {
     expect(ids).toContain(topicCId);
   });
 
-  it('GET /api/topics?view=all&q matches description', async () => {
-    const res = await authGet(`/api/topics?view=all&q=Topic+in+category+B`);
+  it('GET /api/topics?view=all&q matches description (B-only substring)', async () => {
+    const res = await authGet(
+      `/api/topics?view=all&q=${encodeURIComponent('Topic in category B ' + searchStamp)}`,
+    );
     expect(res.status).toBe(200);
     const json = await res.json();
     const ids: string[] = json.topics.map((t: { id: string }) => t.id);
     expect(ids).toContain(topicBId);
+    expect(ids).not.toContain(topicAId);
+    expect(ids).not.toContain(topicCId);
+  });
+
+  it('GET /api/topics?view=all&q matches UTF-8 (Korean) description', async () => {
+    const res = await authGet(
+      `/api/topics?view=all&q=${encodeURIComponent(TOPIC_UTF8)}`,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.topics.map((t: { id: string }) => t.id);
+    expect(ids).toContain(topicBId);
+    expect(ids).not.toContain(topicAId);
+    expect(ids).not.toContain(topicCId);
+  });
+
+  it('GET /api/topics?view=all&q is case-insensitive', async () => {
+    const res = await authGet(
+      `/api/topics?view=all&q=${encodeURIComponent(searchStamp.toUpperCase())}`,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.topics.map((t: { id: string }) => t.id);
+    for (const id of [topicAId, topicBId, topicCId]) expect(ids).toContain(id);
+  });
+
+  it('GET /api/topics?view=all&q trims surrounding whitespace', async () => {
+    const res = await authGet(
+      `/api/topics?view=all&q=${encodeURIComponent('   ' + searchStamp + '   ')}`,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.topics.map((t: { id: string }) => t.id);
+    for (const id of [topicAId, topicBId, topicCId]) expect(ids).toContain(id);
+  });
+
+  it('GET /api/topics?view=all&q (whitespace-only) acts as no filter', async () => {
+    const [withQ, withoutQ] = await Promise.all([
+      authGet('/api/topics?view=all&q=%20%20&sort=new'),
+      authGet('/api/topics?view=all&sort=new'),
+    ]);
+    expect(withQ.status).toBe(200);
+    expect(withoutQ.status).toBe(200);
+    const a = await withQ.json();
+    const b = await withoutQ.json();
+    expect(a.topics.length).toBe(b.topics.length);
+  });
+
+  it('GET /api/topics?view=all&q combines with sort=new', async () => {
+    const res = await authGet(`/api/topics?view=all&q=${searchStamp}&sort=new`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const topics: Array<{ id: string; createdAt: string }> = json.topics;
+    const ids = topics.map((t) => t.id);
+    for (const id of [topicAId, topicBId, topicCId]) expect(ids).toContain(id);
+    for (let i = 1; i < topics.length; i++) {
+      const prev = new Date(topics[i - 1].createdAt).getTime();
+      const curr = new Date(topics[i].createdAt).getTime();
+      expect(prev).toBeGreaterThanOrEqual(curr);
+    }
+  });
+
+  it('GET /api/topics?view=all&q combines with category filter', async () => {
+    const res = await authGet(
+      `/api/topics?view=all&q=${searchStamp}&category=${categoryA.slug}`,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.topics.map((t: { id: string }) => t.id);
+    expect(ids).toContain(topicAId);
+    expect(ids).not.toContain(topicBId);
+    expect(ids).not.toContain(topicCId);
+  });
+
+  it('GET /api/topics?view=all&q works for guests (no auth)', async () => {
+    const res = await publicGet(`/api/topics?view=all&q=${searchStamp}`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.topics.map((t: { id: string }) => t.id);
+    for (const id of [topicAId, topicBId, topicCId]) expect(ids).toContain(id);
   });
 
   it('GET /api/topics?view=all&q with no matches returns empty list', async () => {
