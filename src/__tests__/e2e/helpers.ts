@@ -216,3 +216,22 @@ export async function publicPatch(path: string, body?: unknown): Promise<Respons
     body: body ? JSON.stringify(body) : undefined,
   });
 }
+
+// ── Cleanup helpers (used by tests' afterAll) ─────────────────────────
+
+/** Delete a topic owned by the primary test user. */
+export async function deleteTopic(topicId: string): Promise<Response> {
+  return authDelete(`/api/topics/${topicId}`);
+}
+
+/** Delete a post owned by the primary test user. */
+export async function deletePost(postId: string): Promise<Response> {
+  return authDelete(`/api/posts/${postId}`);
+}
+
+/** Fetch all categories as `{ id, slug }` for tests that need fixed slugs. */
+export async function fetchCategorySlugs(): Promise<Array<{ id: string; slug: string }>> {
+  const res = await publicGet('/api/categories');
+  const json = await res.json();
+  return json.categories.map((c: { id: string; slug: string }) => ({ id: c.id, slug: c.slug }));
+}

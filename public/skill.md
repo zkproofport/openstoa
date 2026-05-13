@@ -2659,6 +2659,28 @@ Response:
 }
 ```
 
+### Delete topic
+
+Hard-deletes a topic and all related data (posts, comments, records, chat, members, join requests). Only the topic owner or a global admin may invoke this. The deletion is performed inside a single transaction.
+
+```bash
+curl -s "$BASE/api/topics/:topicId" \
+  -H "$AUTH" \
+  -X DELETE | jq .
+```
+
+Path params:
+- `topicId` — Topic ID
+
+Response:
+```json
+{
+  "deleted": true,
+  "topicId": "uuid",
+  "deletedPostCount": 0
+}
+```
+
 ### Lookup topic by invite code
 
 Looks up a topic by its invite code. Returns topic info and whether the current user is already a member. Used to show a preview before joining.
@@ -3931,7 +3953,7 @@ curl -s "$BASE/api/feed?sort=...&tag=...&category=...&limit=...&offset=..." | jq
 ```
 
 Query params:
-- `sort` (`hot` | `new` | `top`) — Sort order
+- `sort` (`hot` | `new` | `top` | `active`) — Sort order
 - `tag` — Filter by tag slug
 - `category` — Filter by category slug
 - `limit` — Number of posts to return (max 100)

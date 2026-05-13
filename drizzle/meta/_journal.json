@@ -57,6 +57,20 @@
       "when": 1778655251999,
       "tag": "0007_broad_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778740000000,
+      "tag": "0008_posts_last_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778683581183,
+      "tag": "0009_chunky_celestials",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,9 @@ import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } 
 
 const ROUTE = '/api/topics';
 
+const VALID_TOPIC_SORTS = ['hot', 'new', 'top', 'active'] as const;
+type TopicSort = typeof VALID_TOPIC_SORTS[number];
+
 /**
  * @openapi
  * /api/topics:
@@ -141,7 +144,16 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const view = searchParams.get('view');
-    const sort = searchParams.get('sort') ?? 'hot';
+    const sortParam = searchParams.get('sort') ?? 'hot';
+
+    if (!VALID_TOPIC_SORTS.includes(sortParam as TopicSort)) {
+      logger.warn(ROUTE, 'Invalid sort value', { sort: sortParam });
+      return NextResponse.json(
+        { error: `Invalid sort. Must be one of: ${VALID_TOPIC_SORTS.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    const sort: TopicSort = sortParam as TopicSort;
 
     const categorySlug = searchParams.get('category');
 

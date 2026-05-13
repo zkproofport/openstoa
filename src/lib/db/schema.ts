@@ -78,6 +78,8 @@ export const posts = pgTable('posts', {
   isPinned: boolean('is_pinned').notNull().default(false),
   recordCount: integer('record_count').notNull().default(0),
   isAI: boolean('is_ai').notNull().default(false),
+  // Activity timestamp used by sort=active. Bumped on comment/vote/reaction.
+  lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow(),
   // Soft delete — author can wipe title/content/media but the row is kept
   // so on-chain records and comments still resolve. Mirrors comments.deletedAt.
   isDeleted: boolean('is_deleted').notNull().default(false),

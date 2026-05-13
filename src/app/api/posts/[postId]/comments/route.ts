@@ -114,8 +114,11 @@ export async function POST(
       })
       .returning();
 
-    // Increment commentCount on post
-    await db.update(posts).set({ commentCount: sql`${posts.commentCount} + 1` }).where(eq(posts.id, postId));
+    // Increment commentCount and bump lastActivityAt for sort=active feed.
+    await db
+      .update(posts)
+      .set({ commentCount: sql`${posts.commentCount} + 1`, lastActivityAt: new Date() })
+      .where(eq(posts.id, postId));
 
     // Fetch author info and badges for the response
     const author = await db.query.users.findFirst({

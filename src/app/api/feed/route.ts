@@ -32,7 +32,7 @@ const ROUTE = '/api/feed';
  *         description: Sort order
  *         schema:
  *           type: string
- *           enum: [hot, new, top]
+ *           enum: [hot, new, top, active]
  *           default: hot
  *       - name: tag
  *         in: query
@@ -74,7 +74,15 @@ const ROUTE = '/api/feed';
  *                   description: Posts sorted by requested order
  *                   items:
  *                     $ref: '#/components/schemas/Post'
+ *       400:
+ *         description: Invalid sort value or unknown category slug
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error400'
  */
+const VALID_SORTS = ['hot', 'new', 'top', 'active'] as const;
+type FeedSort = typeof VALID_SORTS[number];
 export async function GET(request: NextRequest) {
   logger.info(ROUTE, 'GET request received');
   try {
@@ -83,10 +91,20 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
-    const sort = url.searchParams.get('sort') ?? 'hot';
+    const sortParam = url.searchParams.get('sort') ?? 'hot';
     const tagSlug = url.searchParams.get('tag') ?? null;
     const categorySlug = url.searchParams.get('category') ?? null;
     const view = url.searchParams.get('view') ?? null; // 'my' = only joined topics
+
+    // --- Validate sort against whitelist (no silent fallback) ---
+    if (!VALID_SORTS.includes(sortParam as FeedSort)) {
+      logger.warn(ROUTE, 'Invalid sort value', { sort: sortParam });
+      return NextResponse.json(
+        { error: `Invalid sort. Must be one of: ${VALID_SORTS.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    const sort: FeedSort = sortParam as FeedSort;
 
     // --- Resolve tag filter ---
     let tagFilteredPostIds: string[] | null = null;
@@ -103,25 +121,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- Resolve category filter ---
+    // --- Resolve category filter (unknown category -> 400, matches topics API) ---
     let categoryTopicIds: string[] | null = null;
     if (categorySlug) {
       const category = await db.query.categories.findFirst({ where: eq(categories.slug, categorySlug) });
-      if (category) {
-        const rows = await db
-          .select({ id: topics.id })
-          .from(topics)
-          .where(eq(topics.categoryId, category.id));
-        categoryTopicIds = rows.map((r) => r.id);
-      } else {
-        categoryTopicIds = [];
+      if (!category) {
+        logger.warn(ROUTE, 'Category not found', { categorySlug });
+        return NextResponse.json({ error: 'Category not found' }, { status: 400 });
       }
+      const rows = await db
+        .select({ id: topics.id })
+        .from(topics)
+        .where(eq(topics.categoryId, category.id));
+      categoryTopicIds = rows.map((r) => r.id);
     }
 
     // --- Build sort expression ---
     const sortExpr =
       sort === 'new' ? desc(posts.createdAt) :
       sort === 'top' ? desc(posts.upvoteCount) :
+      sort === 'active' ? desc(posts.lastActivityAt) :
       desc(posts.score); // 'hot' default
 
     // --- Guest path ---

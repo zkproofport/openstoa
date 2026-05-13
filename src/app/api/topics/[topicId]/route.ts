@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers, categories } from '@/lib/db/schema';
-import { eq, and, count } from 'drizzle-orm';
+import {
+  topics,
+  topicMembers,
+  categories,
+  posts,
+  comments,
+  records,
+  chatMessages,
+  joinRequests,
+} from '@/lib/db/schema';
+import { eq, and, count, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { buildProofRequirement } from '@/lib/proof-guides';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
@@ -334,6 +343,126 @@ export async function PATCH(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/**
+ * @openapi
+ * /api/topics/{topicId}:
+ *   delete:
+ *     tags: [Topics]
+ *     summary: Delete topic
+ *     description: >-
+ *       Hard-deletes a topic and all related data (posts, comments, records, chat,
+ *       members, join requests). Only the topic owner or a global admin may invoke
+ *       this. The deletion is performed inside a single transaction.
+ *     operationId: deleteTopic
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         description: Topic ID
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Topic deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 deleted:
+ *                   type: boolean
+ *                 topicId:
+ *                   type: string
+ *                   format: uuid
+ *                 deletedPostCount:
+ *                   type: integer
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Not the topic owner or global admin
+ *       404:
+ *         description: Topic not found
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+) {
+  logger.info(ROUTE, 'DELETE request received');
+  try {
+    const session = await getSession(request);
+    if (!session) {
+      logger.warn(ROUTE, 'Unauthenticated DELETE request');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { topicId } = await params;
+
+    const topic = await db.query.topics.findFirst({
+      where: eq(topics.id, topicId),
+    });
+
+    if (!topic) {
+      logger.warn(ROUTE, 'Topic not found for deletion', { topicId });
+      return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    }
+
+    // Authorization: global admin OR topic owner (topicMembers.role = 'owner').
+    // We also accept topic.creatorId === session.userId as owner — creator is
+    // always inserted as 'owner' on POST, but checking both keeps us safe if
+    // the ownership row was ever rewritten manually.
+    const isGlobalAdmin = session.role === 'admin';
+    let isOwner = topic.creatorId === session.userId;
+    if (!isOwner && !isGlobalAdmin) {
+      const membership = await db.query.topicMembers.findFirst({
+        where: and(
+          eq(topicMembers.topicId, topicId),
+          eq(topicMembers.userId, session.userId),
+        ),
+      });
+      isOwner = membership?.role === 'owner';
+    }
+
+    if (!isOwner && !isGlobalAdmin) {
+      logger.warn(ROUTE, 'Unauthorized topic delete attempt', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Only the topic owner or admin can delete this topic' }, { status: 403 });
+    }
+
+    logger.info(ROUTE, 'Deleting topic', { userId: session.userId, topicId, isGlobalAdmin });
+
+    // Resolve all post IDs once so we can clear post-level rows that don't
+    // cascade (comments, records) before deleting the posts themselves.
+    const topicPosts = await db
+      .select({ id: posts.id })
+      .from(posts)
+      .where(eq(posts.topicId, topicId));
+    const postIds = topicPosts.map((p) => p.id);
+
+    await db.transaction(async (tx) => {
+      if (postIds.length > 0) {
+        // comments and records have no FK cascade, clear them first.
+        await tx.delete(comments).where(inArray(comments.postId, postIds));
+        await tx.delete(records).where(inArray(records.postId, postIds));
+        // Deleting posts cascades to polls, postTags, bookmarks, reactions, votes
+        // (and poll_options, poll_votes via polls cascade).
+        await tx.delete(posts).where(eq(posts.topicId, topicId));
+      }
+      await tx.delete(chatMessages).where(eq(chatMessages.topicId, topicId));
+      await tx.delete(joinRequests).where(eq(joinRequests.topicId, topicId));
+      await tx.delete(topicMembers).where(eq(topicMembers.topicId, topicId));
+      // inviteTokens cascade-delete with the topic.
+      await tx.delete(topics).where(eq(topics.id, topicId));
+    });
+
+    logger.info(ROUTE, 'Topic deleted', { userId: session.userId, topicId, deletedPostCount: postIds.length });
+    return NextResponse.json({ deleted: true, topicId, deletedPostCount: postIds.length });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

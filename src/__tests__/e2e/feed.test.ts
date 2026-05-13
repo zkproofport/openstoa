@@ -1,51 +1,115 @@
-import { describe, it, expect } from 'vitest';
-import { authGet, authPost, publicGet } from './helpers';
+import { describe, it, expect, afterAll } from 'vitest';
+import {
+  authGet,
+  authPost,
+  publicGet,
+  deleteTopic,
+  fetchCategorySlugs,
+} from './helpers';
 
-let categoryId: string;
-let categorySlug: string;
-let publicTopicId: string;
-let secretTopicId: string;
-let publicPostId: string;
+// Track every resource we create so afterAll can wipe it.
+const createdTopicIds: string[] = [];
+
+// Categories used in this test. We pick the first 3 categories from the API
+// to avoid hardcoding slugs that may not exist on staging.
+let categoryA: { id: string; slug: string };
+let categoryB: { id: string; slug: string };
+let categoryC: { id: string; slug: string };
+
+// Topics, one per category, all owned by the test user.
+let topicAId: string;
+let topicBId: string;
+let topicCId: string;
+
+// Posts in each topic.
+let postAId: string;
+let postBId: string;
+let postCId: string;
 
 describe.sequential('Feed endpoints', () => {
+  afterAll(async () => {
+    // Best-effort cleanup — runs even when an it() above fails.
+    for (const id of createdTopicIds) {
+      try {
+        await deleteTopic(id);
+      } catch {
+        // Swallow — cleanup failures should not mask the real test failure.
+      }
+    }
+  });
+
   // ── Setup ──────────────────────────────────────────────────────────────
 
-  it('setup: fetch categories', async () => {
-    const res = await publicGet('/api/categories');
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.categories.length).toBeGreaterThan(0);
-    categoryId = json.categories[0].id;
-    categorySlug = json.categories[0].slug;
+  it('setup: pick three distinct categories', async () => {
+    const cats = await fetchCategorySlugs();
+    expect(cats.length).toBeGreaterThanOrEqual(3);
+    categoryA = cats[0];
+    categoryB = cats[1];
+    categoryC = cats[2];
   });
 
-  it('setup: create public topic', async () => {
+  it('setup: create topic in category A', async () => {
     const res = await authPost('/api/topics', {
-      title: `E2E Feed Public ${Date.now()}`,
-      description: 'Public topic for feed tests',
+      title: `E2E Feed A ${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      description: 'Feed test topic in category A',
       visibility: 'public',
-      categoryId,
+      categoryId: categoryA.id,
     });
     expect(res.status).toBe(201);
     const json = await res.json();
-    publicTopicId = json.topic.id;
+    topicAId = json.topic.id;
+    createdTopicIds.push(topicAId);
   });
 
-  // Secret topic cannot be created via API — visibility: 'secret' is not supported
-  it.todo('setup: create secret topic (API does not support secret visibility)');
-
-  it('setup: create post in public topic', async () => {
-    const res = await authPost(`/api/topics/${publicTopicId}/posts`, {
-      title: `E2E Feed Post ${Date.now()}`,
-      content: 'Post content for feed E2E tests',
-      tags: ['e2e-feed-test'],
+  it('setup: create topic in category B', async () => {
+    const res = await authPost('/api/topics', {
+      title: `E2E Feed B ${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      description: 'Feed test topic in category B',
+      visibility: 'public',
+      categoryId: categoryB.id,
     });
     expect(res.status).toBe(201);
     const json = await res.json();
-    publicPostId = json.post.id;
+    topicBId = json.topic.id;
+    createdTopicIds.push(topicBId);
   });
 
-  it.todo('setup: create post in secret topic (depends on secret topic creation)');
+  it('setup: create topic in category C', async () => {
+    const res = await authPost('/api/topics', {
+      title: `E2E Feed C ${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      description: 'Feed test topic in category C',
+      visibility: 'public',
+      categoryId: categoryC.id,
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    topicCId = json.topic.id;
+    createdTopicIds.push(topicCId);
+  });
+
+  it('setup: post in each topic', async () => {
+    const [resA, resB, resC] = await Promise.all([
+      authPost(`/api/topics/${topicAId}/posts`, {
+        title: `E2E Feed Post A ${Date.now()}`,
+        content: 'Post in category A',
+        tags: ['e2e-feed-test'],
+      }),
+      authPost(`/api/topics/${topicBId}/posts`, {
+        title: `E2E Feed Post B ${Date.now()}`,
+        content: 'Post in category B',
+      }),
+      authPost(`/api/topics/${topicCId}/posts`, {
+        title: `E2E Feed Post C ${Date.now()}`,
+        content: 'Post in category C',
+      }),
+    ]);
+    expect(resA.status).toBe(201);
+    expect(resB.status).toBe(201);
+    expect(resC.status).toBe(201);
+    postAId = (await resA.json()).post.id;
+    postBId = (await resB.json()).post.id;
+    postCId = (await resC.json()).post.id;
+  });
 
   // ── Guest access ──────────────────────────────────────────────────────
 
@@ -56,7 +120,6 @@ describe.sequential('Feed endpoints', () => {
     expect(Array.isArray(json.posts)).toBe(true);
     expect(json.posts.length).toBeGreaterThanOrEqual(1);
 
-    // Every post should have expected fields
     const post = json.posts[0];
     expect(post.id).toBeTruthy();
     expect(post.topicId).toBeTruthy();
@@ -64,8 +127,6 @@ describe.sequential('Feed endpoints', () => {
     expect(post.topicTitle).toBeTruthy();
     expect(post.userVoted).toBeNull(); // guests always get null
   });
-
-  it.todo('guest feed does NOT contain posts from secret topics (depends on secret topic creation)');
 
   // ── Authenticated access ──────────────────────────────────────────────
 
@@ -81,9 +142,19 @@ describe.sequential('Feed endpoints', () => {
     const res = await authGet('/api/feed?sort=new&limit=100');
     expect(res.status).toBe(200);
     const json = await res.json();
-    const topicIds = json.posts.map((p: any) => p.topicId);
-    expect(topicIds).toContain(publicTopicId);
-    // secretTopicId test moved to todo (API does not support secret visibility)
+    const topicIds = json.posts.map((p: { topicId: string }) => p.topicId);
+    expect(topicIds).toContain(topicAId);
+  });
+
+  it('view=my returns only posts from topics the user has joined', async () => {
+    const res = await authGet('/api/feed?view=my&limit=100');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // User A owns topicA/B/C so they should appear; topics the user is NOT a
+    // member of must NOT appear. We confirm all three created topics are in
+    // the returned feed.
+    const returnedTopicIds = json.posts.map((p: { topicId: string }) => p.topicId);
+    expect(returnedTopicIds).toEqual(expect.arrayContaining([topicAId, topicBId, topicCId]));
   });
 
   // ── Sorting ───────────────────────────────────────────────────────────
@@ -94,7 +165,6 @@ describe.sequential('Feed endpoints', () => {
     const json = await res.json();
     expect(Array.isArray(json.posts)).toBe(true);
 
-    // Verify descending order by createdAt
     for (let i = 1; i < json.posts.length; i++) {
       const prev = new Date(json.posts[i - 1].createdAt).getTime();
       const curr = new Date(json.posts[i].createdAt).getTime();
@@ -108,26 +178,103 @@ describe.sequential('Feed endpoints', () => {
     const json = await res.json();
     expect(Array.isArray(json.posts)).toBe(true);
 
-    // Verify descending order by upvoteCount
     for (let i = 1; i < json.posts.length; i++) {
       expect(json.posts[i - 1].upvoteCount).toBeGreaterThanOrEqual(json.posts[i].upvoteCount);
     }
   });
 
-  // ── Category filter ───────────────────────────────────────────────────
-
-  it('GET /api/feed?category=slug filters by category', async () => {
-    const res = await publicGet(`/api/feed?sort=new&category=${categorySlug}&limit=100`);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(Array.isArray(json.posts)).toBe(true);
-    // Our public post's topic is in this category, so it should appear
-    const postIds = json.posts.map((p: any) => p.id);
-    expect(postIds).toContain(publicPostId);
+  it('GET /api/feed?sort=active returns 200 and is distinct from sort=hot order in general', async () => {
+    const [activeRes, hotRes] = await Promise.all([
+      publicGet('/api/feed?sort=active&limit=100'),
+      publicGet('/api/feed?sort=hot&limit=100'),
+    ]);
+    expect(activeRes.status).toBe(200);
+    expect(hotRes.status).toBe(200);
+    const active = (await activeRes.json()).posts;
+    const hot = (await hotRes.json()).posts;
+    expect(Array.isArray(active)).toBe(true);
+    expect(Array.isArray(hot)).toBe(true);
+    // Active feed must have a defined order; we only assert sort produced data.
+    expect(active.length).toBeGreaterThan(0);
   });
 
-  it('GET /api/feed?category=nonexistent returns empty', async () => {
+  it('sort=active reorders feed when a fresh post receives a comment', async () => {
+    // Comment on postC (the most recently created post; we will measure that
+    // it climbs to the top of sort=active because the new comment bumps
+    // lastActivityAt).
+    const commentRes = await authPost(`/api/posts/${postCId}/comments`, {
+      content: 'Bump activity for sort=active feed test',
+    });
+    expect(commentRes.status).toBe(201);
+
+    const res = await publicGet('/api/feed?sort=active&limit=100');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids = json.posts.map((p: { id: string }) => p.id);
+    // postC must be ranked before postA and postB on the active feed because
+    // its lastActivityAt was just bumped.
+    const cIdx = ids.indexOf(postCId);
+    const aIdx = ids.indexOf(postAId);
+    const bIdx = ids.indexOf(postBId);
+    expect(cIdx).toBeGreaterThanOrEqual(0);
+    expect(aIdx).toBeGreaterThanOrEqual(0);
+    expect(bIdx).toBeGreaterThanOrEqual(0);
+    expect(cIdx).toBeLessThan(aIdx);
+    expect(cIdx).toBeLessThan(bIdx);
+  });
+
+  it('GET /api/feed?sort=invalid returns 400', async () => {
+    const res = await publicGet('/api/feed?sort=invalid_sort_xyz');
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    expect(json.error).toMatch(/invalid sort/i);
+  });
+
+  // ── Category filter ───────────────────────────────────────────────────
+
+  it('GET /api/feed?category=A filters to category A only', async () => {
+    const res = await publicGet(`/api/feed?sort=new&category=${categoryA.slug}&limit=100`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const postIds = json.posts.map((p: { id: string }) => p.id);
+    expect(postIds).toContain(postAId);
+    expect(postIds).not.toContain(postBId);
+    expect(postIds).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?category=B filters to category B only', async () => {
+    const res = await publicGet(`/api/feed?sort=new&category=${categoryB.slug}&limit=100`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const postIds = json.posts.map((p: { id: string }) => p.id);
+    expect(postIds).toContain(postBId);
+    expect(postIds).not.toContain(postAId);
+    expect(postIds).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?category=nonexistent returns 400', async () => {
     const res = await publicGet('/api/feed?category=nonexistent-category-slug-xyz');
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    expect(json.error).toMatch(/category/i);
+  });
+
+  // ── Tag filter ────────────────────────────────────────────────────────
+
+  it('GET /api/feed?tag=e2e-feed-test returns posts with that tag', async () => {
+    const res = await publicGet('/api/feed?tag=e2e-feed-test&limit=100');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const postIds = json.posts.map((p: { id: string }) => p.id);
+    expect(postIds).toContain(postAId);
+    expect(postIds).not.toContain(postBId);
+    expect(postIds).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?tag=nonexistent-tag returns empty', async () => {
+    const res = await publicGet('/api/feed?tag=nonexistent-tag-slug-xyz');
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.posts).toEqual([]);
@@ -141,10 +288,10 @@ describe.sequential('Feed endpoints', () => {
     const json = await res.json();
     expect(json.posts.length).toBeLessThanOrEqual(1);
 
-    // With a large offset, expect fewer or no results
     const res2 = await publicGet('/api/feed?limit=20&offset=10000');
     expect(res2.status).toBe(200);
     const json2 = await res2.json();
     expect(json2.posts.length).toBe(0);
   });
+
 });

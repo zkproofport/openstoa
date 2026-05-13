@@ -121,7 +121,7 @@ export async function POST(
         const delta = value === 1 ? -1 : 1;
         const [result] = await db
           .update(posts)
-          .set({ upvoteCount: sql`${posts.upvoteCount} + ${delta}` })
+          .set({ upvoteCount: sql`${posts.upvoteCount} + ${delta}`, lastActivityAt: new Date() })
           .where(eq(posts.id, postId))
           .returning({ upvoteCount: posts.upvoteCount });
 
@@ -144,7 +144,7 @@ export async function POST(
         const delta = value === 1 ? 2 : -2;
         const [result] = await db
           .update(posts)
-          .set({ upvoteCount: sql`${posts.upvoteCount} + ${delta}` })
+          .set({ upvoteCount: sql`${posts.upvoteCount} + ${delta}`, lastActivityAt: new Date() })
           .where(eq(posts.id, postId))
           .returning({ upvoteCount: posts.upvoteCount });
 
@@ -164,7 +164,7 @@ export async function POST(
       const delta = value === 1 ? 1 : -1;
       const [result] = await db
         .update(posts)
-        .set({ upvoteCount: sql`${posts.upvoteCount} + ${delta}` })
+        .set({ upvoteCount: sql`${posts.upvoteCount} + ${delta}`, lastActivityAt: new Date() })
         .where(eq(posts.id, postId))
         .returning({ upvoteCount: posts.upvoteCount });
 

@@ -182,6 +182,8 @@ export async function POST(
             eq(reactions.emoji, emoji),
           ),
         );
+      // Bump lastActivityAt — toggling a reaction is still an activity signal.
+      await db.update(posts).set({ lastActivityAt: new Date() }).where(eq(posts.id, postId));
       logger.info(ROUTE, 'Reaction removed', { userId: session.userId, postId, emoji });
       return NextResponse.json({ added: false });
     } else {
@@ -191,6 +193,8 @@ export async function POST(
         postId,
         emoji,
       });
+      // Bump lastActivityAt — new reaction is an activity signal for sort=active.
+      await db.update(posts).set({ lastActivityAt: new Date() }).where(eq(posts.id, postId));
       logger.info(ROUTE, 'Reaction added', { userId: session.userId, postId, emoji });
       return NextResponse.json({ added: true });
     }
