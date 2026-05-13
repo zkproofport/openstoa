@@ -404,6 +404,11 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           <PostContent
             content={stripVideoUrls(rawContent)}
             maxLines={expanded ? undefined : PREVIEW_LINES}
+            // MediaGallery renders inline images separately below, so the
+            // body text path must NOT also render legacy `<img>` tags or
+            // they show up twice (small inline copy on top, full-width
+            // gallery copy below).
+            omitImages
           />
         ) : null}
       </TouchableOpacity>

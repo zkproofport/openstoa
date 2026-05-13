@@ -863,6 +863,9 @@ export function PostDetailScreen() {
     );
   }
 
+  const isGuest = !sessionUserId;
+  const isAuthor = !!(sessionUserId && post && sessionUserId === post.authorId);
+
   if (postError || !post) {
     return (
       <View style={styles.centered}>
@@ -873,14 +876,17 @@ export function PostDetailScreen() {
     );
   }
 
-  const isGuest = !sessionUserId;
-  const isAuthor = !!(sessionUserId && sessionUserId === post.authorId);
-
   // Author-only kebab menu: edit (locked once the post is on-chain) +
   // soft delete. Uses ActionSheetIOS on iOS and a stacked Alert on
   // Android to stay native-feeling without pulling in an extra modal lib.
+  // NOTE: `post` is non-null below this line — the early return above
+  // already guarded against undefined. We snapshot the fields we need so
+  // the handler doesn't dereference `post` directly (TS narrowing inside
+  // a closure was getting noisy after the early-return refactor).
   const canEdit = isAuthor && recordCount === 0;
-  const openAuthorMenu = useCallback(() => {
+  const postTopicId = post.topicId;
+  const postTopicTitle = post.topicTitle;
+  const openAuthorMenu = () => {
     const options: string[] = [];
     const handlers: (() => void)[] = [];
     if (canEdit) {
@@ -888,7 +894,7 @@ export function PostDetailScreen() {
       handlers.push(() =>
         (navigation as unknown as { navigate: (n: string, p: object) => void }).navigate(
           'PostCreate',
-          { topicId: post.topicId, topicTitle: post.topicTitle, editPostId: postId },
+          { topicId: postTopicId, topicTitle: postTopicTitle, editPostId: postId },
         ),
       );
     } else if (isAuthor && recordCount > 0) {
@@ -914,7 +920,7 @@ export function PostDetailScreen() {
               try {
                 await client.delete(`/api/posts/${postId}`);
                 queryClient.invalidateQueries({ queryKey: ['feed'] });
-                queryClient.invalidateQueries({ queryKey: ['topic', post.topicId, 'posts'] });
+                queryClient.invalidateQueries({ queryKey: ['topic', postTopicId, 'posts'] });
                 navigation.goBack();
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -944,7 +950,7 @@ export function PostDetailScreen() {
         { text: cancelLabel, style: 'cancel' as const },
       ]);
     }
-  }, [canEdit, isAuthor, recordCount, navigation, postId, post.topicId, post.topicTitle, t, client, queryClient]);
+  };
 
   // ---------------------------------------------------------------------------
   // FlatList header = full post body
@@ -1037,7 +1043,7 @@ export function PostDetailScreen() {
       {/* ── Body (video URLs stripped from legacy posts; inline images
               rendered by PostContent for back-compat) ── */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-        <PostContent content={stripVideoUrls(post.content ?? '')} />
+        <PostContent content={stripVideoUrls(post.content ?? '')} omitImages />
       </View>
 
       {/* ── Unified media block — swipeable image carousel + every video
@@ -1047,7 +1053,22 @@ export function PostDetailScreen() {
               the feed card only plays the first. ── */}
       <View style={{ paddingHorizontal: 16 }}>
         <MediaGallery
-          images={post.media?.images ?? []}
+          // Union explicit `post.media.images` with any legacy `<img>` tags
+          // still buried inside `content`. Old posts only carry images via
+          // the HTML body; new posts carry them in `media.images`. Dedupe
+          // by URL so a post migrated mid-flight doesn't double-render.
+          images={(() => {
+            const fromMedia = post.media?.images ?? [];
+            const fromContent = extractMediaItems(post.content ?? '')
+              .filter((m) => m.type === 'image')
+              .map((m) => m.src);
+            const seen = new Set<string>();
+            return [...fromMedia, ...fromContent].filter((u) => {
+              if (seen.has(u)) return false;
+              seen.add(u);
+              return true;
+            });
+          })()}
           videos={videoItems.map((v) =>
             v.type === 'youtube'
               ? `https://youtu.be/${v.src}`
