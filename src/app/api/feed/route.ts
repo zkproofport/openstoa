@@ -7,6 +7,7 @@ import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verifica
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts } from '@/lib/polls';
+import { attachTagsToPosts } from '@/lib/postTags';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/feed';
@@ -179,6 +180,7 @@ export async function GET(request: NextRequest) {
 
       const guestPostsWithReactions = await attachReactionsToPosts(guestPostsWithBadges, null);
       await attachPollsToPosts(guestPostsWithReactions, null);
+      await attachTagsToPosts(guestPostsWithReactions);
 
       logger.info(ROUTE, 'Guest feed fetched', { count: feedPosts.length });
       return NextResponse.json({ posts: guestPostsWithReactions });
@@ -253,6 +255,7 @@ export async function GET(request: NextRequest) {
     const authWithFlags = await attachUserFlagsToPosts(authPostsWithBadges, session.userId);
     const authPostsWithReactions = await attachReactionsToPosts(authWithFlags, session.userId);
     await attachPollsToPosts(authPostsWithReactions, session.userId);
+    await attachTagsToPosts(authPostsWithReactions);
 
     logger.info(ROUTE, 'Authenticated feed fetched', { userId: session.userId, count: feedPosts.length });
     return NextResponse.json({ posts: authPostsWithReactions });
