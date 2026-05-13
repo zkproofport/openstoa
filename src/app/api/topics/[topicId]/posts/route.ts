@@ -192,6 +192,7 @@ export async function GET(
           authorId: posts.authorId,
           title: posts.title,
           content: posts.content,
+          media: posts.media,
           createdAt: posts.createdAt,
           updatedAt: posts.updatedAt,
           authorNickname: users.nickname,
@@ -292,6 +293,7 @@ export async function GET(
         authorId: posts.authorId,
         title: posts.title,
         content: posts.content,
+        media: posts.media,
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
@@ -372,7 +374,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { title, content, tags: tagNames } = body;
+    const { title, content, tags: tagNames, media: mediaIn } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title', { userId: session.userId, topicId });
@@ -386,6 +388,24 @@ export async function POST(
     // Extract base64 images from content and upload to R2
     const processedContent = await extractAndUploadBase64Images(content, session.userId);
 
+    // Normalise media payload: accept { images?: string[], videos?: string[] }
+    // and discard anything else. Null when neither array has any entries so the
+    // column stays NULL (cheaper to query, signals "no attachments" cleanly).
+    const media = (() => {
+      if (!mediaIn || typeof mediaIn !== 'object') return null;
+      const images = Array.isArray(mediaIn.images)
+        ? (mediaIn.images as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
+        : [];
+      const videos = Array.isArray(mediaIn.videos)
+        ? (mediaIn.videos as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
+        : [];
+      if (images.length === 0 && videos.length === 0) return null;
+      return {
+        ...(images.length > 0 ? { images } : {}),
+        ...(videos.length > 0 ? { videos } : {}),
+      };
+    })();
+
     logger.info(ROUTE, 'Creating post', { userId: session.userId, topicId, title });
 
     const [post] = await db
@@ -395,6 +415,7 @@ export async function POST(
         authorId: session.userId,
         title,
         content: processedContent,
+        media,
         isAI: session.isAI ?? false,
       })
       .returning();

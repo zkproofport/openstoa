@@ -36,6 +36,13 @@
       "when": 1775562022183,
       "tag": "0004_wandering_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778645962403,
+      "tag": "0005_spotty_lilith",
+      "breakpoints": true
     }
   ]
 }

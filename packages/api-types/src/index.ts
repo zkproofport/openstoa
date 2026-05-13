@@ -49,8 +49,11 @@ export interface Topic {
 }
 
 export interface PostMedia {
+  /** R2 public URLs for attached images. */
   images?: string[];
-  embeds?: { type: string; url: string; videoId?: string }[];
+  /** YouTube / Vimeo URLs attached separately from `content`. The renderer
+   *  derives videoId + provider from the URL on display. */
+  videos?: string[];
 }
 
 export interface Post {

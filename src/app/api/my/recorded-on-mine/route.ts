@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
         authorId: posts.authorId,
         title: posts.title,
         content: posts.content,
+        media: posts.media,
         createdAt: posts.createdAt,
         authorNickname: users.nickname,
         authorProfileImage: users.profileImage,
