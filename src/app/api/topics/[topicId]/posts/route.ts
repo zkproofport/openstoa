@@ -431,9 +431,22 @@ export async function POST(
       logger.warn(ROUTE, 'Missing title', { userId: session.userId, topicId });
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
+    if (title.length > 200) {
+      return NextResponse.json({ error: 'Title must be 200 characters or less' }, { status: 400 });
+    }
     if (!content || typeof content !== 'string') {
       logger.warn(ROUTE, 'Missing content', { userId: session.userId, topicId });
       return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+    }
+    // 50,000 chars (~200KB UTF-8 worst case). Big enough for long-form
+    // posts; small enough that ilike search stays cheap and a single
+    // payload can't degrade the topic detail render.
+    const MAX_CONTENT_LENGTH = 50_000;
+    if (content.length > MAX_CONTENT_LENGTH) {
+      return NextResponse.json(
+        { error: `Content must be ${MAX_CONTENT_LENGTH} characters or less` },
+        { status: 400 },
+      );
     }
 
     // Extract base64 images from content and upload to R2

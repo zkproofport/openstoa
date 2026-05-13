@@ -104,6 +104,15 @@ export async function POST(
         { status: 400 },
       );
     }
+    // Comments are much smaller than posts; cap at 10k chars to keep them
+    // legible and bound DB storage / payload size.
+    const MAX_COMMENT_LENGTH = 10_000;
+    if (content.length > MAX_COMMENT_LENGTH) {
+      return NextResponse.json(
+        { error: `Comment must be ${MAX_COMMENT_LENGTH} characters or less` },
+        { status: 400 },
+      );
+    }
 
     const [comment] = await db
       .insert(comments)

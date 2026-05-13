@@ -645,10 +645,22 @@ export async function PATCH(
     };
 
     if (title !== undefined && typeof title === 'string') {
+      if (title.length > 200) {
+        return NextResponse.json({ error: 'Title must be 200 characters or less' }, { status: 400 });
+      }
       updateData.title = title;
     }
 
     if (content !== undefined && typeof content === 'string') {
+      // Server-side parity with the POST cap. Bigger payloads are cheap to
+      // reject up front and keep `?q=` search predictable.
+      const MAX_CONTENT_LENGTH = 50_000;
+      if (content.length > MAX_CONTENT_LENGTH) {
+        return NextResponse.json(
+          { error: `Content must be ${MAX_CONTENT_LENGTH} characters or less` },
+          { status: 400 },
+        );
+      }
       // Extract base64 images from content and upload to R2
       updateData.content = await extractAndUploadBase64Images(content, session.userId);
     }

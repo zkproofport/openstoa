@@ -9,6 +9,7 @@ import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts } from '@/lib/polls';
 import { attachTagsToPosts } from '@/lib/postTags';
 import { logger } from '@/lib/logger';
+import { normaliseSearchQuery } from '@/lib/search';
 
 const ROUTE = '/api/feed';
 
@@ -101,8 +102,7 @@ export async function GET(request: NextRequest) {
     const tagSlug = url.searchParams.get('tag') ?? null;
     const categorySlug = url.searchParams.get('category') ?? null;
     const view = url.searchParams.get('view') ?? null; // 'my' = only joined topics
-    const qRaw = url.searchParams.get('q')?.trim() ?? '';
-    const q = qRaw.length > 0 ? qRaw.slice(0, 200) : null;
+    const qPattern = normaliseSearchQuery(url.searchParams.get('q'));
 
     // --- Validate sort against whitelist (no silent fallback) ---
     if (!VALID_SORTS.includes(sortParam as FeedSort)) {
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ posts: [] });
       }
 
-      const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, q);
+      const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, qPattern);
 
       const feedPosts = await db
         .select({
@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ posts: [] });
     }
 
-    const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, q);
+    const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, qPattern);
 
     const feedPosts = await db
       .select({
@@ -353,7 +353,7 @@ async function resolveAccessibleTopicIds(userId: string, categoryTopicIds: strin
 function buildWhereConditions(
   accessibleTopicIds: string[],
   tagFilteredPostIds: string[] | null,
-  q: string | null,
+  qPattern: string | null,
 ) {
   const clauses: ReturnType<typeof inArray>[] = [inArray(posts.topicId, accessibleTopicIds)];
 
@@ -364,9 +364,8 @@ function buildWhereConditions(
     clauses.push(inArray(posts.id, tagFilteredPostIds));
   }
 
-  if (q) {
-    const pattern = `%${q}%`;
-    clauses.push(or(ilike(posts.title, pattern), ilike(posts.content, pattern))!);
+  if (qPattern) {
+    clauses.push(or(ilike(posts.title, qPattern), ilike(posts.content, qPattern))!);
   }
 
   return and(...clauses);

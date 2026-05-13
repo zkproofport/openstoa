@@ -404,6 +404,198 @@ describe.sequential('Feed endpoints', () => {
     for (const id of [postAId, postBId, postCId]) expect(ids).toContain(id);
   });
 
+  // ── Search hard content / hostile inputs ──────────────────────────────
+
+  it('GET /api/feed?q escapes ilike wildcard `%` (otherwise everything matches)', async () => {
+    // `%` is the ilike "match anything" wildcard. If not escaped, this
+    // query would match every row containing any character — i.e. return
+    // the full feed. With escape, it must match ZERO rows because none of
+    // our feed posts contain a literal `%`.
+    const res = await publicGet(`/api/feed?q=${encodeURIComponent('%')}&limit=10`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // It might match other staging rows that *do* contain a literal `%`,
+    // but it must NOT contain our 3 test posts (none of them have `%`).
+    const ids: string[] = json.posts.map((p: { id: string }) => p.id);
+    expect(ids).not.toContain(postAId);
+    expect(ids).not.toContain(postBId);
+    expect(ids).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?q escapes ilike wildcard `_` (single-char wildcard)', async () => {
+    const res = await publicGet(`/api/feed?q=${encodeURIComponent('_')}&limit=10`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.posts.map((p: { id: string }) => p.id);
+    // Our test posts have no literal underscore. The unescaped `_` would
+    // match every single-character substring (i.e. everything).
+    expect(ids).not.toContain(postAId);
+    expect(ids).not.toContain(postBId);
+    expect(ids).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?q rejects SQL-injection-style strings by simply matching nothing', async () => {
+    // Drizzle uses parameterised queries so this can't be SQL injection.
+    // The probe just confirms the response is a normal 200 with results
+    // limited to actual literal matches.
+    const probe = `'; DROP TABLE posts; --`;
+    const res = await publicGet(`/api/feed?q=${encodeURIComponent(probe)}&limit=10`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.posts.map((p: { id: string }) => p.id);
+    expect(ids).not.toContain(postAId);
+    expect(ids).not.toContain(postBId);
+    expect(ids).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?q handles emoji in the query string', async () => {
+    // Post content for B is enriched with an emoji below in setup; the
+    // emoji is part of FEED_UTF8 → here we just confirm emoji bytes don't
+    // crash the route (the substantive emoji match is exercised by the
+    // dedicated emoji-content post below).
+    const res = await publicGet(`/api/feed?q=${encodeURIComponent('🔥')}&limit=10`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  it('GET /api/feed?q caps very long queries (DoS guard)', async () => {
+    // 2,000 chars; the server clips to 200 internally so this should NOT
+    // explode and should return 200.
+    const long = 'a'.repeat(2_000);
+    const res = await publicGet(`/api/feed?q=${long}&limit=5`);
+    expect(res.status).toBe(200);
+  });
+});
+
+// ── Hard-content post creation + search ───────────────────────────────
+//
+// A second describe block exercises post creation with hostile content
+// (HTML / SQL-injection-like text / emoji / very-long content) and then
+// asserts `?q=` finds them by literal substring. Keeping these in their
+// own block avoids polluting the main fixture set used by the rest of
+// the feed tests.
+
+describe.sequential('Feed search — hard content', () => {
+  const createdTopicIds: string[] = [];
+  let topicId: string;
+  let categoryA2: { id: string; slug: string };
+  let postHtmlId: string;
+  let postSqlId: string;
+  let postEmojiId: string;
+  let postLongId: string;
+  let longStamp: string;
+
+  afterAll(async () => {
+    for (const id of createdTopicIds) {
+      try { await deleteTopic(id); } catch { /* swallow */ }
+    }
+  });
+
+  it('setup: create dedicated topic', async () => {
+    const cats = await fetchCategorySlugs();
+    categoryA2 = cats[0];
+    const res = await authPost('/api/topics', {
+      title: `E2E Feed Hard ${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      description: 'Hard-content feed search suite',
+      visibility: 'public',
+      categoryId: categoryA2.id,
+    });
+    expect(res.status).toBe(201);
+    topicId = (await res.json()).topic.id;
+    createdTopicIds.push(topicId);
+  });
+
+  it('setup: create HTML-ish, SQL-ish, emoji, and long-content posts', async () => {
+    longStamp = `hardq${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+
+    const html = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `HTML probe ${longStamp}`,
+      content: `<script>alert("xss")</script> raw html marker ${longStamp}`,
+    });
+    expect(html.status).toBe(201);
+    postHtmlId = (await html.json()).post.id;
+
+    const sqlish = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `SQL probe ${longStamp}`,
+      content: `'; DROP TABLE posts; -- safe-marker ${longStamp}`,
+    });
+    expect(sqlish.status).toBe(201);
+    postSqlId = (await sqlish.json()).post.id;
+
+    const emoji = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `Emoji probe ${longStamp}`,
+      content: `🔥💧🌊 emoji-marker ${longStamp}`,
+    });
+    expect(emoji.status).toBe(201);
+    postEmojiId = (await emoji.json()).post.id;
+
+    // Long content: 10,000 chars (well under 50k server cap) with a
+    // unique marker buried in the middle.
+    const filler = 'lorem '.repeat(1_500);
+    const long = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `Long probe ${longStamp}`,
+      content: `${filler}MIDDLE_MARKER_${longStamp}${filler}`,
+    });
+    expect(long.status).toBe(201);
+    postLongId = (await long.json()).post.id;
+  });
+
+  it('rejects content > 50,000 chars with 400 (server cap)', async () => {
+    const tooLong = 'x'.repeat(50_001);
+    const res = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `oversize ${Date.now()}`,
+      content: tooLong,
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/content/i);
+  });
+
+  it('rejects title > 200 chars with 400', async () => {
+    const res = await authPost(`/api/topics/${topicId}/posts`, {
+      title: 'a'.repeat(201),
+      content: 'normal',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('?q matches inside an HTML <script> string (content stored as plain text)', async () => {
+    const res = await publicGet(
+      `/api/feed?q=${encodeURIComponent('alert("xss")')}&limit=50`,
+    );
+    expect(res.status).toBe(200);
+    const ids: string[] = (await res.json()).posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(postHtmlId);
+  });
+
+  it('?q matches inside a SQL-injection-shaped string', async () => {
+    const res = await publicGet(
+      `/api/feed?q=${encodeURIComponent('DROP TABLE posts')}&limit=50`,
+    );
+    expect(res.status).toBe(200);
+    const ids: string[] = (await res.json()).posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(postSqlId);
+  });
+
+  it('?q matches emoji inside content', async () => {
+    const res = await publicGet(
+      `/api/feed?q=${encodeURIComponent('🔥💧🌊')}&limit=50`,
+    );
+    expect(res.status).toBe(200);
+    const ids: string[] = (await res.json()).posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(postEmojiId);
+  });
+
+  it('?q matches a unique marker buried in a long body (10k chars)', async () => {
+    const res = await publicGet(
+      `/api/feed?q=${encodeURIComponent('MIDDLE_MARKER_' + longStamp)}&limit=50`,
+    );
+    expect(res.status).toBe(200);
+    const ids: string[] = (await res.json()).posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(postLongId);
+  });
+
   // ── Pagination ────────────────────────────────────────────────────────
 
   it('GET /api/feed respects limit and offset', async () => {
@@ -417,5 +609,4 @@ describe.sequential('Feed endpoints', () => {
     const json2 = await res2.json();
     expect(json2.posts.length).toBe(0);
   });
-
 });
