@@ -417,9 +417,17 @@ export async function POST(
     // Extract base64 images from content and upload to R2
     const processedContent = await extractAndUploadBase64Images(content, session.userId);
 
+    // Server-side caps mirror the mobile composer so an AI / CLI / direct
+    // API client can't bypass them. Returning 400 with a specific error
+    // message means E2E tests and AI agents can recover gracefully.
+    const MAX_IMAGES = 10;
+    const MAX_VIDEOS = 3;
+    const MAX_TAGS = 5;
+
     // Normalise media payload: accept { images?: string[], videos?: string[] }
     // and discard anything else. Null when neither array has any entries so the
     // column stays NULL (cheaper to query, signals "no attachments" cleanly).
+    let mediaParseError: string | null = null;
     const media = (() => {
       if (!mediaIn || typeof mediaIn !== 'object') return null;
       const images = Array.isArray(mediaIn.images)
@@ -428,12 +436,29 @@ export async function POST(
       const videos = Array.isArray(mediaIn.videos)
         ? (mediaIn.videos as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
         : [];
+      if (images.length > MAX_IMAGES) {
+        mediaParseError = `Too many images (max ${MAX_IMAGES})`;
+        return null;
+      }
+      if (videos.length > MAX_VIDEOS) {
+        mediaParseError = `Too many videos (max ${MAX_VIDEOS})`;
+        return null;
+      }
       if (images.length === 0 && videos.length === 0) return null;
       return {
         ...(images.length > 0 ? { images } : {}),
         ...(videos.length > 0 ? { videos } : {}),
       };
     })();
+    if (mediaParseError) {
+      return NextResponse.json({ error: mediaParseError }, { status: 400 });
+    }
+    if (Array.isArray(tagNames) && tagNames.length > MAX_TAGS) {
+      return NextResponse.json(
+        { error: `Too many tags (max ${MAX_TAGS})` },
+        { status: 400 },
+      );
+    }
 
     logger.info(ROUTE, 'Creating post', { userId: session.userId, topicId, title });
 

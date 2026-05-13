@@ -623,8 +623,15 @@ export async function PATCH(
       updateData.content = await extractAndUploadBase64Images(content, session.userId);
     }
 
+    const MAX_IMAGES = 10;
+    const MAX_VIDEOS = 3;
+    const MAX_TAGS = 5;
+
     if (mediaIn !== undefined) {
-      // Normalise the same way the POST route does — null when both arrays empty.
+      // Normalise the same way the POST route does — null when both arrays
+      // empty. Server-side caps mirror the mobile composer so an AI / CLI
+      // client can't bypass them.
+      let mediaErr: string | null = null;
       const normalisedMedia = (() => {
         if (!mediaIn || typeof mediaIn !== 'object') return null;
         const images = Array.isArray(mediaIn.images)
@@ -633,13 +640,30 @@ export async function PATCH(
         const videos = Array.isArray(mediaIn.videos)
           ? (mediaIn.videos as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
           : [];
+        if (images.length > MAX_IMAGES) {
+          mediaErr = `Too many images (max ${MAX_IMAGES})`;
+          return null;
+        }
+        if (videos.length > MAX_VIDEOS) {
+          mediaErr = `Too many videos (max ${MAX_VIDEOS})`;
+          return null;
+        }
         if (images.length === 0 && videos.length === 0) return null;
         return {
           ...(images.length > 0 ? { images } : {}),
           ...(videos.length > 0 ? { videos } : {}),
         };
       })();
+      if (mediaErr) {
+        return NextResponse.json({ error: mediaErr }, { status: 400 });
+      }
       updateData.media = normalisedMedia;
+    }
+    if (Array.isArray(tagNames) && tagNames.length > MAX_TAGS) {
+      return NextResponse.json(
+        { error: `Too many tags (max ${MAX_TAGS})` },
+        { status: 400 },
+      );
     }
 
     // Update the post

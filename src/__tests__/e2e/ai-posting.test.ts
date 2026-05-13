@@ -198,3 +198,234 @@ describe('AI posting flow (Bearer token)', () => {
     }
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────
+// Combinatorial coverage — happy-path is in the first describe block.
+// These suites exercise the shape variants AI/CLI agents actually hit:
+//   - text-only
+//   - text + images
+//   - text + images + videos
+//   - text + poll
+//   - text + tags (and the empty-tags case — tags are optional)
+//   - legacy HTML content path (back-compat)
+// Plus the error paths: over-limit media, over-limit tags, missing
+// fields. Every test asserts BOTH the API status code and the user-
+// facing error message so the client side has something stable to
+// localize.
+// ──────────────────────────────────────────────────────────────────────
+describe('AI posting flow — shape variants', () => {
+  let token: string;
+  let call: ReturnType<typeof withToken>;
+  let topicId: string;
+
+  beforeAll(async () => {
+    const session = await devLogin(`ai_variants_${TS}`);
+    token = session.token;
+    call = withToken(token);
+    const topicRes = await call('POST', '/api/topics', {
+      title: `AI Variants Topic ${TS}`,
+      description: 'shape-variant coverage',
+      visibility: 'public',
+      proofType: 'none',
+    });
+    expect(topicRes.status).toBe(201);
+    topicId = (await topicRes.json()).topic.id;
+  });
+
+  it('text-only post (no media, no tags, no poll)', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `text-only ${TS}`,
+      content: 'plain body, nothing else',
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.post.media).toBeFalsy();
+    expect(json.post.poll).toBeFalsy();
+  });
+
+  it('text + images only', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `text+images ${TS}`,
+      content: 'with two images',
+      media: { images: [IMG_A, IMG_B] },
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.post.media).toEqual({ images: [IMG_A, IMG_B] });
+  });
+
+  it('text + images + videos', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `text+images+videos ${TS}`,
+      content: 'all three',
+      media: { images: [IMG_A], videos: [YT_URL] },
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.post.media).toEqual({ images: [IMG_A], videos: [YT_URL] });
+  });
+
+  it('text + poll only (no media)', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `text+poll ${TS}`,
+      content: 'vote here',
+      poll: {
+        question: 'Tabs or spaces?',
+        options: ['Tabs', 'Spaces'],
+        multipleChoice: false,
+      },
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.post.poll?.options).toHaveLength(2);
+    expect(json.post.poll?.multipleChoice).toBe(false);
+  });
+
+  it('text + tags', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `text+tags ${TS}`,
+      content: 'tagged',
+      tags: ['alpha', 'beta'],
+    });
+    expect(res.status).toBe(201);
+    const detail = await call('GET', `/api/posts/${(await res.json()).post.id}`);
+    const detailJson = await detail.json();
+    expect(detailJson.post.tags.map((t: { slug: string }) => t.slug)).toEqual(
+      expect.arrayContaining(['alpha', 'beta']),
+    );
+  });
+
+  it('empty tags array is allowed (tags are optional)', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `empty-tags ${TS}`,
+      content: 'no tags',
+      tags: [],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('legacy HTML content with inline <img> still works (back-compat)', async () => {
+    const html = `<p>An image:</p><img src="https://placehold.co/200" alt="legacy">`;
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `legacy-html ${TS}`,
+      content: html,
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.post.content).toContain('placehold.co/200');
+  });
+
+  it('text + media + videos + poll + tags — full combo', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: `full-combo ${TS}`,
+      content: 'everything at once',
+      tags: ['combo'],
+      media: { images: [IMG_A], videos: [YT_URL] },
+      poll: {
+        options: ['Yes', 'No', 'Maybe'],
+        multipleChoice: true,
+      },
+    });
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.post.media).toEqual({ images: [IMG_A], videos: [YT_URL] });
+    expect(json.post.poll?.options).toHaveLength(3);
+    expect(json.post.poll?.multipleChoice).toBe(true);
+  });
+});
+
+describe('AI posting flow — error handling', () => {
+  let token: string;
+  let call: ReturnType<typeof withToken>;
+  let topicId: string;
+
+  beforeAll(async () => {
+    token = (await devLogin(`ai_errors_${TS}`)).token;
+    call = withToken(token);
+    const topicRes = await call('POST', '/api/topics', {
+      title: `AI Errors Topic ${TS}`,
+      description: 'error-path coverage',
+      visibility: 'public',
+      proofType: 'none',
+    });
+    topicId = (await topicRes.json()).topic.id;
+  });
+
+  it('rejects missing title (400)', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      content: 'no title',
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/title/i);
+  });
+
+  it('rejects missing content (400)', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: 'no content',
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/content/i);
+  });
+
+  it('rejects over-limit images (400, max 10)', async () => {
+    const images = Array.from({ length: 11 }, (_, i) =>
+      `https://placehold.co/150?seed=${i}`,
+    );
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: 'too many images',
+      content: 'over the cap',
+      media: { images },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/images.*max 10/i);
+  });
+
+  it('rejects over-limit videos (400, max 3)', async () => {
+    const videos = Array.from({ length: 4 }, (_, i) =>
+      `https://www.youtube.com/watch?v=abcdefghij${i}`,
+    );
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: 'too many videos',
+      content: 'over the cap',
+      media: { videos },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/videos.*max 3/i);
+  });
+
+  it('rejects over-limit tags (400, max 5)', async () => {
+    const res = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: 'too many tags',
+      content: 'over the cap',
+      tags: ['a', 'b', 'c', 'd', 'e', 'f'],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/tags.*max 5/i);
+  });
+
+  it('rejects unauthenticated POST (401)', async () => {
+    const res = await fetch(`${getBaseUrl()}/api/topics/${topicId}/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'anon', content: 'no token' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects PATCH over-limit on edit (400)', async () => {
+    // First create a baseline post, then try to swap in 11 images.
+    const createRes = await call('POST', `/api/topics/${topicId}/posts`, {
+      title: 'patch baseline',
+      content: 'starts small',
+    });
+    const postId = (await createRes.json()).post.id;
+    const images = Array.from({ length: 11 }, (_, i) =>
+      `https://placehold.co/150?seed=${i}`,
+    );
+    const patchRes = await call('PATCH', `/api/posts/${postId}`, {
+      media: { images },
+    });
+    expect(patchRes.status).toBe(400);
+    expect((await patchRes.json()).error).toMatch(/images.*max 10/i);
+  });
+});
