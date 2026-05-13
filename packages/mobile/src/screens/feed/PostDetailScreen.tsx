@@ -1053,22 +1053,12 @@ export function PostDetailScreen() {
               the feed card only plays the first. ── */}
       <View style={{ paddingHorizontal: 16 }}>
         <MediaGallery
-          // Union explicit `post.media.images` with any legacy `<img>` tags
-          // still buried inside `content`. Old posts only carry images via
-          // the HTML body; new posts carry them in `media.images`. Dedupe
-          // by URL so a post migrated mid-flight doesn't double-render.
-          images={(() => {
-            const fromMedia = post.media?.images ?? [];
-            const fromContent = extractMediaItems(post.content ?? '')
-              .filter((m) => m.type === 'image')
-              .map((m) => m.src);
-            const seen = new Set<string>();
-            return [...fromMedia, ...fromContent].filter((u) => {
-              if (seen.has(u)) return false;
-              seen.add(u);
-              return true;
-            });
-          })()}
+          // Detail image policy mirrors the feed card: PostContent already
+          // renders legacy `<img>` tags inline above, so the gallery is
+          // restricted to the explicit `post.media.images` source to
+          // avoid double-fetching the same URL twice (which produced two
+          // different pictures for randomized hosts like picsum.photos).
+          images={post.media?.images ?? []}
           videos={videoItems.map((v) =>
             v.type === 'youtube'
               ? `https://youtu.be/${v.src}`

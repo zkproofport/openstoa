@@ -428,21 +428,25 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           `post.media.{images,videos}` directly; legacy posts where media
           URLs were inlined in `content` still extract via mediaItems and
           are merged in. */}
+      {/* Feed card image policy:
+            - Legacy posts: images are inlined inside `content` (`<img>`)
+              and PostContent renders them — DO NOT duplicate them in the
+              gallery, that was the picsum.photos "two different copies"
+              divergence we already hit once.
+            - New posts: `post.media.images` is the only image source —
+              PostContent has no <img> tags to render, gallery is the
+              only renderer.
+          Videos always go through MediaGallery (`feed` mode = first one
+          + "+N" badge) since they never render inline. */}
+      {(post.media?.images?.length ?? 0) > 0 ? (
+        <MediaGallery
+          images={post.media!.images!}
+          mode="feed"
+          horizontalPadding={32}
+        />
+      ) : null}
       <MediaGallery
-        // mediaItems already unions+dedupes `post.media.videos` with any
-        // YT/Vimeo URLs hiding inside legacy HTML `content`, so just feed
-        // that single source through to avoid the post-detail double-embed
-        // bug we hit when the same URL came in from both sides.
-        images={(() => {
-          const fromMedia = post.media?.images ?? [];
-          const fromContent = mediaItems.filter((m) => m.type === 'image').map((m) => m.src);
-          const seen = new Set<string>();
-          return [...fromMedia, ...fromContent].filter((u) => {
-            if (seen.has(u)) return false;
-            seen.add(u);
-            return true;
-          });
-        })()}
+        images={[]}
         videos={mediaItems
           .filter((m) => m.type === 'youtube' || m.type === 'vimeo')
           .map((m) => (m.type === 'youtube' ? `https://youtu.be/${m.src}` : `https://vimeo.com/${m.src}`))}
