@@ -43,6 +43,42 @@ export interface PostCardPost {
   isAI?: boolean;
   /** Phase B poll block (optional). Hydrated by `attachPollsToPosts`. */
   poll?: Poll | null;
+  /** Tag chip row — appears between media/poll and the action bar. */
+  tags?: Array<{ name: string; slug: string }>;
+}
+
+// ─── Tag chip row ────────────────────────────────────────────────────────────
+function TagChipRow({ tags }: { tags: Array<{ name: string; slug: string }> }) {
+  if (!tags || tags.length === 0) return null;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 4,
+        marginTop: 8,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {tags.map((t) => (
+        <span
+          key={t.slug}
+          style={{
+            background: 'rgba(59,130,246,0.08)',
+            color: 'var(--accent)',
+            border: '1px solid rgba(59,130,246,0.15)',
+            borderRadius: 4,
+            padding: '1px 7px',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            lineHeight: 1.6,
+          }}
+        >
+          #{t.name}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export interface PostCardProps {
@@ -543,6 +579,9 @@ export default function PostCard({
             </div>
           )}
 
+          {/* Tag chips — Title → Body → Media → Poll → Tags */}
+          <TagChipRow tags={post.tags ?? []} />
+
           {/* Meta row */}
           <div style={{
             display: 'flex',
@@ -753,6 +792,10 @@ export default function PostCard({
           loading={pollLoading}
         />
       )}
+
+      {/* Tag chips — appear after media/poll, before the action bar.
+          Matches the new Title → Body → Media → Poll → Tags order. */}
+      <TagChipRow tags={post.tags ?? []} />
 
       {/* Recorded on Base badge */}
       {recordCount > 0 && (

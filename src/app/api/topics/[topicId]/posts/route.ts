@@ -14,6 +14,30 @@ import { attachPollsToPosts, createPollForPost } from '@/lib/polls';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
+// Batch-load post→tag rows and mutate each post with a `tags` array. Mirrors
+// the per-post tag block on the detail endpoint so PostCard's chip row has
+// data to render without an extra round-trip per card.
+async function attachTagsToPosts<T extends { id: string; tags?: { name: string; slug: string }[] }>(
+  postsList: T[],
+): Promise<void> {
+  if (postsList.length === 0) return;
+  const postIds = postsList.map((p) => p.id);
+  const rows = await db
+    .select({ postId: postTags.postId, name: tags.name, slug: tags.slug })
+    .from(postTags)
+    .innerJoin(tags, eq(postTags.tagId, tags.id))
+    .where(inArray(postTags.postId, postIds));
+  const tagMap = new Map<string, { name: string; slug: string }[]>();
+  for (const row of rows) {
+    const existing = tagMap.get(row.postId) ?? [];
+    existing.push({ name: row.name, slug: row.slug });
+    tagMap.set(row.postId, existing);
+  }
+  for (const post of postsList) {
+    post.tags = tagMap.get(post.id) ?? [];
+  }
+}
+
 /**
  * @openapi
  * /api/topics/{topicId}/posts:
@@ -226,6 +250,7 @@ export async function GET(
 
       const guestPostsWithReactions = await attachReactionsToPosts(guestPostsWithBadges, null);
       await attachPollsToPosts(guestPostsWithReactions, null);
+      await attachTagsToPosts(guestPostsWithReactions);
 
       logger.info(ROUTE, 'Guest posts fetched', { topicId, count: topicPosts.length });
       return NextResponse.json({ posts: guestPostsWithReactions });
@@ -336,6 +361,7 @@ export async function GET(
     const postsWithFlags = await attachUserFlagsToPosts(postsWithBadges, session.userId);
     const postsWithReactions = await attachReactionsToPosts(postsWithFlags, session.userId);
     await attachPollsToPosts(postsWithReactions, session.userId);
+    await attachTagsToPosts(postsWithReactions);
 
     logger.info(ROUTE, 'Posts fetched', { userId: session.userId, topicId, count: topicPosts.length });
     return NextResponse.json({ posts: postsWithReactions });

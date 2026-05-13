@@ -2965,7 +2965,7 @@ Response:
 
 ### Edit post
 
-Updates a post's title and/or content. Only the original author can edit. Topic owners and admins cannot edit others' posts. If content contains base64 images, they are extracted and uploaded to cloud storage.
+Updates a post's title, content, media, tags, and/or poll. Only the original author (or global admin) can edit. Edits are LOCKED once the post is recorded on-chain (`recordCount > 0`) — the API returns 409 so the client can show a friendly "locked after on-chain record" message. Poll options are FROZEN once any vote exists (server-side guard); question and closesAt remain editable.
 
 ```bash
 curl -s "$BASE/api/posts/:postId" \
@@ -2974,7 +2974,19 @@ curl -s "$BASE/api/posts/:postId" \
   -H "Content-Type: application/json" \
   -d '{
   "title": "...",
-  "content": "..."
+  "content": "...",
+  "tags": [
+    "..."
+  ],
+  "media": {
+    "images": [
+      "..."
+    ],
+    "videos": [
+      "..."
+    ]
+  },
+  "poll": {}
 }' | jq .
 ```
 
@@ -3010,9 +3022,9 @@ Response:
 }
 ```
 
-### Delete post
+### Soft-delete post
 
-Deletes a post and all its comments. Only the author, topic owner, or topic admin can delete.
+Soft-deletes a post — clears title/content/media and sets `isDeleted: true`/`deletedAt`, but keeps the row so comments and on-chain records still resolve. Only the author, topic owner, topic admin, or global admin can delete.
 
 ```bash
 curl -s "$BASE/api/posts/:postId" \
@@ -3026,7 +3038,8 @@ Path params:
 Response:
 ```json
 {
-  "success": true
+  "id": "uuid",
+  "isDeleted": true
 }
 ```
 

@@ -15,6 +15,16 @@ interface SNSEditorProps {
   placeholder?: string;
   minHeight?: number;
   draftKey?: string;
+  /** Cap on how many image URLs can live in `images` at once. Default 10
+   *  to match mobile-side composer rules. */
+  maxImages?: number;
+  /** Cap on how many video URLs can live in `videos`. Default 3. */
+  maxVideos?: number;
+  /** Initial state to hydrate the editor from (used for the edit form so
+   *  the user sees the post's current body/media). When set, the draft
+   *  autoload is skipped so an in-progress draft doesn't trample the
+   *  post being edited. */
+  initialState?: SNSEditorState;
 }
 
 // ─── Video URL Validation ──────────────────────────────────────────────────
@@ -165,14 +175,18 @@ export default function SNSEditor({
   placeholder = 'Write something…',
   minHeight = 180,
   draftKey = 'openstoa-draft',
+  maxImages = 10,
+  maxVideos = 3,
+  initialState,
 }: SNSEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [content, setContent] = useState('');
-  const [images, setImages] = useState<string[]>([]);
-  const [videos, setVideos] = useState<string[]>([]);
+  const [content, setContent] = useState(initialState?.content ?? '');
+  const [images, setImages] = useState<string[]>(initialState?.images ?? []);
+  const [videos, setVideos] = useState<string[]>(initialState?.videos ?? []);
+  const [limitError, setLimitError] = useState<string | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -197,11 +211,17 @@ export default function SNSEditor({
     el.style.height = `${Math.max(minHeight, el.scrollHeight)}px`;
   }, [minHeight]);
 
-  // Load draft on mount
+  // Load draft on mount — skip when an initialState is supplied (edit form
+  // shouldn't be trampled by an in-progress draft).
   const didLoadDraft = useRef(false);
   useEffect(() => {
     if (didLoadDraft.current) return;
     didLoadDraft.current = true;
+    if (initialState) {
+      // Defer the autoGrow until after the initial paint.
+      setTimeout(autoGrow, 0);
+      return;
+    }
     const draft = loadDraft();
     if (draft) {
       setContent(draft.content);
@@ -211,7 +231,7 @@ export default function SNSEditor({
       // Defer to next tick so textarea sees the new value.
       setTimeout(autoGrow, 0);
     }
-  }, [loadDraft, onChange, autoGrow]);
+  }, [loadDraft, onChange, autoGrow, initialState]);
 
   // ─── Content updates ────────────────────────────────────────────────────
 
@@ -264,10 +284,29 @@ export default function SNSEditor({
     const imageFiles = files.filter(f => f.type.startsWith('image/') && f.size <= 10 * 1024 * 1024);
     if (imageFiles.length === 0) return;
 
-    setUploadTotal(prev => prev + imageFiles.length);
+    // Cap batched uploads at the remaining slot count. Surface a
+    // soft inline error when the user picks more than will fit so the
+    // outcome isn't silent.
+    const remainingSlots = Math.max(0, maxImages - images.length);
+    if (remainingSlots === 0) {
+      const msg = `Image limit reached (${maxImages}).`;
+      setLimitError(msg);
+      try { window.alert(msg); } catch {}
+      setTimeout(() => setLimitError(null), 3000);
+      return;
+    }
+    const trimmed = imageFiles.slice(0, remainingSlots);
+    if (trimmed.length < imageFiles.length) {
+      const msg = `Only ${remainingSlots} more image${remainingSlots === 1 ? '' : 's'} allowed (max ${maxImages}).`;
+      setLimitError(msg);
+      try { window.alert(msg); } catch {}
+      setTimeout(() => setLimitError(null), 3000);
+    }
+
+    setUploadTotal(prev => prev + trimmed.length);
 
     const results = await Promise.all(
-      imageFiles.map(async (file) => {
+      trimmed.map(async (file) => {
         const url = await uploadFile(file);
         setUploading(prev => prev + 1);
         return url;
@@ -285,7 +324,7 @@ export default function SNSEditor({
       setUploading(0);
       setUploadTotal(0);
     }, 500);
-  }, [uploadFile, images, content, videos, emit]);
+  }, [uploadFile, images, content, videos, emit, maxImages]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -318,13 +357,19 @@ export default function SNSEditor({
       setVideoError('Already added');
       return;
     }
+    if (videos.length >= maxVideos) {
+      const msg = `Video limit reached (${maxVideos}).`;
+      setVideoError(msg);
+      try { window.alert(msg); } catch {}
+      return;
+    }
     const nextVideos = [...videos, url];
     setVideos(nextVideos);
     emit({ content, images, videos: nextVideos });
     setVideoUrlDraft('');
     setVideoError('');
     setShowVideoInput(false);
-  }, [videoUrlDraft, videos, content, images, emit]);
+  }, [videoUrlDraft, videos, content, images, emit, maxVideos]);
 
   // ─── Drag & Drop ────────────────────────────────────────────────────────
 
@@ -583,6 +628,17 @@ export default function SNSEditor({
               {videoError}
             </div>
           )}
+        </div>
+      )}
+
+      {limitError && (
+        <div style={{
+          padding: '6px 18px 8px',
+          fontSize: 11,
+          color: '#ef4444',
+          fontFamily: 'monospace',
+        }}>
+          {limitError}
         </div>
       )}
 

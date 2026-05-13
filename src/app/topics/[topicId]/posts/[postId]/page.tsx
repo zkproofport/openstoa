@@ -12,6 +12,9 @@ import ImageLightbox from '@/components/ImageLightbox';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
 import { PostRecordsSection } from '@/components/PostRecordsSection';
 import PollRenderer from '@/components/PollRenderer';
+import SNSEditor, { type SNSEditorState } from '@/components/SNSEditor';
+import TagInput from '@/components/TagInput';
+import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
 import type { Poll } from '@/lib/polls';
 import { formatDate, truncateId } from '@/lib/utils';
 
@@ -37,6 +40,10 @@ interface Post {
   userVoted?: number | null;
   isAI?: boolean;
   poll?: Poll | null;
+  /** On-chain record count — when > 0 the post is locked for edits. */
+  recordCount?: number;
+  /** Soft-delete flag from the API. */
+  isDeleted?: boolean;
 }
 
 interface Comment {
@@ -128,7 +135,20 @@ export default function PostPage() {
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+
+  // Post actions menu (kebab) + edit/delete state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editorState, setEditorState] = useState<SNSEditorState>({ content: '', images: [], videos: [] });
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editPoll, setEditPoll] = useState<PollEditorValue | null>(null);
+  const [editPollHadVotes, setEditPollHadVotes] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [postDeleting, setPostDeleting] = useState(false);
 
   function handleImageClick(src: string) {
     if (window.innerWidth <= 768 || 'ontouchstart' in window) {
@@ -146,6 +166,7 @@ export default function PostPage() {
           setIsGuest(true);
         } else {
           setCurrentUserId(data.userId);
+          setCurrentUserRole(typeof data.role === 'string' ? data.role : null);
         }
       })
       .catch(() => {
@@ -332,6 +353,118 @@ export default function PostPage() {
     }
   }
 
+  function openEdit() {
+    if (!post) return;
+    setEditTitle(post.title);
+    setEditorState({
+      content: post.content,
+      images: post.media?.images ?? [],
+      videos: post.media?.videos ?? [],
+    });
+    setEditTags((post.tags ?? []).map((t) => t.name));
+    if (post.poll) {
+      const hadVotes = (post.poll.totalVotes ?? 0) > 0
+        || (post.poll.options ?? []).some((o) => (o.voteCount ?? 0) > 0);
+      setEditPollHadVotes(hadVotes);
+      setEditPoll({
+        question: post.poll.question ?? '',
+        options: post.poll.options?.map((o) => o.text) ?? ['', ''],
+        multipleChoice: !!post.poll.multipleChoice,
+        closesAt: post.poll.closesAt ?? null,
+      });
+    } else {
+      setEditPoll(null);
+      setEditPollHadVotes(false);
+    }
+    setEditError(null);
+    setEditing(true);
+    setMenuOpen(false);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setEditError(null);
+  }
+
+  async function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!post || editSaving) return;
+    if (!editTitle.trim()) {
+      setEditError('Title is required');
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      // Build poll payload — same shape as POST. When the existing poll
+      // has votes we DO NOT send the `options` field so the server-side
+      // guard doesn't refuse the edit.
+      let pollPayload: { question?: string; options?: string[]; multipleChoice?: boolean; closesAt?: string | null } | null | undefined;
+      if (editPoll === null) {
+        pollPayload = null;
+      } else if (editPoll) {
+        const opts = editPoll.options.map((o) => o.trim()).filter((o) => o.length > 0 && o.length <= 80);
+        if (!editPollHadVotes && (opts.length < 2 || opts.length > 4)) {
+          throw new Error('Poll needs 2 to 4 non-empty options (≤80 chars each)');
+        }
+        pollPayload = {
+          ...(editPoll.question?.trim() ? { question: editPoll.question.trim() } : { question: '' }),
+          multipleChoice: editPoll.multipleChoice,
+          closesAt: editPoll.closesAt ?? null,
+          ...(editPollHadVotes ? {} : { options: opts }),
+        };
+      }
+
+      const body: Record<string, unknown> = {
+        title: editTitle.trim(),
+        content: editorState.content,
+        media: { images: editorState.images, videos: editorState.videos },
+        tags: editTags,
+      };
+      if (pollPayload !== undefined) body.poll = pollPayload;
+
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 409) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Locked after on-chain record');
+      }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Failed to save');
+      }
+      setEditing(false);
+      await loadPost();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function handleDeletePost() {
+    if (!post || postDeleting) return;
+    const ok = window.confirm('정말 이 글을 삭제하시겠어요? / Delete this post?');
+    if (!ok) return;
+    setPostDeleting(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Failed to delete');
+      }
+      router.replace(`/topics/${topicId}`);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setPostDeleting(false);
+      setMenuOpen(false);
+    }
+  }
+
   async function handleDeleteComment(commentId: string) {
     if (deletingCommentId) return;
     setDeletingCommentId(commentId);
@@ -450,8 +583,213 @@ export default function PostPage() {
             border: '1px solid var(--border)',
             borderRadius: 14,
             marginBottom: 32,
+            position: 'relative',
           }}
         >
+          {/* Actions menu (author + admin only). Visible to anyone who can
+              edit/delete; the kebab opens a small popover with Edit and
+              Delete buttons. Edit is disabled with a tooltip after the
+              post is recorded on-chain. */}
+          {(() => {
+            const isAuthor = !!currentUserId && post.authorId === currentUserId;
+            const isAdmin = currentUserRole === 'admin';
+            if (!isAuthor && !isAdmin) return null;
+            const recorded = ((post as { recordCount?: number }).recordCount ?? 0) > 0;
+            return (
+              <div style={{ position: 'absolute', top: 14, right: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-label="Post actions"
+                  style={{
+                    background: menuOpen ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    fontSize: 18,
+                    lineHeight: 1,
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  ⋯
+                </button>
+                {menuOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      right: 0,
+                      background: 'var(--surface, #0c0e18)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      padding: 4,
+                      minWidth: 160,
+                      boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+                      zIndex: 20,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={recorded}
+                      onClick={() => !recorded && openEdit()}
+                      title={recorded ? '온체인 기록 이후엔 수정할 수 없어요 / Locked after on-chain record' : undefined}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        background: 'none',
+                        border: 'none',
+                        color: recorded ? '#4b5563' : '#e5e7eb',
+                        cursor: recorded ? 'not-allowed' : 'pointer',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      Edit / 수정
+                    </button>
+                    <button
+                      type="button"
+                      disabled={postDeleting}
+                      onClick={handleDeletePost}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        background: 'none',
+                        border: 'none',
+                        color: '#ef4444',
+                        cursor: postDeleting ? 'not-allowed' : 'pointer',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      {postDeleting ? 'Deleting…' : 'Delete / 삭제'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {editing ? (
+            <form onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Post title"
+                style={{
+                  width: '100%',
+                  background: 'var(--surface, #0c0e18)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 7,
+                  padding: '10px 14px',
+                  color: '#e5e7eb',
+                  fontSize: 16,
+                  fontWeight: 600,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <SNSEditor
+                placeholder="Write your post..."
+                onChange={setEditorState}
+                minHeight={180}
+                draftKey={`openstoa-edit-${postId}`}
+                initialState={editorState}
+              />
+              <TagInput tags={editTags} onChange={setEditTags} topicId={topicId} />
+              {editPoll && (
+                <>
+                  <PollEditor
+                    value={editPoll}
+                    onChange={(next) => {
+                      // When the poll has existing votes, freeze options
+                      // client-side too — only question/closesAt/multipleChoice
+                      // updates flow through.
+                      if (editPollHadVotes) {
+                        setEditPoll({ ...next, options: editPoll.options });
+                      } else {
+                        setEditPoll(next);
+                      }
+                    }}
+                    onRemove={editPollHadVotes ? () => { /* locked — votes exist */ } : () => setEditPoll(null)}
+                  />
+                  {editPollHadVotes && (
+                    <p style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace', margin: 0 }}>
+                      Poll options are frozen — votes already exist. Question and closing time can still be updated.
+                    </p>
+                  )}
+                </>
+              )}
+              {!editPoll && (
+                <button
+                  type="button"
+                  onClick={() => setEditPoll({ question: '', options: ['', ''], multipleChoice: false, closesAt: null })}
+                  style={{
+                    alignSelf: 'flex-start',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: '#9ca3af',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 7,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  Add poll
+                </button>
+              )}
+              {editError && (
+                <p style={{ fontSize: 13, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>{editError}</p>
+              )}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={editSaving}
+                  style={{
+                    background: 'transparent',
+                    color: '#9ca3af',
+                    border: '1px solid var(--border)',
+                    borderRadius: 7,
+                    padding: '9px 18px',
+                    fontSize: 14,
+                    cursor: editSaving ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving || !editTitle.trim()}
+                  style={{
+                    background: 'var(--accent)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 7,
+                    padding: '9px 22px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: editSaving ? 'not-allowed' : 'pointer',
+                    opacity: editSaving ? 0.7 : 1,
+                  }}
+                >
+                  {editSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          ) : (
+          <>
           <h1
             style={{
               fontSize: 28,
@@ -492,21 +830,22 @@ export default function PostPage() {
           </div>
 
           {post.tags && post.tags.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 16 }}>
               {post.tags.map(tag => (
                 <span
                   key={tag.slug}
                   style={{
-                    background: 'rgba(59,130,246,0.1)',
+                    background: 'rgba(59,130,246,0.08)',
                     color: 'var(--accent)',
-                    border: '1px solid rgba(59,130,246,0.2)',
+                    border: '1px solid rgba(59,130,246,0.15)',
                     borderRadius: 4,
                     padding: '2px 8px',
-                    fontSize: 14,
-                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    lineHeight: 1.6,
                   }}
                 >
-                  {tag.name}
+                  #{tag.name}
                 </span>
               ))}
             </div>
@@ -750,6 +1089,8 @@ export default function PostPage() {
               </div>
             )}
           </div>
+          </>
+          )}
         </article>
 
         {/* On-chain record receipts (collapsible) — sits between the

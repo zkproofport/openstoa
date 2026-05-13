@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, comments, topicMembers, users, postTags, tags, votes, topics, records, bookmarks } from '@/lib/db/schema';
+import { posts, comments, topicMembers, users, postTags, tags, votes, topics, records, bookmarks, polls, pollOptions, pollVotes } from '@/lib/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
@@ -63,9 +63,12 @@ const ROUTE = '/api/posts/[postId]';
  *     tags: [Posts]
  *     summary: Edit post
  *     description: >-
- *       Updates a post's title and/or content. Only the original author can edit.
- *       Topic owners and admins cannot edit others' posts.
- *       If content contains base64 images, they are extracted and uploaded to cloud storage.
+ *       Updates a post's title, content, media, tags, and/or poll. Only the original author
+ *       (or global admin) can edit. Edits are LOCKED once the post is recorded on-chain
+ *       (`recordCount > 0`) — the API returns 409 so the client can show a friendly
+ *       "locked after on-chain record" message.
+ *       Poll options are FROZEN once any vote exists (server-side guard); question and
+ *       closesAt remain editable.
  *     operationId: editPost
  *     parameters:
  *       - name: postId
@@ -88,6 +91,27 @@ const ROUTE = '/api/posts/[postId]';
  *               content:
  *                 type: string
  *                 description: Updated post content (optional)
+ *               tags:
+ *                 type: array
+ *                 description: Replacement tag list (max 5)
+ *                 items:
+ *                   type: string
+ *               media:
+ *                 type: object
+ *                 description: Replacement media payload
+ *                 properties:
+ *                   images:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                   videos:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *               poll:
+ *                 type: object
+ *                 nullable: true
+ *                 description: Replacement poll spec (null drops the poll)
  *     responses:
  *       200:
  *         description: Post updated
@@ -106,11 +130,15 @@ const ROUTE = '/api/posts/[postId]';
  *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         description: Edit locked (post recorded on-chain or poll options frozen)
  *   delete:
  *     tags: [Posts]
- *     summary: Delete post
+ *     summary: Soft-delete post
  *     description: >-
- *       Deletes a post and all its comments. Only the author, topic owner, or topic admin can delete.
+ *       Soft-deletes a post — clears title/content/media and sets `isDeleted: true`/`deletedAt`,
+ *       but keeps the row so comments and on-chain records still resolve.
+ *       Only the author, topic owner, topic admin, or global admin can delete.
  *     operationId: deletePost
  *     parameters:
  *       - name: postId
@@ -122,16 +150,18 @@ const ROUTE = '/api/posts/[postId]';
  *           format: uuid
  *     responses:
  *       200:
- *         description: Post deleted
+ *         description: Post soft-deleted
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 success:
+ *                 id:
+ *                   type: string
+ *                   format: uuid
+ *                 isDeleted:
  *                   type: boolean
  *                   example: true
- *                   description: Deletion success indicator
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
@@ -174,6 +204,7 @@ export async function GET(
           recordCount: posts.recordCount,
           score: posts.score,
           isAI: posts.isAI,
+          isDeleted: posts.isDeleted,
           userVoted: sql<number | null>`null`,
           topicTitle: topics.title,
           topicVisibility: topics.visibility,
@@ -443,7 +474,7 @@ export async function DELETE(
 
     // Check post exists
     const postResults = await db
-      .select({ id: posts.id, authorId: posts.authorId, topicId: posts.topicId })
+      .select({ id: posts.id, authorId: posts.authorId, topicId: posts.topicId, isDeleted: posts.isDeleted })
       .from(posts)
       .where(eq(posts.id, postId));
 
@@ -454,8 +485,14 @@ export async function DELETE(
 
     const post = postResults[0];
 
-    // Allow author, or topic owner/admin
-    if (post.authorId !== session.userId) {
+    if (post.isDeleted) {
+      logger.warn(ROUTE, 'Post already deleted', { postId });
+      return NextResponse.json({ id: post.id, isDeleted: true });
+    }
+
+    // Allow author, topic owner/admin, or global admin
+    const isAdmin = session.role === 'admin';
+    if (post.authorId !== session.userId && !isAdmin) {
       const membership = await db.query.topicMembers.findFirst({
         where: and(
           eq(topicMembers.topicId, post.topicId),
@@ -471,14 +508,22 @@ export async function DELETE(
       logger.info(ROUTE, 'Admin/owner deleting post', { userId: session.userId, role: membership.role, postId });
     }
 
-    // Delete comments first (no cascade)
-    await db.delete(comments).where(eq(comments.postId, postId));
+    // Soft delete — clear title/content/media but keep the row so comments
+    // and on-chain records still resolve. Mirrors comments' soft-delete pattern.
+    await db
+      .update(posts)
+      .set({
+        isDeleted: true,
+        deletedAt: new Date(),
+        title: '',
+        content: '',
+        media: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(posts.id, postId));
 
-    // Delete post (votes, bookmarks, postTags cascade automatically)
-    await db.delete(posts).where(eq(posts.id, postId));
-
-    logger.info(ROUTE, 'Post deleted', { userId: session.userId, postId });
-    return NextResponse.json({ success: true });
+    logger.info(ROUTE, 'Post soft-deleted', { userId: session.userId, postId });
+    return NextResponse.json({ id: postId, isDeleted: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
@@ -500,19 +545,25 @@ export async function PATCH(
 
     const { postId } = await params;
     const body = await request.json();
-    const { title, content } = body;
+    const { title, content, tags: tagNames, media: mediaIn, poll: pollIn } = body;
 
-    // At least one field must be provided
-    if (!title && !content) {
+    // At least one editable field must be provided
+    if (title === undefined && content === undefined && tagNames === undefined && mediaIn === undefined && pollIn === undefined) {
       logger.warn(ROUTE, 'No fields to update', { userId: session.userId, postId });
-      return NextResponse.json({ error: 'At least one of title or content is required' }, { status: 400 });
+      return NextResponse.json({ error: 'At least one editable field is required' }, { status: 400 });
     }
 
     logger.info(ROUTE, 'Editing post', { userId: session.userId, postId });
 
     // Check post exists
     const postResults = await db
-      .select({ id: posts.id, authorId: posts.authorId, topicId: posts.topicId })
+      .select({
+        id: posts.id,
+        authorId: posts.authorId,
+        topicId: posts.topicId,
+        recordCount: posts.recordCount,
+        isDeleted: posts.isDeleted,
+      })
       .from(posts)
       .where(eq(posts.id, postId));
 
@@ -523,23 +574,39 @@ export async function PATCH(
 
     const post = postResults[0];
 
-    // Only the author can edit
-    if (post.authorId !== session.userId) {
+    if (post.isDeleted) {
+      logger.warn(ROUTE, 'Edit attempt on soft-deleted post', { postId });
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+
+    // Edits are locked once the post is recorded on-chain. 409 lets the
+    // client distinguish "locked" from generic Forbidden and show a friendly
+    // message ("온체인 기록 이후엔 수정할 수 없어요").
+    if ((post.recordCount ?? 0) > 0) {
+      logger.warn(ROUTE, 'Edit attempt on on-chain recorded post', { postId, recordCount: post.recordCount });
+      return NextResponse.json({ error: 'Post is locked after on-chain record' }, { status: 409 });
+    }
+
+    // Allow author or global admin
+    const isAdmin = session.role === 'admin';
+    if (post.authorId !== session.userId && !isAdmin) {
       logger.warn(ROUTE, 'Non-author edit attempt', { userId: session.userId, authorId: post.authorId, postId });
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Check topic membership
-    const membership = await db.query.topicMembers.findFirst({
-      where: and(
-        eq(topicMembers.topicId, post.topicId),
-        eq(topicMembers.userId, session.userId),
-      ),
-    });
+    // Author must still be a member of the topic (admin bypass).
+    if (!isAdmin) {
+      const membership = await db.query.topicMembers.findFirst({
+        where: and(
+          eq(topicMembers.topicId, post.topicId),
+          eq(topicMembers.userId, session.userId),
+        ),
+      });
 
-    if (!membership) {
-      logger.warn(ROUTE, 'User is not a member of the post topic', { userId: session.userId, postId, topicId: post.topicId });
-      return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
+      if (!membership) {
+        logger.warn(ROUTE, 'User is not a member of the post topic', { userId: session.userId, postId, topicId: post.topicId });
+        return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
+      }
     }
 
     // Build update payload
@@ -547,13 +614,32 @@ export async function PATCH(
       updatedAt: new Date(),
     };
 
-    if (title && typeof title === 'string') {
+    if (title !== undefined && typeof title === 'string') {
       updateData.title = title;
     }
 
-    if (content && typeof content === 'string') {
+    if (content !== undefined && typeof content === 'string') {
       // Extract base64 images from content and upload to R2
       updateData.content = await extractAndUploadBase64Images(content, session.userId);
+    }
+
+    if (mediaIn !== undefined) {
+      // Normalise the same way the POST route does — null when both arrays empty.
+      const normalisedMedia = (() => {
+        if (!mediaIn || typeof mediaIn !== 'object') return null;
+        const images = Array.isArray(mediaIn.images)
+          ? (mediaIn.images as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
+          : [];
+        const videos = Array.isArray(mediaIn.videos)
+          ? (mediaIn.videos as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
+          : [];
+        if (images.length === 0 && videos.length === 0) return null;
+        return {
+          ...(images.length > 0 ? { images } : {}),
+          ...(videos.length > 0 ? { videos } : {}),
+        };
+      })();
+      updateData.media = normalisedMedia;
     }
 
     // Update the post
@@ -562,6 +648,113 @@ export async function PATCH(
       .set(updateData)
       .where(eq(posts.id, postId))
       .returning();
+
+    // Replace tags if provided. Wipe existing postTags rows then re-link.
+    if (Array.isArray(tagNames)) {
+      await db.delete(postTags).where(eq(postTags.postId, postId));
+
+      const validTagNames = (tagNames as unknown[])
+        .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+        .slice(0, 5);
+
+      for (const tagName of validTagNames) {
+        const slug = tagName
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9가-힣]+/g, '-')
+          .replace(/^-|-$/g, '');
+        if (!slug) continue;
+
+        const [tag] = await db
+          .insert(tags)
+          .values({ name: tagName.trim(), slug })
+          .onConflictDoUpdate({
+            target: tags.slug,
+            set: { postCount: sql`${tags.postCount} + 1` },
+          })
+          .returning();
+
+        await db.insert(postTags).values({ postId, tagId: tag.id }).onConflictDoNothing();
+      }
+    }
+
+    // Poll updates. If `pollIn` is `null`, drop the poll. If an object is
+    // provided, update the question/closesAt; options stay FROZEN when
+    // any vote already exists on the poll.
+    if (pollIn !== undefined) {
+      const existingPoll = await db.query.polls.findFirst({ where: eq(polls.postId, postId) });
+
+      if (pollIn === null) {
+        // Allow drop only if no votes exist — otherwise the historical record matters.
+        if (existingPoll) {
+          const [{ count: voteCount } = { count: 0 }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(pollVotes)
+            .where(eq(pollVotes.pollId, existingPoll.id));
+          if ((voteCount ?? 0) > 0) {
+            return NextResponse.json({ error: 'Cannot remove poll after votes exist' }, { status: 409 });
+          }
+          await db.delete(polls).where(eq(polls.id, existingPoll.id));
+        }
+      } else if (typeof pollIn === 'object') {
+        if (!existingPoll) {
+          // No existing poll → treat the payload like a creation.
+          if (Array.isArray(pollIn.options)) {
+            const { createPollForPost } = await import('@/lib/polls');
+            try {
+              await createPollForPost(postId, {
+                question: typeof pollIn.question === 'string' ? pollIn.question : undefined,
+                options: pollIn.options as string[],
+                multipleChoice: !!pollIn.multipleChoice,
+                closesAt: typeof pollIn.closesAt === 'string' ? pollIn.closesAt : undefined,
+              });
+            } catch (pollErr) {
+              return NextResponse.json({ error: pollErr instanceof Error ? pollErr.message : String(pollErr) }, { status: 400 });
+            }
+          }
+        } else {
+          // Edit existing poll. question + closesAt always allowed. Options
+          // FROZEN when any vote exists (server-side guard for the
+          // mobile spec).
+          const [{ count: voteCount } = { count: 0 }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(pollVotes)
+            .where(eq(pollVotes.pollId, existingPoll.id));
+
+          const pollUpdate: Record<string, unknown> = {};
+          if (typeof pollIn.question === 'string') {
+            pollUpdate.question = pollIn.question.trim() || null;
+          }
+          if (pollIn.closesAt === null) {
+            pollUpdate.closesAt = null;
+          } else if (typeof pollIn.closesAt === 'string') {
+            const closesAt = new Date(pollIn.closesAt);
+            if (Number.isNaN(closesAt.getTime())) {
+              return NextResponse.json({ error: 'Invalid closesAt timestamp' }, { status: 400 });
+            }
+            pollUpdate.closesAt = closesAt;
+          }
+          if (Object.keys(pollUpdate).length > 0) {
+            await db.update(polls).set(pollUpdate).where(eq(polls.id, existingPoll.id));
+          }
+
+          // Option edits: only allowed when no votes yet.
+          if (Array.isArray(pollIn.options)) {
+            if ((voteCount ?? 0) > 0) {
+              return NextResponse.json({ error: 'Poll options are frozen after votes exist' }, { status: 409 });
+            }
+            const opts = (pollIn.options as unknown[])
+              .map((o) => (typeof o === 'string' ? o.trim() : ''))
+              .filter((o) => o.length > 0 && o.length <= 80);
+            if (opts.length < 2 || opts.length > 4) {
+              return NextResponse.json({ error: 'Poll must have 2 to 4 options' }, { status: 400 });
+            }
+            await db.delete(pollOptions).where(eq(pollOptions.pollId, existingPoll.id));
+            await db.insert(pollOptions).values(opts.map((text, i) => ({ pollId: existingPoll.id, text, position: i })));
+          }
+        }
+      }
+    }
 
     logger.info(ROUTE, 'Post edited', { userId: session.userId, postId });
     return NextResponse.json({ post: updatedPost });
