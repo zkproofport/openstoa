@@ -38,6 +38,7 @@ import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { PostContent } from '../../components/PostContent';
 import { VideoEmbed } from '../../components/VideoEmbed';
+import { MediaPreview } from '../../components/MediaPreview';
 import { PollEditor, type PollEditorValue } from '../../components/PollEditor';
 import { useDraft } from '../../hooks/useDraft';
 
@@ -47,7 +48,11 @@ type Nav = NativeStackNavigationProp<TopicsStackParamList, 'PostCreate'>;
 const MAX_TAGS = 5;
 const MAX_IMAGES = 4;
 const MAX_VIDEOS = 4;
-const NICKNAME_RE = /^[a-zA-Z0-9_]{1,30}$/;
+// Tags accept Korean, Latin letters, digits, and underscore. The server-side
+// slug pipeline (api/topics/[topicId]/posts) downcases and rewrites the
+// remainder, so we don't need to be strict here — just bound the length and
+// reject anything that's pure whitespace.
+const TAG_MAX_LEN = 30;
 
 interface CreatePostBody {
   title: string;
@@ -127,13 +132,34 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 12,
     },
     // Segmented control
+    segmentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 18,
+    },
     segment: {
+      flex: 1,
       flexDirection: 'row',
       borderWidth: 1,
       borderColor: colors.border.default,
       borderRadius: 10,
       overflow: 'hidden',
-      marginBottom: 18,
+    },
+    resetBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      backgroundColor: colors.background.secondary,
+    },
+    resetBtnLabel: {
+      fontSize: 12,
+      color: colors.text.tertiary,
     },
     segmentItem: {
       flex: 1,
@@ -515,10 +541,9 @@ export function PostCreateScreen() {
 
   const addTag = useCallback(
     (name: string) => {
-      const trimmed = name.trim();
+      const trimmed = name.trim().slice(0, TAG_MAX_LEN);
       if (!trimmed) return;
       if (tags.length >= MAX_TAGS) return;
-      if (!NICKNAME_RE.test(trimmed)) return;
       if (tags.some((t) => t.toLowerCase() === trimmed.toLowerCase())) return;
       setTags((prev) => [...prev, trimmed]);
       setTagInput('');
@@ -530,15 +555,6 @@ export function PostCreateScreen() {
   const removeTag = useCallback((index: number) => {
     setTags((prev) => prev.filter((_, i) => i !== index));
   }, []);
-
-  const handleTagKeyPress = useCallback(
-    (key: string) => {
-      if ((key === 'Enter' || key === ',') && tagInput.trim()) {
-        addTag(tagInput);
-      }
-    },
-    [tagInput, addTag],
-  );
 
   // Image attach
   const pickFromLibrary = useCallback(async () => {
@@ -667,24 +683,65 @@ export function PostCreateScreen() {
       >
         {topicTitle ? <Text style={styles.topicLabel}>{topicTitle}</Text> : null}
 
-        {/* Write / Preview segment */}
-        <View style={styles.segment}>
-          <Pressable
-            style={[styles.segmentItem, mode === 'write' && styles.segmentItemActive]}
-            onPress={() => setMode('write')}
+        {/* Write / Preview segment + Reset button */}
+        <View style={styles.segmentRow}>
+          <View style={styles.segment}>
+            <Pressable
+              style={[styles.segmentItem, mode === 'write' && styles.segmentItemActive]}
+              onPress={() => setMode('write')}
+            >
+              <Text style={[styles.segmentLabel, mode === 'write' && styles.segmentLabelActive]}>
+                {t('openstoa.postCreate.write')}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.segmentItem, mode === 'preview' && styles.segmentItemActive]}
+              onPress={() => {
+                // Commit any half-typed tag so the user's last keystrokes
+                // before tapping Preview don't get dropped.
+                if (tagInput.trim()) addTag(tagInput);
+                setMode('preview');
+              }}
+            >
+              <Text style={[styles.segmentLabel, mode === 'preview' && styles.segmentLabelActive]}>
+                {t('openstoa.postCreate.preview')}
+              </Text>
+            </Pressable>
+          </View>
+          <TouchableOpacity
+            style={styles.resetBtn}
+            onPress={() => {
+              const hasContent =
+                title.trim() || content.trim() || tags.length > 0 ||
+                images.length > 0 || videos.length > 0 || !!poll;
+              if (!hasContent) return;
+              Alert.alert(
+                t('openstoa.postCreate.resetTitle'),
+                t('openstoa.postCreate.resetMessage'),
+                [
+                  { text: t('openstoa.common.cancel'), style: 'cancel' },
+                  {
+                    text: t('openstoa.postCreate.resetConfirm'),
+                    style: 'destructive',
+                    onPress: () => {
+                      setTitle('');
+                      setContent('');
+                      setTags([]);
+                      setTagInput('');
+                      setImages([]);
+                      setVideos([]);
+                      setPoll(null);
+                      void clearDraft();
+                    },
+                  },
+                ],
+              );
+            }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
-            <Text style={[styles.segmentLabel, mode === 'write' && styles.segmentLabelActive]}>
-              {t('openstoa.postCreate.write')}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.segmentItem, mode === 'preview' && styles.segmentItemActive]}
-            onPress={() => setMode('preview')}
-          >
-            <Text style={[styles.segmentLabel, mode === 'preview' && styles.segmentLabelActive]}>
-              {t('openstoa.postCreate.preview')}
-            </Text>
-          </Pressable>
+            <Feather name="refresh-ccw" size={14} color={colors.text.tertiary} />
+            <Text style={styles.resetBtnLabel}>{t('openstoa.postCreate.reset')}</Text>
+          </TouchableOpacity>
         </View>
 
         {mode === 'write' ? (
@@ -828,13 +885,25 @@ export function PostCreateScreen() {
                   style={styles.tagInput}
                   value={tagInput}
                   onChangeText={(v) => {
+                    // Detect comma from the text itself rather than from
+                    // onKeyPress — RN's onKeyPress closure on iOS lags one
+                    // keystroke behind the state, so relying on it was
+                    // missing the just-typed comma's value.
+                    if (v.includes(',')) {
+                      const parts = v.split(',');
+                      const head = parts.slice(0, -1).join(',').trim();
+                      if (head) addTag(head);
+                      setTagInput(parts[parts.length - 1].trim());
+                      return;
+                    }
                     setTagInput(v);
                     setShowSuggestions(v.trim().length >= 1);
                   }}
                   placeholder={tags.length === 0 ? 'Add tags…' : ''}
                   placeholderTextColor={colors.text.tertiary}
-                  onSubmitEditing={() => addTag(tagInput)}
-                  onKeyPress={({ nativeEvent }) => handleTagKeyPress(nativeEvent.key)}
+                  onSubmitEditing={() => {
+                    if (tagInput.trim()) addTag(tagInput);
+                  }}
                   blurOnSubmit={false}
                   returnKeyType="done"
                   autoCapitalize="none"
@@ -948,11 +1017,14 @@ function PreviewBlock({ title, content, images, videos, tags, styles, emptyLabel
   return (
     <View>
       {title.trim() ? <Text style={styles.previewTitle}>{title}</Text> : null}
+      {/* Reuse the same MediaPreview the PostDetailScreen uses — its
+          full-width gallery has been verified to render R2 image URLs
+          correctly. The earlier hand-rolled <Image aspectRatio=...> path
+          collapsed to a 0-height layout in the ScrollView so the gallery
+          showed nothing but a dead bar. */}
       {images.length > 0 ? (
-        <View style={styles.previewImagesRow}>
-          {images.map((uri) => (
-            <Image key={uri} source={{ uri }} style={styles.previewImage} resizeMode="cover" />
-          ))}
+        <View style={{ marginBottom: 12 }}>
+          <MediaPreview media={{ images }} fullWidth />
         </View>
       ) : null}
       {content.trim() ? <PostContent content={content} /> : null}
@@ -967,7 +1039,7 @@ function PreviewBlock({ title, content, images, videos, tags, styles, emptyLabel
         <View style={styles.previewTagsRow}>
           {tags.map((tag) => (
             <View key={tag} style={styles.previewTagChip}>
-              <Text style={styles.previewTagChipText}>{tag}</Text>
+              <Text style={styles.previewTagChipText}>#{tag}</Text>
             </View>
           ))}
         </View>

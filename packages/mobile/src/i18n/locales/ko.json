@@ -259,7 +259,11 @@
       "previewEmpty": "미리볼 내용이 없어요",
       "charCount": "{{n}}자",
       "addPoll": "투표",
-      "removePoll": "투표 제거"
+      "removePoll": "투표 제거",
+      "reset": "초기화",
+      "resetTitle": "작성 내용 초기화",
+      "resetMessage": "지금까지 작성한 내용을 모두 지울까요? 임시 저장도 함께 삭제돼요.",
+      "resetConfirm": "초기화"
     },
     "pollEditor": {
       "title": "투표",

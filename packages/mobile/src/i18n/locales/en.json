@@ -259,7 +259,11 @@
       "previewEmpty": "Nothing to preview yet",
       "charCount": "{{n}} chars",
       "addPoll": "Poll",
-      "removePoll": "Remove poll"
+      "removePoll": "Remove poll",
+      "reset": "Reset",
+      "resetTitle": "Reset draft",
+      "resetMessage": "Clear everything you've written so far? The saved draft will also be removed.",
+      "resetConfirm": "Reset"
     },
     "pollEditor": {
       "title": "Poll",
