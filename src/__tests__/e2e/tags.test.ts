@@ -128,11 +128,8 @@ describe.sequential('Tags — list, search, create with posts, filter posts by t
   // ── 3. GET /api/tags?q=keyword — search ────────────────────────────
 
   it('7. GET /api/tags?q=keyword -> 200, returns matching tags (prefix search)', async () => {
-    // Use the full slug as the prefix so we don't compete with the dozens
-    // of other `e2e-tag-…` rows the suite has piled up over time — the
-    // server caps results at 10, and a 6-char prefix drops our just-created
-    // tag below the cut.
-    const prefix = tagSlug;
+    // The tag we created in test 4 should match
+    const prefix = tagSlug.substring(0, 6); // e.g. 'e2e-ta'
     const res = await publicGet(`/api/tags?q=${encodeURIComponent(prefix)}`);
     expect(res.status).toBe(200);
     const json = await res.json();

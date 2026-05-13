@@ -74,9 +74,13 @@ export async function GET(request: NextRequest) {
 
       if (q) {
         const escaped = q.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        // Deterministic ordering — see the global-fallback branch below for
+        // the same fix. Drizzle's groupBy + orderBy combo needs raw SQL for
+        // the post count expression.
         result = await baseQuery
           .where(and(eq(posts.topicId, topicId), ilike(tags.slug, `${escaped}%`)))
           .groupBy(tags.id, tags.name, tags.slug, tags.createdAt)
+          .orderBy(sql`count(distinct ${postTags.postId}) desc`, desc(tags.createdAt))
           .limit(10);
       } else {
         result = await baseQuery
@@ -89,10 +93,15 @@ export async function GET(request: NextRequest) {
       // Global tags (fallback)
       if (q) {
         const escaped = q.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        // Order by usage (most-used wins ties) then newest. Without an explicit
+        // ORDER BY, Postgres returns whatever the planner picks — staging built
+        // up dozens of `e2e-tag-*` rows so newly-created tags would silently
+        // fall outside the LIMIT 10 window and break tag-suggestion UX.
         result = await db
           .select()
           .from(tags)
           .where(ilike(tags.slug, `${escaped}%`))
+          .orderBy(desc(tags.postCount), desc(tags.createdAt))
           .limit(10);
       } else {
         result = await db

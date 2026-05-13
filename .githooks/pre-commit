@@ -17,12 +17,19 @@ if git diff --cached --name-only | grep -q "src/lib/db/schema.ts"; then
   echo "✅ Migration files generated and staged"
 fi
 
-# Check if API routes changed (for skill.md + openapi-spec.json regeneration)
-if git diff --cached --name-only | grep -q "src/app/api/"; then
-  echo "📄 API routes changed — regenerating skill.md + openapi-spec.json..."
+# Check if anything that feeds skill.md changed:
+#   - src/app/api/  → swagger-jsdoc reads the JSDoc on every route handler
+#   - AGENTS.md     → generate-skill.ts uses it as the base narrative document
+# Either one going out of sync would mean AI/CLI clients read stale guidance
+# (the f4a6877 multipart switch shipped without regenerating skill.md, which
+# is exactly the trap this hook is meant to prevent).
+if git diff --cached --name-only | grep -qE "src/app/api/|^AGENTS\.md$"; then
+  echo "📄 API routes or AGENTS.md changed — regenerating skill.md + openapi-spec.json..."
   npx tsx scripts/generate-skill.ts 2>/dev/null || {
     echo "⚠️  generate-skill.ts failed. Run manually: npm run generate:skill"
   }
-  git add public/skill.md src/generated/openapi-spec.json 2>/dev/null || true
-  echo "✅ skill.md and openapi-spec.json regenerated and staged"
+  # generate-skill.ts writes three files; stage every one of them so they
+  # ship in the same commit as the source change.
+  git add public/skill.md public/AGENTS.md src/generated/openapi-spec.json 2>/dev/null || true
+  echo "✅ skill.md, public/AGENTS.md, openapi-spec.json regenerated and staged"
 fi
