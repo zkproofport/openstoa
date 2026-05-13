@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authPatch, publicGet } from './helpers';
+import { authGet, authPost, authPatch, publicGet, getBaseUrl, getAuthToken } from './helpers';
+
+// 1x1 red PNG buffer — small enough to inline.
+function tinyPngBuffer(): Buffer {
+  return Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+    'base64',
+  );
+}
 
 const TS = Date.now();
 
@@ -332,33 +340,37 @@ describe.sequential('Post rich content E2E', () => {
     expect(returned).toContain('9bZkp7q19f0');
   });
 
-  // ── TC12: Upload presigned URL flow ──────────────────────────────────────
+  // ── TC12: Upload multipart flow ───────────────────────────────────────────
 
-  it('TC12: POST /api/upload returns uploadUrl and publicUrl', async () => {
-    const res = await authPost('/api/upload', {
-      filename: `test-rich-content-${TS}.png`,
-      contentType: 'image/png',
-      purpose: 'post',
+  it('TC12: POST /api/upload (multipart) returns publicUrl on the CDN', async () => {
+    const form = new FormData();
+    const bytes = new Uint8Array(tinyPngBuffer());
+    form.append('file', new Blob([bytes], { type: 'image/png' }), `test-rich-content-${TS}.png`);
+    form.append('purpose', 'post');
+    const res = await fetch(`${getBaseUrl()}/api/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+      body: form,
     });
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.uploadUrl).toBeTruthy();
-    expect(json.publicUrl).toBeTruthy();
-    expect(typeof json.uploadUrl).toBe('string');
     expect(typeof json.publicUrl).toBe('string');
-    // uploadUrl should be a presigned URL (contains signature params)
-    expect(json.uploadUrl).toContain('http');
-    // publicUrl should point to the CDN
     expect(json.publicUrl).toContain('media.zkproofport.app');
+    // The returned URL should be fetchable.
+    const cdn = await fetch(json.publicUrl);
+    expect(cdn.status).toBe(200);
   });
 
   // ── TC13: Upload validation — non-image rejected ─────────────────────────
 
-  it('TC13: POST /api/upload with non-image contentType → 400', async () => {
-    const res = await authPost('/api/upload', {
-      filename: 'test.pdf',
-      contentType: 'application/pdf',
-      purpose: 'post',
+  it('TC13: POST /api/upload with non-image MIME → 400', async () => {
+    const form = new FormData();
+    form.append('file', new Blob(['hello'], { type: 'application/pdf' }), 'note.pdf');
+    form.append('purpose', 'post');
+    const res = await fetch(`${getBaseUrl()}/api/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+      body: form,
     });
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -366,10 +378,16 @@ describe.sequential('Post rich content E2E', () => {
     expect(errorText).toContain('image');
   });
 
-  // ── TC14: Upload validation — missing fields ─────────────────────────────
+  // ── TC14: Upload validation — missing file field ─────────────────────────
 
-  it('TC14: POST /api/upload with empty body → 400', async () => {
-    const res = await authPost('/api/upload', {});
+  it('TC14: POST /api/upload without file field → 400', async () => {
+    const form = new FormData();
+    form.append('purpose', 'post');
+    const res = await fetch(`${getBaseUrl()}/api/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+      body: form,
+    });
     expect(res.status).toBe(400);
   });
 

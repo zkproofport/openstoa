@@ -2473,6 +2473,27 @@ Response:
 }
 ```
 
+## Upload
+
+### Delete uploaded images (draft cleanup)
+
+Deletes one or more uploaded R2 images. Used by the mobile compose screen on **Reset** / cancel-with-staged-images so files uploaded for an abandoned draft don't pile up in R2. Each URL is authorised by matching the `/{env}/{folder}/{userId}/` prefix against the caller's session — users can only delete their own uploads. URLs that don't resolve to an R2 object (external CDNs, base64 data URIs) are silently skipped.
+
+```bash
+curl -s "$BASE/api/upload" \
+  -H "$AUTH" \
+  -X DELETE | jq .
+```
+
+Response:
+```json
+{
+  "attempted": 0,
+  "deleted": 0,
+  "skipped": 0
+}
+```
+
 ## Topics
 
 ### Generate a single-use invite token

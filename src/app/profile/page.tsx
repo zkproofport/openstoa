@@ -58,15 +58,12 @@ function ProfilePageInner() {
     setError(null);
     try {
       const resized = await resizeImage(file, 200);
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: 'avatar.webp', contentType: 'image/webp', size: resized.size, purpose: 'avatar' }),
-      });
-      if (!res.ok) throw new Error('Failed to get upload URL');
-      const { uploadUrl, publicUrl } = await res.json();
-      const uploadRes = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/webp' }, body: resized });
-      if (!uploadRes.ok) throw new Error('Failed to upload image');
+      const form = new FormData();
+      form.append('file', new File([resized], 'avatar.webp', { type: 'image/webp' }));
+      form.append('purpose', 'avatar');
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Failed to upload image');
+      const { publicUrl } = (await res.json()) as { publicUrl: string };
       const saveRes = await fetch('/api/profile/image', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

@@ -514,6 +514,37 @@ export function PostCreateScreen() {
   const [videoInput, setVideoInput] = useState('');
   const [videoError, setVideoError] = useState('');
 
+  // R2 orphan tracking. `initialImagesRef` snapshots the image set the screen
+  // booted with (existing post images in edit mode, empty otherwise) so we
+  // never delete attachments the user didn't add this session. `submittedRef`
+  // flips on a successful post create/edit so the unmount cleanup leaves the
+  // freshly-saved images alone. `imagesRef` mirrors state so the cleanup
+  // closure can read the latest URL list at teardown time without
+  // re-rendering.
+  const submittedRef = useRef(false);
+  const initialImagesRef = useRef<string[] | null>(null);
+  const imagesRef = useRef<string[]>([]);
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  // Edit-mode unmount cleanup. If the user uploaded extra images while
+  // editing a post and then backed out without saving, those uploads are
+  // orphans in R2 — no draft persistence covers edit mode. Sweep them on
+  // teardown. New-post mode keeps its draft (and the images with it), so we
+  // skip the sweep there to preserve resume-on-next-open.
+  useEffect(() => {
+    return () => {
+      if (!isEditing) return;
+      if (submittedRef.current) return;
+      const initial = new Set(initialImagesRef.current ?? []);
+      const orphans = imagesRef.current.filter((u) => !initial.has(u));
+      if (orphans.length > 0) {
+        void client.deleteUploadedFiles(orphans);
+      }
+    };
+  }, [client, isEditing]);
+
   // Draft persistence — only for new posts. Edit mode loads from the
   // server and skips the local draft so the user's existing-post copy
   // doesn't bleed into a brand-new compose session.
@@ -533,6 +564,10 @@ export function PostCreateScreen() {
       setVideos(loadedDraft.videos ?? []);
       setPoll(loadedDraft.poll ?? null);
     }
+    // For new-post mode, every image visible is one the user added (or
+    // re-loaded from their own draft) — so they're all candidates for the
+    // cleanup sweep when the user resets or backs out.
+    initialImagesRef.current = [];
   }, [hydrated, loadedDraft, isEditing]);
 
   // Persist draft whenever any of the user-editable fields change.
@@ -560,6 +595,10 @@ export function PostCreateScreen() {
     setTags((p.tags ?? []).map((t) => t.name));
     setImages(p.media?.images ?? []);
     setVideos(p.media?.videos ?? []);
+    // Snapshot the post's saved image set so Reset / cleanup never deletes
+    // attachments the user didn't add this session — those still belong to
+    // the live post on the server.
+    initialImagesRef.current = p.media?.images ?? [];
     if (p.poll) {
       setPoll({
         question: p.poll.question ?? undefined,
@@ -726,6 +765,7 @@ export function PostCreateScreen() {
       return client.post<CreatePostResponse>(`/api/topics/${topicId}/posts`, body);
     },
     onSuccess: (res) => {
+      submittedRef.current = true;
       queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'posts'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
       if (isEditing && editPostId) {
@@ -803,6 +843,15 @@ export function PostCreateScreen() {
                     text: t('openstoa.postCreate.resetConfirm'),
                     style: 'destructive',
                     onPress: () => {
+                      // R2 cleanup — delete any images the user uploaded this
+                      // session. In edit mode we exclude the post's original
+                      // image set (those still belong to the live post on the
+                      // server until a PATCH actually changes them).
+                      const initial = new Set(initialImagesRef.current ?? []);
+                      const orphans = images.filter((u) => !initial.has(u));
+                      if (orphans.length > 0) {
+                        void client.deleteUploadedFiles(orphans);
+                      }
                       setTitle('');
                       setContent('');
                       setTags([]);

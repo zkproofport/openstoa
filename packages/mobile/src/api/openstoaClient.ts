@@ -164,6 +164,31 @@ export class OpenStoaClient {
     const { publicUrl } = (await res.json()) as { publicUrl: string };
     return publicUrl;
   }
+
+  /**
+   * Best-effort cleanup of R2 images that were uploaded for a draft the user
+   * abandoned (compose Reset, screen exit, etc.). Failures are swallowed —
+   * the worst case is an orphan in R2, not a broken UI flow.
+   */
+  async deleteUploadedFiles(urls: string[]): Promise<{ attempted: number; deleted: number; skipped: number } | null> {
+    const clean = urls.filter((u) => typeof u === 'string' && u.length > 0);
+    if (clean.length === 0) return null;
+    try {
+      const token = await this.resolveToken();
+      const res = await fetch(`${this.baseUrl}/api/upload`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ urls: clean }),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as { attempted: number; deleted: number; skipped: number };
+    } catch {
+      return null;
+    }
+  }
 }
 
 let _client: OpenStoaClient | null = null;

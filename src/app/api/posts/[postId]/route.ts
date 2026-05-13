@@ -5,6 +5,7 @@ import { posts, comments, topicMembers, users, postTags, tags, votes, topics, re
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
+import { deleteOrphanedR2Urls } from '@/lib/r2';
 
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { attachPollsToPosts } from '@/lib/polls';
@@ -473,9 +474,16 @@ export async function DELETE(
 
     logger.info(ROUTE, 'Deleting post', { userId: session.userId, postId });
 
-    // Check post exists
+    // Check post exists. We also fetch `media` so we can purge any
+    // R2-backed images from storage after the soft-delete settles.
     const postResults = await db
-      .select({ id: posts.id, authorId: posts.authorId, topicId: posts.topicId, isDeleted: posts.isDeleted })
+      .select({
+        id: posts.id,
+        authorId: posts.authorId,
+        topicId: posts.topicId,
+        isDeleted: posts.isDeleted,
+        media: posts.media,
+      })
       .from(posts)
       .where(eq(posts.id, postId));
 
@@ -523,6 +531,22 @@ export async function DELETE(
       })
       .where(eq(posts.id, postId));
 
+    // R2 orphan purge — every image attached to this post is now unreachable
+    // through the post, so delete the objects from the bucket. Failures are
+    // logged inside `deleteOrphanedR2Urls`; we don't want a flaky R2 to
+    // block the user-facing soft-delete response.
+    try {
+      const prevImages = (post.media as { images?: string[] } | null)?.images ?? [];
+      if (prevImages.length > 0) {
+        await deleteOrphanedR2Urls(prevImages, []);
+      }
+    } catch (cleanupErr) {
+      logger.error(ROUTE, 'R2 cleanup on DELETE failed', {
+        postId,
+        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
+    }
+
     logger.info(ROUTE, 'Post soft-deleted', { userId: session.userId, postId });
     return NextResponse.json({ id: postId, isDeleted: true });
   } catch (error) {
@@ -556,7 +580,8 @@ export async function PATCH(
 
     logger.info(ROUTE, 'Editing post', { userId: session.userId, postId });
 
-    // Check post exists
+    // Check post exists. We pull `media` so we can diff the old image set
+    // against the incoming one and purge anything the user removed.
     const postResults = await db
       .select({
         id: posts.id,
@@ -564,6 +589,7 @@ export async function PATCH(
         topicId: posts.topicId,
         recordCount: posts.recordCount,
         isDeleted: posts.isDeleted,
+        media: posts.media,
       })
       .from(posts)
       .where(eq(posts.id, postId));
@@ -683,6 +709,25 @@ export async function PATCH(
       .set(updateData)
       .where(eq(posts.id, postId))
       .returning();
+
+    // R2 orphan purge — when the caller passed a new media object, diff the
+    // old image list against the new one and delete anything that was
+    // dropped. Skipped when the caller didn't touch `media` (so editing only
+    // tags/title doesn't risk nuking attachments).
+    if (mediaIn !== undefined) {
+      try {
+        const prevImages = (post.media as { images?: string[] } | null)?.images ?? [];
+        const nextImages = (updateData.media as { images?: string[] } | null)?.images ?? [];
+        if (prevImages.length > 0) {
+          await deleteOrphanedR2Urls(prevImages, nextImages);
+        }
+      } catch (cleanupErr) {
+        logger.error(ROUTE, 'R2 cleanup on PATCH failed', {
+          postId,
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
+    }
 
     // Replace tags if provided. Wipe existing postTags rows then re-link.
     if (Array.isArray(tagNames)) {

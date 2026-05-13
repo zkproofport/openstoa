@@ -259,20 +259,20 @@ export default function SNSEditor({
     if (file.size > 10 * 1024 * 1024) return null;
 
     try {
+      // POST /api/upload accepts multipart/form-data and uploads through the
+      // server (since f4a6877 — direct-multipart replaced the prior
+      // presigned-URL flow). Browser auth flows over the session cookie
+      // attached automatically; no manual Authorization header here.
+      const form = new FormData();
+      form.append('file', file, file.name);
+      form.append('purpose', 'post');
+
       const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+        body: form,
       });
-      if (!res.ok) throw new Error('Upload request failed');
-
-      const { uploadUrl, publicUrl } = await res.json();
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error('R2 upload failed');
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      const { publicUrl } = (await res.json()) as { publicUrl: string };
       return publicUrl;
     } catch (err) {
       console.error('Image upload failed:', err);

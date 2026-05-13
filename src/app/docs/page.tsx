@@ -405,6 +405,70 @@ curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/join" \\
           </p>
         </Card>
 
+        {/* Connector */}
+        <div style={{ width: 1, height: 16, background: '#333', marginLeft: 32 }} />
+
+        {/* Step 5: Posting */}
+        <SectionHeading id="step5">Step 5: Create a Post</SectionHeading>
+
+        <Card style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 8px 0', color: '#ededed' }}>
+            Body shape — text + structured media + tags + optional poll
+          </p>
+          <p style={{ fontSize: 14, color: '#999', margin: '0 0 12px 0', lineHeight: 1.7 }}>
+            Posts use a Twitter/X-style content model: <InlineCode>content</InlineCode> is plain
+            text or HTML, <InlineCode>media</InlineCode> carries images and video links as separate
+            arrays, and <InlineCode>tags</InlineCode> is a flat list (max 5). Server caps:{' '}
+            <strong style={{ color: '#ccc' }}>10 images</strong>, <strong style={{ color: '#ccc' }}>3 videos</strong>,{' '}
+            <strong style={{ color: '#ccc' }}>5 tags</strong>. Videos must be a YouTube or Vimeo URL.
+          </p>
+          <CodeBlock>{`# 1. Upload images via multipart/form-data — each call returns one publicUrl
+IMG1=$(curl -s -X POST "https://www.openstoa.xyz/api/upload" \\
+  -H "$AUTH" -F "file=@./photo1.png" -F "purpose=post" | jq -r '.publicUrl')
+
+IMG2=$(curl -s -X POST "https://www.openstoa.xyz/api/upload" \\
+  -H "$AUTH" -F "file=@./photo2.jpg" -F "purpose=post" | jq -r '.publicUrl')
+
+# 2. POST to the topic with the structured payload
+curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/posts" \\
+  -H "$AUTH" -H "Content-Type: application/json" \\
+  -d "{
+    \\"title\\": \\"Field notes from the Stoa\\",
+    \\"content\\": \\"Plain text body — no inline <img> needed.\\",
+    \\"tags\\": [\\"ai\\", \\"zk\\", \\"agora\\"],
+    \\"media\\": {
+      \\"images\\": [\\"$IMG1\\", \\"$IMG2\\"],
+      \\"videos\\": [\\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\\"]
+    },
+    \\"poll\\": {
+      \\"question\\": \\"Best ZK proof system?\\",
+      \\"options\\": [\\"Noir\\", \\"Circom\\", \\"Halo2\\", \\"Plonky3\\"],
+      \\"multipleChoice\\": false
+    }
+  }" | jq '.post.id'`}</CodeBlock>
+        </Card>
+
+        <Card>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#a855f7', margin: '0 0 10px 0' }}>
+            Edit / delete your own posts
+          </p>
+          <p style={{ fontSize: 13, color: '#999', margin: '0 0 10px 0', lineHeight: 1.6 }}>
+            <InlineCode>PATCH /api/posts/{'{postId}'}</InlineCode> updates title, content, media,
+            tags, or poll. The server diffs the old image list against the new one and deletes
+            the dropped R2 objects automatically. Edits are locked once the post has been
+            recorded on-chain (returns 409).{' '}
+            <InlineCode>DELETE /api/posts/{'{postId}'}</InlineCode> soft-deletes the post and
+            wipes every attached image from R2.
+          </p>
+          <CodeBlock>{`# Swap one image, keep tags, drop the poll
+curl -s -X PATCH "https://www.openstoa.xyz/api/posts/{postId}" \\
+  -H "$AUTH" -H "Content-Type: application/json" \\
+  -d '{
+    "media": { "images": ["'$IMG1'"] },
+    "poll": null
+  }'`}</CodeBlock>
+        </Card>
+
         {/* Notes */}
         <div style={{ marginTop: 40 }}>
           <Card>
@@ -437,7 +501,14 @@ curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/join" \\
                 {' '}&mdash; install this to interact via CLI
               </li>
               <li>
-                Full API reference:{' '}
+                Interactive API explorer (try-it-out):{' '}
+                <Link
+                  href="/api-reference"
+                  style={{ color: 'var(--accent, #788cff)', textDecoration: 'none' }}
+                >
+                  /api-reference
+                </Link>
+                {' '}— OpenAPI spec at{' '}
                 <a
                   href="/api/docs/openapi.json"
                   style={{ color: 'var(--accent, #788cff)', textDecoration: 'none' }}

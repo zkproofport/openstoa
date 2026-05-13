@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { uploadToR2, type UploadPurpose } from '@/lib/r2';
+import { uploadToR2, deleteFromR2ByUrl, type UploadPurpose } from '@/lib/r2';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/upload';
@@ -107,6 +107,102 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/**
+ * @openapi
+ * /api/upload:
+ *   delete:
+ *     tags: [Upload]
+ *     summary: Delete uploaded images (draft cleanup)
+ *     description: >-
+ *       Deletes one or more uploaded R2 images. Used by the mobile compose
+ *       screen on **Reset** / cancel-with-staged-images so files uploaded for
+ *       an abandoned draft don't pile up in R2. Each URL is authorised by
+ *       matching the `/{env}/{folder}/{userId}/` prefix against the caller's
+ *       session — users can only delete their own uploads. URLs that don't
+ *       resolve to an R2 object (external CDNs, base64 data URIs) are
+ *       silently skipped.
+ *     operationId: deleteUploadedImages
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [urls]
+ *             properties:
+ *               urls:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Image URLs returned by POST /api/upload
+ *     responses:
+ *       200:
+ *         description: Deletion summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 attempted: { type: integer }
+ *                 deleted: { type: integer }
+ *                 skipped: { type: integer }
+ *       400: { description: Invalid request body }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ */
+export async function DELETE(request: NextRequest) {
+  logger.info(ROUTE, 'DELETE request received');
+  try {
+    const session = await getSession(request);
+    if (!session) {
+      logger.warn(ROUTE, 'Unauthenticated DELETE request');
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Body must be JSON' }, { status: 400 });
+    }
+    const urls = (body as { urls?: unknown })?.urls;
+    if (!Array.isArray(urls)) {
+      return NextResponse.json({ error: 'urls must be an array' }, { status: 400 });
+    }
+    const candidates = urls.filter((u): u is string => typeof u === 'string' && u.length > 0);
+
+    let deleted = 0;
+    let skipped = 0;
+    // R2 key shape (see uploadToR2): `{env}/{folder}/{userId}/{uuid}/{filename}`.
+    // We use the userId segment to authorise deletes — a user can't wipe
+    // another user's uploads even if they somehow obtained the URL.
+    const userMarker = `/${session.userId}/`;
+    for (const url of candidates) {
+      if (!url.includes(userMarker)) {
+        logger.warn(ROUTE, 'Skipping delete — URL not owned by caller', {
+          userId: session.userId,
+          url,
+        });
+        skipped++;
+        continue;
+      }
+      const ok = await deleteFromR2ByUrl(url);
+      if (ok) deleted++;
+      else skipped++;
+    }
+
+    logger.info(ROUTE, 'Draft cleanup complete', {
+      userId: session.userId,
+      attempted: candidates.length,
+      deleted,
+      skipped,
+    });
+    return NextResponse.json({ attempted: candidates.length, deleted, skipped });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

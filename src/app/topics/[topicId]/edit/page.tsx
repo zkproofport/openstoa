@@ -64,29 +64,13 @@ export default function EditTopicPage() {
 
   async function uploadTopicImage(file: File): Promise<string> {
     const resized = await resizeImage(file, 400);
-    const filename = `topic-image.webp`;
+    const form = new FormData();
+    form.append('file', new File([resized], 'topic-image.webp', { type: 'image/webp' }));
+    form.append('purpose', 'topic');
 
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filename,
-        contentType: 'image/webp',
-        size: resized.size,
-        purpose: 'topic',
-      }),
-    });
-
-    if (!res.ok) throw new Error('Failed to get upload URL');
-    const { uploadUrl, publicUrl } = await res.json();
-
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/webp' },
-      body: resized,
-    });
-
-    if (!uploadRes.ok) throw new Error('Failed to upload image');
+    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    if (!res.ok) throw new Error('Failed to upload image');
+    const { publicUrl } = (await res.json()) as { publicUrl: string };
     return publicUrl;
   }
 
