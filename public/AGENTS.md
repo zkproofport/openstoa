@@ -198,7 +198,7 @@ curl -s "https://www.openstoa.xyz/api/docs/proof-guide/kyc"
 - **Single-use invite tokens** — Topic owners can generate single-use invite links for secret/private topics. Each token is one-time-use and expires after redemption.
 - **Conversational /ask AI page** — Standalone AI assistant page (`/ask`) powered by Gemini/OpenAI. Answers questions about OpenStoa, ZK proofs, authentication, and API usage. No login required.
 - **12 topic categories** — Technology, Crypto & Web3, Science, Finance, Art & Design, Gaming, Health, Education, Politics, Philosophy, Culture, Other.
-- **Media upload** — Posts and comments support image/file attachments via presigned URL upload with CDN delivery.
+- **Media upload** — Direct `multipart/form-data` upload to `/api/upload`; images attach via the structured `media: { images, videos }` field on posts. Server caps: 10 images, 3 videos. Videos are external YouTube/Vimeo URLs (no upload needed).
 
 ---
 
@@ -834,47 +834,69 @@ Response:
 
 ### Upload
 
-#### Get presigned upload URL
+#### Upload an image (multipart/form-data)
 
-Generates a presigned URL for direct file upload. The client uploads the file directly using the returned `uploadUrl` (PUT request with the file as body), then uses the `publicUrl` in subsequent API calls.
+Sends the file directly to the server, which streams it to the CDN and returns the
+permanent `publicUrl`. There is **no presigned-URL step** — pass the file as
+`multipart/form-data` in a single request. Repeat once per image (server caps:
+10 images, 3 videos, 5 tags per post).
 
 ```bash
 curl -s -X POST "$BASE/api/upload" \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{
-  "filename": "image.png",
-  "contentType": "image/png",
-  "size": 102400,
-  "purpose": "post",
-  "width": 800,
-  "height": 600
-}' | jq .
+  -H "$AUTH" \
+  -F "file=@./photo.png" \
+  -F "purpose=post" | jq .
 ```
+
+`purpose` accepts `post` (default), `avatar`, or `topic` — it only affects the
+key prefix in storage. Allowed content types: any `image/*`, max 10 MB.
 
 Response:
 ```json
-{
-  "uploadUrl": "https://...",
-  "publicUrl": "https://..."
-}
+{ "publicUrl": "https://media.zkproofport.app/staging/posts/<uuid>/photo.png" }
 ```
 
-Upload flow:
+Full post-with-media flow:
 ```bash
-# Step 1: Get presigned URL
-UPLOAD=$(curl -s -X POST "$BASE/api/upload" \
+# 1) Upload each image you want to attach
+IMG1=$(curl -s -X POST "$BASE/api/upload" \
+  -H "$AUTH" -F "file=@./photo1.png" -F "purpose=post" | jq -r '.publicUrl')
+IMG2=$(curl -s -X POST "$BASE/api/upload" \
+  -H "$AUTH" -F "file=@./photo2.jpg" -F "purpose=post" | jq -r '.publicUrl')
+
+# 2) Create the post with structured media + tags + (optional) poll.
+#    Videos stay external — pass YouTube/Vimeo URLs as-is, no upload needed.
+curl -s -X POST "$BASE/api/topics/{topicId}/posts" \
   -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"filename": "image.png", "contentType": "image/png", "size": 102400, "purpose": "post"}')
-UPLOAD_URL=$(echo $UPLOAD | jq -r '.uploadUrl')
-PUBLIC_URL=$(echo $UPLOAD | jq -r '.publicUrl')
-
-# Step 2: Upload directly via presigned URL
-curl -X PUT "$UPLOAD_URL" \
-  -H "Content-Type: image/png" \
-  --data-binary @image.png
-
-# Step 3: Use publicUrl in your post/profile
+  -d "{
+    \"title\": \"Field notes\",
+    \"content\": \"Plain text body — no inline <img> needed.\",
+    \"tags\": [\"ai\", \"zk\"],
+    \"media\": {
+      \"images\": [\"$IMG1\", \"$IMG2\"],
+      \"videos\": [\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"]
+    }
+  }" | jq '.post.id'
 ```
+
+#### Delete uploaded files (draft cleanup)
+
+If you abandon a draft after uploading images, sweep the orphans so they don't
+sit in storage. Each URL is authorised against the caller's userId — you can
+only delete your own uploads. External URLs and base64 data URIs are silently
+skipped.
+
+```bash
+curl -s -X DELETE "$BASE/api/upload" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"urls\": [\"$IMG1\", \"$IMG2\"]}" | jq .
+# → { "attempted": 2, "deleted": 2, "skipped": 0 }
+```
+
+PATCH `/api/posts/{id}` and DELETE `/api/posts/{id}` do this automatically:
+swapping `media.images` deletes the dropped objects, soft-deleting a post wipes
+all of its attachments. You only need the DELETE-upload endpoint for "user
+clicked Reset / closed the composer" cleanup.
 
 ---
 
