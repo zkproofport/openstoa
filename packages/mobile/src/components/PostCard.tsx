@@ -6,6 +6,7 @@ import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { MediaPreview } from './MediaPreview';
+import { PollRenderer } from './PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls, type MediaItem } from './PostContent';
 import { VideoEmbed } from './VideoEmbed';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon } from './icons';
@@ -477,6 +478,11 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           <MediaPreview media={{ images: post.media!.images }} />
         </TouchableOpacity>
       ) : null}
+
+      {/* Poll — when the post has an attached poll, render the
+          interactive vote UI. Wire mutations through the shared cache
+          patcher so vote bars stay in sync with the detail view. */}
+      {post.poll ? <PollRenderer postId={post.id} poll={post.poll} /> : null}
 
       {/* Reactions — display-only Slack-style pill row. Tapping a pill
           opens the post detail where the full picker lives. */}

@@ -11,6 +11,8 @@ import Spinner from '@/components/Spinner';
 import ImageLightbox from '@/components/ImageLightbox';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
 import { PostRecordsSection } from '@/components/PostRecordsSection';
+import PollRenderer from '@/components/PollRenderer';
+import type { Poll } from '@/lib/polls';
 import { formatDate, truncateId } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -34,6 +36,7 @@ interface Post {
   tags?: { name: string; slug: string }[];
   userVoted?: number | null;
   isAI?: boolean;
+  poll?: Poll | null;
 }
 
 interface Comment {
@@ -76,6 +79,47 @@ export default function PostPage() {
 
   const [reactions, setReactions] = useState<{ emoji: string; count: number; userReacted: boolean }[]>([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // Poll state — initialised from the GET response, then updated locally on
+  // every vote/unvote so the user sees results without a full reload.
+  const [poll, setPoll] = useState<Poll | null>(null);
+  const [pollLoading, setPollLoading] = useState(false);
+
+  async function handlePollVote(optionIds: string[]) {
+    if (isGuest) return;
+    setPollLoading(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}/poll/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionIds }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Vote failed');
+      }
+      const data = await res.json();
+      if (data.poll) setPoll(data.poll);
+    } finally {
+      setPollLoading(false);
+    }
+  }
+
+  async function handlePollUnvote() {
+    if (isGuest) return;
+    setPollLoading(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}/poll/vote`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Unvote failed');
+      }
+      const data = await res.json();
+      if (data.poll) setPoll(data.poll);
+    } finally {
+      setPollLoading(false);
+    }
+  }
 
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -176,6 +220,7 @@ export default function PostPage() {
       setComments(data.comments ?? []);
       setUpvoteCount(data.post.upvoteCount ?? 0);
       setUserVote(data.post.userVoted ?? null);
+      setPoll(data.post.poll ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load post');
     } finally {
@@ -474,6 +519,15 @@ export default function PostPage() {
               mediaVideos={post.media?.videos}
             />
           </div>
+
+          {poll && (
+            <PollRenderer
+              poll={poll}
+              onVote={handlePollVote}
+              onUnvote={handlePollUnvote}
+              loading={pollLoading}
+            />
+          )}
 
           <div style={{
             display: 'flex',

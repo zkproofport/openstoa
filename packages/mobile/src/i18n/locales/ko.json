@@ -257,7 +257,34 @@
       "videoCancel": "취소",
       "draftSaved": "임시 저장됨",
       "previewEmpty": "미리볼 내용이 없어요",
-      "charCount": "{{n}}자"
+      "charCount": "{{n}}자",
+      "addPoll": "투표",
+      "removePoll": "투표 제거"
+    },
+    "pollEditor": {
+      "title": "투표",
+      "questionPlaceholder": "질문 (선택)",
+      "optionPlaceholder": "선택지 {{n}}",
+      "addOption": "선택지 추가",
+      "multipleChoice": "여러 개 선택",
+      "duration": "투표 기간",
+      "duration_off": "무제한",
+      "duration_1d": "1일",
+      "duration_3d": "3일",
+      "duration_7d": "7일"
+    },
+    "poll": {
+      "vote": "투표",
+      "unvote": "투표 취소",
+      "voteFailed": "투표하지 못했어요",
+      "loginRequiredTitle": "로그인이 필요해요",
+      "loginRequiredMessage": "투표하려면 로그인해 주세요.",
+      "totalVotes": "{{n}}표",
+      "multipleChoice": "복수 선택",
+      "closed": "마감됨",
+      "closesInMinutes": "{{n}}분 남음",
+      "closesInHours": "{{n}}시간 남음",
+      "closesInDays": "{{n}}일 남음"
     },
     "postDetail": {
       "commentsHeader": "댓글 {{count}}",

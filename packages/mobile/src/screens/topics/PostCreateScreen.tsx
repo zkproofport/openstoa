@@ -38,6 +38,7 @@ import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { PostContent } from '../../components/PostContent';
 import { VideoEmbed } from '../../components/VideoEmbed';
+import { PollEditor, type PollEditorValue } from '../../components/PollEditor';
 import { useDraft } from '../../hooks/useDraft';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'PostCreate'>;
@@ -53,6 +54,12 @@ interface CreatePostBody {
   content: string;
   tags?: string[];
   media?: { images?: string[]; videos?: string[] };
+  poll?: {
+    question?: string;
+    options: string[];
+    multipleChoice?: boolean;
+    closesAt?: string;
+  };
 }
 
 interface CreatePostResponse {
@@ -71,6 +78,7 @@ interface DraftState {
   tags: string[];
   images: string[];
   videos: string[];
+  poll: PollEditorValue | null;
 }
 
 interface VideoMeta {
@@ -460,6 +468,7 @@ export function PostCreateScreen() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
+  const [poll, setPoll] = useState<PollEditorValue | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [videoInput, setVideoInput] = useState('');
@@ -479,14 +488,15 @@ export function PostCreateScreen() {
       setTags(loadedDraft.tags ?? []);
       setImages(loadedDraft.images ?? []);
       setVideos(loadedDraft.videos ?? []);
+      setPoll(loadedDraft.poll ?? null);
     }
   }, [hydrated, loadedDraft]);
 
   // Persist draft whenever any of the user-editable fields change.
   useEffect(() => {
     if (!hydrated) return;
-    persistDraft({ title, content, tags, images, videos });
-  }, [hydrated, title, content, tags, images, videos, persistDraft]);
+    persistDraft({ title, content, tags, images, videos, poll });
+  }, [hydrated, title, content, tags, images, videos, poll, persistDraft]);
 
   // Tag autocomplete
   const tagQuery = useQuery<{ tags: TagSuggestion[] }>({
@@ -616,6 +626,14 @@ export function PostCreateScreen() {
         if (images.length > 0) body.media.images = images;
         if (videos.length > 0) body.media.videos = videos;
       }
+      if (poll && poll.options.filter((o) => o.trim().length > 0).length >= 2) {
+        body.poll = {
+          question: poll.question?.trim() || undefined,
+          options: poll.options.map((o) => o.trim()).filter((o) => o.length > 0),
+          multipleChoice: poll.multipleChoice,
+          closesAt: poll.closesAt ?? undefined,
+        };
+      }
       return client.post<CreatePostResponse>(`/api/topics/${topicId}/posts`, body);
     },
     onSuccess: (res) => {
@@ -722,6 +740,22 @@ export function PostCreateScreen() {
                 <Feather name="video" size={14} color={colors.text.secondary} />
                 <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addVideo')}</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.toolbarBtn}
+                onPress={() => {
+                  if (poll) {
+                    setPoll(null);
+                  } else {
+                    setPoll({ options: ['', ''], multipleChoice: false, closesAt: null });
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Feather name="bar-chart-2" size={14} color={poll ? colors.brand.primary : colors.text.secondary} />
+                <Text style={[styles.toolbarBtnLabel, poll ? { color: colors.brand.primary } : null]}>
+                  {t('openstoa.postCreate.addPoll')}
+                </Text>
+              </TouchableOpacity>
               <View style={styles.toolbarFlex} />
               {draftSaved ? (
                 <Text style={styles.draftSaved}>{t('openstoa.postCreate.draftSaved')}</Text>
@@ -771,6 +805,11 @@ export function PostCreateScreen() {
                   </View>
                 ))}
               </View>
+            ) : null}
+
+            {/* Poll editor */}
+            {poll ? (
+              <PollEditor value={poll} onChange={setPoll} onRemove={() => setPoll(null)} />
             ) : null}
 
             {/* Tags */}

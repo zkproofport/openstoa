@@ -22,6 +22,7 @@ import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { usePostMutations } from '../../hooks/usePostMutations';
 import { MediaPreview } from '../../components/MediaPreview';
+import { PollRenderer } from '../../components/PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls } from '../../components/PostContent';
 import { VideoEmbed } from '../../components/VideoEmbed';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon, TrashIcon } from '../../components/icons';
@@ -973,6 +974,13 @@ export function PostDetailScreen() {
       {(post.media?.images?.length ?? 0) > 0 ? (
         <View style={styles.mediaSection}>
           <MediaPreview media={{ images: post.media!.images }} fullWidth />
+        </View>
+      ) : null}
+
+      {/* ── Poll ── */}
+      {post.poll ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <PollRenderer postId={post.id} poll={post.poll} />
         </View>
       ) : null}
 

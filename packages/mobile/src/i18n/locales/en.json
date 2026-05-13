@@ -257,7 +257,34 @@
       "videoCancel": "Cancel",
       "draftSaved": "Draft saved",
       "previewEmpty": "Nothing to preview yet",
-      "charCount": "{{n}} chars"
+      "charCount": "{{n}} chars",
+      "addPoll": "Poll",
+      "removePoll": "Remove poll"
+    },
+    "pollEditor": {
+      "title": "Poll",
+      "questionPlaceholder": "Question (optional)",
+      "optionPlaceholder": "Option {{n}}",
+      "addOption": "Add option",
+      "multipleChoice": "Allow multiple choices",
+      "duration": "Voting duration",
+      "duration_off": "No limit",
+      "duration_1d": "1 day",
+      "duration_3d": "3 days",
+      "duration_7d": "7 days"
+    },
+    "poll": {
+      "vote": "Vote",
+      "unvote": "Unvote",
+      "voteFailed": "Couldn't cast vote",
+      "loginRequiredTitle": "Login required",
+      "loginRequiredMessage": "Please log in to vote.",
+      "totalVotes": "{{n}} votes",
+      "multipleChoice": "Multiple choice",
+      "closed": "Closed",
+      "closesInMinutes": "{{n}}m left",
+      "closesInHours": "{{n}}h left",
+      "closesInDays": "{{n}}d left"
     },
     "postDetail": {
       "commentsHeader": "Comments ({{count}})",

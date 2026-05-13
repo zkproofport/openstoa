@@ -7,6 +7,8 @@ import Avatar from '@/components/Avatar';
 import { relativeTime } from '@/lib/utils';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon, PinIcon, RecordIcon } from '@/components/icons';
 import Badge from '@/components/Badge';
+import PollRenderer from '@/components/PollRenderer';
+import type { Poll } from '@/lib/polls';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,8 @@ export interface PostCardPost {
   topicId?: string;
   badges?: Array<{ type: string; label: string; country?: string; domain?: string }>;
   isAI?: boolean;
+  /** Phase B poll block (optional). Hydrated by `attachPollsToPosts`. */
+  poll?: Poll | null;
 }
 
 export interface PostCardProps {
@@ -207,6 +211,48 @@ export default function PostCard({
   // Reactions state
   const [reactions, setReactions] = useState<Reaction[]>(reactionsProp ?? post.reactions ?? []);
   const [reactionsLoaded, setReactionsLoaded] = useState(!!(reactionsProp ?? post.reactions));
+
+  // Poll state (local cache so vote / unvote feels instant without forcing a
+  // parent refresh). Vote API returns the fresh poll snapshot in `{ poll }`.
+  const [poll, setPoll] = useState<Poll | null>(post.poll ?? null);
+  const [pollLoading, setPollLoading] = useState(false);
+  useEffect(() => {
+    setPoll(post.poll ?? null);
+  }, [post.poll]);
+
+  const submitPollVote = useCallback(async (optionIds: string[]) => {
+    setPollLoading(true);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/poll/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionIds }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Vote failed');
+      }
+      const data = await res.json();
+      if (data.poll) setPoll(data.poll);
+    } finally {
+      setPollLoading(false);
+    }
+  }, [post.id]);
+
+  const clearPollVote = useCallback(async () => {
+    setPollLoading(true);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/poll/vote`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Unvote failed');
+      }
+      const data = await res.json();
+      if (data.poll) setPoll(data.poll);
+    } finally {
+      setPollLoading(false);
+    }
+  }, [post.id]);
 
   // Sync reactions when prop changes
   useEffect(() => {
@@ -485,6 +531,18 @@ export default function PostCard({
             );
           })()}
 
+          {/* Poll (simple mode) — stop propagation so vote buttons don't trigger Link */}
+          {poll && (
+            <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+              <PollRenderer
+                poll={poll}
+                onVote={submitPollVote}
+                onUnvote={clearPollVote}
+                loading={pollLoading}
+              />
+            </div>
+          )}
+
           {/* Meta row */}
           <div style={{
             display: 'flex',
@@ -684,6 +742,17 @@ export default function PostCard({
           );
         })()}
       </Link>
+
+      {/* Poll (rich mode) — outside the Link so radio/checkbox clicks
+          don't trigger the card-level navigation. */}
+      {poll && (
+        <PollRenderer
+          poll={poll}
+          onVote={submitPollVote}
+          onUnvote={clearPollVote}
+          loading={pollLoading}
+        />
+      )}
 
       {/* Recorded on Base badge */}
       {recordCount > 0 && (

@@ -10,6 +10,7 @@ import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 import TopicAvatar from '@/components/TopicAvatar';
 import ImageLightbox from '@/components/ImageLightbox';
+import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ export default function TopicPage() {
   const [postImages, setPostImages] = useState<string[]>([]);
   const [postVideos, setPostVideos] = useState<string[]>([]);
   const [postTags, setPostTags] = useState<string[]>([]);
+  const [postPoll, setPostPoll] = useState<PollEditorValue | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
@@ -297,6 +299,23 @@ export default function TopicPage() {
     setSubmitting(true);
     setPostError(null);
     try {
+      // Strip empty option strings before submit — backend rejects polls with
+      // fewer than 2 non-empty options, surface that as a friendlier inline
+      // error before we even POST.
+      let pollPayload: { question?: string; options: string[]; multipleChoice: boolean; closesAt?: string } | undefined;
+      if (postPoll) {
+        const opts = postPoll.options.map((o) => o.trim()).filter((o) => o.length > 0 && o.length <= 80);
+        if (opts.length < 2 || opts.length > 4) {
+          throw new Error('Poll needs 2 to 4 non-empty options (≤80 chars each)');
+        }
+        pollPayload = {
+          options: opts,
+          multipleChoice: postPoll.multipleChoice,
+          ...(postPoll.question?.trim() ? { question: postPoll.question.trim() } : {}),
+          ...(postPoll.closesAt ? { closesAt: postPoll.closesAt } : {}),
+        };
+      }
+
       const res = await fetch(`/api/topics/${topicId}/posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -305,6 +324,7 @@ export default function TopicPage() {
           content: postContent,
           media: { images: postImages, videos: postVideos },
           tags: postTags.length > 0 ? postTags : undefined,
+          ...(pollPayload ? { poll: pollPayload } : {}),
         }),
       });
       if (!res.ok) {
@@ -316,6 +336,7 @@ export default function TopicPage() {
       setPostImages([]);
       setPostVideos([]);
       setPostTags([]);
+      setPostPoll(null);
       try { localStorage.removeItem('openstoa-draft'); } catch {}
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
@@ -873,6 +894,55 @@ export default function TopicPage() {
                 <div style={{ marginTop: 4 }}>
                   <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
                 </div>
+
+                {/* Poll toggle + editor */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (postPoll) {
+                        setPostPoll(null);
+                      } else {
+                        setPostPoll({
+                          question: '',
+                          options: ['', ''],
+                          multipleChoice: false,
+                          closesAt: null,
+                        });
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background: postPoll ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+                      color: postPoll ? 'var(--accent)' : '#9ca3af',
+                      border: postPoll ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 7,
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3" width="12" height="2.5" rx="0.5" />
+                      <rect x="2" y="6.75" width="9" height="2.5" rx="0.5" />
+                      <rect x="2" y="10.5" width="6" height="2.5" rx="0.5" />
+                    </svg>
+                    {postPoll ? 'Remove poll' : 'Add poll'}
+                  </button>
+                </div>
+                {postPoll && (
+                  <PollEditor
+                    value={postPoll}
+                    onChange={setPostPoll}
+                    onRemove={() => setPostPoll(null)}
+                  />
+                )}
+
                 {postError && (
                   <p style={{ fontSize: 14, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
                     {postError}
@@ -888,6 +958,7 @@ export default function TopicPage() {
                       setPostImages([]);
                       setPostVideos([]);
                       setPostTags([]);
+                      setPostPoll(null);
                       try { localStorage.removeItem('openstoa-draft'); } catch {}
                     }}
                     style={{
