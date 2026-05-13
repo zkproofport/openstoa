@@ -15,6 +15,17 @@ import { isSupportedVideoUrl } from '@/lib/videoUrls';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
+const VALID_POST_SORTS = ['hot', 'new', 'top', 'active', 'recorded'] as const;
+type PostSort = typeof VALID_POST_SORTS[number];
+
+function buildPostSortExpr(sort: PostSort) {
+  return sort === 'new' ? desc(posts.createdAt)
+    : sort === 'top' ? desc(posts.upvoteCount)
+    : sort === 'active' ? desc(posts.lastActivityAt)
+    : sort === 'recorded' ? desc(posts.recordCount)
+    : desc(posts.score); // 'hot' default
+}
+
 // Batch-load post→tag rows and mutate each post with a `tags` array. Mirrors
 // the per-post tag block on the detail endpoint so PostCard's chip row has
 // data to render without an extra round-trip per card.
@@ -87,8 +98,8 @@ async function attachTagsToPosts<T extends { id: string; tags?: { name: string; 
  *         description: Sort order
  *         schema:
  *           type: string
- *           enum: [new, popular, recorded]
- *           default: new
+ *           enum: [hot, new, top, active, recorded]
+ *           default: hot
  *     responses:
  *       200:
  *         description: Paginated list of posts (pinned posts first)
@@ -187,7 +198,15 @@ export async function GET(
       const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
       const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
       const tagSlug = url.searchParams.get('tag') ?? null;
-      const sort = url.searchParams.get('sort') ?? 'new';
+      const sortParam = url.searchParams.get('sort') ?? 'hot';
+      if (!VALID_POST_SORTS.includes(sortParam as PostSort)) {
+        logger.warn(ROUTE, 'Invalid sort value (guest)', { sort: sortParam });
+        return NextResponse.json(
+          { error: `Invalid sort. Must be one of: ${VALID_POST_SORTS.join(', ')}` },
+          { status: 400 },
+        );
+      }
+      const sort: PostSort = sortParam as PostSort;
 
       let tagFilteredPostIds: string[] | null = null;
       if (tagSlug) {
@@ -235,10 +254,7 @@ export async function GET(
         .from(posts)
         .leftJoin(users, eq(posts.authorId, users.id))
         .where(whereClause)
-        .orderBy(
-          desc(posts.isPinned),
-          sort === 'popular' ? desc(posts.score) : sort === 'recorded' ? desc(posts.recordCount) : desc(posts.createdAt),
-        )
+        .orderBy(desc(posts.isPinned), buildPostSortExpr(sort))
         .limit(limit)
         .offset(offset);
 
@@ -287,7 +303,15 @@ export async function GET(
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
     const tagSlug = url.searchParams.get('tag') ?? null;
-    const sort = url.searchParams.get('sort') ?? 'new';
+    const sortParam = url.searchParams.get('sort') ?? 'hot';
+    if (!VALID_POST_SORTS.includes(sortParam as PostSort)) {
+      logger.warn(ROUTE, 'Invalid sort value', { userId: session.userId, sort: sortParam });
+      return NextResponse.json(
+        { error: `Invalid sort. Must be one of: ${VALID_POST_SORTS.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    const sort: PostSort = sortParam as PostSort;
 
     logger.info(ROUTE, 'Fetching posts', { userId: session.userId, topicId, limit, offset, tagSlug, sort });
 
@@ -339,10 +363,7 @@ export async function GET(
       .leftJoin(users, eq(posts.authorId, users.id))
       .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
       .where(whereClause)
-      .orderBy(
-        desc(posts.isPinned),
-        sort === 'popular' ? desc(posts.score) : sort === 'recorded' ? desc(posts.recordCount) : desc(posts.createdAt),
-      )
+      .orderBy(desc(posts.isPinned), buildPostSortExpr(sort))
       .limit(limit)
       .offset(offset);
 

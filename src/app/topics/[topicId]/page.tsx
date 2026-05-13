@@ -202,8 +202,9 @@ export default function TopicPage() {
     setPostsLoading(true);
     try {
       const tagParam = tag ? `&tag=${encodeURIComponent(tag)}` : '';
+      const apiSort = currentSort === 'popular' ? 'hot' : currentSort;
       const res = await fetch(
-        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}&sort=${currentSort}${tagParam}`
+        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}&sort=${apiSort}${tagParam}`
       );
       if (!res.ok) return;
       const data = await res.json();

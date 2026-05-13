@@ -214,7 +214,7 @@ export function TopicDetailScreen() {
       const params = new URLSearchParams({
         limit: '20',
         offset: String(offset),
-        sort: sortKey,
+        sort: sortKey === 'popular' ? 'hot' : sortKey,
       });
       if (activeTag) params.set('tag', activeTag);
       const res = await client.get<{ posts: PostsPageResponse['posts'] }>(

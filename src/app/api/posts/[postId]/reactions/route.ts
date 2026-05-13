@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { reactions, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { updateTopicScore } from '@/lib/topicScore';
 
 const ROUTE = '/api/posts/[postId]/reactions';
 
@@ -184,6 +185,9 @@ export async function POST(
         );
       // Bump lastActivityAt — toggling a reaction is still an activity signal.
       await db.update(posts).set({ lastActivityAt: new Date() }).where(eq(posts.id, postId));
+      updateTopicScore(post.topicId).catch((err) =>
+        logger.warn(ROUTE, 'Failed to update topic score', { topicId: post.topicId, error: String(err) }),
+      );
       logger.info(ROUTE, 'Reaction removed', { userId: session.userId, postId, emoji });
       return NextResponse.json({ added: false });
     } else {
@@ -195,6 +199,9 @@ export async function POST(
       });
       // Bump lastActivityAt — new reaction is an activity signal for sort=active.
       await db.update(posts).set({ lastActivityAt: new Date() }).where(eq(posts.id, postId));
+      updateTopicScore(post.topicId).catch((err) =>
+        logger.warn(ROUTE, 'Failed to update topic score', { topicId: post.topicId, error: String(err) }),
+      );
       logger.info(ROUTE, 'Reaction added', { userId: session.userId, postId, emoji });
       return NextResponse.json({ added: true });
     }

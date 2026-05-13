@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, users, votes, topics, topicMembers, tags, postTags, categories } from '@/lib/db/schema';
-import { eq, and, desc, sql, inArray, isNull } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, isNull, ilike, or } from 'drizzle-orm';
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
@@ -44,6 +44,12 @@ const ROUTE = '/api/feed';
  *         in: query
  *         required: false
  *         description: Filter by category slug
+ *         schema:
+ *           type: string
+ *       - name: q
+ *         in: query
+ *         required: false
+ *         description: Search query — matches post title and content (case-insensitive substring)
  *         schema:
  *           type: string
  *       - name: limit
@@ -95,6 +101,8 @@ export async function GET(request: NextRequest) {
     const tagSlug = url.searchParams.get('tag') ?? null;
     const categorySlug = url.searchParams.get('category') ?? null;
     const view = url.searchParams.get('view') ?? null; // 'my' = only joined topics
+    const qRaw = url.searchParams.get('q')?.trim() ?? '';
+    const q = qRaw.length > 0 ? qRaw.slice(0, 200) : null;
 
     // --- Validate sort against whitelist (no silent fallback) ---
     if (!VALID_SORTS.includes(sortParam as FeedSort)) {
@@ -154,7 +162,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ posts: [] });
       }
 
-      const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds);
+      const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, q);
 
       const feedPosts = await db
         .select({
@@ -227,7 +235,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ posts: [] });
     }
 
-    const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds);
+    const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, q);
 
     const feedPosts = await db
       .select({
@@ -339,17 +347,27 @@ async function resolveAccessibleTopicIds(userId: string, categoryTopicIds: strin
 }
 
 /**
- * Build the WHERE clause combining topic access and optional tag filter.
+ * Build the WHERE clause combining topic access, optional tag filter, and
+ * optional keyword search across post title + content.
  */
-function buildWhereConditions(accessibleTopicIds: string[], tagFilteredPostIds: string[] | null) {
-  const topicCondition = inArray(posts.topicId, accessibleTopicIds);
+function buildWhereConditions(
+  accessibleTopicIds: string[],
+  tagFilteredPostIds: string[] | null,
+  q: string | null,
+) {
+  const clauses: ReturnType<typeof inArray>[] = [inArray(posts.topicId, accessibleTopicIds)];
 
   if (tagFilteredPostIds !== null) {
     if (tagFilteredPostIds.length === 0) {
-      return and(topicCondition, sql`false`);
+      return and(...clauses, sql`false`);
     }
-    return and(topicCondition, inArray(posts.id, tagFilteredPostIds));
+    clauses.push(inArray(posts.id, tagFilteredPostIds));
   }
 
-  return topicCondition;
+  if (q) {
+    const pattern = `%${q}%`;
+    clauses.push(or(ilike(posts.title, pattern), ilike(posts.content, pattern))!);
+  }
+
+  return and(...clauses);
 }

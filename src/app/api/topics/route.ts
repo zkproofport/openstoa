@@ -55,6 +55,12 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *         description: Filter by category slug
  *         schema:
  *           type: string
+ *       - name: q
+ *         in: query
+ *         required: false
+ *         description: Search query — matches topic title and description (case-insensitive substring). Only applies when view=all.
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Topics list
@@ -156,6 +162,8 @@ export async function GET(request: NextRequest) {
     const sort: TopicSort = sortParam as TopicSort;
 
     const categorySlug = searchParams.get('category');
+    const qRaw = searchParams.get('q')?.trim() ?? '';
+    const q = qRaw.length > 0 ? qRaw.slice(0, 200) : null;
 
     // Build category lookup map for enriching topic responses
     const allCategories = await db.select().from(categories);
@@ -183,6 +191,9 @@ export async function GET(request: NextRequest) {
       logger.info(ROUTE, 'Guest fetching all topics', { sort, categorySlug });
 
       const allTopics = await db.query.topics.findMany({
+        where: q
+          ? (t, { or: o, ilike: il }) => o(il(t.title, `%${q}%`), il(t.description, `%${q}%`))
+          : undefined,
         orderBy: (t, { desc: d }) =>
           sort === 'new'
             ? [d(t.createdAt)]
@@ -226,6 +237,9 @@ export async function GET(request: NextRequest) {
       logger.info(ROUTE, 'Fetching all topics with member counts', { userId: session.userId, sort, categorySlug });
 
       const allTopics = await db.query.topics.findMany({
+        where: q
+          ? (t, { or: o, ilike: il }) => o(il(t.title, `%${q}%`), il(t.description, `%${q}%`))
+          : undefined,
         orderBy: (t, { desc: d }) =>
           sort === 'new'
             ? [d(t.createdAt)]

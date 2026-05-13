@@ -280,6 +280,36 @@ describe.sequential('Feed endpoints', () => {
     expect(json.posts).toEqual([]);
   });
 
+  // ── Search (q=) ───────────────────────────────────────────────────────
+
+  it('GET /api/feed?q matches post title (case-insensitive substring)', async () => {
+    // Post A's title contains "E2E Feed Post A". Search for the distinctive
+    // "Feed Post A" substring with a different case to verify ilike.
+    const res = await publicGet('/api/feed?q=feed+post+a&limit=100');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const postIds = json.posts.map((p: { id: string }) => p.id);
+    expect(postIds).toContain(postAId);
+    expect(postIds).not.toContain(postBId);
+    expect(postIds).not.toContain(postCId);
+  });
+
+  it('GET /api/feed?q matches post content', async () => {
+    // Post B's content is "Post in category B" — unique enough to grep.
+    const res = await publicGet('/api/feed?q=post+in+category+b&limit=100');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const postIds = json.posts.map((p: { id: string }) => p.id);
+    expect(postIds).toContain(postBId);
+  });
+
+  it('GET /api/feed?q with no matches returns empty', async () => {
+    const res = await publicGet('/api/feed?q=zzz_no_match_xyz_unique_token_abcdefg');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.posts).toEqual([]);
+  });
+
   // ── Pagination ────────────────────────────────────────────────────────
 
   it('GET /api/feed respects limit and offset', async () => {

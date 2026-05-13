@@ -96,11 +96,30 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
     }
   });
 
-  it('3. Post list — sort=popular returns 200', async () => {
-    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=popular`);
+  it('3. Post list — sort=hot returns 200', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=hot`);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  it('3b. Post list — sort=top returns 200', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=top`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  it('3c. Post list — sort=active returns 200', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=active`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.posts)).toBe(true);
+  });
+
+  it('3d. Post list — sort=popular returns 400 (legacy vocabulary rejected)', async () => {
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=popular`);
+    expect(res.status).toBe(400);
   });
 
   it('4. Post list — sort=recorded returns 200', async () => {
@@ -212,11 +231,11 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
     expect(json.error).toBeTruthy();
   });
 
-  it('14. Post list — sort=invalid gracefully falls back to default (200)', async () => {
+  it('14. Post list — sort=invalid is rejected with 400 (no silent fallback)', async () => {
     const res = await publicGet(`/api/topics/${publicTopicId}/posts?sort=invalid_sort_value`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     const json = await res.json();
-    expect(Array.isArray(json.posts)).toBe(true);
+    expect(json.error).toMatch(/sort/i);
   });
 
   it('15. Post list response includes expected fields per post', async () => {

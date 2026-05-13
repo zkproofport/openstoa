@@ -119,7 +119,10 @@ describe('POST /api/posts/[postId]/vote', () => {
     expect(json.error).toBe('Post not found');
   });
 
-  it('returns 403 when user is not a member of the topic', async () => {
+  it('allows non-members to vote on visible posts (Reddit-style)', async () => {
+    // Membership is NOT required to vote — any authenticated user can
+    // upvote/downvote a post they can see in the feed. Posting and
+    // commenting still require membership (enforced by other endpoints).
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
@@ -129,7 +132,17 @@ describe('POST /api/posts/[postId]/vote', () => {
       topicId: 'topic-1',
       upvoteCount: 0,
     } as never);
+    vi.mocked(db.query.votes.findFirst).mockResolvedValue(undefined);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue(undefined);
+
+    const insertReturning = vi.fn().mockResolvedValue([{ id: 'vote-1' }]);
+    const insertValues = vi.fn().mockReturnValue({ returning: insertReturning, then: (cb: any) => cb({}) });
+    vi.mocked(db.insert).mockReturnValue({ values: insertValues } as never);
+
+    const updateReturning = vi.fn().mockResolvedValue([{ upvoteCount: 1 }]);
+    const updateWhere = vi.fn().mockReturnValue({ returning: updateReturning });
+    const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+    vi.mocked(db.update).mockReturnValue({ set: updateSet } as never);
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
@@ -137,9 +150,7 @@ describe('POST /api/posts/[postId]/vote', () => {
       { params: Promise.resolve({ postId: 'post-1' }) },
     );
 
-    expect(res.status).toBe(403);
-    const json = await res.json();
-    expect(json.error).toBe('Not a member of this topic');
+    expect(res.status).toBe(200);
   });
 
   it('returns 200 with upvoteCount when new vote is cast', async () => {

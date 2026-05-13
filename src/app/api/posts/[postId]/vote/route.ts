@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { votes, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { updatePostScore } from '@/lib/postScore';
+import { updateTopicScore } from '@/lib/topicScore';
 
 const ROUTE = '/api/posts/[postId]/vote';
 
@@ -127,6 +129,13 @@ export async function POST(
 
         updatedPost = result;
 
+        updatePostScore(postId).catch((err) =>
+          logger.warn(ROUTE, 'Failed to update post score', { postId, error: String(err) }),
+        );
+        updateTopicScore(post.topicId).catch((err) =>
+          logger.warn(ROUTE, 'Failed to update topic score', { topicId: post.topicId, error: String(err) }),
+        );
+
         logger.info(ROUTE, 'Vote removed', { userId: session.userId, postId });
         return NextResponse.json({ vote: null, upvoteCount: updatedPost.upvoteCount });
       } else {
@@ -150,6 +159,13 @@ export async function POST(
 
         updatedPost = result;
 
+        updatePostScore(postId).catch((err) =>
+          logger.warn(ROUTE, 'Failed to update post score', { postId, error: String(err) }),
+        );
+        updateTopicScore(post.topicId).catch((err) =>
+          logger.warn(ROUTE, 'Failed to update topic score', { topicId: post.topicId, error: String(err) }),
+        );
+
         logger.info(ROUTE, 'Vote updated', { userId: session.userId, postId, value });
         return NextResponse.json({ vote: { value }, upvoteCount: updatedPost.upvoteCount });
       }
@@ -169,6 +185,13 @@ export async function POST(
         .returning({ upvoteCount: posts.upvoteCount });
 
       updatedPost = result;
+
+      updatePostScore(postId).catch((err) =>
+        logger.warn(ROUTE, 'Failed to update post score', { postId, error: String(err) }),
+      );
+      updateTopicScore(post.topicId).catch((err) =>
+        logger.warn(ROUTE, 'Failed to update topic score', { topicId: post.topicId, error: String(err) }),
+      );
 
       logger.info(ROUTE, 'Vote created', { userId: session.userId, postId, value });
       return NextResponse.json({ vote: { value }, upvoteCount: updatedPost.upvoteCount });

@@ -23,6 +23,7 @@ const sortTopicIds: string[] = [];
 let topicAId: string;
 let topicBId: string;
 let topicCId: string;
+let searchStamp: string;
 
 // Topic used to test DELETE by a non-owner
 let topicForDeleteId: string;
@@ -57,6 +58,7 @@ describe.sequential('Topics endpoints', () => {
 
   it('setup: create one topic per category', async () => {
     const stamp = Date.now();
+    searchStamp = String(stamp);
     const [resA, resB, resC] = await Promise.all([
       authPost('/api/topics', {
         title: `E2E Topics Sort A ${stamp}_${Math.random().toString(36).slice(2, 6)}`,
@@ -326,6 +328,33 @@ describe.sequential('Topics endpoints', () => {
     const json = await res.json();
     expect(json.error).toBeTruthy();
     expect(json.error).toMatch(/category/i);
+  });
+
+  // ── Search (q=) ──────────────────────────────────────────────────────
+
+  it('GET /api/topics?view=all&q matches title (unique stamp)', async () => {
+    const res = await authGet(`/api/topics?view=all&q=${searchStamp}`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.topics.map((t: { id: string }) => t.id);
+    expect(ids).toContain(topicAId);
+    expect(ids).toContain(topicBId);
+    expect(ids).toContain(topicCId);
+  });
+
+  it('GET /api/topics?view=all&q matches description', async () => {
+    const res = await authGet(`/api/topics?view=all&q=Topic+in+category+B`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.topics.map((t: { id: string }) => t.id);
+    expect(ids).toContain(topicBId);
+  });
+
+  it('GET /api/topics?view=all&q with no matches returns empty list', async () => {
+    const res = await authGet('/api/topics?view=all&q=zzz_no_topic_match_xyz_unique_token');
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.topics).toEqual([]);
   });
 
   it('GET /api/topics?view=all&category=A&sort=new combines filter + sort', async () => {

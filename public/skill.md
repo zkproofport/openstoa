@@ -2736,13 +2736,14 @@ Response:
 Authentication optional. Without auth, returns public and private topics (excludes secret). With auth, includes membership status and secret topics the user belongs to. Without view=all, authenticated users see only their joined topics; unauthenticated users receive an empty list. With view=all, all visible topics are returned with sorting support.
 
 ```bash
-curl -s "$BASE/api/topics?view=...&sort=...&category=..." | jq .
+curl -s "$BASE/api/topics?view=...&sort=...&category=...&q=..." | jq .
 ```
 
 Query params:
 - `view` (`all`) — Set to "all" to see all visible topics instead of only joined topics
 - `sort` (`hot` | `new` | `active` | `top`) — Sort order (only applies when view=all)
 - `category` — Filter by category slug
+- `q` — Search query — matches topic title and description (case-insensitive substring). Only applies when view=all.
 
 Response:
 ```json
@@ -3122,7 +3123,7 @@ Query params:
 - `limit` — Number of posts to return (max 100)
 - `offset` — Number of posts to skip
 - `tag` — Filter by tag slug
-- `sort` (`new` | `popular` | `recorded`) — Sort order
+- `sort` (`hot` | `new` | `top` | `active` | `recorded`) — Sort order
 
 Response:
 ```json
@@ -3949,13 +3950,14 @@ Response:
 Returns posts across all accessible topics (like Reddit's home feed). Guests see only posts from public topics. Authenticated users see posts from public topics plus topics where they are a member. Supports sorting, tag filtering, and category filtering.
 
 ```bash
-curl -s "$BASE/api/feed?sort=...&tag=...&category=...&limit=...&offset=..." | jq .
+curl -s "$BASE/api/feed?sort=...&tag=...&category=...&q=...&limit=...&offset=..." | jq .
 ```
 
 Query params:
 - `sort` (`hot` | `new` | `top` | `active`) — Sort order
 - `tag` — Filter by tag slug
 - `category` — Filter by category slug
+- `q` — Search query — matches post title and content (case-insensitive substring)
 - `limit` — Number of posts to return (max 100)
 - `offset` — Number of posts to skip
 

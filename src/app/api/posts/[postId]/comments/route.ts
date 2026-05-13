@@ -6,6 +6,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { getUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
+import { updateTopicScore } from '@/lib/topicScore';
 
 const ROUTE = '/api/posts/[postId]/comments';
 
@@ -119,6 +120,10 @@ export async function POST(
       .update(posts)
       .set({ commentCount: sql`${posts.commentCount} + 1`, lastActivityAt: new Date() })
       .where(eq(posts.id, postId));
+
+    updateTopicScore(post.topicId).catch((err) =>
+      logger.warn(ROUTE, 'Failed to update topic score', { topicId: post.topicId, error: String(err) }),
+    );
 
     // Fetch author info and badges for the response
     const author = await db.query.users.findFirst({
