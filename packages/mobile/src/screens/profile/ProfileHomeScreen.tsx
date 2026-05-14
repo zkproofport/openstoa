@@ -2,10 +2,10 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
   RefreshControl,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -727,9 +727,10 @@ export function ProfileHomeScreen() {
 
   return (
     <View style={styles.root}>
-      <FlatList<Post>
-        data={activeTabPosts}
+      <SectionList<Post, { key: string }>
+        sections={[{ key: 'main', data: activeTabPosts }]}
         keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled
         renderItem={({ item }) => {
           // The "by-me" sub-tab of the Recorded list ships an extra
           // `myTxExplorerUrl` per post that points at THIS user's
@@ -880,7 +881,10 @@ export function ProfileHomeScreen() {
               </View>
             )}
 
-            {/* Tab selector */}
+            {/* Tab selector — part of the non-sticky header, scrolls
+                out of view normally. The sticky chrome below (Search +
+                sub-tab) keeps the active filter affordances reachable
+                while browsing. */}
             <View style={styles.tabBar}>
               {(['posts', 'bookmarks', 'recorded'] as TabKey[]).map((tab) => (
                 <TouchableOpacity
@@ -894,12 +898,15 @@ export function ProfileHomeScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-
-            {/* Search bar — scoped to the active tab. Sits below the tab
-                selector (and above the sub-tab when on Recorded) so it
-                is visually attached to the tab whose results it filters,
-                instead of floating above the profile header where it
-                would read as a global search. */}
+          </>
+        }
+        renderSectionHeader={() => (
+          // Sticky block — when the user scrolls past the profile
+          // header / tab selector, this block docks to the top of the
+          // screen so search + sub-tab + the loading spinner stay
+          // reachable without scrolling back up. `stickySectionHeadersEnabled`
+          // is set on the SectionList above.
+          <View style={{ backgroundColor: colors.background.primary }}>
             <SearchBar
               value={searchDraft}
               onChangeText={setSearchDraft}
@@ -907,8 +914,6 @@ export function ProfileHomeScreen() {
               onClear={() => { setSearchDraft(''); setQ(''); }}
               placeholder={t('openstoa.profile.searchPlaceholder')}
             />
-
-            {/* Recorded sub-tab — switch between "by me" and "on my posts" */}
             {activeTab === 'recorded' && (
               <View style={styles.subTabBar}>
                 {(['by-me', 'on-mine'] as RecordedSubKey[]).map((sub) => (
@@ -933,15 +938,14 @@ export function ProfileHomeScreen() {
                 ))}
               </View>
             )}
-
             {activeTabLoading && (
               <ActivityIndicator
                 style={styles.tabSpinner}
                 color={colors.brand.primary}
               />
             )}
-          </>
-        }
+          </View>
+        )}
         ListEmptyComponent={
           activeTabLoading ? null : (
             <View style={styles.emptyContainer}>
