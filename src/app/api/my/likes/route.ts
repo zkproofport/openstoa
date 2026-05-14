@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, votes, users } from '@/lib/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { posts, votes, users, tags, postTags } from '@/lib/db/schema';
+import { eq, and, desc, ilike, or, inArray } from 'drizzle-orm';
+import { normaliseSearchQuery } from '@/lib/search';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/my/likes';
@@ -60,8 +61,31 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(searchParams.get('offset') ?? '0', 10);
+    const qPattern = normaliseSearchQuery(searchParams.get('q'));
 
     logger.info(ROUTE, 'Fetching liked posts', { userId: session.userId, limit, offset });
+
+    // Resolve post-tag matches for keyword search
+    let qTagPostIds: Set<string> | null = null;
+    if (qPattern) {
+      const rows = await db
+        .select({ postId: postTags.postId })
+        .from(postTags)
+        .innerJoin(tags, eq(postTags.tagId, tags.id))
+        .where(or(ilike(tags.name, qPattern), ilike(tags.slug, qPattern))!);
+      qTagPostIds = new Set(rows.map((r) => r.postId));
+    }
+
+    // Build WHERE: upvote filter + optional keyword search
+    const likeClause = and(eq(votes.userId, session.userId), eq(votes.value, 1));
+    const whereClause = (() => {
+      if (!qPattern) return likeClause;
+      const tagIdsArray = qTagPostIds ? [...qTagPostIds] : [];
+      const tagMatchClause = tagIdsArray.length > 0 ? inArray(posts.id, tagIdsArray) : null;
+      const titleContent = or(ilike(posts.title, qPattern), ilike(posts.content, qPattern));
+      const qClause = tagMatchClause ? or(titleContent, tagMatchClause)! : titleContent!;
+      return and(likeClause, qClause);
+    })();
 
     const likedPosts = await db
       .select({
@@ -79,7 +103,7 @@ export async function GET(request: NextRequest) {
       .from(votes)
       .innerJoin(posts, eq(votes.postId, posts.id))
       .leftJoin(users, eq(posts.authorId, users.id))
-      .where(and(eq(votes.userId, session.userId), eq(votes.value, 1)))
+      .where(whereClause)
       .orderBy(desc(posts.createdAt))
       .limit(limit)
       .offset(offset);

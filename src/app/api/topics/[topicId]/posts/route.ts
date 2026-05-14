@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, topicMembers, users, tags, postTags, votes, topics } from '@/lib/db/schema';
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, ilike, or } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { normaliseSearchQuery } from '@/lib/search';
 import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 
@@ -199,6 +200,7 @@ export async function GET(
       const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
       const tagSlug = url.searchParams.get('tag') ?? null;
       const sortParam = url.searchParams.get('sort') ?? 'hot';
+      const qPattern = normaliseSearchQuery(url.searchParams.get('q'));
       if (!VALID_POST_SORTS.includes(sortParam as PostSort)) {
         logger.warn(ROUTE, 'Invalid sort value (guest)', { sort: sortParam });
         return NextResponse.json(
@@ -222,12 +224,18 @@ export async function GET(
         }
       }
 
-      const whereClause =
-        tagFilteredPostIds !== null
-          ? tagFilteredPostIds.length > 0
-            ? and(eq(posts.topicId, topicId), inArray(posts.id, tagFilteredPostIds))
-            : and(eq(posts.topicId, topicId), sql`false`)
-          : eq(posts.topicId, topicId);
+      // Resolve post-tag matches for keyword search (same pattern as feed/route.ts)
+      let qTagPostIds: Set<string> | null = null;
+      if (qPattern) {
+        const rows = await db
+          .select({ postId: postTags.postId })
+          .from(postTags)
+          .innerJoin(tags, eq(postTags.tagId, tags.id))
+          .where(or(ilike(tags.name, qPattern), ilike(tags.slug, qPattern))!);
+        qTagPostIds = new Set(rows.map((r) => r.postId));
+      }
+
+      const whereClause = buildWhereClause(topicId, tagFilteredPostIds, qPattern, qTagPostIds);
 
       // No userVoted join for guests
       const topicPosts = await db
@@ -298,12 +306,13 @@ export async function GET(
       }
     }
 
-    // Pagination + tag filter
+    // Pagination + tag filter + keyword search
     const url = new URL(request.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
     const tagSlug = url.searchParams.get('tag') ?? null;
     const sortParam = url.searchParams.get('sort') ?? 'hot';
+    const qPattern = normaliseSearchQuery(url.searchParams.get('q'));
     if (!VALID_POST_SORTS.includes(sortParam as PostSort)) {
       logger.warn(ROUTE, 'Invalid sort value', { userId: session.userId, sort: sortParam });
       return NextResponse.json(
@@ -331,12 +340,18 @@ export async function GET(
       }
     }
 
-    const whereClause =
-      tagFilteredPostIds !== null
-        ? tagFilteredPostIds.length > 0
-          ? and(eq(posts.topicId, topicId), inArray(posts.id, tagFilteredPostIds))
-          : and(eq(posts.topicId, topicId), sql`false`)
-        : eq(posts.topicId, topicId);
+    // Resolve post-tag matches for keyword search
+    let qTagPostIds: Set<string> | null = null;
+    if (qPattern) {
+      const rows = await db
+        .select({ postId: postTags.postId })
+        .from(postTags)
+        .innerJoin(tags, eq(postTags.tagId, tags.id))
+        .where(or(ilike(tags.name, qPattern), ilike(tags.slug, qPattern))!);
+      qTagPostIds = new Set(rows.map((r) => r.postId));
+    }
+
+    const whereClause = buildWhereClause(topicId, tagFilteredPostIds, qPattern, qTagPostIds);
 
     const topicPosts = await db
       .select({
@@ -392,6 +407,44 @@ export async function GET(
     logger.error(ROUTE, 'Unhandled error in GET', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+/**
+ * Build the WHERE clause for topic post queries combining topic scope,
+ * optional tag filter, and optional keyword search (title / content / tags).
+ */
+function buildWhereClause(
+  topicId: string,
+  tagFilteredPostIds: string[] | null,
+  qPattern: string | null,
+  qTagPostIds: Set<string> | null,
+) {
+  // Base: posts in this topic
+  const base = eq(posts.topicId, topicId);
+
+  // Tag filter: when tag slug provided but resolves to nothing, return nothing
+  if (tagFilteredPostIds !== null) {
+    if (tagFilteredPostIds.length === 0) return and(base, sql`false`);
+    const tagClause = and(base, inArray(posts.id, tagFilteredPostIds));
+    if (!qPattern) return tagClause;
+    // Combine tag filter AND keyword search
+    const tagIdsArray = qTagPostIds ? [...qTagPostIds] : [];
+    const tagMatchClause = tagIdsArray.length > 0 ? inArray(posts.id, tagIdsArray) : null;
+    const titleContent = or(ilike(posts.title, qPattern), ilike(posts.content, qPattern));
+    const qClause = tagMatchClause ? or(titleContent, tagMatchClause)! : titleContent!;
+    return and(base, inArray(posts.id, tagFilteredPostIds), qClause);
+  }
+
+  // No tag filter — just keyword search if present
+  if (qPattern) {
+    const tagIdsArray = qTagPostIds ? [...qTagPostIds] : [];
+    const tagMatchClause = tagIdsArray.length > 0 ? inArray(posts.id, tagIdsArray) : null;
+    const titleContent = or(ilike(posts.title, qPattern), ilike(posts.content, qPattern));
+    const qClause = tagMatchClause ? or(titleContent, tagMatchClause)! : titleContent!;
+    return and(base, qClause);
+  }
+
+  return base;
 }
 
 export async function POST(

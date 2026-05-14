@@ -509,6 +509,30 @@ describe.sequential('Feed search — hard content', () => {
     createdTopicIds.push(topicId);
   });
 
+  // Track the searchable-tag post ID so the tag-match test can reference it
+  let postTagMatchId: string;
+  let tagMatchStamp: string;
+
+  it('setup: create post with unique searchable tag for tag-match test', async () => {
+    tagMatchStamp = `tagmatch${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+    const res = await authPost(`/api/topics/${topicId}/posts`, {
+      title: `Tag match probe ${Date.now()}`,
+      content: 'Content without the stamp in title or body',
+      tags: [tagMatchStamp],
+    });
+    expect(res.status).toBe(201);
+    postTagMatchId = (await res.json()).post.id;
+  });
+
+  it('?q= matches via post tag name (tag-match path)', async () => {
+    // The post title and content do NOT contain tagMatchStamp; only the tag does.
+    // Without the post-tag matching path this test would return zero results.
+    const res = await publicGet(`/api/feed?q=${tagMatchStamp}&limit=50`);
+    expect(res.status).toBe(200);
+    const ids: string[] = (await res.json()).posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(postTagMatchId);
+  });
+
   it('setup: create HTML-ish, SQL-ish, emoji, and long-content posts', async () => {
     longStamp = `hardq${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 

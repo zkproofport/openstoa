@@ -8,7 +8,6 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
-  TextInput,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +19,7 @@ import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { TopicCard } from '../../components/TopicCard';
 import { SortPills } from '../../components/SortPills';
 import { TagChips } from '../../components/TagChips';
+import { SearchBar } from '../../components/SearchBar';
 import { InvitePromptModal } from '../../components/InvitePromptModal';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
@@ -92,32 +92,6 @@ function makeStyles(colors: ThemeColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    searchRow: {
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 6,
-      backgroundColor: colors.background.secondary,
-    },
-    searchWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      height: 38,
-      borderRadius: 19,
-      backgroundColor: colors.background.tertiary,
-      paddingHorizontal: 12,
-      gap: 8,
-    },
-    searchIcon: {
-      fontSize: 14,
-      color: colors.text.tertiary,
-    },
-    searchInput: {
-      flex: 1,
-      height: 38,
-      fontSize: 14,
-      color: colors.text.primary,
-      padding: 0,
-    },
     filterRow: {
       flexDirection: 'row',
       gap: 8,
@@ -161,17 +135,20 @@ export function TopicsHomeScreen() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [membershipFilter, setMembershipFilter] = useState<'all' | 'joined'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [q, setQ] = useState('');
 
   // Single unified query: server returns every visible topic with an
-  // `isMember` flag. Filtering by "joined" and searching by title both
-  // happen client-side against this list so the user can flip between
-  // views instantly without re-hitting the API.
+  // `isMember` flag. Filtering by "joined" happens client-side (instant,
+  // no extra request needed since server attaches `isMember` per topic).
+  // Keyword search (?q=) goes to the server so full-text matching covers
+  // all topics, not just the ones already loaded.
   const topicsQuery = useQuery<Topic[]>({
-    queryKey: ['topics', 'all', sortKey, activeCategory],
+    queryKey: ['topics', 'all', sortKey, activeCategory, q],
     queryFn: async () => {
       const params = new URLSearchParams({ view: 'all', sort: sortKey });
       if (activeCategory) params.set('category', activeCategory);
+      if (q) params.set('q', q);
       const res = await client.get<TopicsListResponse>(`/api/topics?${params.toString()}`);
       return res.topics ?? [];
     },
@@ -253,35 +230,25 @@ export function TopicsHomeScreen() {
 
   const allTopics = topicsQuery.data ?? [];
 
-  // Apply membership filter + search client-side. The server already
-  // attaches `isMember` per topic so no extra request is needed.
+  // Apply membership filter client-side. The server already attaches
+  // `isMember` per topic so no extra request is needed for this toggle.
+  // Keyword search is handled server-side via ?q= in the query above.
   const visibleTopics = useMemo(() => {
-    const trimmed = searchQuery.trim().toLowerCase();
     return allTopics.filter((tt) => {
       if (membershipFilter === 'joined' && !tt.isMember) return false;
-      if (trimmed && !tt.title.toLowerCase().includes(trimmed)) return false;
       return true;
     });
-  }, [allTopics, membershipFilter, searchQuery]);
+  }, [allTopics, membershipFilter]);
 
   const Header = (
     <View>
-      <View style={styles.searchRow}>
-        <View style={styles.searchWrap}>
-          <Feather name="search" size={16} color={colors.text.tertiary} />
-          <TextInput
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder={t('openstoa.topics.searchPlaceholder', { defaultValue: 'Search topics' })}
-            placeholderTextColor={colors.text.tertiary}
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-        </View>
-      </View>
+      <SearchBar
+        value={searchDraft}
+        onChangeText={setSearchDraft}
+        onSubmit={(v) => setQ(v.trim())}
+        onClear={() => { setSearchDraft(''); setQ(''); }}
+        placeholder={t('openstoa.topics.searchPlaceholder', { defaultValue: 'Search topics' })}
+      />
       <View style={styles.filterRow}>
         <TouchableOpacity
           style={[styles.filterChip, membershipFilter === 'all' && styles.filterChipActive]}
@@ -337,7 +304,7 @@ export function TopicsHomeScreen() {
           ListEmptyComponent={
             <View style={styles.centered}>
               <Text style={styles.emptyText}>
-                {searchQuery.trim()
+                {q
                   ? t('openstoa.topics.searchEmpty', { defaultValue: 'No topics match your search' })
                   : membershipFilter === 'joined'
                   ? t('openstoa.topics.joinedEmpty', { defaultValue: "You haven't joined any topics yet" })

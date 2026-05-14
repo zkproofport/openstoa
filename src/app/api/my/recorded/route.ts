@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { posts, records, users, topics, votes } from '@/lib/db/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { posts, records, users, topics, votes, tags, postTags } from '@/lib/db/schema';
+import { eq, and, desc, sql, ilike, or, inArray } from 'drizzle-orm';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts } from '@/lib/polls';
 import { attachTagsToPosts } from '@/lib/postTags';
 import { txExplorerUrl } from '@/lib/explorer';
+import { normaliseSearchQuery } from '@/lib/search';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/my/recorded';
@@ -67,6 +68,29 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(searchParams.get('offset') ?? '0', 10);
+    const qPattern = normaliseSearchQuery(searchParams.get('q'));
+
+    // Resolve post-tag matches for keyword search
+    let qTagPostIds: Set<string> | null = null;
+    if (qPattern) {
+      const rows = await db
+        .select({ postId: postTags.postId })
+        .from(postTags)
+        .innerJoin(tags, eq(postTags.tagId, tags.id))
+        .where(or(ilike(tags.name, qPattern), ilike(tags.slug, qPattern))!);
+      qTagPostIds = new Set(rows.map((r) => r.postId));
+    }
+
+    // Build WHERE: recorder filter + optional keyword search
+    const recorderClause = eq(records.recorderNullifier, session.userId);
+    const whereClause = (() => {
+      if (!qPattern) return recorderClause;
+      const tagIdsArray = qTagPostIds ? [...qTagPostIds] : [];
+      const tagMatchClause = tagIdsArray.length > 0 ? inArray(posts.id, tagIdsArray) : null;
+      const titleContent = or(ilike(posts.title, qPattern), ilike(posts.content, qPattern));
+      const qClause = tagMatchClause ? or(titleContent, tagMatchClause)! : titleContent!;
+      return and(recorderClause, qClause);
+    })();
 
     const recordedPosts = await db
       .select({
@@ -102,7 +126,7 @@ export async function GET(request: NextRequest) {
         votes,
         and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)),
       )
-      .where(eq(records.recorderNullifier, session.userId))
+      .where(whereClause)
       .orderBy(desc(records.createdAt))
       .limit(limit)
       .offset(offset);

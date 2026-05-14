@@ -306,4 +306,77 @@ describe.sequential('Post Detail — sort, tag filter, paging, viewCount, pin', 
     const json = await res.json();
     expect(json.error).toBeTruthy();
   });
+
+  // ── Search (q=) on topic posts ───────────────────────────────────────
+
+  it('17. GET /api/topics/:topicId/posts?q= matches post title (unique stamp)', async () => {
+    const stamp = `tpq${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+    const createRes = await authPost(`/api/topics/${publicTopicId}/posts`, {
+      title: `Search probe ${stamp}`,
+      content: 'Content without the search term',
+    });
+    expect(createRes.status).toBe(201);
+    const searchPostId: string = (await createRes.json()).post.id;
+
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?q=${stamp}&limit=50`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(searchPostId);
+  });
+
+  it('18. GET /api/topics/:topicId/posts?q= matches via post tag name (tag-match path)', async () => {
+    const tagStamp = `tptag${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+    const createRes = await authPost(`/api/topics/${publicTopicId}/posts`, {
+      // Title and content deliberately do NOT contain tagStamp; only the tag does.
+      title: `Tag search probe ${Date.now()}`,
+      content: 'Content without the tag stamp',
+      tags: [tagStamp],
+    });
+    expect(createRes.status).toBe(201);
+    const tagPostId: string = (await createRes.json()).post.id;
+
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?q=${tagStamp}&limit=50`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids: string[] = json.posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(tagPostId);
+  });
+
+  it('19. GET /api/topics/:topicId/posts?q= (whitespace-only) acts as no filter', async () => {
+    const [withQ, withoutQ] = await Promise.all([
+      publicGet(`/api/topics/${publicTopicId}/posts?q=%20%20&limit=20`),
+      publicGet(`/api/topics/${publicTopicId}/posts?limit=20`),
+    ]);
+    expect(withQ.status).toBe(200);
+    expect(withoutQ.status).toBe(200);
+    const a = await withQ.json();
+    const b = await withoutQ.json();
+    expect(a.posts.length).toBe(b.posts.length);
+  });
+
+  it('20. GET /api/topics/:topicId/posts?q= with no matches returns empty list', async () => {
+    const res = await publicGet(
+      `/api/topics/${publicTopicId}/posts?q=zzz_no_match_xyz_unique_token_abcdefg`,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.posts).toEqual([]);
+  });
+
+  it('21. Guest can search topic posts without auth (public topic)', async () => {
+    const stamp = `guestq${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+    const createRes = await authPost(`/api/topics/${publicTopicId}/posts`, {
+      title: `Guest search probe ${stamp}`,
+      content: `content ${stamp}`,
+    });
+    expect(createRes.status).toBe(201);
+    const guestSearchPostId: string = (await createRes.json()).post.id;
+
+    // publicGet has no Authorization header — confirms guest path applies q
+    const res = await publicGet(`/api/topics/${publicTopicId}/posts?q=${stamp}&limit=50`);
+    expect(res.status).toBe(200);
+    const ids: string[] = (await res.json()).posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(guestSearchPostId);
+  });
 });

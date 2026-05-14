@@ -14,7 +14,6 @@ import {
 import Feather from 'react-native-vector-icons/Feather';
 import { SettingsIcon } from '../../components/icons';
 import { SearchBar } from '../../components/SearchBar';
-import { filterByQuery } from '../../utils/searchFilter';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
@@ -509,7 +508,8 @@ export function ProfileHomeScreen() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>('posts');
   const [recordedSub, setRecordedSub] = useState<RecordedSubKey>('by-me');
-  const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [q, setQ] = useState('');
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
@@ -548,26 +548,42 @@ export function ProfileHomeScreen() {
   });
 
   const postsQuery = useQuery<MyPostsResponse>({
-    queryKey: ['my', 'posts'],
-    queryFn: () => client.get<MyPostsResponse>('/api/my/posts?limit=20'),
+    queryKey: ['my', 'posts', q],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '20' });
+      if (q) params.set('q', q);
+      return client.get<MyPostsResponse>(`/api/my/posts?${params.toString()}`);
+    },
     enabled: activeTab === 'posts',
   });
 
   const bookmarksQuery = useQuery<MyPostsResponse>({
-    queryKey: ['my', 'bookmarks'],
-    queryFn: () => client.get<MyPostsResponse>('/api/bookmarks?limit=20'),
+    queryKey: ['my', 'bookmarks', q],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '20' });
+      if (q) params.set('q', q);
+      return client.get<MyPostsResponse>(`/api/bookmarks?${params.toString()}`);
+    },
     enabled: activeTab === 'bookmarks',
   });
 
   const recordedQuery = useQuery<MyPostsResponse>({
-    queryKey: ['my', 'recorded'],
-    queryFn: () => client.get<MyPostsResponse>('/api/my/recorded?limit=20'),
+    queryKey: ['my', 'recorded', q],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '20' });
+      if (q) params.set('q', q);
+      return client.get<MyPostsResponse>(`/api/my/recorded?${params.toString()}`);
+    },
     enabled: activeTab === 'recorded' && recordedSub === 'by-me',
   });
 
   const recordedOnMineQuery = useQuery<MyPostsResponse>({
-    queryKey: ['my', 'recorded-on-mine'],
-    queryFn: () => client.get<MyPostsResponse>('/api/my/recorded-on-mine?limit=20'),
+    queryKey: ['my', 'recorded-on-mine', q],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '20' });
+      if (q) params.set('q', q);
+      return client.get<MyPostsResponse>(`/api/my/recorded-on-mine?${params.toString()}`);
+    },
     enabled: activeTab === 'recorded' && recordedSub === 'on-mine',
   });
 
@@ -642,23 +658,13 @@ export function ProfileHomeScreen() {
   // De-duplicate by post.id to avoid "two children with the same key" warnings
   // when the backend returns overlapping ids (e.g. on tab switches with stale data).
   const seenPostIds = new Set<string>();
-  const dedupedTabPosts: typeof rawActiveTabPosts = [];
+  const activeTabPosts: typeof rawActiveTabPosts = [];
   for (const p of rawActiveTabPosts) {
     if (!seenPostIds.has(p.id)) {
       seenPostIds.add(p.id);
-      dedupedTabPosts.push(p);
+      activeTabPosts.push(p);
     }
   }
-  // Client-side filter — same fields as the feed/topic search.
-  type PostWithExtras = Post & {
-    topicTitle?: string;
-    tags?: { name?: string }[];
-  };
-  const activeTabPosts = filterByQuery(dedupedTabPosts, search, (p) => {
-    const pp = p as PostWithExtras;
-    const tagNames = (pp.tags ?? []).map((t) => t.name);
-    return [pp.title, pp.content, pp.topicTitle, pp.authorNickname, ...tagNames];
-  });
 
   const activeTabLoading =
     activeTab === 'posts'
@@ -915,12 +921,12 @@ export function ProfileHomeScreen() {
             </View>
           )}
 
-          {/* Per-tab search. Filters the list client-side (title /
-              body / topic / author / tag) so the user can quickly
-              find one of their posts, bookmarks or records. */}
+          {/* Per-tab search — sends ?q= to the server on submit. */}
           <SearchBar
-            value={search}
-            onChangeText={setSearch}
+            value={searchDraft}
+            onChangeText={setSearchDraft}
+            onSubmit={(v) => setQ(v.trim())}
+            onClear={() => { setSearchDraft(''); setQ(''); }}
             placeholder={t('openstoa.profile.searchPlaceholder')}
           />
 

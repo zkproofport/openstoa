@@ -129,6 +129,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // --- Resolve `?q=` post-tag matches ---
+    // A post matches the keyword search if any of: its title, its
+    // content, or the name / slug of any tag attached to it matches.
+    // The title/content side runs inside buildWhereConditions via
+    // ilike; the tag side is resolved here (separate join) and
+    // unioned into the WHERE clause.
+    let qTagPostIds: Set<string> | null = null;
+    if (qPattern) {
+      const rows = await db
+        .select({ postId: postTags.postId })
+        .from(postTags)
+        .innerJoin(tags, eq(postTags.tagId, tags.id))
+        .where(or(ilike(tags.name, qPattern), ilike(tags.slug, qPattern))!);
+      qTagPostIds = new Set(rows.map((r) => r.postId));
+    }
+
     // --- Resolve category filter (unknown category -> 400, matches topics API) ---
     let categoryTopicIds: string[] | null = null;
     if (categorySlug) {
@@ -162,7 +178,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ posts: [] });
       }
 
-      const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, qPattern);
+      const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, qPattern, qTagPostIds);
 
       const feedPosts = await db
         .select({
@@ -235,7 +251,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ posts: [] });
     }
 
-    const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, qPattern);
+    const whereConditions = buildWhereConditions(accessibleTopicIds, tagFilteredPostIds, qPattern, qTagPostIds);
 
     const feedPosts = await db
       .select({
@@ -354,6 +370,7 @@ function buildWhereConditions(
   accessibleTopicIds: string[],
   tagFilteredPostIds: string[] | null,
   qPattern: string | null,
+  qTagPostIds: Set<string> | null,
 ) {
   const clauses: ReturnType<typeof inArray>[] = [inArray(posts.topicId, accessibleTopicIds)];
 
@@ -365,7 +382,13 @@ function buildWhereConditions(
   }
 
   if (qPattern) {
-    clauses.push(or(ilike(posts.title, qPattern), ilike(posts.content, qPattern))!);
+    // q matches if: title ilike, content ilike, OR the post has a tag
+    // whose name/slug matched the same pattern (resolved upstream into
+    // qTagPostIds). Empty tag set → only title/content paths.
+    const tagIdsArray = qTagPostIds ? [...qTagPostIds] : [];
+    const tagClause = tagIdsArray.length > 0 ? inArray(posts.id, tagIdsArray) : null;
+    const titleContent = or(ilike(posts.title, qPattern), ilike(posts.content, qPattern));
+    clauses.push(tagClause ? or(titleContent, tagClause)! : titleContent!);
   }
 
   return and(...clauses);

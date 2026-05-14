@@ -24,7 +24,6 @@ import { useHost } from '@openstoa/miniapp-bridge';
 import { PostCard } from '../../components/PostCard';
 import { SortPills } from '../../components/SortPills';
 import { SearchBar } from '../../components/SearchBar';
-import { filterByQuery } from '../../utils/searchFilter';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
@@ -200,7 +199,8 @@ export function TopicDetailScreen() {
 
   const [sortKey, setSortKey] = useState<SortKey>('new');
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [q, setQ] = useState('');
 
   const topicQuery = useQuery<TopicDetailResponse>({
     queryKey: ['topic', topicId],
@@ -208,7 +208,7 @@ export function TopicDetailScreen() {
   });
 
   const postsQuery = useInfiniteQuery<PostsPageResponse, Error>({
-    queryKey: ['topic', topicId, 'posts', sortKey, activeTag],
+    queryKey: ['topic', topicId, 'posts', sortKey, activeTag, q],
     queryFn: async ({ pageParam }) => {
       const offset = (pageParam as number | undefined) ?? 0;
       const params = new URLSearchParams({
@@ -217,6 +217,7 @@ export function TopicDetailScreen() {
         sort: sortKey === 'popular' ? 'hot' : sortKey,
       });
       if (activeTag) params.set('tag', activeTag);
+      if (q) params.set('q', q);
       const res = await client.get<{ posts: PostsPageResponse['posts'] }>(
         `/api/topics/${topicId}/posts?${params.toString()}`,
       );
@@ -374,16 +375,15 @@ export function TopicDetailScreen() {
   }, [navigation, topic, headerActionItems, showActionsSheet, t, colors, styles]);
 
   const rawPosts = postsQuery.data?.pages.flatMap((p) => p.posts) ?? [];
-  // Same client-side filter as Feed — title, body, author, tag names.
-  type PostWithExtras = Post & {
-    topicTitle?: string;
-    tags?: { name?: string }[];
-  };
-  const allPosts = filterByQuery(rawPosts, search, (p) => {
-    const pp = p as PostWithExtras;
-    const tagNames = (pp.tags ?? []).map((t) => t.name);
-    return [pp.title, pp.content, pp.authorNickname, ...tagNames];
-  });
+  // Defensive de-duplication to avoid "two children with the same key" warnings.
+  const seenPostIds = new Set<string>();
+  const allPosts: typeof rawPosts = [];
+  for (const p of rawPosts) {
+    if (!seenPostIds.has(p.id)) {
+      seenPostIds.add(p.id);
+      allPosts.push(p);
+    }
+  }
 
   const onRefresh = useCallback(() => {
     topicQuery.refetch();
@@ -482,8 +482,10 @@ export function TopicDetailScreen() {
         <Text style={styles.sectionLabel}>{t('openstoa.topics.posts')}</Text>
       </View>
       <SearchBar
-        value={search}
-        onChangeText={setSearch}
+        value={searchDraft}
+        onChangeText={setSearchDraft}
+        onSubmit={(v) => setQ(v.trim())}
+        onClear={() => { setSearchDraft(''); setQ(''); }}
         placeholder={t('openstoa.topicDetail.searchPlaceholder')}
       />
       <SortPills items={sortItems} value={sortKey} onChange={setSortKey} />

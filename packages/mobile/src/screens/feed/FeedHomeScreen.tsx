@@ -18,7 +18,6 @@ import { PostCard } from '../../components/PostCard';
 import { SortPills } from '../../components/SortPills';
 import { TagChips } from '../../components/TagChips';
 import { SearchBar } from '../../components/SearchBar';
-import { filterByQuery } from '../../utils/searchFilter';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 
@@ -95,7 +94,8 @@ export function FeedHomeScreen() {
 
   const [sortKey, setSortKey] = useState<SortKey>('hot');
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [q, setQ] = useState('');
 
   const tagsQuery = useQuery<TagsResponse>({
     queryKey: ['feed', 'tags'],
@@ -113,7 +113,7 @@ export function FeedHomeScreen() {
     refetch,
     isRefetching,
   } = useInfiniteQuery<FeedPage>({
-    queryKey: ['feed', sortKey, activeTag],
+    queryKey: ['feed', sortKey, activeTag, q],
     queryFn: async ({ pageParam }) => {
       const offset = (pageParam as number | undefined) ?? 0;
       const params = new URLSearchParams({
@@ -122,6 +122,7 @@ export function FeedHomeScreen() {
         sort: sortKey,
       });
       if (activeTag) params.set('tag', activeTag);
+      if (q) params.set('q', q);
       const res = await client.get<{ posts: Post[] }>(`/api/feed?${params.toString()}`);
       return { posts: res.posts, nextCursor: res.posts.length === 20 ? String(offset + 20) : undefined };
     },
@@ -134,27 +135,13 @@ export function FeedHomeScreen() {
   // same key" warning fires. Drop duplicates while preserving order.
   const rawPosts: Post[] = data?.pages.flatMap((p) => p.posts) ?? [];
   const seenIds = new Set<string>();
-  const dedupedPosts: Post[] = [];
+  const posts: Post[] = [];
   for (const p of rawPosts) {
     if (!seenIds.has(p.id)) {
       seenIds.add(p.id);
-      dedupedPosts.push(p);
+      posts.push(p);
     }
   }
-  // Client-side filter over what's already been paginated in (title,
-  // body, author, tags). Topic is intentionally NOT a search field on
-  // the feed — finding a topic is the Topics tab's job. No server
-  // `?q=` yet, so this is bounded by however far the user has
-  // scrolled. When a server full-text endpoint lands we can drop this
-  // in favour of a debounced query without changing the markup.
-  type PostWithExtras = Post & {
-    tags?: { name?: string }[];
-  };
-  const posts: Post[] = filterByQuery(dedupedPosts, search, (p) => {
-    const pp = p as PostWithExtras;
-    const tagNames = (pp.tags ?? []).map((t) => t.name);
-    return [pp.title, pp.content, pp.authorNickname, ...tagNames];
-  });
 
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -196,8 +183,10 @@ export function FeedHomeScreen() {
   const ListHeader = (
     <View>
       <SearchBar
-        value={search}
-        onChangeText={setSearch}
+        value={searchDraft}
+        onChangeText={setSearchDraft}
+        onSubmit={(v) => setQ(v.trim())}
+        onClear={() => { setSearchDraft(''); setQ(''); }}
         placeholder={t('openstoa.feed.searchPlaceholder')}
       />
       <SortPills items={sortItems} value={sortKey} onChange={setSortKey} />
