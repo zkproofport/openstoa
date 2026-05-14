@@ -726,227 +726,226 @@ export function ProfileHomeScreen() {
         : t('openstoa.profile.empty.bookmarks');
 
   return (
-    <FlatList<Post>
-      data={activeTabPosts}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => {
-        // The "by-me" sub-tab of the Recorded list ships an extra
-        // `myTxExplorerUrl` per post that points at THIS user's
-        // BaseScan transaction for that recording. Surface it as a
-        // small link strip above the card so the user can verify
-        // their own on-chain record without diving into the post.
-        const myTxUrl =
-          activeTab === 'recorded' && recordedSub === 'by-me'
-            ? (item as Post & { myTxExplorerUrl?: string | null }).myTxExplorerUrl
-            : null;
-        return (
-          <View>
-            {myTxUrl ? (
-              <TouchableOpacity
-                style={styles.myTxStrip}
-                activeOpacity={0.7}
-                onPress={() =>
-                  navigation.navigate('InAppBrowser', {
-                    url: myTxUrl,
-                    title: t('openstoa.postDetail.viewOnBase'),
-                  })
-                }
-              >
-                <Feather name="anchor" size={12} color={colors.brand.primary} />
-                <Text style={styles.myTxStripText} numberOfLines={1}>
-                  {t('openstoa.postDetail.viewOnBase')}
-                </Text>
-                <Feather name="external-link" size={11} color={colors.brand.primary} />
-              </TouchableOpacity>
-            ) : null}
-            <PostCard post={item} onPress={() => openPost(item.id)} />
-          </View>
-        );
-      }}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-          tintColor={colors.brand.primary}
-        />
-      }
-      contentContainerStyle={styles.listContent}
-      style={styles.root}
-      ListHeaderComponent={
-        <>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => navigation.navigate('EditProfile')}
-              accessibilityLabel={t('openstoa.profile.settingsA11y', { defaultValue: 'Settings' })}
-            >
-              <SettingsIcon size={22} color={colors.text.secondary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('EditProfile')}
-            >
-              {profileImage ? (
-                <Image
-                  source={{ uri: profileImage }}
-                  style={styles.avatarImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarInitial}>
-                    {session.nickname.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
-              <Text style={styles.editPhotoText}>{t('openstoa.profile.editPhoto')}</Text>
-            </TouchableOpacity>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.nickname}>{session.nickname}</Text>
-              {session.role === 'admin' && (
-                <View style={styles.adminChip}>
-                  <Text style={styles.adminChipText}>Admin</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.userId}>#{shortId}</Text>
-            <Text style={styles.joinedAt}>
-              {t('openstoa.profile.joined', { when: formatRelativeTime(new Date(session.verifiedAt).toISOString()) })}
-            </Text>
-            <View style={styles.statsRow}>
-              <View style={styles.statBlock}>
-                <Text style={styles.statNumber}>{postCount}</Text>
-                <Text style={styles.statLabel}>{t('openstoa.profile.postsCount')}</Text>
-              </View>
-              <View style={styles.statBlock}>
-                <Text style={styles.statNumber}>{totalRecorded}</Text>
-                <Text style={styles.statLabel}>{t('openstoa.profile.recordedCount')}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Domain badge section */}
-          {domainBadgeQuery.data !== undefined && (
-            <View style={styles.domainBadgeSection}>
-              <View style={styles.domainBadgeRow}>
-                <View>
-                  <Text style={styles.sectionLabel}>{t('openstoa.profile.domainBadge.label')}</Text>
-                  {domainBadge?.enabled && domainBadge.domain ? (
-                    <Text style={styles.domainText}>{domainBadge.domain}</Text>
-                  ) : (
-                    <Text style={styles.domainText}>{t('openstoa.profile.notSet')}</Text>
-                  )}
-                </View>
+    <View style={styles.root}>
+      <SearchBar
+        value={searchDraft}
+        onChangeText={setSearchDraft}
+        onSubmit={(v) => setQ(v.trim())}
+        onClear={() => { setSearchDraft(''); setQ(''); }}
+        placeholder={t('openstoa.profile.searchPlaceholder')}
+      />
+      <FlatList<Post>
+        data={activeTabPosts}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => {
+          // The "by-me" sub-tab of the Recorded list ships an extra
+          // `myTxExplorerUrl` per post that points at THIS user's
+          // BaseScan transaction for that recording. Surface it as a
+          // small link strip above the card so the user can verify
+          // their own on-chain record without diving into the post.
+          const myTxUrl =
+            activeTab === 'recorded' && recordedSub === 'by-me'
+              ? (item as Post & { myTxExplorerUrl?: string | null }).myTxExplorerUrl
+              : null;
+          return (
+            <View>
+              {myTxUrl ? (
                 <TouchableOpacity
-                  style={[
-                    styles.toggleButton,
-                    domainBadge?.enabled ? styles.toggleButtonActive : styles.toggleButtonInactive,
-                  ]}
-                  onPress={() => void handleDomainBadgeToggle()}
-                >
-                  <Text
-                    style={[
-                      styles.toggleButtonText,
-                      domainBadge?.enabled
-                        ? styles.toggleButtonTextActive
-                        : styles.toggleButtonTextInactive,
-                    ]}
-                  >
-                    {domainBadge?.enabled ? 'OFF' : 'ON'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* Badges */}
-          {badges.length > 0 && (
-            <View style={styles.badgesSection}>
-              <Text style={styles.sectionLabel}>{t('openstoa.profile.badges')}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
-                {badges.map((badge) => (
-                  // Server returns `{type, verifiedAt, expiresAt}` — no `id`
-                  // or `label`. Derive a readable label from the proof
-                  // type and key by type since each user has one badge
-                  // per proof type.
-                  <View key={badge.type} style={styles.badgeChip}>
-                    <Text style={styles.badgeLabel}>{badgeLabelFor(badge.type)}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* Tab selector */}
-          <View style={styles.tabBar}>
-            {(['posts', 'bookmarks', 'recorded'] as TabKey[]).map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.tab, activeTab === tab && styles.tabActive]}
-                onPress={() => setActiveTab(tab)}
-              >
-                <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                  {tabLabels[tab]}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Recorded sub-tab — switch between "by me" and "on my posts" */}
-          {activeTab === 'recorded' && (
-            <View style={styles.subTabBar}>
-              {(['by-me', 'on-mine'] as RecordedSubKey[]).map((sub) => (
-                <TouchableOpacity
-                  key={sub}
-                  style={[styles.subTab, recordedSub === sub && styles.subTabActive]}
-                  onPress={() => setRecordedSub(sub)}
+                  style={styles.myTxStrip}
                   activeOpacity={0.7}
+                  onPress={() =>
+                    navigation.navigate('InAppBrowser', {
+                      url: myTxUrl,
+                      title: t('openstoa.postDetail.viewOnBase'),
+                    })
+                  }
                 >
-                  <Text
-                    style={
-                      recordedSub === sub
-                        ? styles.subTabTextActive
-                        : styles.subTabText
-                    }
+                  <Feather name="anchor" size={12} color={colors.brand.primary} />
+                  <Text style={styles.myTxStripText} numberOfLines={1}>
+                    {t('openstoa.postDetail.viewOnBase')}
+                  </Text>
+                  <Feather name="external-link" size={11} color={colors.brand.primary} />
+                </TouchableOpacity>
+              ) : null}
+              <PostCard post={item} onPress={() => openPost(item.id)} />
+            </View>
+          );
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.brand.primary}
+          />
+        }
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => navigation.navigate('EditProfile')}
+                accessibilityLabel={t('openstoa.profile.settingsA11y', { defaultValue: 'Settings' })}
+              >
+                <SettingsIcon size={22} color={colors.text.secondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('EditProfile')}
+              >
+                {profileImage ? (
+                  <Image
+                    source={{ uri: profileImage }}
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarInitial}>
+                      {session.nickname.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
+                <Text style={styles.editPhotoText}>{t('openstoa.profile.editPhoto')}</Text>
+              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.nickname}>{session.nickname}</Text>
+                {session.role === 'admin' && (
+                  <View style={styles.adminChip}>
+                    <Text style={styles.adminChipText}>Admin</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.userId}>#{shortId}</Text>
+              <Text style={styles.joinedAt}>
+                {t('openstoa.profile.joined', { when: formatRelativeTime(new Date(session.verifiedAt).toISOString()) })}
+              </Text>
+              <View style={styles.statsRow}>
+                <View style={styles.statBlock}>
+                  <Text style={styles.statNumber}>{postCount}</Text>
+                  <Text style={styles.statLabel}>{t('openstoa.profile.postsCount')}</Text>
+                </View>
+                <View style={styles.statBlock}>
+                  <Text style={styles.statNumber}>{totalRecorded}</Text>
+                  <Text style={styles.statLabel}>{t('openstoa.profile.recordedCount')}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Domain badge section */}
+            {domainBadgeQuery.data !== undefined && (
+              <View style={styles.domainBadgeSection}>
+                <View style={styles.domainBadgeRow}>
+                  <View>
+                    <Text style={styles.sectionLabel}>{t('openstoa.profile.domainBadge.label')}</Text>
+                    {domainBadge?.enabled && domainBadge.domain ? (
+                      <Text style={styles.domainText}>{domainBadge.domain}</Text>
+                    ) : (
+                      <Text style={styles.domainText}>{t('openstoa.profile.notSet')}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.toggleButton,
+                      domainBadge?.enabled ? styles.toggleButtonActive : styles.toggleButtonInactive,
+                    ]}
+                    onPress={() => void handleDomainBadgeToggle()}
                   >
-                    {sub === 'by-me'
-                      ? t('openstoa.profile.recordedSub.byMe')
-                      : t('openstoa.profile.recordedSub.onMine')}
+                    <Text
+                      style={[
+                        styles.toggleButtonText,
+                        domainBadge?.enabled
+                          ? styles.toggleButtonTextActive
+                          : styles.toggleButtonTextInactive,
+                      ]}
+                    >
+                      {domainBadge?.enabled ? 'OFF' : 'ON'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Badges */}
+            {badges.length > 0 && (
+              <View style={styles.badgesSection}>
+                <Text style={styles.sectionLabel}>{t('openstoa.profile.badges')}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
+                  {badges.map((badge) => (
+                    // Server returns `{type, verifiedAt, expiresAt}` — no `id`
+                    // or `label`. Derive a readable label from the proof
+                    // type and key by type since each user has one badge
+                    // per proof type.
+                    <View key={badge.type} style={styles.badgeChip}>
+                      <Text style={styles.badgeLabel}>{badgeLabelFor(badge.type)}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Tab selector */}
+            <View style={styles.tabBar}>
+              {(['posts', 'bookmarks', 'recorded'] as TabKey[]).map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tab, activeTab === tab && styles.tabActive]}
+                  onPress={() => setActiveTab(tab)}
+                >
+                  <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                    {tabLabels[tab]}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-          )}
 
-          {/* Per-tab search — sends ?q= to the server on submit. */}
-          <SearchBar
-            value={searchDraft}
-            onChangeText={setSearchDraft}
-            onSubmit={(v) => setQ(v.trim())}
-            onClear={() => { setSearchDraft(''); setQ(''); }}
-            placeholder={t('openstoa.profile.searchPlaceholder')}
-          />
+            {/* Recorded sub-tab — switch between "by me" and "on my posts" */}
+            {activeTab === 'recorded' && (
+              <View style={styles.subTabBar}>
+                {(['by-me', 'on-mine'] as RecordedSubKey[]).map((sub) => (
+                  <TouchableOpacity
+                    key={sub}
+                    style={[styles.subTab, recordedSub === sub && styles.subTabActive]}
+                    onPress={() => setRecordedSub(sub)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={
+                        recordedSub === sub
+                          ? styles.subTabTextActive
+                          : styles.subTabText
+                      }
+                    >
+                      {sub === 'by-me'
+                        ? t('openstoa.profile.recordedSub.byMe')
+                        : t('openstoa.profile.recordedSub.onMine')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
-          {activeTabLoading && (
-            <ActivityIndicator
-              style={styles.tabSpinner}
-              color={colors.brand.primary}
-            />
-          )}
-        </>
-      }
-      ListEmptyComponent={
-        activeTabLoading ? null : (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>{emptyText}</Text>
-          </View>
-        )
-      }
-      // Footer logout/delete buttons removed — destructive actions now live
-      // behind the ⋯ menu in the header to prevent accidental taps.
-    />
+            {activeTabLoading && (
+              <ActivityIndicator
+                style={styles.tabSpinner}
+                color={colors.brand.primary}
+              />
+            )}
+          </>
+        }
+        ListEmptyComponent={
+          activeTabLoading ? null : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>{emptyText}</Text>
+            </View>
+          )
+        }
+        // Footer logout/delete buttons removed — destructive actions now live
+        // behind the ⋯ menu in the header to prevent accidental taps.
+      />
+    </View>
   );
 }

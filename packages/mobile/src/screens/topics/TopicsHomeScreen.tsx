@@ -242,13 +242,6 @@ export function TopicsHomeScreen() {
 
   const Header = (
     <View>
-      <SearchBar
-        value={searchDraft}
-        onChangeText={setSearchDraft}
-        onSubmit={(v) => setQ(v.trim())}
-        onClear={() => { setSearchDraft(''); setQ(''); }}
-        placeholder={t('openstoa.topics.searchPlaceholder', { defaultValue: 'Search topics' })}
-      />
       <View style={styles.filterRow}>
         <TouchableOpacity
           style={[styles.filterChip, membershipFilter === 'all' && styles.filterChipActive]}
@@ -276,6 +269,13 @@ export function TopicsHomeScreen() {
 
   return (
     <View style={styles.root}>
+      <SearchBar
+        value={searchDraft}
+        onChangeText={setSearchDraft}
+        onSubmit={(v) => setQ(v.trim())}
+        onClear={() => { setSearchDraft(''); setQ(''); }}
+        placeholder={t('openstoa.topics.searchPlaceholder', { defaultValue: 'Search topics' })}
+      />
       {isLoading ? (
         <View style={styles.list}>
           {Header}

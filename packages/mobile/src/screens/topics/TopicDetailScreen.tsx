@@ -481,6 +481,12 @@ export function TopicDetailScreen() {
       <View style={styles.sectionDivider}>
         <Text style={styles.sectionLabel}>{t('openstoa.topics.posts')}</Text>
       </View>
+      <SortPills items={sortItems} value={sortKey} onChange={setSortKey} />
+    </View>
+  );
+
+  return (
+    <View style={styles.fabContainer}>
       <SearchBar
         value={searchDraft}
         onChangeText={setSearchDraft}
@@ -488,12 +494,6 @@ export function TopicDetailScreen() {
         onClear={() => { setSearchDraft(''); setQ(''); }}
         placeholder={t('openstoa.topicDetail.searchPlaceholder')}
       />
-      <SortPills items={sortItems} value={sortKey} onChange={setSortKey} />
-    </View>
-  );
-
-  return (
-    <View style={styles.fabContainer}>
       <FlatList
         style={styles.list}
         data={allPosts}

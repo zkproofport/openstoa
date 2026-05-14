@@ -182,13 +182,6 @@ export function FeedHomeScreen() {
 
   const ListHeader = (
     <View>
-      <SearchBar
-        value={searchDraft}
-        onChangeText={setSearchDraft}
-        onSubmit={(v) => setQ(v.trim())}
-        onClear={() => { setSearchDraft(''); setQ(''); }}
-        placeholder={t('openstoa.feed.searchPlaceholder')}
-      />
       <SortPills items={sortItems} value={sortKey} onChange={setSortKey} />
       {tagChips.length > 0 ? (
         <TagChips chips={tagChips} value={activeTag} onChange={setActiveTag} />
@@ -200,9 +193,20 @@ export function FeedHomeScreen() {
     <ActivityIndicator style={styles.footerSpinner} color={colors.brand.primary} />
   ) : null;
 
+  const stickySearchBar = (
+    <SearchBar
+      value={searchDraft}
+      onChangeText={setSearchDraft}
+      onSubmit={(v) => setQ(v.trim())}
+      onClear={() => { setSearchDraft(''); setQ(''); }}
+      placeholder={t('openstoa.feed.searchPlaceholder')}
+    />
+  );
+
   if (isLoading) {
     return (
       <View style={styles.root}>
+        {stickySearchBar}
         {ListHeader}
         <View style={styles.centeredContent}>
           <ActivityIndicator size="large" color={colors.brand.primary} />
@@ -214,6 +218,7 @@ export function FeedHomeScreen() {
   if (isError) {
     return (
       <View style={styles.root}>
+        {stickySearchBar}
         {ListHeader}
         <View style={styles.centeredContent}>
           <Text style={styles.errorText}>{t('openstoa.feed.error')}</Text>
@@ -226,28 +231,30 @@ export function FeedHomeScreen() {
   }
 
   return (
-    <FlatList<Post>
-      data={posts}
-      keyExtractor={keyExtractor}
-      renderItem={renderItem}
-      ListHeaderComponent={ListHeader}
-      onEndReached={handleEndReached}
-      onEndReachedThreshold={0.3}
-      ListFooterComponent={ListFooter}
-      ListEmptyComponent={
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyText}>{t('openstoa.feed.empty')}</Text>
-        </View>
-      }
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefetching}
-          onRefresh={() => void refetch()}
-          tintColor={colors.brand.primary}
-        />
-      }
-      contentContainerStyle={posts.length === 0 ? styles.emptyContent : styles.list}
-      style={styles.root}
-    />
+    <View style={styles.root}>
+      {stickySearchBar}
+      <FlatList<Post>
+        data={posts}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ListHeaderComponent={ListHeader}
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={ListFooter}
+        ListEmptyComponent={
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>{t('openstoa.feed.empty')}</Text>
+          </View>
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={() => void refetch()}
+            tintColor={colors.brand.primary}
+          />
+        }
+        contentContainerStyle={posts.length === 0 ? styles.emptyContent : styles.list}
+      />
+    </View>
   );
 }
