@@ -75,8 +75,33 @@ export async function recordOnChain(
   return { txHash: tx.hash, blockNumber: receipt.blockNumber };
 }
 
-export async function getOnChainRecordCount(postIdHash: string): Promise<bigint> {
+/**
+ * Read the on-chain record count for a post.
+ *
+ * Includes a short retry-on-zero loop to tolerate brief RPC backend lag
+ * right after a fresh write. Alchemy / Infura / similar providers fan
+ * out reads across multiple backend nodes, and a node that has not yet
+ * indexed the most recent confirmed block can return a stale `0n` even
+ * though `tx.wait(1)` already returned a receipt. Three short attempts
+ * give the backend roughly 400 ms to settle.
+ *
+ * Real "no records" posts still resolve quickly because every retry
+ * still returns `0n` — the only cost is the wait. For a hot path that
+ * is unacceptable, callers can pass `{ retries: 0 }` to skip.
+ */
+export async function getOnChainRecordCount(
+  postIdHash: string,
+  opts: { retries?: number; delayMs?: number } = {},
+): Promise<bigint> {
+  const retries = opts.retries ?? 2;
+  const delayMs = opts.delayMs ?? 200;
   const contract = getContract();
-  const count: bigint = await contract.getRecordCount(postIdHash);
-  return count;
+
+  let last: bigint = 0n;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, delayMs));
+    last = await contract.getRecordCount(postIdHash);
+    if (last > 0n) return last;
+  }
+  return last;
 }
