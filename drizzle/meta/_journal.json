@@ -71,6 +71,13 @@
       "when": 1778683581183,
       "tag": "0009_chunky_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778760000000,
+      "tag": "0010_search_trgm_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -476,6 +476,9 @@ describe.sequential('Feed endpoints', () => {
 // own block avoids polluting the main fixture set used by the rest of
 // the feed tests.
 
+// Import direct-DB helpers for the search-performance guard tests below.
+import { hasDb, indexExists, explain, closeDb } from './db-helpers';
+
 describe.sequential('Feed search — hard content', () => {
   const createdTopicIds: string[] = [];
   let topicId: string;
@@ -594,6 +597,46 @@ describe.sequential('Feed search — hard content', () => {
     expect(res.status).toBe(200);
     const ids: string[] = (await res.json()).posts.map((p: { id: string }) => p.id);
     expect(ids).toContain(postLongId);
+  });
+
+  // ── Search performance guard (migration 0010) ─────────────────────
+  //
+  // Without pg_trgm GIN indexes, `ilike '%term%'` falls back to a seq
+  // scan and stays linear in row count — fine on dev, catastrophic
+  // in production. These checks confirm the migration applied and
+  // the planner actually picks a bitmap-index scan on the title /
+  // content GIN indexes for our q= queries.
+  //
+  // Auto-skip when E2E_STAGING_DB_URL is not set.
+
+  it.skipIf(!hasDb())('posts_title_trgm_idx + posts_content_trgm_idx exist in the public schema', async () => {
+    expect(await indexExists('posts_title_trgm_idx')).toBe(true);
+    expect(await indexExists('posts_content_trgm_idx')).toBe(true);
+  });
+
+  it.skipIf(!hasDb())('topics_title_trgm_idx + topics_description_trgm_idx exist in the public schema', async () => {
+    expect(await indexExists('topics_title_trgm_idx')).toBe(true);
+    expect(await indexExists('topics_description_trgm_idx')).toBe(true);
+  });
+
+  it.skipIf(!hasDb())('q= against posts uses a trigram bitmap index plan (no seq scan)', async () => {
+    const plan = await explain(
+      `SELECT id FROM posts WHERE title ILIKE $1 OR content ILIKE $1 LIMIT 20`,
+      [`%${longStamp}%`],
+    );
+    // Either index is acceptable; what we forbid is the planner falling
+    // back to a sequential scan on the posts table for a small q.
+    expect(plan.toLowerCase()).not.toMatch(/seq scan on posts/);
+    expect(plan.toLowerCase()).toMatch(/index|bitmap/);
+  });
+
+  it.skipIf(!hasDb())('q= against topics uses a trigram bitmap index plan (no seq scan)', async () => {
+    const plan = await explain(
+      `SELECT id FROM topics WHERE title ILIKE $1 OR description ILIKE $1 LIMIT 20`,
+      [`%${longStamp}%`],
+    );
+    expect(plan.toLowerCase()).not.toMatch(/seq scan on topics/);
+    expect(plan.toLowerCase()).toMatch(/index|bitmap/);
   });
 
   // ── Pagination ────────────────────────────────────────────────────────

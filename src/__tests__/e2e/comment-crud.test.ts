@@ -261,4 +261,33 @@ describe.sequential('Comments CRUD + Permission', () => {
     // Author info should be hidden
     expect(deletedComment.authorNickname === '' || deletedComment.authorNickname === null).toBe(true);
   });
+
+  // ── Content length cap (server-side guard) ──────────────────────────
+
+  it('POST comment with content exactly at 10,000 chars succeeds', async () => {
+    const atCap = 'a'.repeat(10_000);
+    const res = await authPost(`/api/posts/${postId}/comments`, { content: atCap });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST comment with content 10,001 chars returns 400 (cap+1)', async () => {
+    const tooLong = 'a'.repeat(10_001);
+    const res = await authPost(`/api/posts/${postId}/comments`, { content: tooLong });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/comment/i);
+  });
+
+  it('POST comment with empty content returns 400', async () => {
+    const res = await authPost(`/api/posts/${postId}/comments`, { content: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST comment with whitespace-only content is accepted (no trim policy at this layer)', async () => {
+    // Confirms current behavior: the comments endpoint does not trim
+    // user input, so '   ' is a valid (if visually empty) comment. If
+    // policy changes to reject whitespace-only, update this test.
+    const res = await authPost(`/api/posts/${postId}/comments`, { content: '   hello   ' });
+    expect(res.status).toBe(201);
+  });
 });

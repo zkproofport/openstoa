@@ -7,6 +7,7 @@ import {
   fetchCategorySlugs,
   deleteTopic,
 } from './helpers';
+import { hasDb, getPostRow, getTopicRow, closeDb } from './db-helpers';
 
 /**
  * End-to-end verification of the activity bump contract introduced in
@@ -102,6 +103,62 @@ describe.sequential('Activity bump — posts/topics lastActivityAt + score', () 
         // best-effort cleanup
       }
     }
+    await closeDb();
+  });
+
+  // ── Direct-DB verification ─────────────────────────────────────────
+  //
+  // The API-response checks above prove the route returns the bumped
+  // value, but a misbehaving handler could in theory return a fresh
+  // value while writing nothing to disk. These two cases close that
+  // gap by reading the row straight from PostgreSQL.
+  //
+  // They auto-skip when `E2E_STAGING_DB_URL` is not set so the default
+  // CI run still works without a Cloud SQL Proxy.
+
+  it.skipIf(!hasDb())('vote actually writes the new upvote_count + score to the posts row (DB SELECT)', async () => {
+    const beforeRow = await getPostRow(postId);
+    expect(beforeRow).not.toBeNull();
+    const beforeUp = beforeRow!.upvote_count;
+    const beforeScore = Number(beforeRow!.score);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Vote +1 from User A (post author — voting on own post is allowed by route).
+    const res = await authPost(`/api/posts/${postId}/vote`, { value: 1 });
+    expect(res.status).toBe(200);
+
+    // Wait for fire-and-forget updatePostScore to land.
+    let afterRow = await getPostRow(postId);
+    for (let i = 0; i < 20 && afterRow && Number(afterRow.score) === beforeScore; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      afterRow = await getPostRow(postId);
+    }
+    expect(afterRow).not.toBeNull();
+    expect(afterRow!.upvote_count).toBe(beforeUp + 1);
+    expect(Number(afterRow!.score)).not.toBe(beforeScore);
+  });
+
+  it.skipIf(!hasDb())('comment actually bumps topics.last_activity_at in the DB row', async () => {
+    const beforeTopic = await getTopicRow(topicId);
+    expect(beforeTopic).not.toBeNull();
+    const beforeMs = new Date(beforeTopic!.last_activity_at!).getTime();
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    const res = await authPost(`/api/posts/${postId}/comments`, {
+      content: `db-row probe ${Date.now()}`,
+    });
+    expect(res.status).toBe(201);
+
+    let afterTopic = await getTopicRow(topicId);
+    for (let i = 0; i < 20 && afterTopic
+      && new Date(afterTopic.last_activity_at!).getTime() <= beforeMs; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      afterTopic = await getTopicRow(topicId);
+    }
+    expect(afterTopic).not.toBeNull();
+    expect(new Date(afterTopic!.last_activity_at!).getTime()).toBeGreaterThan(beforeMs);
   });
 
   it('comment bumps posts.lastActivityAt AND topics.lastActivityAt', async () => {
