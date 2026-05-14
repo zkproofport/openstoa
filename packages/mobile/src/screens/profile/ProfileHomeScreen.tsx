@@ -727,13 +727,6 @@ export function ProfileHomeScreen() {
 
   return (
     <View style={styles.root}>
-      <SearchBar
-        value={searchDraft}
-        onChangeText={setSearchDraft}
-        onSubmit={(v) => setQ(v.trim())}
-        onClear={() => { setSearchDraft(''); setQ(''); }}
-        placeholder={t('openstoa.profile.searchPlaceholder')}
-      />
       <FlatList<Post>
         data={activeTabPosts}
         keyExtractor={(item) => item.id}
@@ -901,6 +894,19 @@ export function ProfileHomeScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Search bar — scoped to the active tab. Sits below the tab
+                selector (and above the sub-tab when on Recorded) so it
+                is visually attached to the tab whose results it filters,
+                instead of floating above the profile header where it
+                would read as a global search. */}
+            <SearchBar
+              value={searchDraft}
+              onChangeText={setSearchDraft}
+              onSubmit={(v) => setQ(v.trim())}
+              onClear={() => { setSearchDraft(''); setQ(''); }}
+              placeholder={t('openstoa.profile.searchPlaceholder')}
+            />
 
             {/* Recorded sub-tab — switch between "by me" and "on my posts" */}
             {activeTab === 'recorded' && (
