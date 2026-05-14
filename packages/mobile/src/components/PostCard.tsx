@@ -12,6 +12,7 @@ import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIc
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
 import { usePostMutations } from '../hooks/usePostMutations';
+import { useAuthGuardedAction, useRequireAuth } from '../auth';
 
 // Lazy clipboard load — same pattern as ChatRoomScreen
 type ClipboardModule = typeof import('@react-native-clipboard/clipboard').default;
@@ -275,6 +276,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
 
   const client = useOpenStoaClient();
   const sessionUserId = useOpenStoaSession((s: { userId: string | null }) => s.userId);
+  const { isGuest } = useRequireAuth();
   const { vote, toggleBookmark } = usePostMutations(post.id);
 
   // No local mirror of vote/bookmark/record state. Reading directly from
@@ -283,10 +285,15 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   // `usePostMutations` does under the hood. Adding useState here is what
   // caused the "tap upvote, go back, see old value" desync the user kept
   // hitting.
-  const userVote = (post.userVoted ?? null) as 1 | -1 | null;
+  // Guests must never see user-state on a post — even if the server (or a
+  // stale cache from a previous authenticated session) returns userVoted /
+  // userBookmarked / userRecorded fields, force them to the neutral view so
+  // the UI matches the actual auth state. The mutation paths gate again
+  // via signInGate.require() before firing.
+  const userVote = isGuest ? null : ((post.userVoted ?? null) as 1 | -1 | null);
   const upvoteCount = post.upvoteCount;
-  const bookmarked = !!post.userBookmarked;
-  const recorded = !!post.userRecorded;
+  const bookmarked = isGuest ? false : !!post.userBookmarked;
+  const recorded = isGuest ? false : !!post.userRecorded;
   const recordCount = post.recordCount ?? 0;
 
   // Transient UI state only — these are local-by-design and have no
@@ -295,14 +302,16 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleVote = useCallback(
-    (value: 1 | -1) => vote(value, { userVoted: userVote, upvoteCount }),
-    [vote, userVote, upvoteCount],
+  // `useAuthGuardedAction` makes the gate-with-replay implicit: guests see
+  // the SignInSheet on tap; authed users fire immediately; the action
+  // auto-runs after a successful sign-in. No screen needs to know how the
+  // gate works internally.
+  const handleVote = useAuthGuardedAction((value: 1 | -1) =>
+    vote(value, { userVoted: userVote, upvoteCount }),
   );
 
-  const handleBookmark = useCallback(
-    () => toggleBookmark(bookmarked),
-    [toggleBookmark, bookmarked],
+  const handleBookmark = useAuthGuardedAction(() =>
+    toggleBookmark(bookmarked),
   );
 
   const handleShare = useCallback(async () => {

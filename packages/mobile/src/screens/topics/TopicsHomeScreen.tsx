@@ -16,6 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
 import type { Topic } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { useAuthGuardedAction } from '../../auth';
 import { TopicCard } from '../../components/TopicCard';
 import { SortPills } from '../../components/SortPills';
 import { TagChips } from '../../components/TagChips';
@@ -127,6 +128,12 @@ export function TopicsHomeScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const client = useOpenStoaClient();
+  // Auth-guarded header actions — opens the SignInSheet for guests, then
+  // navigates / opens the modal automatically after sign-in.
+  const openInvitePrompt = useAuthGuardedAction(() => setInviteOpen(true));
+  const openCreateTopic = useAuthGuardedAction(() =>
+    navigation.navigate('TopicCreate'),
+  );
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
@@ -190,14 +197,14 @@ export function TopicsHomeScreen() {
       headerRight: () => (
         <View style={styles.headerActions}>
           <TouchableOpacity
-            onPress={() => setInviteOpen(true)}
+            onPress={openInvitePrompt}
             style={styles.headerButton}
             accessibilityLabel={t('openstoa.topics.invite.cta')}
           >
             <Feather name="link" size={20} color={colors.brand.primary} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => navigation.navigate('TopicCreate')}
+            onPress={openCreateTopic}
             style={styles.headerButton}
           >
             <Feather name="plus" size={22} color={colors.brand.primary} />
@@ -205,7 +212,7 @@ export function TopicsHomeScreen() {
         </View>
       ),
     });
-  }, [navigation, t, colors, styles]);
+  }, [navigation, t, colors, styles, openInvitePrompt, openCreateTopic]);
 
   const sortItems: { key: SortKey; label: string }[] = useMemo(
     () => [

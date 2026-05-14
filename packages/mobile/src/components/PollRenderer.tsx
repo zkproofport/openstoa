@@ -7,6 +7,7 @@ import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
+import { useAuthGuardedAction } from '../auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { patchPostInAllCaches } from '../utils/postCachePatch';
 
@@ -200,17 +201,14 @@ export function PollRenderer({ postId, poll, inert }: PollRendererProps) {
     [queryClient, postId],
   );
 
-  const submitVote = useCallback(async () => {
-    if (!session) {
-      Alert.alert(t('openstoa.poll.loginRequiredTitle'), t('openstoa.poll.loginRequiredMessage'));
-      return;
-    }
+  const submitVote = useAuthGuardedAction(async () => {
     if (pendingIds.length === 0) return;
     setSubmitting(true);
     try {
-      const res = await client.post<{ poll: Poll }>(`/api/posts/${postId}/poll/vote`, {
-        optionIds: pendingIds,
-      });
+      const res = await client.post<{ poll: Poll }>(
+        `/api/posts/${postId}/poll/vote`,
+        { optionIds: pendingIds },
+      );
       patchPoll(res.poll);
       setPendingIds([]);
     } catch (err: unknown) {
@@ -219,13 +217,14 @@ export function PollRenderer({ postId, poll, inert }: PollRendererProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [client, postId, pendingIds, session, t, patchPoll]);
+  });
 
-  const submitUnvote = useCallback(async () => {
-    if (!session) return;
+  const submitUnvote = useAuthGuardedAction(async () => {
     setSubmitting(true);
     try {
-      const res = await client.delete<{ poll: Poll }>(`/api/posts/${postId}/poll/vote`);
+      const res = await client.delete<{ poll: Poll }>(
+        `/api/posts/${postId}/poll/vote`,
+      );
       patchPoll(res.poll);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -233,7 +232,7 @@ export function PollRenderer({ postId, poll, inert }: PollRendererProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [client, postId, session, t, patchPoll]);
+  });
 
   const timeLeftLabel = useMemo(() => formatTimeLeft(poll.closesAt, t), [poll.closesAt, t]);
 

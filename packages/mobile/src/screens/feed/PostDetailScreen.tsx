@@ -21,6 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Post, Comment } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
+import { useAuthGuardedAction } from '../../auth';
 import { usePostMutations } from '../../hooks/usePostMutations';
 import { MediaGallery } from '../../components/MediaGallery';
 import { PollRenderer } from '../../components/PollRenderer';
@@ -703,21 +704,19 @@ export function PostDetailScreen() {
   // Handlers
   // ---------------------------------------------------------------------------
 
-  const handleVote = useCallback(
-    async (value: 1 | -1) => {
-      if (voteLoading || !sessionUserId) return;
-      setVoteLoading(true);
-      try {
-        await mutations.vote(value, { userVoted: userVote, upvoteCount });
-      } finally {
-        setVoteLoading(false);
-      }
-    },
-    [mutations, userVote, upvoteCount, voteLoading, sessionUserId],
-  );
+  // Auto-replay handlers — guests see the SignInSheet on tap; authed users
+  // fire immediately; the action auto-runs after sign-in via the gate.
+  const handleVote = useAuthGuardedAction(async (value: 1 | -1) => {
+    if (voteLoading) return;
+    setVoteLoading(true);
+    try {
+      await mutations.vote(value, { userVoted: userVote, upvoteCount });
+    } finally {
+      setVoteLoading(false);
+    }
+  });
 
-  const handleBookmark = useCallback(() => {
-    if (!sessionUserId) return;
+  const handleBookmark = useAuthGuardedAction(() => {
     void mutations.toggleBookmark(bookmarked);
     // Also patch the dedicated ['bookmark', postId] cache the GET
     // endpoint backs so the next remount doesn't read a stale value.
@@ -725,7 +724,7 @@ export function PostDetailScreen() {
       ['bookmark', postId],
       { bookmarked: !bookmarked },
     );
-  }, [mutations, bookmarked, sessionUserId, queryClient, postId]);
+  });
 
   const handleShare = useCallback(async () => {
     // Mirrors web `navigator.share`: open the OS-native share sheet so
@@ -741,8 +740,8 @@ export function PostDetailScreen() {
     }
   }, [client, post?.topicId, post?.title, postId]);
 
-  const handleRecord = useCallback(() => {
-    if (recording || recorded || !sessionUserId) return;
+  const handleRecord = useAuthGuardedAction(() => {
+    if (recording || recorded) return;
     // Pre-flight: if the server already says we can't record, surface
     // a friendly localised reason instead of confirming → POST → 403.
     if (recordStatus && !recordStatus.allowed) {
@@ -794,14 +793,17 @@ export function PostDetailScreen() {
         },
       ],
     );
-  }, [mutations, recording, recorded, recordCount, sessionUserId, t, recordStatus, queryClient, postId]);
+  });
 
-  const handleReaction = useCallback(
-    (emoji: string) => {
-      if (!sessionUserId) return;
-      void mutations.toggleReaction(emoji, reactions);
-    },
-    [mutations, reactions, sessionUserId],
+  const handleReaction = useAuthGuardedAction((emoji: string) => {
+    void mutations.toggleReaction(emoji, reactions);
+  });
+
+  // Tapping the "+" reaction picker on a public post: for guests we still
+  // want the SignInSheet first; once signed in the picker opens
+  // automatically via the gate's replay path.
+  const openReactionPicker = useAuthGuardedAction(() =>
+    setShowEmojiPicker(true),
   );
 
   const handleDeleteComment = useCallback(async (commentId: string) => {
@@ -828,7 +830,7 @@ export function PostDetailScreen() {
     }
   }, [client, postId, queryClient, deletingCommentId]);
 
-  const handleSendComment = useCallback(async () => {
+  const handleSendComment = useAuthGuardedAction(async () => {
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
@@ -849,7 +851,7 @@ export function PostDetailScreen() {
         );
       }
     }
-  }, [draft, sending, mutations, t]);
+  });
 
   // ---------------------------------------------------------------------------
   // Render states
@@ -863,7 +865,6 @@ export function PostDetailScreen() {
     );
   }
 
-  const isGuest = !sessionUserId;
   const isAuthor = !!(sessionUserId && post && sessionUserId === post.authorId);
 
   if (postError || !post) {
@@ -1097,7 +1098,7 @@ export function PostDetailScreen() {
             style={styles.votePillBtn}
             activeOpacity={0.7}
             onPress={() => handleVote(1)}
-            disabled={isGuest || voteLoading}
+            disabled={voteLoading}
             hitSlop={8}
           >
             <ArrowUpIcon size={18} filled={userVote === 1} color={colors.text.tertiary} />
@@ -1117,7 +1118,7 @@ export function PostDetailScreen() {
             style={styles.votePillBtn}
             activeOpacity={0.7}
             onPress={() => handleVote(-1)}
-            disabled={isGuest || voteLoading}
+            disabled={voteLoading}
             hitSlop={8}
           >
             <ArrowDownIcon size={18} filled={userVote === -1} color={colors.text.tertiary} />
@@ -1149,11 +1150,12 @@ export function PostDetailScreen() {
           <ShareIcon size={18} color={colors.text.tertiary} />
         </TouchableOpacity>
 
-        {/* Record on-chain — hidden for post author and guests. Layout
-            matches the PostCard variant: anchor icon coloured purple
-            when the current user has recorded, with the running count
-            always visible. No more "✓ swallows the count" trick. */}
-        {sessionUserId && !isAuthor ? (
+        {/* Record on-chain — hidden for post author only. Guests see the
+            button but tapping it surfaces the SignInSheet via handleRecord
+            instead of being silently disabled. Layout matches the PostCard
+            variant: anchor icon coloured purple when the current user has
+            recorded, with the running count always visible. */}
+        {!isAuthor ? (
           (() => {
             const policyBlocked = !!(recordStatus && !recordStatus.allowed);
             const tint = recorded ? '#8b5cf6' : colors.text.tertiary;
@@ -1190,46 +1192,41 @@ export function PostDetailScreen() {
 
         <View style={styles.actionSpacer} />
 
-        {/* Bookmark — hidden for guests */}
-        {!isGuest ? (
-          <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7} onPress={handleBookmark}>
-            <BookmarkIcon size={20} filled={bookmarked} color={colors.text.tertiary} filledColor={colors.brand.primary} />
-          </TouchableOpacity>
-        ) : null}
+        {/* Bookmark — visible to guests too; tap triggers SignInSheet via
+            handleBookmark for users without an authenticated session. */}
+        <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7} onPress={handleBookmark}>
+          <BookmarkIcon size={20} filled={bookmarked} color={colors.text.tertiary} filledColor={colors.brand.primary} />
+        </TouchableOpacity>
       </View>
 
-      {/* ── Emoji reactions ── */}
-      {(reactions.filter((r) => r.count > 0).length > 0 || !isGuest) ? (
-        <View style={styles.reactionsRow}>
-          {reactions
-            .filter((r) => r.count > 0)
-            .map((r) => (
-              <TouchableOpacity
-                key={r.emoji}
-                style={[
-                  styles.reactionPill,
-                  r.userReacted ? styles.reactionPillActive : styles.reactionPillInactive,
-                ]}
-                activeOpacity={isGuest ? 1 : 0.7}
-                onPress={() => !isGuest && handleReaction(r.emoji)}
-              >
-                <Text style={styles.reactionEmoji}>{r.emoji}</Text>
-                <Text style={r.userReacted ? styles.reactionCountActive : styles.reactionCount}>
-                  {r.count}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          {!isGuest ? (
+      {/* ── Emoji reactions ── always shown; guest taps surface SignInSheet. */}
+      <View style={styles.reactionsRow}>
+        {reactions
+          .filter((r) => r.count > 0)
+          .map((r) => (
             <TouchableOpacity
-              style={styles.addReactionBtn}
+              key={r.emoji}
+              style={[
+                styles.reactionPill,
+                r.userReacted ? styles.reactionPillActive : styles.reactionPillInactive,
+              ]}
               activeOpacity={0.7}
-              onPress={() => setShowEmojiPicker(true)}
+              onPress={() => handleReaction(r.emoji)}
             >
-              <Text style={styles.addReactionText}>+</Text>
+              <Text style={styles.reactionEmoji}>{r.emoji}</Text>
+              <Text style={r.userReacted ? styles.reactionCountActive : styles.reactionCount}>
+                {r.count}
+              </Text>
             </TouchableOpacity>
-          ) : null}
-        </View>
-      ) : null}
+          ))}
+        <TouchableOpacity
+          style={styles.addReactionBtn}
+          activeOpacity={0.7}
+          onPress={openReactionPicker}
+        >
+          <Text style={styles.addReactionText}>+</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ── On-chain record receipts (collapsible) ── */}
       {recordCount > 0 ? (
@@ -1347,13 +1344,13 @@ export function PostDetailScreen() {
             placeholderTextColor={colors.text.tertiary}
             value={draft}
             onChangeText={setDraft}
-            editable={!sending && !isGuest}
+            editable={!sending}
             multiline
           />
           <TouchableOpacity
-            style={[styles.sendButton, (!draft.trim() || sending || isGuest) && styles.sendButtonDisabled]}
+            style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
             onPress={handleSendComment}
-            disabled={!draft.trim() || sending || isGuest}
+            disabled={!draft.trim() || sending}
           >
             {sending ? (
               <ActivityIndicator size="small" color="#FFFFFF" />

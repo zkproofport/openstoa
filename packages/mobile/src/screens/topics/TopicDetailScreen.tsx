@@ -24,6 +24,7 @@ import { useHost } from '@openstoa/miniapp-bridge';
 import { PostCard } from '../../components/PostCard';
 import { SortPills } from '../../components/SortPills';
 import { SearchBar } from '../../components/SearchBar';
+import { useAuthGuardedAction } from '../../auth';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
@@ -297,6 +298,11 @@ export function TopicDetailScreen() {
     },
   });
 
+  // Guests tapping Join see the SignInSheet first; once signed in the
+  // join (incl. proof generation) fires automatically via the gate's
+  // replay path.
+  const handleJoin = useAuthGuardedAction(() => joinMutation.mutate());
+
   const topic = topicQuery.data?.topic;
   const currentRole = topicQuery.data?.currentUserRole ?? null;
   // Owner/admin/member all imply membership. Falling back to `topic.isMember`
@@ -463,7 +469,7 @@ export function TopicDetailScreen() {
         {isMember ? null : (
           <TouchableOpacity
             style={[styles.actionButton, joinMutation.isPending && styles.actionButtonDisabled]}
-            onPress={() => joinMutation.mutate()}
+            onPress={handleJoin}
             disabled={joinMutation.isPending}
           >
             {joinMutation.isPending ? (

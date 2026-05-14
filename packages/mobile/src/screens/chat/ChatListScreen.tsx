@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
@@ -165,11 +166,17 @@ export function ChatListScreen() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
+  // Chat is a fully-authenticated tab — guests see a Sign-in card instead.
+  // We still call the hooks below unconditionally so rules-of-hooks holds,
+  // but gate `enabled` so guests don't fire 401s in a loop.
+  const { isGuest } = useRequireAuth();
+
   // Without view=all, /api/topics returns only joined topics for authenticated
   // users (verified via openstoa/src/app/api/topics/route.ts).
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['my-topics'],
     queryFn: () => client.get<{ topics: Topic[] } | Topic[]>('/api/topics'),
+    enabled: !isGuest,
   });
 
   const topics: Topic[] = Array.isArray(data) ? data : (data?.topics ?? []);
@@ -181,7 +188,7 @@ export function ChatListScreen() {
       queryKey: ['chat-last', topic.id],
       queryFn: () =>
         client.get<ChatHistoryResponse>(`/api/topics/${topic.id}/chat?limit=1`),
-      enabled: !!topic.id,
+      enabled: !isGuest && !!topic.id,
       staleTime: 30_000,
     })),
   });
@@ -202,6 +209,13 @@ export function ChatListScreen() {
       return new Date(lastMsgB.createdAt).getTime() - new Date(lastMsgA.createdAt).getTime();
     });
   }, [topics, chatQueries]);
+
+  if (isGuest) {
+    // Same component as ProfileTab's guest fallback so the two tabs
+    // render with identical padding / card size — the user kept seeing
+    // inconsistent widths when each screen rolled its own wrapper.
+    return <GuestFallbackView />;
+  }
 
   if (isLoading) {
     return (

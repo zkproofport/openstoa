@@ -25,6 +25,7 @@ function loadImagePicker(): ImagePickerModule | null {
 }
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigation } from '@react-navigation/native';
 import { useHost } from '@openstoa/miniapp-bridge';
 import type { DomainBadgeStatus, SessionInfo } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
@@ -274,6 +275,7 @@ export function EditProfileScreen() {
   const { t } = useTranslation();
   const client = useOpenStoaClient();
   const host = useHost();
+  const navigation = useNavigation();
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
@@ -453,11 +455,24 @@ export function EditProfileScreen() {
         style: 'destructive',
         onPress: async () => {
           await host.logoutFromOpenStoa();
-          host.exitToHost();
+          // Flip to guest mode rather than 'unknown'. This keeps OpenStoa
+          // on the TabNavigator (phase stays 'ready' instead of dropping
+          // back to Welcome), so the user lands on Feed as a guest
+          // instead of being kicked all the way back to the host app.
+          // The sessionLifecycle subscriber sees the authenticated→guest
+          // crossing and clears queryClient cache synchronously.
+          useOpenStoaSession.getState().setGuest();
+          // `navigation` here is the ProfileStack navigator. Its parent
+          // is the OpenStoaTabNavigator that owns FeedTab — one
+          // `getParent()` is enough; the previous double-getParent was
+          // reaching past the tab navigator into the host shell and
+          // silently failing.
+          navigation.popToTop();
+          navigation.getParent()?.navigate('FeedTab' as never);
         },
       },
     ]);
-  }, [host, t]);
+  }, [host, t, navigation]);
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -472,7 +487,17 @@ export function EditProfileScreen() {
             try {
               await client.delete('/api/account');
               await host.logoutFromOpenStoa();
-              host.exitToHost();
+              // Account is gone — drop to guest mode and surface Feed so
+              // the user sees a clean public state rather than being
+              // ejected to the host with no acknowledgement of the
+              // deletion. The lifecycle subscriber clears caches.
+              useOpenStoaSession.getState().setGuest();
+              try {
+                navigation.popToTop();
+                navigation.getParent()?.navigate('FeedTab' as never);
+              } catch {
+                // Navigation may have been unmounted; ignore.
+              }
             } catch (e) {
               host.showError('E9005', { detail: String(e) });
             }
@@ -480,7 +505,7 @@ export function EditProfileScreen() {
         },
       ],
     );
-  }, [client, host, t]);
+  }, [client, host, t, navigation]);
 
   const domainBadge = domainBadgeQuery.data;
   // Cache-bust on every fetch so a fresh upload renders immediately instead

@@ -59,6 +59,7 @@ import { OGPreviewCard } from '../../components/OGPreviewCard';
 import type { OGData } from '../../components/OGPreviewCard';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
 import { useOpenStoaSession } from '../../stores/sessionStore';
+import { useAuthGuardedAction } from '../../auth';
 
 // ---------------------------------------------------------------------------
 // URL helpers
@@ -556,7 +557,7 @@ export function ChatRoomScreen() {
   );
 
   // ── Send message ──────────────────────────────────────────────────────────
-  const send = useCallback(async () => {
+  const send = useAuthGuardedAction(async () => {
     const text = draft.trim();
     if (!text || sending || !topicId) return;
     setSending(true);
@@ -568,25 +569,22 @@ export function ChatRoomScreen() {
     } finally {
       setSending(false);
     }
-  }, [draft, sending, topicId, client]);
+  });
 
   // ── Image attach helpers ──────────────────────────────────────────────────
-  const uploadAndSend = useCallback(
-    async (localUri: string) => {
-      if (!topicId) return;
-      setUploading(true);
-      try {
-        const publicUrl = await client.uploadFile(localUri);
-        await client.post(`/api/topics/${topicId}/chat`, { message: publicUrl });
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        Alert.alert('Upload failed', msg);
-      } finally {
-        setUploading(false);
-      }
-    },
-    [topicId, client],
-  );
+  const uploadAndSend = useAuthGuardedAction(async (localUri: string) => {
+    if (!topicId) return;
+    setUploading(true);
+    try {
+      const publicUrl = await client.uploadFile(localUri);
+      await client.post(`/api/topics/${topicId}/chat`, { message: publicUrl });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      Alert.alert('Upload failed', msg);
+    } finally {
+      setUploading(false);
+    }
+  });
 
   const pickFromLibrary = useCallback(async () => {
     const ImagePicker = loadImagePicker();

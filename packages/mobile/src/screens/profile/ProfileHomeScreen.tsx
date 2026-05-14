@@ -21,7 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useHost } from '@openstoa/miniapp-bridge';
 import type { Badge, DomainBadgeStatus, Post, SessionInfo } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
-import { useOpenStoaSession } from '../../stores/sessionStore';
+import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { PostCard } from '../../components/PostCard';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
@@ -513,14 +513,21 @@ export function ProfileHomeScreen() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
+  // Profile is a fully authenticated tab; guests get a Sign-in card.
+  // We still declare every useQuery hook unconditionally (rules-of-hooks)
+  // but gate `enabled` on auth so guests don't fire 401s in a loop.
+  const { isGuest } = useRequireAuth();
+
   const sessionQuery = useQuery<SessionWithStats>({
     queryKey: ['session'],
     queryFn: () => client.get<SessionWithStats>('/api/auth/session'),
+    enabled: !isGuest,
   });
 
   const profileImageQuery = useQuery<ProfileImageResponse>({
     queryKey: ['profile', 'image'],
     queryFn: () => client.get<ProfileImageResponse>('/api/profile/image'),
+    enabled: !isGuest,
   });
 
   const badgesQuery = useQuery<Badge[]>({
@@ -529,6 +536,7 @@ export function ProfileHomeScreen() {
       const res = await client.get<{ badges: Badge[] }>('/api/profile/badges');
       return res.badges ?? [];
     },
+    enabled: !isGuest,
   });
 
   const domainBadgeQuery = useQuery<DomainBadgeStatus>({
@@ -545,6 +553,7 @@ export function ProfileHomeScreen() {
         domain: domains[0],
       };
     },
+    enabled: !isGuest,
   });
 
   const postsQuery = useQuery<MyPostsResponse>({
@@ -554,7 +563,7 @@ export function ProfileHomeScreen() {
       if (q) params.set('q', q);
       return client.get<MyPostsResponse>(`/api/my/posts?${params.toString()}`);
     },
-    enabled: activeTab === 'posts',
+    enabled: !isGuest && activeTab === 'posts',
   });
 
   const bookmarksQuery = useQuery<MyPostsResponse>({
@@ -564,7 +573,7 @@ export function ProfileHomeScreen() {
       if (q) params.set('q', q);
       return client.get<MyPostsResponse>(`/api/bookmarks?${params.toString()}`);
     },
-    enabled: activeTab === 'bookmarks',
+    enabled: !isGuest && activeTab === 'bookmarks',
   });
 
   const recordedQuery = useQuery<MyPostsResponse>({
@@ -574,7 +583,7 @@ export function ProfileHomeScreen() {
       if (q) params.set('q', q);
       return client.get<MyPostsResponse>(`/api/my/recorded?${params.toString()}`);
     },
-    enabled: activeTab === 'recorded' && recordedSub === 'by-me',
+    enabled: !isGuest && activeTab === 'recorded' && recordedSub === 'by-me',
   });
 
   const recordedOnMineQuery = useQuery<MyPostsResponse>({
@@ -584,7 +593,7 @@ export function ProfileHomeScreen() {
       if (q) params.set('q', q);
       return client.get<MyPostsResponse>(`/api/my/recorded-on-mine?${params.toString()}`);
     },
-    enabled: activeTab === 'recorded' && recordedSub === 'on-mine',
+    enabled: !isGuest && activeTab === 'recorded' && recordedSub === 'on-mine',
   });
 
   const isRefreshing =
@@ -678,6 +687,12 @@ export function ProfileHomeScreen() {
           : false;
 
   const postCount = postsQuery.data?.posts.length ?? 0;
+
+  if (isGuest) {
+    // Same shared component used by ChatListScreen so both guest tabs
+    // render with identical padding / card size.
+    return <GuestFallbackView />;
+  }
 
   if (sessionQuery.isLoading) {
     return (

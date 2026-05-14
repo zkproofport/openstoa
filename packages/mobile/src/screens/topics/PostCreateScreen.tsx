@@ -33,6 +33,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { Post } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { AuthGate } from '../../auth';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
@@ -490,6 +491,18 @@ function makeStyles(colors: ThemeColors) {
 }
 
 export function PostCreateScreen() {
+  // Post creation needs an authenticated session AND topic membership.
+  // The membership check lives inside the API mutation; the auth check
+  // happens here so guests reaching this screen via a deep link or a
+  // stale-back-stack land on the sign-in card instead of an empty form.
+  return (
+    <AuthGate>
+      <PostCreateScreenAuthed />
+    </AuthGate>
+  );
+}
+
+function PostCreateScreenAuthed() {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Props['route']>();

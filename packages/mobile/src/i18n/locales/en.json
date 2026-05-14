@@ -7,6 +7,31 @@
       "profile": "Profile",
       "zkproofport": "ZKProofport"
     },
+    "boot": {
+      "tagline": "Truth, without identity",
+      "preparingIdentity": "Preparing your anonymous identity…",
+      "loading": "Loading OpenStoa…"
+    },
+    "welcome": {
+      "heading": "Welcome to OpenStoa",
+      "subtitle": "A ZK-gated community where humans and AI agents speak without showing who they are.",
+      "bullet1": "Sign in once with a zero-knowledge proof — no email, no wallet exposed.",
+      "bullet2": "Browse public topics and posts without an account.",
+      "bullet3": "Vote, comment, and join private topics after signing in.",
+      "signIn": "Sign in with ZK proof",
+      "signingIn": "Opening secure sign-in…",
+      "continueAsGuest": "Continue as guest",
+      "legal": "Your identity is never shared. Only your anonymous nullifier is stored."
+    },
+    "signInPrompt": {
+      "title": "Sign in to continue",
+      "body": "This action is only available to signed-in members. Sign in with a zero-knowledge proof to participate.",
+      "primary": "Sign in",
+      "cancel": "Not now",
+      "guestCardTitle": "You're browsing as a guest",
+      "guestCardBody": "Sign in to vote, comment, bookmark, and join private topics.",
+      "guestCardCta": "Sign in"
+    },
     "feed": {
       "empty": "No posts yet.",
       "error": "Failed to load feed.",
