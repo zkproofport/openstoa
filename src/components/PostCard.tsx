@@ -10,6 +10,7 @@ import Badge from '@/components/Badge';
 import PollRenderer from '@/components/PollRenderer';
 import PostActionBar from '@/components/post/PostActionBar';
 import ReactionRow from '@/components/post/ReactionRow';
+import MediaGallery from '@/components/post/MediaGallery';
 import type { ReactionSummary } from '@/hooks/usePostMutations';
 import type { Poll } from '@/lib/polls';
 
@@ -104,148 +105,40 @@ function TagChipRow({ tags }: { tags: Array<{ name: string; slug: string }> }) {
   );
 }
 
-// ─── Media preview extraction ────────────────────────────────────────────────
+// ─── Media collection ────────────────────────────────────────────────────────
 
-type MediaPreviewItem = { type: 'image' | 'youtube' | 'vimeo'; src: string; thumbnail: string };
-
-function extractMediaPreview(post: PostCardPost): MediaPreviewItem[] {
-  const out: MediaPreviewItem[] = [];
+// Collect images + video URLs from explicit `post.media` AND legacy HTML
+// in `post.content`. Returns plain URL arrays so the shared MediaGallery
+// can render the same swipeable carousel the mobile uses.
+function collectMedia(post: PostCardPost): { images: string[]; videos: string[] } {
+  const images: string[] = [];
+  const videos: string[] = [];
   const seen = new Set<string>();
-  const push = (item: MediaPreviewItem) => {
-    if (seen.has(item.src)) return;
-    seen.add(item.src);
-    out.push(item);
+  const pushImg = (url: string) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    images.push(url);
+  };
+  const pushVid = (url: string) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    videos.push(url);
   };
 
-  for (const url of post.media?.images ?? []) {
-    push({ type: 'image', src: url, thumbnail: url });
-  }
-  for (const url of post.media?.videos ?? []) {
-    const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
-    if (yt) {
-      push({ type: 'youtube', src: yt[1], thumbnail: `https://img.youtube.com/vi/${yt[1]}/mqdefault.jpg` });
-      continue;
-    }
-    const vimeo = url.match(/vimeo\.com\/(\d+)/);
-    if (vimeo) push({ type: 'vimeo', src: vimeo[1], thumbnail: '' });
-  }
+  for (const url of post.media?.images ?? []) pushImg(url);
+  for (const url of post.media?.videos ?? []) pushVid(url);
 
   const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-  let imgM;
-  while ((imgM = imgRegex.exec(post.content)) !== null) {
-    push({ type: 'image', src: imgM[1], thumbnail: imgM[1] });
-  }
+  let m: RegExpExecArray | null;
+  while ((m = imgRegex.exec(post.content)) !== null) pushImg(m[1]);
 
-  const ytRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/g;
-  let ytM;
-  while ((ytM = ytRegex.exec(post.content)) !== null) {
-    push({ type: 'youtube', src: ytM[1], thumbnail: `https://img.youtube.com/vi/${ytM[1]}/mqdefault.jpg` });
-  }
+  const ytRegex = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}\S*/gi;
+  while ((m = ytRegex.exec(post.content)) !== null) pushVid(m[0]);
 
-  const vimeoRegex = /vimeo\.com\/(\d+)/g;
-  let vimeoM;
-  while ((vimeoM = vimeoRegex.exec(post.content)) !== null) {
-    push({ type: 'vimeo', src: vimeoM[1], thumbnail: '' });
-  }
+  const vimeoRegex = /https?:\/\/(?:www\.)?vimeo\.com\/\d+\S*/gi;
+  while ((m = vimeoRegex.exec(post.content)) !== null) pushVid(m[0]);
 
-  return out;
-}
-
-// ─── Media gallery ───────────────────────────────────────────────────────────
-
-function MediaGallery({
-  post,
-  contentOverflows,
-}: {
-  post: PostCardPost;
-  contentOverflows: boolean;
-}) {
-  const mediaItems = extractMediaPreview(post);
-  if (mediaItems.length === 0) return null;
-  const hasExplicitMedia =
-    (post.media?.images?.length ?? 0) > 0 || (post.media?.videos?.length ?? 0) > 0;
-  if (!contentOverflows && !hasExplicitMedia) return null;
-
-  const displayItems = mediaItems.slice(0, 3);
-  const remaining = mediaItems.length - 3;
-
-  return (
-    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-      {displayItems.map((item, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'relative',
-            width: 80,
-            height: 80,
-            borderRadius: 8,
-            overflow: 'hidden',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            flexShrink: 0,
-          }}
-        >
-          {item.thumbnail ? (
-            <img
-              src={item.thumbnail}
-              alt=""
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
-          ) : (
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#6b7280',
-                fontSize: 12,
-              }}
-            >
-              Video
-            </div>
-          )}
-          {(item.type === 'youtube' || item.type === 'vimeo') && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: 28,
-                height: 28,
-                background: 'rgba(0,0,0,0.6)',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <span style={{ color: '#fff', fontSize: 12, marginLeft: 2 }}>&#9654;</span>
-            </div>
-          )}
-          {i === 2 && remaining > 0 && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'rgba(0,0,0,0.6)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-              +{remaining}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
+  return { images, videos };
 }
 
 // ─── Post Card ───────────────────────────────────────────────────────────────
@@ -267,7 +160,6 @@ export default function PostCard({
   expandable = true,
 }: PostCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [contentOverflows, setContentOverflows] = useState(false);
 
   // Poll state — local cache so vote/unvote feels instant.
   const [poll, setPoll] = useState<Poll | null>(post.poll ?? null);
@@ -456,18 +348,20 @@ export default function PostCard({
         </h3>
 
         <div>
+          {/* Media is rendered by MediaGallery below — keep SNSContent
+              focused on the text body so we don't double-up images. */}
           <SNSContent
             html={post.content}
-            mediaImages={post.media?.images}
-            mediaVideos={post.media?.videos}
             truncate={expandable ? !expanded : true}
             maxLines={3}
             onToggleExpand={expandable ? handleToggleExpand : undefined}
-            onOverflowChange={setContentOverflows}
           />
         </div>
 
-        {!expanded && <MediaGallery post={post} contentOverflows={contentOverflows} />}
+        {!expanded && (() => {
+          const { images, videos } = collectMedia(post);
+          return <MediaGallery images={images} videos={videos} mode="feed" />;
+        })()}
       </Link>
 
       {/* Poll — outside the Link so vote buttons don't trigger navigation. */}

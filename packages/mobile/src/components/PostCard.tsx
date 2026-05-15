@@ -41,8 +41,12 @@ export interface PostCardProps {
 
 const PREVIEW_LINES = 5;
 // Heuristic threshold for offering a "More" toggle when content runs longer
-// than what `numberOfLines={PREVIEW_LINES}` is likely to show.
-const PREVIEW_CHAR_THRESHOLD = 160;
+// than what fits in the 200px preview window. Matches web SNSContent's
+// height-based overflow detection in practice — 13px font × 18px line
+// height ≈ 11 visible rows × ~25-50 chars/row depending on language. A
+// 160 threshold was too aggressive for Korean text (single paragraph
+// triggered "Show more"), so we sit closer to the real text fit.
+const PREVIEW_CHAR_THRESHOLD = 300;
 
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({

@@ -23,7 +23,7 @@ function TopicsPageInner() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'hot' | 'new' | 'top'>('hot');
+  const [sortBy, setSortBy] = useState<'hot' | 'new' | 'active' | 'top'>('hot');
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -35,9 +35,20 @@ function TopicsPageInner() {
   const [activeTag, setActiveTag] = useState<string | null>(
     searchParams.get('tag'),
   );
+  const [activeQuery, setActiveQuery] = useState<string | null>(
+    searchParams.get('q'),
+  );
   const [viewMode, setViewMode] = useState<'all' | 'my'>(
     searchParams.get('view') === 'my' ? 'my' : 'all',
   );
+
+  // Sync local filter state with URL when the header search bar pushes
+  // a new query (or any other affordance updates URL params).
+  useEffect(() => {
+    setActiveQuery(searchParams.get('q'));
+    setActiveCategory(searchParams.get('category'));
+    setActiveTag(searchParams.get('tag'));
+  }, [searchParams]);
   const observerRef = useRef<HTMLDivElement | null>(null);
   const LIMIT = 20;
 
@@ -65,7 +76,7 @@ function TopicsPageInner() {
   }, [router]);
 
   // ── Fetch feed ──
-  const loadFeed = useCallback(async (sort: string, category: string | null, tag: string | null, currentOffset: number, append: boolean) => {
+  const loadFeed = useCallback(async (sort: string, category: string | null, tag: string | null, q: string | null, currentOffset: number, append: boolean) => {
     if (!append) {
       setLoading(true);
     } else {
@@ -84,6 +95,9 @@ function TopicsPageInner() {
       }
       if (tag) {
         url += `&tag=${encodeURIComponent(tag)}`;
+      }
+      if (q && q.trim()) {
+        url += `&q=${encodeURIComponent(q.trim())}`;
       }
 
       const res = await fetch(url);
@@ -126,9 +140,9 @@ function TopicsPageInner() {
     if (sessionChecked) {
       setOffset(0);
       setHasMore(true);
-      loadFeed(sortBy, activeCategory, activeTag, 0, false);
+      loadFeed(sortBy, activeCategory, activeTag, activeQuery, 0, false);
     }
-  }, [sortBy, activeCategory, activeTag, sessionChecked, loadFeed]);
+  }, [sortBy, activeCategory, activeTag, activeQuery, sessionChecked, loadFeed]);
 
   // ── Infinite scroll ──
   useEffect(() => {
@@ -136,14 +150,14 @@ function TopicsPageInner() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
-          loadFeed(sortBy, activeCategory, activeTag, offset, true);
+          loadFeed(sortBy, activeCategory, activeTag, activeQuery, offset, true);
         }
       },
       { threshold: 0.1 },
     );
     observer.observe(observerRef.current);
     return () => observer.disconnect();
-  }, [hasMore, loading, loadingMore, offset, sortBy, activeCategory, activeTag, loadFeed]);
+  }, [hasMore, loading, loadingMore, offset, sortBy, activeCategory, activeTag, activeQuery, loadFeed]);
 
   // ── Handlers ──
   function handleCategorySelect(slug: string | null) {
@@ -274,6 +288,7 @@ function TopicsPageInner() {
           [
             { key: 'hot', label: 'Hot' },
             { key: 'new', label: 'New' },
+            { key: 'active', label: 'Active' },
             { key: 'top', label: 'Top' },
           ] as const
         ).map(({ key, label }) => (

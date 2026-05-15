@@ -305,39 +305,14 @@ export default function RightSidebar({
 
       {/* Live Chat */}
       {topicId && (
-        <div style={{ position: 'relative', marginBottom: 12 }}>
-          {/* Expand button — desktop only (hidden via CSS on mobile) */}
-          <button
-            className="chat-expand-btn"
-            onClick={() => setChatExpanded(true)}
-            aria-label="Expand chat"
-            title="Expand chat"
-            style={{
-              position: 'absolute',
-              top: 8,
-              right: 36,
-              zIndex: 2,
-              background: 'none',
-              border: 'none',
-              color: 'var(--muted)',
-              cursor: 'pointer',
-              padding: 4,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              lineHeight: 1,
-            }}
-          >
-            {/* ↗ expand icon */}
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 3 21 3 21 9" />
-              <polyline points="9 21 3 21 3 15" />
-              <line x1="21" y1="3" x2="14" y2="10" />
-              <line x1="3" y1="21" x2="10" y2="14" />
-            </svg>
-          </button>
-          <ChatPanel topicId={topicId} isGuest={isGuest ?? true} isMember={isMember ?? false} />
+        <div style={{ marginBottom: 12 }}>
+          <ChatPanel
+            topicId={topicId}
+            isGuest={isGuest ?? true}
+            isMember={isMember ?? false}
+            // Inline header button — never overlaps PresenceDots.
+            onExpand={() => setChatExpanded(true)}
+          />
           {chatExpanded && (
             <ExpandedChatOverlay
               topicId={topicId}

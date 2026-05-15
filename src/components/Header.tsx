@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import HeaderSearchBar from '@/components/HeaderSearchBar';
 
 interface UserSession {
   nickname?: string;
@@ -123,6 +124,14 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             Open<span style={{ color: '#788cff' }}>Stoa</span>
           </span>
         </Link>
+        </div>
+
+        {/* Sticky search — same affordance as mobile SearchBar. Wrapped
+            in Suspense because next/navigation's useSearchParams suspends. */}
+        <div className="header-search-wrap" style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 16px', minWidth: 0 }}>
+          <Suspense fallback={<div style={{ height: 30 }} />}>
+            <HeaderSearchBar />
+          </Suspense>
         </div>
 
         <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="header-nav">
@@ -295,6 +304,9 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             padding: 4px 6px !important;
             font-size: 10px !important;
             border: none !important;
+          }
+          .header-search-wrap {
+            display: none !important;
           }
         }
         @media (max-width: 380px) {

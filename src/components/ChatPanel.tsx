@@ -3,6 +3,61 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
+import LinkPreview from '@/components/LinkPreview';
+
+// Match the mobile chat URL detector (ChatRoomScreen.tsx). Keep them in
+// sync so the same message renders an OG card on both surfaces.
+const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?.*)?$/i;
+
+function extractFirstUrl(text: string): string | null {
+  URL_REGEX.lastIndex = 0;
+  const m = URL_REGEX.exec(text);
+  URL_REGEX.lastIndex = 0;
+  return m ? m[1] : null;
+}
+
+function isUrlOnly(text: string): boolean {
+  return /^https?:\/\/\S+$/.test(text.trim());
+}
+
+// Same heuristic as mobile: extension or media.zkproofport.app host.
+function isImageUrl(url: string): boolean {
+  if (IMAGE_EXT_RE.test(url)) return true;
+  try {
+    return new URL(url).hostname.endsWith('media.zkproofport.app');
+  } catch {
+    return false;
+  }
+}
+
+// Render plain text with embedded URLs turned into clickable links.
+function renderLinkedText(text: string): React.ReactNode {
+  URL_REGEX.lastIndex = 0;
+  const out: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    const start = match.index;
+    if (start > lastIndex) out.push(text.slice(lastIndex, start));
+    out.push(
+      <a
+        key={start}
+        href={match[1]}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        style={{ color: 'var(--accent)', wordBreak: 'break-all' }}
+      >
+        {match[1]}
+      </a>,
+    );
+    lastIndex = start + match[1].length;
+  }
+  URL_REGEX.lastIndex = 0;
+  if (lastIndex < text.length) out.push(text.slice(lastIndex));
+  return out;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -26,6 +81,9 @@ interface ChatMessage {
 }
 
 interface ChatPanelProps {
+  /** When set, an inline expand button appears in the header.
+   *  Keeps the affordance from overlapping the PresenceDots avatars. */
+  onExpand?: () => void;
   topicId: string;
   isGuest: boolean;
   isMember: boolean;
@@ -151,7 +209,7 @@ function PresenceDots({ users }: { users: PresenceUser[] }) {
 
 // ─── Message row ──────────────────────────────────────────────────────────────
 
-function MessageRow({ msg }: { msg: ChatMessage }) {
+function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
   if (msg.type === 'join' || msg.type === 'leave') {
     return (
       <div style={{
@@ -166,57 +224,120 @@ function MessageRow({ msg }: { msg: ChatMessage }) {
     );
   }
 
+  const firstUrl = extractFirstUrl(msg.message);
+  const urlOnly = firstUrl !== null && isUrlOnly(msg.message);
+  const inlineImage = urlOnly && firstUrl && isImageUrl(firstUrl) ? firstUrl : null;
+
   return (
-    <div style={{ lineHeight: 1.4 }}>
+    <div style={{ lineHeight: 1.4, marginTop: grouped ? -2 : 0 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap' }}>
-        <span style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: 'var(--accent)',
-          flexShrink: 0,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-        }}>
-          {msg.nickname}
-          {msg.isAI && <Badge type="ai" />}
-        </span>
-        <span style={{
-          fontSize: 13,
-          color: 'var(--foreground)',
-          wordBreak: 'break-word' as const,
-          flex: 1,
-          minWidth: 0,
-        }}>
-          {msg.message}
-        </span>
+        {!grouped && (
+          <span style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: 'var(--accent)',
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}>
+            {msg.nickname}
+            {msg.isAI && <Badge type="ai" />}
+          </span>
+        )}
+        {!inlineImage && (
+          <span style={{
+            fontSize: 13,
+            color: 'var(--foreground)',
+            wordBreak: 'break-word' as const,
+            flex: 1,
+            minWidth: 0,
+          }}>
+            {renderLinkedText(msg.message)}
+          </span>
+        )}
       </div>
-      <div style={{
-        fontSize: 10,
-        fontFamily: 'var(--font-mono)',
-        color: 'var(--muted)',
-        marginTop: 1,
-        textAlign: 'right' as const,
-      }}>
-        {relativeTime(msg.createdAt)}
-      </div>
+      {inlineImage && (
+        <a
+          href={inlineImage}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          style={{ display: 'block', marginTop: 4 }}
+        >
+          <img
+            src={inlineImage}
+            alt=""
+            style={{
+              maxWidth: '100%',
+              maxHeight: 240,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              display: 'block',
+            }}
+          />
+        </a>
+      )}
+      {firstUrl && !inlineImage && (
+        <div style={{ marginTop: 6, marginBottom: 2 }}>
+          <LinkPreview url={firstUrl} />
+        </div>
+      )}
+      {!grouped && (
+        <div style={{
+          fontSize: 10,
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--muted)',
+          marginTop: 1,
+          textAlign: 'right' as const,
+        }}>
+          {relativeTime(msg.createdAt)}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hideHeader, onClose }: ChatPanelProps) {
+export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hideHeader, onClose, onExpand }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+
+  // Uploads via /api/upload and posts the returned URL as a chat message.
+  // The message body is the bare URL — MessageRow's isImageUrl detection
+  // renders it inline, matching the mobile chat UX.
+  const sendImage = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const up = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!up.ok) throw new Error('upload failed');
+      const { url } = await up.json();
+      if (!url) throw new Error('no url');
+      await fetch(`/api/topics/${topicId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: url }),
+      });
+    } catch {
+      // best-effort; the user can retry
+    } finally {
+      setUploading(false);
+    }
+  }, [topicId]);
 
   async function handleSend() {
     const text = inputValue.trim();
@@ -370,7 +491,34 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
+          {onExpand && (
+            <button
+              type="button"
+              onClick={onExpand}
+              className="chat-expand-btn"
+              aria-label="Expand chat"
+              title="Expand chat"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--muted)',
+                cursor: 'pointer',
+                padding: 2,
+                borderRadius: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+          )}
           {presence.users.length > 0 && <PresenceDots users={presence.users} />}
           <div style={{
             width: 7,
@@ -379,6 +527,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
             background: connected ? '#22c55e' : '#6b7280',
             flexShrink: 0,
           }} />
+          {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
         </div>
       </div>
       )}
@@ -395,9 +544,20 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
             No messages yet
           </div>
         ) : (
-          messages.map((msg) => (
-            <MessageRow key={msg.id} msg={msg} />
-          ))
+          messages.map((msg, i) => {
+            // Same-author messages within 60s collapse into a single
+            // group (matches the mobile chat). Hide the nickname row
+            // and trim the gap.
+            const prev = messages[i - 1];
+            const grouped =
+              prev != null &&
+              prev.type === 'message' &&
+              msg.type === 'message' &&
+              prev.userId === msg.userId &&
+              !!prev.isAI === !!msg.isAI &&
+              new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 60_000;
+            return <MessageRow key={msg.id} msg={msg} grouped={grouped} />;
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -411,11 +571,62 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
         borderTop: '1px solid var(--border)',
       }}>
         <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void sendImage(file);
+            // Allow selecting the same file again later.
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!connected || uploading}
+          aria-label="Attach image"
+          title="Attach image"
+          style={{
+            background: 'rgba(120,140,255,0.08)',
+            color: 'var(--muted)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 8,
+            padding: '6px 8px',
+            cursor: connected && !uploading ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: connected && !uploading ? 1 : 0.5,
+            flexShrink: 0,
+          }}
+        >
+          {uploading ? (
+            <span style={{ fontSize: 12 }}>…</span>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          )}
+        </button>
+        <input
           ref={inputRef}
           type="text"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={(e) => {
+            // Pasted image from clipboard → upload directly.
+            const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'));
+            const file = item?.getAsFile();
+            if (file) {
+              e.preventDefault();
+              void sendImage(file);
+            }
+          }}
           placeholder="Type a message..."
           maxLength={1000}
           disabled={!connected}
