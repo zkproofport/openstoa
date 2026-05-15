@@ -9,12 +9,15 @@ import Badge from '@/components/Badge';
 import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
 import ImageLightbox from '@/components/ImageLightbox';
-import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, TrashIcon } from '@/components/icons';
+import { TrashIcon } from '@/components/icons';
 import { PostRecordsSection } from '@/components/PostRecordsSection';
 import PollRenderer from '@/components/PollRenderer';
 import SNSEditor, { type SNSEditorState } from '@/components/SNSEditor';
 import TagInput from '@/components/TagInput';
 import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
+import PostActionBar from '@/components/post/PostActionBar';
+import ReactionRow from '@/components/post/ReactionRow';
+import type { ReactionSummary } from '@/hooks/usePostMutations';
 import type { Poll } from '@/lib/polls';
 import { formatDate, truncateId } from '@/lib/utils';
 
@@ -59,8 +62,6 @@ interface Comment {
   isAI?: boolean;
 }
 
-const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
-
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function PostPage() {
@@ -78,14 +79,13 @@ export default function PostPage() {
   const [submitting, setSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
 
+  // Vote / bookmark / record live inside the shared PostActionBar; this
+  // page only owns the initial values so we can hand them to the bar.
   const [userVote, setUserVote] = useState<number | null>(null);
   const [upvoteCount, setUpvoteCount] = useState(0);
   const [bookmarked, setBookmarked] = useState(false);
-  const [voteLoading, setVoteLoading] = useState(false);
-  const [shared, setShared] = useState(false);
 
-  const [reactions, setReactions] = useState<{ emoji: string; count: number; userReacted: boolean }[]>([]);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactions, setReactions] = useState<ReactionSummary[]>([]);
 
   // Poll state — initialised from the GET response, then updated locally on
   // every vote/unvote so the user sees results without a full reload.
@@ -246,85 +246,6 @@ export default function PostPage() {
       setError(err instanceof Error ? err.message : 'Failed to load post');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleVote(value: 1 | -1) {
-    if (voteLoading || isGuest) return;
-    setVoteLoading(true);
-    try {
-      const res = await fetch(`/api/posts/${postId}/vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUserVote(data.vote?.value ?? null);
-        setUpvoteCount(data.upvoteCount);
-      }
-    } catch (err) {
-      console.error('Vote failed:', err);
-    } finally {
-      setVoteLoading(false);
-    }
-  }
-
-  async function handleShare() {
-    const url = window.location.href;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: post?.title ?? '', url });
-        return;
-      } catch {}
-    }
-    await navigator.clipboard.writeText(url);
-    setShared(true);
-    setTimeout(() => setShared(false), 1500);
-  }
-
-  async function handleBookmark() {
-    if (isGuest) return;
-    try {
-      const res = await fetch(`/api/posts/${postId}/bookmark`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        setBookmarked(data.bookmarked);
-      }
-    } catch (err) {
-      console.error('Bookmark failed:', err);
-    }
-  }
-
-  async function handleReaction(emoji: string) {
-    if (isGuest) return;
-    setReactions((prev) => {
-      const existing = prev.find((r) => r.emoji === emoji);
-      if (existing) {
-        if (existing.userReacted) {
-          const newCount = existing.count - 1;
-          return newCount <= 0
-            ? prev.filter((r) => r.emoji !== emoji)
-            : prev.map((r) => r.emoji === emoji ? { ...r, count: newCount, userReacted: false } : r);
-        } else {
-          return prev.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, userReacted: true } : r);
-        }
-      } else {
-        return [...prev, { emoji, count: 1, userReacted: true }];
-      }
-    });
-    try {
-      await fetch(`/api/posts/${postId}/reactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emoji }),
-      });
-    } catch {
-      // Re-fetch on error
-      fetch(`/api/posts/${postId}/reactions`)
-        .then((r) => r.ok ? r.json() : null)
-        .then((data) => { if (data?.reactions) setReactions(data.reactions); })
-        .catch(() => {});
     }
   }
 
@@ -869,225 +790,44 @@ export default function PostPage() {
           )}
 
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 20,
             marginTop: 20,
             paddingTop: 16,
             borderTop: '1px solid var(--border)',
           }}>
-            {/* Vote pill — Reddit/HN style ↑/↓ */}
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 10px',
-                borderRadius: 16,
-                background: 'var(--card-bg, rgba(255,255,255,0.03))',
-                border: '1px solid var(--border, rgba(255,255,255,0.08))',
+            <PostActionBar
+              postId={postId}
+              href={`/topics/${topicId}/posts/${postId}`}
+              upvoteCount={upvoteCount}
+              userVoted={userVote}
+              commentCount={comments.length}
+              viewCount={post.viewCount}
+              recordCount={post.recordCount ?? 0}
+              bookmarked={bookmarked}
+              authorId={post.authorId}
+              sessionUserId={currentUserId}
+              isGuest={isGuest}
+              variant="detail"
+              onVoteChange={(v) => {
+                setUserVote(v.userVoted);
+                setUpvoteCount(v.upvoteCount);
               }}
-            >
-              <button
-                type="button"
-                onClick={() => !isGuest && handleVote(1)}
-                disabled={isGuest || voteLoading}
-                aria-label="Upvote"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: isGuest ? 'default' : 'pointer',
-                  padding: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  color: userVote === 1 ? '#22c55e' : 'var(--muted)',
-                }}
-              >
-                <ArrowUpIcon filled={userVote === 1} />
-              </button>
-              <span
-                style={{
-                  fontSize: 14,
-                  fontFamily: 'var(--font-mono)',
-                  minWidth: 16,
-                  textAlign: 'center',
-                  fontWeight: userVote ? 700 : 600,
-                  color:
-                    userVote === 1
-                      ? '#22c55e'
-                      : userVote === -1
-                      ? '#3b82f6'
-                      : 'var(--muted)',
-                }}
-              >
-                {upvoteCount}
-              </span>
-              <button
-                type="button"
-                onClick={() => !isGuest && handleVote(-1)}
-                disabled={isGuest || voteLoading}
-                aria-label="Downvote"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: isGuest ? 'default' : 'pointer',
-                  padding: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  color: userVote === -1 ? '#3b82f6' : 'var(--muted)',
-                }}
-              >
-                <ArrowDownIcon filled={userVote === -1} />
-              </button>
-            </div>
-
-            {/* Comments */}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'var(--font-mono)' }}>
-              <CommentIcon />
-              {comments.length}
-            </span>
-
-            {/* Views */}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 14, fontFamily: 'var(--font-mono)' }}>
-              <EyeIcon size={16} />
-              {post.viewCount}
-            </span>
-
-            {/* Share — always available */}
-            <button
-              type="button"
-              onClick={handleShare}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                color: shared ? 'var(--accent)' : 'var(--muted)',
-                fontSize: 14,
-                fontFamily: 'var(--font-mono)',
-                padding: 0,
-                transition: 'color 0.15s',
-              }}
-            >
-              <ShareIcon size={18} />
-              {shared && 'Copied!'}
-            </button>
-
-            <div style={{ flex: 1 }} />
-
-            {/* Bookmark — hidden for guests */}
-            {!isGuest && (
-              <button
-                type="button"
-                onClick={handleBookmark}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  color: bookmarked ? 'var(--accent)' : 'var(--muted)',
-                  fontSize: 14,
-                  padding: 0,
-                  transition: 'color 0.15s',
-                }}
-              >
-                <BookmarkIcon filled={bookmarked} />
-              </button>
-            )}
+            />
           </div>
 
-          {/* Emoji Reactions */}
+          {/* Emoji reactions — interactive picker lives on the detail page only. */}
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
             marginTop: 16,
             paddingTop: 14,
             borderTop: '1px solid var(--border)',
-            flexWrap: 'wrap',
           }}>
-            {reactions.filter(r => r.count > 0).map((r) => (
-              <button
-                key={r.emoji}
-                onClick={() => !isGuest && handleReaction(r.emoji)}
-                style={{
-                  background: r.userReacted ? 'rgba(120,140,255,0.15)' : 'rgba(255,255,255,0.05)',
-                  border: r.userReacted ? '1px solid rgba(120,140,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 9999,
-                  padding: '4px 12px',
-                  fontSize: 14,
-                  cursor: isGuest ? 'default' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  color: r.userReacted ? 'var(--accent)' : '#9ca3af',
-                  transition: 'all 0.12s',
-                }}
-              >
-                <span>{r.emoji}</span>
-                <span style={{ fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{r.count}</span>
-              </button>
-            ))}
-            {/* Add reaction button — hidden for guests */}
-            {!isGuest && (
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setShowEmojiPicker(v => !v)}
-                  style={{
-                    background: showEmojiPicker ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 9999,
-                    padding: '4px 12px',
-                    fontSize: 14,
-                    cursor: 'pointer',
-                    color: '#6b7280',
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  +
-                </button>
-                {showEmojiPicker && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: 0,
-                    marginBottom: 6,
-                    background: 'var(--surface, #1a1a2e)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 10,
-                    padding: '6px 8px',
-                    display: 'flex',
-                    gap: 2,
-                    zIndex: 10,
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                  }}>
-                    {REACTION_EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={() => { handleReaction(emoji); setShowEmojiPicker(false); }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          fontSize: 20,
-                          cursor: 'pointer',
-                          padding: '6px 8px',
-                          borderRadius: 6,
-                          transition: 'background 0.1s',
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <ReactionRow
+              postId={postId}
+              reactions={reactions}
+              interactive
+              disabled={isGuest}
+              initialKnown
+              onChange={setReactions}
+            />
           </div>
           </>
           )}

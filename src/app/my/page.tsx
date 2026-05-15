@@ -32,7 +32,7 @@ interface Post {
   bookmarkedAt?: string;
 }
 
-type TabId = 'posts' | 'topics' | 'bookmarks' | 'likes' | 'settings';
+type TabId = 'posts' | 'topics' | 'bookmarks' | 'settings';
 
 const PAGE_SIZE = 20;
 
@@ -73,10 +73,6 @@ export default function MyPage() {
   const [bookmarksHasMore, setBookmarksHasMore] = useState(false);
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
 
-  const [likes, setLikes] = useState<Post[]>([]);
-  const [likesOffset, setLikesOffset] = useState(0);
-  const [likesHasMore, setLikesHasMore] = useState(false);
-  const [likesLoading, setLikesLoading] = useState(false);
 
   const [myTopics, setMyTopics] = useState<{ id: string; title: string; image?: string | null; memberCount?: number }[]>([]);
   const [myTopicsLoading, setMyTopicsLoading] = useState(false);
@@ -283,22 +279,6 @@ export default function MyPage() {
     }
   }, []);
 
-  // Load likes
-  const loadLikes = useCallback(async (currentOffset: number, replace: boolean) => {
-    setLikesLoading(true);
-    try {
-      const res = await fetch(`/api/my/likes?limit=${PAGE_SIZE}&offset=${currentOffset}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const newPosts: Post[] = data.posts ?? [];
-      setLikes((prev) => (replace ? newPosts : [...prev, ...newPosts]));
-      setLikesHasMore(newPosts.length === PAGE_SIZE);
-      setLikesOffset(currentOffset + newPosts.length);
-    } finally {
-      setLikesLoading(false);
-    }
-  }, []);
-
   const loadMyTopics = useCallback(async () => {
     setMyTopicsLoading(true);
     try {
@@ -317,20 +297,18 @@ export default function MyPage() {
     loadMyPosts(0, true);
     loadMyTopics();
     loadBookmarks(0, true);
-    loadLikes(0, true);
-  }, [session, loadMyPosts, loadMyTopics, loadBookmarks, loadLikes]);
+  }, [session, loadMyPosts, loadMyTopics, loadBookmarks]);
 
   // Infinite scroll via IntersectionObserver
   // Uses raw state to avoid referencing render-body derived vars
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-    const hasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : likesHasMore;
-    const loading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : likesLoading;
+    const hasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : false;
+    const loading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : false;
     const loadMore = () => {
       if (activeTab === 'posts') loadMyPosts(myPostsOffset, false);
       else if (activeTab === 'bookmarks') loadBookmarks(bookmarksOffset, false);
-      else if (activeTab === 'likes') loadLikes(likesOffset, false);
     };
     const observer = new IntersectionObserver(
       (entries) => {
@@ -346,8 +324,7 @@ export default function MyPage() {
     activeTab,
     myPostsHasMore, myPostsLoading, myPostsOffset,
     bookmarksHasMore, bookmarksLoading, bookmarksOffset,
-    likesHasMore, likesLoading, likesOffset,
-    loadMyPosts, loadBookmarks, loadLikes,
+    loadMyPosts, loadBookmarks,
   ]);
 
   if (sessionLoading) {
@@ -369,25 +346,14 @@ export default function MyPage() {
     { id: 'posts', label: 'My Posts' },
     { id: 'topics', label: 'My Topics' },
     { id: 'bookmarks', label: 'Bookmarks' },
-    { id: 'likes', label: 'Likes' },
     { id: 'settings', label: 'Settings' },
   ];
 
-  const activePosts = activeTab === 'posts' ? myPosts : activeTab === 'bookmarks' ? bookmarks : activeTab === 'likes' ? likes : [];
-  const activeLoading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : activeTab === 'likes' ? likesLoading : myTopicsLoading;
-  const activeHasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : activeTab === 'likes' ? likesHasMore : false;
+  const activePosts = activeTab === 'posts' ? myPosts : activeTab === 'bookmarks' ? bookmarks : [];
+  const activeLoading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : myTopicsLoading;
+  const activeHasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : false;
 
-  function handleLoadMore() {
-    if (activeTab === 'posts') {
-      loadMyPosts(myPostsOffset, false);
-    } else if (activeTab === 'bookmarks') {
-      loadBookmarks(bookmarksOffset, false);
-    } else if (activeTab === 'likes') {
-      loadLikes(likesOffset, false);
-    }
-  }
-
-  const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : activeTab === 'topics' ? 'No topics joined yet.' : activeTab === 'bookmarks' ? 'No bookmarks yet.' : 'No liked posts yet.';
+  const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : activeTab === 'topics' ? 'No topics joined yet.' : 'No bookmarks yet.';
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
@@ -591,7 +557,17 @@ export default function MyPage() {
                   </div>
                 ) : (
                   activePosts.map((post) => (
-                    <PostCard key={post.id} post={post} href={`/topics/${post.topicId}/posts/${post.id}`} />
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      href={`/topics/${post.topicId}/posts/${post.id}`}
+                      sessionUserId={session?.userId ?? null}
+                      // Bookmarks tab shows other authors' posts — render the
+                      // header so it's clear who wrote each one. My Posts
+                      // hides it (the user is always the author).
+                      showAuthor={activeTab === 'bookmarks'}
+                      showTopic
+                    />
                   ))
                 )}
               </div>
