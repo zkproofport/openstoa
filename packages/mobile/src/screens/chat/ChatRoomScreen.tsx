@@ -57,6 +57,7 @@ import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { OGPreviewCard } from '../../components/OGPreviewCard';
 import type { OGData } from '../../components/OGPreviewCard';
+import ImageViewerModal from '../../components/ImageViewerModal';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useAuthGuardedAction } from '../../auth';
@@ -366,6 +367,10 @@ export function ChatRoomScreen() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Local image viewer URL — avoids piping image taps through the
+  // in-app WebView, which renders the raw image at top + blank space
+  // (the "white area" reported on staging).
+  const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
 
   // ── SSE realtime ──────────────────────────────────────────────────────────
   const { messages: liveMessages, presence, status, error } = useChatSocket(topicId);
@@ -643,6 +648,7 @@ export function ChatRoomScreen() {
   const isFirstLoad = historyStatus === 'pending';
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -681,6 +687,7 @@ export function ChatRoomScreen() {
               styles={styles}
               navigation={navigation}
               client={client}
+              onImagePress={setImageViewerUrl}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -755,6 +762,8 @@ export function ChatRoomScreen() {
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
+    <ImageViewerModal url={imageViewerUrl} onClose={() => setImageViewerUrl(null)} />
+    </>
   );
 }
 
@@ -770,9 +779,10 @@ interface RowProps {
   styles: Styles;
   navigation: NativeStackNavigationProp<ChatStackParamList>;
   client: ReturnType<typeof useOpenStoaClient>;
+  onImagePress: (url: string) => void;
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -813,6 +823,7 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client }: RowProps
       styles={styles}
       navigation={navigation}
       client={client}
+      onImagePress={onImagePress}
     />
   );
 }
@@ -828,6 +839,7 @@ interface MessageBodyProps {
   styles: Styles;
   navigation: NativeStackNavigationProp<ChatStackParamList>;
   client: ReturnType<typeof useOpenStoaClient>;
+  onImagePress: (url: string) => void;
 }
 
 // Image URLs: explicit extension OR a known image host. `media.zkproofport.app`
@@ -843,7 +855,7 @@ function isImageUrl(url: string): boolean {
   return false;
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client }: MessageBodyProps) {
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress }: MessageBodyProps) {
   const content: string = item.message ?? '';
   const firstUrl = extractFirstUrl(content);
   const urlOnly = firstUrl !== null && isUrlOnly(content);
@@ -983,7 +995,9 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client }: Me
         {imageUrl ? (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => openUrl(imageUrl)}
+            // Open in a local image viewer instead of the in-app WebView —
+            // the WebView renders the raw image with a blank page below.
+            onPress={() => onImagePress(imageUrl)}
             style={isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther}
           >
             <Image

@@ -227,6 +227,10 @@ function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
   const firstUrl = extractFirstUrl(msg.message);
   const urlOnly = firstUrl !== null && isUrlOnly(msg.message);
   const inlineImage = urlOnly && firstUrl && isImageUrl(firstUrl) ? firstUrl : null;
+  // When the message is JUST a URL we let the OG card (or inline image)
+  // carry it on its own — repeating the URL above the card is the same
+  // visual noise mobile already avoids.
+  const hideMessageText = urlOnly && (inlineImage !== null || firstUrl !== null);
 
   return (
     <div style={{ lineHeight: 1.4, marginTop: grouped ? -2 : 0 }}>
@@ -245,7 +249,7 @@ function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
             {msg.isAI && <Badge type="ai" />}
           </span>
         )}
-        {!inlineImage && (
+        {!hideMessageText && (
           <span style={{
             fontSize: 13,
             color: 'var(--foreground)',
@@ -325,12 +329,13 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
       fd.append('file', file);
       const up = await fetch('/api/upload', { method: 'POST', body: fd });
       if (!up.ok) throw new Error('upload failed');
-      const { url } = await up.json();
-      if (!url) throw new Error('no url');
+      // The endpoint returns `{ publicUrl: ... }` (see app/api/upload/route.ts).
+      const { publicUrl } = await up.json();
+      if (!publicUrl) throw new Error('no url');
       await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: url }),
+        body: JSON.stringify({ message: publicUrl }),
       });
     } catch {
       // best-effort; the user can retry

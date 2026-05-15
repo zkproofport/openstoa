@@ -11,6 +11,7 @@ import PollRenderer from '@/components/PollRenderer';
 import PostActionBar from '@/components/post/PostActionBar';
 import ReactionRow from '@/components/post/ReactionRow';
 import MediaGallery from '@/components/post/MediaGallery';
+import { collectPostMedia, stripVideoUrls } from '@/lib/postMedia';
 import type { ReactionSummary } from '@/hooks/usePostMutations';
 import type { Poll } from '@/lib/polls';
 
@@ -103,42 +104,6 @@ function TagChipRow({ tags }: { tags: Array<{ name: string; slug: string }> }) {
       ))}
     </div>
   );
-}
-
-// ─── Media collection ────────────────────────────────────────────────────────
-
-// Collect images + video URLs from explicit `post.media` AND legacy HTML
-// in `post.content`. Returns plain URL arrays so the shared MediaGallery
-// can render the same swipeable carousel the mobile uses.
-function collectMedia(post: PostCardPost): { images: string[]; videos: string[] } {
-  const images: string[] = [];
-  const videos: string[] = [];
-  const seen = new Set<string>();
-  const pushImg = (url: string) => {
-    if (seen.has(url)) return;
-    seen.add(url);
-    images.push(url);
-  };
-  const pushVid = (url: string) => {
-    if (seen.has(url)) return;
-    seen.add(url);
-    videos.push(url);
-  };
-
-  for (const url of post.media?.images ?? []) pushImg(url);
-  for (const url of post.media?.videos ?? []) pushVid(url);
-
-  const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-  let m: RegExpExecArray | null;
-  while ((m = imgRegex.exec(post.content)) !== null) pushImg(m[1]);
-
-  const ytRegex = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}\S*/gi;
-  while ((m = ytRegex.exec(post.content)) !== null) pushVid(m[0]);
-
-  const vimeoRegex = /https?:\/\/(?:www\.)?vimeo\.com\/\d+\S*/gi;
-  while ((m = vimeoRegex.exec(post.content)) !== null) pushVid(m[0]);
-
-  return { images, videos };
 }
 
 // ─── Post Card ───────────────────────────────────────────────────────────────
@@ -351,7 +316,7 @@ export default function PostCard({
           {/* Media is rendered by MediaGallery below — keep SNSContent
               focused on the text body so we don't double-up images. */}
           <SNSContent
-            html={post.content}
+            html={stripVideoUrls(post.content)}
             truncate={expandable ? !expanded : true}
             maxLines={3}
             onToggleExpand={expandable ? handleToggleExpand : undefined}
@@ -359,7 +324,7 @@ export default function PostCard({
         </div>
 
         {!expanded && (() => {
-          const { images, videos } = collectMedia(post);
+          const { images, videos } = collectPostMedia(post);
           return <MediaGallery images={images} videos={videos} mode="feed" />;
         })()}
       </Link>

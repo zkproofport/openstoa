@@ -18,6 +18,7 @@ import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
 import PostActionBar from '@/components/post/PostActionBar';
 import ReactionRow from '@/components/post/ReactionRow';
 import MediaGallery from '@/components/post/MediaGallery';
+import { collectPostMedia, stripVideoUrls } from '@/lib/postMedia';
 import type { ReactionSummary } from '@/hooks/usePostMutations';
 import type { Poll } from '@/lib/polls';
 import { formatDate, truncateId } from '@/lib/utils';
@@ -776,15 +777,18 @@ export default function PostPage() {
           <div ref={contentAreaRef}>
             {/* Media is rendered by the shared MediaGallery below so the
                 detail page mirrors the mobile UX: text body, then a
-                swipeable image+video carousel with click-to-zoom. */}
-            <SNSContent html={post.content} />
+                swipeable image+video carousel with click-to-zoom. Strip
+                bare YouTube/Vimeo URLs from the body so they don't
+                surface above the gallery embed. */}
+            <SNSContent html={stripVideoUrls(post.content)} />
           </div>
 
-          <MediaGallery
-            images={post.media?.images ?? []}
-            videos={post.media?.videos ?? []}
-            mode="detail"
-          />
+          {(() => {
+            // Same extraction the feed uses — surfaces legacy YouTube/Vimeo
+            // URLs that lived inside HTML body instead of `media.videos`.
+            const m = collectPostMedia(post);
+            return <MediaGallery images={m.images} videos={m.videos} mode="detail" />;
+          })()}
 
           {poll && (
             <PollRenderer
