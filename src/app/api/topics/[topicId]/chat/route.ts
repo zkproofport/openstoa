@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { chatMessages, topicMembers, users } from '@/lib/db/schema';
-import { eq, and, desc, count, gt, lt } from 'drizzle-orm';
+import { eq, and, desc, count, gt, lt, notInArray } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
@@ -108,7 +108,12 @@ export async function GET(
     const beforeParam = searchParams.get('before');
 
     // Build where clause based on pagination mode.
-    let whereClause = eq(chatMessages.topicId, topicId);
+    // Skip 'join' / 'leave' rows from history — those used to be
+    // persisted on every SSE connect / disconnect and accumulated
+    // forever; new code keeps them ephemeral but old rows still live
+    // in chat_messages and would replay as noise without this filter.
+    const notSystem = notInArray(chatMessages.type, ['join', 'leave']);
+    let whereClause = and(eq(chatMessages.topicId, topicId), notSystem)!;
     let orderByCol = desc(chatMessages.createdAt);
 
     if (sinceParam) {
@@ -118,6 +123,7 @@ export async function GET(
       }
       whereClause = and(
         eq(chatMessages.topicId, topicId),
+        notSystem,
         gt(chatMessages.createdAt, sinceDate),
       )!;
       // Chronological for delta sync — client appends as-is.
@@ -133,6 +139,7 @@ export async function GET(
       }
       whereClause = and(
         eq(chatMessages.topicId, topicId),
+        notSystem,
         lt(chatMessages.createdAt, anchor.createdAt),
       )!;
       // Newest-first; client reverses for chronological display.
@@ -160,7 +167,7 @@ export async function GET(
       db
         .select({ value: count() })
         .from(chatMessages)
-        .where(eq(chatMessages.topicId, topicId)),
+        .where(and(eq(chatMessages.topicId, topicId), notSystem)),
     ]);
 
     logger.info(ROUTE, 'Chat history fetched', {

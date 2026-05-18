@@ -45,6 +45,11 @@ export function OpenStoaTabNavigator() {
       key={i18n.language}
       screenOptions={{
         headerShown: false,
+        // Hide the tab bar while the keyboard is up so screens like
+        // ChatRoom can dock their composer right on top of the keyboard
+        // — otherwise `KeyboardAvoidingView` lifts the input by tab-bar
+        // height extra and the user sees a visible gap.
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: colors.background.primary,
           borderTopWidth: 1,

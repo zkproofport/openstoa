@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { chatMessages, topicMembers, users } from '@/lib/db/schema';
+import { topicMembers, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import Redis from 'ioredis';
@@ -120,24 +120,21 @@ export async function GET(
           const redis = getRedis();
           await redis.hdel(presenceKey, session!.userId);
 
-          // Insert leave message
-          const [leaveRow] = await db.insert(chatMessages).values({
+          // Publish an EPHEMERAL leave event over Redis only — never
+          // persist join/leave to chat_messages. Otherwise every SSE
+          // hiccup (app background, network blip, hot reload, React
+          // strict-mode double mount) writes another row that gets
+          // replayed forever in history. Currently-connected clients
+          // still see this in real time via the SSE stream.
+          const leavePayload = {
+            id: `leave-${Date.now()}-${session!.userId}`,
             topicId,
             userId: session!.userId,
-            message: `${nickname} left the chat`,
-            type: 'leave',
-          }).returning();
-
-          // Publish leave event as 'message' type so clients receive it uniformly
-          const leavePayload = {
-            id: leaveRow.id,
-            topicId: leaveRow.topicId,
-            userId: leaveRow.userId,
             nickname,
             profileImage,
-            message: leaveRow.message,
-            type: leaveRow.type,
-            createdAt: leaveRow.createdAt,
+            message: `${nickname} left the chat`,
+            type: 'leave',
+            createdAt: new Date().toISOString(),
           };
           await redis.publish(channelKey, JSON.stringify({ event: 'message', data: leavePayload }));
 
@@ -194,24 +191,17 @@ export async function GET(
           JSON.stringify({ nickname, profileImage, connectedAt: new Date().toISOString() }),
         );
 
-        // Insert join message
-        const [joinRow] = await db.insert(chatMessages).values({
+        // Publish an EPHEMERAL join event — see leave handler above for
+        // why we don't persist it.
+        const joinPayload = {
+          id: `join-${Date.now()}-${session.userId}`,
           topicId,
           userId: session.userId,
-          message: `${nickname} joined the chat`,
-          type: 'join',
-        }).returning();
-
-        // Publish join event — now received by this stream too
-        const joinPayload = {
-          id: joinRow.id,
-          topicId: joinRow.topicId,
-          userId: joinRow.userId,
           nickname,
           profileImage,
-          message: joinRow.message,
-          type: joinRow.type,
-          createdAt: joinRow.createdAt,
+          message: `${nickname} joined the chat`,
+          type: 'join',
+          createdAt: new Date().toISOString(),
         };
         await redis.publish(channelKey, JSON.stringify({ event: 'message', data: joinPayload }));
 

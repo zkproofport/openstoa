@@ -652,7 +652,11 @@ export function ChatRoomScreen() {
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      // KAV measures its OWN frame against the keyboard. The screen is
+      // mounted under a stack header but the KAV starts BELOW it, so we
+      // don't add a 88-px header offset here — doing so leaves an
+      // 88-px gap above the keyboard (the bug user saw).
+      keyboardVerticalOffset={0}
     >
       {/* Connection status bar */}
       {status === 'connecting' ? (
