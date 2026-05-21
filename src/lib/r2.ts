@@ -55,9 +55,8 @@ export async function uploadToR2(
   filename?: string,
 ): Promise<string> {
   const { s3, config } = getR2Client();
-  const env = process.env.APP_ENV === 'production' ? 'production' : 'staging';
   const resolvedFilename = filename ?? `inline-${randomUUID()}.${extensionFromContentType(contentType)}`;
-  const key = `${env}/${PURPOSE_FOLDER[purpose]}/${userId}/${randomUUID()}/${resolvedFilename}`;
+  const key = `${PURPOSE_FOLDER[purpose]}/${userId}/${randomUUID()}/${resolvedFilename}`;
 
   logger.info(MODULE, 'Uploading buffer to R2', { key, contentType, size: buffer.length });
 
