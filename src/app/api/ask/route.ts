@@ -114,7 +114,17 @@ async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise
  *                   type: string
  *                   enum: [gemini, openai]
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
+  // DISABLED 2026-05-25: LLM API providers (OpenAI/Gemini/Anthropic) deprecated.
+  // Re-enable by replacing the body with `return _disabledOriginalPost(_request);`.
+  // See docs/migration/third-party-services.md §4-6.
+  logger.info(ROUTE, 'POST blocked — AI feature disabled');
+  return NextResponse.json({ error: 'AI service has been disabled.' }, { status: 503 });
+}
+
+// Original implementation preserved for future re-enable (intentionally unused).
+/* eslint-disable @typescript-eslint/no-unused-vars */
+async function _disabledOriginalPost(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
@@ -169,3 +179,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */

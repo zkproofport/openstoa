@@ -160,9 +160,20 @@ async function* streamOpenAI(messages: ChatMessage[], systemPrompt: string): Asy
  *               type: string
  *               example: "data: {\"text\":\"Hello\"}\n\ndata: [DONE]\n\n"
  */
-export async function POST(request: NextRequest) {
-  logger.info(ROUTE, 'POST request received');
+export async function POST(_request: NextRequest) {
+  // DISABLED 2026-05-25: LLM API providers (OpenAI/Gemini/Anthropic) deprecated.
+  // Re-enable by replacing the body with `return _disabledOriginalPost(_request);`.
+  // See docs/migration/third-party-services.md §4-6.
+  logger.info(ROUTE, 'POST blocked — AI feature disabled');
+  return new Response(JSON.stringify({ error: 'AI service has been disabled.' }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
+// Original implementation preserved for future re-enable (intentionally unused).
+/* eslint-disable @typescript-eslint/no-unused-vars */
+async function _disabledOriginalPost(request: NextRequest) {
   let chatMessages: ChatMessage[];
 
   try {
@@ -243,3 +254,4 @@ export async function POST(request: NextRequest) {
     },
   });
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */

@@ -135,6 +135,9 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
         </div>
 
         <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="header-nav">
+          {/* DISABLED 2026-05-25: AI Ask link hidden because LLM API providers deprecated.
+              See docs/migration/third-party-services.md §4-6 and /api/ask routes (commented).
+              Re-enable by uncommenting the <Link> below.
           <Link
             href="/ask"
             className="header-nav-link"
@@ -163,6 +166,7 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             </svg>
             Ask
           </Link>
+          */}
 
           <Link
             href="/topics/explore"

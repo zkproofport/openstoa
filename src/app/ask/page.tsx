@@ -325,6 +325,21 @@ export default function AskPage() {
 
   const isEmpty = messages.length === 0 && !loading && !streamingContent;
 
+  // DISABLED 2026-05-25: LLM API providers (OpenAI/Gemini/Anthropic) deprecated.
+  // Original /ask UI is preserved below for future re-enable (remove the early return below).
+  // See docs/migration/third-party-services.md §4-6.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _suppressUnused = { isEmpty };
+  if (true) {
+    return (
+      <main style={{ height: '100vh', background: 'rgb(5,8,16)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#999', fontFamily: 'var(--font-sans)', textAlign: 'center', padding: 24 }}>
+        <h1 style={{ color: '#e8e8f0', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>OpenStoa AI</h1>
+        <p style={{ margin: 0, maxWidth: 360, lineHeight: 1.6 }}>This feature is currently unavailable.</p>
+        <Link href="/" style={{ color: '#788cff', fontSize: 12, textDecoration: 'none', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase', padding: '8px 16px', borderRadius: 6, border: '1px solid rgba(120,140,255,0.25)' }}>← Back to home</Link>
+      </main>
+    );
+  }
+
   return (
     <div style={{ height: '100vh', background: 'rgb(5,8,16)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* ── Header ── */}
