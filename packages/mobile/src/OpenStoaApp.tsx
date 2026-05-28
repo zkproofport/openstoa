@@ -250,7 +250,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   //   3. Auto-replay still works: the SignInSheet's `pendingActionRef`
   //      is preserved across the dismissal and fires from `onSuccess`.
   const performSignIn = useCallback<SignInLauncher>(
-    (onSuccess) => {
+    (onSuccess, method) => {
       if (signInInflightRef.current) return;
       signInInflightRef.current = true;
       setSignInBusy(true);
@@ -259,7 +259,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
       void (async () => {
         try {
           // force=true bypasses any LOGGED_OUT marker the host may still hold.
-          const auth = await host.loginToOpenStoa({ force: true });
+          const auth = await host.loginToOpenStoa({ force: true, method });
           session.setSession({
             token: auth.token,
             userId: auth.userId,
@@ -303,6 +303,9 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   const handleSignIn = useCallback(() => {
     performSignIn();
   }, [performSignIn]);
+  const handleSignInMdl = useCallback(() => {
+    performSignIn(undefined, 'mdl');
+  }, [performSignIn]);
 
   const handleContinueAsGuest = useCallback(() => {
     // Mirror the sign-in guard — don't let a guest-tap during an inflight
@@ -326,6 +329,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
     return (
       <WelcomeScreen
         onSignIn={handleSignIn}
+        onSignInMdl={handleSignInMdl}
         onContinueAsGuest={handleContinueAsGuest}
         errorMessage={errorMsg}
         busy={signInBusy}

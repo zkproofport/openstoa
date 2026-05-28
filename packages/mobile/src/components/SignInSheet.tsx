@@ -102,27 +102,33 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
     [session.mode, open],
   );
 
-  const handleSignIn = useCallback(() => {
-    // Hand off to the launcher — OpenStoaApp will switch to the
-    // `'authenticating'` BootScreen and run the host proof flow there.
-    // We close the sheet first so the proof modal has a clean modal
-    // slot to present into (iOS can't reliably stack Modal-over-Modal).
-    // `pendingActionRef.current` is intentionally NOT cleared here — it
-    // survives the dismissal so the launcher's onSuccess can replay it.
-    setErrorMsg(null);
-    setVisible(false);
-    launcher(() => {
-      const replay = pendingActionRef.current;
-      pendingActionRef.current = null;
-      if (replay) {
-        try {
-          replay();
-        } catch {
-          // Swallow — the action handler owns its own error UX.
+  const runLauncher = useCallback(
+    (method?: 'oidc' | 'mdl') => {
+      // Hand off to the launcher — OpenStoaApp will switch to the
+      // `'authenticating'` BootScreen and run the host proof flow there.
+      // We close the sheet first so the proof modal has a clean modal
+      // slot to present into (iOS can't reliably stack Modal-over-Modal).
+      // `pendingActionRef.current` is intentionally NOT cleared here — it
+      // survives the dismissal so the launcher's onSuccess can replay it.
+      setErrorMsg(null);
+      setVisible(false);
+      launcher(() => {
+        const replay = pendingActionRef.current;
+        pendingActionRef.current = null;
+        if (replay) {
+          try {
+            replay();
+          } catch {
+            // Swallow — the action handler owns its own error UX.
+          }
         }
-      }
-    });
-  }, [launcher]);
+      }, method);
+    },
+    [launcher],
+  );
+
+  const handleSignIn = useCallback(() => runLauncher('oidc'), [runLauncher]);
+  const handleSignInMdl = useCallback(() => runLauncher('mdl'), [runLauncher]);
 
   const value = useMemo<SignInSheetContextValue>(
     () => ({ require, open, close, isGuest }),
@@ -175,6 +181,21 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
             >
               <Text style={styles.primaryText}>
                 {t('openstoa.signInPrompt.primary')}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleSignInMdl}
+              style={({ pressed }) => [
+                styles.mdl,
+                {
+                  borderColor: colors.brand.primary,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.mdlText, { color: colors.brand.primary }]}>
+                {t('openstoa.signInPrompt.primaryMdl')}
               </Text>
             </Pressable>
 
@@ -295,6 +316,19 @@ const styles = StyleSheet.create({
   primaryText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  mdl: {
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  mdlText: {
+    fontSize: 15,
     fontWeight: '700',
   },
   secondary: {

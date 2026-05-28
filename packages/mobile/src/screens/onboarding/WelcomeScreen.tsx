@@ -13,6 +13,8 @@ import { OpenStoaMarkIcon } from '../../components/icons';
 
 export interface WelcomeScreenProps {
   onSignIn: () => void;
+  /** Optional Mobile ID sign-in handler. When omitted, the mDL button is hidden. */
+  onSignInMdl?: () => void;
   onContinueAsGuest: () => void;
   /** Disables both buttons during inflight host work (e.g. login spawning). */
   busy?: boolean;
@@ -26,6 +28,7 @@ export interface WelcomeScreenProps {
  */
 export function WelcomeScreen({
   onSignIn,
+  onSignInMdl,
   onContinueAsGuest,
   busy,
   errorMessage,
@@ -112,6 +115,26 @@ export function WelcomeScreen({
               : t('openstoa.welcome.signIn')}
           </Text>
         </Pressable>
+
+        {onSignInMdl ? (
+          <Pressable
+            onPress={onSignInMdl}
+            disabled={busy}
+            style={({ pressed }) => [
+              styles.mdlButton,
+              {
+                borderColor: colors.brand.primary,
+                opacity: busy ? 0.5 : pressed ? 0.85 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.mdlButtonText, { color: colors.brand.primary }]}
+            >
+              {t('openstoa.welcome.signInMdl')}
+            </Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={onContinueAsGuest}
@@ -234,6 +257,19 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+  mdlButton: {
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  mdlButtonText: {
+    fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.1,
   },

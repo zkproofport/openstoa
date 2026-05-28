@@ -22,7 +22,15 @@ import React, { createContext, useContext, type ReactNode } from 'react';
  *   SignInSheet's "auto-replay" queue can fire the original action with
  *   the new auth state.
  */
-export type SignInLauncher = (onSuccess?: () => void) => void;
+/**
+ * `method` selects the proof flavor:
+ *   - `'oidc'` (default) — Google / Microsoft OIDC sign-in
+ *   - `'mdl'`            — Korea Mobile ID via OmniOne CX (experimental)
+ */
+export type SignInLauncher = (
+  onSuccess?: () => void,
+  method?: 'oidc' | 'mdl',
+) => void;
 
 const SignInLauncherContext = createContext<SignInLauncher | null>(null);
 

@@ -19,6 +19,7 @@
       "bullet2": "Browse public topics and posts without an account.",
       "bullet3": "Vote, comment, and join private topics after signing in.",
       "signIn": "Sign in with ZK proof",
+      "signInMdl": "Sign in with Mobile ID",
       "signingIn": "Opening secure sign-in…",
       "continueAsGuest": "Continue as guest",
       "legal": "Your identity is never shared. Only your anonymous nullifier is stored."
@@ -27,6 +28,7 @@
       "title": "Sign in to continue",
       "body": "This action is only available to signed-in members. Sign in with a zero-knowledge proof to participate.",
       "primary": "Sign in",
+      "primaryMdl": "Sign in with Mobile ID",
       "cancel": "Not now",
       "guestCardTitle": "You're browsing as a guest",
       "guestCardBody": "Sign in to vote, comment, bookmark, and join private topics.",

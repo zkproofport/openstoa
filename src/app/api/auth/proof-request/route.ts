@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { CircuitType } from '@zkproofport-app/sdk';
-import { createRelayProofRequest } from '@/lib/relay';
+import { createRelayProofRequest, type ExtendedCircuitType } from '@/lib/relay';
 import { COMMUNITY_SCOPE } from '@/lib/proof';
 import { logger } from '@/lib/logger';
 
@@ -65,7 +64,7 @@ const ROUTE = '/api/auth/proof-request';
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
   try {
-    let circuitType: CircuitType = 'coinbase_attestation';
+    let circuitType: ExtendedCircuitType = 'coinbase_attestation';
     let scope = COMMUNITY_SCOPE;
     let countryList: string[] | undefined;
     let isIncluded: boolean | undefined;

@@ -19,13 +19,25 @@ function createSDK(): ProofportSDK {
   return sdk;
 }
 
+// Extend SDK CircuitType with experimental circuits that ship outside of
+// @zkproofport-app/sdk (the three mdl_kr_* Korea Mobile ID predicate
+// circuits). The relay itself accepts any circuitId string (see
+// proofport-relay/src/index.ts), and the SDK's runtime path tolerates
+// unknown circuits — only its TypeScript narrowing rejects them — so a
+// single `as CircuitType` cast at the call site is enough.
+export type ExtendedCircuitType =
+  | CircuitType
+  | 'mdl_kr_ownership'
+  | 'mdl_kr_age'
+  | 'mdl_kr_region';
+
 export async function createRelayProofRequest(
   scope: string,
   options?: {
     dappName?: string;
     dappIcon?: string;
     message?: string;
-    circuitType?: CircuitType;
+    circuitType?: ExtendedCircuitType;
     countryList?: string[];
     isIncluded?: boolean;
     domain?: string;
@@ -33,7 +45,7 @@ export async function createRelayProofRequest(
   },
 ): Promise<{ requestId: string; deepLink: string }> {
   const sdk = createSDK();
-  const circuit = options?.circuitType ?? 'coinbase_attestation';
+  const circuit: ExtendedCircuitType = options?.circuitType ?? 'coinbase_attestation';
   const inputs: Record<string, unknown> = { scope };
   if (circuit === 'coinbase_country_attestation') {
     inputs.countryList = options?.countryList ?? [];
@@ -51,11 +63,20 @@ export async function createRelayProofRequest(
     defaultMessage = `Verify ${providerName} affiliation for OpenStoa`;
   } else if (circuit === 'coinbase_country_attestation') {
     defaultMessage = 'Verify your country via Coinbase attestation for OpenStoa';
+  } else if (circuit === 'mdl_kr_ownership') {
+    defaultMessage = 'Verify Korea Mobile ID ownership for OpenStoa';
+  } else if (circuit === 'mdl_kr_age') {
+    defaultMessage = 'Verify Korea Mobile ID age threshold for OpenStoa';
+  } else if (circuit === 'mdl_kr_region') {
+    defaultMessage = 'Verify Korea Mobile ID residence region for OpenStoa';
   } else {
     defaultMessage = 'Verify your Coinbase KYC to access OpenStoa';
   }
 
-  const relay = await sdk.createRelayRequest(circuit, inputs as any, {
+  // SDK CircuitType is narrowed to production circuits; mdl_kr_* are
+  // forwarded verbatim to the relay (envelope-only validation; see
+  // proofport-relay WALLET_SIGNATURE_CIRCUITS).
+  const relay = await sdk.createRelayRequest(circuit as CircuitType, inputs as any, {
     dappName: options?.dappName ?? 'OpenStoa',
     dappIcon: options?.dappIcon ?? (
       process.env.APP_ENV === 'production' ? 'https://www.openstoa.xyz/icon.png'
