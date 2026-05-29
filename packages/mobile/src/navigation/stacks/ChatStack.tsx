@@ -34,6 +34,7 @@ export function ChatStack() {
           title: route.params.title ?? (() => {
             try { return new URL(route.params.url).host; } catch { return route.params.url; }
           })(),
+          presentation: 'modal',
         })}
       />
     </Stack.Navigator>

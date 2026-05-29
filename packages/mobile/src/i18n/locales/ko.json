@@ -18,7 +18,7 @@
       "bullet1": "이메일·지갑 노출 없이 영지식 증명으로 단 한 번에 로그인.",
       "bullet2": "계정 없이도 공개 토픽과 글을 둘러볼 수 있어요.",
       "bullet3": "로그인하면 추천, 댓글, 비공개 토픽 참여까지 가능해요.",
-      "signIn": "ZK 증명으로 로그인",
+      "signIn": "Google로 로그인",
       "signInMdl": "모바일 신분증으로 로그인",
       "signingIn": "보안 로그인을 여는 중…",
       "continueAsGuest": "게스트로 둘러보기",
@@ -27,7 +27,7 @@
     "signInPrompt": {
       "title": "로그인이 필요해요",
       "body": "이 기능은 로그인한 회원만 사용할 수 있어요. ZK 증명으로 로그인하고 참여해 보세요.",
-      "primary": "로그인",
+      "primary": "Google로 로그인",
       "primaryMdl": "모바일 신분증으로 로그인",
       "cancel": "다음에",
       "guestCardTitle": "게스트로 둘러보고 있어요",
@@ -52,7 +52,8 @@
       "cancel": "취소",
       "save": "저장",
       "delete": "삭제",
-      "ok": "확인"
+      "ok": "확인",
+      "done": "완료"
     },
     "postCard": {
       "author": {

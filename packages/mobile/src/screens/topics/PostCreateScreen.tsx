@@ -4,6 +4,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  InputAccessoryView,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -898,6 +900,7 @@ function PostCreateScreenAuthed() {
               value={title}
               onChangeText={setTitle}
               returnKeyType="next"
+              inputAccessoryViewID="postCreateKbDone"
             />
 
             {/* Body */}
@@ -912,6 +915,7 @@ function PostCreateScreenAuthed() {
               onChangeText={setContent}
               multiline
               textAlignVertical="top"
+              inputAccessoryViewID="postCreateKbDone"
             />
 
             {/* Bottom toolbar — photo, video, char counter */}
@@ -1141,6 +1145,33 @@ function PostCreateScreenAuthed() {
           </View>
         </View>
       </Modal>
+
+      {/* iOS keyboard toolbar — gives the multiline body a way to dismiss the
+          keyboard (a multiline field has no return-to-dismiss). */}
+      {Platform.OS === 'ios' && (
+        <InputAccessoryView nativeID="postCreateKbDone">
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'flex-end',
+              backgroundColor: colors.background.primary,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.border.strong,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => Keyboard.dismiss()}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={{ color: colors.brand.primary, fontSize: 16, fontWeight: '600' }}>
+                {t('openstoa.common.done')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </InputAccessoryView>
+      )}
     </KeyboardAvoidingView>
   );
 }
