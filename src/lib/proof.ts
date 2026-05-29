@@ -28,8 +28,8 @@ export function normalizePublicInputs(input: string | string[]): string[] {
 type MdlKrVariant = 'mdl_kr_ownership' | 'mdl_kr_age' | 'mdl_kr_region';
 
 const MDL_KR_VERIFIER_FALLBACK: Record<MdlKrVariant, string> = {
-  mdl_kr_ownership: '0xEB1d555e90E639d44Fe5671E1A166305033a999F',
-  mdl_kr_age:       '0xe7E1da54B881b20654E68179fFa26dBB2adA33c7',
+  mdl_kr_ownership: '0x70cc10A15FAa9e78793D3a39689b50daDf91951e',
+  mdl_kr_age:       '0x445A13a435F152cAf5832275DEd37CeE6d733a02',
   mdl_kr_region:    '0x69caE4adE568cAC0Ba7Bae5b76b232E9538C78fe',
 };
 
@@ -261,8 +261,8 @@ export function extractDomain(publicInputs: string[], circuit: string): string |
 const VERIFIER_CIRCUIT_MAP: Record<string, string> = {
   '0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382': 'coinbase_attestation',
   '0x9677ba46ad226ce8b3c4517d9c0143e4d458beae': 'oidc_domain_attestation',
-  '0xeb1d555e90e639d44fe5671e1a166305033a999f': 'mdl_kr_ownership',
-  '0xe7e1da54b881b20654e68179ffa26dbb2ada33c7': 'mdl_kr_age',
+  '0x70cc10a15faa9e78793d3a39689b50dadf91951e': 'mdl_kr_ownership',
+  '0x445a13a435f152caf5832275ded37cee6d733a02': 'mdl_kr_age',
   '0x69cae4ade568cac0ba7bae5b76b232e9538c78fe': 'mdl_kr_region',
 };
 
