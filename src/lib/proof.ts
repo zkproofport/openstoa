@@ -25,6 +25,13 @@ export function normalizePublicInputs(input: string | string[]): string[] {
 // addresses are resolved at runtime from the circuits-repo Foundry
 // broadcast JSON, with the latest known deployment as the fallback if
 // the fetch fails. The resolution is cached in-process for 5 minutes.
+//
+// TODO(post-hackathon — CANONICAL): this whole parallel mDL block
+// (MDL_KR_VERIFIER_*, packByteRangeAsBytes32, and the mdl branches in
+// verifyProofFromRelay / detectCircuit / extractScope / extractNullifier)
+// is an interim (A) workaround. The canonical (B) path is to add mdl_kr_*
+// to @zkproofport-app/sdk and verify via the SDK uniformly like every other
+// circuit, then delete this block. OpenStoa should not own circuit layout.
 type MdlKrVariant = 'mdl_kr_ownership' | 'mdl_kr_age' | 'mdl_kr_region';
 
 const MDL_KR_VERIFIER_FALLBACK: Record<MdlKrVariant, string> = {

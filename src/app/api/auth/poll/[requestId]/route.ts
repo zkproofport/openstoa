@@ -148,9 +148,26 @@ export async function GET(
       });
     }
 
-    // Detect circuit type from public inputs or relay result
-    const circuit = detectCircuit(result.publicInputs, result.verifierAddress);
-    logger.info(ROUTE, 'Circuit detected', { requestId, circuit });
+    // --- INTERIM (A) FIX — hackathon ---
+    // Prefer the circuit the relay already resolved (result.circuit) — it is
+    // authoritative (verifyProofFromRelay used it for the on-chain check).
+    // detectCircuit's verifier-address / input-count heuristic misclassifies
+    // mdl_kr_* proofs as coinbase_attestation (the @zkproofport-app/sdk is
+    // unaware of mDL and returns a coinbase-shaped verifierAddress), which
+    // then reads scope/nullifier from the wrong offsets -> scope mismatch ->
+    // 400 -> login never completes. Falling back to detection only when the
+    // relay gave no circuit keeps coinbase/oidc behaviour unchanged.
+    //
+    // TODO(post-hackathon — CANONICAL B PATH): add mdl_kr_* to
+    // @zkproofport-app/sdk (CircuitType + detectCircuit + extractScope /
+    // extractNullifier + verifier addresses) and verify via the SDK uniformly
+    // like every other circuit — then delete the parallel mDL implementation
+    // in lib/proof.ts (MDL_KR_VERIFIER_*, packByteRangeAsBytes32, the mdl
+    // branches in verifyProofFromRelay/detectCircuit/extractScope/Nullifier)
+    // and this result.circuit preference. OpenStoa should not own circuit
+    // layout knowledge — that belongs in the SDK, same as the other circuits.
+    const circuit = result.circuit || detectCircuit(result.publicInputs, result.verifierAddress);
+    logger.info(ROUTE, 'Circuit resolved', { requestId, circuit, fromRelay: !!result.circuit });
 
     // Verify scope
     logger.info(ROUTE, 'Extracting scope', { requestId, circuit });
