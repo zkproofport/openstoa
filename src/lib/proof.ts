@@ -28,9 +28,11 @@ export function normalizePublicInputs(input: string | string[]): string[] {
 type MdlKrVariant = 'mdl_kr_ownership' | 'mdl_kr_age' | 'mdl_kr_region';
 
 const MDL_KR_VERIFIER_FALLBACK: Record<MdlKrVariant, string> = {
-  mdl_kr_ownership: '0x70cc10A15FAa9e78793D3a39689b50daDf91951e',
-  mdl_kr_age:       '0x445A13a435F152cAf5832275DEd37CeE6d733a02',
-  mdl_kr_region:    '0x69caE4adE568cAC0Ba7Bae5b76b232E9538C78fe',
+  // v4 (HS256-pending): nullifier = keccak(keccak(ci) || scope). signal_hash
+  // and cx_integrity_root removed from public inputs.
+  mdl_kr_ownership: '0x7602D09d24E6E16efF5AB981646872886376763E',
+  mdl_kr_age:       '0xcFF90FF8cEADc98f625300dc976eD85A3AA943Ba',
+  mdl_kr_region:    '0x435F0448F02F5Df9659D460181116BCaF37E518E',
 };
 
 const MDL_KR_VERIFIER_ABI = [
@@ -146,12 +148,14 @@ const SUPPORTED_CIRCUITS = [
 //   ownership: 32 + 32 + 32 + 32 + 1 + 32 = 161
 //   age:       32 + 32 + 32 + 32 + 1 + 1  = 130
 //   region:    32 + 32 + 32 + 32 + 32     = 160
+// v4 layout — signal_hash and cx_integrity_root removed. Public inputs now
+// start with scope (32) || nullifier_value (32) || predicate-specific tail.
 const MDL_KR_LAYOUT = {
-  SCOPE_START: 32,
-  NULLIFIER_START: 64,
-  OWNERSHIP_FIELDS: 161,
-  AGE_FIELDS: 130,
-  REGION_FIELDS: 160,
+  SCOPE_START: 0,
+  NULLIFIER_START: 32,
+  OWNERSHIP_FIELDS: 97,   // scope(32) + nullifier(32) + disclose_flags(1) + owner_commit(32)
+  AGE_FIELDS: 66,         // scope(32) + nullifier(32) + age_threshold(1) + current_year(1)
+  REGION_FIELDS: 96,      // scope(32) + nullifier(32) + region_code(32)
 };
 
 // Each mdl_kr public-input field is a 32-byte hex string holding a
@@ -261,9 +265,9 @@ export function extractDomain(publicInputs: string[], circuit: string): string |
 const VERIFIER_CIRCUIT_MAP: Record<string, string> = {
   '0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382': 'coinbase_attestation',
   '0x9677ba46ad226ce8b3c4517d9c0143e4d458beae': 'oidc_domain_attestation',
-  '0x70cc10a15faa9e78793d3a39689b50dadf91951e': 'mdl_kr_ownership',
-  '0x445a13a435f152caf5832275ded37cee6d733a02': 'mdl_kr_age',
-  '0x69cae4ade568cac0ba7bae5b76b232e9538c78fe': 'mdl_kr_region',
+  '0x7602d09d24e6e16eff5ab981646872886376763e': 'mdl_kr_ownership',
+  '0xcff90ff8ceadc98f625300dc976ed85a3aa943ba': 'mdl_kr_age',
+  '0x435f0448f02f5df9659d460181116bcaf37e518e': 'mdl_kr_region',
 };
 
 export function detectCircuit(publicInputs: string[], verifierAddress?: string): string {
