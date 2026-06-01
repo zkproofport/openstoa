@@ -116,29 +116,18 @@ export async function GET(
         }
 
         try {
-          // Remove from presence
+          // Remove from presence. Do NOT publish a "left the chat" system
+          // message: an SSE disconnect is a *transport* event (app went to
+          // background, network blip, hot reload, screen unmount) and NOT
+          // a topic-level membership change. Posting a `leave` row on
+          // every disconnect produced a noisy stream of "${nickname} left"
+          // bubbles every time the user backgrounded the app. The real
+          // "left the chat" semantics belong to membership removal (kick
+          // from `DELETE /api/topics/[topicId]/members`), which publishes
+          // its own broadcast at that point.
           const redis = getRedis();
           await redis.hdel(presenceKey, session!.userId);
-
-          // Publish an EPHEMERAL leave event over Redis only — never
-          // persist join/leave to chat_messages. Otherwise every SSE
-          // hiccup (app background, network blip, hot reload, React
-          // strict-mode double mount) writes another row that gets
-          // replayed forever in history. Currently-connected clients
-          // still see this in real time via the SSE stream.
-          const leavePayload = {
-            id: `leave-${Date.now()}-${session!.userId}`,
-            topicId,
-            userId: session!.userId,
-            nickname,
-            profileImage,
-            message: `${nickname} left the chat`,
-            type: 'leave',
-            createdAt: new Date().toISOString(),
-          };
-          await redis.publish(channelKey, JSON.stringify({ event: 'message', data: leavePayload }));
-
-          logger.info(ROUTE, 'User left chat', { userId: session!.userId, topicId });
+          logger.info(ROUTE, 'SSE disconnect (presence cleared)', { userId: session!.userId, topicId });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           logger.error(ROUTE, 'Error during cleanup', { error: msg, userId: session!.userId, topicId });
@@ -168,11 +157,6 @@ export async function GET(
       try {
         const redis = getRedis();
 
-        // Subscribe FIRST so this SSE stream receives all events including
-        // the user's own join broadcast that we publish just below. The
-        // previous order (publish → subscribe) caused the connecting user
-        // to silently miss their own join system message, producing the
-        // "left appears but join doesn't" inconsistency.
         await sub.subscribe(channelKey);
 
         sub.on('message', (_channel: string, messageStr: string) => {
@@ -184,26 +168,17 @@ export async function GET(
           }
         });
 
-        // Add to presence
+        // Add to presence. Do NOT publish a "joined the chat" system
+        // message here: SSE connect is a *transport* event, not a
+        // topic-level membership change. The real "joined the chat"
+        // broadcast lives in `/api/topics/[topicId]/join` and
+        // `/api/topics/join/[inviteCode]` (first-time membership), so
+        // re-entering the chat screen does not re-announce the user.
         await redis.hset(
           presenceKey,
           session.userId,
           JSON.stringify({ nickname, profileImage, connectedAt: new Date().toISOString() }),
         );
-
-        // Publish an EPHEMERAL join event — see leave handler above for
-        // why we don't persist it.
-        const joinPayload = {
-          id: `join-${Date.now()}-${session.userId}`,
-          topicId,
-          userId: session.userId,
-          nickname,
-          profileImage,
-          message: `${nickname} joined the chat`,
-          type: 'join',
-          createdAt: new Date().toISOString(),
-        };
-        await redis.publish(channelKey, JSON.stringify({ event: 'message', data: joinPayload }));
 
         // Send initial presence list
         const presenceRaw = await redis.hgetall(presenceKey);

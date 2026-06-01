@@ -3,6 +3,7 @@ import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topics, topicMembers, inviteTokens } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/join/[inviteCode]';
@@ -253,6 +254,10 @@ export async function POST(
         .set({ usedBy: session.userId, usedAt: new Date() })
         .where(eq(inviteTokens.id, singleUseTokenId));
     }
+
+    // Real membership transition → publish one `joined the chat` system
+    // message. Fire-and-forget so a Redis hiccup doesn't undo the join.
+    void broadcastMembershipSystemEvent(topic.id, session.userId, 'join');
 
     logger.info(ROUTE, 'User joined topic via invite code', { userId: session.userId, topicId: topic.id, visibility: topic.visibility, singleUse: !!singleUseTokenId });
     return NextResponse.json({ success: true, topicId: topic.id }, { status: 201 });

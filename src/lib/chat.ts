@@ -1,4 +1,7 @@
 import Redis from 'ioredis';
+import { eq } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { users } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 
 const ROUTE = 'chat';
@@ -61,6 +64,59 @@ function presenceKey(topicId: string): string {
 export async function publishChatMessage(topicId: string, payload: ChatMessagePayload): Promise<void> {
   const pub = getPublisher();
   await pub.publish(channelKey(topicId), JSON.stringify(payload));
+}
+
+/**
+ * Publish a membership-level system message — actual topic join or
+ * removal, NOT an SSE connect/disconnect. Looks up the user's nickname
+ * + profile image once, builds a `join` / `leave` payload, and
+ * broadcasts it on the topic channel in the wrapped `{ event, data }`
+ * shape the SSE subscriber expects.
+ *
+ * Use ONLY for true membership transitions. SSE transport events
+ * (reconnect, app background, screen unmount) must leave the chat
+ * stream untouched and update presence only.
+ */
+export async function broadcastMembershipSystemEvent(
+  topicId: string,
+  userId: string,
+  type: 'join' | 'leave',
+): Promise<void> {
+  try {
+    const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (!user) {
+      logger.warn(ROUTE, 'broadcastMembershipSystemEvent: user not found', { userId, topicId, type });
+      return;
+    }
+    const nickname = user.nickname;
+    const profileImage =
+      (user as { profileImage?: string | null }).profileImage ?? null;
+    const payload: ChatMessagePayload = {
+      id: `${type}-${Date.now()}-${userId}`,
+      topicId,
+      userId,
+      nickname,
+      profileImage,
+      message: `${nickname} ${type === 'join' ? 'joined' : 'left'} the chat`,
+      type,
+      createdAt: new Date().toISOString(),
+    };
+    const pub = getPublisher();
+    await pub.publish(
+      channelKey(topicId),
+      JSON.stringify({ event: 'message', data: payload }),
+    );
+  } catch (err) {
+    // The membership change has already committed by the time we get
+    // here; a failed broadcast must never propagate back up and roll
+    // it back. Log and continue.
+    logger.warn(ROUTE, 'broadcastMembershipSystemEvent failed', {
+      err: String(err),
+      topicId,
+      userId,
+      type,
+    });
+  }
 }
 
 // Subscribe to a topic channel; returns an unsubscribe function

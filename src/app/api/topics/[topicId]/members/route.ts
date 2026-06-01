@@ -5,6 +5,7 @@ import { topicMembers, users } from '@/lib/db/schema';
 import { eq, and, ilike, sql } from 'drizzle-orm';
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { topics } from '@/lib/db/schema';
+import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/members';
@@ -372,6 +373,10 @@ export async function DELETE(
     await db
       .delete(topicMembers)
       .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, userId)));
+
+    // Real membership transition → publish one `left the chat` system
+    // message. Fire-and-forget so a Redis hiccup doesn't undo the kick.
+    void broadcastMembershipSystemEvent(topicId, userId, 'leave');
 
     logger.info(ROUTE, 'Member kicked', { topicId, kickedUserId: userId, byUserId: session.userId });
     return NextResponse.json({ success: true });

@@ -14,6 +14,7 @@ import {
 } from '@/lib/proof';
 import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
 import { buildProofRequirement } from '@/lib/proof-guides';
+import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/join';
@@ -365,6 +366,12 @@ export async function POST(
       userId: session.userId,
       role: 'member',
     });
+
+    // Real membership transition → publish one `joined the chat` system
+    // message to the topic channel. Subscribers see it once and history
+    // does NOT persist it (Redis-only). NOT awaited intentionally because
+    // a Redis hiccup must not roll back a successful join.
+    void broadcastMembershipSystemEvent(topicId, session.userId, 'join');
 
     logger.info(ROUTE, 'User joined topic successfully', { userId: session.userId, topicId });
     return NextResponse.json({ success: true }, { status: 201 });
