@@ -12,6 +12,7 @@ import { SignInSheetProvider } from './components/SignInSheet';
 import { queryClient } from './api/queryClient';
 import { initSessionLifecycle, SignInLauncherProvider } from './auth';
 import type { SignInLauncher } from './auth';
+import { useDeveloperMode } from './hooks/useDeveloperMode';
 // Register OpenStoa translation bundles into the shared i18next instance.
 import './i18n';
 
@@ -53,6 +54,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   const session = useOpenStoaSession();
   const { colors } = useThemeColors();
   const { t } = useTranslation();
+  const developerMode = useDeveloperMode();
   const [phase, setPhase] = useState<Phase>('booting');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -326,10 +328,13 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   }
 
   if (phase === 'welcome') {
+    // mDL sign-in is host-experimental — only surface it when the host has
+    // Developer Mode enabled. WelcomeScreen treats an undefined handler
+    // as "hide the button".
     return (
       <WelcomeScreen
         onSignIn={handleSignIn}
-        onSignInMdl={handleSignInMdl}
+        onSignInMdl={developerMode ? handleSignInMdl : undefined}
         onContinueAsGuest={handleContinueAsGuest}
         errorMessage={errorMsg}
         busy={signInBusy}

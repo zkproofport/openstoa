@@ -107,9 +107,14 @@ export async function PUT(request: NextRequest) {
 
     logger.info(ROUTE, 'Nickname updated, reissuing JWT', { userId: session.userId, nickname });
 
-    // Reissue JWT with new nickname
+    // Reissue JWT with new nickname. Web clients pick the new token up via
+    // Set-Cookie; mobile mini-apps use Bearer auth and ignore Set-Cookie,
+    // so we also include the token in the response body so the mini-app
+    // can swap its persisted token. Without this, the mini-app keeps
+    // using the OLD JWT (stale nickname) and the next /api/auth/session
+    // refetch rolls the UI back to the previous nickname.
     const token = await createSession(session.userId, nickname);
-    const response = NextResponse.json({ nickname });
+    const response = NextResponse.json({ nickname, token });
     setSessionCookie(response, token);
     return response;
   } catch (error) {

@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { useOpenStoaSession } from '../stores/sessionStore';
 import { useSignInLauncher } from '../auth/SignInLauncher';
 import { useThemeColors } from '../theme/ThemeContext';
+import { useDeveloperMode } from '../hooks/useDeveloperMode';
 
 interface SignInSheetContextValue {
   /**
@@ -66,6 +67,9 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
   const launcher = useSignInLauncher();
   const { t } = useTranslation();
   const { colors } = useThemeColors();
+  // mDL sign-in is host-experimental — only surface it when Developer Mode
+  // is enabled on the host. Re-renders automatically on toggle.
+  const developerMode = useDeveloperMode();
   const [visible, setVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // Queue of "what to do after sign-in completes". Stored in a ref so
@@ -184,20 +188,22 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
               </Text>
             </Pressable>
 
-            <Pressable
-              onPress={handleSignInMdl}
-              style={({ pressed }) => [
-                styles.mdl,
-                {
-                  borderColor: colors.brand.primary,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.mdlText, { color: colors.brand.primary }]}>
-                {t('openstoa.signInPrompt.primaryMdl')}
-              </Text>
-            </Pressable>
+            {developerMode ? (
+              <Pressable
+                onPress={handleSignInMdl}
+                style={({ pressed }) => [
+                  styles.mdl,
+                  {
+                    borderColor: colors.brand.primary,
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.mdlText, { color: colors.brand.primary }]}>
+                  {t('openstoa.signInPrompt.primaryMdl')}
+                </Text>
+              </Pressable>
+            ) : null}
 
             <Pressable
               onPress={close}

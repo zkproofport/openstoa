@@ -47,6 +47,7 @@ export interface HostApi {
   getOpenStoaToken(): Promise<string | null>;
   loginToOpenStoa(opts?: { force?: boolean }): Promise<AuthResult>;
   logoutFromOpenStoa(): Promise<void>;
+  setOpenStoaToken(token: string): Promise<void>;
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
   exitToHost(targetTab?: string): void;
   showError(code: string, details?: Record<string, unknown>): void;
@@ -55,6 +56,8 @@ export interface HostApi {
   onLanguageChange(listener: (lang: 'en' | 'ko') => void): () => void;
   getTheme(): 'light' | 'dark';
   onThemeChange(listener: (mode: 'light' | 'dark') => void): () => void;
+  getDeveloperMode(): boolean;
+  onDeveloperModeChange(listener: (enabled: boolean) => void): () => void;
 }
 
 export interface HostProviderProps {

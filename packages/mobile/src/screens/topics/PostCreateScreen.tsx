@@ -3,21 +3,21 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
-  InputAccessoryView,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from 'react-native-vector-icons/Feather';
+import { KeyboardSafeScroll } from '../../components/KeyboardSafeScroll';
 // expo-image-picker is a native module — lazy-load to avoid crashing on
 // stale Metro reloads where the native binary hasn't been rebuilt yet.
 type ImagePickerModule = typeof import('expo-image-picker');
@@ -50,6 +50,7 @@ type Nav = NativeStackNavigationProp<TopicsStackParamList, 'PostCreate'>;
 const MAX_TAGS = 5;
 const MAX_IMAGES = 10;
 const MAX_VIDEOS = 3;
+const KB_BAR_H = 44;
 // Tags accept Korean, Latin letters, digits, and underscore. The server-side
 // slug pipeline (api/topics/[topicId]/posts) downcases and rewrites the
 // remainder, so we don't need to be strict here — just bound the length and
@@ -203,12 +204,28 @@ function makeStyles(colors: ThemeColors) {
       minHeight: 200,
       paddingTop: 12,
     },
-    // Bottom toolbar under body
-    bodyToolbar: {
+    // Keyboard-following action bar (sits above the keyboard, slides with it)
+    kbBar: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
-      marginTop: 8,
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingTop: 8,
+      backgroundColor: colors.background.primary,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border.strong,
+    },
+    kbDoneBtn: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    kbDoneLabel: {
+      color: colors.brand.primary,
+      fontSize: 15,
+      fontWeight: '600',
     },
     toolbarBtn: {
       flexDirection: 'row',
@@ -515,6 +532,38 @@ function PostCreateScreenAuthed() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
+  // App-wide keyboard policy: the action bar tracks the keyboard so photo /
+  // video / poll attachments stay reachable while the user is typing, and the
+  // multiline body finally has a working Done affordance (the old
+  // InputAccessoryView never attached to multiline inputs).
+  const insets = useSafeAreaInsets();
+  const [kbVisible, setKbVisible] = useState(false);
+  const barBottom = useRef(new Animated.Value(insets.bottom)).current;
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      const show = Keyboard.addListener('keyboardWillShow', (e) => {
+        setKbVisible(true);
+        Animated.timing(barBottom, {
+          toValue: e.endCoordinates.height,
+          duration: e.duration || 250,
+          useNativeDriver: false,
+        }).start();
+      });
+      const hide = Keyboard.addListener('keyboardWillHide', (e) => {
+        setKbVisible(false);
+        Animated.timing(barBottom, {
+          toValue: insets.bottom,
+          duration: e.duration || 250,
+          useNativeDriver: false,
+        }).start();
+      });
+      return () => { show.remove(); hide.remove(); };
+    }
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, [barBottom, insets.bottom]);
+
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -805,15 +854,13 @@ function PostCreateScreenAuthed() {
   const videoMetas = useMemo(() => videosToMeta(videos), [videos]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-    >
-      <ScrollView
+    <View style={styles.flex}>
+      <KeyboardSafeScroll
         style={styles.scroll}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[
+          styles.content,
+          mode === 'write' ? { paddingBottom: KB_BAR_H + insets.bottom + 24 } : null,
+        ]}
       >
         {topicTitle ? <Text style={styles.topicLabel}>{topicTitle}</Text> : null}
 
@@ -900,7 +947,6 @@ function PostCreateScreenAuthed() {
               value={title}
               onChangeText={setTitle}
               returnKeyType="next"
-              inputAccessoryViewID="postCreateKbDone"
             />
 
             {/* Body */}
@@ -915,57 +961,7 @@ function PostCreateScreenAuthed() {
               onChangeText={setContent}
               multiline
               textAlignVertical="top"
-              inputAccessoryViewID="postCreateKbDone"
             />
-
-            {/* Bottom toolbar — photo, video, char counter */}
-            <View style={styles.bodyToolbar}>
-              <TouchableOpacity
-                style={styles.toolbarBtn}
-                onPress={openAttachSheet}
-                disabled={uploading || images.length >= MAX_IMAGES}
-                activeOpacity={0.7}
-              >
-                {uploading ? (
-                  <ActivityIndicator size="small" color={colors.text.tertiary} />
-                ) : (
-                  <Feather name="image" size={14} color={colors.text.secondary} />
-                )}
-                <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addPhoto')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.toolbarBtn}
-                onPress={openVideoModal}
-                disabled={videos.length >= MAX_VIDEOS}
-                activeOpacity={0.7}
-              >
-                <Feather name="video" size={14} color={colors.text.secondary} />
-                <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addVideo')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.toolbarBtn}
-                onPress={() => {
-                  if (poll) {
-                    setPoll(null);
-                  } else {
-                    setPoll({ options: ['', ''], multipleChoice: false, closesAt: null });
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Feather name="bar-chart-2" size={14} color={poll ? colors.brand.primary : colors.text.secondary} />
-                <Text style={[styles.toolbarBtnLabel, poll ? { color: colors.brand.primary } : null]}>
-                  {t('openstoa.postCreate.addPoll')}
-                </Text>
-              </TouchableOpacity>
-              <View style={styles.toolbarFlex} />
-              {draftSaved ? (
-                <Text style={styles.draftSaved}>{t('openstoa.postCreate.draftSaved')}</Text>
-              ) : null}
-              <Text style={styles.charCount}>
-                {t('openstoa.postCreate.charCount', { n: content.length })}
-              </Text>
-            </View>
 
             {/* Image strip */}
             {images.length > 0 ? (
@@ -1104,7 +1100,7 @@ function PostCreateScreenAuthed() {
             <Text style={styles.submitLabel}>{t('openstoa.postCreate.submit')}</Text>
           )}
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardSafeScroll>
 
       <Modal
         animationType="fade"
@@ -1146,33 +1142,74 @@ function PostCreateScreenAuthed() {
         </View>
       </Modal>
 
-      {/* iOS keyboard toolbar — gives the multiline body a way to dismiss the
-          keyboard (a multiline field has no return-to-dismiss). */}
-      {Platform.OS === 'ios' && (
-        <InputAccessoryView nativeID="postCreateKbDone">
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'flex-end',
-              backgroundColor: colors.background.primary,
-              borderTopWidth: StyleSheet.hairlineWidth,
-              borderTopColor: colors.border.strong,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-            }}
+      {/* Keyboard-following action bar — photo / video / poll + char count +
+          done. Rises with the keyboard so attachments stay reachable while
+          typing; works on the multiline body (which the old Done-only
+          InputAccessoryView never attached to). */}
+      {mode === 'write' ? (
+        <Animated.View
+          style={[
+            styles.kbBar,
+            { bottom: barBottom, paddingBottom: kbVisible ? 8 : 8 + insets.bottom },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.toolbarBtn}
+            onPress={openAttachSheet}
+            disabled={uploading || images.length >= MAX_IMAGES}
+            activeOpacity={0.7}
           >
+            {uploading ? (
+              <ActivityIndicator size="small" color={colors.text.tertiary} />
+            ) : (
+              <Feather name="image" size={16} color={colors.text.secondary} />
+            )}
+            <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addPhoto')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.toolbarBtn}
+            onPress={openVideoModal}
+            disabled={videos.length >= MAX_VIDEOS}
+            activeOpacity={0.7}
+          >
+            <Feather name="video" size={16} color={colors.text.secondary} />
+            <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addVideo')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.toolbarBtn}
+            onPress={() =>
+              setPoll(poll ? null : { options: ['', ''], multipleChoice: false, closesAt: null })
+            }
+            activeOpacity={0.7}
+          >
+            <Feather
+              name="bar-chart-2"
+              size={16}
+              color={poll ? colors.brand.primary : colors.text.secondary}
+            />
+            <Text style={[styles.toolbarBtnLabel, poll ? { color: colors.brand.primary } : null]}>
+              {t('openstoa.postCreate.addPoll')}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.toolbarFlex} />
+          {draftSaved ? (
+            <Text style={styles.draftSaved}>{t('openstoa.postCreate.draftSaved')}</Text>
+          ) : null}
+          <Text style={styles.charCount}>
+            {t('openstoa.postCreate.charCount', { n: content.length })}
+          </Text>
+          {kbVisible ? (
             <TouchableOpacity
               onPress={() => Keyboard.dismiss()}
+              style={styles.kbDoneBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={{ color: colors.brand.primary, fontSize: 16, fontWeight: '600' }}>
-                {t('openstoa.common.done')}
-              </Text>
+              <Text style={styles.kbDoneLabel}>{t('openstoa.common.done')}</Text>
             </TouchableOpacity>
-          </View>
-        </InputAccessoryView>
-      )}
-    </KeyboardAvoidingView>
+          ) : null}
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 

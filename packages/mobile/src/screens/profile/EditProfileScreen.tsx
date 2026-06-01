@@ -384,8 +384,16 @@ export function EditProfileScreen() {
 
   const nicknameMutation = useMutation({
     mutationFn: (newNickname: string) =>
-      client.put<{ nickname: string }>('/api/profile/nickname', { nickname: newNickname }),
+      client.put<{ nickname: string; token?: string }>('/api/profile/nickname', { nickname: newNickname }),
     onSuccess: (data) => {
+      // 0. Server reissues the JWT with the new nickname embedded in its
+      //    claims. Web clients pick this up via Set-Cookie, but the mini-app
+      //    is on Bearer auth — without persisting the new token here the
+      //    next /api/auth/session refetch carries the OLD JWT (stale
+      //    nickname) and the UI rolls back to the previous value.
+      if (data.token) {
+        void host.setOpenStoaToken(data.token);
+      }
       // Push the change into all consumers right away:
       // 1. React Query cache so any mounted view (ProfileHome, FeedHome
       //    via author display, etc.) re-renders without waiting for the

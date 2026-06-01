@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather';
 import { ZKProofportMarkIcon } from '../components/icons';
 import { useHost } from '@openstoa/miniapp-bridge';
@@ -22,6 +23,17 @@ export type OpenStoaTabParamList = {
 
 const Tab = createBottomTabNavigator<OpenStoaTabParamList>();
 
+// Full-screen modal routes — webviews and similar overlays that should
+// cover the viewport. The bottom tab bar is hidden whenever one of these
+// is focused. Add a route name here when you register a new modal that
+// should hide the tab bar.
+const MODAL_ROUTES = new Set(['InAppBrowser']);
+
+function isFullScreenModalRoute(route: any): boolean {
+  const focused = getFocusedRouteNameFromRoute(route);
+  return !!focused && MODAL_ROUTES.has(focused);
+}
+
 // Placeholder component — never actually rendered; the tabPress listener
 // preempts navigation and dispatches host.exitToHost() instead.
 function NoopExitScreen() {
@@ -40,24 +52,33 @@ export function OpenStoaTabNavigator() {
   const { t, i18n } = useTranslation();
   const { colors } = useThemeColors();
 
+  const baseTabBarStyle = {
+    backgroundColor: colors.background.primary,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.default,
+    paddingTop: 8,
+    paddingBottom: insets.bottom,
+    height: 60 + insets.bottom,
+  };
+
   return (
     <Tab.Navigator
       key={i18n.language}
-      screenOptions={{
+      // screenOptions runs per-route on every focus change so we can
+      // dynamically swap tabBarStyle when a full-screen modal route is
+      // focused. Doing it from inside a screen via setOptions+cleanup
+      // leaves the navigator with no idea what the prior style was and
+      // falls back to the platform default on dismiss.
+      screenOptions={({ route }) => ({
         headerShown: false,
         // Hide the tab bar while the keyboard is up so screens like
         // ChatRoom can dock their composer right on top of the keyboard
         // — otherwise `KeyboardAvoidingView` lifts the input by tab-bar
         // height extra and the user sees a visible gap.
         tabBarHideOnKeyboard: true,
-        tabBarStyle: {
-          backgroundColor: colors.background.primary,
-          borderTopWidth: 1,
-          borderTopColor: colors.border.default,
-          paddingTop: 8,
-          paddingBottom: insets.bottom,
-          height: 60 + insets.bottom,
-        },
+        tabBarStyle: isFullScreenModalRoute(route)
+          ? { display: 'none' }
+          : baseTabBarStyle,
         tabBarActiveTintColor: colors.brand.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
         tabBarLabelStyle: {
@@ -65,7 +86,7 @@ export function OpenStoaTabNavigator() {
           fontWeight: '600',
           marginTop: 2,
         },
-      }}
+      })}
     >
       <Tab.Screen
         name="FeedTab"

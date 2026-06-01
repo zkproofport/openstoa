@@ -48,7 +48,7 @@ export function TopicsStack() {
           title: route.params.title ?? (() => {
             try { return new URL(route.params.url).host; } catch { return route.params.url; }
           })(),
-          presentation: 'modal',
+          presentation: 'fullScreenModal', animation: 'slide_from_bottom',
         })}
       />
     </Stack.Navigator>

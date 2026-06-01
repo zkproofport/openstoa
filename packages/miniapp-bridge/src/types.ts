@@ -61,6 +61,14 @@ export interface HostApi {
   /** Drop the cached token; subsequent API calls must re-authenticate. */
   logoutFromOpenStoa(): Promise<void>;
 
+  /**
+   * Replace the persisted OpenStoa token. Used when an API response
+   * (e.g. nickname update, profile change) returns a freshly-reissued
+   * JWT so the mini-app's next request carries the new claims instead
+   * of the stale Bearer.
+   */
+  setOpenStoaToken(token: string): Promise<void>;
+
   /** Generate a ZK proof on the host (e.g. via mopro on ZKProofport). */
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
 
@@ -94,4 +102,20 @@ export interface HostApi {
    * Mini-app should call this on mount and tear down on unmount.
    */
   onThemeChange(listener: (mode: 'light' | 'dark') => void): () => void;
+
+  /**
+   * Whether the host has Developer Mode enabled. Mini-app uses this to
+   * gate experimental affordances (e.g. mDL login) so they only appear
+   * when the host user has explicitly opted in.
+   *
+   * Returns `false` on hosts that don't expose Developer Mode.
+   */
+  getDeveloperMode(): boolean;
+
+  /**
+   * Subscribe to host Developer Mode toggle changes. Returns an
+   * unsubscribe function. Mini-app should call this on mount and tear
+   * it down on unmount.
+   */
+  onDeveloperModeChange(listener: (enabled: boolean) => void): () => void;
 }
