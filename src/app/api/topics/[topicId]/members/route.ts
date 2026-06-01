@@ -374,9 +374,10 @@ export async function DELETE(
       .delete(topicMembers)
       .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, userId)));
 
-    // Real membership transition → publish one `left the chat` system
-    // message. Fire-and-forget so a Redis hiccup doesn't undo the kick.
-    void broadcastMembershipSystemEvent(topicId, userId, 'leave');
+    // Real membership transition → persist + publish one `left the chat`
+    // system message. `await` so Cloud Run doesn't cut the background
+    // promise; the helper swallows its own errors.
+    await broadcastMembershipSystemEvent(topicId, userId, 'leave');
 
     logger.info(ROUTE, 'Member kicked', { topicId, kickedUserId: userId, byUserId: session.userId });
     return NextResponse.json({ success: true });

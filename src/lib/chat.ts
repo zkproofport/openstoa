@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
+import { users, chatMessages } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 
 const ROUTE = 'chat';
@@ -91,21 +91,33 @@ export async function broadcastMembershipSystemEvent(
     const nickname = user.nickname;
     const profileImage =
       (user as { profileImage?: string | null }).profileImage ?? null;
+    const message = `${nickname} ${type === 'join' ? 'joined' : 'left'} the chat`;
+
+    // Persist so the user (and anyone joining later) sees the system
+    // message in chat history. Safe to persist now that we no longer
+    // broadcast on every SSE connect/disconnect — only real membership
+    // transitions create a row, so history stays clean.
+    const [row] = await db
+      .insert(chatMessages)
+      .values({ topicId, userId, message, type })
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+
     const payload: ChatMessagePayload = {
-      id: `${type}-${Date.now()}-${userId}`,
+      id: row?.id ?? `${type}-${Date.now()}-${userId}`,
       topicId,
       userId,
       nickname,
       profileImage,
-      message: `${nickname} ${type === 'join' ? 'joined' : 'left'} the chat`,
+      message,
       type,
-      createdAt: new Date().toISOString(),
+      createdAt: row?.createdAt?.toISOString() ?? new Date().toISOString(),
     };
     const pub = getPublisher();
     await pub.publish(
       channelKey(topicId),
       JSON.stringify({ event: 'message', data: payload }),
     );
+    logger.info(ROUTE, 'Membership system event broadcast', { topicId, userId, type, id: payload.id });
   } catch (err) {
     // The membership change has already committed by the time we get
     // here; a failed broadcast must never propagate back up and roll

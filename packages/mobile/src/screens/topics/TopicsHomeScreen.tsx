@@ -174,6 +174,10 @@ export function TopicsHomeScreen() {
     onSuccess: (res) => {
       setInviteOpen(false);
       queryClient.invalidateQueries({ queryKey: ['topics'] });
+      // ChatListScreen reads `['my-topics']` to know which topics to render
+      // chat previews for; without this the newly-joined topic is missing
+      // from the chat list until app restart.
+      queryClient.invalidateQueries({ queryKey: ['my-topics'] });
       navigation.navigate('TopicDetail', { topicId: res.topicId });
     },
     onError: (err: Error) => {

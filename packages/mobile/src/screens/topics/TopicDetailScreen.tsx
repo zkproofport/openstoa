@@ -261,6 +261,10 @@ export function TopicDetailScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
       queryClient.invalidateQueries({ queryKey: ['topics', 'joined'] });
+      // ChatListScreen reads `['my-topics']` to know which topics to render
+      // chat previews for; without this the newly-joined topic is missing
+      // from the chat list until app restart.
+      queryClient.invalidateQueries({ queryKey: ['my-topics'] });
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.topics.joinFailedTitle'), err.message);

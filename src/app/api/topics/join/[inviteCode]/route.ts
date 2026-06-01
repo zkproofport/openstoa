@@ -255,9 +255,10 @@ export async function POST(
         .where(eq(inviteTokens.id, singleUseTokenId));
     }
 
-    // Real membership transition → publish one `joined the chat` system
-    // message. Fire-and-forget so a Redis hiccup doesn't undo the join.
-    void broadcastMembershipSystemEvent(topic.id, session.userId, 'join');
+    // Real membership transition → persist + publish one `joined the
+    // chat` system message. `await` so Cloud Run doesn't cut the
+    // background promise; the helper swallows its own errors.
+    await broadcastMembershipSystemEvent(topic.id, session.userId, 'join');
 
     logger.info(ROUTE, 'User joined topic via invite code', { userId: session.userId, topicId: topic.id, visibility: topic.visibility, singleUse: !!singleUseTokenId });
     return NextResponse.json({ success: true, topicId: topic.id }, { status: 201 });

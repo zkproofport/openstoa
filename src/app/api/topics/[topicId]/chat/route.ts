@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { chatMessages, topicMembers, users } from '@/lib/db/schema';
-import { eq, and, desc, count, gt, lt, notInArray } from 'drizzle-orm';
+import { eq, and, desc, count, gt, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
@@ -112,8 +112,13 @@ export async function GET(
     // persisted on every SSE connect / disconnect and accumulated
     // forever; new code keeps them ephemeral but old rows still live
     // in chat_messages and would replay as noise without this filter.
-    const notSystem = notInArray(chatMessages.type, ['join', 'leave']);
-    let whereClause = and(eq(chatMessages.topicId, topicId), notSystem)!;
+    // System messages (join / leave) are now included in history. The
+    // previous code filtered them out because SSE connect / disconnect
+    // used to persist a row on every transport blip, polluting history.
+    // We removed those broadcasts upstream — only real membership
+    // transitions persist now, so the history stays clean AND late
+    // joiners can see who joined when.
+    let whereClause = eq(chatMessages.topicId, topicId);
     let orderByCol = desc(chatMessages.createdAt);
 
     if (sinceParam) {
@@ -123,7 +128,6 @@ export async function GET(
       }
       whereClause = and(
         eq(chatMessages.topicId, topicId),
-        notSystem,
         gt(chatMessages.createdAt, sinceDate),
       )!;
       // Chronological for delta sync — client appends as-is.
@@ -139,7 +143,6 @@ export async function GET(
       }
       whereClause = and(
         eq(chatMessages.topicId, topicId),
-        notSystem,
         lt(chatMessages.createdAt, anchor.createdAt),
       )!;
       // Newest-first; client reverses for chronological display.
@@ -167,7 +170,7 @@ export async function GET(
       db
         .select({ value: count() })
         .from(chatMessages)
-        .where(and(eq(chatMessages.topicId, topicId), notSystem)),
+        .where(eq(chatMessages.topicId, topicId)),
     ]);
 
     logger.info(ROUTE, 'Chat history fetched', {
