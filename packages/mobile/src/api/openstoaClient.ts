@@ -94,6 +94,23 @@ export class OpenStoaClient {
     this.cachedExpiresAt = null;
   }
 
+  /**
+   * Adopt a freshly-reissued JWT (e.g. from a nickname / profile update
+   * response). Updates BOTH the in-memory cache AND the host-persisted
+   * storage so the next request — and every subsequent app launch — uses
+   * the new claims instead of the stale Bearer.
+   *
+   * Caller must await this before triggering any query refetch, otherwise
+   * the refetch can race and read the old cached token.
+   */
+  async updateToken(newToken: string): Promise<void> {
+    this.cachedToken = newToken;
+    // expiresAt becomes unknown until /api/auth/refresh confirms it; the
+    // next refresh cycle will repopulate it from the server.
+    this.cachedExpiresAt = null;
+    await this.host.setOpenStoaToken(newToken);
+  }
+
   /** Canonical OpenStoa server origin (no trailing slash). Use for share links. */
   getBaseUrl(): string {
     return this.baseUrl;
