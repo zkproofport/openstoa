@@ -43,6 +43,15 @@ const PUBLIC_PREFIXES = [
   '/.well-known/',
 ];
 
+// Top-level public .md files served from /public. Map any case variant
+// (e.g. /SKILL.md, /Skill.md) to the canonical filename Next.js can find
+// on disk so links shared by AI agents / pasted in chat keep working
+// regardless of casing. Keep keys lowercase.
+const MD_FILE_CANONICAL: Record<string, string> = {
+  '/skill.md': '/skill.md',
+  '/agents.md': '/AGENTS.md',
+};
+
 // Paths accessible without authentication (guests can browse).
 // If a token IS present it will still be validated; only the
 // "no token" case is allowed through.
@@ -72,6 +81,19 @@ function isApiRoute(pathname: string): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Normalize top-level .md paths to their canonical filename so that
+  // any case variant (e.g. /SKILL.md, /Skill.md, /AGENTS.md, /agents.md)
+  // serves the same static file. Rewriting here also bypasses auth since
+  // the rewritten target is in PUBLIC_PATHS below.
+  if (pathname.toLowerCase().endsWith('.md')) {
+    const canonical = MD_FILE_CANONICAL[pathname.toLowerCase()];
+    if (canonical && canonical !== pathname) {
+      const url = request.nextUrl.clone();
+      url.pathname = canonical;
+      return NextResponse.rewrite(url);
+    }
+  }
 
   if (isPublicPath(pathname)) {
     return NextResponse.next();
