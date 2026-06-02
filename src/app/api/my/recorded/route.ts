@@ -25,6 +25,7 @@ const ROUTE = '/api/my/recorded';
  *       the "my activity" view — distinct from /api/recorded which returns
  *       community-wide posts with any record activity.
  *     operationId: listMyRecorded
+ *     x-related-skills: [record-post, get-record-status, get-post-records]
  *     parameters:
  *       - name: limit
  *         in: query

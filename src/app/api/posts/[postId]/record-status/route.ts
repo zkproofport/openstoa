@@ -19,6 +19,7 @@ const ROUTE = '/api/posts/[postId]/record-status';
  *       so we never hit them with a confirmation prompt followed by a
  *       403 rejection.
  *     operationId: getRecordStatus
+ *     x-related-skills: [record-post, get-post-records]
  *     parameters:
  *       - name: postId
  *         in: path

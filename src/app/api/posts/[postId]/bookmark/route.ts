@@ -13,8 +13,14 @@ const ROUTE = '/api/posts/[postId]/bookmark';
  *   get:
  *     tags: [Bookmarks]
  *     summary: Check bookmark status
- *     description: Checks if the current user has bookmarked a specific post.
+ *     description: |
+ *       Returns `{ bookmarked: boolean }` indicating whether the calling user has bookmarked
+ *       this specific post. Use this BEFORE rendering a bookmark icon so the agent / UI shows
+ *       the correct state without a full bookmark-list fetch. Toggle the state with
+ *       `POST /api/posts/{postId}/bookmark`; enumerate all bookmarks with
+ *       `GET /api/bookmarks`.
  *     operationId: getBookmarkStatus
+ *     x-related-skills: [toggle-bookmark, list-bookmarks]
  *     parameters:
  *       - name: postId
  *         in: path
@@ -39,8 +45,12 @@ const ROUTE = '/api/posts/[postId]/bookmark';
  *   post:
  *     tags: [Bookmarks]
  *     summary: Toggle bookmark on post
- *     description: Toggles a bookmark on a post.
+ *     description: |
+ *       Toggles the calling user's bookmark on the post. If the post is already bookmarked it
+ *       is removed; otherwise it is added. Bookmarks are private — they don't affect post
+ *       visibility for anyone else. Enumerate via `GET /api/bookmarks`.
  *     operationId: toggleBookmark
+ *     x-related-skills: [get-bookmark-status, list-bookmarks]
  *     parameters:
  *       - name: postId
  *         in: path

@@ -18,6 +18,7 @@ const ROUTE = '/api/topics/join/[inviteCode]';
  *       Looks up a topic by its invite code. Returns topic info and whether the current user is
  *       already a member. Used to show a preview before joining.
  *     operationId: lookupInviteCode
+ *     x-related-skills: [join-by-invite-code, generate-invite-token]
  *     parameters:
  *       - name: inviteCode
  *         in: path
@@ -75,10 +76,14 @@ const ROUTE = '/api/topics/join/[inviteCode]';
  *   post:
  *     tags: [Topics]
  *     summary: Join topic via invite code
- *     description: >-
- *       Joins a topic via invite code. Bypasses all visibility restrictions (public, private, secret).
- *       For country-gated topics, country proof is still required.
+ *     description: |
+ *       Joins a topic via an 8-character invite code. **Bypasses visibility restrictions** —
+ *       works on public, private, AND secret topics. Proof gates are NOT bypassed: if the topic
+ *       has a `proofType` (country / kyc / workspace), the matching ZK proof is still required
+ *       in the body (same shape as `POST /api/topics/{topicId}/join`). Use this for one-tap join
+ *       links shared via DM.
  *     operationId: joinByInviteCode
+ *     x-related-skills: [lookup-invite-code, join-topic, generate-invite-token, topic-proofs]
  *     parameters:
  *       - name: inviteCode
  *         in: path

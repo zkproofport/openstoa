@@ -63,6 +63,7 @@ async function attachTagsToPosts<T extends { id: string; tags?: { name: string; 
  *       Pinned posts always appear first regardless of sort order.
  *       Supports tag filtering and sorting by newest or popularity.
  *     operationId: listPosts
+ *     x-related-skills: [create-post, get-post, list-topics]
  *     security: []
  *     parameters:
  *       - name: topicId
@@ -122,9 +123,19 @@ async function attachTagsToPosts<T extends { id: string; tags?: { name: string; 
  *     tags: [Posts]
  *     summary: Create post in topic
  *     description: >-
- *       Creates a new post in a topic. Supports up to 5 tags (created automatically if they don't
- *       exist). Triggers async topic score recalculation.
+ *       Creates a new post in a topic. The caller must already be a member of the topic and have
+ *       a non-anonymous nickname set (`PUT /api/profile/nickname`).
+ *
+ *       `content` is HTML. To attach images, upload each file first via `POST /api/upload`
+ *       (returns `{ publicUrl }`) and embed it as `<img src="$publicUrl">` in `content`. Inline
+ *       `data:image/...;base64,...` is accepted as a fallback — the server extracts and uploads
+ *       any base64 images on receive — but URL-embed is the recommended path the mobile and web
+ *       clients use.
+ *
+ *       `tags` is an array of plain strings (max 5). Unknown tag names are auto-created. The
+ *       post body triggers an async topic score recalculation; it is not synchronous.
  *     operationId: createPost
+ *     x-related-skills: [upload-image, set-nickname]
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -146,7 +157,15 @@ async function attachTagsToPosts<T extends { id: string; tags?: { name: string; 
  *                 description: Post title
  *               content:
  *                 type: string
- *                 description: Post body (HTML, base64 images auto-uploaded to CDN)
+ *                 description: >-
+ *                   Post body as HTML. Images should be embedded as
+ *                   `<img src="$publicUrl">` after uploading the file via
+ *                   `POST /api/upload` (returns `{ publicUrl }`). The
+ *                   mobile + web clients use this URL-embed flow.
+ *                   Inline `data:image/...;base64,...` is also accepted —
+ *                   the server extracts and uploads any base64 images to
+ *                   CDN, then rewrites the src — but it is a fallback,
+ *                   not the recommended path.
  *               tags:
  *                 type: array
  *                 items:

@@ -15,12 +15,15 @@ const ROUTE = '/api/posts/[postId]/records';
  *   get:
  *     tags: [Records]
  *     summary: Get on-chain records for a post
- *     description: >-
- *       Returns the list of on-chain records for a post, including recorder info,
- *       tx hash, and whether the recorded content hash still matches the current content.
- *       Session is optional — if authenticated, also returns whether the current user
- *       has already recorded this post.
+ *     description: |
+ *       Returns every on-chain record for a post — `[ { recorderId, txHash, contentHash,
+ *       blockNumber, recordedAt, contentMatches } ]`. `contentMatches` is `false` if the post
+ *       has been edited since this record was anchored (records become historical evidence,
+ *       not live state). **Auth is optional** — anonymous callers see the public record list;
+ *       authenticated callers additionally see `currentUserHasRecorded` to dim the record
+ *       button. Use `POST /api/posts/{postId}/record` to add a record (policy-gated).
  *     operationId: getPostRecords
+ *     x-related-skills: [record-post, get-record-status, list-my-recorded]
  *     parameters:
  *       - name: postId
  *         in: path

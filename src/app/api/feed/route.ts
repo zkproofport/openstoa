@@ -26,6 +26,7 @@ const ROUTE = '/api/feed';
  *       Supports sorting, tag filtering, and category filtering.
  *     operationId: getFeed
  *     security: []
+ *     x-related-skills: [list-topics, list-posts, get-post]
  *     parameters:
  *       - name: sort
  *         in: query

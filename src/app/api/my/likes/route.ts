@@ -14,9 +14,12 @@ const ROUTE = '/api/my/likes';
  *   get:
  *     tags: [MyActivity]
  *     summary: List my liked posts
- *     description: >-
- *       Lists posts the current user has upvoted (value=1), sorted by newest first.
+ *     description: |
+ *       Returns every post the calling user has upvoted (`value=1`), sorted by upvote-time
+ *       newest-first. Supports cursor pagination via `cursor` + `limit`. Cast / clear a vote
+ *       with `POST /api/posts/{postId}/vote`.
  *     operationId: listMyLikes
+ *     x-related-skills: [toggle-vote, get-post]
  *     parameters:
  *       - name: limit
  *         in: query

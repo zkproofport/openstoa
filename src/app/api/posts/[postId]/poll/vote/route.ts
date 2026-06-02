@@ -22,6 +22,7 @@ const ROUTE = '/api/posts/[postId]/poll/vote';
  *       duplicates are deduped; voting for an option you've already voted
  *       for is a no-op. Closed polls reject all writes.
  *     operationId: castPollVote
+ *     x-related-skills: [get-post, clear-poll-vote]
  *     parameters:
  *       - name: postId
  *         in: path
@@ -45,6 +46,7 @@ const ROUTE = '/api/posts/[postId]/poll/vote';
  *     tags: [Polls]
  *     summary: Clear the user's poll votes
  *     operationId: clearPollVote
+ *     x-related-skills: [cast-poll-vote, get-post]
  *     parameters:
  *       - name: postId
  *         in: path

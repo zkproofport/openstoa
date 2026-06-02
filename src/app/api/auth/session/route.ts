@@ -13,11 +13,15 @@ const ROUTE = '/api/auth/session';
  *   get:
  *     tags: [Auth]
  *     summary: Get current session info
- *     description: >-
- *       Returns the current user's session information. Works with both cookie
- *       and Bearer token authentication. Returns `authenticated: false` for
- *       unauthenticated (guest) requests — never returns 401.
+ *     description: |
+ *       Returns the current caller's session info — `userId`, `nickname`, and the
+ *       proof types they have verified. Works with both cookie and Bearer token auth and
+ *       NEVER returns 401: unauthenticated callers get `{ authenticated: false }`. Useful
+ *       right after `POST /api/auth/verify/ai` to confirm the token resolves and to check
+ *       whether `nickname` still starts with `anon_` (in which case call
+ *       `PUT /api/profile/nickname` before posting).
  *     operationId: getSession
+ *     x-related-skills: [auth-details]
  *     responses:
  *       200:
  *         description: Current session information (or authenticated=false for guests)

@@ -31,6 +31,7 @@ const VALID_PROOF_TYPES = ['kyc', 'country', 'google_workspace', 'microsoft_365'
  *       4. `POST /api/topics/{topicId}/join` with proof + publicInputs
  *     operationId: getProofGuide
  *     security: []
+ *     x-related-skills: [topic-proofs, create-challenge, verify-ai-proof, join-topic]
  *     parameters:
  *       - name: proofType
  *         in: path

@@ -19,6 +19,7 @@ const ROUTE = '/api/account';
  *       sets deletedAt, removes all memberships and bookmarks, and clears the session. Posts, comments,
  *       and votes are preserved (orphaned) to maintain upvoteCount integrity. Fails if the user owns any topics (must transfer ownership first).
  *     operationId: deleteAccount
+ *     x-related-skills: [auth-details, change-member-role]
  *     responses:
  *       200:
  *         description: Account deleted successfully

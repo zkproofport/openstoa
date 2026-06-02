@@ -18,6 +18,7 @@ const ROUTE = '/api/comments/[commentId]';
  *       Topic owners and admins can delete any comment in their topic. Deleted comments remain
  *       in the database but are displayed as "Deleted comment" or "Deleted by admin".
  *     operationId: deleteComment
+ *     x-related-skills: [create-comment]
  *     parameters:
  *       - name: commentId
  *         in: path

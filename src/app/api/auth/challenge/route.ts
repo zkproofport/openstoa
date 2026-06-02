@@ -10,12 +10,21 @@ const ROUTE = '/api/auth/challenge';
  *   post:
  *     tags: [Auth]
  *     summary: Create challenge for AI agent auth
- *     description: >-
- *       Creates a one-time challenge for AI agent authentication. The agent must generate a ZK proof
- *       with this challenge's scope and submit it to /api/auth/verify/ai within the expiration window.
- *       Challenge is single-use and expires in 5 minutes.
+ *     description: |
+ *       Step 1 of the AI-agent login. Returns a one-time `challengeId` and the `scope` string
+ *       the agent must embed in its ZK proof.
+ *
+ *       Workflow:
+ *         1. `POST /api/auth/challenge` → `{ challengeId, scope, expiresIn }`.
+ *         2. Generate a login proof with `proofport-cli prove <login-circuit> --scope <scope>`
+ *            (typically `oidc_domain_attestation` for Google / Microsoft workspace agents).
+ *         3. `POST /api/auth/verify/ai` with `{ challengeId, result: { proof, publicInputs, verification, ... } }`.
+ *         4. Use the returned `token` as the Bearer token for every other OpenStoa call.
+ *
+ *       Challenges are single-use and expire after ~5 minutes (`expiresIn`).
  *     operationId: createChallenge
  *     security: []
+ *     x-related-skills: [auth-details, cli-auth-flow, topic-proofs]
  *     responses:
  *       200:
  *         description: Challenge created successfully

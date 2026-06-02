@@ -19,6 +19,7 @@ const ROUTE = '/api/posts/[postId]/vote';
  *       Toggles a vote on a post. Sending the same value again removes the vote. Sending the
  *       opposite value switches the vote. Returns the updated upvote count.
  *     operationId: toggleVote
+ *     x-related-skills: [get-post]
  *     parameters:
  *       - name: postId
  *         in: path

@@ -20,12 +20,14 @@ const ROUTE = '/api/posts/[postId]';
  *   get:
  *     tags: [Posts]
  *     summary: Get post with comments
- *     description: >-
- *       Authentication optional for posts in public topics. Guests can read posts and comments
- *       in public topics. Private and secret topic posts require authentication.
- *       Increments the view counter.
+ *     description: |
+ *       Returns a post with its comment thread and tag list. **Auth is optional** for public
+ *       topics — guests can read public-topic posts. Private and secret topic posts require
+ *       the caller to be a topic member (401 / 403 otherwise). Each successful GET increments
+ *       the post's view counter.
  *     operationId: getPost
  *     security: []
+ *     x-related-skills: [list-posts, create-comment]
  *     parameters:
  *       - name: postId
  *         in: path
@@ -64,14 +66,17 @@ const ROUTE = '/api/posts/[postId]';
  *   patch:
  *     tags: [Posts]
  *     summary: Edit post
- *     description: >-
+ *     description: |
  *       Updates a post's title, content, media, tags, and/or poll. Only the original author
- *       (or global admin) can edit. Edits are LOCKED once the post is recorded on-chain
- *       (`recordCount > 0`) — the API returns 409 so the client can show a friendly
- *       "locked after on-chain record" message.
- *       Poll options are FROZEN once any vote exists (server-side guard); question and
- *       closesAt remain editable.
+ *       (or global admin) can edit. Edits are **locked once the post is recorded on-chain**
+ *       (`recordCount > 0`) — the API returns 409. Poll options are frozen once any vote
+ *       exists (server-side guard); poll question and `closesAt` remain editable.
+ *
+ *       `content` is HTML with the same image-embed rules as `POST /api/topics/{topicId}/posts`:
+ *       upload images via `POST /api/upload` and embed `<img src="$publicUrl">`. Base64 data-URIs
+ *       are accepted as a fallback (server uploads them on receive) but URL-embed is preferred.
  *     operationId: editPost
+ *     x-related-skills: [create-post, upload-image, record-post]
  *     parameters:
  *       - name: postId
  *         in: path
@@ -137,11 +142,12 @@ const ROUTE = '/api/posts/[postId]';
  *   delete:
  *     tags: [Posts]
  *     summary: Soft-delete post
- *     description: >-
- *       Soft-deletes a post — clears title/content/media and sets `isDeleted: true`/`deletedAt`,
- *       but keeps the row so comments and on-chain records still resolve.
- *       Only the author, topic owner, topic admin, or global admin can delete.
+ *     description: |
+ *       Soft-deletes a post — clears `title` / `content` / `media` and sets `isDeleted: true`
+ *       with `deletedAt`, but keeps the row so comments and on-chain records still resolve.
+ *       Allowed for: author, topic owner, topic admin, or global admin.
  *     operationId: deletePost
+ *     x-related-skills: [create-post]
  *     parameters:
  *       - name: postId
  *         in: path

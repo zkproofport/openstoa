@@ -13,9 +13,14 @@ const ROUTE = '/api/categories';
  *   get:
  *     tags: [Categories]
  *     summary: List all categories
- *     description: Returns all categories sorted by sort order. Public endpoint, no auth required.
+ *     description: |
+ *       Returns every topic category, sorted by `sortOrder` then `name`. **No auth required**.
+ *       Categories are read-only metadata curated by platform admins — pass `categoryId` to
+ *       `POST /api/topics` (create topic) or filter via `category=<slug>` on `GET /api/topics`
+ *       and `GET /api/feed`. Response shape: `{ categories: [{ id, slug, name, sortOrder }] }`.
  *     operationId: listCategories
  *     security: []
+ *     x-related-skills: [list-topics, create-topic]
  *     responses:
  *       200:
  *         description: Categories list

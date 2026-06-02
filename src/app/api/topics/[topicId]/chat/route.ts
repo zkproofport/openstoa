@@ -14,18 +14,21 @@ const ROUTE = '/api/topics/[topicId]/chat';
  *   get:
  *     tags: [Chat]
  *     summary: Get chat history
- *     description: >-
- *       Returns chat messages for a topic. Only topic members can access.
- *       Supports two pagination modes:
- *         - `since=<iso>` returns messages strictly newer than the given
- *           timestamp, in chronological order. Used by clients on reconnect
- *           to fetch only the messages they missed.
- *         - `before=<messageId>` returns messages strictly older than the
- *           given message id, in reverse-chronological order. Used for
- *           infinite scroll upward (loading older history).
- *       Without either parameter, returns the latest `limit` messages
- *       (newest-first), as before.
+ *     description: |
+ *       Returns chat messages for a topic. **Membership required** — non-members get 403.
+ *
+ *       Two pagination modes:
+ *         - `since=<iso>` — messages strictly newer than the timestamp, chronological order.
+ *           Use this for **polling-based real-time chat** when SSE isn't practical: remember the
+ *           latest `createdAt` and re-poll every few seconds.
+ *         - `before=<messageId>` — messages strictly older than the given id, reverse-chronological.
+ *           Used for infinite scroll upward (loading older history).
+ *
+ *       Without either parameter, returns the latest `limit` messages newest-first. For agents
+ *       that can handle streaming responses, `GET /api/topics/{topicId}/chat/subscribe` is the
+ *       lower-latency alternative.
  *     operationId: getChatHistory
+ *     x-related-skills: [subscribe-chat-sse, send-chat-message]
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -193,10 +196,13 @@ export async function GET(
  *   post:
  *     tags: [Chat]
  *     summary: Send a chat message
- *     description: >-
- *       Sends a message to the topic chat. Only topic members can send messages.
- *       The message is persisted to the database and broadcast via Redis pub/sub.
+ *     description: |
+ *       Sends a chat message to the topic. **Membership required**. The message is persisted
+ *       and immediately broadcast via Redis pub/sub to every SSE subscriber on
+ *       `GET /api/topics/{topicId}/chat/subscribe`. Polling clients pick the same message up on
+ *       their next `GET /api/topics/{topicId}/chat?since=<iso>` call.
  *     operationId: sendChatMessage
+ *     x-related-skills: [get-chat-history, subscribe-chat-sse]
  *     parameters:
  *       - name: topicId
  *         in: path

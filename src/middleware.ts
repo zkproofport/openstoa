@@ -26,7 +26,7 @@ const PUBLIC_PATHS = [
   '/ask',
   '/docs',
   '/icon.png',
-  '/skill.md',
+  '/SKILL.md',
   '/AGENTS.md',
   '/robots.txt',
   '/sitemap.xml',
@@ -41,16 +41,9 @@ const PUBLIC_PREFIXES = [
   '/api/docs/',
   '/docs',
   '/.well-known/',
+  // Auto-generated skills tree (/skills/getting-started/*, /skills/api/*, etc.)
+  '/skills/',
 ];
-
-// Top-level public .md files served from /public. Map any case variant
-// (e.g. /SKILL.md, /Skill.md) to the canonical filename Next.js can find
-// on disk so links shared by AI agents / pasted in chat keep working
-// regardless of casing. Keep keys lowercase.
-const MD_FILE_CANONICAL: Record<string, string> = {
-  '/skill.md': '/skill.md',
-  '/agents.md': '/AGENTS.md',
-};
 
 // Paths accessible without authentication (guests can browse).
 // If a token IS present it will still be validated; only the
@@ -82,12 +75,25 @@ function isApiRoute(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Normalize top-level .md paths to their canonical filename so that
-  // any case variant (e.g. /SKILL.md, /Skill.md, /AGENTS.md, /agents.md)
-  // serves the same static file. Rewriting here also bypasses auth since
-  // the rewritten target is in PUBLIC_PATHS below.
+  // Normalize public .md paths to their canonical case so a link shared
+  // with mixed casing serves the same static file:
+  //   - `/skill.md` and the `/skill/...` tree are emitted in all-lowercase
+  //     by `scripts/generate-skill.ts`, so any case variant lowercases.
+  //   - `/AGENTS.md` is the one capitalized file we serve; map `/agents.md`
+  //     and other cases onto it explicitly.
   if (pathname.toLowerCase().endsWith('.md')) {
-    const canonical = MD_FILE_CANONICAL[pathname.toLowerCase()];
+    const lower = pathname.toLowerCase();
+    let canonical: string | null = null;
+    if (lower === '/agents.md') canonical = '/AGENTS.md';
+    else if (lower === '/skill.md') canonical = '/SKILL.md';
+    else if (lower.startsWith('/skills/')) {
+      // Directories under /skills/ are lowercase on disk; the leaf
+      // filename is uppercase SKILL.md. Build the canonical path from
+      // the lowered request path and re-uppercase a `/skill.md` suffix.
+      canonical = lower.endsWith('/skill.md')
+        ? lower.slice(0, -'/skill.md'.length) + '/SKILL.md'
+        : lower;
+    }
     if (canonical && canonical !== pathname) {
       const url = request.nextUrl.clone();
       url.pathname = canonical;

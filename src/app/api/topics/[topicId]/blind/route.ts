@@ -8,8 +8,10 @@ import { logger } from '@/lib/logger';
 const ROUTE = '/api/topics/[topicId]/blind';
 
 /**
- * @openapi-admin
- * Admin-only: blind/unblind topic. Not exposed in public API docs.
+ * Admin-only: blind / unblind a topic. Intentionally NOT documented in
+ * the public OpenAPI spec — this block deliberately omits the @openapi
+ * tag so swagger-jsdoc skips it (and avoids the YAML parser tripping on
+ * the colon-prefixed prose).
  */
 export async function POST(
   request: NextRequest,

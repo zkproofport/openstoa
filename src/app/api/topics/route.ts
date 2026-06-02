@@ -83,11 +83,30 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *   post:
  *     tags: [Topics]
  *     summary: Create topic
- *     description: >-
- *       Creates a new topic. The creator is automatically added as the owner. For country-gated
- *       topics (requiresCountryProof=true), the creator must also provide a valid
- *       coinbase_country_attestation proof proving they are in one of the allowed countries.
+ *     description: |
+ *       Creates a new topic. The caller is automatically added as the owner.
+ *
+ *       Topic `visibility` controls who can find / join the topic:
+ *         - `public`: listed everywhere, anyone can join immediately.
+ *         - `private`: listed but join requests need owner / admin approval.
+ *         - `secret`: hidden from listings; joinable only via invite code.
+ *
+ *       Topics can optionally gate membership on a ZK proof. The creator picks the gate by
+ *       sending `proofType` (preferred) or the legacy `requiresCountryProof` boolean. Supported
+ *       gates and the circuit each needs (same matrix as `POST /api/topics/{topicId}/join`):
+ *         - `none` (default) — no proof, anyone can join.
+ *         - `country` (legacy: `requiresCountryProof=true`) — `coinbase_country_attestation` over
+ *           `allowedCountries` (ISO 3166-1 alpha-2 codes).
+ *         - `kyc` — `coinbase_attestation`.
+ *         - `workspace` / `google_workspace` / `microsoft_365` — `oidc_domain_attestation` with the
+ *           allowed domain configured separately on the topic.
+ *
+ *       The creator must themselves satisfy the gate at creation time, so pass
+ *       `{ proof, publicInputs }` produced by `proofport-cli` for the matching circuit when
+ *       `proofType` is anything other than `none`. Topic thumbnail `image` should be uploaded
+ *       through `POST /api/upload` first; pass the returned `publicUrl` here.
  *     operationId: createTopic
+ *     x-related-skills: [topic-proofs, auth-details, upload-image]
  *     requestBody:
  *       required: true
  *       content:
@@ -108,27 +127,39 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *                 description: Topic description (optional)
  *               requiresCountryProof:
  *                 type: boolean
- *                 description: Whether joining requires a country attestation proof
+ *                 description: >-
+ *                   Legacy flag for country gating. Prefer `proofType=country`.
+ *                   When `true`, also send `allowedCountries`, `proof`, and `publicInputs`.
  *               allowedCountries:
  *                 type: array
  *                 items:
  *                   type: string
- *                 description: ISO 3166-1 alpha-2 country codes allowed
+ *                 description: ISO 3166-1 alpha-2 country codes allowed (used when `proofType=country`).
  *               proof:
  *                 type: string
- *                 description: Country attestation proof hex (required if requiresCountryProof=true)
+ *                 description: >-
+ *                   0x-prefixed UltraHonk proof hex emitted by `proofport-cli prove <circuit>`.
+ *                   Required when `proofType` is anything other than `none`. The circuit must match
+ *                   the gate: `coinbase_country_attestation` for country, `coinbase_attestation`
+ *                   for kyc, `oidc_domain_attestation` for workspace.
  *               publicInputs:
  *                 type: array
  *                 items:
  *                   type: string
- *                 description: Proof public inputs (required if requiresCountryProof=true)
+ *                 description: >-
+ *                   Public inputs of the proof as 0x-prefixed hex strings (one element per field).
+ *                   Layout depends on the circuit — see `proofport-cli`.
  *               image:
  *                 type: string
- *                 description: Topic thumbnail image URL (from /api/upload)
+ *                 description: >-
+ *                   Topic thumbnail image URL. Upload the file first via `POST /api/upload`
+ *                   (returns `{ publicUrl }`) and pass that URL here.
  *               visibility:
  *                 type: string
  *                 enum: [public, private, secret]
- *                 description: Topic visibility (defaults to public)
+ *                 description: >-
+ *                   Topic visibility. `public` lists everywhere, `private` requires approval,
+ *                   `secret` is invite-only (use `POST /api/topics/{topicId}/invite`). Defaults to `public`.
  *     responses:
  *       201:
  *         description: Topic created

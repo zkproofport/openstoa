@@ -13,8 +13,13 @@ const ROUTE = '/api/profile/image';
  *   get:
  *     tags: [Profile]
  *     summary: Get profile image
- *     description: Returns the current user's profile image URL.
+ *     description: |
+ *       Returns `{ profileImage: string | null }` for the calling user — the absolute CDN
+ *       URL used as their avatar across topics/posts/chat. Returns `null` if not set.
+ *       Update with `PUT /api/profile/image` (pass the URL from `POST /api/upload`), remove
+ *       with `DELETE /api/profile/image`.
  *     operationId: getProfileImage
+ *     x-related-skills: [set-profile-image]
  *     responses:
  *       200:
  *         description: Profile image URL
@@ -32,10 +37,13 @@ const ROUTE = '/api/profile/image';
  *   put:
  *     tags: [Profile]
  *     summary: Set profile image
- *     description: >-
- *       Sets the user's profile image URL. Use the /api/upload endpoint first to upload the image
- *       and get the public URL.
+ *     description: |
+ *       Sets the calling user's avatar to the supplied CDN URL. Workflow: upload the file
+ *       via `POST /api/upload` (`purpose=avatar` is the conventional value), receive
+ *       `{ publicUrl }`, then PUT that URL here as `imageUrl`. The URL is shown on every
+ *       post / comment / chat message authored by the user.
  *     operationId: setProfileImage
+ *     x-related-skills: [upload-image, get-profile-image, delete-profile-image]
  *     requestBody:
  *       required: true
  *       content:
@@ -67,8 +75,12 @@ const ROUTE = '/api/profile/image';
  *   delete:
  *     tags: [Profile]
  *     summary: Remove profile image
- *     description: Removes the user's profile image.
+ *     description: |
+ *       Clears the calling user's avatar URL (sets `profileImage` to `null`). The original
+ *       file on the CDN is NOT deleted — call `DELETE /api/upload` with the URL if you
+ *       want to free the storage. Subsequent posts/chat render the default avatar.
  *     operationId: deleteProfileImage
+ *     x-related-skills: [set-profile-image, get-profile-image]
  *     responses:
  *       200:
  *         description: Profile image removed

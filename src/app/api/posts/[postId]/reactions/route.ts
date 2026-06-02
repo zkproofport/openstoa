@@ -21,6 +21,7 @@ const ALLOWED_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
  *       current user has reacted. Guests (unauthenticated) get userReacted: false for all.
  *       Authentication is optional.
  *     operationId: getReactions
+ *     x-related-skills: [toggle-reaction, get-post]
  *     parameters:
  *       - name: postId
  *         in: path
@@ -49,6 +50,7 @@ const ALLOWED_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
  *       Toggles an emoji reaction on a post. Reacting with the same emoji again removes it.
  *       Only 6 emojis are allowed.
  *     operationId: toggleReaction
+ *     x-related-skills: [get-reactions, get-post]
  *     parameters:
  *       - name: postId
  *         in: path

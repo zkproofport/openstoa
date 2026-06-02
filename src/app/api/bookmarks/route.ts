@@ -18,9 +18,13 @@ const ROUTE = '/api/bookmarks';
  *   get:
  *     tags: [Bookmarks]
  *     summary: List bookmarked posts
- *     description: >-
- *       Lists all posts bookmarked by the current user, sorted by bookmark time (newest first).
+ *     description: |
+ *       Returns every post the calling user has bookmarked across all topics, sorted by
+ *       bookmark-creation time (newest first). Supports cursor pagination via `cursor` +
+ *       `limit`. Toggle a bookmark with `POST /api/posts/{postId}/bookmark` and check the
+ *       current state with `GET /api/posts/{postId}/bookmark`.
  *     operationId: listBookmarks
+ *     x-related-skills: [toggle-bookmark, get-bookmark-status, get-post]
  *     parameters:
  *       - name: limit
  *         in: query

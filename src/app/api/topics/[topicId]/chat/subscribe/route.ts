@@ -15,13 +15,22 @@ const ROUTE = '/api/topics/[topicId]/chat/subscribe';
  *   get:
  *     tags: [Chat]
  *     summary: Subscribe to real-time chat via SSE
- *     description: >-
- *       Opens a Server-Sent Events stream for real-time chat messages in a topic.
- *       Only topic members can subscribe. On connect, adds user to presence tracking,
- *       inserts a join event, and sends the current presence list as the first SSE event.
- *       Sends a heartbeat ping every 30 seconds. On disconnect, removes user from presence
- *       and publishes a leave event.
+ *     description: |
+ *       Opens a long-lived **Server-Sent Events** stream pushing real-time chat events for the
+ *       topic. **Membership required**.
+ *
+ *       Event shape: each event is `event: <kind>\ndata: <json>\n\n` with `kind` ∈
+ *       `{ presence, message, join, leave, ping }`. The first event is always `presence` with the
+ *       current member-list snapshot. New `message` events arrive whenever any member calls
+ *       `POST /api/topics/{topicId}/chat`. A `ping` heartbeat is sent every 30s — agents should
+ *       treat missing pings for >60s as a connection drop and reconnect.
+ *
+ *       Agent usage from a CLI / runtime that supports streaming responses:
+ *       `fetch(url, { headers: { Authorization: 'Bearer …' } })` and then iterate over the
+ *       response body's reader. If your runtime can't hold a long-lived connection, poll
+ *       `GET /api/topics/{topicId}/chat?since=<iso>` instead.
  *     operationId: subscribeChatSSE
+ *     x-related-skills: [get-chat-history, send-chat-message, get-chat-presence]
  *     parameters:
  *       - name: topicId
  *         in: path

@@ -14,11 +14,14 @@ const ROUTE = '/api/topics/[topicId]/chat/presence';
  *   get:
  *     tags: [Chat]
  *     summary: Get current chat presence
- *     description: >-
- *       Returns the list of users currently connected to the topic chat.
- *       Presence is tracked via Redis HASH and updated on SSE connect/disconnect.
- *       Only topic members can query presence.
+ *     description: |
+ *       One-shot snapshot of users currently subscribed to the topic chat. **Membership
+ *       required**. Presence is maintained in Redis and updated as agents/users open or close
+ *       SSE streams on `GET /api/topics/{topicId}/chat/subscribe`. Use this for "who's online"
+ *       UIs without holding a persistent connection — for live updates, the same data arrives
+ *       as the first `presence` event on `subscribe`.
  *     operationId: getChatPresence
+ *     x-related-skills: [subscribe-chat-sse]
  *     parameters:
  *       - name: topicId
  *         in: path

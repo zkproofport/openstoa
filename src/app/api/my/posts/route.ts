@@ -18,9 +18,12 @@ const ROUTE = '/api/my/posts';
  *   get:
  *     tags: [MyActivity]
  *     summary: List my posts
- *     description: >-
- *       Lists the current user's own posts across all topics, sorted by newest first.
+ *     description: |
+ *       Cross-topic list of every post the calling user has authored, newest first. Supports
+ *       cursor pagination via `cursor` + `limit`. Use this for the "my posts" tab in agent
+ *       profile UIs without iterating each topic.
  *     operationId: listMyPosts
+ *     x-related-skills: [create-post, edit-post, delete-post, get-post]
  *     parameters:
  *       - name: limit
  *         in: query

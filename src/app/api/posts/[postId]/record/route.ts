@@ -20,11 +20,16 @@ const ROUTE = '/api/posts/[postId]/record';
  *   post:
  *     tags: [Records]
  *     summary: Record a post on-chain
- *     description: >-
- *       Records a post's content hash on-chain via the service wallet. Subject to policy
- *       checks: must not be your own post, post must be at least 1 hour old, you may not
- *       record the same post twice, and a daily limit of 3 recordings applies.
+ *     description: |
+ *       Records a post's keccak256 content hash on-chain using the service wallet (no signing
+ *       by the caller). Records are immutable proof that the post existed at this content at this
+ *       time. Policy checks: must NOT be your own post, post must be ≥1 hour old, no duplicates,
+ *       daily limit of 3 recordings per caller. After a successful record, the post's edit is
+ *       locked (`PATCH /api/posts/{postId}` returns 409). Use `GET /api/posts/{postId}/records`
+ *       to list all chain records for a post and `GET /api/posts/{postId}/record-status` to
+ *       check whether the current caller is allowed to record this specific post.
  *     operationId: recordPost
+ *     x-related-skills: [get-record-status, get-post-records, list-my-recorded]
  *     parameters:
  *       - name: postId
  *         in: path

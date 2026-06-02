@@ -13,14 +13,15 @@ const ROUTE = '/api/auth/refresh';
  *   post:
  *     tags: [Auth]
  *     summary: Refresh JWT session token
- *     description: >-
- *       Issues a new JWT for the currently authenticated session. Used by native mobile clients
- *       to extend their session before the 7-day expiry. Web clients can also call this and the
- *       cookie will be reset. The current token must still be valid (not expired) — expired tokens
- *       must use the standard auth flow (proof-request + poll).
+ *     description: |
+ *       Issues a new Bearer JWT (and refreshes the session cookie) for the currently authenticated
+ *       caller. The current token must still be valid — expired tokens cannot be refreshed and
+ *       must re-run the full login (`POST /api/auth/challenge` → ZK proof → `POST /api/auth/verify/ai`
+ *       for AI agents; `POST /api/auth/proof-request` + polling for native mobile).
  *     operationId: refreshSession
  *     security:
  *       - bearerAuth: []
+ *     x-related-skills: [auth-details, cli-auth-flow]
  *     responses:
  *       200:
  *         description: New token issued

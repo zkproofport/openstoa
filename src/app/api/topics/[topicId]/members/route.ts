@@ -20,6 +20,7 @@ const ROUTE = '/api/topics/[topicId]/members';
  *       Lists all members of a topic, sorted by role (owner then admin then member). Supports
  *       nickname prefix search for @mention autocomplete.
  *     operationId: listMembers
+ *     x-related-skills: [join-topic, change-member-role, remove-member]
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -61,6 +62,7 @@ const ROUTE = '/api/topics/[topicId]/members';
  *       Changes a member's role. Only the topic owner can change roles. Transferring ownership
  *       (setting another member to 'owner') automatically demotes the current owner to 'admin'.
  *     operationId: changeMemberRole
+ *     x-related-skills: [list-members, remove-member]
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -113,6 +115,7 @@ const ROUTE = '/api/topics/[topicId]/members';
  *       Removes a member from the topic. Admins can only remove regular members. Owners can
  *       remove anyone except themselves.
  *     operationId: removeMember
+ *     x-related-skills: [list-members, change-member-role]
  *     parameters:
  *       - name: topicId
  *         in: path

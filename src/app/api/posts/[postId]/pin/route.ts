@@ -17,6 +17,7 @@ const ROUTE = '/api/posts/[postId]/pin';
  *       Toggles pin status on a post. Pinned posts appear at the top of post listings regardless
  *       of sort order. Only topic owners and admins can pin/unpin.
  *     operationId: togglePin
+ *     x-related-skills: [list-posts, change-member-role]
  *     parameters:
  *       - name: postId
  *         in: path

@@ -16,8 +16,13 @@ const ROUTE = '/api/posts/[postId]/comments';
  *   post:
  *     tags: [Comments]
  *     summary: Create comment on post
- *     description: Creates a comment on a post. Increments the post's comment count.
+ *     description: |
+ *       Creates a comment on a post. **Membership required** for posts in private/secret topics;
+ *       public-topic comments need only a non-`anon_` nickname. The post's `commentCount` is
+ *       bumped atomically and the new comment is returned in the response. Use
+ *       `DELETE /api/comments/{commentId}` to soft-delete.
  *     operationId: createComment
+ *     x-related-skills: [get-post, delete-comment, set-nickname]
  *     parameters:
  *       - name: postId
  *         in: path

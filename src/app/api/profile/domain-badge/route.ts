@@ -17,6 +17,7 @@ const ROUTE = '/api/profile/domain-badge';
  *       `domains` contains all publicly visible domains. `availableDomain` is the
  *       most recently verified domain available for opt-in.
  *     operationId: getDomainBadge
+ *     x-related-skills: [opt-in-domain-badge, opt-out-domain-badge, topic-proofs]
  *     responses:
  *       200:
  *         description: Domain badge status
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
  *       then verify company-b.com, opt in again — both are shown). Requires a valid
  *       workspace (oidc_domain) verification.
  *     operationId: optInDomainBadge
+ *     x-related-skills: [get-domain-badge, opt-out-domain-badge, topic-proofs]
  *     responses:
  *       200:
  *         description: Domain badge added
@@ -123,6 +125,7 @@ export async function POST(request: NextRequest) {
  *       to remove a specific domain. Send no body to remove all domains.
  *       Workspace verifications remain valid — you can opt back in at any time.
  *     operationId: optOutDomainBadge
+ *     x-related-skills: [get-domain-badge, opt-in-domain-badge]
  *     requestBody:
  *       required: false
  *       content:

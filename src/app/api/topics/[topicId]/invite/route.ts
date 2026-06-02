@@ -18,6 +18,7 @@ const ROUTE = '/api/topics/[topicId]/invite';
  *       Generates a single-use invite token for the topic. Only topic members can generate tokens.
  *       The token expires in 7 days and can only be used once.
  *     operationId: generateInviteToken
+ *     x-related-skills: [join-by-invite-code, lookup-invite-code]
  *     parameters:
  *       - name: topicId
  *         in: path

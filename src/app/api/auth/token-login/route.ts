@@ -10,11 +10,15 @@ const ROUTE = '/api/auth/token-login';
  *   get:
  *     tags: [Auth]
  *     summary: Convert Bearer token to browser session
- *     description: >-
- *       Converts a Bearer token into a browser session cookie and redirects to the appropriate page.
- *       Used when AI agents need to open a browser context with their authenticated session.
+ *     description: |
+ *       Converts a Bearer token from `POST /api/auth/verify/ai` into a browser session cookie and
+ *       302-redirects. Used by `proofport-ai` and CLI agents to hand control off to a browser
+ *       while keeping the authenticated identity — e.g. opening `/topics/<id>` after authenticating
+ *       headlessly. The redirect lands on `/profile` if the user has no real nickname yet, otherwise
+ *       on `/topics`.
  *     operationId: tokenLogin
  *     security: []
+ *     x-related-skills: [auth-details]
  *     parameters:
  *       - name: token
  *         in: query

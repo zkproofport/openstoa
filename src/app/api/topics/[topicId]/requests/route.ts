@@ -17,6 +17,7 @@ const ROUTE = '/api/topics/[topicId]/requests';
  *       Lists join requests for a private topic. By default returns only pending requests. Use
  *       status=all to see all requests including approved and rejected.
  *     operationId: listJoinRequests
+ *     x-related-skills: [handle-join-request, join-topic]
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -55,6 +56,7 @@ const ROUTE = '/api/topics/[topicId]/requests';
  *     description: >-
  *       Approves or rejects a pending join request. Approving automatically adds the user as a member.
  *     operationId: handleJoinRequest
+ *     x-related-skills: [list-join-requests, list-members]
  *     parameters:
  *       - name: topicId
  *         in: path

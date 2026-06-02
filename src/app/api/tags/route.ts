@@ -18,6 +18,7 @@ const ROUTE = '/api/tags';
  *       q, returns most-used tags (up to 20). Optionally scoped to a specific topic.
  *     operationId: listTags
  *     security: []
+ *     x-related-skills: [list-posts, create-post]
  *     parameters:
  *       - name: q
  *         in: query

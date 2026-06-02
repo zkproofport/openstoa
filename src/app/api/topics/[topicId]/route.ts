@@ -30,6 +30,7 @@ const ROUTE = '/api/topics/[topicId]';
  *       members to view a topic; non-members receive 403.
  *     operationId: getTopic
  *     security: []
+ *     x-related-skills: [list-topics, join-topic]
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -220,6 +221,7 @@ export async function GET(
  *       Only the topic owner can edit. Editable fields: title, description, image.
  *       At least one field must be provided.
  *     operationId: editTopic
+ *     x-related-skills: [create-topic, upload-image]
  *     parameters:
  *       - name: topicId
  *         in: path
@@ -358,6 +360,7 @@ export async function PATCH(
  *       members, join requests). Only the topic owner or a global admin may invoke
  *       this. The deletion is performed inside a single transaction.
  *     operationId: deleteTopic
+ *     x-related-skills: [create-topic]
  *     parameters:
  *       - name: topicId
  *         in: path

@@ -13,10 +13,13 @@ const ROUTE = '/api/recorded';
  *   get:
  *     tags: [MyActivity]
  *     summary: Get recorded posts feed
- *     description: >-
- *       Returns posts the current user has recorded (bookmarked/saved), with pagination.
- *       Only includes posts from topics the user is a member of.
+ *     description: |
+ *       Cross-topic feed of every post the calling user has **recorded on-chain** via
+ *       `POST /api/posts/{postId}/record`. Posts where membership has since been lost are
+ *       filtered out — only includes posts from topics the caller is still a member of.
+ *       Supports cursor pagination via `cursor` + `limit`.
  *     operationId: getRecordedPosts
+ *     x-related-skills: [record-post, list-my-recorded]
  *     parameters:
  *       - name: limit
  *         in: query

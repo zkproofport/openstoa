@@ -15,11 +15,15 @@ const NICKNAME_REGEX = /^[a-zA-Z0-9_]{2,20}$/;
  *   put:
  *     tags: [Profile]
  *     summary: Set or update nickname
- *     description: >-
- *       Sets or updates the user's display nickname. Required after first login. Must be 2-20
- *       characters, alphanumeric and underscores only. Reissues the session cookie/token with
- *       the updated nickname.
+ *     description: |
+ *       Sets or updates the caller's display nickname. **Required after first login** — every
+ *       newly-created account starts with an `anon_<random>` placeholder nickname, and topic
+ *       write endpoints (`POST /api/topics/{topicId}/posts`, etc.) reject calls that still carry
+ *       it. Must be 2-20 chars, alphanumeric + underscore only. The response includes a
+ *       refreshed Bearer `token` carrying the new nickname AND resets the session cookie — Bearer
+ *       agents must swap their stored token to the one returned here before issuing further calls.
  *     operationId: setNickname
+ *     x-related-skills: [auth-details, create-post]
  *     requestBody:
  *       required: true
  *       content:

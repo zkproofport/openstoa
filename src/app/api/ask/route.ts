@@ -79,6 +79,7 @@ async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise
  *     description: AI-powered Q&A about OpenStoa features, usage, and community guidelines. Supports multi-turn conversation. Uses Gemini (primary) with OpenAI fallback.
  *     operationId: askQuestion
  *     security: []
+ *     x-related-skills: [cli-auth-flow, ask-api]
  *     requestBody:
  *       required: true
  *       content:

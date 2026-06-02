@@ -8,9 +8,14 @@ import { count } from 'drizzle-orm';
  * /api/stats:
  *   get:
  *     summary: Get community statistics
- *     description: Returns total number of topics and unique members.
+ *     description: |
+ *       Returns a cheap, **no-auth** snapshot of OpenStoa community size: total topic count
+ *       and the number of unique members (deduplicated across topics). Agents use this to
+ *       surface "<n> active topics, <m> members" widgets without paginating every endpoint.
+ *       Counts are read-time live — no cache layer.
  *     operationId: getCommunityStats
  *     security: []
+ *     x-related-skills: [list-topics, feed]
  *     responses:
  *       200:
  *         description: Community statistics

@@ -24,6 +24,7 @@ const ROUTE = '/api/my/recorded-on-mine';
  *       This is the "my achievement" view, distinct from /api/my/recorded
  *       which lists posts the user themselves has recorded.
  *     operationId: listMyPostsRecorded
+ *     x-related-skills: [list-my-recorded, get-post-records, create-post]
  *     parameters:
  *       - name: limit
  *         in: query

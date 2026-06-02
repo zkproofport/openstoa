@@ -16,6 +16,7 @@ const ROUTE = '/api/profile/badges';
  *       Verification data is stored in Redis cache only (30-day TTL) — no personal
  *       information is persisted in the database.
  *     operationId: getUserBadges
+ *     x-related-skills: [topic-proofs, get-domain-badge]
  *     responses:
  *       200:
  *         description: Active badges

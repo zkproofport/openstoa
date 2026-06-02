@@ -17,6 +17,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
  *       Uploads an image file directly to the CDN via the server. Send the file as
  *       multipart/form-data. Returns the permanent public URL for the uploaded image.
  *     operationId: uploadImage
+ *     x-related-skills: [delete-uploaded-images, create-post, edit-post, set-profile-image, create-topic]
  *     requestBody:
  *       required: true
  *       content:
@@ -32,7 +33,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
  *               purpose:
  *                 type: string
  *                 enum: [post, topic, avatar]
- *                 description: Upload purpose for path organization (default: post)
+ *                 description: "Upload purpose for path organization (default: post)"
  *     responses:
  *       200:
  *         description: File uploaded successfully
@@ -126,6 +127,7 @@ export async function POST(request: NextRequest) {
  *       resolve to an R2 object (external CDNs, base64 data URIs) are
  *       silently skipped.
  *     operationId: deleteUploadedImages
+ *     x-related-skills: [upload-image]
  *     requestBody:
  *       required: true
  *       content:
