@@ -260,7 +260,13 @@ export function TopicDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
-      queryClient.invalidateQueries({ queryKey: ['topics', 'joined'] });
+      // Prefix-match every topics list query so the explore / browse
+      // tab refreshes `isMember` for the joined topic. The previous
+      // `['topics', 'joined']` key was dead code — TopicsHomeScreen uses
+      // `['topics', 'all', sortKey, activeCategory, q]` and filters
+      // joined client-side, so it never matched. `['topics']` prefix
+      // catches every variant.
+      queryClient.invalidateQueries({ queryKey: ['topics'] });
       // ChatListScreen reads `['my-topics']` to know which topics to render
       // chat previews for; without this the newly-joined topic is missing
       // from the chat list until app restart.

@@ -26,6 +26,7 @@ import { usePostMutations } from '../../hooks/usePostMutations';
 import { MediaGallery } from '../../components/MediaGallery';
 import { PollRenderer } from '../../components/PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls } from '../../components/PostContent';
+import { PostBodyWithOg } from '../../components/PostBodyWithOg';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon, TrashIcon } from '../../components/icons';
 import Feather from 'react-native-vector-icons/Feather';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -1044,7 +1045,10 @@ export function PostDetailScreen() {
       {/* ── Body (video URLs stripped from legacy posts; inline images
               rendered by PostContent for back-compat) ── */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-        <PostContent content={stripVideoUrls(post.content ?? '')} />
+        <PostBodyWithOg
+          content={stripVideoUrls(post.content ?? '')}
+          onOpenUrl={(url) => navigation.navigate('InAppBrowser', { url })}
+        />
       </View>
 
       {/* ── Unified media block — swipeable image carousel + every video
@@ -1392,3 +1396,4 @@ export function PostDetailScreen() {
     </>
   );
 }
+

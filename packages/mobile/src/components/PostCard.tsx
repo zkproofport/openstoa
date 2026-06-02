@@ -8,6 +8,8 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { MediaGallery } from './MediaGallery';
 import { PollRenderer } from './PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls, type MediaItem } from './PostContent';
+import { PostBodyWithOg } from './PostBodyWithOg';
+import { useNavigation } from '@react-navigation/native';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon } from './icons';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
@@ -275,6 +277,7 @@ function makeStyles(colors: ThemeColors) {
 export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   const { t } = useTranslation();
   const { colors } = useThemeColors();
+  const navigation = useNavigation();
   const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
 
@@ -414,9 +417,10 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
             image at full width and the 80x80 strip below acts as a
             secondary gallery for skim navigation. */}
         {rawContent ? (
-          <PostContent
+          <PostBodyWithOg
             content={stripVideoUrls(rawContent)}
             maxLines={expanded ? undefined : PREVIEW_LINES}
+            onOpenUrl={(url) => navigation.navigate('InAppBrowser' as never, { url } as never)}
           />
         ) : null}
       </TouchableOpacity>

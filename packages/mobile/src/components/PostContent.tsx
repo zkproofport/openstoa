@@ -101,15 +101,48 @@ const SYSTEM_FONTS = [...defaultSystemFonts, 'Menlo'];
 // look identical on web and mobile before "Show more" is tapped.
 export const FEED_PREVIEW_MAX_HEIGHT = 200;
 
+const URL_REGEX = /(https?:\/\/[^\s<]+)/g;
+
+/**
+ * Wrap plain-text URLs in `<a>` tags so they render as tappable links.
+ * Mirrors the web's `SNSContent.autoLinkUrls`. URLs that are already
+ * inside `<a>` tags are left alone to avoid double-wrapping.
+ */
+function autoLinkUrls(html: string): string {
+  const parts = html.split(/(<[^>]*>)/);
+  let insideAnchor = false;
+  return parts
+    .map((part) => {
+      if (part.startsWith('<')) {
+        const lower = part.toLowerCase();
+        if (lower.startsWith('<a ') || lower.startsWith('<a>')) insideAnchor = true;
+        if (lower.startsWith('</a')) insideAnchor = false;
+        return part;
+      }
+      if (insideAnchor) return part;
+      return part.replace(URL_REGEX, (url) => `<a href="${url}">${url}</a>`);
+    })
+    .join('');
+}
+
 export function PostContent({ content, maxLines, omitImages, onPressLink }: PostContentProps) {
   const { colors } = useThemeColors();
   const { width } = useWindowDimensions();
 
   const processedContent = useMemo(() => {
-    if (!omitImages) return content || '';
-    return (content || '')
-      .replace(/<(img|video|iframe)\b[^>]*\/?>/gi, '')
-      .replace(/<\/(video|iframe)>/gi, '');
+    let html = content || '';
+    if (omitImages) {
+      html = html
+        .replace(/<(img|video|iframe)\b[^>]*\/?>/gi, '')
+        .replace(/<\/(video|iframe)>/gi, '');
+    }
+    // Auto-link plain-text URLs so the body matches what `SNSContent` on
+    // the web does (raw URLs are clickable + colored). Skip the contents
+    // of existing `<a>` tags so we never double-wrap. The renderer's
+    // `<a>` onPress hook then routes the tap into the host's in-app
+    // WebView via `onPressLink`.
+    html = autoLinkUrls(html);
+    return html;
   }, [content, omitImages]);
 
   const tagsStyles = useMemo<Record<string, object>>(
