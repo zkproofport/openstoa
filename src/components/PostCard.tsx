@@ -301,27 +301,34 @@ export default function PostCard({
       </div>
     ) : null;
 
+  // Pinned posts get a subtle Reddit/Discourse-style accent — a brand-color
+  // left border + faint tinted background so they stand out at a glance.
+  const pinnedAccentBg = resolvedIsPinned ? 'rgba(59,130,246,0.04)' : 'transparent';
+  const pinnedHoverBg = resolvedIsPinned ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.02)';
+
   return (
     <article
       style={{
         padding: '16px 20px',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
+        borderLeft: resolvedIsPinned ? '3px solid var(--accent)' : '3px solid transparent',
+        background: pinnedAccentBg,
         transition: 'background 0.12s',
         cursor: 'pointer',
         position: 'relative',
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)';
+        (e.currentTarget as HTMLElement).style.background = pinnedHoverBg;
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = 'transparent';
+        (e.currentTarget as HTMLElement).style.background = pinnedAccentBg;
       }}
     >
       {/* Pin button for topic creator — top right */}
       {isTopicCreator && (
         <button
           onClick={handlePin}
-          title={resolvedIsPinned ? 'Unpin' : 'Pin post'}
+          title={resolvedIsPinned ? 'Unpin post' : 'Pin post'}
           style={{
             position: 'absolute',
             top: 12,

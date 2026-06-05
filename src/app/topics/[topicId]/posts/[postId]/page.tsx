@@ -54,6 +54,9 @@ interface Post {
    *  pill next to the topic chip so the user sees their membership
    *  status without leaving the page. */
   isJoinedTopic?: boolean;
+  /** Whether the post is pinned by a topic admin/owner. Rendered as a
+   *  small "📌 Pinned" pill in the header row next to the topic chip. */
+  isPinned?: boolean;
 }
 
 interface Comment {
@@ -143,6 +146,11 @@ export default function PostPage() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  // Topic role ('owner' | 'admin' | 'member' | null) — gates the Pin/Unpin
+  // menu entry. Fetched separately from session role because session role
+  // is platform-wide and only the topic membership grants pin rights.
+  const [topicRole, setTopicRole] = useState<string | null>(null);
+  const [pinning, setPinning] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   // Post actions menu (kebab) + edit/delete state
@@ -195,6 +203,12 @@ export default function PostPage() {
     fetch(`/api/posts/${postId}/reactions`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.reactions) setReactions(data.reactions); })
+      .catch(() => {});
+    // Fetch the viewer's topic role so we know whether to surface the
+    // Pin/Unpin menu entry. 401/403/null all collapse to "no role".
+    fetch(`/api/topics/${topicId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.currentUserRole) setTopicRole(data.currentUserRole); })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
@@ -373,6 +387,25 @@ export default function PostPage() {
     }
   }
 
+  async function handlePinToggle() {
+    if (!post || pinning) return;
+    setPinning(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}/pin`, { method: 'POST' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Failed to toggle pin');
+      }
+      const data = await res.json();
+      setPost((prev) => (prev ? { ...prev, isPinned: !!data.isPinned } : prev));
+      setMenuOpen(false);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to toggle pin');
+    } finally {
+      setPinning(false);
+    }
+  }
+
   async function handleDeletePost() {
     if (!post || postDeleting) return;
     const ok = window.confirm('정말 이 글을 삭제하시겠어요? / Delete this post?');
@@ -521,7 +554,9 @@ export default function PostPage() {
           {(() => {
             const isAuthor = !!currentUserId && post.authorId === currentUserId;
             const isAdmin = currentUserRole === 'admin';
-            if (!isAuthor && !isAdmin) return null;
+            // Pin/Unpin is gated on topic role (owner/admin), not platform role.
+            const canPin = topicRole === 'owner' || topicRole === 'admin';
+            if (!isAuthor && !isAdmin && !canPin) return null;
             const recorded = ((post as { recordCount?: number }).recordCount ?? 0) > 0;
             return (
               <div style={{ position: 'absolute', top: 14, right: 14 }}>
@@ -558,47 +593,73 @@ export default function PostPage() {
                       zIndex: 20,
                     }}
                   >
-                    <button
-                      type="button"
-                      disabled={recorded}
-                      onClick={() => !recorded && openEdit()}
-                      title={recorded ? '온체인 기록 이후엔 수정할 수 없어요 / Locked after on-chain record' : undefined}
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        textAlign: 'left',
-                        background: 'none',
-                        border: 'none',
-                        color: recorded ? '#4b5563' : '#e5e7eb',
-                        cursor: recorded ? 'not-allowed' : 'pointer',
-                        padding: '8px 12px',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        fontFamily: 'var(--font-mono)',
-                      }}
-                    >
-                      Edit / 수정
-                    </button>
-                    <button
-                      type="button"
-                      disabled={postDeleting}
-                      onClick={handleDeletePost}
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        textAlign: 'left',
-                        background: 'none',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: postDeleting ? 'not-allowed' : 'pointer',
-                        padding: '8px 12px',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        fontFamily: 'var(--font-mono)',
-                      }}
-                    >
-                      {postDeleting ? 'Deleting…' : 'Delete / 삭제'}
-                    </button>
+                    {canPin && (
+                      <button
+                        type="button"
+                        disabled={pinning}
+                        onClick={handlePinToggle}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          background: 'none',
+                          border: 'none',
+                          color: '#e5e7eb',
+                          cursor: pinning ? 'not-allowed' : 'pointer',
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        {pinning ? '…' : (post.isPinned ? 'Unpin post' : 'Pin post')}
+                      </button>
+                    )}
+                    {(isAuthor || isAdmin) && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={recorded}
+                          onClick={() => !recorded && openEdit()}
+                          title={recorded ? '온체인 기록 이후엔 수정할 수 없어요 / Locked after on-chain record' : undefined}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            background: 'none',
+                            border: 'none',
+                            color: recorded ? '#4b5563' : '#e5e7eb',
+                            cursor: recorded ? 'not-allowed' : 'pointer',
+                            padding: '8px 12px',
+                            borderRadius: 6,
+                            fontSize: 13,
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          Edit / 수정
+                        </button>
+                        <button
+                          type="button"
+                          disabled={postDeleting}
+                          onClick={handleDeletePost}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            background: 'none',
+                            border: 'none',
+                            color: '#ef4444',
+                            cursor: postDeleting ? 'not-allowed' : 'pointer',
+                            padding: '8px 12px',
+                            borderRadius: 6,
+                            fontSize: 13,
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {postDeleting ? 'Deleting…' : 'Delete / 삭제'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -766,6 +827,31 @@ export default function PostPage() {
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                   Joined
+                </span>
+              )}
+              {post.isPinned && (
+                // Brand-tint pinned badge — matches the topic chip color so
+                // it reads as "this post is highlighted by the topic admin".
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: 'var(--accent)',
+                    background: 'rgba(59,130,246,0.10)',
+                    border: '1px solid rgba(59,130,246,0.25)',
+                    borderRadius: 4,
+                    padding: '2px 7px',
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    fontFamily: 'var(--font-mono)',
+                    lineHeight: 1.2,
+                  }}
+                  aria-label="Pinned post"
+                >
+                  📌 Pinned
                 </span>
               )}
             </div>

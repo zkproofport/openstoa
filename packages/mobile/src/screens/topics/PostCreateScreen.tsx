@@ -75,6 +75,10 @@ const MAX_TAGS = 5;
 const MAX_IMAGES = 10;
 const MAX_VIDEOS = 3;
 const KB_BAR_H = 44;
+// Single nativeID shared across all TextInputs in this screen so the
+// iOS keyboard accessory bar follows the user as they tab between
+// title, body, and tag inputs.
+const ACCESSORY_ID = 'postcreate-toolbar';
 // Tags accept Korean, Latin letters, digits, and underscore. The server-side
 // slug pipeline (api/topics/[topicId]/posts) downcases and rewrites the
 // remainder, so we don't need to be strict here — just bound the length and
@@ -563,18 +567,17 @@ function PostCreateScreenAuthed() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
-  // Keyboard accessory bar — iOS uses native InputAccessoryView (also
-  // supported by multiline TextInput in RN 0.72+ when both inputs declare
-  // the same inputAccessoryViewID). Android has no native accessory view,
-  // so we render a floating Animated bar that only appears while the
-  // keyboard is visible. Either way, no bar is shown on screen when the
-  // keyboard is dismissed.
+  // Keyboard accessory bar — iOS InputAccessoryView doesn't reliably attach
+  // to multiline TextInputs on RN 0.81.4, so we use a single Animated.View
+  // pattern on both platforms: track keyboard via show/hide listeners and
+  // float the toolbar above it. Bar only mounts while keyboard is visible.
   const insets = useSafeAreaInsets();
   const [kbVisible, setKbVisible] = useState(false);
-  const barBottom = useRef(new Animated.Value(0)).current;
+  const barBottom = useRef(new Animated.Value(insets.bottom)).current;
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => {
       setKbVisible(true);
       const kbHeight = e?.endCoordinates?.height ?? 0;
       const duration = e?.duration ?? 220;
@@ -584,19 +587,17 @@ function PostCreateScreenAuthed() {
         useNativeDriver: false,
       }).start();
     });
-    const hide = Keyboard.addListener('keyboardDidHide', (e) => {
+    const hide = Keyboard.addListener(hideEvt, (e) => {
       setKbVisible(false);
       const duration = e?.duration ?? 220;
       Animated.timing(barBottom, {
-        toValue: 0,
+        toValue: insets.bottom,
         duration,
         useNativeDriver: false,
       }).start();
     });
     return () => { show.remove(); hide.remove(); };
-  }, [barBottom]);
-
-  const ACCESSORY_ID = 'postcreate-toolbar';
+  }, [barBottom, insets.bottom]);
 
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [title, setTitle] = useState('');
@@ -932,10 +933,9 @@ function PostCreateScreenAuthed() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          // Reserve room on Android for the floating bar that appears above
-          // the keyboard while typing. iOS uses InputAccessoryView which
-          // sits on top of the keyboard natively — no extra padding needed.
-          mode === 'write' && Platform.OS === 'android'
+          // Reserve room for the floating toolbar that appears above the
+          // keyboard while typing so the active input isn't covered.
+          mode === 'write' && kbVisible
             ? { paddingBottom: KB_BAR_H + insets.bottom + 24 }
             : null,
         ]}
@@ -1128,6 +1128,7 @@ function PostCreateScreenAuthed() {
                   returnKeyType="done"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
                 />
               ) : null}
             </View>
@@ -1210,13 +1211,14 @@ function PostCreateScreenAuthed() {
         </View>
       </Modal>
 
-      {/* Keyboard accessory toolbar. iOS uses native InputAccessoryView so the
-          bar rides on top of the keyboard and is invisible when dismissed.
-          Android has no accessory view, so we render a floating Animated bar
-          that only mounts while the keyboard is open. */}
+      {/* iOS keyboard accessory — toolbar lives INSIDE the native keyboard
+          header via InputAccessoryView. Every TextInput on this screen
+          (title, body multiline, tag input) sets inputAccessoryViewID to
+          ACCESSORY_ID so the bar follows focus without any on-screen
+          painting. */}
       {mode === 'write' && Platform.OS === 'ios' ? (
-        <InputAccessoryView nativeID={ACCESSORY_ID} backgroundColor={colors.background.primary}>
-          <View style={[styles.kbBar, styles.kbBarStatic]}>
+        <InputAccessoryView nativeID={ACCESSORY_ID}>
+          <View style={[styles.kbBar, { paddingBottom: 8 }]}>
             <ToolbarButtons
               styles={styles}
               colors={colors}
@@ -1236,6 +1238,9 @@ function PostCreateScreenAuthed() {
           </View>
         </InputAccessoryView>
       ) : null}
+      {/* Android has no native accessory view — fall back to an Animated.View
+          that follows the soft keyboard. Only mounts while the keyboard is
+          open so it disappears with the keyboard. */}
       {mode === 'write' && Platform.OS === 'android' && kbVisible ? (
         <Animated.View
           style={[

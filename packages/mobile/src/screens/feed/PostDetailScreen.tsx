@@ -3,11 +3,10 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Image,
-  InputAccessoryView,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Share,
@@ -55,10 +54,6 @@ function loadClipboard(): ClipboardModule | null {
 // ---------------------------------------------------------------------------
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
-
-// iOS InputAccessoryView id — must match between the TextInput and the
-// InputAccessoryView wrapper so the toolbar floats above the keyboard.
-const COMMENT_ACCESSORY_ID = 'postdetail-comment-toolbar';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -167,6 +162,22 @@ function makeStyles(colors: ThemeColors) {
       fontSize: 10,
       fontWeight: '600',
       color: colors.status.success,
+    },
+    // Pinned badge — sits alongside the topic chip / joined badge so a
+    // pinned post reads as elevated the moment the detail view opens.
+    pinnedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.brand.primaryMuted,
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    pinnedBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.brand.primary,
     },
     authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     authorInfo: { flex: 1 },
@@ -1160,12 +1171,26 @@ export function PostDetailScreen() {
     <View>
       {/* ── Post header: topic label + author avatar + name + meta ── */}
       <View style={styles.postHeader}>
-        {post.topicTitle ? (
+        {post.topicTitle || isPinned ? (
           <View style={styles.topicRow}>
-            <Text style={styles.topicLabel}>{post.topicTitle}</Text>
+            {post.topicTitle ? (
+              <Text style={styles.topicLabel}>{post.topicTitle}</Text>
+            ) : null}
             {post.isJoinedTopic ? (
               <View style={styles.joinedBadge}>
                 <Text style={styles.joinedBadgeText}>{t('openstoa.topics.joinedBadge')}</Text>
+              </View>
+            ) : null}
+            {isPinned ? (
+              <View style={styles.pinnedBadge}>
+                <MaterialCommunityIcons
+                  name="pin"
+                  size={11}
+                  color={colors.brand.primary}
+                />
+                <Text style={styles.pinnedBadgeText}>
+                  {t('openstoa.postDetail.pinnedBadge')}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -1618,11 +1643,13 @@ export function PostDetailScreen() {
         )}
       </KeyboardAvoidingView>
 
-      {/* iOS InputAccessoryView — only mounted while composing so the
-          keyboard doesn't carry a phantom toolbar when the user taps a
-          different (non-comment) text input on the screen. The ID must
-          match the TextInput's `inputAccessoryViewID`. */}
-      {Platform.OS === 'ios' && composing ? (
+      {/* iOS InputAccessoryView — mounted UNCONDITIONALLY so the TextInput
+          inside is always available for focus(). Without this, tapping the
+          collapsed "Add comment" pill schedules setComposing(true) but the
+          TextInput hasn't mounted yet by the time focus() fires, so the
+          keyboard never appears. iOS only shows the accessory when this
+          TextInput has focus, so leaving it mounted is harmless. */}
+      {Platform.OS === 'ios' ? (
         <InputAccessoryView nativeID={COMMENT_ACCESSORY_ID}>
           {renderInputPill()}
         </InputAccessoryView>

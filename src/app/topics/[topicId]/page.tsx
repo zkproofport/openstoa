@@ -72,6 +72,19 @@ function PlusIcon() {
   );
 }
 
+function RefreshIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ display: 'block', animation: spinning ? 'spin 0.7s linear infinite' : 'none' }}
+    >
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function TopicPage() {
@@ -91,8 +104,9 @@ export default function TopicPage() {
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
 
-  // Sort
-  const [sortBy, setSortBy] = useState<'new' | 'popular' | 'recorded'>('new');
+  // Sort — "pinned" is client-side only; the API request still uses 'new'
+  // and the response is filtered in memory to isPinned=true posts.
+  const [sortBy, setSortBy] = useState<'new' | 'popular' | 'recorded' | 'pinned'>('new');
 
   // Tag filter
   const [popularTags, setPopularTags] = useState<{ id: string; name: string; slug: string; postCount: number }[]>([]);
@@ -233,16 +247,23 @@ export default function TopicPage() {
     setPostsLoading(true);
     try {
       const tagParam = tag ? `&tag=${encodeURIComponent(tag)}` : '';
-      const apiSort = currentSort === 'popular' ? 'hot' : currentSort;
+      // 'pinned' is a client-side filter — request newest, then filter in memory.
+      const apiSort = currentSort === 'popular' ? 'hot' : currentSort === 'pinned' ? 'new' : currentSort;
       const res = await fetch(
-        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}&sort=${apiSort}${tagParam}`
+        `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}&sort=${apiSort}${tagParam}`,
+        { cache: 'no-store' }
       );
       if (!res.ok) return;
       const data = await res.json();
-      const newPosts: Post[] = data.posts ?? [];
+      const rawPosts: Post[] = data.posts ?? [];
+      const newPosts = currentSort === 'pinned'
+        ? rawPosts.filter((p) => p.isPinned)
+        : rawPosts;
       setPosts((prev) => (replace ? newPosts : [...prev, ...newPosts]));
-      setHasMore(newPosts.length === PAGE_SIZE);
-      setOffset(currentOffset + newPosts.length);
+      // hasMore tracks the raw page size — keep paginating even when the
+      // pinned filter eats most of the page.
+      setHasMore(rawPosts.length === PAGE_SIZE);
+      setOffset(currentOffset + rawPosts.length);
     } finally {
       setPostsLoading(false);
     }
@@ -273,7 +294,7 @@ export default function TopicPage() {
     loadPosts(0, true, slug, sortBy);
   }
 
-  function handleSortChange(newSort: 'new' | 'popular' | 'recorded') {
+  function handleSortChange(newSort: 'new' | 'popular' | 'recorded' | 'pinned') {
     if (newSort === sortBy) return;
     setSortBy(newSort);
     setOffset(0);
@@ -870,6 +891,8 @@ export default function TopicPage() {
       </div>
 
       {/* ── Sort pills ── */}
+      {/* eslint-disable-next-line react/no-unknown-property */}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <div style={{
         marginBottom: 16,
         display: 'flex',
@@ -923,6 +946,50 @@ export default function TopicPage() {
           }}
         >
           Recorded
+        </button>
+        <button
+          onClick={() => handleSortChange('pinned')}
+          style={{
+            background: sortBy === 'pinned' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+            color: sortBy === 'pinned' ? '#fff' : '#9ca3af',
+            border: sortBy === 'pinned' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 9999,
+            padding: '4px 14px',
+            fontSize: 13,
+            fontWeight: sortBy === 'pinned' ? 600 : 400,
+            cursor: 'pointer',
+            transition: 'all 0.12s',
+          }}
+        >
+          📌 Pinned
+        </button>
+        {/* Manual refresh — resets to page 0 and re-fetches with no-store */}
+        <button
+          onClick={() => { setOffset(0); loadPosts(0, true, activeTag, sortBy); }}
+          disabled={postsLoading}
+          title="Refresh posts"
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 30,
+            height: 30,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '50%',
+            cursor: postsLoading ? 'default' : 'pointer',
+            color: '#9ca3af',
+            padding: 0,
+            transition: 'all 0.12s',
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            if (!postsLoading) (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
+          }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#9ca3af'; }}
+        >
+          <RefreshIcon spinning={postsLoading} />
         </button>
       </div>
 

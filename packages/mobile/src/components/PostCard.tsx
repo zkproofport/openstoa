@@ -61,6 +61,15 @@ function makeStyles(colors: ThemeColors) {
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border.default,
     },
+    // Pinned posts get a 3px brand-primary left accent + a subtle tint
+    // so they read as elevated in the list (Reddit/Discourse pattern).
+    // Padding adjusted to keep the body aligned with non-pinned cards.
+    cardPinned: {
+      borderLeftWidth: 3,
+      borderLeftColor: colors.brand.primary,
+      backgroundColor: colors.brand.primaryMuted + '20',
+      paddingLeft: 13,
+    },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -429,7 +438,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   }, [bodyOverflow]);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, post.isPinned ? styles.cardPinned : null]}>
       <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
         {/* Header: topic chip + joined badge (same row, side-by-side) +
             author + time. Joined badge sits immediately right of the topic

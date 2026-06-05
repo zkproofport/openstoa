@@ -199,7 +199,8 @@
       "sort": {
         "new": "최신",
         "popular": "인기",
-        "recorded": "기록됨"
+        "recorded": "기록됨",
+        "pinned": "고정됨"
       }
     },
     "members": {

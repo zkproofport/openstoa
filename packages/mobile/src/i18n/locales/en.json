@@ -199,7 +199,8 @@
       "sort": {
         "new": "New",
         "popular": "Popular",
-        "recorded": "Recorded"
+        "recorded": "Recorded",
+        "pinned": "Pinned"
       }
     },
     "members": {

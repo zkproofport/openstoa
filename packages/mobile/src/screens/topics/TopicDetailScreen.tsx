@@ -51,7 +51,7 @@ interface InviteTokenResponse {
   expiresAt: string;
 }
 
-type SortKey = 'new' | 'popular' | 'recorded';
+type SortKey = 'new' | 'popular' | 'recorded' | 'pinned';
 
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
@@ -210,12 +210,18 @@ export function TopicDetailScreen() {
 
   const postsQuery = useInfiniteQuery<PostsPageResponse, Error>({
     queryKey: ['topic', topicId, 'posts', sortKey, activeTag, q],
+    staleTime: 0, // always re-fetch on focus/navigation so new posts appear immediately
     queryFn: async ({ pageParam }) => {
       const offset = (pageParam as number | undefined) ?? 0;
+      // The "pinned" chip is a pure client-side filter — the server has no
+      // ?sort=pinned endpoint, so we request the default "new" ordering
+      // and filter the response below to isPinned=true only.
+      const serverSort =
+        sortKey === 'popular' ? 'hot' : sortKey === 'pinned' ? 'new' : sortKey;
       const params = new URLSearchParams({
         limit: '20',
         offset: String(offset),
-        sort: sortKey === 'popular' ? 'hot' : sortKey,
+        sort: serverSort,
       });
       if (activeTag) params.set('tag', activeTag);
       if (q) params.set('q', q);
@@ -376,9 +382,17 @@ export function TopicDetailScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: topic?.title ?? t('openstoa.topics.detailTitle'),
-      headerRight: headerActionItems.length === 0
-        ? undefined
-        : () => (
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* Manual refresh button — re-fetches topic + posts */}
+          <TouchableOpacity
+            onPress={onRefresh}
+            style={styles.headerButton}
+            accessibilityLabel={t('openstoa.common.refresh', { defaultValue: 'Refresh' })}
+          >
+            <Feather name="refresh-cw" size={18} color={colors.text.secondary} />
+          </TouchableOpacity>
+          {headerActionItems.length > 0 && (
             <TouchableOpacity
               onPress={showActionsSheet}
               style={styles.headerButton}
@@ -386,9 +400,11 @@ export function TopicDetailScreen() {
             >
               <Feather name="more-horizontal" size={22} color={colors.brand.primary} />
             </TouchableOpacity>
-          ),
+          )}
+        </View>
+      ),
     });
-  }, [navigation, topic, headerActionItems, showActionsSheet, t, colors, styles]);
+  }, [navigation, topic, headerActionItems, showActionsSheet, onRefresh, t, colors, styles]);
 
   const rawPosts = postsQuery.data?.pages.flatMap((p) => p.posts) ?? [];
   // Defensive de-duplication to avoid "two children with the same key" warnings.
@@ -407,9 +423,22 @@ export function TopicDetailScreen() {
   // the client guarantees the Recorded tab only shows posts that have
   // at least one on-chain record receipt — matching the user's mental
   // model of "Recorded = on-chain attested posts only".
-  const allPosts = sortKey === 'recorded'
-    ? dedupedPosts.filter((p) => (p as Post & { recordCount?: number }).recordCount && (p as Post & { recordCount?: number }).recordCount! > 0)
-    : dedupedPosts;
+  //
+  // Client-side filter for the "Pinned" sort pill — server has no
+  // ?sort=pinned endpoint, so we filter the default-sorted response to
+  // isPinned=true only.
+  let allPosts = dedupedPosts;
+  if (sortKey === 'recorded') {
+    allPosts = dedupedPosts.filter(
+      (p) =>
+        (p as Post & { recordCount?: number }).recordCount &&
+        (p as Post & { recordCount?: number }).recordCount! > 0,
+    );
+  } else if (sortKey === 'pinned') {
+    allPosts = dedupedPosts.filter(
+      (p) => (p as Post & { isPinned?: boolean }).isPinned === true,
+    );
+  }
 
   const onRefresh = useCallback(() => {
     topicQuery.refetch();
@@ -468,6 +497,7 @@ export function TopicDetailScreen() {
     { key: 'new', label: t('openstoa.topicDetail.sort.new') },
     { key: 'popular', label: t('openstoa.topicDetail.sort.popular') },
     { key: 'recorded', label: t('openstoa.topicDetail.sort.recorded') },
+    { key: 'pinned', label: t('openstoa.topicDetail.sort.pinned') },
   ];
 
   const ListHeader = (
