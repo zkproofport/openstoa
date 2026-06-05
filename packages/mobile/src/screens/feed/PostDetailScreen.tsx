@@ -5,6 +5,7 @@ import {
   Alert,
   FlatList,
   Image,
+  InputAccessoryView,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -54,6 +55,10 @@ function loadClipboard(): ClipboardModule | null {
 // ---------------------------------------------------------------------------
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
+
+// iOS InputAccessoryView id — must match between the TextInput and the
+// InputAccessoryView wrapper so the toolbar floats above the keyboard.
+const COMMENT_ACCESSORY_ID = 'postdetail-comment-toolbar';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -477,6 +482,31 @@ function makeStyles(colors: ThemeColors) {
     },
     sendButtonDisabled: { backgroundColor: colors.background.tertiary },
     sendLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+
+    // Collapsed footer — single "Add comment" pill shown when the keyboard
+    // is dismissed. Tapping it switches to composing mode and focuses the
+    // TextInput (which lives in the iOS InputAccessoryView, or the
+    // Animated footer row on Android).
+    addCommentBar: {
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border.default,
+      backgroundColor: colors.background.primary,
+    },
+    addCommentBtn: {
+      flex: 1,
+      backgroundColor: colors.background.secondary,
+      borderRadius: 22,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      minHeight: 40,
+      justifyContent: 'center',
+    },
+    addCommentText: {
+      fontSize: 15,
+      color: colors.text.tertiary,
+    },
   });
 }
 
@@ -613,11 +643,21 @@ export function PostDetailScreen() {
   // home indicator). Without this, the constant 8pt + safe-area padding
   // left a visible gap between the input and the keyboard.
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  // Composing mode: when false, footer shows a single "Add comment" pill.
+  // When true, footer renders the actual TextInput + Send button (inside
+  // an iOS InputAccessoryView, or on Android above the soft keyboard via
+  // KeyboardAvoidingView).
+  const [composing, setComposing] = useState(false);
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const show = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
-    const hide = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
+    const hide = Keyboard.addListener(hideEvt, () => {
+      setKeyboardOpen(false);
+      // Keyboard dismissed → exit composing mode so the footer collapses
+      // back to the single "Add comment" pill.
+      setComposing(false);
+    });
     return () => { show.remove(); hide.remove(); };
   }, []);
 
@@ -945,8 +985,21 @@ export function PostDetailScreen() {
           result.message ?? '',
         );
       }
+    } else {
+      // Success — collapse footer + dismiss keyboard so the user sees
+      // their new comment land in the list.
+      Keyboard.dismiss();
+      setComposing(false);
     }
   });
+
+  // Enter composing mode and focus the input. Slight delay on iOS lets
+  // the InputAccessoryView mount before we call focus(), otherwise the
+  // keyboard appears without the accessory toolbar attached.
+  const beginComposing = useCallback(() => {
+    setComposing(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Render states
@@ -1256,11 +1309,11 @@ export function PostDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Comment count — tapping focuses the input */}
+        {/* Comment count — tapping enters composing mode + focuses input */}
         <TouchableOpacity
           style={styles.actionBtn}
           activeOpacity={0.7}
-          onPress={() => inputRef.current?.focus()}
+          onPress={beginComposing}
         >
           <CommentIcon size={20} color={colors.text.tertiary} />
           {commentList.length > 0 ? (
@@ -1445,11 +1498,79 @@ export function PostDetailScreen() {
     </View>
   );
 
+  // The actual input pill (TextInput + Send button). Reused inside the
+  // iOS InputAccessoryView and the Android Animated footer so behaviour
+  // stays in sync across platforms.
+  const renderInputPill = () => (
+    <View
+      style={[
+        styles.inputRow,
+        { paddingBottom: keyboardOpen ? 6 : Math.max(insets.bottom, 8) },
+      ]}
+    >
+      <View style={styles.inputPill}>
+        <TextInput
+          ref={inputRef}
+          style={styles.input}
+          placeholder={t('openstoa.postDetail.addCommentPlaceholder')}
+          placeholderTextColor={colors.text.tertiary}
+          value={draft}
+          onChangeText={setDraft}
+          editable={!sending}
+          multiline
+          // iOS only — anchors this TextInput to the InputAccessoryView
+          // below so the toolbar floats above the keyboard. RN supports
+          // this for multiline TextInputs since 0.72.
+          inputAccessoryViewID={Platform.OS === 'ios' ? COMMENT_ACCESSORY_ID : undefined}
+        />
+        <TouchableOpacity
+          style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
+          onPress={handleSendComment}
+          disabled={!draft.trim() || sending}
+          activeOpacity={0.8}
+          accessibilityLabel={t('openstoa.postDetail.send')}
+        >
+          {sending ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Feather name="arrow-up" size={18} color="#FFFFFF" />
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // Collapsed footer — a single "Add comment" pill. Tapping it switches
+  // to composing mode + opens the keyboard.
+  const renderAddCommentBar = () => (
+    <View
+      style={[
+        styles.addCommentBar,
+        { paddingBottom: Math.max(insets.bottom, 8) },
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.addCommentBtn}
+        activeOpacity={0.7}
+        onPress={beginComposing}
+        accessibilityRole="button"
+        accessibilityLabel={t('openstoa.postDetail.addCommentPlaceholder')}
+      >
+        <Text style={styles.addCommentText}>
+          {t('openstoa.postDetail.addCommentPlaceholder')}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // iOS: rely on InputAccessoryView to float the input above the
+        // keyboard while composing — KeyboardAvoidingView would otherwise
+        // double-shift the layout. Android still uses padding behaviour.
+        behavior={Platform.OS === 'android' ? 'height' : undefined}
         // iOS: when the navigation header is opaque, KeyboardAvoidingView
         // needs the header height as the vertical offset so the avoided
         // region starts below the header instead of below the screen top.
@@ -1481,45 +1602,31 @@ export function PostDetailScreen() {
           keyboardShouldPersistTaps="handled"
         />
 
-        {/* Fixed bottom comment input — Reddit / Threads-style single pill.
-            Send button sits inside the pill so the whole bar reads as one
-            keyboard-attached widget. paddingBottom collapses to 0 when the
-            keyboard is open so the pill sits flush with the keyboard top
-            edge; it restores to insets.bottom when the keyboard dismisses
-            so the pill clears the home indicator. */}
-        <View
-          style={[
-            styles.inputRow,
-            { paddingBottom: keyboardOpen ? 6 : Math.max(insets.bottom, 8) },
-          ]}
-        >
-          <View style={styles.inputPill}>
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              placeholder={t('openstoa.postDetail.addCommentPlaceholder')}
-              placeholderTextColor={colors.text.tertiary}
-              value={draft}
-              onChangeText={setDraft}
-              editable={!sending}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
-              onPress={handleSendComment}
-              disabled={!draft.trim() || sending}
-              activeOpacity={0.8}
-              accessibilityLabel={t('openstoa.postDetail.send')}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Feather name="arrow-up" size={18} color="#FFFFFF" />
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Footer — collapsed "Add comment" pill by default, real input
+            pill when composing. iOS keeps the input inside the
+            InputAccessoryView (below) so it floats above the keyboard;
+            Android renders the input inline above the soft keyboard via
+            KeyboardAvoidingView. */}
+        {Platform.OS === 'ios' ? (
+          // iOS: footer is always the collapsed bar; the real input lives
+          // in the InputAccessoryView and appears with the keyboard.
+          renderAddCommentBar()
+        ) : composing ? (
+          renderInputPill()
+        ) : (
+          renderAddCommentBar()
+        )}
       </KeyboardAvoidingView>
+
+      {/* iOS InputAccessoryView — only mounted while composing so the
+          keyboard doesn't carry a phantom toolbar when the user taps a
+          different (non-comment) text input on the screen. The ID must
+          match the TextInput's `inputAccessoryViewID`. */}
+      {Platform.OS === 'ios' && composing ? (
+        <InputAccessoryView nativeID={COMMENT_ACCESSORY_ID}>
+          {renderInputPill()}
+        </InputAccessoryView>
+      ) : null}
 
       {/* Emoji picker bottom sheet */}
       <Modal

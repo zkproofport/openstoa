@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import SNSContent from '@/components/SNSContent';
 import Avatar from '@/components/Avatar';
@@ -130,6 +130,9 @@ export default function PostCard({
   expandable = true,
 }: PostCardProps) {
   const [expanded, setExpanded] = useState(false);
+  // I04: overflow detection — true when body content exceeds 200px height.
+  const [bodyOverflows, setBodyOverflows] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   // Poll state — local cache so vote/unvote feels instant.
   const [poll, setPoll] = useState<Poll | null>(post.poll ?? null);
@@ -137,6 +140,41 @@ export default function PostCard({
   useEffect(() => {
     setPoll(post.poll ?? null);
   }, [post.poll]);
+
+  // I04: detect overflow on the body wrapper using ResizeObserver.
+  // Runs only when not yet expanded; once expanded we never collapse.
+  useEffect(() => {
+    if (expanded || !expandable) return;
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const check = () => setBodyOverflows(el.scrollHeight > 202);
+
+    check();
+
+    // Re-check after images load
+    const imgs = el.querySelectorAll<HTMLImageElement>('img');
+    imgs.forEach((img) => {
+      if (!img.complete) {
+        img.addEventListener('load', check, { once: true });
+        img.addEventListener('error', check, { once: true });
+      }
+    });
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(check);
+      ro.observe(el);
+    }
+
+    return () => {
+      imgs.forEach((img) => {
+        img.removeEventListener('load', check);
+        img.removeEventListener('error', check);
+      });
+      ro?.disconnect();
+    };
+  }, [expanded, expandable, post.content]);
 
   const submitPollVote = useCallback(
     async (optionIds: string[]) => {
@@ -183,10 +221,6 @@ export default function PostCard({
       onPin?.(post.id);
     } catch {}
   };
-
-  const handleToggleExpand = useCallback(() => {
-    setExpanded(true);
-  }, []);
 
   const resolvedIsPinned = isPinned ?? post.isPinned;
   const resolvedUserVoted = userVoted ?? post.userVoted ?? null;
@@ -307,6 +341,30 @@ export default function PostCard({
 
       {topicBreadcrumb}
 
+      {/* I06: per-topic feed (showTopic=false) — render topic chip + joined pill
+          above the card body, outside the nav Link to avoid nested anchors. */}
+      {!showTopic && post.isJoinedTopic && post.topicTitle && post.topicId && (
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Link
+            href={`/topics/${post.topicId}`}
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--accent)',
+              textDecoration: 'none',
+              letterSpacing: '0.02em',
+            }}
+          >
+            t/{post.topicTitle}
+          </Link>
+          {joinedPill}
+        </div>
+      )}
+
       {/* Card body — clicking navigates; action bar stops propagation */}
       <Link
         href={href}
@@ -358,28 +416,68 @@ export default function PostCard({
             </span>
           )}
           <span>{post.title}</span>
-          {/* When there's no topic breadcrumb (per-topic feed) the pill has
-              nowhere to go in the breadcrumb row — surface it next to the
-              title instead so the user still sees the membership badge. */}
-          {!showTopic && joinedPill}
         </h3>
 
-        <div>
-          {/* Media is rendered by MediaGallery below — keep SNSContent
-              focused on the text body so we don't double-up images.
-              `stripInlineImages` removes any inline `<img>` tags from the
-              body so the same image isn't drawn twice (broken-icon edge
-              case on web — W05). */}
+        {/* I04: body wrapper with max-height cap when not expanded. */}
+        <div
+          ref={bodyRef}
+          style={
+            expandable && !expanded
+              ? { maxHeight: 200, overflow: 'hidden', position: 'relative' }
+              : undefined
+          }
+        >
+          {/* Fade gradient when content is clipped. */}
+          {expandable && !expanded && bodyOverflows && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 56,
+                background: 'linear-gradient(transparent, #0a0a0a)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+          {/* TODO: SNSContent owns its own truncation path (truncate prop +
+              onToggleExpand). With I04 we cap height at the PostCard level
+              instead. Passing truncate=false always here to avoid double
+              capping; SNSContent still handles link-preview / OG card in
+              non-truncate mode. When SNSContent exposes a prop to disable
+              its internal fade/button without disabling link-preview, use it. */}
           <SNSContent
             html={stripVideoUrls(post.content)}
-            truncate={expandable ? !expanded : true}
-            maxLines={3}
-            onToggleExpand={expandable ? handleToggleExpand : undefined}
+            truncate={false}
             stripInlineImages
           />
         </div>
 
-        {!expanded && (() => {
+        {/* I04: Show more button — only when body overflows and not yet expanded. */}
+        {expandable && !expanded && bodyOverflows && (
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(true); }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--accent)',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+              padding: '2px 0',
+              marginTop: 6,
+              letterSpacing: '-0.01em',
+              display: 'block',
+            }}
+          >
+            Show more
+          </button>
+        )}
+
+        {/* I04: always show media (text expansion doesn't hide media). */}
+        {(() => {
           const { images, videos } = collectPostMedia(post);
           return <MediaGallery images={images} videos={videos} mode="feed" />;
         })()}

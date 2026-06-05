@@ -25,13 +25,36 @@ interface SNSContentProps {
   maxLines?: number;
   onToggleExpand?: () => void;
   onOverflowChange?: (isOverflowing: boolean) => void;
-  /** When true, inline non-GIF `<img>` tags are stripped from the rendered
-   *  body. Callers that render a separate MediaGallery (PostCard feed +
-   *  PostDetail) opt in so the same image doesn't render twice and the
-   *  broken-icon edge case from inline rendering disappears. Defaults to
-   *  false so comments and any other surface that genuinely embeds
-   *  images inline keep working. (W05) */
+  /**
+   * Strips `<img>` tags FROM THE BODY HTML only. Has NO effect on
+   * `mediaImages` (Photo button uploads) which are rendered separately by
+   * MediaGallery / MediaImages. Animated GIFs are also preserved — they
+   * have a dedicated GifImages renderer.
+   *
+   * Use case: collapsed feed card where the first image is shown above
+   * the text preview by the parent (PostCard) and the body would
+   * otherwise render the same image inline a second time.
+   *
+   * Invariants:
+   *   1. stripInlineImages only mutates the HTML string passed via `html`.
+   *      It never reads or filters `mediaImages` / `mediaVideos`.
+   *   2. GIFs in the body are preserved regardless of this flag because
+   *      they are rendered by the inline GifImages component, not the
+   *      MediaGallery.
+   *
+   * Defaults to false so comments and any other surface that genuinely
+   * embeds images inline keep working. (W05)
+   */
   stripInlineImages?: boolean;
+  /**
+   * When true and `truncate` is also true, the inline OG card (LinkPreview)
+   * is rendered inside the clipped body so the user sees the card preview
+   * in the collapsed feed card. The whole body+card stack is wrapped in
+   * the 200px maxHeight clip; clicking Show more removes the clip and
+   * reveals everything. Defaults to false to preserve the pre-I10 behaviour
+   * where the truncated body did not include the OG card. (I10)
+   */
+  inlineOgOnTruncate?: boolean;
 }
 
 // Treat as HTML if it contains any tag-like sequence; otherwise plain text.
@@ -184,8 +207,12 @@ function extractVideoUrls(html: string): { videoEmbeds: VideoEmbed[]; cleanedHtm
 //      them inline-ish via the GifImages renderer below) — we strip
 //      those URLs from the gallery side, so non-GIF strips here.
 //
-// We only strip non-GIF `<img>` tags. Anything else (links, text, breaks,
-// br paragraphs) is left untouched.
+// Invariants (verified):
+//   - Only the `html` argument (body HTML) is mutated. The caller's
+//     `media.images` / `mediaImages` array is NEVER inspected here.
+//   - Animated GIF `<img>` tags pass through unchanged so the GifImages
+//     renderer below can still show them.
+//   - Non-`<img>` tags (links, text, <br>, <p>) are untouched.
 function stripNonGifImgTags(html: string): string {
   if (!html) return '';
   return html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>\s*/gi, (match, src) => {
@@ -369,9 +396,15 @@ export default function SNSContent({
   onToggleExpand,
   onOverflowChange,
   stripInlineImages = false,
+  inlineOgOnTruncate = false,
 }: SNSContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
+
+  // I01: Detect plain-text vs legacy HTML up front. Plain text is rendered
+  // via JSX with whiteSpace:pre-wrap so consecutive `\n` produce visible
+  // blank rows. Legacy HTML keeps the auto-link + extract pipeline below.
+  const isPlainText = useMemo(() => !!html && !looksLikeHtml(html), [html]);
 
   // Plain text from the unified composer is escaped + <br>'d. Legacy HTML
   // posts go through the existing extraction pipeline unchanged.
@@ -430,11 +463,13 @@ export default function SNSContent({
     return out;
   }, [videoEmbeds, mediaVideos]);
 
-  // First URL in content for link preview (only in non-truncated mode)
+  // First URL in content for link preview. In truncate mode we still
+  // compute it when `inlineOgOnTruncate` is set (I10) so the collapsed
+  // feed card can show the OG card inside the 200px clip.
   const firstUrl = useMemo(() => {
-    if (truncate) return null;
+    if (truncate && !inlineOgOnTruncate) return null;
     return extractFirstUrl(html);
-  }, [html, truncate]);
+  }, [html, truncate, inlineOgOnTruncate]);
 
   // Filter out GIF and video URLs from link preview
   const previewUrl = useMemo(() => {
@@ -459,7 +494,9 @@ export default function SNSContent({
   const bodyChunks = useMemo<
     Array<{ kind: 'html'; html: string } | { kind: 'preview' }>
   >(() => {
-    if (truncate || !previewUrl) {
+    // Truncated mode skips chunking UNLESS the caller opted into
+    // inline OG within the clipped body (I10).
+    if ((truncate && !inlineOgOnTruncate) || !previewUrl) {
       return [{ kind: 'html', html: linkedHtml }];
     }
     // Split paragraphs on 2+ consecutive <br> tags (with optional whitespace).
@@ -488,14 +525,18 @@ export default function SNSContent({
       if (i === targetIdx) chunks.push({ kind: 'preview' });
     });
     return chunks;
-  }, [linkedHtml, previewUrl, truncate]);
+  }, [linkedHtml, previewUrl, truncate, inlineOgOnTruncate]);
 
   // True when the inline split successfully placed a LinkPreview in the
   // body. The trailing post-body LinkPreview render path then skips its
-  // own copy to avoid double cards.
+  // own copy to avoid double cards. The truncate + plain-text branch
+  // (I01 + I10) inlines the card directly inside the clipped wrapper,
+  // so flag that too.
   const previewRenderedInline = useMemo(
-    () => bodyChunks.some((c) => c.kind === 'preview'),
-    [bodyChunks],
+    () =>
+      bodyChunks.some((c) => c.kind === 'preview') ||
+      (!!truncate && inlineOgOnTruncate && isPlainText && !!previewUrl),
+    [bodyChunks, truncate, inlineOgOnTruncate, isPlainText, previewUrl],
   );
 
   useEffect(() => {
@@ -550,12 +591,53 @@ export default function SNSContent({
           <div
             ref={contentRef}
             className="sns-content-body"
-            dangerouslySetInnerHTML={{ __html: linkedHtml }}
             style={{
               maxHeight: 200,
               overflow: 'hidden',
+              // I01: plain-text posts preserve consecutive `\n` as visible
+              // blank rows. HTML posts ignore this (they use <br>/<p>).
+              whiteSpace: isPlainText ? 'pre-wrap' : undefined,
             }}
-          />
+          >
+            {isPlainText ? (
+              // I01: render raw text so newlines remain literal — combined
+              // with whiteSpace:pre-wrap this yields one visible blank row
+              // per consecutive `\n`.
+              <>
+                {html}
+                {/* I10: inline OG inside the clipped body when requested. */}
+                {inlineOgOnTruncate && previewUrl && (
+                  <LinkPreview url={previewUrl} />
+                )}
+              </>
+            ) : (
+              // Legacy HTML path. When inlineOgOnTruncate is set we emit
+              // the same paragraph+preview chunks as the expanded view so
+              // the OG card sits inside the 200px clip (I10). Otherwise we
+              // render the body as a single HTML blob (pre-I10 behaviour).
+              inlineOgOnTruncate && bodyChunks.some((c) => c.kind === 'preview') ? (
+                <>
+                  {bodyChunks.map((chunk, i) => {
+                    if (chunk.kind === 'preview') {
+                      if (!previewUrl) return null;
+                      return <LinkPreview key={`og-${i}`} url={previewUrl} />;
+                    }
+                    return (
+                      <div
+                        key={`p-${i}`}
+                        style={{
+                          marginBottom: i < bodyChunks.length - 1 ? '0.85em' : 0,
+                        }}
+                        dangerouslySetInnerHTML={{ __html: chunk.html }}
+                      />
+                    );
+                  })}
+                </>
+              ) : (
+                <div dangerouslySetInnerHTML={{ __html: linkedHtml }} />
+              )
+            )}
+          </div>
           {isOverflowing && (
             <div style={{
               position: 'absolute',
@@ -567,6 +649,17 @@ export default function SNSContent({
               pointerEvents: 'none',
             }} />
           )}
+        </div>
+      ) : isPlainText ? (
+        // I01: expanded plain-text path. whiteSpace:pre-wrap turns every
+        // `\n` into a visible line break, including consecutive runs.
+        // The OG card is rendered by the trailing LinkPreview block below
+        // so the gallery/gif precedence rules stay identical to HTML mode.
+        <div
+          className="sns-content-body"
+          style={{ whiteSpace: 'pre-wrap' }}
+        >
+          {html}
         </div>
       ) : (
         // W04: inline OG. When `bodyChunks` contains a `preview` marker we

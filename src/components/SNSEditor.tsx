@@ -14,24 +14,14 @@ interface SNSEditorProps {
   onChange?: (state: SNSEditorState) => void;
   placeholder?: string;
   minHeight?: number;
-  draftKey?: string;
   /** Cap on how many image URLs can live in `images` at once. Default 10
    *  to match mobile-side composer rules. */
   maxImages?: number;
   /** Cap on how many video URLs can live in `videos`. Default 3. */
   maxVideos?: number;
   /** Initial state to hydrate the editor from (used for the edit form so
-   *  the user sees the post's current body/media). When set, the draft
-   *  autoload is skipped so an in-progress draft doesn't trample the
-   *  post being edited. */
+   *  the user sees the post's current body/media). */
   initialState?: SNSEditorState;
-  /** Bump this number from the parent to force the editor's internal
-   *  content/images/videos state back to empty. Used by the topic-page
-   *  Reset button so the textarea visually clears even though the editor
-   *  owns its own state (uncontrolled `content`). The effect runs only
-   *  when the signal value changes, so the very first render — when
-   *  parents typically pass `0` — does NOT trigger a wipe. */
-  resetSignal?: number;
 }
 
 // ─── Video URL Validation ──────────────────────────────────────────────────
@@ -105,87 +95,15 @@ function UploadIndicator({ count, total }: { count: number; total: number }) {
   );
 }
 
-// ─── Draft Logic ────────────────────────────────────────────────────────────
-
-interface DraftData {
-  content: string;
-  images: string[];
-  videos: string[];
-  savedAt: number;
-}
-
-function useDraftSave(draftKey: string) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  const saveDraft = useCallback((state: { content: string; images: string[]; videos: string[] }) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setSaved(false);
-    timerRef.current = setTimeout(() => {
-      try {
-        const hasAny = state.content.trim() || state.images.length > 0 || state.videos.length > 0;
-        if (hasAny) {
-          localStorage.setItem(draftKey, JSON.stringify({
-            content: state.content,
-            images: state.images,
-            videos: state.videos,
-            savedAt: Date.now(),
-          }));
-          setSaved(true);
-          setTimeout(() => setSaved(false), 2000);
-        } else {
-          localStorage.removeItem(draftKey);
-        }
-      } catch {}
-    }, 1200);
-  }, [draftKey]);
-
-  const loadDraft = useCallback((): DraftData | null => {
-    try {
-      const raw = localStorage.getItem(draftKey);
-      if (!raw) return null;
-      const data = JSON.parse(raw) as Partial<DraftData> & { html?: string };
-      const savedAt = typeof data.savedAt === 'number' ? data.savedAt : 0;
-      const age = Date.now() - savedAt;
-      if (age > 24 * 60 * 60 * 1000) {
-        localStorage.removeItem(draftKey);
-        return null;
-      }
-      // Legacy drafts stored { html, savedAt } — best-effort migration: strip tags.
-      if (typeof data.html === 'string' && typeof data.content !== 'string') {
-        const text = data.html
-          .replace(/<br\s*\/?>/gi, '\n')
-          .replace(/<\/(p|div)>/gi, '\n')
-          .replace(/<[^>]*>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>');
-        return { content: text.trim(), images: [], videos: [], savedAt };
-      }
-      return {
-        content: typeof data.content === 'string' ? data.content : '',
-        images: Array.isArray(data.images) ? data.images.filter((x): x is string => typeof x === 'string') : [],
-        videos: Array.isArray(data.videos) ? data.videos.filter((x): x is string => typeof x === 'string') : [],
-        savedAt,
-      };
-    } catch { return null; }
-  }, [draftKey]);
-
-  return { saved, saveDraft, loadDraft };
-}
-
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function SNSEditor({
   onChange,
   placeholder = 'Write something…',
   minHeight = 180,
-  draftKey = 'openstoa-draft',
   maxImages = 10,
   maxVideos = 3,
   initialState,
-  resetSignal,
 }: SNSEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -203,13 +121,10 @@ export default function SNSEditor({
   const [videoUrlDraft, setVideoUrlDraft] = useState('');
   const [videoError, setVideoError] = useState('');
 
-  const { saved, saveDraft, loadDraft } = useDraftSave(draftKey);
-
   // Emit unified state whenever any piece changes.
   const emit = useCallback((next: { content: string; images: string[]; videos: string[] }) => {
     onChange?.(next);
-    saveDraft(next);
-  }, [onChange, saveDraft]);
+  }, [onChange]);
 
   // Auto-grow textarea to fit content.
   const autoGrow = useCallback(() => {
@@ -219,75 +134,11 @@ export default function SNSEditor({
     el.style.height = `${Math.max(minHeight, el.scrollHeight)}px`;
   }, [minHeight]);
 
-  // Load draft on mount — skip when an initialState is supplied (edit form
-  // shouldn't be trampled by an in-progress draft).
-  const didLoadDraft = useRef(false);
+  // On mount, defer autoGrow so the textarea sees the initial value.
   useEffect(() => {
-    if (didLoadDraft.current) return;
-    didLoadDraft.current = true;
-    if (initialState) {
-      // Defer the autoGrow until after the initial paint.
-      setTimeout(autoGrow, 0);
-      return;
-    }
-    const draft = loadDraft();
-    if (draft) {
-      setContent(draft.content);
-      setImages(draft.images);
-      setVideos(draft.videos);
-      onChange?.({ content: draft.content, images: draft.images, videos: draft.videos });
-      // Defer to next tick so textarea sees the new value.
-      setTimeout(autoGrow, 0);
-    }
-  }, [loadDraft, onChange, autoGrow, initialState]);
-
-  // When `draftKey` changes mid-mount (e.g. the parent stays mounted but
-  // switches the per-topic draft slot), re-hydrate from the new key so the
-  // user sees the right topic's saved draft instead of stale content from
-  // the previous one. We deliberately re-run on draftKey changes only.
-  const prevDraftKey = useRef(draftKey);
-  useEffect(() => {
-    if (prevDraftKey.current === draftKey) return;
-    prevDraftKey.current = draftKey;
-    if (initialState) return;
-    const draft = loadDraft();
-    if (draft) {
-      setContent(draft.content);
-      setImages(draft.images);
-      setVideos(draft.videos);
-      onChange?.({ content: draft.content, images: draft.images, videos: draft.videos });
-    } else {
-      setContent('');
-      setImages([]);
-      setVideos([]);
-      onChange?.({ content: '', images: [], videos: [] });
-    }
     setTimeout(autoGrow, 0);
-  }, [draftKey, loadDraft, onChange, autoGrow, initialState]);
-
-  // Reset signal — parent bumps the number to wipe the editor visually.
-  // Compared with the previous value so the initial mount (e.g. signal=0)
-  // doesn't clobber a freshly loaded draft.
-  const prevResetSignal = useRef<number | undefined>(resetSignal);
-  useEffect(() => {
-    if (resetSignal === undefined) return;
-    if (prevResetSignal.current === resetSignal) return;
-    prevResetSignal.current = resetSignal;
-    setContent('');
-    setImages([]);
-    setVideos([]);
-    setLimitError(null);
-    setShowVideoInput(false);
-    setVideoUrlDraft('');
-    setVideoError('');
-    // Notify parent so its mirror state (postContent etc.) stays in sync —
-    // some callers read these out of `onChange` rather than re-deriving.
-    onChange?.({ content: '', images: [], videos: [] });
-    // Drop the persisted draft for this key too — Reset shouldn't leave
-    // a stale entry that the next mount would resurrect.
-    try { localStorage.removeItem(draftKey); } catch {}
-    setTimeout(autoGrow, 0);
-  }, [resetSignal, onChange, autoGrow, draftKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Content updates ────────────────────────────────────────────────────
 
@@ -754,9 +605,6 @@ export default function SNSEditor({
 
         <div style={{ flex: 1 }} />
 
-        {saved && (
-          <span style={{ fontSize: 11, color: '#4b5563', paddingRight: 4 }}>Draft saved</span>
-        )}
         <span style={{
           fontSize: 11,
           color: charCount > 4800 ? '#ef4444' : '#4b5563',

@@ -1,12 +1,16 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Image,
+  Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -107,6 +111,32 @@ function makeStyles(colors: ThemeColors) {
       fontSize: 11,
       fontWeight: '700',
     },
+    // Fullscreen lightbox (detail mode only). Tap anywhere to close.
+    lightboxBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.95)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    lightboxCloseBtn: {
+      position: 'absolute',
+      top: 48,
+      right: 16,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1,
+    },
+    lightboxCloseLabel: {
+      color: '#fff',
+      fontSize: 22,
+      fontWeight: '600',
+      lineHeight: 22,
+      marginTop: -2,
+    },
   });
 }
 
@@ -125,7 +155,7 @@ export function MediaGallery({
 }: MediaGalleryProps) {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const itemWidth = Math.max(0, windowWidth - horizontalPadding);
   const imageHeight = Math.round(itemWidth * (10 / 16));
@@ -133,11 +163,18 @@ export function MediaGallery({
   const [activeIndex, setActiveIndex] = useState(0);
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (itemWidth <= 0) return;
       const idx = Math.round(e.nativeEvent.contentOffset.x / itemWidth);
       if (idx !== activeIndex) setActiveIndex(idx);
     },
     [itemWidth, activeIndex],
   );
+
+  // Lightbox state — only used in detail mode where the gallery owns
+  // its own fullscreen viewer. In feed mode the parent handles taps
+  // (typically navigating to PostDetail) via `onImagePress`.
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const closeLightbox = useCallback(() => setLightboxIndex(null), []);
 
   const parsedVideos = useMemo(
     () => (videos ?? []).map(parseVideo).filter((v): v is ParsedVideo => v !== null),
@@ -147,6 +184,16 @@ export function MediaGallery({
   const hasImages = (images?.length ?? 0) > 0;
   const hasVideos = parsedVideos.length > 0;
   if (!hasImages && !hasVideos) return null;
+
+  // Tap handler: feed mode delegates to parent (navigate to PostDetail);
+  // detail mode opens the local fullscreen lightbox.
+  const handleImageTap = (i: number) => {
+    if (onImagePress) {
+      onImagePress(i);
+    } else if (mode === 'detail') {
+      setLightboxIndex(i);
+    }
+  };
 
   return (
     <View style={styles.wrap}>
@@ -167,33 +214,36 @@ export function MediaGallery({
             // Decelerate fast so paging snaps cleanly between full-width
             // images instead of drifting onto the next image.
             decelerationRate="fast"
+            // Allow nested scrolling so the parent vertical FlatList
+            // (post feed) doesn't intercept horizontal pan gestures.
+            nestedScrollEnabled
             // Keep all images mounted; this is a small carousel so the
             // memory cost is negligible and we avoid the placeholder flash
-            // FlatList shows on first swipe.
+            // FlatList shows on first swipe. Also prevents the parent
+            // FlatList from clipping mid-swipe frames.
+            removeClippedSubviews={false}
           >
             {(images ?? []).map((uri, i) => {
-              const img = (
-                <Image
-                  source={{ uri }}
-                  style={[
-                    styles.galleryImage,
-                    { width: itemWidth, height: imageHeight },
-                  ]}
-                  resizeMode="cover"
-                />
-              );
-              // When the parent (PostCard) passes onImagePress, wrap each
-              // image in a Pressable so a tap navigates to PostDetail while
-              // a horizontal drag still gets routed to the ScrollView's
-              // gesture handler (Pressable forwards pan to its parent).
-              if (onImagePress) {
-                return (
-                  <Pressable key={`${uri}-${i}`} onPress={() => onImagePress(i)}>
-                    {img}
+              // Fixed-width wrapper ensures pagingEnabled snaps cleanly
+              // regardless of the image's intrinsic size. Pressable's
+              // onPress fires only on tap-up without significant pan, so
+              // horizontal drag still reaches the ScrollView's gesture
+              // handler. Tap routes via handleImageTap → either parent
+              // (feed mode) or local lightbox (detail mode).
+              return (
+                <View key={`${uri}-${i}`} style={{ width: itemWidth }}>
+                  <Pressable onPress={() => handleImageTap(i)}>
+                    <Image
+                      source={{ uri }}
+                      style={[
+                        styles.galleryImage,
+                        { width: itemWidth, height: imageHeight },
+                      ]}
+                      resizeMode="cover"
+                    />
                   </Pressable>
-                );
-              }
-              return <View key={`${uri}-${i}`}>{img}</View>;
+                </View>
+              );
             })}
           </ScrollView>
           {(images?.length ?? 0) > 1 ? (
@@ -236,6 +286,38 @@ export function MediaGallery({
             </View>
           ))
         )
+      ) : null}
+
+      {/* Fullscreen lightbox — detail mode only. Tap backdrop or × to
+          close. The image is letterboxed (resizeMode="contain") so wide
+          and tall images both fit inside the viewport. */}
+      {lightboxIndex !== null && images && images[lightboxIndex] ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={closeLightbox}
+        >
+          <StatusBar barStyle="light-content" />
+          <TouchableWithoutFeedback onPress={closeLightbox}>
+            <View style={styles.lightboxBackdrop}>
+              <TouchableOpacity
+                style={styles.lightboxCloseBtn}
+                onPress={closeLightbox}
+                accessibilityLabel="Close"
+              >
+                <Text style={styles.lightboxCloseLabel}>×</Text>
+              </TouchableOpacity>
+              <View pointerEvents="none">
+                <Image
+                  source={{ uri: images[lightboxIndex] }}
+                  style={{ width: windowWidth, height: windowHeight - 80 }}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       ) : null}
     </View>
   );

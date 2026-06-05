@@ -127,15 +127,6 @@ export default function TopicPage() {
    *  composer only handles brand-new posts, but the snapshot pattern
    *  matches the mobile screen and survives future edit reuse). */
   const initialImagesRef = useRef<string[]>([]);
-  /** Per-topic draft key — `openstoa-draft-${topicId}` — so switching
-   *  between topics no longer trample each other's in-progress drafts. */
-  const composerDraftKey = `openstoa-draft-${topicId}`;
-  /** Monotonically increasing signal handed to <SNSEditor>. Each bump is
-   *  a request to wipe the editor's internal `content/images/videos`
-   *  state — the editor owns those (uncontrolled) so a parent-level
-   *  reset can't reach them otherwise. */
-  const [composerResetSignal, setComposerResetSignal] = useState(0);
-
   const [copied, setCopied] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
@@ -176,6 +167,19 @@ export default function TopicPage() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId]);
+
+  // One-time cleanup: remove any stale openstoa-draft-* keys left by the
+  // old topic-scoped draft feature so they don't linger in localStorage.
+  useEffect(() => {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('openstoa-draft-')) keysToRemove.push(key);
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {}
+  }, []);
 
   // Close tag suggestions on outside click
   useEffect(() => {
@@ -366,11 +370,6 @@ export default function TopicPage() {
     setPostPoll(null);
     setComposeMode('write');
     setPostError(null);
-    try { localStorage.removeItem(composerDraftKey); } catch {}
-    // Tell <SNSEditor> to wipe its own textarea/image/video state — the
-    // editor doesn't watch postContent etc. so this is the only path that
-    // clears it visually when the user is in Write mode.
-    setComposerResetSignal((n) => n + 1);
   }
 
   async function handlePostSubmit(e: React.FormEvent) {
@@ -418,8 +417,6 @@ export default function TopicPage() {
       setPostTags([]);
       setPostPoll(null);
       setComposeMode('write');
-      try { localStorage.removeItem(composerDraftKey); } catch {}
-      setComposerResetSignal((n) => n + 1);
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
@@ -1074,8 +1071,6 @@ export default function TopicPage() {
                       setPostVideos(state.videos);
                     }}
                     minHeight={180}
-                    draftKey={composerDraftKey}
-                    resetSignal={composerResetSignal}
                   />
                   <div style={{ marginTop: 4 }}>
                     <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
@@ -1249,8 +1244,6 @@ export default function TopicPage() {
                     setPostTags([]);
                     setPostPoll(null);
                     setComposeMode('write');
-                    try { localStorage.removeItem(composerDraftKey); } catch {}
-                    setComposerResetSignal((n) => n + 1);
                   }}
                   style={{
                     background: 'rgba(255,255,255,0.06)',

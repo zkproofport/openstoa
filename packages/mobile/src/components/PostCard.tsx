@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, type LayoutChangeEvent, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { Post } from '@openstoa/api-types';
 import { useThemeColors } from '../theme/ThemeContext';
@@ -43,18 +43,13 @@ export interface PostCardProps {
   onPress: () => void;
 }
 
-// Single criterion for offering a "Show more" toggle: line count of the
-// raw body exceeds the visible preview. Character-based thresholds were
-// inconsistent across languages (Korean filled lines slower, English
-// filled lines faster), so the previous mixed criterion (`length > 300
-// || lines > 5`) made the toggle appear at unpredictable heights. Line
-// count alone keeps it deterministic — the preview always shows up to
-// PREVIEW_LINES, and anything beyond gets a toggle.
-const PREVIEW_LINES = 5;
-// Char-based fallback: long single-line bodies (no `\n`) still trigger the
-// Show more toggle. Mirrors web SNSContent height-based overflow detection
-// (13px × 18px line-height ≈ ~11 visual rows ≈ 300 chars in practice).
-const PREVIEW_CHAR_THRESHOLD = 300;
+// Fixed visual-height threshold for the "Show more" toggle. Char/line
+// counts diverged across languages and HTML tag shapes (Korean filled
+// lines slower than English; an embedded image inflated the line count
+// without inflating visible height). A pixel cap measured with
+// onLayout matches what the user actually sees and mirrors web
+// SNSContent's height-based truncation.
+const PREVIEW_MAX_HEIGHT = 200;
 
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
@@ -71,14 +66,23 @@ function makeStyles(colors: ThemeColors) {
       gap: 6,
       marginBottom: 6,
     },
+    // Topic + joined badge live in the same row; the joined chip sits
+    // immediately right of the topic chip and matches its height. Style
+    // mirrors PostDetailScreen.joinedBadge (success-tint background, success
+    // text) so the same post reads the same across feed and detail.
+    topicRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
     joinedBadge: {
       backgroundColor: colors.status.success + '22',
-      borderRadius: 6,
+      borderRadius: 4,
       paddingHorizontal: 6,
       paddingVertical: 2,
     },
     joinedBadgeText: {
-      fontSize: 10,
+      fontSize: 11,
       fontWeight: '600',
       color: colors.status.success,
     },
@@ -306,6 +310,10 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   const navigation = useNavigation();
   const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
+  // Overflow tracked by measuring the body's natural height with onLayout
+  // and comparing against PREVIEW_MAX_HEIGHT. When overflow is true, we
+  // clip via maxHeight + overflow:hidden until the user expands.
+  const [bodyOverflow, setBodyOverflow] = useState(false);
 
   const client = useOpenStoaClient();
   const sessionUserId = useOpenStoaSession((s: { userId: string | null }) => s.userId);
@@ -410,30 +418,36 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
       return true;
     });
   }, [rawContent, post.media?.videos]);
-  // "Show more" toggles the body text between the PREVIEW_LINES preview
-  // and the full content. Driven purely by line count so the toggle
-  // appears at a consistent body height regardless of language / per-line
-  // character density. Media is its own block now, so it doesn't influence
-  // the toggle eligibility — only the body line count matters.
-  const isLong =
-    rawContent.length > PREVIEW_CHAR_THRESHOLD ||
-    rawContent.split('\n').length > PREVIEW_LINES;
+  // Measure body height via onLayout. When the natural height exceeds
+  // PREVIEW_MAX_HEIGHT, we surface the "Show more" toggle and keep the
+  // outer wrapper capped. Once expanded, the cap is lifted so any clipped
+  // media / OG card becomes visible too.
+  const handleBodyLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > PREVIEW_MAX_HEIGHT && !bodyOverflow) setBodyOverflow(true);
+  }, [bodyOverflow]);
 
   return (
     <View style={styles.card}>
       <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
-        {/* Header: topic + author + time */}
+        {/* Header: topic chip + joined badge (same row, side-by-side) +
+            author + time. Joined badge sits immediately right of the topic
+            chip to mirror the web feed layout and PostDetailScreen. */}
         <View style={styles.header}>
-          {topicTitle ? (
-            <Text style={styles.topicLabel} numberOfLines={1}>
-              {topicTitle}
-            </Text>
-          ) : null}
-          {post.isJoinedTopic ? (
-            <View style={styles.joinedBadge}>
-              <Text style={styles.joinedBadgeText}>
-                {t('openstoa.topics.joinedBadge')}
-              </Text>
+          {topicTitle || post.isJoinedTopic ? (
+            <View style={styles.topicRow}>
+              {topicTitle ? (
+                <Text style={styles.topicLabel} numberOfLines={1}>
+                  {topicTitle}
+                </Text>
+              ) : null}
+              {post.isJoinedTopic ? (
+                <View style={styles.joinedBadge}>
+                  <Text style={styles.joinedBadgeText}>
+                    {t('openstoa.topics.joinedBadge')}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
           <Text style={styles.meta} numberOfLines={1}>
@@ -462,19 +476,35 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
             the rendered body (the thumbnail strip carries them). Inline
             <img> tags stay — web's SNSContent renders the big inline
             image at full width and the 80x80 strip below acts as a
-            secondary gallery for skim navigation. */}
+            secondary gallery for skim navigation. The outer wrapper
+            caps the body at PREVIEW_MAX_HEIGHT until expanded; onLayout
+            on the inner View measures natural height to decide whether
+            the "Show more" toggle is needed. PostBodyWithOg renders OG
+            cards inline even while clipped — they only become visible
+            once the user taps Show more. */}
         {rawContent ? (
-          <PostBodyWithOg
-            content={stripVideoUrls(rawContent)}
-            maxLines={expanded ? undefined : PREVIEW_LINES}
-            onOpenUrl={(url) => navigation.navigate('InAppBrowser' as never, { url } as never)}
-          />
+          <View
+            style={
+              expanded
+                ? undefined
+                : { maxHeight: PREVIEW_MAX_HEIGHT, overflow: 'hidden' }
+            }
+          >
+            <View onLayout={handleBodyLayout}>
+              <PostBodyWithOg
+                content={stripVideoUrls(rawContent)}
+                onOpenUrl={(url) => navigation.navigate('InAppBrowser' as never, { url } as never)}
+              />
+            </View>
+          </View>
         ) : null}
       </TouchableOpacity>
 
-      {/* "Show more" toggle for long bodies. Media is always shown — it's
-          its own block now, not gated on expand state. */}
-      {isLong ? (
+      {/* "Show more" toggle when the body overflowed the fixed pixel cap.
+          Tapping lifts the cap, revealing any clipped text, inline media,
+          and OG card. Media block below is a separate gallery and is
+          always shown regardless of expand state. */}
+      {bodyOverflow ? (
         <TouchableOpacity
           style={styles.toggleRow}
           activeOpacity={0.7}

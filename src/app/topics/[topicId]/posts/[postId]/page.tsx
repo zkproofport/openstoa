@@ -630,7 +630,6 @@ export default function PostPage() {
                 placeholder="Write your post..."
                 onChange={setEditorState}
                 minHeight={180}
-                draftKey={`openstoa-edit-${postId}`}
                 initialState={editorState}
               />
               <TagInput tags={editTags} onChange={setEditTags} topicId={topicId} />

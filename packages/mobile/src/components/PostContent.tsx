@@ -81,6 +81,18 @@ export function extractMediaItems(html: string): MediaItem[] {
  */
 export function stripVideoUrls(html: string): string {
   if (!html) return '';
+  // Detect whether any video URL is present before mutating. When there's
+  // nothing to strip, return the input untouched so plain-text bodies with
+  // consecutive `\n` (intentional blank lines) survive intact — the trailing
+  // `\n\s*\n` collapse is a *cleanup* for whitespace left behind by URL
+  // removal, NOT a general newline normaliser.
+  const hasVideo =
+    /<a[^>]+href=["'][^"']*(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|vimeo\.com\/\d+)/i.test(html) ||
+    /https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}/i.test(html) ||
+    /https?:\/\/youtu\.be\/[a-zA-Z0-9_-]{11}/i.test(html) ||
+    /https?:\/\/(?:www\.|m\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}/i.test(html) ||
+    /https?:\/\/(?:www\.)?vimeo\.com\/\d+/i.test(html);
+  if (!hasVideo) return html;
   return html
     // Remove anchor tags wrapping YouTube/Vimeo links
     .replace(/<a[^>]+href=["'][^"']*(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|vimeo\.com\/\d+)[^"']*["'][^>]*>[^<]*<\/a>/gi, '')
