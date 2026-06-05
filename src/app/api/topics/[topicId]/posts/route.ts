@@ -281,9 +281,7 @@ export async function GET(
         .from(posts)
         .leftJoin(users, eq(posts.authorId, users.id))
         .where(whereClause)
-        // sort=new is strictly chronological — pinned posts do not jump ahead.
-        // Other sorts (popular/hot/recorded) keep pinned-first behavior.
-        .orderBy(...(sort === 'new' ? [buildPostSortExpr(sort)] : [desc(posts.isPinned), buildPostSortExpr(sort)]))
+        .orderBy(desc(posts.isPinned), buildPostSortExpr(sort))
         .limit(limit)
         .offset(offset);
 

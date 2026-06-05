@@ -142,7 +142,8 @@ export default function PostCard({
   }, [post.poll]);
 
   // I04: detect overflow on the body wrapper using ResizeObserver.
-  // Runs only when not yet expanded; once expanded we never collapse.
+  // Runs only when not yet expanded; the cached value persists while
+  // expanded so the Show less button stays visible.
   useEffect(() => {
     if (expanded || !expandable) return;
     const el = bodyRef.current;
@@ -454,11 +455,13 @@ export default function PostCard({
           />
         </div>
 
-        {/* I04: Show more button — only when body overflows and not yet expanded. */}
-        {expandable && !expanded && bodyOverflows && (
+        {/* I04: Show more / Show less toggle — visible whenever the body
+            originally overflowed the clip. Mirrors mobile PostCard which
+            toggles both ways. */}
+        {expandable && bodyOverflows && (
           <button
             type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(true); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded((v) => !v); }}
             style={{
               background: 'none',
               border: 'none',
@@ -472,7 +475,7 @@ export default function PostCard({
               display: 'block',
             }}
           >
-            Show more
+            {expanded ? 'Show less' : 'Show more'}
           </button>
         )}
 

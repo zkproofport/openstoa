@@ -527,16 +527,43 @@ export default function SNSContent({
     return chunks;
   }, [linkedHtml, previewUrl, truncate, inlineOgOnTruncate]);
 
+  // Plain-text equivalent of bodyChunks. Splits the RAW `html` (which is
+  // plain text for the plain-text branch) on blank line(s) and inserts the
+  // preview marker after the paragraph that owns the URL. Used by both the
+  // truncate and the expanded plain-text render paths so the OG card sits
+  // immediately under the URL paragraph instead of after the entire body.
+  const plainTextChunks = useMemo<
+    Array<{ kind: 'text'; text: string } | { kind: 'preview' }>
+  >(() => {
+    if (!isPlainText || !previewUrl) {
+      return [{ kind: 'text', text: html ?? '' }];
+    }
+    const paragraphs = (html ?? '').split(/\n{2,}/);
+    if (paragraphs.length <= 1) {
+      return [{ kind: 'text', text: html ?? '' }];
+    }
+    const idx = paragraphs.findIndex((p) => p.includes(previewUrl));
+    if (idx < 0) {
+      return [{ kind: 'text', text: html ?? '' }];
+    }
+    const chunks: Array<{ kind: 'text'; text: string } | { kind: 'preview' }> = [];
+    paragraphs.forEach((p, i) => {
+      chunks.push({ kind: 'text', text: p });
+      if (i === idx) chunks.push({ kind: 'preview' });
+    });
+    return chunks;
+  }, [html, isPlainText, previewUrl]);
+
   // True when the inline split successfully placed a LinkPreview in the
   // body. The trailing post-body LinkPreview render path then skips its
-  // own copy to avoid double cards. The truncate + plain-text branch
-  // (I01 + I10) inlines the card directly inside the clipped wrapper,
-  // so flag that too.
+  // own copy to avoid double cards. Covers HTML chunks, plain-text chunks,
+  // and the truncate + plain-text clipped wrapper.
   const previewRenderedInline = useMemo(
     () =>
       bodyChunks.some((c) => c.kind === 'preview') ||
+      plainTextChunks.some((c) => c.kind === 'preview') ||
       (!!truncate && inlineOgOnTruncate && isPlainText && !!previewUrl),
-    [bodyChunks, truncate, inlineOgOnTruncate, isPlainText, previewUrl],
+    [bodyChunks, plainTextChunks, truncate, inlineOgOnTruncate, isPlainText, previewUrl],
   );
 
   useEffect(() => {
@@ -602,14 +629,38 @@ export default function SNSContent({
             {isPlainText ? (
               // I01: render raw text so newlines remain literal — combined
               // with whiteSpace:pre-wrap this yields one visible blank row
-              // per consecutive `\n`.
-              <>
-                {html}
-                {/* I10: inline OG inside the clipped body when requested. */}
-                {inlineOgOnTruncate && previewUrl && (
-                  <LinkPreview url={previewUrl} />
-                )}
-              </>
+              // per consecutive `\n`. When the body has a paragraph break
+              // and the OG card should be inlined (I10), use plainTextChunks
+              // so the card sits under the URL's paragraph, not at the end.
+              inlineOgOnTruncate && plainTextChunks.some((c) => c.kind === 'preview') ? (
+                <>
+                  {plainTextChunks.map((chunk, i) => {
+                    if (chunk.kind === 'preview') {
+                      if (!previewUrl) return null;
+                      return <LinkPreview key={`og-${i}`} url={previewUrl} />;
+                    }
+                    return (
+                      <div
+                        key={`p-${i}`}
+                        style={{
+                          whiteSpace: 'pre-wrap',
+                          marginBottom: i < plainTextChunks.length - 1 ? '0.85em' : 0,
+                        }}
+                      >
+                        {chunk.text}
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  {html}
+                  {/* I10: inline OG inside the clipped body when requested. */}
+                  {inlineOgOnTruncate && previewUrl && (
+                    <LinkPreview url={previewUrl} />
+                  )}
+                </>
+              )
             ) : (
               // Legacy HTML path. When inlineOgOnTruncate is set we emit
               // the same paragraph+preview chunks as the expanded view so
@@ -653,14 +704,38 @@ export default function SNSContent({
       ) : isPlainText ? (
         // I01: expanded plain-text path. whiteSpace:pre-wrap turns every
         // `\n` into a visible line break, including consecutive runs.
-        // The OG card is rendered by the trailing LinkPreview block below
-        // so the gallery/gif precedence rules stay identical to HTML mode.
-        <div
-          className="sns-content-body"
-          style={{ whiteSpace: 'pre-wrap' }}
-        >
-          {html}
-        </div>
+        // When plainTextChunks split on a URL paragraph, render those
+        // chunks with the LinkPreview inline (W04 parity for plain-text
+        // posts). Otherwise the trailing LinkPreview block renders the
+        // card below the body.
+        plainTextChunks.some((c) => c.kind === 'preview') ? (
+          <div className="sns-content-body">
+            {plainTextChunks.map((chunk, i) => {
+              if (chunk.kind === 'preview') {
+                if (!previewUrl) return null;
+                return <LinkPreview key={`og-${i}`} url={previewUrl} />;
+              }
+              return (
+                <div
+                  key={`p-${i}`}
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    marginBottom: i < plainTextChunks.length - 1 ? '0.85em' : 0,
+                  }}
+                >
+                  {chunk.text}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            className="sns-content-body"
+            style={{ whiteSpace: 'pre-wrap' }}
+          >
+            {html}
+          </div>
+        )
       ) : (
         // W04: inline OG. When `bodyChunks` contains a `preview` marker we
         // emit paragraph <div>s with the LinkPreview right after the
