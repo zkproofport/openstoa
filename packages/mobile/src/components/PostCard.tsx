@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Image, type LayoutChangeEvent, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import type { Post } from '@openstoa/api-types';
 import { useThemeColors } from '../theme/ThemeContext';
@@ -487,7 +488,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
             style={
               expanded
                 ? undefined
-                : { maxHeight: PREVIEW_MAX_HEIGHT, overflow: 'hidden' }
+                : { maxHeight: PREVIEW_MAX_HEIGHT, overflow: 'hidden', position: 'relative' }
             }
           >
             <View onLayout={handleBodyLayout}>
@@ -496,6 +497,16 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
                 onOpenUrl={(url) => navigation.navigate('InAppBrowser' as never, { url } as never)}
               />
             </View>
+            {/* Bottom fade so the last partial line dissolves into the card
+                background instead of cutting a row of text mid-glyph. Only
+                while clipped + overflowing. */}
+            {!expanded && bodyOverflow ? (
+              <LinearGradient
+                pointerEvents="none"
+                colors={[colors.background.primary + '00', colors.background.primary]}
+                style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 48 }}
+              />
+            ) : null}
           </View>
         ) : null}
       </TouchableOpacity>
