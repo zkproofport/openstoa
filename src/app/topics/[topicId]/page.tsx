@@ -5,12 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import SNSEditor from '@/components/SNSEditor';
+import SNSContent from '@/components/SNSContent';
 import TagInput from '@/components/TagInput';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 import TopicAvatar from '@/components/TopicAvatar';
 import ImageLightbox from '@/components/ImageLightbox';
 import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
+import PollRenderer from '@/components/PollRenderer';
+import MediaGallery from '@/components/post/MediaGallery';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -108,6 +111,20 @@ export default function TopicPage() {
   const [postPoll, setPostPoll] = useState<PollEditorValue | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
+  /** Write / Preview toggle — mirrors the mobile PostCreateScreen
+   *  segmented control so the user can see the rendered post before
+   *  submitting. The mode is purely client-side; the submit button
+   *  works from both Write AND Preview so Preview isn't a dead-end. */
+  const [composeMode, setComposeMode] = useState<'write' | 'preview'>('write');
+  /** Snapshot of the image set that was already attached when composing
+   *  started. Used by Reset so the R2 cleanup never deletes media that
+   *  belong elsewhere (today it's always empty because the topic page
+   *  composer only handles brand-new posts, but the snapshot pattern
+   *  matches the mobile screen and survives future edit reuse). */
+  const initialImagesRef = useRef<string[]>([]);
+  /** Per-topic draft key — `openstoa-draft-${topicId}` — so switching
+   *  between topics no longer trample each other's in-progress drafts. */
+  const composerDraftKey = `openstoa-draft-${topicId}`;
 
   const [copied, setCopied] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -294,6 +311,54 @@ export default function TopicPage() {
     return !postContent.trim() && postImages.length === 0 && postVideos.length === 0;
   }
 
+  /** Did the user fill in anything besides the blank-form default?
+   *  Used to skip the Reset confirmation dialog when the composer is
+   *  already empty. */
+  function hasComposerContent(): boolean {
+    return !!(
+      postTitle.trim() ||
+      postContent.trim() ||
+      postTags.length > 0 ||
+      postImages.length > 0 ||
+      postVideos.length > 0 ||
+      postPoll
+    );
+  }
+
+  /** Wipe every composer field + draft + best-effort R2 cleanup. Mirrors
+   *  the mobile Reset button: any images uploaded **during this composing
+   *  session** (i.e. not present in the initial snapshot) are deleted from
+   *  R2 so they don't leak as orphans. Failure is silent — cleanup runs
+   *  fire-and-forget, the user-facing reset isn't blocked on the network. */
+  function handleComposerReset() {
+    if (!hasComposerContent()) return;
+    const ok = window.confirm(
+      '정말 초기화하시겠어요? 작성 중인 내용은 모두 사라져요. / Reset the composer? Everything you typed will be discarded.',
+    );
+    if (!ok) return;
+
+    const initial = new Set(initialImagesRef.current);
+    const orphans = postImages.filter((u) => !initial.has(u));
+    if (orphans.length > 0) {
+      // Fire-and-forget — same pattern as the mobile screen's R2 sweep.
+      void fetch('/api/upload', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls: orphans }),
+      }).catch(() => {});
+    }
+
+    setPostTitle('');
+    setPostContent('');
+    setPostTags([]);
+    setPostImages([]);
+    setPostVideos([]);
+    setPostPoll(null);
+    setComposeMode('write');
+    setPostError(null);
+    try { localStorage.removeItem(composerDraftKey); } catch {}
+  }
+
   async function handlePostSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!postTitle.trim() || isComposerEmpty()) return;
@@ -338,7 +403,8 @@ export default function TopicPage() {
       setPostVideos([]);
       setPostTags([]);
       setPostPoll(null);
-      try { localStorage.removeItem('openstoa-draft'); } catch {}
+      setComposeMode('write');
+      try { localStorage.removeItem(composerDraftKey); } catch {}
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
@@ -860,138 +926,338 @@ export default function TopicPage() {
             marginBottom: 8,
           }}>
             <form onSubmit={handlePostSubmit}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 16px', letterSpacing: '-0.02em', color: '#e5e7eb' }}>
-                New Post
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <input
-                  type="text"
-                  value={postTitle}
-                  onChange={(e) => setPostTitle(e.target.value)}
-                  placeholder="Post title"
-                  autoFocus
-                  style={{
-                    width: '100%',
-                    background: 'var(--surface, #0c0e18)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 7,
-                    padding: '10px 14px',
-                    color: '#e5e7eb',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <SNSEditor
-                  placeholder="Write your post..."
-                  onChange={(state) => {
-                    setPostContent(state.content);
-                    setPostImages(state.images);
-                    setPostVideos(state.videos);
-                  }}
-                  minHeight={180}
-                />
-                <div style={{ marginTop: 4 }}>
-                  <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
-                </div>
-
-                {/* Poll toggle + editor */}
+              {/* Header row — title + Write/Preview toggle + Reset button.
+                  Mirrors the mobile PostCreateScreen's segmentRow so the
+                  composer feels the same across platforms. The toggle is
+                  client-side only; submit lives outside it so the user can
+                  post directly from Preview without round-tripping back to
+                  Write just to tap the button. */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 14,
+                gap: 12,
+                flexWrap: 'wrap',
+              }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, letterSpacing: '-0.02em', color: '#e5e7eb' }}>
+                  New Post
+                </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div
+                    role="tablist"
+                    aria-label="Composer mode"
+                    style={{
+                      display: 'inline-flex',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 7,
+                      padding: 2,
+                      gap: 2,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={composeMode === 'write'}
+                      onClick={() => setComposeMode('write')}
+                      style={{
+                        background: composeMode === 'write' ? 'rgba(59,130,246,0.18)' : 'transparent',
+                        color: composeMode === 'write' ? 'var(--accent)' : '#9ca3af',
+                        border: 'none',
+                        borderRadius: 5,
+                        padding: '5px 12px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.02em',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      Write
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={composeMode === 'preview'}
+                      onClick={() => setComposeMode('preview')}
+                      style={{
+                        background: composeMode === 'preview' ? 'rgba(59,130,246,0.18)' : 'transparent',
+                        color: composeMode === 'preview' ? 'var(--accent)' : '#9ca3af',
+                        border: 'none',
+                        borderRadius: 5,
+                        padding: '5px 12px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.02em',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      Preview
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (postPoll) {
-                        setPostPoll(null);
-                      } else {
-                        setPostPoll({
-                          question: '',
-                          options: ['', ''],
-                          multipleChoice: false,
-                          closesAt: null,
-                        });
-                      }
-                    }}
+                    onClick={handleComposerReset}
+                    disabled={!hasComposerContent()}
+                    title="Reset / 초기화"
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 6,
-                      background: postPoll ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
-                      color: postPoll ? 'var(--accent)' : '#9ca3af',
-                      border: postPoll ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                      gap: 5,
+                      background: 'transparent',
+                      color: hasComposerContent() ? '#9ca3af' : '#4b5563',
+                      border: '1px solid rgba(255,255,255,0.08)',
                       borderRadius: 7,
-                      padding: '6px 12px',
+                      padding: '5px 10px',
                       fontSize: 12,
                       fontWeight: 600,
-                      cursor: 'pointer',
+                      cursor: hasComposerContent() ? 'pointer' : 'not-allowed',
                       fontFamily: 'monospace',
+                      letterSpacing: '0.02em',
                       transition: 'all 0.12s',
                     }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="3" width="12" height="2.5" rx="0.5" />
-                      <rect x="2" y="6.75" width="9" height="2.5" rx="0.5" />
-                      <rect x="2" y="10.5" width="6" height="2.5" rx="0.5" />
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1 4 1 10 7 10" />
+                      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                     </svg>
-                    {postPoll ? 'Remove poll' : 'Add poll'}
+                    Reset
                   </button>
                 </div>
-                {postPoll && (
-                  <PollEditor
-                    value={postPoll}
-                    onChange={setPostPoll}
-                    onRemove={() => setPostPoll(null)}
-                  />
-                )}
+              </div>
 
-                {postError && (
-                  <p style={{ fontSize: 14, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>
-                    {postError}
-                  </p>
-                )}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setComposing(false);
-                      setPostTitle('');
-                      setPostContent('');
-                      setPostImages([]);
-                      setPostVideos([]);
-                      setPostTags([]);
-                      setPostPoll(null);
-                      try { localStorage.removeItem('openstoa-draft'); } catch {}
-                    }}
+              {composeMode === 'write' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <input
+                    type="text"
+                    value={postTitle}
+                    onChange={(e) => setPostTitle(e.target.value)}
+                    placeholder="Post title"
+                    autoFocus
                     style={{
-                      background: 'rgba(255,255,255,0.06)',
-                      color: '#6b7280',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '8px 16px',
-                      fontSize: 14,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!postTitle.trim() || isComposerEmpty() || submitting}
-                    style={{
-                      background: 'var(--accent)',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '8px 20px',
+                      width: '100%',
+                      background: 'var(--surface, #0c0e18)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 7,
+                      padding: '10px 14px',
+                      color: '#e5e7eb',
                       fontSize: 14,
                       fontWeight: 600,
-                      cursor: 'pointer',
-                      opacity: (!postTitle.trim() || isComposerEmpty() || submitting) ? 0.5 : 1,
+                      outline: 'none',
+                      boxSizing: 'border-box',
                     }}
-                  >
-                    {submitting ? 'Posting...' : 'Post'}
-                  </button>
+                  />
+                  <SNSEditor
+                    placeholder="Write your post..."
+                    onChange={(state) => {
+                      setPostContent(state.content);
+                      setPostImages(state.images);
+                      setPostVideos(state.videos);
+                    }}
+                    minHeight={180}
+                    draftKey={composerDraftKey}
+                  />
+                  <div style={{ marginTop: 4 }}>
+                    <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
+                  </div>
+
+                  {/* Poll toggle + editor */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (postPoll) {
+                          setPostPoll(null);
+                        } else {
+                          setPostPoll({
+                            question: '',
+                            options: ['', ''],
+                            multipleChoice: false,
+                            closesAt: null,
+                          });
+                        }
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: postPoll ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+                        color: postPoll ? 'var(--accent)' : '#9ca3af',
+                        border: postPoll ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: 7,
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="3" width="12" height="2.5" rx="0.5" />
+                        <rect x="2" y="6.75" width="9" height="2.5" rx="0.5" />
+                        <rect x="2" y="10.5" width="6" height="2.5" rx="0.5" />
+                      </svg>
+                      {postPoll ? 'Remove poll' : 'Add poll'}
+                    </button>
+                  </div>
+                  {postPoll && (
+                    <PollEditor
+                      value={postPoll}
+                      onChange={setPostPoll}
+                      onRemove={() => setPostPoll(null)}
+                    />
+                  )}
                 </div>
+              ) : (
+                // Preview mode — render the post using the same components
+                // PostDetail uses so what the user sees here matches the
+                // final post one-for-one (title, tags, body, media,
+                // poll). Submit is below the switch, so the user can post
+                // straight from this view.
+                <div
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    padding: '18px 20px',
+                    background: '#0a0a0a',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                  }}
+                >
+                  {postTitle.trim() ? (
+                    <h2 style={{
+                      fontSize: 22,
+                      fontWeight: 800,
+                      letterSpacing: '-0.03em',
+                      margin: 0,
+                      lineHeight: 1.3,
+                      color: '#e5e7eb',
+                    }}>
+                      {postTitle}
+                    </h2>
+                  ) : (
+                    <p style={{ fontSize: 13, color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
+                      Title is empty — add one before posting.
+                    </p>
+                  )}
+                  {postTags.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {postTags.map((tag) => (
+                        <span
+                          key={tag}
+                          style={{
+                            background: 'rgba(59,130,246,0.08)',
+                            color: 'var(--accent)',
+                            border: '1px solid rgba(59,130,246,0.15)',
+                            borderRadius: 4,
+                            padding: '2px 8px',
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {postContent.trim() || postImages.length > 0 || postVideos.length > 0 ? (
+                    // Match PostDetail's exact split — text body via SNSContent
+                    // (without mediaImages/mediaVideos to avoid duplication),
+                    // then MediaGallery handles the swipeable carousel for
+                    // both images and embedded videos. That keeps the preview
+                    // pixel-identical to the post the user is about to ship.
+                    <>
+                      <SNSContent html={postContent} />
+                      <MediaGallery images={postImages} videos={postVideos} mode="detail" />
+                    </>
+                  ) : (
+                    <p style={{ fontSize: 13, color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
+                      Body is empty.
+                    </p>
+                  )}
+                  {postPoll && postPoll.options.filter((o) => o.trim()).length >= 2 && (
+                    <PollRenderer
+                      poll={{
+                        id: 'preview',
+                        postId: 'preview',
+                        question: postPoll.question ?? null,
+                        multipleChoice: postPoll.multipleChoice,
+                        closesAt: postPoll.closesAt ?? null,
+                        isClosed: false,
+                        totalVotes: 0,
+                        userVotedOptionIds: [],
+                        options: postPoll.options
+                          .map((o) => o.trim())
+                          .filter((o) => o.length > 0)
+                          .map((text, i) => ({
+                            id: `preview-${i}`,
+                            text,
+                            position: i,
+                            voteCount: 0,
+                          })),
+                      }}
+                      onVote={async () => { /* preview only — no submit */ }}
+                      onUnvote={async () => { /* preview only */ }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {postError && (
+                <p style={{ fontSize: 14, color: '#ef4444', margin: '12px 0 0', fontFamily: 'monospace' }}>
+                  {postError}
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setComposing(false);
+                    setPostTitle('');
+                    setPostContent('');
+                    setPostImages([]);
+                    setPostVideos([]);
+                    setPostTags([]);
+                    setPostPoll(null);
+                    setComposeMode('write');
+                    try { localStorage.removeItem(composerDraftKey); } catch {}
+                  }}
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    color: '#6b7280',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '8px 16px',
+                    fontSize: 14,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!postTitle.trim() || isComposerEmpty() || submitting}
+                  style={{
+                    background: 'var(--accent)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '8px 20px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    opacity: (!postTitle.trim() || isComposerEmpty() || submitting) ? 0.5 : 1,
+                  }}
+                >
+                  {submitting ? 'Posting...' : 'Post'}
+                </button>
               </div>
             </form>
           </div>

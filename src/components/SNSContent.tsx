@@ -503,15 +503,14 @@ export default function SNSContent({
         <GifImages urls={gifUrls} />
       )}
 
-      {/* Link preview and video embeds only in full mode */}
-      {!truncate && (
-        <>
-          {previewUrl && gifUrls.length === 0 && galleryImages.length === 0 && (
-            <LinkPreview url={previewUrl} />
-          )}
-          <VideoEmbeds embeds={galleryVideos} />
-        </>
+      {/* LinkPreview is always shown when there's a URL (mirrors mobile
+          PostBodyWithOg behaviour — feed cards get OG cards too, not just
+          PostDetail). Video embeds remain full-mode only because expanded
+          video iframes don't fit the compact feed-card layout. */}
+      {previewUrl && gifUrls.length === 0 && galleryImages.length === 0 && (
+        <LinkPreview url={previewUrl} />
       )}
+      {!truncate && <VideoEmbeds embeds={galleryVideos} />}
 
       <style>{`
         .sns-content-body img {

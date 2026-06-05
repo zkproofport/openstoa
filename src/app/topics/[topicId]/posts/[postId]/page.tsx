@@ -49,6 +49,11 @@ interface Post {
   recordCount?: number;
   /** Soft-delete flag from the API. */
   isDeleted?: boolean;
+  /** True when the signed-in viewer is a member of the post's topic.
+   *  Mirrors the mobile post detail header — we render a small "Joined"
+   *  pill next to the topic chip so the user sees their membership
+   *  status without leaving the page. */
+  isJoinedTopic?: boolean;
 }
 
 interface Comment {
@@ -713,6 +718,59 @@ export default function PostPage() {
             </form>
           ) : (
           <>
+          {/* Topic chip + Joined badge — mirrors the mobile PostDetailScreen */}
+          {/* header where the topic title appears as a small brand-coloured  */}
+          {/* label above the post title, with a "Joined" pill next to it     */}
+          {/* when the viewer is a member. Web previously only showed the     */}
+          {/* topic in the gray breadcrumb, which made it easy to miss which  */}
+          {/* community the post belonged to AND whether the viewer was in.   */}
+          {post.topicTitle ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              <Link
+                href={`/topics/${topicId}`}
+                style={{
+                  display: 'inline-block',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--accent)',
+                  textDecoration: 'none',
+                  letterSpacing: '0.02em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {post.topicTitle}
+              </Link>
+              {post.isJoinedTopic && (
+                <span
+                  // Success-green tint, same intent as the mobile
+                  // `joinedBadge` style. Sits inline with the topic chip
+                  // so the user reads "TOPIC · Joined" at a glance.
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#22c55e',
+                    background: 'rgba(34,197,94,0.10)',
+                    border: '1px solid rgba(34,197,94,0.25)',
+                    borderRadius: 4,
+                    padding: '2px 7px',
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    fontFamily: 'var(--font-mono)',
+                    lineHeight: 1.2,
+                  }}
+                  aria-label="You are a member of this topic"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Joined
+                </span>
+              )}
+            </div>
+          ) : null}
           <h1
             style={{
               fontSize: 28,
@@ -938,18 +996,24 @@ export default function PostPage() {
                           </button>
                         )}
                       </div>
-                      <p
+                      {/* Comment body shares SNSContent with post body so */}
+                      {/* plain URLs become <a>, YouTube/Vimeo render as    */}
+                      {/* iframes, and LinkPreview surfaces an OG card —    */}
+                      {/* the body sits in a <div> rather than a <p> because*/}
+                      {/* SNSContent produces <div> children (LinkPreview,  */}
+                      {/* MediaImages, VideoEmbeds) that are invalid inside */}
+                      {/* a <p>, which causes the browser to break the      */}
+                      {/* nesting and visually corrupt the layout.          */}
+                      <div
                         style={{
                           fontSize: 14,
                           lineHeight: 1.7,
-                          margin: 0,
                           color: 'var(--foreground)',
-                          whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word',
                         }}
                       >
-                        {comment.content}
-                      </p>
+                        <SNSContent html={comment.content} />
+                      </div>
                     </>
                   )}
                 </div>
