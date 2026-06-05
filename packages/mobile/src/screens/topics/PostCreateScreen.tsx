@@ -5,6 +5,7 @@ import {
   Alert,
   Animated,
   Image,
+  InputAccessoryView,
   Keyboard,
   Modal,
   Platform,
@@ -51,6 +52,11 @@ const MAX_TAGS = 5;
 const MAX_IMAGES = 10;
 const MAX_VIDEOS = 3;
 const KB_BAR_H = 44;
+// InputAccessoryView nativeID — wired to the multiline body's
+// `inputAccessoryViewID` so on iOS the Photo/Video/Poll/Done bar embeds
+// directly into the keyboard accessory slot. Disappears with the
+// keyboard automatically (no Animated.Value chase required).
+const POST_BODY_ACCESSORY_ID = 'postBodyAccessory';
 // Tags accept Korean, Latin letters, digits, and underscore. The server-side
 // slug pipeline (api/topics/[topicId]/posts) downcases and rewrites the
 // remainder, so we don't need to be strict here — just bound the length and
@@ -204,7 +210,10 @@ function makeStyles(colors: ThemeColors) {
       minHeight: 200,
       paddingTop: 12,
     },
-    // Keyboard-following action bar (sits above the keyboard, slides with it)
+    // Keyboard-following action bar (Android only). On iOS the same
+    // controls live inside an InputAccessoryView so they embed directly
+    // into the keyboard and vanish with it. Android lacks an equivalent
+    // primitive, so we keep the Animated absolute bar there.
     kbBar: {
       position: 'absolute',
       left: 0,
@@ -214,6 +223,19 @@ function makeStyles(colors: ThemeColors) {
       gap: 6,
       paddingHorizontal: 14,
       paddingTop: 8,
+      backgroundColor: colors.background.primary,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border.strong,
+    },
+    // iOS InputAccessoryView bar — same controls, sized for keyboard
+    // embedding (no absolute positioning, no Animated bottom, no safe-area
+    // padding since the keyboard above already handles that).
+    accessoryBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
       backgroundColor: colors.background.primary,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border.strong,
@@ -377,15 +399,9 @@ function makeStyles(colors: ThemeColors) {
     videoChipRemove: {
       paddingHorizontal: 4,
     },
-    submitButton: {
-      marginTop: 32,
-      backgroundColor: colors.brand.primary,
-      borderRadius: 12,
-      paddingVertical: 14,
-      alignItems: 'center',
-    },
-    submitButtonDisabled: { opacity: 0.5 },
-    submitLabel: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+    // (Large body-bottom submit button removed in favour of the
+    // header-right Post pill — see useLayoutEffect / headerSubmitPill
+    // styles below.)
     // Header-right Reddit-style "Post" pill — brand background + white text
     // when submittable, muted when disabled. Sized to stand out next to the
     // native-stack title without overflowing the header area.
@@ -553,33 +569,18 @@ function PostCreateScreenAuthed() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
-  // App-wide keyboard policy: the action bar tracks the keyboard so photo /
-  // video / poll attachments stay reachable while the user is typing, and the
-  // multiline body finally has a working Done affordance (the old
-  // InputAccessoryView never attached to multiline inputs).
+  // Android keyboard policy: the Animated action bar tracks the soft
+  // keyboard so photo / video / poll attachments stay reachable while
+  // typing. iOS no longer uses this path — its toolbar lives inside an
+  // InputAccessoryView (see render below) which embeds in the keyboard
+  // intrinsically and disappears with it. Keeping the keyboard listeners
+  // Android-only avoids running an Animated.timing chase on iOS that
+  // would only set state nothing consumes.
   const insets = useSafeAreaInsets();
   const [kbVisible, setKbVisible] = useState(false);
   const barBottom = useRef(new Animated.Value(insets.bottom)).current;
   useEffect(() => {
-    if (Platform.OS === 'ios') {
-      const show = Keyboard.addListener('keyboardWillShow', (e) => {
-        setKbVisible(true);
-        Animated.timing(barBottom, {
-          toValue: e.endCoordinates.height,
-          duration: e.duration || 250,
-          useNativeDriver: false,
-        }).start();
-      });
-      const hide = Keyboard.addListener('keyboardWillHide', (e) => {
-        setKbVisible(false);
-        Animated.timing(barBottom, {
-          toValue: insets.bottom,
-          duration: e.duration || 250,
-          useNativeDriver: false,
-        }).start();
-      });
-      return () => { show.remove(); hide.remove(); };
-    }
+    if (Platform.OS !== 'android') return;
     const show = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
     return () => { show.remove(); hide.remove(); };
@@ -910,7 +911,13 @@ function PostCreateScreenAuthed() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          mode === 'write' ? { paddingBottom: KB_BAR_H + insets.bottom + 24 } : null,
+          // Only Android needs extra bottom padding to avoid being hidden
+          // behind the floating Animated bar. iOS uses InputAccessoryView
+          // which lives above the keyboard, not above the scroll view, so
+          // no padding is needed there.
+          mode === 'write' && Platform.OS === 'android'
+            ? { paddingBottom: KB_BAR_H + insets.bottom + 24 }
+            : null,
         ]}
       >
         {topicTitle ? <Text style={styles.topicLabel}>{topicTitle}</Text> : null}
@@ -998,6 +1005,12 @@ function PostCreateScreenAuthed() {
               value={title}
               onChangeText={setTitle}
               returnKeyType="next"
+              // Share the same iOS keyboard accessory with the body so
+              // the toolbar stays present when the user is typing the
+              // title too. No-op on Android.
+              inputAccessoryViewID={
+                Platform.OS === 'ios' ? POST_BODY_ACCESSORY_ID : undefined
+              }
             />
 
             {/* Body */}
@@ -1012,6 +1025,13 @@ function PostCreateScreenAuthed() {
               onChangeText={setContent}
               multiline
               textAlignVertical="top"
+              // iOS-only: docks the Photo/Video/Poll/Done bar into the
+              // keyboard's accessory slot so it embeds with the keyboard
+              // instead of floating as a separate overlay. The matching
+              // <InputAccessoryView nativeID=…> is rendered below.
+              inputAccessoryViewID={
+                Platform.OS === 'ios' ? POST_BODY_ACCESSORY_ID : undefined
+              }
             />
 
             {/* Image strip */}
@@ -1136,21 +1156,10 @@ function PostCreateScreenAuthed() {
           />
         )}
 
-        {/* Submit lives outside the Write/Preview switch so the user can
-            post directly from the Preview screen too — no round-trip back
-            to Write just to tap submit. */}
-        <TouchableOpacity
-          style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
-          onPress={() => createMutation.mutate()}
-          disabled={!canSubmit}
-          activeOpacity={0.8}
-        >
-          {createMutation.isPending ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitLabel}>{t('openstoa.postCreate.submit')}</Text>
-          )}
-        </TouchableOpacity>
+        {/* The large in-body submit button was removed in favour of the
+            header-right Post pill (wired in useLayoutEffect above). Header
+            pill stays visible regardless of keyboard / scroll position so
+            it's always one tap away. */}
       </KeyboardSafeScroll>
 
       <Modal
@@ -1193,11 +1202,15 @@ function PostCreateScreenAuthed() {
         </View>
       </Modal>
 
-      {/* Keyboard-following action bar — photo / video / poll + char count +
-          done. Rises with the keyboard so attachments stay reachable while
-          typing; works on the multiline body (which the old Done-only
-          InputAccessoryView never attached to). */}
-      {mode === 'write' ? (
+      {/* Keyboard action bar.
+          ─ iOS: rendered inside <InputAccessoryView> so it embeds directly
+            into the keyboard's accessory slot. Disappears with the keyboard
+            without any Animated.Value chase, fixing the previous bug where
+            the floating bar lingered after the keyboard dismissed.
+          ─ Android: InputAccessoryView is iOS-only, so we keep the
+            Animated absolute-positioned bar that tracks the soft keyboard
+            via the show/hide listeners above. */}
+      {mode === 'write' && Platform.OS === 'android' ? (
         <Animated.View
           style={[
             styles.kbBar,
@@ -1259,6 +1272,68 @@ function PostCreateScreenAuthed() {
             </TouchableOpacity>
           ) : null}
         </Animated.View>
+      ) : null}
+
+      {/* iOS keyboard accessory — same controls as the Android bar above
+          but lives inside InputAccessoryView so it ships with the keyboard.
+          See https://reactnative.dev/docs/inputaccessoryview. */}
+      {Platform.OS === 'ios' ? (
+        <InputAccessoryView nativeID={POST_BODY_ACCESSORY_ID}>
+          <View style={styles.accessoryBar}>
+            <TouchableOpacity
+              style={styles.toolbarBtn}
+              onPress={openAttachSheet}
+              disabled={uploading || images.length >= MAX_IMAGES}
+              activeOpacity={0.7}
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={colors.text.tertiary} />
+              ) : (
+                <Feather name="image" size={16} color={colors.text.secondary} />
+              )}
+              <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addPhoto')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.toolbarBtn}
+              onPress={openVideoModal}
+              disabled={videos.length >= MAX_VIDEOS}
+              activeOpacity={0.7}
+            >
+              <Feather name="video" size={16} color={colors.text.secondary} />
+              <Text style={styles.toolbarBtnLabel}>{t('openstoa.postCreate.addVideo')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.toolbarBtn}
+              onPress={() =>
+                setPoll(poll ? null : { options: ['', ''], multipleChoice: false, closesAt: null })
+              }
+              activeOpacity={0.7}
+            >
+              <Feather
+                name="bar-chart-2"
+                size={16}
+                color={poll ? colors.brand.primary : colors.text.secondary}
+              />
+              <Text style={[styles.toolbarBtnLabel, poll ? { color: colors.brand.primary } : null]}>
+                {t('openstoa.postCreate.addPoll')}
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.toolbarFlex} />
+            {draftSaved ? (
+              <Text style={styles.draftSaved}>{t('openstoa.postCreate.draftSaved')}</Text>
+            ) : null}
+            <Text style={styles.charCount}>
+              {t('openstoa.postCreate.charCount', { n: content.length })}
+            </Text>
+            <TouchableOpacity
+              onPress={() => Keyboard.dismiss()}
+              style={styles.kbDoneBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.kbDoneLabel}>{t('openstoa.common.done')}</Text>
+            </TouchableOpacity>
+          </View>
+        </InputAccessoryView>
       ) : null}
     </View>
   );

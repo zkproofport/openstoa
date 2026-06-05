@@ -168,14 +168,23 @@ function makeStyles(colors: ThemeColors) {
     headerKebabGlyph: { fontSize: 20, color: colors.text.tertiary, lineHeight: 22 },
 
     // Title
+    postTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingTop: 14,
+      paddingBottom: 8,
+    },
+    postTitlePinIcon: {
+      marginTop: 8,
+    },
     postTitle: {
       fontSize: 22,
       fontWeight: '700',
       color: colors.text.primary,
-      paddingHorizontal: 16,
-      paddingTop: 14,
-      paddingBottom: 8,
       lineHeight: 30,
+      flexShrink: 1,
     },
 
     // Tags
@@ -1113,13 +1122,21 @@ export function PostDetailScreen() {
         </View>
       </View>
 
-      {/* ── Title ── Pinned posts get a 📌 prefix so the audience knows
-              the topic owner/admin promoted this one. Matches the web
-              client's PostCard treatment. */}
-      <Text style={styles.postTitle}>
-        {isPinned ? '📌 ' : ''}
-        {post.title}
-      </Text>
+      {/* ── Title ── Pinned posts get a small purple map-pin icon next
+              to the title so the audience knows the topic owner/admin
+              promoted this one. Replaces the previous 📌 emoji for a
+              cleaner, theme-consistent treatment. */}
+      <View style={styles.postTitleRow}>
+        {isPinned ? (
+          <Feather
+            name="map-pin"
+            size={18}
+            color={colors.brand.primary}
+            style={styles.postTitlePinIcon}
+          />
+        ) : null}
+        <Text style={styles.postTitle}>{post.title}</Text>
+      </View>
 
       {/* ── Tags ── */}
       {post.tags && post.tags.length > 0 ? (

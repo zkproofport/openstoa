@@ -11,6 +11,7 @@ import { PostContent, extractMediaItems, stripVideoUrls, type MediaItem } from '
 import { PostBodyWithOg } from './PostBodyWithOg';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon } from './icons';
+import Feather from 'react-native-vector-icons/Feather';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
 import { usePostMutations } from '../hooks/usePostMutations';
@@ -41,14 +42,14 @@ export interface PostCardProps {
   onPress: () => void;
 }
 
+// Single criterion for offering a "Show more" toggle: line count of the
+// raw body exceeds the visible preview. Character-based thresholds were
+// inconsistent across languages (Korean filled lines slower, English
+// filled lines faster), so the previous mixed criterion (`length > 300
+// || lines > 5`) made the toggle appear at unpredictable heights. Line
+// count alone keeps it deterministic — the preview always shows up to
+// PREVIEW_LINES, and anything beyond gets a toggle.
 const PREVIEW_LINES = 5;
-// Heuristic threshold for offering a "More" toggle when content runs longer
-// than what fits in the 200px preview window. Matches web SNSContent's
-// height-based overflow detection in practice — 13px font × 18px line
-// height ≈ 11 visible rows × ~25-50 chars/row depending on language. A
-// 160 threshold was too aggressive for Korean text (single paragraph
-// triggered "Show more"), so we sit closer to the real text fit.
-const PREVIEW_CHAR_THRESHOLD = 300;
 
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
@@ -80,12 +81,21 @@ function makeStyles(colors: ThemeColors) {
       color: colors.text.tertiary,
       flexShrink: 1,
     },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginBottom: 4,
+    },
+    titlePinIcon: {
+      marginTop: 2,
+    },
     title: {
       fontSize: 15,
       fontWeight: '600',
       color: colors.text.primary,
-      marginBottom: 4,
       lineHeight: 20,
+      flexShrink: 1,
     },
     content: {
       fontSize: 13,
@@ -384,12 +394,12 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
       return true;
     });
   }, [rawContent, post.media?.videos]);
-  // "Show more" toggles the body text between the 5-line preview and the
-  // full content. Media is its own block now, so it doesn't influence the
-  // toggle eligibility — only the text body length matters.
-  const isLong =
-    rawContent.length > PREVIEW_CHAR_THRESHOLD ||
-    rawContent.split('\n').length > PREVIEW_LINES;
+  // "Show more" toggles the body text between the PREVIEW_LINES preview
+  // and the full content. Driven purely by line count so the toggle
+  // appears at a consistent body height regardless of language / per-line
+  // character density. Media is its own block now, so it doesn't influence
+  // the toggle eligibility — only the body line count matters.
+  const isLong = rawContent.split('\n').length > PREVIEW_LINES;
 
   return (
     <View style={styles.card}>
@@ -406,13 +416,23 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           </Text>
         </View>
 
-        {/* Title — pinned posts get a 📌 prefix so the audience can tell
-            at a glance which one a topic owner/admin has pinned. Matches
-            the web client. */}
-        <Text style={styles.title} numberOfLines={2}>
-          {post.isPinned ? '📌 ' : ''}
-          {post.title}
-        </Text>
+        {/* Title — pinned posts get a small purple map-pin icon prefix so
+            the audience can tell at a glance which one a topic owner/admin
+            has pinned. Replaces the previous 📌 emoji prefix for a more
+            modern, theme-consistent treatment. */}
+        <View style={styles.titleRow}>
+          {post.isPinned ? (
+            <Feather
+              name="map-pin"
+              size={14}
+              color={colors.brand.primary}
+              style={styles.titlePinIcon}
+            />
+          ) : null}
+          <Text style={styles.title} numberOfLines={2}>
+            {post.title}
+          </Text>
+        </View>
 
         {/* Content preview. YouTube/Vimeo URLs are always stripped from
             the rendered body (the thumbnail strip carries them). Inline
