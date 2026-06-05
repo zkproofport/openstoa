@@ -281,7 +281,9 @@ export async function GET(
         .from(posts)
         .leftJoin(users, eq(posts.authorId, users.id))
         .where(whereClause)
-        .orderBy(desc(posts.isPinned), buildPostSortExpr(sort))
+        // sort=new is strictly chronological — pinned posts do not jump ahead.
+        // Other sorts (popular/hot/recorded) keep pinned-first behavior.
+        .orderBy(...(sort === 'new' ? [buildPostSortExpr(sort)] : [desc(posts.isPinned), buildPostSortExpr(sort)]))
         .limit(limit)
         .offset(offset);
 
@@ -397,7 +399,8 @@ export async function GET(
       .leftJoin(users, eq(posts.authorId, users.id))
       .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
       .where(whereClause)
-      .orderBy(desc(posts.isPinned), buildPostSortExpr(sort))
+      // sort=new is strictly chronological — pinned posts do not jump ahead.
+      .orderBy(...(sort === 'new' ? [buildPostSortExpr(sort)] : [desc(posts.isPinned), buildPostSortExpr(sort)]))
       .limit(limit)
       .offset(offset);
 

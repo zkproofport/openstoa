@@ -7,6 +7,34 @@ const ROUTE = '/api/upload';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
+// HEIC/HEIF container brands at bytes 4..12 of an ISO BMFF file. iPhone
+// Photos can hand the mobile picker raw HEIC bytes even when the picker
+// reports a `.jpg` filename — browsers can't decode HEIC, so we sniff and
+// re-encode server-side as a defense-in-depth backstop for the mobile fix.
+const HEIC_FTYP_BRANDS = new Set([
+  'heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'hevm', 'hevs', 'mif1', 'msf1',
+]);
+
+function isHeicBuffer(buf: Buffer): boolean {
+  if (buf.length < 12) return false;
+  // ISO BMFF: bytes 4..8 == 'ftyp', bytes 8..12 == brand
+  if (buf.toString('ascii', 4, 8) !== 'ftyp') return false;
+  const brand = buf.toString('ascii', 8, 12);
+  return HEIC_FTYP_BRANDS.has(brand);
+}
+
+// Lazy-load sharp so the route doesn't blow up at import time if the
+// native binary is missing on this platform (e.g. unusual Docker base).
+type SharpModule = typeof import('sharp');
+function loadSharp(): SharpModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('sharp') as SharpModule;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * @openapi
  * /api/upload:
@@ -73,7 +101,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'file is required' }, { status: 400 });
     }
 
-    const contentType = file.type;
+    let contentType = file.type;
+    // Accept HEIC even if client reported image/jpeg (iPhone often misreports);
+    // we'll sniff bytes below.
     if (!contentType || !contentType.startsWith('image/')) {
       logger.warn(ROUTE, 'Invalid contentType', { userId: session.userId, contentType });
       return NextResponse.json({ error: 'Only image uploads are supported' }, { status: 400 });
@@ -91,17 +121,52 @@ export async function POST(request: NextRequest) {
         ? (purposeField as UploadPurpose)
         : 'post';
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    let buffer: Buffer = Buffer.from(await file.arrayBuffer());
+    let filename = file.name || undefined;
+
+    // Server-side HEIC sniff + convert (defense in depth — mobile path
+    // already re-encodes when expo-image-manipulator is available).
+    if (isHeicBuffer(buffer)) {
+      const sharp = loadSharp();
+      if (sharp) {
+        try {
+          buffer = await sharp(buffer).jpeg({ quality: 85 }).toBuffer();
+          contentType = 'image/jpeg';
+          if (filename) {
+            filename = filename.replace(/\.(heic|heif|jpg|jpeg)$/i, '') + '.jpg';
+          }
+          logger.info(ROUTE, 'HEIC converted to JPEG', {
+            userId: session.userId,
+            newSize: buffer.length,
+          });
+        } catch (err) {
+          logger.error(ROUTE, 'HEIC→JPEG conversion failed', {
+            userId: session.userId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return NextResponse.json(
+            { error: 'Failed to convert HEIC image' },
+            { status: 400 },
+          );
+        }
+      } else {
+        // TODO(dep): install `sharp` (already in package.json) or add
+        // `heic-convert` so HEIC uploads don't end up unreadable on web.
+        logger.warn(ROUTE, 'HEIC detected but sharp unavailable — uploading raw bytes', {
+          userId: session.userId,
+        });
+      }
+    }
 
     logger.info(ROUTE, 'Uploading file to R2', {
       userId: session.userId,
       contentType,
       purpose: resolvedPurpose,
-      size: file.size,
-      filename: file.name,
+      size: buffer.length,
+      filename,
     });
 
-    const publicUrl = await uploadToR2(buffer, contentType, session.userId, resolvedPurpose, file.name || undefined);
+    const publicUrl = await uploadToR2(buffer, contentType, session.userId, resolvedPurpose, filename);
 
     logger.info(ROUTE, 'Upload complete', { userId: session.userId, publicUrl });
     return NextResponse.json({ publicUrl });

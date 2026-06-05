@@ -30,6 +30,30 @@ function loadImagePicker(): ImagePickerModule | null {
     return null;
   }
 }
+
+// expo-image-manipulator forces HEIC→JPEG on iOS so browsers can decode
+// what we upload. Lazy-loaded so a missing dep degrades gracefully instead
+// of crashing the screen (host app may not yet have rebuilt to include it).
+// TODO(dep): add `expo-image-manipulator` to the host app package.json so
+// HEIC conversion runs for all picks, not just non-HEIC fast-path.
+type ImageManipulatorModule = typeof import('expo-image-manipulator');
+function loadImageManipulator(): ImageManipulatorModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-image-manipulator') as ImageManipulatorModule;
+  } catch {
+    return null;
+  }
+}
+
+// iPhone Photos hands back HEIC even when expo-image-picker's `quality<1`
+// is set, on iOS 17+ with iCloud Photos streaming. We must explicitly
+// re-encode to JPEG before upload — otherwise R2 stores raw HEIC bytes
+// under a .jpg filename, and the web client can't decode them.
+function isLikelyHeicUri(uri: string, fileName?: string): boolean {
+  const lower = (fileName || uri).toLowerCase();
+  return lower.endsWith('.heic') || lower.endsWith('.heif');
+}
 import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -730,10 +754,43 @@ function PostCreateScreenAuthed() {
 
     setUploading(true);
     try {
+      // HEIC→JPEG conversion before upload. iPhone Photos returns HEIC even
+      // with quality<1, so we explicitly re-encode via expo-image-manipulator.
+      // If the module isn't bundled into the host app, fall back to the raw
+      // URI (server-side sniffer in /api/upload will catch HEIC bytes).
+      const Manipulator = loadImageManipulator();
+      if (!Manipulator) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          'expo-image-manipulator not installed — HEIC images may upload as raw HEIC bytes. Server-side fallback will convert them.',
+        );
+      }
+      const normalizedUris = await Promise.all(
+        result.assets.map(async (a) => {
+          if (!Manipulator) return a.uri;
+          // Always force JPEG for iOS picks. HEIC detection on URI alone is
+          // unreliable (picker often hides the extension), so we re-encode
+          // every asset on iOS. Android picker already returns JPEG.
+          if (Platform.OS !== 'ios' && !isLikelyHeicUri(a.uri, a.fileName ?? undefined)) {
+            return a.uri;
+          }
+          try {
+            const out = await Manipulator.manipulateAsync(a.uri, [], {
+              compress: 0.8,
+              format: Manipulator.SaveFormat.JPEG,
+            });
+            return out.uri;
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('HEIC→JPEG conversion failed, uploading raw URI', e);
+            return a.uri;
+          }
+        }),
+      );
       // Parallel upload — every R2 put is independent. Order is preserved
       // by `Promise.all` so the resulting strip matches the picker order.
       const urls = await Promise.all(
-        result.assets.map((a) => client.uploadFile(a.uri)),
+        normalizedUris.map((uri) => client.uploadFile(uri)),
       );
       setImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
     } catch (err: unknown) {
