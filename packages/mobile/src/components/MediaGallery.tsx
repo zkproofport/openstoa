@@ -1,9 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  FlatList,
   Image,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -20,8 +21,13 @@ export interface MediaGalleryProps {
    *  a "+N" badge for any extra videos; `detail` plays every video inline. */
   mode?: 'feed' | 'detail';
   /** Horizontal padding the parent applies — used to compute the image
-   *  width inside the FlatList. */
+   *  width inside the carousel. */
   horizontalPadding?: number;
+  /** Optional handler fired when the user taps an image. Used by the feed
+   *  PostCard so tapping any image in the carousel navigates to PostDetail
+   *  (the carousel still pages horizontally on drag — paging vs tap is
+   *  disambiguated by the gesture system). */
+  onImagePress?: (index: number) => void;
 }
 
 interface ParsedVideo {
@@ -50,9 +56,25 @@ function parseVideo(url: string): ParsedVideo | null {
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     wrap: { marginTop: 8, marginBottom: 8 },
+    carousel: { position: 'relative' },
     galleryImage: {
       borderRadius: 10,
       backgroundColor: colors.background.tertiary,
+    },
+    pageIndicator: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 12,
+    },
+    pageIndicatorText: {
+      color: '#FFFFFF',
+      fontSize: 11,
+      fontWeight: '600',
+      fontVariantNumeric: 'tabular-nums',
     },
     dotsRow: {
       flexDirection: 'row',
@@ -99,6 +121,7 @@ export function MediaGallery({
   videos,
   mode = 'detail',
   horizontalPadding = 32,
+  onImagePress,
 }: MediaGalleryProps) {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
@@ -128,35 +151,70 @@ export function MediaGallery({
   return (
     <View style={styles.wrap}>
       {hasImages ? (
-        <View>
-          <FlatList
-            data={images ?? []}
-            keyExtractor={(item, i) => `${item}-${i}`}
+        <View style={styles.carousel}>
+          {/* Horizontal ScrollView (not FlatList) — when this carousel sits
+              inside another vertical FlatList (the post feed), nested
+              VirtualizedLists swallowed pan gestures on iOS so swipe stopped
+              working. ScrollView with pagingEnabled is the recommended
+              pattern for short, eagerly-loaded carousels and restores the
+              previous swipe behaviour. */}
+          <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onScroll={onScroll}
             scrollEventThrottle={16}
-            renderItem={({ item }) => (
-              <Image
-                source={{ uri: item }}
-                style={[
-                  styles.galleryImage,
-                  { width: itemWidth, height: imageHeight },
-                ]}
-                resizeMode="cover"
-              />
-            )}
-          />
-          {(images?.length ?? 0) > 1 ? (
-            <View style={styles.dotsRow}>
-              {images!.map((_, i) => (
-                <View
-                  key={i}
-                  style={[styles.dot, i === activeIndex ? styles.dotActive : null]}
+            // Decelerate fast so paging snaps cleanly between full-width
+            // images instead of drifting onto the next image.
+            decelerationRate="fast"
+            // Keep all images mounted; this is a small carousel so the
+            // memory cost is negligible and we avoid the placeholder flash
+            // FlatList shows on first swipe.
+          >
+            {(images ?? []).map((uri, i) => {
+              const img = (
+                <Image
+                  source={{ uri }}
+                  style={[
+                    styles.galleryImage,
+                    { width: itemWidth, height: imageHeight },
+                  ]}
+                  resizeMode="cover"
                 />
-              ))}
-            </View>
+              );
+              // When the parent (PostCard) passes onImagePress, wrap each
+              // image in a Pressable so a tap navigates to PostDetail while
+              // a horizontal drag still gets routed to the ScrollView's
+              // gesture handler (Pressable forwards pan to its parent).
+              if (onImagePress) {
+                return (
+                  <Pressable key={`${uri}-${i}`} onPress={() => onImagePress(i)}>
+                    {img}
+                  </Pressable>
+                );
+              }
+              return <View key={`${uri}-${i}`}>{img}</View>;
+            })}
+          </ScrollView>
+          {(images?.length ?? 0) > 1 ? (
+            <>
+              {/* "1/3" page counter — pinned to the top-right of the
+                  carousel so the user can see at a glance how many images
+                  the post has and where they are in the set. */}
+              <View style={styles.pageIndicator}>
+                <Text style={styles.pageIndicatorText}>
+                  {activeIndex + 1}/{images!.length}
+                </Text>
+              </View>
+              <View style={styles.dotsRow}>
+                {images!.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[styles.dot, i === activeIndex ? styles.dotActive : null]}
+                  />
+                ))}
+              </View>
+            </>
           ) : null}
         </View>
       ) : null}

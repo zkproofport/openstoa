@@ -837,8 +837,13 @@ export default function PostPage() {
                 detail page mirrors the mobile UX: text body, then a
                 swipeable image+video carousel with click-to-zoom. Strip
                 bare YouTube/Vimeo URLs from the body so they don't
-                surface above the gallery embed. */}
-            <SNSContent html={stripVideoUrls(post.content)} />
+                surface above the gallery embed.
+                `stripInlineImages` removes any inline `<img>` tags from
+                the body — the same image is already in MediaGallery, and
+                the inline copy was the source of W05's broken-icon bug
+                on web (image element rendered inside an HTML body fragment
+                without the layout context MediaGallery provides). */}
+            <SNSContent html={stripVideoUrls(post.content)} stripInlineImages />
           </div>
 
           {(() => {

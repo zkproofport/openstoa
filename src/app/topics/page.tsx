@@ -12,6 +12,10 @@ import Spinner from '@/components/Spinner';
 interface FeedPost extends PostCardPost {
   topicId: string;
   topicTitle: string;
+  /** Surfaced by `/api/feed` so PostCard renders the green "Joined" pill
+   *  next to the topic chip (W03). Already declared optional on
+   *  PostCardPost — kept here for documentation. */
+  isJoinedTopic?: boolean;
 }
 
 // ─── Inner Component ─────────────────────────────────────────────────────────

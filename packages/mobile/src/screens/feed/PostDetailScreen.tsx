@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,6 +31,7 @@ import { PostContent, extractMediaItems, stripVideoUrls } from '../../components
 import { PostBodyWithOg } from '../../components/PostBodyWithOg';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon, TrashIcon } from '../../components/icons';
 import Feather from 'react-native-vector-icons/Feather';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
@@ -431,13 +434,15 @@ function makeStyles(colors: ThemeColors) {
     // that wraps both the multiline TextInput and the inline Send button so
     // the bar reads as one keyboard accessory instead of "input + separate
     // button". Background fades into the surrounding chrome so the bar
-    // visually belongs with the keyboard.
+    // visually belongs with the keyboard. paddingBottom is set dynamically
+    // at render time: 0 when the keyboard is open (so the pill sits flush
+    // against the keyboard top edge), insets.bottom when the keyboard is
+    // closed (so the pill rests above the home indicator).
     inputRow: {
       flexDirection: 'row',
       alignItems: 'flex-end',
       paddingHorizontal: 12,
-      paddingTop: 8,
-      paddingBottom: 8,
+      paddingTop: 6,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border.default,
       backgroundColor: colors.background.primary,
@@ -599,6 +604,22 @@ export function PostDetailScreen() {
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
+  const insets = useSafeAreaInsets();
+
+  // Track keyboard visibility so the comment input row can collapse its
+  // bottom padding to zero while the keyboard is up (so the pill sits
+  // flush with the keyboard top edge) and restore safe-area bottom
+  // padding when the keyboard dismisses (so the pill rests above the
+  // home indicator). Without this, the constant 8pt + safe-area padding
+  // left a visible gap between the input and the keyboard.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
+    const hide = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const sessionUserId = useOpenStoaSession((s) => s.userId);
   const sessionRole = useOpenStoaSession((s) => s.role);
@@ -1122,14 +1143,13 @@ export function PostDetailScreen() {
         </View>
       </View>
 
-      {/* ── Title ── Pinned posts get a small purple map-pin icon next
-              to the title so the audience knows the topic owner/admin
-              promoted this one. Replaces the previous 📌 emoji for a
-              cleaner, theme-consistent treatment. */}
+      {/* ── Title ── Pinned posts get a small purple thumbtack icon
+              (MaterialCommunityIcons 'pin' — Feather's map-pin is a GPS
+              marker, wrong shape). */}
       <View style={styles.postTitleRow}>
         {isPinned ? (
-          <Feather
-            name="map-pin"
+          <MaterialCommunityIcons
+            name="pin"
             size={18}
             color={colors.brand.primary}
             style={styles.postTitlePinIcon}
@@ -1430,7 +1450,14 @@ export function PostDetailScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        // iOS: when the navigation header is opaque, KeyboardAvoidingView
+        // needs the header height as the vertical offset so the avoided
+        // region starts below the header instead of below the screen top.
+        // A status bar (insets.top) + a standard nav bar (44pt) is the
+        // safe default for native-stack. With `0` the avoidance was
+        // overshooting and leaving ~44pt of empty space between the
+        // input pill and the keyboard.
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
       >
         <FlatList
           data={commentList}
@@ -1456,8 +1483,16 @@ export function PostDetailScreen() {
 
         {/* Fixed bottom comment input — Reddit / Threads-style single pill.
             Send button sits inside the pill so the whole bar reads as one
-            keyboard-attached widget. */}
-        <View style={styles.inputRow}>
+            keyboard-attached widget. paddingBottom collapses to 0 when the
+            keyboard is open so the pill sits flush with the keyboard top
+            edge; it restores to insets.bottom when the keyboard dismisses
+            so the pill clears the home indicator. */}
+        <View
+          style={[
+            styles.inputRow,
+            { paddingBottom: keyboardOpen ? 6 : Math.max(insets.bottom, 8) },
+          ]}
+        >
           <View style={styles.inputPill}>
             <TextInput
               ref={inputRef}

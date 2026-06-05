@@ -98,6 +98,11 @@ export interface Post {
   isAI: boolean;
   isPinned?: boolean;
   topicTitle?: string;
+  /** True when the signed-in viewer is a member of the post's topic. Used by
+   *  PostCard and PostDetail to render a small "Joined" pill next to the
+   *  topic chip so the user sees their membership status without leaving the
+   *  page. Server returns this on authenticated requests only. */
+  isJoinedTopic?: boolean;
   tags?: Array<{ slug: string; name: string }>;
   /** 1 = upvoted by current user, -1 = downvoted, null/undefined = no vote */
   userVoted?: 1 | -1 | null;

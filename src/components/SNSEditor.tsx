@@ -25,6 +25,13 @@ interface SNSEditorProps {
    *  autoload is skipped so an in-progress draft doesn't trample the
    *  post being edited. */
   initialState?: SNSEditorState;
+  /** Bump this number from the parent to force the editor's internal
+   *  content/images/videos state back to empty. Used by the topic-page
+   *  Reset button so the textarea visually clears even though the editor
+   *  owns its own state (uncontrolled `content`). The effect runs only
+   *  when the signal value changes, so the very first render — when
+   *  parents typically pass `0` — does NOT trigger a wipe. */
+  resetSignal?: number;
 }
 
 // ─── Video URL Validation ──────────────────────────────────────────────────
@@ -178,6 +185,7 @@ export default function SNSEditor({
   maxImages = 10,
   maxVideos = 3,
   initialState,
+  resetSignal,
 }: SNSEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -232,6 +240,54 @@ export default function SNSEditor({
       setTimeout(autoGrow, 0);
     }
   }, [loadDraft, onChange, autoGrow, initialState]);
+
+  // When `draftKey` changes mid-mount (e.g. the parent stays mounted but
+  // switches the per-topic draft slot), re-hydrate from the new key so the
+  // user sees the right topic's saved draft instead of stale content from
+  // the previous one. We deliberately re-run on draftKey changes only.
+  const prevDraftKey = useRef(draftKey);
+  useEffect(() => {
+    if (prevDraftKey.current === draftKey) return;
+    prevDraftKey.current = draftKey;
+    if (initialState) return;
+    const draft = loadDraft();
+    if (draft) {
+      setContent(draft.content);
+      setImages(draft.images);
+      setVideos(draft.videos);
+      onChange?.({ content: draft.content, images: draft.images, videos: draft.videos });
+    } else {
+      setContent('');
+      setImages([]);
+      setVideos([]);
+      onChange?.({ content: '', images: [], videos: [] });
+    }
+    setTimeout(autoGrow, 0);
+  }, [draftKey, loadDraft, onChange, autoGrow, initialState]);
+
+  // Reset signal — parent bumps the number to wipe the editor visually.
+  // Compared with the previous value so the initial mount (e.g. signal=0)
+  // doesn't clobber a freshly loaded draft.
+  const prevResetSignal = useRef<number | undefined>(resetSignal);
+  useEffect(() => {
+    if (resetSignal === undefined) return;
+    if (prevResetSignal.current === resetSignal) return;
+    prevResetSignal.current = resetSignal;
+    setContent('');
+    setImages([]);
+    setVideos([]);
+    setLimitError(null);
+    setShowVideoInput(false);
+    setVideoUrlDraft('');
+    setVideoError('');
+    // Notify parent so its mirror state (postContent etc.) stays in sync —
+    // some callers read these out of `onChange` rather than re-deriving.
+    onChange?.({ content: '', images: [], videos: [] });
+    // Drop the persisted draft for this key too — Reset shouldn't leave
+    // a stale entry that the next mount would resurrect.
+    try { localStorage.removeItem(draftKey); } catch {}
+    setTimeout(autoGrow, 0);
+  }, [resetSignal, onChange, autoGrow, draftKey]);
 
   // ─── Content updates ────────────────────────────────────────────────────
 

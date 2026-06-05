@@ -12,6 +12,7 @@ import { PostBodyWithOg } from './PostBodyWithOg';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon } from './icons';
 import Feather from 'react-native-vector-icons/Feather';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
 import { usePostMutations } from '../hooks/usePostMutations';
@@ -50,6 +51,10 @@ export interface PostCardProps {
 // count alone keeps it deterministic — the preview always shows up to
 // PREVIEW_LINES, and anything beyond gets a toggle.
 const PREVIEW_LINES = 5;
+// Char-based fallback: long single-line bodies (no `\n`) still trigger the
+// Show more toggle. Mirrors web SNSContent height-based overflow detection
+// (13px × 18px line-height ≈ ~11 visual rows ≈ 300 chars in practice).
+const PREVIEW_CHAR_THRESHOLD = 300;
 
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
@@ -65,6 +70,17 @@ function makeStyles(colors: ThemeColors) {
       alignItems: 'center',
       gap: 6,
       marginBottom: 6,
+    },
+    joinedBadge: {
+      backgroundColor: colors.status.success + '22',
+      borderRadius: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    joinedBadgeText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: colors.status.success,
     },
     topicLabel: {
       fontSize: 11,
@@ -399,7 +415,9 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   // appears at a consistent body height regardless of language / per-line
   // character density. Media is its own block now, so it doesn't influence
   // the toggle eligibility — only the body line count matters.
-  const isLong = rawContent.split('\n').length > PREVIEW_LINES;
+  const isLong =
+    rawContent.length > PREVIEW_CHAR_THRESHOLD ||
+    rawContent.split('\n').length > PREVIEW_LINES;
 
   return (
     <View style={styles.card}>
@@ -411,19 +429,25 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
               {topicTitle}
             </Text>
           ) : null}
+          {post.isJoinedTopic ? (
+            <View style={styles.joinedBadge}>
+              <Text style={styles.joinedBadgeText}>
+                {t('openstoa.topics.joinedBadge')}
+              </Text>
+            </View>
+          ) : null}
           <Text style={styles.meta} numberOfLines={1}>
             {post.authorNickname ?? t('openstoa.postCard.author.anon')} · {formatRelativeTime(post.createdAt)}
           </Text>
         </View>
 
-        {/* Title — pinned posts get a small purple map-pin icon prefix so
-            the audience can tell at a glance which one a topic owner/admin
-            has pinned. Replaces the previous 📌 emoji prefix for a more
-            modern, theme-consistent treatment. */}
+        {/* Title — pinned posts get a small thumbtack icon prefix
+            (MaterialCommunityIcons 'pin' is the real push-pin glyph; Feather's
+            map-pin is a GPS marker and was the wrong shape). */}
         <View style={styles.titleRow}>
           {post.isPinned ? (
-            <Feather
-              name="map-pin"
+            <MaterialCommunityIcons
+              name="pin"
               size={14}
               color={colors.brand.primary}
               style={styles.titlePinIcon}
@@ -493,6 +517,12 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           .map((m) => (m.type === 'youtube' ? `https://youtu.be/${m.src}` : `https://vimeo.com/${m.src}`))}
         mode="feed"
         horizontalPadding={32}
+        // Tapping any image in the feed carousel opens PostDetail; horizontal
+        // pan still routes to the ScrollView so swipe between images keeps
+        // working. Without this, the carousel sits inside the post card but
+        // image taps did nothing because PostCard wraps the content (not the
+        // media block) in the outer TouchableOpacity.
+        onImagePress={() => onPress()}
       />
 
       {/* Poll — when the post has an attached poll, render the

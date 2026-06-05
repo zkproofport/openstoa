@@ -25,6 +25,13 @@ interface SNSContentProps {
   maxLines?: number;
   onToggleExpand?: () => void;
   onOverflowChange?: (isOverflowing: boolean) => void;
+  /** When true, inline non-GIF `<img>` tags are stripped from the rendered
+   *  body. Callers that render a separate MediaGallery (PostCard feed +
+   *  PostDetail) opt in so the same image doesn't render twice and the
+   *  broken-icon edge case from inline rendering disappears. Defaults to
+   *  false so comments and any other surface that genuinely embeds
+   *  images inline keep working. (W05) */
+  stripInlineImages?: boolean;
 }
 
 // Treat as HTML if it contains any tag-like sequence; otherwise plain text.
@@ -158,6 +165,32 @@ function extractVideoUrls(html: string): { videoEmbeds: VideoEmbed[]; cleanedHtm
   cleanedHtml = processedParts.join('');
 
   return { videoEmbeds, cleanedHtml };
+}
+
+// ─── Inline <img> stripping (W05) ───────────────────────────────────────────
+// The post detail page renders text body via SNSContent AND images via the
+// shared MediaGallery (`collectPostMedia` scrapes inline `<img>` tags and
+// merges them with `media.images`). Without this strip the same image
+// would render twice — once via `dangerouslySetInnerHTML` here, once in
+// the carousel — and on web the inline copy frequently shows as a broken
+// icon because the surrounding paragraph wrapper, CSS layout, and missing
+// onerror handling don't match what the lightbox path provides.
+//
+// Two safe assumptions:
+//   1. The MediaGallery is the single source of truth for visual images.
+//      Whatever <img> appears in `content` is already picked up by
+//      `collectPostMedia` and shown there.
+//   2. Animated GIFs are intentionally a separate path (we still want
+//      them inline-ish via the GifImages renderer below) — we strip
+//      those URLs from the gallery side, so non-GIF strips here.
+//
+// We only strip non-GIF `<img>` tags. Anything else (links, text, breaks,
+// br paragraphs) is left untouched.
+function stripNonGifImgTags(html: string): string {
+  if (!html) return '';
+  return html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>\s*/gi, (match, src) => {
+    return isGifUrl(src) ? match : '';
+  });
 }
 
 // ─── GIF Detection & Extraction ─────────────────────────────────────────────
@@ -335,6 +368,7 @@ export default function SNSContent({
   maxLines = 4,
   onToggleExpand,
   onOverflowChange,
+  stripInlineImages = false,
 }: SNSContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
@@ -356,8 +390,22 @@ export default function SNSContent({
   // 2. Extract GIFs from remaining HTML
   const { gifUrls, cleanedHtml: htmlAfterGifs } = useMemo(() => extractGifs(htmlAfterVideos), [htmlAfterVideos]);
 
+  // 2a. (W05) Strip non-GIF inline <img> tags when the caller opts in.
+  //     PostCard feed + PostDetail render a separate MediaGallery (which
+  //     scrapes the same `<img>` tags via `collectPostMedia` on the
+  //     parent), so leaving them in the body produces a duplicate AND on
+  //     web the inline copy frequently renders as a broken icon.
+  //     Comments and any other surface that genuinely embeds images
+  //     inline keep them by passing stripInlineImages=false (the default).
+  //     Animated GIFs are kept either way — they have a dedicated
+  //     GifImages renderer below.
+  const htmlAfterImgs = useMemo(
+    () => (stripInlineImages ? stripNonGifImgTags(htmlAfterGifs) : htmlAfterGifs),
+    [htmlAfterGifs, stripInlineImages],
+  );
+
   // 3. Auto-link remaining URLs
-  const linkedHtml = useMemo(() => autoLinkUrls(htmlAfterGifs), [htmlAfterGifs]);
+  const linkedHtml = useMemo(() => autoLinkUrls(htmlAfterImgs), [htmlAfterImgs]);
 
   // Combine explicit + legacy media for the gallery render.
   const galleryImages = useMemo(() => {
@@ -395,6 +443,60 @@ export default function SNSContent({
     if (isVideoUrl(firstUrl)) return null;
     return firstUrl;
   }, [firstUrl]);
+
+  // ── Inline OG split (W04) ────────────────────────────────────────────────
+  // Twitter/X-style: the OG card should appear immediately under the
+  // paragraph containing the link, not pushed to the very bottom of the
+  // post body. We split `linkedHtml` by paragraph breaks (`<br><br>`
+  // sequences), find the first paragraph that holds the preview URL, and
+  // emit the LinkPreview right after it. Paragraphs before and after are
+  // rendered as their own `<div>` blocks so the visual break matches
+  // what the single `<br><br>` join produced.
+  //
+  // Legacy posts that still arrive as raw `<p>...</p>` HTML fall through
+  // this split untouched — they end up as one big chunk and we still
+  // render the LinkPreview below the body the same way as before.
+  const bodyChunks = useMemo<
+    Array<{ kind: 'html'; html: string } | { kind: 'preview' }>
+  >(() => {
+    if (truncate || !previewUrl) {
+      return [{ kind: 'html', html: linkedHtml }];
+    }
+    // Split paragraphs on 2+ consecutive <br> tags (with optional whitespace).
+    const PARAGRAPH_SPLIT = /(?:<br\s*\/?>\s*){2,}/i;
+    const paragraphs = linkedHtml.split(PARAGRAPH_SPLIT);
+    if (paragraphs.length <= 1) {
+      // No paragraph breaks → fall back to the pre-W04 layout where the
+      // preview sits below the body (handled by the post-body render
+      // path). Return the body unchanged here and let the existing
+      // post-body LinkPreview render below.
+      return [{ kind: 'html', html: linkedHtml }];
+    }
+    // Locate the first paragraph that contains the preview URL — either
+    // as a literal substring (autoLinkUrls leaves the URL text in place
+    // inside the <a>) or in an href attribute.
+    const previewUrlLower = previewUrl.toLowerCase();
+    const targetIdx = paragraphs.findIndex((p) =>
+      p.toLowerCase().includes(previewUrlLower),
+    );
+    if (targetIdx < 0) {
+      return [{ kind: 'html', html: linkedHtml }];
+    }
+    const chunks: Array<{ kind: 'html'; html: string } | { kind: 'preview' }> = [];
+    paragraphs.forEach((p, i) => {
+      chunks.push({ kind: 'html', html: p });
+      if (i === targetIdx) chunks.push({ kind: 'preview' });
+    });
+    return chunks;
+  }, [linkedHtml, previewUrl, truncate]);
+
+  // True when the inline split successfully placed a LinkPreview in the
+  // body. The trailing post-body LinkPreview render path then skips its
+  // own copy to avoid double cards.
+  const previewRenderedInline = useMemo(
+    () => bodyChunks.some((c) => c.kind === 'preview'),
+    [bodyChunks],
+  );
 
   useEffect(() => {
     if (!truncate || !contentRef.current) return;
@@ -467,10 +569,29 @@ export default function SNSContent({
           )}
         </div>
       ) : (
-        <div
-          className="sns-content-body"
-          dangerouslySetInnerHTML={{ __html: linkedHtml }}
-        />
+        // W04: inline OG. When `bodyChunks` contains a `preview` marker we
+        // emit paragraph <div>s with the LinkPreview right after the
+        // paragraph that owns the URL — same as Twitter/X. When there's
+        // no preview or no paragraph break to split on, this collapses
+        // to a single chunk and renders identically to the pre-W04 path.
+        <div className="sns-content-body">
+          {bodyChunks.map((chunk, i) => {
+            if (chunk.kind === 'preview') {
+              if (!previewUrl) return null;
+              return <LinkPreview key={`og-${i}`} url={previewUrl} />;
+            }
+            return (
+              <div
+                key={`p-${i}`}
+                style={{
+                  // Mirror the visual gap that two <br><br> produced.
+                  marginBottom: i < bodyChunks.length - 1 ? '0.85em' : 0,
+                }}
+                dangerouslySetInnerHTML={{ __html: chunk.html }}
+              />
+            );
+          })}
+        </div>
       )}
 
       {/* "Show more" button for truncated content */}
@@ -506,8 +627,11 @@ export default function SNSContent({
       {/* LinkPreview is always shown when there's a URL (mirrors mobile
           PostBodyWithOg behaviour — feed cards get OG cards too, not just
           PostDetail). Video embeds remain full-mode only because expanded
-          video iframes don't fit the compact feed-card layout. */}
-      {previewUrl && gifUrls.length === 0 && galleryImages.length === 0 && (
+          video iframes don't fit the compact feed-card layout.
+          When the inline split (W04) already placed the card after the
+          URL's paragraph, we skip the trailing copy so the user sees
+          exactly one card. */}
+      {previewUrl && !previewRenderedInline && gifUrls.length === 0 && galleryImages.length === 0 && (
         <LinkPreview url={previewUrl} />
       )}
       {!truncate && <VideoEmbeds embeds={galleryVideos} />}

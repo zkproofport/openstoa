@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Linking, useWindowDimensions, View } from 'react-native';
+import { Linking, Text, useWindowDimensions, View } from 'react-native';
 import RenderHtml, { defaultSystemFonts } from 'react-native-render-html';
 import { useThemeColors } from '../theme/ThemeContext';
 
@@ -129,45 +129,43 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
   const { colors } = useThemeColors();
   const { width } = useWindowDimensions();
 
-  const processedContent = useMemo(() => {
-    let html = content || '';
-    // Plain text composer (Post create body / comments) saves raw text with
-    // `\n` newlines. Convert to `<br>` so the HTML renderer keeps the line
-    // structure the user typed. Skip for legacy HTML posts (already have
-    // proper tags). Mirrors web's SNSContent.plainTextToHtml.
-    //
-    // Multi-line + consecutive-newline preservation: react-native-render-html
-    // collapses adjacent `<br>` tags, so `\n\n\n\n테스트` would render as just
-    // one line break + 테스트 — losing every blank line the user typed.
-    // Inject a non-breaking space between adjacent `<br>` so each break has
-    // its own line of content and the renderer can't merge them.
-    const looksLikeHtml = /<[a-zA-Z!\/][^>]*>/.test(html);
-    if (!looksLikeHtml) {
-      html = html
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-      // Plain-text body: split per line and wrap each in <p>. Empty lines
-      // become <p>&nbsp;</p> so they render as visible blank rows. RNRH
-      // collapses adjacent <br>s but never empty <p>s with nbsp content.
-      const lines = html.split('\n');
-      html = lines.map((line) => `<p>${line.length ? line : '&nbsp;'}</p>`).join('');
+  // Plain text path: detect "no HTML tags" and render via native `<Text>`
+  // instead of react-native-render-html. This is the only way to keep
+  // consecutive newlines visible — RNRH collapses both `<br><br>` and
+  // empty `<p>` runs regardless of inline content. Native `<Text>`
+  // preserves `\n` exactly as the user typed.
+  const isPlainText = useMemo(
+    () => !/<[a-zA-Z!\/][^>]*>/.test(content || ''),
+    [content],
+  );
+
+  const plainSegments = useMemo(() => {
+    if (!isPlainText) return null;
+    const text = content || '';
+    const segs: Array<{ text: string; url?: string }> = [];
+    let lastIndex = 0;
+    const re = /(https?:\/\/[^\s<]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > lastIndex) segs.push({ text: text.slice(lastIndex, m.index) });
+      segs.push({ text: m[1], url: m[1] });
+      lastIndex = m.index + m[1].length;
     }
+    if (lastIndex < text.length) segs.push({ text: text.slice(lastIndex) });
+    return segs;
+  }, [content, isPlainText]);
+
+  const processedContent = useMemo(() => {
+    if (isPlainText) return '';
+    let html = content || '';
     if (omitImages) {
       html = html
         .replace(/<(img|video|iframe)\b[^>]*\/?>/gi, '')
         .replace(/<\/(video|iframe)>/gi, '');
     }
-    // Auto-link plain-text URLs so the body matches what `SNSContent` on
-    // the web does (raw URLs are clickable + colored). Skip the contents
-    // of existing `<a>` tags so we never double-wrap. The renderer's
-    // `<a>` onPress hook then routes the tap into the host's in-app
-    // WebView via `onPressLink`.
     html = autoLinkUrls(html);
     return html;
-  }, [content, omitImages]);
+  }, [content, omitImages, isPlainText]);
 
   const tagsStyles = useMemo<Record<string, object>>(
     () => ({
@@ -230,6 +228,37 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ignoredDomTags = useMemo(() => ['script', 'style', 'iframe'], []);
 
+  // Plain text path — native <Text> preserves newlines exactly as typed
+  // (RNRH collapses both <br><br> and empty <p>&nbsp;</p>). `maxLines` is
+  // honored via Text's native `numberOfLines` for consistent line clamping.
+  if (isPlainText && plainSegments) {
+    return (
+      <Text
+        style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 18 }}
+        numberOfLines={maxLines}
+        selectable
+      >
+        {plainSegments.map((seg, i) =>
+          seg.url ? (
+            <Text
+              key={i}
+              style={{ color: colors.brand.primary, textDecorationLine: 'underline' }}
+              onPress={() => {
+                if (onPressLink) onPressLink(seg.url!);
+                else void Linking.openURL(seg.url!).catch(() => undefined);
+              }}
+            >
+              {seg.text}
+            </Text>
+          ) : (
+            <Text key={i}>{seg.text}</Text>
+          ),
+        )}
+      </Text>
+    );
+  }
+
+  // HTML path — legacy posts with real tags (images/iframes/etc).
   const inner = (
     <RenderHtml
       contentWidth={width - 32}
@@ -244,9 +273,6 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
   );
 
   if (maxLines !== undefined) {
-    // Matches web's `SNSContent.tsx` truncate mode (maxHeight: 200, overflow
-    // hidden). `maxLines` is kept as a no-op API marker so existing callers
-    // stay source-compatible; the actual clipping is a fixed 200dp box.
     return (
       <View style={{ maxHeight: FEED_PREVIEW_MAX_HEIGHT, overflow: 'hidden' }}>
         {inner}

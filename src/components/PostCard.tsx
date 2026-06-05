@@ -46,6 +46,11 @@ export interface PostCardPost {
   poll?: Poll | null;
   /** Tag chip row — appears between media/poll and the action bar. */
   tags?: Array<{ name: string; slug: string }>;
+  /** Whether the signed-in viewer is a member of this post's topic. Used
+   *  to render the green "Joined" pill next to the topic chip — mirrors
+   *  the PostDetail header. The API surfaces this in both the cross-topic
+   *  feed (`/api/feed`) and the per-topic listing (`/api/topics/:id/posts`). */
+  isJoinedTopic?: boolean;
 }
 
 export interface PostCardProps {
@@ -192,9 +197,50 @@ export default function PostCard({
   const isGuest = !sessionUserId;
 
   // Topic breadcrumb (reused in both modes)
+  // When the viewer is a member, append a small green "Joined" pill so the
+  // feed mirrors the PostDetail header. We only render the pill in the
+  // cross-topic feed (showTopic=true), where the topic chip itself is
+  // visible. The per-topic feed renders the pill separately below the
+  // title since there's no breadcrumb row to attach to.
+  const joinedPill = post.isJoinedTopic ? (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+        fontSize: 9,
+        fontWeight: 700,
+        color: '#22c55e',
+        background: 'rgba(34,197,94,0.10)',
+        border: '1px solid rgba(34,197,94,0.25)',
+        borderRadius: 4,
+        padding: '1px 6px',
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        fontFamily: 'var(--font-mono)',
+        lineHeight: 1.2,
+        verticalAlign: 'middle',
+      }}
+      aria-label="You are a member of this topic"
+    >
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      Joined
+    </span>
+  ) : null;
+
   const topicBreadcrumb =
     showTopic && post.topicTitle && post.topicId ? (
-      <div style={{ marginBottom: 6 }}>
+      <div
+        style={{
+          marginBottom: 6,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          flexWrap: 'wrap',
+        }}
+      >
         <Link
           href={`/topics/${post.topicId}`}
           onClick={(e) => e.stopPropagation()}
@@ -216,6 +262,7 @@ export default function PostCard({
         >
           t/{post.topicTitle}
         </Link>
+        {joinedPill}
       </div>
     ) : null;
 
@@ -302,6 +349,7 @@ export default function PostCard({
             display: 'flex',
             alignItems: 'center',
             gap: 6,
+            flexWrap: 'wrap',
           }}
         >
           {resolvedIsPinned && (
@@ -309,17 +357,25 @@ export default function PostCard({
               📌
             </span>
           )}
-          {post.title}
+          <span>{post.title}</span>
+          {/* When there's no topic breadcrumb (per-topic feed) the pill has
+              nowhere to go in the breadcrumb row — surface it next to the
+              title instead so the user still sees the membership badge. */}
+          {!showTopic && joinedPill}
         </h3>
 
         <div>
           {/* Media is rendered by MediaGallery below — keep SNSContent
-              focused on the text body so we don't double-up images. */}
+              focused on the text body so we don't double-up images.
+              `stripInlineImages` removes any inline `<img>` tags from the
+              body so the same image isn't drawn twice (broken-icon edge
+              case on web — W05). */}
           <SNSContent
             html={stripVideoUrls(post.content)}
             truncate={expandable ? !expanded : true}
             maxLines={3}
             onToggleExpand={expandable ? handleToggleExpand : undefined}
+            stripInlineImages
           />
         </div>
 

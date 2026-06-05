@@ -235,11 +235,17 @@ export async function GET(request: NextRequest) {
 
     // view=my: only show posts from topics the user has joined
     let accessibleTopicIds: string[];
+    // Joined-topic set — used downstream to tag every post with
+    // `isJoinedTopic` so PostCard can render the green "Joined" pill in
+    // the cross-topic feed (W03). Resolved unconditionally for both view
+    // modes since the badge needs to render in both.
+    const joinedMemberships = await db
+      .select({ topicId: topicMembers.topicId })
+      .from(topicMembers)
+      .where(eq(topicMembers.userId, session.userId));
+    const joinedTopicIds = new Set(joinedMemberships.map((m) => m.topicId));
     if (view === 'my') {
-      const memberships = await db.query.topicMembers.findMany({
-        where: eq(topicMembers.userId, session.userId),
-      });
-      accessibleTopicIds = memberships.map(m => m.topicId);
+      accessibleTopicIds = [...joinedTopicIds];
       if (categoryTopicIds) {
         accessibleTopicIds = accessibleTopicIds.filter(id => categoryTopicIds.includes(id));
       }
@@ -293,6 +299,12 @@ export async function GET(request: NextRequest) {
       return {
         ...postData,
         badges: p.authorId ? filterBadgesByTopicProofType(authBadgeMap.get(p.authorId) ?? [], topicProofType) : [],
+        // W03: tell PostCard which posts live in topics the viewer has
+        // already joined so the feed surfaces the same Joined badge that
+        // PostDetail shows. Guests never reach this branch — they're
+        // routed through the no-session path above where membership is
+        // moot.
+        isJoinedTopic: joinedTopicIds.has(p.topicId),
       };
     });
 

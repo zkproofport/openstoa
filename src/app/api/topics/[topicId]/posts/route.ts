@@ -409,9 +409,14 @@ export async function GET(
 
     const authorIds = [...new Set(topicPosts.map((p) => p.authorId).filter(Boolean))] as string[];
     const badgeMap = await getBatchUserBadges(authorIds);
+    // Membership is uniform across a single topic, so the badge applies
+    // to every row in the response when the viewer is a member. W03 surfaces
+    // the same green pill in topic feeds that PostDetail already shows.
+    const isJoinedTopic = !!membership;
     const postsWithBadges = topicPosts.map((p) => ({
       ...p,
       badges: filterBadgesByTopicProofType(badgeMap.get(p.authorId) ?? [], topicForBadge?.proofType ?? null),
+      isJoinedTopic,
     }));
 
     const postsWithFlags = await attachUserFlagsToPosts(postsWithBadges, session.userId);

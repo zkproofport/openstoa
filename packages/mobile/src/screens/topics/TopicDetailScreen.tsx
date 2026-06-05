@@ -393,13 +393,23 @@ export function TopicDetailScreen() {
   const rawPosts = postsQuery.data?.pages.flatMap((p) => p.posts) ?? [];
   // Defensive de-duplication to avoid "two children with the same key" warnings.
   const seenPostIds = new Set<string>();
-  const allPosts: typeof rawPosts = [];
+  const dedupedPosts: typeof rawPosts = [];
   for (const p of rawPosts) {
     if (!seenPostIds.has(p.id)) {
       seenPostIds.add(p.id);
-      allPosts.push(p);
+      dedupedPosts.push(p);
     }
   }
+  // Client-side filter for the "Recorded" sort pill. The server's
+  // `?sort=recorded` orders by recordCount DESC but still returns posts
+  // with recordCount=0 once the recorded set is exhausted, so the user
+  // sees a mostly-empty list mixed with un-recorded posts. Filtering on
+  // the client guarantees the Recorded tab only shows posts that have
+  // at least one on-chain record receipt — matching the user's mental
+  // model of "Recorded = on-chain attested posts only".
+  const allPosts = sortKey === 'recorded'
+    ? dedupedPosts.filter((p) => (p as Post & { recordCount?: number }).recordCount && (p as Post & { recordCount?: number }).recordCount! > 0)
+    : dedupedPosts;
 
   const onRefresh = useCallback(() => {
     topicQuery.refetch();

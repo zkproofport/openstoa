@@ -52,6 +52,11 @@ interface Post {
   reactions?: Reaction[];
   userVoted?: number | null;
   createdAt: string;
+  /** Whether the signed-in viewer is a member of this post's topic — used
+   *  by PostCard to render the green "Joined" pill (W03). Server hydrates
+   *  this in `/api/topics/:id/posts` based on the membership check that
+   *  gates the read. */
+  isJoinedTopic?: boolean;
 }
 
 const PAGE_SIZE = 20;
@@ -125,6 +130,11 @@ export default function TopicPage() {
   /** Per-topic draft key — `openstoa-draft-${topicId}` — so switching
    *  between topics no longer trample each other's in-progress drafts. */
   const composerDraftKey = `openstoa-draft-${topicId}`;
+  /** Monotonically increasing signal handed to <SNSEditor>. Each bump is
+   *  a request to wipe the editor's internal `content/images/videos`
+   *  state — the editor owns those (uncontrolled) so a parent-level
+   *  reset can't reach them otherwise. */
+  const [composerResetSignal, setComposerResetSignal] = useState(0);
 
   const [copied, setCopied] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -357,6 +367,10 @@ export default function TopicPage() {
     setComposeMode('write');
     setPostError(null);
     try { localStorage.removeItem(composerDraftKey); } catch {}
+    // Tell <SNSEditor> to wipe its own textarea/image/video state — the
+    // editor doesn't watch postContent etc. so this is the only path that
+    // clears it visually when the user is in Write mode.
+    setComposerResetSignal((n) => n + 1);
   }
 
   async function handlePostSubmit(e: React.FormEvent) {
@@ -405,6 +419,7 @@ export default function TopicPage() {
       setPostPoll(null);
       setComposeMode('write');
       try { localStorage.removeItem(composerDraftKey); } catch {}
+      setComposerResetSignal((n) => n + 1);
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
@@ -1060,6 +1075,7 @@ export default function TopicPage() {
                     }}
                     minHeight={180}
                     draftKey={composerDraftKey}
+                    resetSignal={composerResetSignal}
                   />
                   <div style={{ marginTop: 4 }}>
                     <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
@@ -1174,7 +1190,13 @@ export default function TopicPage() {
                     // both images and embedded videos. That keeps the preview
                     // pixel-identical to the post the user is about to ship.
                     <>
-                      <SNSContent html={postContent} />
+                      {/* Preview mirrors PostDetail exactly: text body
+                          via SNSContent (with `stripInlineImages` so we
+                          don't double-render images the user attached
+                          via the composer toolbar — those flow through
+                          MediaGallery below), then the swipeable
+                          gallery. */}
+                      <SNSContent html={postContent} stripInlineImages />
                       <MediaGallery images={postImages} videos={postVideos} mode="detail" />
                     </>
                   ) : (
@@ -1228,6 +1250,7 @@ export default function TopicPage() {
                     setPostPoll(null);
                     setComposeMode('write');
                     try { localStorage.removeItem(composerDraftKey); } catch {}
+                    setComposerResetSignal((n) => n + 1);
                   }}
                   style={{
                     background: 'rgba(255,255,255,0.06)',
