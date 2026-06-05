@@ -418,38 +418,51 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 16,
     },
 
-    // Bottom input
+    // Reddit / Threads-style integrated comment input — single rounded pill
+    // that wraps both the multiline TextInput and the inline Send button so
+    // the bar reads as one keyboard accessory instead of "input + separate
+    // button". Background fades into the surrounding chrome so the bar
+    // visually belongs with the keyboard.
     inputRow: {
       flexDirection: 'row',
       alignItems: 'flex-end',
-      padding: 8,
-      borderTopWidth: 1,
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      paddingBottom: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border.default,
+      backgroundColor: colors.background.primary,
+    },
+    inputPill: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'flex-end',
       backgroundColor: colors.background.secondary,
+      borderRadius: 22,
+      paddingLeft: 16,
+      paddingRight: 6,
+      paddingVertical: 4,
+      minHeight: 40,
     },
     input: {
       flex: 1,
-      minHeight: 40,
       maxHeight: 120,
-      borderWidth: 1,
-      borderColor: colors.border.default,
-      borderRadius: 18,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
+      paddingTop: Platform.OS === 'ios' ? 8 : 4,
+      paddingBottom: Platform.OS === 'ios' ? 8 : 4,
       color: colors.text.primary,
-      backgroundColor: colors.background.primary,
+      fontSize: 15,
     },
     sendButton: {
-      marginLeft: 8,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 18,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
       backgroundColor: colors.brand.primary,
-      minWidth: 60,
       alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 6,
     },
-    sendButtonDisabled: { backgroundColor: colors.border.strong },
-    sendLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+    sendButtonDisabled: { backgroundColor: colors.background.tertiary },
+    sendLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   });
 }
 
@@ -460,6 +473,7 @@ function makeStyles(colors: ThemeColors) {
 function CommentRow({
   comment,
   currentUserId,
+  isPlatformAdmin,
   onDelete,
   deleting,
   styles,
@@ -467,25 +481,47 @@ function CommentRow({
 }: {
   comment: Comment;
   currentUserId: string | null;
+  /** True when the current user has account-level moderation powers
+   *  (session.role === 'admin'). Lets admins delete any comment, not just
+   *  their own. */
+  isPlatformAdmin: boolean;
   onDelete: (id: string) => void;
   deleting: boolean;
   styles: ReturnType<typeof makeStyles>;
   colors: ThemeColors;
 }) {
+  // Comment body is plain text on the server but renders through
+  // PostBodyWithOg so plain-text URLs become tappable hyperlinks (via
+  // autoLinkUrls inside PostContent), the first http(s) URL surfaces an
+  // OG preview card, and link taps route through the in-app WebView —
+  // same treatment as the post body for consistency with the rest of
+  // the feed.
+  // Use `any` for the navigator type — comments can be rendered from any
+  // stack that surfaces a post (Feed / Topics / Profile / Chat) and they
+  // all register the same `InAppBrowser` route.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const navigation = useNavigation<any>();
+  const openInBrowser = (url: string) => navigation.navigate('InAppBrowser', { url });
   const { t } = useTranslation();
   const isDeleted = !!comment.isDeleted || !!comment.deletedAt;
 
   if (isDeleted) {
+    // Surface admin-driven moderation distinctly so the audience can tell a
+    // moderator stepped in vs the author retracting their own comment.
+    const label = comment.deletedBy === 'admin'
+      ? t('openstoa.postDetail.deletedByAdmin')
+      : t('openstoa.postDetail.deleted');
     return (
       <View style={styles.commentDeletedRow}>
-        <Text style={styles.commentDeleted}>
-          {t('openstoa.postDetail.deleted')}
-        </Text>
+        <Text style={styles.commentDeleted}>{label}</Text>
       </View>
     );
   }
 
-  const canDelete = !!(currentUserId && comment.authorId === currentUserId);
+  // Author can always remove their own comment; platform admins can remove
+  // anyone's. Mirrors the web client gate (page.tsx line 518).
+  const canDelete =
+    !!currentUserId && (comment.authorId === currentUserId || isPlatformAdmin);
 
   return (
     <View style={styles.commentRow}>
@@ -511,7 +547,9 @@ function CommentRow({
           </TouchableOpacity>
         )}
       </View>
-      <Text style={styles.commentBody}>{comment.content}</Text>
+      <View style={styles.commentBody}>
+        <PostBodyWithOg content={comment.content} onOpenUrl={openInBrowser} />
+      </View>
     </View>
   );
 }
@@ -554,6 +592,8 @@ export function PostDetailScreen() {
   const styles = makeStyles(colors);
 
   const sessionUserId = useOpenStoaSession((s) => s.userId);
+  const sessionRole = useOpenStoaSession((s) => s.role);
+  const isPlatformAdmin = sessionRole === 'admin';
 
   // Centralised post mutations — vote/bookmark/reaction/record/comment
   // all funnel through this hook, which patches every relevant query
@@ -659,6 +699,30 @@ export function PostDetailScreen() {
     enabled: !!postId && recordCount > 0,
   });
   const recordRows: RecordRow[] = recordsData?.records ?? [];
+
+  // Topic-level role for the current user (owner / admin / member /
+  // null=non-member). Used for moderation affordances scoped to the
+  // post's parent topic — primarily the Pin/Unpin action. Mirrors the
+  // shape from openstoa/src/app/api/topics/[topicId]/route.ts:187-196.
+  // Reuses the same ['topic', topicId] query key TopicDetailScreen
+  // already populates so re-entering the screen pulls from cache instead
+  // of refetching.
+  const { data: topicMeta } = useQuery<{
+    topic: { isMember?: boolean } | null;
+    currentUserRole?: 'owner' | 'admin' | 'member' | null;
+  }>({
+    queryKey: ['topic', post?.topicId],
+    queryFn: () =>
+      client.get<{
+        topic: { isMember?: boolean } | null;
+        currentUserRole?: 'owner' | 'admin' | 'member' | null;
+      }>(`/api/topics/${post?.topicId}`),
+    enabled: !!post?.topicId && !!sessionUserId,
+    staleTime: 30 * 1000,
+  });
+  const topicRole = topicMeta?.currentUserRole ?? null;
+  const isTopicOwnerOrAdmin = topicRole === 'owner' || topicRole === 'admin';
+  const isPinned = !!post?.isPinned;
 
   // Eligibility check — driven off the same server policy as the POST
   // endpoint, surfaced BEFORE the user taps so we can disable the
@@ -878,14 +942,17 @@ export function PostDetailScreen() {
     );
   }
 
-  // Author-only kebab menu: edit (locked once the post is on-chain) +
-  // soft delete. Uses ActionSheetIOS on iOS and a stacked Alert on
-  // Android to stay native-feeling without pulling in an extra modal lib.
-  // NOTE: `post` is non-null below this line — the early return above
-  // already guarded against undefined. We snapshot the fields we need so
-  // the handler doesn't dereference `post` directly (TS narrowing inside
-  // a closure was getting noisy after the early-return refactor).
+  // Combined kebab menu — surfaces author actions (edit/delete), topic-owner
+  // moderation (pin/unpin), and platform admin moderation (delete any post).
+  // Visibility rules per row:
+  //   - Edit/Edit-locked: author only.
+  //   - Pin/Unpin: topic owner OR topic admin (any post).
+  //   - Delete: author OR platform admin (account-level moderation).
+  // Uses ActionSheetIOS on iOS and a stacked Alert on Android to stay
+  // native-feeling without pulling in an extra modal lib.
   const canEdit = isAuthor && recordCount === 0;
+  const canPin = isTopicOwnerOrAdmin;
+  const canDelete = isAuthor || isPlatformAdmin;
   const postTopicId = post.topicId;
   const postTopicTitle = post.topicTitle;
   const openAuthorMenu = () => {
@@ -908,38 +975,55 @@ export function PostDetailScreen() {
         ),
       );
     }
-    options.push(t('openstoa.postDetail.deletePost'));
-    handlers.push(() => {
-      Alert.alert(
-        t('openstoa.postDetail.deleteConfirmTitle'),
-        t('openstoa.postDetail.deleteConfirmMessage'),
-        [
-          { text: t('openstoa.common.cancel'), style: 'cancel' },
-          {
-            text: t('openstoa.postDetail.deletePost'),
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await client.delete(`/api/posts/${postId}`);
-                queryClient.invalidateQueries({ queryKey: ['feed'] });
-                queryClient.invalidateQueries({ queryKey: ['topic', postTopicId, 'posts'] });
-                navigation.goBack();
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                Alert.alert(t('openstoa.postDetail.deleteFailed'), msg);
-              }
-            },
-          },
-        ],
+    if (canPin) {
+      options.push(
+        isPinned
+          ? t('openstoa.postDetail.unpinPost')
+          : t('openstoa.postDetail.pinPost'),
       );
-    });
+      handlers.push(async () => {
+        const res = await mutations.togglePin(isPinned);
+        if (!res.ok) {
+          Alert.alert(t('openstoa.postDetail.pinFailed'), res.message ?? '');
+        }
+      });
+    }
+    if (canDelete) {
+      options.push(t('openstoa.postDetail.deletePost'));
+      handlers.push(() => {
+        Alert.alert(
+          t('openstoa.postDetail.deleteConfirmTitle'),
+          t('openstoa.postDetail.deleteConfirmMessage'),
+          [
+            { text: t('openstoa.common.cancel'), style: 'cancel' },
+            {
+              text: t('openstoa.postDetail.deletePost'),
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await client.delete(`/api/posts/${postId}`);
+                  queryClient.invalidateQueries({ queryKey: ['feed'] });
+                  queryClient.invalidateQueries({ queryKey: ['topic', postTopicId, 'posts'] });
+                  navigation.goBack();
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  Alert.alert(t('openstoa.postDetail.deleteFailed'), msg);
+                }
+              },
+            },
+          ],
+        );
+      });
+    }
+    if (options.length === 0) return;
     const cancelLabel = t('openstoa.common.cancel');
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options: [cancelLabel, ...options],
           cancelButtonIndex: 0,
-          destructiveButtonIndex: options.length, // last item = delete
+          // Last entry is delete iff canDelete is true (we always push it last).
+          destructiveButtonIndex: canDelete ? options.length : undefined,
         },
         (i) => {
           if (i === 0) return;
@@ -1014,9 +1098,10 @@ export function PostDetailScreen() {
               {truncateId(post.authorId, 6, 4)} · {formatRelativeTime(post.createdAt)}
             </Text>
           </View>
-          {/* Author-only overflow menu — edit (locked once the post is
-              recorded on-chain) + delete. Hidden for non-authors. */}
-          {isAuthor ? (
+          {/* Kebab menu — surfaces author edit/delete, topic-owner pin/unpin,
+              and platform-admin moderation. Hidden when the current user
+              has no available actions on this post. */}
+          {(isAuthor || isTopicOwnerOrAdmin || isPlatformAdmin) ? (
             <TouchableOpacity
               style={styles.headerKebab}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1028,8 +1113,13 @@ export function PostDetailScreen() {
         </View>
       </View>
 
-      {/* ── Title ── */}
-      <Text style={styles.postTitle}>{post.title}</Text>
+      {/* ── Title ── Pinned posts get a 📌 prefix so the audience knows
+              the topic owner/admin promoted this one. Matches the web
+              client's PostCard treatment. */}
+      <Text style={styles.postTitle}>
+        {isPinned ? '📌 ' : ''}
+        {post.title}
+      </Text>
 
       {/* ── Tags ── */}
       {post.tags && post.tags.length > 0 ? (
@@ -1258,8 +1348,15 @@ export function PostDetailScreen() {
           ) : null}
           {recordsExpanded
             ? recordRows.map((r) => {
+                // Explorer URL is set by the server based on the active
+                // chain (Base Mainnet vs Sepolia). No fallback — falling
+                // back to a hardcoded sepolia URL when the server omits
+                // the field would mislead users on production where the
+                // tx lives on Base Mainnet (ABSOLUTE RULE: no hardcoded
+                // env fallbacks). When the field is null/undefined we
+                // render a "pending…" label until the indexer fills it.
                 const url = (r as RecordRow & { txExplorerUrl?: string | null }).txExplorerUrl
-                  ?? (r.txHash ? `https://sepolia.basescan.org/tx/${r.txHash}` : null);
+                  ?? null;
                 return (
                   <View key={r.id} style={styles.recordRow}>
                     <Avatar
@@ -1316,7 +1413,7 @@ export function PostDetailScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        keyboardVerticalOffset={0}
       >
         <FlatList
           data={commentList}
@@ -1325,6 +1422,7 @@ export function PostDetailScreen() {
             <CommentRow
               comment={item}
               currentUserId={sessionUserId}
+              isPlatformAdmin={isPlatformAdmin}
               onDelete={handleDeleteComment}
               deleting={deletingCommentId === item.id}
               styles={styles}
@@ -1339,29 +1437,35 @@ export function PostDetailScreen() {
           keyboardShouldPersistTaps="handled"
         />
 
-        {/* Fixed bottom comment input */}
+        {/* Fixed bottom comment input — Reddit / Threads-style single pill.
+            Send button sits inside the pill so the whole bar reads as one
+            keyboard-attached widget. */}
         <View style={styles.inputRow}>
-          <TextInput
-            ref={inputRef}
-            style={styles.input}
-            placeholder={t('openstoa.postDetail.addCommentPlaceholder')}
-            placeholderTextColor={colors.text.tertiary}
-            value={draft}
-            onChangeText={setDraft}
-            editable={!sending}
-            multiline
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
-            onPress={handleSendComment}
-            disabled={!draft.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.sendLabel}>{t('openstoa.postDetail.send')}</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.inputPill}>
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              placeholder={t('openstoa.postDetail.addCommentPlaceholder')}
+              placeholderTextColor={colors.text.tertiary}
+              value={draft}
+              onChangeText={setDraft}
+              editable={!sending}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
+              onPress={handleSendComment}
+              disabled={!draft.trim() || sending}
+              activeOpacity={0.8}
+              accessibilityLabel={t('openstoa.postDetail.send')}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Feather name="arrow-up" size={18} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
 

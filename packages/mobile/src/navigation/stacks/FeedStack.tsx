@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { FeedHomeScreen } from '../../screens/feed/FeedHomeScreen';
 import { PostDetailScreen } from '../../screens/feed/PostDetailScreen';
+import { RecordedFeedScreen } from '../../screens/feed/RecordedFeedScreen';
 import { PostCreateScreen } from '../../screens/topics/PostCreateScreen';
 import { InAppBrowserScreen } from '../../screens/common/InAppBrowserScreen';
 import { useMiniAppStackScreenOptions } from '../shared';
@@ -10,6 +11,9 @@ import { useMiniAppStackScreenOptions } from '../shared';
 export type FeedStackParamList = {
   FeedHome: undefined;
   PostDetail: { postId: string };
+  // Cross-topic on-chain recorded feed (`GET /api/recorded`). Reachable
+  // from the Recorded chip on FeedHome. Authed-only.
+  RecordedFeed: undefined;
   // PostCreate doubles as the post-edit screen — pass `editPostId` to
   // hydrate the form and switch the submit action to PATCH.
   PostCreate: { topicId: string; topicTitle?: string; editPostId?: string };
@@ -28,6 +32,11 @@ export function FeedStack() {
     <Stack.Navigator key={i18n.language} screenOptions={screenOptions}>
       <Stack.Screen name="FeedHome" component={FeedHomeScreen} options={{ title: t('openstoa.tabs.feed') }} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: t('openstoa.feed.postTitle') }} />
+      <Stack.Screen
+        name="RecordedFeed"
+        component={RecordedFeedScreen}
+        options={{ title: t('openstoa.feed.recordedTitle') }}
+      />
       <Stack.Screen name="PostCreate" component={PostCreateScreen} options={{ title: t('openstoa.topics.newPostTitle') }} />
       <Stack.Screen
         name="InAppBrowser"

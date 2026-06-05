@@ -45,7 +45,12 @@
         "active": "Active",
         "top": "Top"
       },
-      "tagAll": "All"
+      "tagAll": "All",
+      "recordedChip": "Recorded",
+      "recordedTitle": "Recorded Posts",
+      "recordedSubtitle": "Posts recorded on Base by the community",
+      "recordedEmpty": "No recorded posts yet. Be the first to record a post on-chain!",
+      "recordedError": "Failed to load recorded posts."
     },
     "common": {
       "retry": "Retry",
@@ -324,6 +329,11 @@
       "commentsHeader": "Comments ({{count}})",
       "noComments": "No comments yet. Be the first!",
       "deleted": "[deleted]",
+      "deletedByAdmin": "Deleted by admin",
+      "pinPost": "Pin post",
+      "unpinPost": "Unpin post",
+      "pinFailed": "Couldn't update pin",
+      "pinnedBadge": "Pinned",
       "addCommentPlaceholder": "Add a comment…",
       "send": "Send",
       "react": "React",

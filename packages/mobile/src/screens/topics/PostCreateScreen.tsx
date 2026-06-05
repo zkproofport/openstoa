@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionSheetIOS,
   ActivityIndicator,
@@ -39,7 +39,7 @@ import { AuthGate } from '../../auth';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
-import { PostContent } from '../../components/PostContent';
+import { PostBodyWithOg } from '../../components/PostBodyWithOg';
 import { MediaGallery } from '../../components/MediaGallery';
 import { PollEditor, type PollEditorValue } from '../../components/PollEditor';
 import { useDraft } from '../../hooks/useDraft';
@@ -386,6 +386,27 @@ function makeStyles(colors: ThemeColors) {
     },
     submitButtonDisabled: { opacity: 0.5 },
     submitLabel: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+    // Header-right Reddit-style "Post" pill — brand background + white text
+    // when submittable, muted when disabled. Sized to stand out next to the
+    // native-stack title without overflowing the header area.
+    headerSubmitPill: {
+      backgroundColor: colors.brand.primary,
+      borderRadius: 999,
+      paddingVertical: 6,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 56,
+      minHeight: 30,
+    },
+    headerSubmitPillDisabled: {
+      backgroundColor: colors.background.secondary,
+    },
+    headerSubmitPillLabel: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
     // Modal
     modalOverlay: {
       flex: 1,
@@ -853,6 +874,36 @@ function PostCreateScreenAuthed() {
 
   const videoMetas = useMemo(() => videosToMeta(videos), [videos]);
 
+  // Header-right Post button — always visible regardless of keyboard state.
+  // Reddit-style pill: brand-coloured background + white label when the
+  // post is submittable, muted background when disabled. Twitter/Threads
+  // use the same idea — a header button big enough to stand out next to
+  // the navigation title so the user always knows where to commit.
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => createMutation.mutate()}
+          disabled={!canSubmit || createMutation.isPending}
+          activeOpacity={0.85}
+          hitSlop={8}
+          style={[
+            styles.headerSubmitPill,
+            !canSubmit && styles.headerSubmitPillDisabled,
+          ]}
+        >
+          {createMutation.isPending ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.headerSubmitPillLabel}>
+              {t('openstoa.postCreate.submit')}
+            </Text>
+          )}
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, canSubmit, createMutation, styles, t]);
+
   return (
     <View style={styles.flex}>
       <KeyboardSafeScroll
@@ -1226,6 +1277,12 @@ interface PreviewBlockProps {
 }
 
 function PreviewBlock({ title, content, images, videos, poll, tags, styles, emptyLabel, colors }: PreviewBlockProps) {
+  // Preview mode mirrors PostDetail/PostCard: link taps open the in-app
+  // browser and OG cards fade in alongside the body text. PreviewBlock is
+  // declared outside the screen component so it grabs navigation via the
+  // hook rather than closing over the screen's `navigation` prop.
+  const navigation = useNavigation<Nav>();
+  const openInBrowser = (url: string) => navigation.navigate('InAppBrowser', { url });
   const hasAny =
     title.trim() ||
     content.trim() ||
@@ -1246,7 +1303,9 @@ function PreviewBlock({ title, content, images, videos, poll, tags, styles, empt
           PostCard and PostDetailScreen so what the user sees in Preview
           matches the live post pixel-for-pixel. */}
       {title.trim() ? <Text style={styles.previewTitle}>{title}</Text> : null}
-      {content.trim() ? <PostContent content={content} /> : null}
+      {content.trim() ? (
+        <PostBodyWithOg content={content} onOpenUrl={openInBrowser} />
+      ) : null}
       <MediaGallery
         images={images}
         videos={videos.map((v) => v.url)}

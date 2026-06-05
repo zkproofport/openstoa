@@ -131,6 +131,20 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
 
   const processedContent = useMemo(() => {
     let html = content || '';
+    // Plain text composer (Post create body / comments) saves raw text with
+    // `\n` newlines. Convert to `<br>` so the HTML renderer keeps the line
+    // structure the user typed. Skip for legacy HTML posts (already have
+    // proper tags). Mirrors web's SNSContent.plainTextToHtml.
+    const looksLikeHtml = /<[a-zA-Z!\/][^>]*>/.test(html);
+    if (!looksLikeHtml) {
+      html = html
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\n/g, '<br>');
+    }
     if (omitImages) {
       html = html
         .replace(/<(img|video|iframe)\b[^>]*\/?>/gi, '')

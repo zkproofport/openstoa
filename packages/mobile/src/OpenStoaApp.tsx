@@ -87,11 +87,18 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
           const me = (await res.json()) as {
             userId?: string;
             nickname?: string;
+            role?: string;
           };
+          // Server only includes the `role` field when the account is
+          // admin (see openstoa/src/app/api/auth/session/route.ts) — normalise
+          // anything else to 'member' so the session store always has a
+          // concrete value.
+          const role = me.role === 'admin' ? 'admin' : 'member';
           session.setSession({
             token,
             userId: me.userId ?? '',
             nickname: me.nickname,
+            role,
           });
           return true;
         }
@@ -262,10 +269,29 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
         try {
           // force=true bypasses any LOGGED_OUT marker the host may still hold.
           const auth = await host.loginToOpenStoa({ force: true, method });
+          // Pull the platform-wide role from /api/auth/session so admin
+          // moderation affordances surface immediately after sign-in. The
+          // login payload doesn't include role; fetching once here avoids
+          // a "first session post-login is non-admin" race.
+          let role: 'admin' | 'member' = 'member';
+          try {
+            const base = host.getEnvironment().openstoaBaseUrl.replace(/\/$/, '');
+            const sessRes = await fetch(`${base}/api/auth/session`, {
+              headers: { Authorization: `Bearer ${auth.token}` },
+              credentials: 'omit',
+            });
+            if (sessRes.ok) {
+              const me = (await sessRes.json()) as { role?: string };
+              if (me.role === 'admin') role = 'admin';
+            }
+          } catch {
+            // Non-fatal — role stays 'member', user can still use the app.
+          }
           session.setSession({
             token: auth.token,
             userId: auth.userId,
             needsNickname: auth.needsNickname,
+            role,
           });
           // Warm the authed feed BEFORE landing on the TabNavigator so
           // the Feed tab opens already populated — no second loading

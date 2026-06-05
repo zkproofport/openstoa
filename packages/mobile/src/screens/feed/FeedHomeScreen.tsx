@@ -5,6 +5,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +21,8 @@ import { TagChips } from '../../components/TagChips';
 import { SearchBar } from '../../components/SearchBar';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
+import { useAuthGuardedAction } from '../../auth';
+import { RecordIcon } from '../../components/icons';
 
 interface FeedPage {
   posts: Post[];
@@ -81,6 +84,31 @@ function makeStyles(colors: ThemeColors) {
     },
     footerSpinner: {
       paddingVertical: 16,
+    },
+    // "Recorded on Base" entry pill — sits above the sort pills as a
+    // shortcut into the cross-topic on-chain recorded feed. Purple tint
+    // matches the RecordIcon's accent so it reads as a related affordance.
+    recordedChipWrap: {
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      backgroundColor: colors.background.primary,
+    },
+    recordedChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: 'rgba(139,92,246,0.10)',
+      borderWidth: 1,
+      borderColor: 'rgba(139,92,246,0.25)',
+    },
+    recordedChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#a78bfa',
     },
   });
 }
@@ -180,8 +208,30 @@ export function FeedHomeScreen() {
       ]
     : [];
 
+  // Cross-topic "Recorded on Base" entry — opens the dedicated screen
+  // backed by GET /api/recorded. Wrapped in useAuthGuardedAction because
+  // the endpoint requires authentication; guests see the sign-in sheet
+  // and the navigation auto-replays after sign-in.
+  const handleOpenRecorded = useAuthGuardedAction(() => {
+    navigation.navigate('RecordedFeed');
+  });
+
   const ListHeader = (
     <View>
+      <View style={styles.recordedChipWrap}>
+        <TouchableOpacity
+          style={styles.recordedChip}
+          activeOpacity={0.7}
+          onPress={handleOpenRecorded}
+          accessibilityRole="button"
+          accessibilityLabel={t('openstoa.feed.recordedChip')}
+        >
+          <RecordIcon size={12} color="#a78bfa" />
+          <Text style={styles.recordedChipText}>
+            {t('openstoa.feed.recordedChip')}
+          </Text>
+        </TouchableOpacity>
+      </View>
       <SortPills items={sortItems} value={sortKey} onChange={setSortKey} />
       {tagChips.length > 0 ? (
         <TagChips chips={tagChips} value={activeTag} onChange={setActiveTag} />

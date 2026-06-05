@@ -45,7 +45,12 @@
         "active": "활성",
         "top": "추천"
       },
-      "tagAll": "전체"
+      "tagAll": "전체",
+      "recordedChip": "기록됨",
+      "recordedTitle": "온체인 기록된 글",
+      "recordedSubtitle": "커뮤니티가 Base에 온체인 기록한 글이에요",
+      "recordedEmpty": "아직 기록된 글이 없어요. 첫 번째로 온체인 기록을 남겨보세요!",
+      "recordedError": "기록된 글을 불러오지 못했어요."
     },
     "common": {
       "retry": "다시 시도",
@@ -324,6 +329,11 @@
       "commentsHeader": "댓글 {{count}}",
       "noComments": "아직 댓글이 없어요. 첫 번째 댓글을 남겨보세요!",
       "deleted": "[삭제됨]",
+      "deletedByAdmin": "운영자가 삭제한 댓글이에요",
+      "pinPost": "글 고정",
+      "unpinPost": "고정 해제",
+      "pinFailed": "고정 변경에 실패했어요",
+      "pinnedBadge": "고정됨",
       "addCommentPlaceholder": "댓글 입력…",
       "send": "보내기",
       "react": "리액션",

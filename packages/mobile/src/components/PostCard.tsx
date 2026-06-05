@@ -406,8 +406,11 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           </Text>
         </View>
 
-        {/* Title */}
+        {/* Title — pinned posts get a 📌 prefix so the audience can tell
+            at a glance which one a topic owner/admin has pinned. Matches
+            the web client. */}
         <Text style={styles.title} numberOfLines={2}>
+          {post.isPinned ? '📌 ' : ''}
           {post.title}
         </Text>
 

@@ -243,5 +243,43 @@ export function usePostMutations(postId: string) {
     [client, postId, queryClient],
   );
 
-  return { vote, toggleBookmark, toggleReaction, record, addComment };
+  const togglePin = useCallback(
+    async (currentPinned: boolean): Promise<{ ok: boolean; message?: string }> => {
+      const optimistic = !currentPinned;
+      // Optimistically flip `isPinned` everywhere the post is rendered so
+      // the 📌 indicator appears immediately. Server is the source of
+      // truth — we reconcile on response or roll back on error.
+      patchPostInAllCaches(queryClient, postId, (p) => ({
+        ...p,
+        isPinned: optimistic,
+      }));
+      try {
+        // Server toggles on POST and returns `{ pinned: boolean }`
+        // (see openstoa/src/app/api/posts/[postId]/pin/route.ts).
+        const res = await client.post<{ pinned?: boolean }>(
+          `/api/posts/${postId}/pin`,
+        );
+        const next = typeof res?.pinned === 'boolean' ? res.pinned : optimistic;
+        patchPostInAllCaches(queryClient, postId, (p) => ({
+          ...p,
+          isPinned: next,
+        }));
+        // Invalidate list views so newly-pinned posts surface at the top
+        // (server orders by isPinned desc).
+        void queryClient.invalidateQueries({ queryKey: ['topic'] });
+        void queryClient.invalidateQueries({ queryKey: ['feed'] });
+        return { ok: true };
+      } catch (e) {
+        patchPostInAllCaches(queryClient, postId, (p) => ({
+          ...p,
+          isPinned: currentPinned,
+        }));
+        const msg = e instanceof Error ? e.message : String(e);
+        return { ok: false, message: msg };
+      }
+    },
+    [client, postId, queryClient],
+  );
+
+  return { vote, toggleBookmark, toggleReaction, record, addComment, togglePin };
 }

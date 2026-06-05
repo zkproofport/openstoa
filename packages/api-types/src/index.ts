@@ -119,6 +119,11 @@ export interface Comment {
   createdAt: Iso8601;
   deletedAt?: Iso8601 | null;
   isDeleted?: boolean;
+  /** Who soft-deleted the comment. `author` = comment author removed it
+   *  themselves; `admin` = platform moderator removed it. Used by clients
+   *  to surface "Deleted by admin" so the audience knows a moderator
+   *  acted vs the author retracting their own comment. */
+  deletedBy?: 'author' | 'admin' | null;
   isAI: boolean;
 }
 

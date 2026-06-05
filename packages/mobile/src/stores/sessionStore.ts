@@ -2,6 +2,14 @@ import { create } from 'zustand';
 
 export type SessionMode = 'unknown' | 'guest' | 'authenticated';
 
+/**
+ * Global account-level role surfaced by `GET /api/auth/session`. Distinct
+ * from per-topic membership role (owner/admin/member of a specific topic)
+ * which lives in topic detail responses. `admin` means the account has
+ * platform-wide moderation powers (post/comment deletion across topics).
+ */
+export type SessionRole = 'admin' | 'member';
+
 export interface OpenStoaSessionState {
   /**
    * `unknown` — boot hasn't decided yet (initial state).
@@ -16,6 +24,13 @@ export interface OpenStoaSessionState {
   nickname: string | null;
   needsNickname: boolean;
   expiresAt: number | null;
+  /**
+   * Platform-wide role for the signed-in account. `admin` enables global
+   * moderation affordances (delete any post/comment). Defaults to
+   * `'member'` so screens never need to null-check. Stays `'member'` for
+   * guests too — guests are gated upstream by `mode !== 'authenticated'`.
+   */
+  role: SessionRole;
 
   setSession: (s: {
     token: string;
@@ -23,6 +38,7 @@ export interface OpenStoaSessionState {
     nickname?: string;
     needsNickname?: boolean;
     expiresAt?: number | null;
+    role?: SessionRole;
   }) => void;
   setNickname: (nickname: string) => void;
   /** Mark the session as guest browsing — clears any stale token state. */
@@ -38,8 +54,9 @@ export const useOpenStoaSession = create<OpenStoaSessionState>((set) => ({
   nickname: null,
   needsNickname: false,
   expiresAt: null,
+  role: 'member',
 
-  setSession: ({ token, userId, nickname, needsNickname, expiresAt }) =>
+  setSession: ({ token, userId, nickname, needsNickname, expiresAt, role }) =>
     set({
       mode: 'authenticated',
       token,
@@ -47,6 +64,7 @@ export const useOpenStoaSession = create<OpenStoaSessionState>((set) => ({
       nickname: nickname ?? null,
       needsNickname: needsNickname ?? false,
       expiresAt: expiresAt ?? null,
+      role: role ?? 'member',
     }),
   setNickname: (nickname) => set({ nickname, needsNickname: false }),
   setGuest: () =>
@@ -57,6 +75,7 @@ export const useOpenStoaSession = create<OpenStoaSessionState>((set) => ({
       nickname: null,
       needsNickname: false,
       expiresAt: null,
+      role: 'member',
     }),
   clear: () =>
     set({
@@ -66,5 +85,6 @@ export const useOpenStoaSession = create<OpenStoaSessionState>((set) => ({
       nickname: null,
       needsNickname: false,
       expiresAt: null,
+      role: 'member',
     }),
 }));
