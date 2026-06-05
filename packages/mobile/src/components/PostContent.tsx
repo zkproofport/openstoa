@@ -135,6 +135,12 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
     // `\n` newlines. Convert to `<br>` so the HTML renderer keeps the line
     // structure the user typed. Skip for legacy HTML posts (already have
     // proper tags). Mirrors web's SNSContent.plainTextToHtml.
+    //
+    // Multi-line + consecutive-newline preservation: react-native-render-html
+    // collapses adjacent `<br>` tags, so `\n\n\n\n테스트` would render as just
+    // one line break + 테스트 — losing every blank line the user typed.
+    // Inject a non-breaking space between adjacent `<br>` so each break has
+    // its own line of content and the renderer can't merge them.
     const looksLikeHtml = /<[a-zA-Z!\/][^>]*>/.test(html);
     if (!looksLikeHtml) {
       html = html
@@ -142,8 +148,12 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-        .replace(/\n/g, '<br>');
+        .replace(/'/g, '&#39;');
+      // Plain-text body: split per line and wrap each in <p>. Empty lines
+      // become <p>&nbsp;</p> so they render as visible blank rows. RNRH
+      // collapses adjacent <br>s but never empty <p>s with nbsp content.
+      const lines = html.split('\n');
+      html = lines.map((line) => `<p>${line.length ? line : '&nbsp;'}</p>`).join('');
     }
     if (omitImages) {
       html = html
