@@ -3,9 +3,7 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Animated,
   Image,
-  InputAccessoryView,
   Keyboard,
   Modal,
   Platform,
@@ -16,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Feather from 'react-native-vector-icons/Feather';
 import { KeyboardSafeScroll } from '../../components/KeyboardSafeScroll';
 // expo-image-picker is a native module — lazy-load to avoid crashing on
@@ -74,11 +72,6 @@ type Nav = NativeStackNavigationProp<TopicsStackParamList, 'PostCreate'>;
 const MAX_TAGS = 5;
 const MAX_IMAGES = 10;
 const MAX_VIDEOS = 3;
-const KB_BAR_H = 44;
-// Single nativeID shared across all TextInputs in this screen so the
-// iOS keyboard accessory bar follows the user as they tab between
-// title, body, and tag inputs.
-const ACCESSORY_ID = 'postcreate-toolbar';
 // Tags accept Korean, Latin letters, digits, and underscore. The server-side
 // slug pipeline (api/topics/[topicId]/posts) downcases and rewrites the
 // remainder, so we don't need to be strict here — just bound the length and
@@ -224,24 +217,19 @@ function makeStyles(colors: ThemeColors) {
       paddingTop: 12,
     },
     // Keyboard accessory toolbar — Photo / Video / Poll / Done controls.
-    // On iOS this lives inside a native InputAccessoryView (no absolute
-    // positioning needed); on Android we layer a floating Animated.View
-    // above the keyboard, so `kbBar` covers shared visuals and Android adds
-    // the absolute positioning at the call site.
+    // Rendered inside a KeyboardStickyView so it floats above the soft
+    // keyboard on both iOS and Android, and disappears when the keyboard
+    // hides.
     kbBar: {
-      left: 0,
-      right: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
       paddingHorizontal: 14,
       paddingTop: 8,
+      paddingBottom: 8,
       backgroundColor: colors.background.primary,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border.strong,
-    },
-    kbBarStatic: {
-      paddingBottom: 8,
     },
     kbDoneBtn: {
       paddingHorizontal: 8,
@@ -567,37 +555,10 @@ function PostCreateScreenAuthed() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
-  // Keyboard accessory bar — iOS InputAccessoryView doesn't reliably attach
-  // to multiline TextInputs on RN 0.81.4, so we use a single Animated.View
-  // pattern on both platforms: track keyboard via show/hide listeners and
-  // float the toolbar above it. Bar only mounts while keyboard is visible.
-  const insets = useSafeAreaInsets();
-  const [kbVisible, setKbVisible] = useState(false);
-  const barBottom = useRef(new Animated.Value(insets.bottom)).current;
-  useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const show = Keyboard.addListener(showEvt, (e) => {
-      setKbVisible(true);
-      const kbHeight = e?.endCoordinates?.height ?? 0;
-      const duration = e?.duration ?? 220;
-      Animated.timing(barBottom, {
-        toValue: kbHeight,
-        duration,
-        useNativeDriver: false,
-      }).start();
-    });
-    const hide = Keyboard.addListener(hideEvt, (e) => {
-      setKbVisible(false);
-      const duration = e?.duration ?? 220;
-      Animated.timing(barBottom, {
-        toValue: insets.bottom,
-        duration,
-        useNativeDriver: false,
-      }).start();
-    });
-    return () => { show.remove(); hide.remove(); };
-  }, [barBottom, insets.bottom]);
+  // Keyboard accessory bar lives inside a KeyboardStickyView (rendered at
+  // the bottom of this screen) so the toolbar floats above the soft
+  // keyboard on both iOS and Android and disappears when the keyboard
+  // hides. No manual show/hide listeners required.
 
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [title, setTitle] = useState('');
@@ -931,14 +892,7 @@ function PostCreateScreenAuthed() {
     <View style={styles.flex}>
       <KeyboardSafeScroll
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.content,
-          // Reserve room for the floating toolbar that appears above the
-          // keyboard while typing so the active input isn't covered.
-          mode === 'write' && kbVisible
-            ? { paddingBottom: KB_BAR_H + insets.bottom + 24 }
-            : null,
-        ]}
+        contentContainerStyle={styles.content}
       >
         {topicTitle ? <Text style={styles.topicLabel}>{topicTitle}</Text> : null}
 
@@ -1024,7 +978,6 @@ function PostCreateScreenAuthed() {
               value={title}
               onChangeText={setTitle}
               returnKeyType="next"
-              inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
             />
 
             {/* Body */}
@@ -1039,7 +992,6 @@ function PostCreateScreenAuthed() {
               onChangeText={setContent}
               multiline
               textAlignVertical="top"
-              inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
             />
 
             {/* Image strip */}
@@ -1128,7 +1080,6 @@ function PostCreateScreenAuthed() {
                   returnKeyType="done"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
                 />
               ) : null}
             </View>
@@ -1211,14 +1162,12 @@ function PostCreateScreenAuthed() {
         </View>
       </Modal>
 
-      {/* iOS keyboard accessory — toolbar lives INSIDE the native keyboard
-          header via InputAccessoryView. Every TextInput on this screen
-          (title, body multiline, tag input) sets inputAccessoryViewID to
-          ACCESSORY_ID so the bar follows focus without any on-screen
-          painting. */}
-      {mode === 'write' && Platform.OS === 'ios' ? (
-        <InputAccessoryView nativeID={ACCESSORY_ID}>
-          <View style={[styles.kbBar, { paddingBottom: 8 }]}>
+      {/* Keyboard accessory toolbar — KeyboardStickyView floats above the
+          soft keyboard on both iOS and Android and disappears when the
+          keyboard hides. Only mounted in write mode. */}
+      {mode === 'write' ? (
+        <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+          <View style={styles.kbBar}>
             <ToolbarButtons
               styles={styles}
               colors={colors}
@@ -1236,35 +1185,7 @@ function PostCreateScreenAuthed() {
               onDone={() => Keyboard.dismiss()}
             />
           </View>
-        </InputAccessoryView>
-      ) : null}
-      {/* Android has no native accessory view — fall back to an Animated.View
-          that follows the soft keyboard. Only mounts while the keyboard is
-          open so it disappears with the keyboard. */}
-      {mode === 'write' && Platform.OS === 'android' && kbVisible ? (
-        <Animated.View
-          style={[
-            styles.kbBar,
-            { position: 'absolute', bottom: barBottom, paddingBottom: 8 },
-          ]}
-        >
-          <ToolbarButtons
-            styles={styles}
-            colors={colors}
-            t={t}
-            uploading={uploading}
-            images={images}
-            videos={videos}
-            poll={poll}
-            content={content}
-            onAttach={openAttachSheet}
-            onVideo={openVideoModal}
-            onPoll={() =>
-              setPoll(poll ? null : { options: ['', ''], multipleChoice: false, closesAt: null })
-            }
-            onDone={() => Keyboard.dismiss()}
-          />
-        </Animated.View>
+        </KeyboardStickyView>
       ) : null}
     </View>
   );

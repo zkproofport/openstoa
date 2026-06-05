@@ -3,7 +3,6 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Animated,
   FlatList,
   Image,
   Keyboard,
@@ -16,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -496,8 +496,8 @@ function makeStyles(colors: ThemeColors) {
 
     // Collapsed footer — single "Add comment" pill shown when the keyboard
     // is dismissed. Tapping it switches to composing mode and focuses the
-    // TextInput (which lives in the iOS InputAccessoryView, or the
-    // Animated footer row on Android).
+    // TextInput which lives in the KeyboardStickyView so it rides above
+    // the soft keyboard on both iOS and Android.
     addCommentBar: {
       paddingHorizontal: 12,
       paddingTop: 8,
@@ -647,30 +647,17 @@ export function PostDetailScreen() {
   const styles = makeStyles(colors);
   const insets = useSafeAreaInsets();
 
-  // Track keyboard visibility so the comment input row can collapse its
-  // bottom padding to zero while the keyboard is up (so the pill sits
-  // flush with the keyboard top edge) and restore safe-area bottom
-  // padding when the keyboard dismisses (so the pill rests above the
-  // home indicator). Without this, the constant 8pt + safe-area padding
-  // left a visible gap between the input and the keyboard.
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  // Composing mode: when false, footer shows a single "Add comment" pill.
-  // When true, footer renders the actual TextInput + Send button (inside
-  // an iOS InputAccessoryView, or on Android above the soft keyboard via
-  // KeyboardAvoidingView).
+  // Track keyboard visibility via the keyboard-controller hook so the
+  // "Add comment" pill only renders when the keyboard is hidden, and
+  // collapses back when the user dismisses the keyboard.
+  const keyboardOpen = useKeyboardState((s) => s.isVisible);
+  // Composing mode mirrors keyboard visibility: tapping the pill enters
+  // composing mode + focuses the input (which opens the keyboard); when
+  // the keyboard hides we drop back to the pill.
   const [composing, setComposing] = useState(false);
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const show = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
-    const hide = Keyboard.addListener(hideEvt, () => {
-      setKeyboardOpen(false);
-      // Keyboard dismissed → exit composing mode so the footer collapses
-      // back to the single "Add comment" pill.
-      setComposing(false);
-    });
-    return () => { show.remove(); hide.remove(); };
-  }, []);
+    if (!keyboardOpen) setComposing(false);
+  }, [keyboardOpen]);
 
   const sessionUserId = useOpenStoaSession((s) => s.userId);
   const sessionRole = useOpenStoaSession((s) => s.role);
@@ -1004,12 +991,12 @@ export function PostDetailScreen() {
     }
   });
 
-  // Enter composing mode and focus the input. Slight delay on iOS lets
-  // the InputAccessoryView mount before we call focus(), otherwise the
-  // keyboard appears without the accessory toolbar attached.
+  // Enter composing mode and focus the input. The input lives inside a
+  // KeyboardStickyView so it's always mounted — focus() opens the keyboard
+  // and the sticky view rides up above it on both platforms.
   const beginComposing = useCallback(() => {
     setComposing(true);
-    setTimeout(() => inputRef.current?.focus(), 50);
+    inputRef.current?.focus();
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -1523,9 +1510,9 @@ export function PostDetailScreen() {
     </View>
   );
 
-  // The actual input pill (TextInput + Send button). Reused inside the
-  // iOS InputAccessoryView and the Android Animated footer so behaviour
-  // stays in sync across platforms.
+  // The actual input pill (TextInput + Send button) — lives inside the
+  // KeyboardStickyView at the root so it always floats above the soft
+  // keyboard on both iOS and Android.
   const renderInputPill = () => (
     <View
       style={[
@@ -1543,10 +1530,6 @@ export function PostDetailScreen() {
           onChangeText={setDraft}
           editable={!sending}
           multiline
-          // iOS only — anchors this TextInput to the InputAccessoryView
-          // below so the toolbar floats above the keyboard. RN supports
-          // this for multiline TextInputs since 0.72.
-          inputAccessoryViewID={Platform.OS === 'ios' ? COMMENT_ACCESSORY_ID : undefined}
         />
         <TouchableOpacity
           style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
@@ -1590,21 +1573,7 @@ export function PostDetailScreen() {
 
   return (
     <>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        // iOS: rely on InputAccessoryView to float the input above the
-        // keyboard while composing — KeyboardAvoidingView would otherwise
-        // double-shift the layout. Android still uses padding behaviour.
-        behavior={Platform.OS === 'android' ? 'height' : undefined}
-        // iOS: when the navigation header is opaque, KeyboardAvoidingView
-        // needs the header height as the vertical offset so the avoided
-        // region starts below the header instead of below the screen top.
-        // A status bar (insets.top) + a standard nav bar (44pt) is the
-        // safe default for native-stack. With `0` the avoidance was
-        // overshooting and leaving ~44pt of empty space between the
-        // input pill and the keyboard.
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
-      >
+      <View style={styles.flex}>
         <FlatList
           data={commentList}
           keyExtractor={(item) => item.id}
@@ -1627,33 +1596,27 @@ export function PostDetailScreen() {
           keyboardShouldPersistTaps="handled"
         />
 
-        {/* Footer — collapsed "Add comment" pill by default, real input
-            pill when composing. iOS keeps the input inside the
-            InputAccessoryView (below) so it floats above the keyboard;
-            Android renders the input inline above the soft keyboard via
-            KeyboardAvoidingView. */}
-        {Platform.OS === 'ios' ? (
-          // iOS: footer is always the collapsed bar; the real input lives
-          // in the InputAccessoryView and appears with the keyboard.
-          renderAddCommentBar()
-        ) : composing ? (
-          renderInputPill()
-        ) : (
-          renderAddCommentBar()
-        )}
-      </KeyboardAvoidingView>
+        {/* Collapsed "Add comment" pill — only rendered while the
+            keyboard is hidden. Tapping it focuses the input (mounted in
+            the KeyboardStickyView below), which opens the keyboard and
+            slides the sticky view up above it. */}
+        {!keyboardOpen ? renderAddCommentBar() : null}
+      </View>
 
-      {/* iOS InputAccessoryView — mounted UNCONDITIONALLY so the TextInput
-          inside is always available for focus(). Without this, tapping the
-          collapsed "Add comment" pill schedules setComposing(true) but the
-          TextInput hasn't mounted yet by the time focus() fires, so the
-          keyboard never appears. iOS only shows the accessory when this
-          TextInput has focus, so leaving it mounted is harmless. */}
-      {Platform.OS === 'ios' ? (
-        <InputAccessoryView nativeID={COMMENT_ACCESSORY_ID}>
-          {renderInputPill()}
-        </InputAccessoryView>
-      ) : null}
+      {/* Comment input pill — sticks above the soft keyboard on iOS and
+          Android via react-native-keyboard-controller. Input is always
+          mounted so inputRef.focus() can open the keyboard before the
+          sticky view rides up. While the keyboard is hidden the sticky
+          view sits at the screen bottom but is visually hidden behind
+          the "Add comment" pill (opacity 0) so the user only ever sees
+          one bar. */}
+      <KeyboardStickyView
+        offset={{ closed: 0, opened: 0 }}
+        style={keyboardOpen ? undefined : { opacity: 0 }}
+        pointerEvents={keyboardOpen ? 'auto' : 'none'}
+      >
+        {renderInputPill()}
+      </KeyboardStickyView>
 
       {/* Emoji picker bottom sheet */}
       <Modal
