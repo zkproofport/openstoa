@@ -829,46 +829,6 @@ export default function PostPage() {
                   Joined
                 </span>
               )}
-              {post.isPinned && (
-                // Brand-tint pinned badge — matches the topic chip color so
-                // it reads as "this post is highlighted by the topic admin".
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: 'var(--accent)',
-                    background: 'rgba(59,130,246,0.10)',
-                    border: '1px solid rgba(59,130,246,0.25)',
-                    borderRadius: 4,
-                    padding: '2px 7px',
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
-                    fontFamily: 'var(--font-mono)',
-                    lineHeight: 1.2,
-                  }}
-                  aria-label="Pinned post"
-                >
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ marginRight: 4, display: 'inline-block', verticalAlign: '-1px' }}
-                    aria-hidden
-                  >
-                    <line x1="12" y1="17" x2="12" y2="22" />
-                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1V2H8v4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
-                  </svg>
-                  Pinned
-                </span>
-              )}
             </div>
           ) : null}
           <h1
@@ -878,9 +838,29 @@ export default function PostPage() {
               letterSpacing: '-0.03em',
               margin: '0 0 14px',
               lineHeight: 1.3,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
             }}
           >
-            {post.title}
+            {post.isPinned && (
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ flexShrink: 0, marginTop: 6 }}
+                aria-label="Pinned post"
+              >
+                <line x1="12" y1="17" x2="12" y2="22" />
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1V2H8v4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+              </svg>
+            )}
+            <span>{post.title}</span>
           </h1>
 
           <div

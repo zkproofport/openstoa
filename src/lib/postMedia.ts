@@ -49,16 +49,14 @@ export function collectPostMedia(post: PostMediaSource): {
 // body so the renderer doesn't show the raw URL above the swipeable
 // MediaGallery embed. Mirror of the mobile `stripVideoUrls` helper.
 //
-// R05 fix: short-circuit when the body contains no video URL at all. The
-// previous unconditional `\n\s*\n -> \n` pass collapsed multi-line plain
-// text into a single line, so a post that just had blank lines between
-// paragraphs rendered as one squashed block. Now the newline-collapsing
-// pass only runs when we actually removed a video URL, which is the only
-// case where empty paragraphs would otherwise be left behind.
+// Never collapses runs of \n — the user's intentional blank-line layout
+// MUST survive for SNSContent's plainTextChunks paragraph split (which
+// requires /\n{2,}/) and whiteSpace:pre-wrap rendering. The empty-<p>
+// cleanup below is the only mutation that runs on non-video content;
+// it's harmless because legitimate empty <p></p> with no video context
+// is rare and visually identical when removed.
 export function stripVideoUrls(html: string): string {
   if (!html) return '';
-  const VIDEO_DETECT = /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/|vimeo\.com\/\d+)/i;
-  if (!VIDEO_DETECT.test(html)) return html;
   return html
     .replace(/<a[^>]+href=["'][^"']*(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|vimeo\.com\/\d+)[^"']*["'][^>]*>[^<]*<\/a>/gi, '')
     .replace(/https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s<]*/gi, '')
@@ -66,9 +64,4 @@ export function stripVideoUrls(html: string): string {
     .replace(/https?:\/\/(?:www\.|m\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s<]*/gi, '')
     .replace(/https?:\/\/(?:www\.)?vimeo\.com\/\d+[^\s<]*/gi, '')
     .replace(/<p>\s*(<br\s*\/?>)?\s*<\/p>/gi, '');
-  // Note: do NOT collapse \n\s*\n -> \n here. Empty paragraphs from removed
-  // video URLs are handled by the empty-<p> replacement above; plain-text
-  // \n runs are part of the user's intentional layout and MUST be preserved
-  // for SNSContent's plainTextChunks split + whiteSpace:pre-wrap to render
-  // correctly (regression #R05 was caused by this collapse).
 }

@@ -1174,26 +1174,12 @@ export function PostDetailScreen() {
     <View>
       {/* ── Post header: topic label + author avatar + name + meta ── */}
       <View style={styles.postHeader}>
-        {post.topicTitle || isPinned ? (
+        {post.topicTitle ? (
           <View style={styles.topicRow}>
-            {post.topicTitle ? (
-              <Text style={styles.topicLabel}>{post.topicTitle}</Text>
-            ) : null}
+            <Text style={styles.topicLabel}>{post.topicTitle}</Text>
             {post.isJoinedTopic ? (
               <View style={styles.joinedBadge}>
                 <Text style={styles.joinedBadgeText}>{t('openstoa.topics.joinedBadge')}</Text>
-              </View>
-            ) : null}
-            {isPinned ? (
-              <View style={styles.pinnedBadge}>
-                <MaterialCommunityIcons
-                  name="pin"
-                  size={11}
-                  color={colors.brand.primary}
-                />
-                <Text style={styles.pinnedBadgeText}>
-                  {t('openstoa.postDetail.pinnedBadge')}
-                </Text>
               </View>
             ) : null}
           </View>

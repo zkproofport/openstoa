@@ -265,46 +265,26 @@ export default function PostCard({
     </span>
   ) : null;
 
-  // Inline pinned pill — mirrors PostDetail header so the feed reads the
-  // same way at a glance. Sits next to the topic chip / Joined badge.
-  const pinnedPill = resolvedIsPinned ? (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 3,
-        fontSize: 9,
-        fontWeight: 700,
-        color: 'var(--accent)',
-        background: 'rgba(59,130,246,0.10)',
-        border: '1px solid rgba(59,130,246,0.25)',
-        borderRadius: 4,
-        padding: '1px 6px',
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        fontFamily: 'var(--font-mono)',
-        lineHeight: 1.2,
-        verticalAlign: 'middle',
-      }}
+  // Pin is a per-post flag — render an icon ADJACENT TO THE TITLE so it's
+  // visually attached to the post itself, not the topic chip. No pill/text
+  // (the icon alone is the affordance; the title row's compact context is
+  // already labelled by alt + title attr).
+  const pinnedTitleIcon = resolvedIsPinned ? (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--accent)"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0, marginTop: 1 }}
       aria-label="Pinned post"
     >
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ marginRight: 4, display: 'inline-block', verticalAlign: '-1px' }}
-        aria-hidden
-      >
-        <line x1="12" y1="17" x2="12" y2="22" />
-        <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1V2H8v4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
-      </svg>
-      Pinned
-    </span>
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1V2H8v4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+    </svg>
   ) : null;
 
   const topicBreadcrumb =
@@ -340,31 +320,24 @@ export default function PostCard({
           t/{post.topicTitle}
         </Link>
         {joinedPill}
-        {pinnedPill}
       </div>
     ) : null;
-
-  // Pinned posts get a subtle Reddit/Discourse-style accent — a brand-color
-  // left border + faint tinted background so they stand out at a glance.
-  const pinnedAccentBg = resolvedIsPinned ? 'rgba(59,130,246,0.04)' : 'transparent';
-  const pinnedHoverBg = resolvedIsPinned ? 'rgba(59,130,246,0.07)' : 'rgba(255,255,255,0.02)';
 
   return (
     <article
       style={{
         padding: '16px 20px',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
-        borderLeft: resolvedIsPinned ? '3px solid var(--accent)' : '3px solid transparent',
-        background: pinnedAccentBg,
+        background: 'transparent',
         transition: 'background 0.12s',
         cursor: 'pointer',
         position: 'relative',
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = pinnedHoverBg;
+        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)';
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = pinnedAccentBg;
+        (e.currentTarget as HTMLElement).style.background = 'transparent';
       }}
     >
       {/* Pin button for topic creator — top right */}
@@ -392,10 +365,10 @@ export default function PostCard({
 
       {topicBreadcrumb}
 
-      {/* I06: per-topic feed (showTopic=false) — render topic chip + joined +
-          pinned pills above the card body, outside the nav Link to avoid
-          nested anchors. Also renders when only the pinned pill is needed. */}
-      {!showTopic && (post.isJoinedTopic || resolvedIsPinned) && post.topicTitle && post.topicId && (
+      {/* I06: per-topic feed (showTopic=false) — render topic chip + Joined
+          pill above the card body, outside the nav Link to avoid nested
+          anchors. Pin status is conveyed by the title-row icon, not here. */}
+      {!showTopic && post.isJoinedTopic && post.topicTitle && post.topicId && (
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}
           onClick={(e) => e.stopPropagation()}
@@ -414,7 +387,6 @@ export default function PostCard({
             t/{post.topicTitle}
           </Link>
           {joinedPill}
-          {pinnedPill}
         </div>
       )}
 
@@ -463,9 +435,7 @@ export default function PostCard({
             flexWrap: 'wrap',
           }}
         >
-          {/* Pinned status is conveyed by the inline pinnedPill above (left
-              accent + brand-tinted pill). Title prefix emoji removed to avoid
-              double-pin visual + dated emoji aesthetic. */}
+          {pinnedTitleIcon}
           <span>{post.title}</span>
         </h3>
 
