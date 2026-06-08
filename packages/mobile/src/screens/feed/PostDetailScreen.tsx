@@ -1605,7 +1605,10 @@ export function PostDetailScreen() {
           behind the tab bar and onPress hits never reach it (= "tap does
           nothing, keyboard never opens"). PostCreate uses closed:0 because
           it's a stack-modal route with no tab bar underneath. */}
-      <KeyboardStickyView offset={{ closed: tabBarHeight, opened: 0 }}>
+      <KeyboardStickyView
+        offset={{ closed: 0, opened: 0 }}
+        style={{ marginBottom: keyboardOpen ? 0 : tabBarHeight }}
+      >
         {composing ? renderInputPill() : renderAddCommentBar()}
       </KeyboardStickyView>
 
