@@ -1599,26 +1599,15 @@ export function PostDetailScreen() {
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
       />
-      {/* Collapsed Add Comment button — static in screen flow, sits flush
-          above the bottom tab bar via the parent flex:1 View boundary. */}
-      {!composing ? (
-        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
-          {renderAddCommentBar()}
-        </View>
-      ) : null}
-
-      {/* Keyboard accessory toolbar — KeyboardStickyView MUST sit inside the
-          parent flex:1 View (same pattern as PostCreate) so its "bottom"
-          reference is the tab-content area, not the raw screen bottom.
-          Without this, the sticky view positioned behind the tab bar /
-          offset calculations went wrong (the recurring Add Comment padding
-          regression). Only mounted while composing so it disappears with
-          the keyboard. */}
-      {composing ? (
-        <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-          {renderInputPill()}
-        </KeyboardStickyView>
-      ) : null}
+      {/* Single KeyboardStickyView — matches PostCreate's pattern exactly:
+          always mounted as a child of the parent flex:1 View, conditional
+          content swap between the collapsed Add Comment button (when not
+          composing) and the real input pill (when composing). KeyboardStickyView
+          slides up with the keyboard automatically; when keyboard is closed
+          it sits at the parent View's bottom = above the bottom tab bar. */}
+      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+        {composing ? renderInputPill() : renderAddCommentBar()}
+      </KeyboardStickyView>
 
       {/* Emoji picker bottom sheet */}
       <Modal
