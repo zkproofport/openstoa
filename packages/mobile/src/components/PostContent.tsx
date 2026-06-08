@@ -103,8 +103,10 @@ export function stripVideoUrls(html: string): string {
     // Remove bare Vimeo URLs
     .replace(/https?:\/\/(?:www\.)?vimeo\.com\/\d+[^\s<]*/gi, '')
     // Collapse empty <p></p>, <p><br></p> left behind
-    .replace(/<p>\s*(<br\s*\/?>)?\s*<\/p>/gi, '')
-    .replace(/\n\s*\n/g, '\n');
+    .replace(/<p>\s*(<br\s*\/?>)?\s*<\/p>/gi, '');
+  // Note: removed \n\s*\n -> \n collapse so multi-line plain text with a
+  // video URL still keeps blank-line spacing. RNRH and native Text both
+  // honour \n; the empty-<p> cleanup above is sufficient for HTML cases.
 }
 
 const SYSTEM_FONTS = [...defaultSystemFonts, 'Menlo'];

@@ -65,6 +65,10 @@ export function stripVideoUrls(html: string): string {
     .replace(/https?:\/\/youtu\.be\/[a-zA-Z0-9_-]{11}[^\s<]*/gi, '')
     .replace(/https?:\/\/(?:www\.|m\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s<]*/gi, '')
     .replace(/https?:\/\/(?:www\.)?vimeo\.com\/\d+[^\s<]*/gi, '')
-    .replace(/<p>\s*(<br\s*\/?>)?\s*<\/p>/gi, '')
-    .replace(/\n\s*\n/g, '\n');
+    .replace(/<p>\s*(<br\s*\/?>)?\s*<\/p>/gi, '');
+  // Note: do NOT collapse \n\s*\n -> \n here. Empty paragraphs from removed
+  // video URLs are handled by the empty-<p> replacement above; plain-text
+  // \n runs are part of the user's intentional layout and MUST be preserved
+  // for SNSContent's plainTextChunks split + whiteSpace:pre-wrap to render
+  // correctly (regression #R05 was caused by this collapse).
 }

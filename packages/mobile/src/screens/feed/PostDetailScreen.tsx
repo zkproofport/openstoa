@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-controller';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -659,6 +660,13 @@ export function PostDetailScreen() {
     if (!keyboardOpen) setComposing(false);
   }, [keyboardOpen]);
 
+  // KeyboardStickyView positions absolute relative to the screen, not the
+  // tab navigator. Without offsetting by tab bar height the Add Comment
+  // pill ends up BEHIND the tab bar when keyboard is closed. Negative
+  // offset.closed lifts the bar by tab bar height so it sits flush above
+  // the tab bar with no manual padding tweaks.
+  const tabBarHeight = useBottomTabBarHeight();
+
   const sessionUserId = useOpenStoaSession((s) => s.userId);
   const sessionRole = useOpenStoaSession((s) => s.role);
   const isPlatformAdmin = sessionRole === 'admin';
@@ -991,13 +999,21 @@ export function PostDetailScreen() {
     }
   });
 
-  // Enter composing mode and focus the input. The input lives inside a
-  // KeyboardStickyView so it's always mounted — focus() opens the keyboard
-  // and the sticky view rides up above it on both platforms.
+  // Enter composing mode + focus. Focus runs in a useEffect after the
+  // TextInput actually mounts (it's conditionally rendered when composing
+  // flips true), otherwise inputRef.current is null and the keyboard
+  // never opens — the recurring "Add Comment doesn't respond" regression.
   const beginComposing = useCallback(() => {
     setComposing(true);
-    inputRef.current?.focus();
   }, []);
+  useEffect(() => {
+    if (composing) {
+      // Defer one frame so the conditional render mounts the TextInput
+      // before focus() runs.
+      const t = setTimeout(() => inputRef.current?.focus(), 30);
+      return () => clearTimeout(t);
+    }
+  }, [composing]);
 
   // ---------------------------------------------------------------------------
   // Render states
@@ -1600,15 +1616,22 @@ export function PostDetailScreen() {
         />
       </View>
 
-      {/* Collapsed "Add comment" pill — rendered as the only KeyboardStickyView
-          child when the keyboard is hidden, so it sits flush above the bottom
-          tab bar with no extra gap. When the keyboard opens we swap to the
-          real input pill which slides up with the keyboard. */}
+      {/* Add comment area — KeyboardStickyView rides above the keyboard when
+          open and offsets by tabBarHeight when closed so the pill floats
+          immediately above the bottom tab bar (not behind it). Both the
+          collapsed pill and the expanded input pill render together so
+          inputRef is always alive — tapping Add Comment can focus it
+          reliably (fixes "Add Comment 탭해도 반응 없음" regression). */}
       <KeyboardStickyView
-        offset={{ closed: 0, opened: 0 }}
+        offset={{ closed: -tabBarHeight, opened: 0 }}
         pointerEvents="auto"
       >
-        {keyboardOpen ? renderInputPill() : renderAddCommentBar()}
+        <View style={{ display: composing ? 'none' : 'flex' }}>
+          {renderAddCommentBar()}
+        </View>
+        <View style={{ display: composing ? 'flex' : 'none' }}>
+          {renderInputPill()}
+        </View>
       </KeyboardStickyView>
 
       {/* Emoji picker bottom sheet */}
