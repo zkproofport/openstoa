@@ -1577,48 +1577,48 @@ export function PostDetailScreen() {
   );
 
   return (
-    <>
-      <View style={styles.flex}>
-        <FlatList
-          data={commentList}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <CommentRow
-              comment={item}
-              currentUserId={sessionUserId}
-              isPlatformAdmin={isPlatformAdmin}
-              onDelete={handleDeleteComment}
-              deleting={deletingCommentId === item.id}
-              styles={styles}
-              colors={colors}
-            />
-          )}
-          ListHeaderComponent={ListHeader}
-          ListEmptyComponent={
-            <Text style={styles.emptyComments}>{t('openstoa.postDetail.noComments')}</Text>
-          }
-          contentContainerStyle={styles.listContent}
-          keyboardShouldPersistTaps="handled"
-        />
-      </View>
-
-      {/* Add comment area — KeyboardStickyView rides above the keyboard when
-          open and offsets by tabBarHeight when closed so the pill floats
-          immediately above the bottom tab bar (not behind it). Both the
-          collapsed pill and the expanded input pill render together so
-          inputRef is always alive — tapping Add Comment can focus it
-          reliably (fixes "Add Comment 탭해도 반응 없음" regression). */}
-      <KeyboardStickyView
-        offset={{ closed: -tabBarHeight, opened: 0 }}
-        pointerEvents="auto"
-      >
-        <View style={{ display: composing ? 'none' : 'flex' }}>
+    <View style={styles.flex}>
+      <FlatList
+        data={commentList}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <CommentRow
+            comment={item}
+            currentUserId={sessionUserId}
+            isPlatformAdmin={isPlatformAdmin}
+            onDelete={handleDeleteComment}
+            deleting={deletingCommentId === item.id}
+            styles={styles}
+            colors={colors}
+          />
+        )}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={
+          <Text style={styles.emptyComments}>{t('openstoa.postDetail.noComments')}</Text>
+        }
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+      />
+      {/* Collapsed Add Comment button — static in screen flow, sits flush
+          above the bottom tab bar via the parent flex:1 View boundary. */}
+      {!composing ? (
+        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
           {renderAddCommentBar()}
         </View>
-        <View style={{ display: composing ? 'flex' : 'none' }}>
+      ) : null}
+
+      {/* Keyboard accessory toolbar — KeyboardStickyView MUST sit inside the
+          parent flex:1 View (same pattern as PostCreate) so its "bottom"
+          reference is the tab-content area, not the raw screen bottom.
+          Without this, the sticky view positioned behind the tab bar /
+          offset calculations went wrong (the recurring Add Comment padding
+          regression). Only mounted while composing so it disappears with
+          the keyboard. */}
+      {composing ? (
+        <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
           {renderInputPill()}
-        </View>
-      </KeyboardStickyView>
+        </KeyboardStickyView>
+      ) : null}
 
       {/* Emoji picker bottom sheet */}
       <Modal

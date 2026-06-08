@@ -838,24 +838,29 @@ export default function PostPage() {
               letterSpacing: '-0.03em',
               margin: '0 0 14px',
               lineHeight: 1.3,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
             }}
           >
             {post.isPinned && (
+              // Inline pin icon — vertical-align baseline + capHeight-matched
+              // size so the icon's optical center lines up with the title's
+              // text x-height (flex+alignItems center over-emphasised the
+              // h1's 1.3 line-height extra space and shifted the icon up).
               <svg
-                width="24"
-                height="24"
+                width="0.85em"
+                height="0.85em"
                 viewBox="0 0 24 24"
                 fill="var(--accent)"
-                style={{ flexShrink: 0 }}
+                style={{
+                  display: 'inline-block',
+                  verticalAlign: '-0.12em',
+                  marginRight: '0.32em',
+                }}
                 aria-label="Pinned post"
               >
                 <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
               </svg>
             )}
-            <span>{post.title}</span>
+            {post.title}
           </h1>
 
           <div

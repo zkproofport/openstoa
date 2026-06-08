@@ -265,16 +265,20 @@ export default function PostCard({
     </span>
   ) : null;
 
-  // Pin is a per-post flag — render a FILLED pin icon next to the title so
-  // it matches the mobile MaterialCommunityIcons "pin" (solid silhouette,
-  // brand color) instead of the previous outline variant.
+  // Inline pin icon — `em`-relative sizing + vertical-align baseline so the
+  // pin's optical center matches the title text's x-height (flex+center
+  // shifted the icon up because of h3 line-height extra space).
   const pinnedTitleIcon = resolvedIsPinned ? (
     <svg
-      width="14"
-      height="14"
+      width="0.85em"
+      height="0.85em"
       viewBox="0 0 24 24"
       fill="var(--accent)"
-      style={{ flexShrink: 0 }}
+      style={{
+        display: 'inline-block',
+        verticalAlign: '-0.12em',
+        marginRight: '0.32em',
+      }}
       aria-label="Pinned post"
     >
       <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
@@ -423,14 +427,10 @@ export default function PostCard({
             letterSpacing: '-0.01em',
             color: '#e5e7eb',
             lineHeight: 1.4,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            flexWrap: 'wrap',
           }}
         >
           {pinnedTitleIcon}
-          <span>{post.title}</span>
+          {post.title}
         </h3>
 
         {/* I04: body wrapper with max-height cap when not expanded. */}
