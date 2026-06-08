@@ -1549,12 +1549,15 @@ export function PostDetailScreen() {
   );
 
   // Collapsed footer — a single "Add comment" pill. Tapping it switches
-  // to composing mode + opens the keyboard.
+  // to composing mode + opens the keyboard. The bottom tab bar below
+  // already adds its own safe-area inset, so the pill only needs a
+  // small base padding to sit flush above the tab bar — adding
+  // `insets.bottom` here doubled the safe-area space and left a gap.
   const renderAddCommentBar = () => (
     <View
       style={[
         styles.addCommentBar,
-        { paddingBottom: Math.max(insets.bottom, 8) },
+        { paddingBottom: 8 },
       ]}
     >
       <TouchableOpacity

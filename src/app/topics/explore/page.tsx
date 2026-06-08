@@ -369,22 +369,52 @@ function ExplorePageInner() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <TopicAvatar name={topic.title} image={topic.image} size={36} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <Link
-                      href={`/topics/${topic.id}`}
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 600,
-                        color: 'var(--foreground)',
-                        textDecoration: 'none',
-                        display: 'block',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        lineHeight: 1.3,
-                      }}
-                    >
-                      {topic.title}
-                    </Link>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      <Link
+                        href={`/topics/${topic.id}`}
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 600,
+                          color: 'var(--foreground)',
+                          textDecoration: 'none',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1.3,
+                          minWidth: 0,
+                        }}
+                      >
+                        {topic.title}
+                      </Link>
+                      {topic.isMember && (
+                        // Success-tint Joined pill — mirrors PostCard joinedPill.
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            fontSize: 9,
+                            fontWeight: 700,
+                            color: '#22c55e',
+                            background: 'rgba(34,197,94,0.10)',
+                            border: '1px solid rgba(34,197,94,0.25)',
+                            borderRadius: 4,
+                            padding: '1px 6px',
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            fontFamily: 'var(--font-mono)',
+                            lineHeight: 1.2,
+                            flexShrink: 0,
+                          }}
+                          aria-label="You are a member of this topic"
+                        >
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          Joined
+                        </span>
+                      )}
+                    </div>
                     {topic.category && (
                       <span
                         style={{

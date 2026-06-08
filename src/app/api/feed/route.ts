@@ -168,6 +168,10 @@ export async function GET(request: NextRequest) {
       sort === 'active' ? desc(posts.lastActivityAt) :
       desc(posts.score); // 'hot' default
 
+    // Pin priority applies ONLY to sort=new. Other sorts ignore isPinned so
+    // the underlying ranking (score / votes / activity) isn't disturbed.
+    const orderByArgs = sort === 'new' ? [desc(posts.isPinned), sortExpr] : [sortExpr];
+
     // --- Guest path ---
     if (!session) {
       logger.info(ROUTE, 'Guest fetching feed');
@@ -208,7 +212,7 @@ export async function GET(request: NextRequest) {
         .innerJoin(topics, eq(posts.topicId, topics.id))
         .leftJoin(users, eq(posts.authorId, users.id))
         .where(whereConditions)
-        .orderBy(sortExpr)
+        .orderBy(...orderByArgs)
         .limit(limit)
         .offset(offset);
 
@@ -288,7 +292,7 @@ export async function GET(request: NextRequest) {
       .leftJoin(users, eq(posts.authorId, users.id))
       .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
       .where(whereConditions)
-      .orderBy(sortExpr)
+      .orderBy(...orderByArgs)
       .limit(limit)
       .offset(offset);
 

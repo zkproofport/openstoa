@@ -265,6 +265,33 @@ export default function PostCard({
     </span>
   ) : null;
 
+  // Inline pinned pill — mirrors PostDetail header so the feed reads the
+  // same way at a glance. Sits next to the topic chip / Joined badge.
+  const pinnedPill = resolvedIsPinned ? (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+        fontSize: 9,
+        fontWeight: 700,
+        color: 'var(--accent)',
+        background: 'rgba(59,130,246,0.10)',
+        border: '1px solid rgba(59,130,246,0.25)',
+        borderRadius: 4,
+        padding: '1px 6px',
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        fontFamily: 'var(--font-mono)',
+        lineHeight: 1.2,
+        verticalAlign: 'middle',
+      }}
+      aria-label="Pinned post"
+    >
+      📌 Pinned
+    </span>
+  ) : null;
+
   const topicBreadcrumb =
     showTopic && post.topicTitle && post.topicId ? (
       <div
@@ -298,6 +325,7 @@ export default function PostCard({
           t/{post.topicTitle}
         </Link>
         {joinedPill}
+        {pinnedPill}
       </div>
     ) : null;
 
@@ -349,9 +377,10 @@ export default function PostCard({
 
       {topicBreadcrumb}
 
-      {/* I06: per-topic feed (showTopic=false) — render topic chip + joined pill
-          above the card body, outside the nav Link to avoid nested anchors. */}
-      {!showTopic && post.isJoinedTopic && post.topicTitle && post.topicId && (
+      {/* I06: per-topic feed (showTopic=false) — render topic chip + joined +
+          pinned pills above the card body, outside the nav Link to avoid
+          nested anchors. Also renders when only the pinned pill is needed. */}
+      {!showTopic && (post.isJoinedTopic || resolvedIsPinned) && post.topicTitle && post.topicId && (
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}
           onClick={(e) => e.stopPropagation()}
@@ -370,6 +399,7 @@ export default function PostCard({
             t/{post.topicTitle}
           </Link>
           {joinedPill}
+          {pinnedPill}
         </div>
       )}
 

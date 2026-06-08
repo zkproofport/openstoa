@@ -281,7 +281,9 @@ export async function GET(
         .from(posts)
         .leftJoin(users, eq(posts.authorId, users.id))
         .where(whereClause)
-        .orderBy(desc(posts.isPinned), buildPostSortExpr(sort))
+        // Pin priority applies ONLY to sort=new. Other sorts respect their
+        // own ordering (score / votes / activity / record count).
+        .orderBy(...(sort === 'new' ? [desc(posts.isPinned), buildPostSortExpr(sort)] : [buildPostSortExpr(sort)]))
         .limit(limit)
         .offset(offset);
 
@@ -397,8 +399,9 @@ export async function GET(
       .leftJoin(users, eq(posts.authorId, users.id))
       .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
       .where(whereClause)
-      // sort=new is strictly chronological — pinned posts do not jump ahead.
-      .orderBy(...(sort === 'new' ? [buildPostSortExpr(sort)] : [desc(posts.isPinned), buildPostSortExpr(sort)]))
+      // Pin priority applies ONLY to sort=new. Other sorts (hot/top/active/
+      // recorded) ignore isPinned so the underlying ranking isn't disturbed.
+      .orderBy(...(sort === 'new' ? [desc(posts.isPinned), buildPostSortExpr(sort)] : [buildPostSortExpr(sort)]))
       .limit(limit)
       .offset(offset);
 

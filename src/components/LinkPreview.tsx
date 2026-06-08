@@ -93,14 +93,30 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
     }
   })();
 
+  // OG card uses a div + onClick to open in a new tab instead of a nested
+  // <a>. PostCard already wraps the body in <Link>, and nesting anchors is
+  // invalid HTML — browsers collapse the inner <a> so the card click was
+  // navigating to the post detail instead of the external URL.
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick(e as unknown as React.MouseEvent);
+        }
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      aria-label={`Open ${url} in a new tab`}
       style={{
         display: 'block',
         marginTop: 10,
@@ -110,6 +126,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
         overflow: 'hidden',
         textDecoration: 'none',
         color: 'inherit',
+        cursor: 'pointer',
         transition: 'border-color 0.15s, background 0.15s',
       }}
     >
@@ -196,6 +213,6 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
           </div>
         )}
       </div>
-    </a>
+    </div>
   );
 }

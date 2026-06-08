@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Modal,
@@ -10,7 +10,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -137,6 +136,24 @@ function makeStyles(colors: ThemeColors) {
       lineHeight: 22,
       marginTop: -2,
     },
+    // 1/N page counter pinned top-center in the fullscreen lightbox so the
+    // user knows which image they're on while swiping between them.
+    lightboxCounter: {
+      position: 'absolute',
+      top: 56,
+      alignSelf: 'center',
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+      zIndex: 1,
+    },
+    lightboxCounterText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '600',
+      fontVariantNumeric: 'tabular-nums',
+    },
   });
 }
 
@@ -173,8 +190,37 @@ export function MediaGallery({
   // Lightbox state — only used in detail mode where the gallery owns
   // its own fullscreen viewer. In feed mode the parent handles taps
   // (typically navigating to PostDetail) via `onImagePress`.
+  // `lightboxIndex` opens the modal at a specific image; `lightboxActive`
+  // tracks the currently visible image as the user swipes between them.
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxActive, setLightboxActive] = useState(0);
+  const lightboxScrollRef = useRef<ScrollView | null>(null);
   const closeLightbox = useCallback(() => setLightboxIndex(null), []);
+  // When the modal opens, sync the page counter to the tapped image and
+  // jump the inner ScrollView to that page so the initial render matches
+  // the thumbnail the user tapped.
+  useEffect(() => {
+    if (lightboxIndex !== null) {
+      setLightboxActive(lightboxIndex);
+      // Defer scrollTo until after layout so contentOffset lands on the
+      // correct page on first open.
+      const id = setTimeout(() => {
+        lightboxScrollRef.current?.scrollTo({
+          x: lightboxIndex * windowWidth,
+          animated: false,
+        });
+      }, 0);
+      return () => clearTimeout(id);
+    }
+  }, [lightboxIndex, windowWidth]);
+  const onLightboxScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (windowWidth <= 0) return;
+      const idx = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
+      if (idx !== lightboxActive) setLightboxActive(idx);
+    },
+    [windowWidth, lightboxActive],
+  );
 
   const parsedVideos = useMemo(
     () => (videos ?? []).map(parseVideo).filter((v): v is ParsedVideo => v !== null),
@@ -288,10 +334,13 @@ export function MediaGallery({
         )
       ) : null}
 
-      {/* Fullscreen lightbox — detail mode only. Tap backdrop or × to
-          close. The image is letterboxed (resizeMode="contain") so wide
-          and tall images both fit inside the viewport. */}
-      {lightboxIndex !== null && images && images[lightboxIndex] ? (
+      {/* Fullscreen lightbox — detail mode only. Horizontal ScrollView
+          with pagingEnabled lets the user swipe between every image in
+          the post (Twitter/X style). Tap the × button or the empty
+          letterbox area to close. Each image is wrapped in a Pressable
+          so the tap-to-close gesture still works, but horizontal pan
+          reaches the outer ScrollView. */}
+      {lightboxIndex !== null && images && images.length > 0 ? (
         <Modal
           visible
           transparent
@@ -299,24 +348,51 @@ export function MediaGallery({
           onRequestClose={closeLightbox}
         >
           <StatusBar barStyle="light-content" />
-          <TouchableWithoutFeedback onPress={closeLightbox}>
-            <View style={styles.lightboxBackdrop}>
-              <TouchableOpacity
-                style={styles.lightboxCloseBtn}
-                onPress={closeLightbox}
-                accessibilityLabel="Close"
-              >
-                <Text style={styles.lightboxCloseLabel}>×</Text>
-              </TouchableOpacity>
-              <View pointerEvents="none">
-                <Image
-                  source={{ uri: images[lightboxIndex] }}
-                  style={{ width: windowWidth, height: windowHeight - 80 }}
-                  resizeMode="contain"
-                />
+          <View style={styles.lightboxBackdrop}>
+            <TouchableOpacity
+              style={styles.lightboxCloseBtn}
+              onPress={closeLightbox}
+              accessibilityLabel="Close"
+            >
+              <Text style={styles.lightboxCloseLabel}>×</Text>
+            </TouchableOpacity>
+            {images.length > 1 ? (
+              <View style={styles.lightboxCounter} pointerEvents="none">
+                <Text style={styles.lightboxCounterText}>
+                  {lightboxActive + 1}/{images.length}
+                </Text>
               </View>
-            </View>
-          </TouchableWithoutFeedback>
+            ) : null}
+            <ScrollView
+              ref={lightboxScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={onLightboxScroll}
+              scrollEventThrottle={16}
+              decelerationRate="fast"
+              contentOffset={{ x: lightboxIndex * windowWidth, y: 0 }}
+            >
+              {images.map((uri, i) => (
+                <Pressable
+                  key={`${uri}-${i}`}
+                  onPress={closeLightbox}
+                  style={{
+                    width: windowWidth,
+                    height: windowHeight,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Image
+                    source={{ uri }}
+                    style={{ width: windowWidth, height: windowHeight - 80 }}
+                    resizeMode="contain"
+                  />
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
         </Modal>
       ) : null}
     </View>

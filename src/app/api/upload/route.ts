@@ -35,6 +35,18 @@ function loadSharp(): SharpModule | null {
   }
 }
 
+// Lazy-load heic-convert (WASM libheif). Cloud Run's libvips lacks the HEIC
+// codec, so sharp alone can't decode HEIC — we decode via heic-convert first.
+type HeicConvertFn = (opts: { buffer: Buffer; format: 'JPEG' | 'PNG'; quality?: number }) => Promise<ArrayBuffer>;
+function loadHeicConvert(): HeicConvertFn | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('heic-convert') as HeicConvertFn;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * @openapi
  * /api/upload:
@@ -126,35 +138,41 @@ export async function POST(request: NextRequest) {
 
     // Server-side HEIC sniff + convert (defense in depth — mobile path
     // already re-encodes when expo-image-manipulator is available).
+    // Cloud Run libvips lacks HEIC codec, so we decode via heic-convert
+    // (WASM libheif) first, then re-encode via sharp for consistent JPEG output.
     if (isHeicBuffer(buffer)) {
+      const heicConvert = loadHeicConvert();
       const sharp = loadSharp();
-      if (sharp) {
-        try {
-          buffer = await sharp(buffer).jpeg({ quality: 85 }).toBuffer();
-          contentType = 'image/jpeg';
-          if (filename) {
-            filename = filename.replace(/\.(heic|heif|jpg|jpeg)$/i, '') + '.jpg';
-          }
-          logger.info(ROUTE, 'HEIC converted to JPEG', {
-            userId: session.userId,
-            newSize: buffer.length,
-          });
-        } catch (err) {
-          logger.error(ROUTE, 'HEIC→JPEG conversion failed', {
-            userId: session.userId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          return NextResponse.json(
-            { error: 'Failed to convert HEIC image' },
-            { status: 400 },
-          );
+      try {
+        if (!heicConvert) {
+          throw new Error('heic-convert module unavailable');
         }
-      } else {
-        // TODO(dep): install `sharp` (already in package.json) or add
-        // `heic-convert` so HEIC uploads don't end up unreadable on web.
-        logger.warn(ROUTE, 'HEIC detected but sharp unavailable — uploading raw bytes', {
+        const jpegArr = await heicConvert({ buffer, format: 'JPEG', quality: 0.85 });
+        let jpegBuf: Buffer = Buffer.from(jpegArr);
+        // Pipe through sharp when available to normalise/strip metadata.
+        if (sharp) {
+          jpegBuf = Buffer.from(await sharp(jpegBuf).jpeg({ quality: 85 }).toBuffer());
+        }
+        buffer = jpegBuf;
+        contentType = 'image/jpeg';
+        if (filename) {
+          filename = filename.replace(/\.(heic|heif|jpg|jpeg)$/i, '') + '.jpg';
+        }
+        logger.info(ROUTE, 'HEIC converted to JPEG', {
           userId: session.userId,
+          newSize: buffer.length,
         });
+      } catch (err) {
+        logger.error(ROUTE, 'HEIC→JPEG conversion failed', {
+          userId: session.userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        // 500 (not 400) — the bytes were a valid HEIC upload; the server
+        // couldn't process them. Friendlier message for the client.
+        return NextResponse.json(
+          { error: 'Could not process HEIC photo. Please try a different image or convert it to JPEG before uploading.' },
+          { status: 500 },
+        );
       }
     }
 

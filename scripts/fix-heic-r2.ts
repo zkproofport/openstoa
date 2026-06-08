@@ -87,14 +87,35 @@ async function* listAllKeys(): AsyncGenerator<{ key: string; size: number }> {
   } while (token);
 }
 
-type Candidate = { key: string; size: number; contentType: string; cacheControl?: string };
+type Candidate = {
+  key: string;
+  size: number;
+  contentType: string;
+  cacheControl?: string;
+  // When true, bytes are already JPEG but R2 metadata says image/heic — we
+  // just need to re-PUT with the correct Content-Type, no decode required.
+  metadataOnly?: boolean;
+};
 
 async function inspect(key: string, size: number): Promise<Candidate | null> {
   try {
     const head = await s3.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
     const ct = (head.ContentType ?? '').toLowerCase();
+    // Metadata says HEIC: still need to sniff bytes because some objects were
+    // client-side converted to JPEG but kept the upload's Content-Type: image/heic.
     if (ct === 'image/heic' || ct === 'image/heif') {
-      return { key, size, contentType: ct, cacheControl: head.CacheControl };
+      const ranged = await s3.send(
+        new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key, Range: 'bytes=0-11' }),
+      );
+      const head12 = await streamToBuffer(ranged.Body);
+      const bytesAreHeic = sniffHeic(head12);
+      return {
+        key,
+        size,
+        contentType: ct,
+        cacheControl: head.CacheControl,
+        metadataOnly: !bytesAreHeic,
+      };
     }
     // Fallback: sniff first 12 bytes for HEIC magic when content-type is wrong (e.g., image/jpeg).
     if (ct === 'image/jpeg' || ct === 'image/jpg' || ct === 'application/octet-stream' || ct === '') {
@@ -116,10 +137,18 @@ async function inspect(key: string, size: number): Promise<Candidate | null> {
 async function convertAndUpload(cand: Candidate): Promise<{ srcSize: number; outSize: number }> {
   const got = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: cand.key }));
   const srcBuf = await streamToBuffer(got.Body);
-  // 1) Decode HEIC -> JPEG via heic-convert (WASM libheif).
-  const jpegArr = await heicConvert({ buffer: srcBuf, format: 'JPEG', quality: 0.85 });
-  // 2) Pipe through sharp to normalize/strip metadata + ensure consistent JPEG quality.
-  const outBuf = await sharp(Buffer.from(jpegArr)).jpeg({ quality: 85 }).toBuffer();
+
+  let outBuf: Buffer;
+  if (cand.metadataOnly) {
+    // Bytes are already JPEG; only the R2 Content-Type metadata is wrong.
+    // Re-PUT the same bytes with the correct Content-Type.
+    outBuf = srcBuf;
+  } else {
+    // 1) Decode HEIC -> JPEG via heic-convert (WASM libheif).
+    const jpegArr = await heicConvert({ buffer: srcBuf, format: 'JPEG', quality: 0.85 });
+    // 2) Pipe through sharp to normalize/strip metadata + ensure consistent JPEG quality.
+    outBuf = await sharp(Buffer.from(jpegArr)).jpeg({ quality: 85 }).toBuffer();
+  }
 
   await s3.send(
     new PutObjectCommand({
@@ -168,7 +197,8 @@ async function main() {
 
   if (DRY_RUN) {
     for (const c of candidates) {
-      console.log(`[DRY] ${c.contentType} ${c.size} bytes :: ${c.key}`);
+      const tag = c.metadataOnly ? '[META-ONLY]' : '[DECODE]';
+      console.log(`[DRY] ${tag} ${c.contentType} ${c.size} bytes :: ${c.key}`);
     }
     console.log('\nDry-run complete — no writes.');
     return;
@@ -181,7 +211,8 @@ async function main() {
     try {
       const { srcSize, outSize } = await convertAndUpload(cand);
       converted++;
-      console.log(`[ok] ${cand.key} :: ${srcSize} -> ${outSize} bytes (was ${cand.contentType})`);
+      const tag = cand.metadataOnly ? 'meta-only' : 'decoded';
+      console.log(`[ok:${tag}] ${cand.key} :: ${srcSize} -> ${outSize} bytes (was ${cand.contentType})`);
     } catch (err) {
       failed++;
       console.error(`[FAIL] ${cand.key}: ${(err as Error).message}`);
