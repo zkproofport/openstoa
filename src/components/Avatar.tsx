@@ -21,13 +21,15 @@ interface AvatarProps {
   style?: React.CSSProperties;
 }
 
+import { withImageVersion } from '@/lib/imageCacheBuster';
+
 export default function Avatar({ src, name, size = 40, style }: AvatarProps) {
   const letter = (name || '?').charAt(0).toUpperCase();
 
   if (src) {
     return (
       <img
-        src={src}
+        src={withImageVersion(src)}
         alt=""
         style={{
           width: size,

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { withImageVersion } from '@/lib/imageCacheBuster';
 
 function CloseIcon() {
   return (
@@ -109,9 +110,17 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
   // Portal lightbox to document.body so it is NOT a descendant of any
   // ancestor <Link>/<a>. Otherwise even with stopPropagation, native
   // anchor activation on nested-clickable can navigate to the post page.
+  // NOTE: createPortal only relocates DOM. React synthetic events still
+  // bubble through the *React* tree, so without explicit stopPropagation
+  // on EVERY interactive element here, a click on the backdrop / close
+  // button / dot wrapper bubbles to PostCard's <Link> and navigates to
+  // the post detail page. Each onClick below must stop the event.
   return createPortal(
     <div
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       style={{
@@ -126,7 +135,10 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
     >
       <button
         type="button"
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         aria-label="Close"
         style={{
           position: 'absolute',
@@ -177,7 +189,7 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
       )}
 
       <img
-        src={current}
+        src={withImageVersion(current)}
         alt=""
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -211,7 +223,10 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
             <button
               key={i}
               type="button"
-              onClick={() => setIndex(i)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIndex(i);
+              }}
               aria-label={`Image ${i + 1}`}
               style={{
                 width: 8,

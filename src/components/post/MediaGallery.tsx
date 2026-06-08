@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import ImageLightbox from '@/components/ImageLightbox';
+import { withImageVersion } from '@/lib/imageCacheBuster';
 
 interface MediaGalleryProps {
   images?: string[];
@@ -76,7 +77,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
         >
           {firstImg ? (
             <img
-              src={firstImg}
+              src={withImageVersion(firstImg)}
               alt=""
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
@@ -198,7 +199,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
         >
           {current.kind === 'image' ? (
             <img
-              src={current.src}
+              src={withImageVersion(current.src)}
               alt=""
               onClick={(e) => {
                 // Image is inside PostCard's <Link>; without prevent+stop the
