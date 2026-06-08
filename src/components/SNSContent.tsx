@@ -88,23 +88,39 @@ function renderTextWithLinks(text: string): React.ReactNode {
   const parts = text.split(URL_REGEX);
   return parts.map((part, i) => {
     if (i % 2 === 1) {
+      // role="link" <span> instead of <a> so PostCard's outer <Link>
+      // wrapper doesn't produce nested anchors — invalid HTML the browser
+      // unwraps client-side, which causes React #418 hydration mismatch
+      // (the recurring "Minified React error #418" infinite postMessage
+      // loop reported by the user). Keyboard accessibility preserved.
       return (
-        <a
+        <span
           key={i}
-          href={part}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
+          role="link"
+          tabIndex={0}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(part, '_blank', 'noopener,noreferrer');
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              window.open(part, '_blank', 'noopener,noreferrer');
+            }
+          }}
           style={{
             color: 'var(--accent)',
             textDecoration: 'underline',
             textUnderlineOffset: 2,
             textDecorationColor: 'rgba(59,130,246,0.4)',
             wordBreak: 'break-all',
+            cursor: 'pointer',
           }}
         >
           {part}
-        </a>
+        </span>
       );
     }
     return part;
@@ -138,9 +154,15 @@ function autoLinkUrls(html: string): string {
       return part;
     }
     if (insideAnchor) return part;
-    return part.replace(URL_REGEX, (url) =>
-      `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(59,130,246,0.4);word-break:break-all;">${url}</a>`
-    );
+    // Emit <span data-href> instead of <a> — PostCard wraps the card body in
+    // a Next.js <Link> (rendered as <a>), and nested anchors are invalid
+    // HTML that browsers unwrap client-side, causing React #418 hydration
+    // mismatch and an infinite postMessage retry loop. SNSContent's useEffect
+    // delegates click on .sns-url-link to window.open for the same UX.
+    return part.replace(URL_REGEX, (url) => {
+      const safe = url.replace(/"/g, '&quot;');
+      return `<span class="sns-url-link" data-href="${safe}" role="link" tabindex="0" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(59,130,246,0.4);word-break:break-all;cursor:pointer;">${url}</span>`;
+    });
   }).join('');
 }
 
@@ -613,6 +635,24 @@ export default function SNSContent({
       (!!truncate && inlineOgOnTruncate && isPlainText && !!previewUrl),
     [bodyChunks, plainTextChunks, truncate, inlineOgOnTruncate, isPlainText, previewUrl],
   );
+
+  // Click delegate for .sns-url-link spans (autoLinkUrls emits these
+  // instead of <a> to avoid nested anchors inside PostCard's outer <Link>).
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const handler = (e: Event) => {
+      const target = (e.target as HTMLElement)?.closest?.('.sns-url-link') as HTMLElement | null;
+      if (!target) return;
+      const href = target.getAttribute('data-href');
+      if (!href) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(href, '_blank', 'noopener,noreferrer');
+    };
+    root.addEventListener('click', handler);
+    return () => root.removeEventListener('click', handler);
+  }, []);
 
   useEffect(() => {
     if (!truncate || !contentRef.current) return;
