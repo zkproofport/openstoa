@@ -44,6 +44,26 @@ export interface PostCardProps {
   onPress: () => void;
 }
 
+// Avatar palette — must stay in lockstep with src/components/Avatar.tsx
+// (web Avatar). Same hash function (charCodeAt of first letter modulo
+// palette length) so the same nickname renders the same colour on web
+// and mobile.
+const AVATAR_PALETTE = [
+  '#3b82f6', // blue
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#f97316', // orange
+  '#22c55e', // green
+  '#06b6d4', // cyan
+  '#eab308', // yellow
+  '#ef4444', // red
+];
+
+function avatarColor(name: string): string {
+  const code = name.charCodeAt(0) || 0;
+  return AVATAR_PALETTE[code % AVATAR_PALETTE.length];
+}
+
 // Fixed visual-height threshold for the "Show more" toggle. Char/line
 // counts diverged across languages and HTML tag shapes (Korean filled
 // lines slower than English; an embedded image inflated the line count
@@ -76,6 +96,55 @@ function makeStyles(colors: ThemeColors) {
       gap: 6,
       marginBottom: 6,
     },
+    // Author header row — mirrors the web PostCard which shows an
+    // author avatar + nickname + relative time stacked above the title.
+    // Avatar uses the same 24px size as web (`Avatar` size=24).
+    authorRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginBottom: 8,
+    },
+    authorAvatar: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      marginTop: 1,
+    },
+    authorAvatarFallback: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      marginTop: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    authorAvatarFallbackText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#fff',
+    },
+    authorMetaRow: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flexWrap: 'wrap',
+    },
+    authorNickname: {
+      fontSize: 12,
+      fontWeight: '500',
+      color: colors.text.secondary,
+    },
+    authorTimestamp: {
+      fontSize: 12,
+      color: colors.text.tertiary,
+      fontVariantNumeric: 'tabular-nums',
+    },
+    authorSeparator: {
+      fontSize: 12,
+      color: colors.text.tertiary,
+    },
     // Topic + joined badge live in the same row; the joined chip sits
     // immediately right of the topic chip and matches its height. Style
     // mirrors PostDetailScreen.joinedBadge (success-tint background, success
@@ -106,11 +175,6 @@ function makeStyles(colors: ThemeColors) {
       borderRadius: 4,
       overflow: 'hidden',
     },
-    meta: {
-      fontSize: 12,
-      color: colors.text.tertiary,
-      flexShrink: 1,
-    },
     titleRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -121,10 +185,15 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 2,
     },
     title: {
-      fontSize: 15,
-      fontWeight: '600',
+      // Aligned with web PostCard (18px / 700). The 15/600 mobile size was
+      // visually understated relative to the body content — bumping size +
+      // weight makes the title win the hierarchy the same way it does on
+      // the web feed.
+      fontSize: 18,
+      fontWeight: '700',
       color: colors.text.primary,
-      lineHeight: 20,
+      lineHeight: 24,
+      letterSpacing: -0.2,
       flexShrink: 1,
     },
     content: {
@@ -440,11 +509,12 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   return (
     <View style={[styles.card, post.isPinned ? styles.cardPinned : null]}>
       <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
-        {/* Header: topic chip + joined badge (same row, side-by-side) +
-            author + time. Joined badge sits immediately right of the topic
-            chip to mirror the web feed layout and PostDetailScreen. */}
-        <View style={styles.header}>
-          {topicTitle || post.isJoinedTopic ? (
+        {/* Topic chip + Joined badge — mirrors the web PostCard breadcrumb
+            row. Lives above the author row so the reader sees TOPIC →
+            AUTHOR → TITLE in the same Reddit / Threads order on both
+            clients. */}
+        {topicTitle || post.isJoinedTopic ? (
+          <View style={[styles.header, { marginBottom: 6 }]}>
             <View style={styles.topicRow}>
               {topicTitle ? (
                 <Text style={styles.topicLabel} numberOfLines={1}>
@@ -459,10 +529,43 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
                 </View>
               ) : null}
             </View>
-          ) : null}
-          <Text style={styles.meta} numberOfLines={1}>
-            {post.authorNickname ?? t('openstoa.postCard.author.anon')} · {formatRelativeTime(post.createdAt)}
-          </Text>
+          </View>
+        ) : null}
+
+        {/* Author row — avatar + nickname + relative time. Matches the web
+            PostCard which renders a 24px Avatar followed by nickname and
+            mono-formatted timestamp. AvatarFallback uses the first
+            character coloured against a hash-derived palette so the
+            visual parity holds even when the author hasn't uploaded a
+            profile image. */}
+        <View style={styles.authorRow}>
+          {post.authorProfileImage ? (
+            <Image
+              source={{ uri: post.authorProfileImage }}
+              style={styles.authorAvatar}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[
+                styles.authorAvatarFallback,
+                { backgroundColor: avatarColor(post.authorNickname ?? '?') },
+              ]}
+            >
+              <Text style={styles.authorAvatarFallbackText}>
+                {(post.authorNickname ?? '?').charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.authorMetaRow}>
+            <Text style={styles.authorNickname} numberOfLines={1}>
+              {post.authorNickname ?? t('openstoa.postCard.author.anon')}
+            </Text>
+            <Text style={styles.authorSeparator}>·</Text>
+            <Text style={styles.authorTimestamp}>
+              {formatRelativeTime(post.createdAt)}
+            </Text>
+          </View>
         </View>
 
         {/* Title — pinned posts get a small thumbtack icon prefix
@@ -472,7 +575,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           {post.isPinned ? (
             <MaterialCommunityIcons
               name="pin"
-              size={14}
+              size={15}
               color={colors.brand.primary}
               style={styles.titlePinIcon}
             />

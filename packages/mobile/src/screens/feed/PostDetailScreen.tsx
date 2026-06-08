@@ -1637,7 +1637,7 @@ export function PostDetailScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </>
+    </View>
   );
 }
 
