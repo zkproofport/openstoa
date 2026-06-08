@@ -55,7 +55,7 @@ interface Post {
    *  status without leaving the page. */
   isJoinedTopic?: boolean;
   /** Whether the post is pinned by a topic admin/owner. Rendered as a
-   *  small "📌 Pinned" pill in the header row next to the topic chip. */
+   *  small "Pinned" pill (pin SVG + label) in the header row next to topic chip. */
   isPinned?: boolean;
 }
 
@@ -851,7 +851,22 @@ export default function PostPage() {
                   }}
                   aria-label="Pinned post"
                 >
-                  📌 Pinned
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ marginRight: 4, display: 'inline-block', verticalAlign: '-1px' }}
+                    aria-hidden
+                  >
+                    <line x1="12" y1="17" x2="12" y2="22" />
+                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1V2H8v4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                  </svg>
+                  Pinned
                 </span>
               )}
             </div>

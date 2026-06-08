@@ -626,6 +626,32 @@ export default function TopicPage() {
                 country gated
               </span>
             )}
+            {!isGuest && topic.isMember && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#22c55e',
+                  background: 'rgba(34,197,94,0.10)',
+                  border: '1px solid rgba(34,197,94,0.25)',
+                  borderRadius: 4,
+                  padding: '1px 6px',
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  fontFamily: 'var(--font-mono)',
+                  lineHeight: 1.2,
+                }}
+                aria-label="Joined topic"
+              >
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Joined
+              </span>
+            )}
           </div>
           {topic.description && (
             <p style={{ fontSize: 14, color: '#6b7280', margin: '4px 0 0', lineHeight: 1.5 }}>
