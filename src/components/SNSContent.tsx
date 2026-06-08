@@ -76,6 +76,41 @@ function plainTextToHtml(text: string): string {
   return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
+// R07: render a plain-text chunk into React nodes, auto-linking any URLs
+// inline. The plain-text branch previously rendered `chunk.text` raw so
+// URLs inside the body of a post were visible but not clickable. We split
+// each chunk on URL boundaries and emit an <a target="_blank"> for every
+// match so the click opens the link instead of being ignored or, when the
+// body sits inside a parent <Link> (PostCard feed row), being swallowed
+// by the post-detail navigation.
+function renderTextWithLinks(text: string): React.ReactNode {
+  if (!text) return text;
+  const parts = text.split(URL_REGEX);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            color: 'var(--accent)',
+            textDecoration: 'underline',
+            textUnderlineOffset: 2,
+            textDecorationColor: 'rgba(59,130,246,0.4)',
+            wordBreak: 'break-all',
+          }}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
 // ─── Video URL parsing for the explicit `mediaVideos` array ─────────────────
 
 function parseVideoUrl(url: string): VideoEmbed | null {
@@ -406,6 +441,19 @@ export default function SNSContent({
   // blank rows. Legacy HTML keeps the auto-link + extract pipeline below.
   const isPlainText = useMemo(() => !!html && !looksLikeHtml(html), [html]);
 
+  // Plain-text body with video URLs stripped. Mirrors the body-cleanup
+  // that extractVideoUrls applies to the HTML branch so YouTube/Vimeo
+  // links that are surfaced as iframes don't ALSO appear as bare text.
+  const plainBody = useMemo(() => {
+    if (!isPlainText) return html ?? '';
+    let s = html ?? '';
+    for (const { regex } of VIDEO_PATTERNS) {
+      regex.lastIndex = 0;
+      s = s.replace(regex, '');
+    }
+    return s;
+  }, [html, isPlainText]);
+
   // Plain text from the unified composer is escaped + <br>'d. Legacy HTML
   // posts go through the existing extraction pipeline unchanged.
   const normalisedHtml = useMemo(() => {
@@ -536,15 +584,15 @@ export default function SNSContent({
     Array<{ kind: 'text'; text: string } | { kind: 'preview' }>
   >(() => {
     if (!isPlainText || !previewUrl) {
-      return [{ kind: 'text', text: html ?? '' }];
+      return [{ kind: 'text', text: plainBody }];
     }
-    const paragraphs = (html ?? '').split(/\n{2,}/);
+    const paragraphs = plainBody.split(/\n{2,}/);
     if (paragraphs.length <= 1) {
-      return [{ kind: 'text', text: html ?? '' }];
+      return [{ kind: 'text', text: plainBody }];
     }
     const idx = paragraphs.findIndex((p) => p.includes(previewUrl));
     if (idx < 0) {
-      return [{ kind: 'text', text: html ?? '' }];
+      return [{ kind: 'text', text: plainBody }];
     }
     const chunks: Array<{ kind: 'text'; text: string } | { kind: 'preview' }> = [];
     paragraphs.forEach((p, i) => {
@@ -552,7 +600,7 @@ export default function SNSContent({
       if (i === idx) chunks.push({ kind: 'preview' });
     });
     return chunks;
-  }, [html, isPlainText, previewUrl]);
+  }, [plainBody, isPlainText, previewUrl]);
 
   // True when the inline split successfully placed a LinkPreview in the
   // body. The trailing post-body LinkPreview render path then skips its
@@ -647,14 +695,14 @@ export default function SNSContent({
                           marginBottom: i < plainTextChunks.length - 1 ? '0.85em' : 0,
                         }}
                       >
-                        {chunk.text}
+                        {renderTextWithLinks(chunk.text)}
                       </div>
                     );
                   })}
                 </>
               ) : (
                 <>
-                  {html}
+                  {renderTextWithLinks(plainBody)}
                   {/* I10: inline OG inside the clipped body when requested. */}
                   {inlineOgOnTruncate && previewUrl && (
                     <LinkPreview url={previewUrl} />
@@ -723,7 +771,7 @@ export default function SNSContent({
                     marginBottom: i < plainTextChunks.length - 1 ? '0.85em' : 0,
                   }}
                 >
-                  {chunk.text}
+                  {renderTextWithLinks(chunk.text)}
                 </div>
               );
             })}
@@ -733,7 +781,7 @@ export default function SNSContent({
             className="sns-content-body"
             style={{ whiteSpace: 'pre-wrap' }}
           >
-            {html}
+            {renderTextWithLinks(plainBody)}
           </div>
         )
       ) : (

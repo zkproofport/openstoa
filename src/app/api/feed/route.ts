@@ -168,9 +168,10 @@ export async function GET(request: NextRequest) {
       sort === 'active' ? desc(posts.lastActivityAt) :
       desc(posts.score); // 'hot' default
 
-    // Pin priority applies ONLY to sort=new. Other sorts ignore isPinned so
-    // the underlying ranking (score / votes / activity) isn't disturbed.
-    const orderByArgs = sort === 'new' ? [desc(posts.isPinned), sortExpr] : [sortExpr];
+    // Pin priority is a per-topic concept. The cross-topic feed must NOT
+    // promote every topic's pinned posts to the top — that turns the feed
+    // header into a wall of pinned content. Pin priority lives in
+    // /api/topics/[id]/posts (single-topic view) instead.
 
     // --- Guest path ---
     if (!session) {
@@ -212,7 +213,7 @@ export async function GET(request: NextRequest) {
         .innerJoin(topics, eq(posts.topicId, topics.id))
         .leftJoin(users, eq(posts.authorId, users.id))
         .where(whereConditions)
-        .orderBy(...orderByArgs)
+        .orderBy(sortExpr)
         .limit(limit)
         .offset(offset);
 
@@ -292,7 +293,7 @@ export async function GET(request: NextRequest) {
       .leftJoin(users, eq(posts.authorId, users.id))
       .leftJoin(votes, and(eq(votes.postId, posts.id), eq(votes.userId, session.userId)))
       .where(whereConditions)
-      .orderBy(...orderByArgs)
+      .orderBy(sortExpr)
       .limit(limit)
       .offset(offset);
 

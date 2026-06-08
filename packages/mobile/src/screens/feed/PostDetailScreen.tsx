@@ -1598,27 +1598,17 @@ export function PostDetailScreen() {
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
         />
-
-        {/* Collapsed "Add comment" pill — only rendered while the
-            keyboard is hidden. Tapping it focuses the input (mounted in
-            the KeyboardStickyView below), which opens the keyboard and
-            slides the sticky view up above it. */}
-        {!keyboardOpen ? renderAddCommentBar() : null}
       </View>
 
-      {/* Comment input pill — sticks above the soft keyboard on iOS and
-          Android via react-native-keyboard-controller. Input is always
-          mounted so inputRef.focus() can open the keyboard before the
-          sticky view rides up. While the keyboard is hidden the sticky
-          view sits at the screen bottom but is visually hidden behind
-          the "Add comment" pill (opacity 0) so the user only ever sees
-          one bar. */}
+      {/* Collapsed "Add comment" pill — rendered as the only KeyboardStickyView
+          child when the keyboard is hidden, so it sits flush above the bottom
+          tab bar with no extra gap. When the keyboard opens we swap to the
+          real input pill which slides up with the keyboard. */}
       <KeyboardStickyView
         offset={{ closed: 0, opened: 0 }}
-        style={keyboardOpen ? undefined : { opacity: 0 }}
-        pointerEvents={keyboardOpen ? 'auto' : 'none'}
+        pointerEvents="auto"
       >
-        {renderInputPill()}
+        {keyboardOpen ? renderInputPill() : renderAddCommentBar()}
       </KeyboardStickyView>
 
       {/* Emoji picker bottom sheet */}

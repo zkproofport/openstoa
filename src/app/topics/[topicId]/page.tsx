@@ -893,11 +893,18 @@ export default function TopicPage() {
       {/* ── Sort pills ── */}
       {/* eslint-disable-next-line react/no-unknown-property */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* R09: topic-scoped chip strip — faint brand-tinted background so
+          this filter row reads as "within this topic" and is visually
+          distinct from the feed-home chip row (no tint, no border). */}
       <div style={{
         marginBottom: 16,
         display: 'flex',
         alignItems: 'center',
         gap: 6,
+        padding: '8px 10px',
+        background: 'rgba(59,130,246,0.03)',
+        border: '1px solid rgba(59,130,246,0.08)',
+        borderRadius: 10,
       }}>
         <button
           onClick={() => handleSortChange('new')}
@@ -913,7 +920,8 @@ export default function TopicPage() {
             transition: 'all 0.12s',
           }}
         >
-          {'\uD83C\uDD95'} New
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          New
         </button>
         <button
           onClick={() => handleSortChange('popular')}
@@ -929,7 +937,8 @@ export default function TopicPage() {
             transition: 'all 0.12s',
           }}
         >
-          {'\uD83D\uDD25'} Popular
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+          Popular
         </button>
         <button
           onClick={() => handleSortChange('recorded')}
@@ -945,6 +954,7 @@ export default function TopicPage() {
             transition: 'all 0.12s',
           }}
         >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M20 6L9 17l-5-5"/></svg>
           Recorded
         </button>
         <button
@@ -961,7 +971,8 @@ export default function TopicPage() {
             transition: 'all 0.12s',
           }}
         >
-          📌 Pinned
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M12 17v5"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+          Pinned
         </button>
         {/* Manual refresh — resets to page 0 and re-fetches with no-store */}
         <button

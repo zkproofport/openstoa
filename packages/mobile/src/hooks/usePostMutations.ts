@@ -247,7 +247,7 @@ export function usePostMutations(postId: string) {
     async (currentPinned: boolean): Promise<{ ok: boolean; message?: string }> => {
       const optimistic = !currentPinned;
       // Optimistically flip `isPinned` everywhere the post is rendered so
-      // the 📌 indicator appears immediately. Server is the source of
+      // the pin indicator appears immediately. Server is the source of
       // truth — we reconcile on response or roll back on error.
       patchPostInAllCaches(queryClient, postId, (p) => ({
         ...p,

@@ -286,25 +286,38 @@ function TopicsPageInner() {
         </div>
       </div>
 
-      {/* Sort pills */}
+      {/* R09: feed-home chip strip — transparent background (no brand tint)
+          so the feed reads as the global cross-topic stream. Distinct from
+          the topic page which wraps chips in a brand-tinted strip. */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         {(
           [
-            { key: 'hot', label: 'Hot' },
-            { key: 'new', label: 'New' },
-            { key: 'active', label: 'Active' },
-            { key: 'top', label: 'Top' },
+            { key: 'hot', label: 'Hot', icon: (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+            ) },
+            { key: 'new', label: 'New', icon: (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            ) },
+            { key: 'active', label: 'Active', icon: (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            ) },
+            { key: 'top', label: 'Top', icon: (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            ) },
           ] as const
-        ).map(({ key, label }) => (
+        ).map(({ key, label, icon }) => (
           <button
             key={key}
             onClick={() => setSortBy(key)}
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
               background: sortBy === key ? 'var(--accent)' : 'transparent',
               color: sortBy === key ? '#fff' : 'var(--muted)',
               border: `1px solid ${sortBy === key ? 'var(--accent)' : 'var(--border)'}`,
               borderRadius: 20,
-              padding: '4px 14px',
+              padding: '4px 12px',
               fontSize: 13,
               fontWeight: sortBy === key ? 600 : 400,
               cursor: 'pointer',
@@ -313,6 +326,7 @@ function TopicsPageInner() {
               fontFamily: 'var(--font-mono)',
             }}
           >
+            {icon}
             {label}
           </button>
         ))}

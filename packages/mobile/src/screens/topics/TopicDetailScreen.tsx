@@ -78,11 +78,33 @@ function makeStyles(colors: ThemeColors) {
       borderBottomWidth: 1,
       borderBottomColor: colors.border.default,
     },
+    // Title row holds the topic name + an inline JOINED badge so members can
+    // tell at a glance which topics they belong to without opening the
+    // settings sheet. Wraps onto a second line if the title is long.
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 6,
+    },
     topicTitle: {
       fontSize: 22,
       fontWeight: '700',
       color: colors.text.primary,
-      marginBottom: 6,
+    },
+    // Matches PostCard.joinedBadge — success-tint pill with uppercase mono
+    // label so the badge reads the same wherever it appears.
+    joinedBadge: {
+      backgroundColor: colors.status.success + '22',
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    joinedBadgeText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.status.success,
     },
     topicDescription: {
       fontSize: 14,
@@ -503,7 +525,16 @@ export function TopicDetailScreen() {
   const ListHeader = (
     <View>
       <View style={styles.topicHeader}>
-        <Text style={styles.topicTitle}>{topic.title}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.topicTitle}>{topic.title}</Text>
+          {isMember ? (
+            <View style={styles.joinedBadge}>
+              <Text style={styles.joinedBadgeText}>
+                {t('openstoa.topics.joinedBadge')}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         {topic.description ? (
           <Text style={styles.topicDescription}>{topic.description}</Text>
         ) : null}

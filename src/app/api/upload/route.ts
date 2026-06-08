@@ -136,11 +136,12 @@ export async function POST(request: NextRequest) {
     let buffer: Buffer = Buffer.from(await file.arrayBuffer());
     let filename = file.name || undefined;
 
-    // Server-side HEIC sniff + convert (defense in depth — mobile path
-    // already re-encodes when expo-image-manipulator is available).
-    // Cloud Run libvips lacks HEIC codec, so we decode via heic-convert
-    // (WASM libheif) first, then re-encode via sharp for consistent JPEG output.
-    if (isHeicBuffer(buffer)) {
+    // Memory-conservative path: sniff HEIC from first 12 bytes. Only HEIC
+    // bytes go through heic-convert (WASM) + sharp (libvips). JPEG/PNG/etc.
+    // stream to R2 unchanged — avoids sharp re-encode cost on already-OK
+    // images that previously OOM'd Cloud Run (512Mi -> 530Mi observed).
+    const heicDetected = isHeicBuffer(buffer);
+    if (heicDetected) {
       const heicConvert = loadHeicConvert();
       const sharp = loadSharp();
       try {

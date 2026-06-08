@@ -48,8 +48,17 @@ export function collectPostMedia(post: PostMediaSource): {
 // Removes YouTube/Vimeo URLs (and the <a> tags wrapping them) from a post
 // body so the renderer doesn't show the raw URL above the swipeable
 // MediaGallery embed. Mirror of the mobile `stripVideoUrls` helper.
+//
+// R05 fix: short-circuit when the body contains no video URL at all. The
+// previous unconditional `\n\s*\n -> \n` pass collapsed multi-line plain
+// text into a single line, so a post that just had blank lines between
+// paragraphs rendered as one squashed block. Now the newline-collapsing
+// pass only runs when we actually removed a video URL, which is the only
+// case where empty paragraphs would otherwise be left behind.
 export function stripVideoUrls(html: string): string {
   if (!html) return '';
+  const VIDEO_DETECT = /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/|vimeo\.com\/\d+)/i;
+  if (!VIDEO_DETECT.test(html)) return html;
   return html
     .replace(/<a[^>]+href=["'][^"']*(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|vimeo\.com\/\d+)[^"']*["'][^>]*>[^<]*<\/a>/gi, '')
     .replace(/https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]{11}[^\s<]*/gi, '')
