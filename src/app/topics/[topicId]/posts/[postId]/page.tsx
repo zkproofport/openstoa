@@ -839,25 +839,20 @@ export default function PostPage() {
               margin: '0 0 14px',
               lineHeight: 1.3,
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: 8,
+              alignItems: 'center',
+              gap: 10,
             }}
           >
             {post.isPinned && (
               <svg
-                width="22"
-                height="22"
+                width="24"
+                height="24"
                 viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ flexShrink: 0, marginTop: 6 }}
+                fill="var(--accent)"
+                style={{ flexShrink: 0 }}
                 aria-label="Pinned post"
               >
-                <line x1="12" y1="17" x2="12" y2="22" />
-                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1V2H8v4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
               </svg>
             )}
             <span>{post.title}</span>

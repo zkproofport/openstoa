@@ -265,25 +265,19 @@ export default function PostCard({
     </span>
   ) : null;
 
-  // Pin is a per-post flag — render an icon ADJACENT TO THE TITLE so it's
-  // visually attached to the post itself, not the topic chip. No pill/text
-  // (the icon alone is the affordance; the title row's compact context is
-  // already labelled by alt + title attr).
+  // Pin is a per-post flag — render a FILLED pin icon next to the title so
+  // it matches the mobile MaterialCommunityIcons "pin" (solid silhouette,
+  // brand color) instead of the previous outline variant.
   const pinnedTitleIcon = resolvedIsPinned ? (
     <svg
       width="14"
       height="14"
       viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ flexShrink: 0, marginTop: 1 }}
+      fill="var(--accent)"
+      style={{ flexShrink: 0 }}
       aria-label="Pinned post"
     >
-      <line x1="12" y1="17" x2="12" y2="22" />
-      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1V2H8v4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+      <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
     </svg>
   ) : null;
 
