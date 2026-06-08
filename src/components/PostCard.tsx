@@ -338,28 +338,9 @@ export default function PostCard({
         (e.currentTarget as HTMLElement).style.background = 'transparent';
       }}
     >
-      {/* Pin button for topic creator — top right */}
-      {isTopicCreator && (
-        <button
-          onClick={handlePin}
-          title={resolvedIsPinned ? 'Unpin post' : 'Pin post'}
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            background: 'none',
-            border: 'none',
-            color: resolvedIsPinned ? 'var(--accent)' : '#4b5563',
-            cursor: 'pointer',
-            padding: 4,
-            borderRadius: 4,
-            transition: 'color 0.12s',
-            zIndex: 2,
-          }}
-        >
-          <PinIcon filled={resolvedIsPinned} />
-        </button>
-      )}
+      {/* Admin Pin toggle removed from card — visually duplicated the
+          title-row pinnedTitleIcon. Topic admins can still pin/unpin from
+          the post detail kebab menu. */}
 
       {topicBreadcrumb}
 
@@ -402,8 +383,8 @@ export default function PostCard({
               style={{ marginTop: 1 }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600, color: '#e5e7eb' }}>{post.authorNickname}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 500, color: '#9ca3af' }}>{post.authorNickname}</span>
                 {post.isAI && <Badge type="ai" />}
                 {post.badges &&
                   post.badges.length > 0 &&
@@ -421,12 +402,12 @@ export default function PostCard({
 
         <h3
           style={{
-            fontSize: 15,
+            fontSize: 18,
             fontWeight: 700,
-            margin: '0 0 6px 0',
-            letterSpacing: '-0.01em',
-            color: '#e5e7eb',
-            lineHeight: 1.4,
+            margin: '0 0 8px 0',
+            letterSpacing: '-0.015em',
+            color: '#f3f4f6',
+            lineHeight: 1.3,
           }}
         >
           {pinnedTitleIcon}
