@@ -170,6 +170,10 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
     const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
     touchStartX.current = null;
     if (Math.abs(dx) < 40) return;
+    // Swiping inside PostCard's <Link> wrapper — block bubble so the swipe
+    // doesn't also navigate to the post detail page on touch-end.
+    e.preventDefault();
+    e.stopPropagation();
     if (dx < 0) setIndex((i) => Math.min(slides.length - 1, i + 1));
     else setIndex((i) => Math.max(0, i - 1));
   };
@@ -196,7 +200,12 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
             <img
               src={current.src}
               alt=""
-              onClick={() => {
+              onClick={(e) => {
+                // Image is inside PostCard's <Link>; without prevent+stop the
+                // click bubbles up and navigates instead of opening the
+                // lightbox.
+                e.preventDefault();
+                e.stopPropagation();
                 const imageIdx = imgs.indexOf(current.src);
                 if (imageIdx >= 0) openLightboxAt(imageIdx);
               }}
@@ -237,7 +246,15 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
           {hasMany && index > 0 && (
             <button
               type="button"
-              onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              onClick={(e) => {
+                // Carousel arrows live inside PostCard's <Link> wrapper.
+                // Without preventDefault + stopPropagation a click bubbles up
+                // to the Link and triggers navigation to the post detail
+                // page — the lightbox / carousel arrow bug.
+                e.preventDefault();
+                e.stopPropagation();
+                setIndex((i) => Math.max(0, i - 1));
+              }}
               aria-label="Previous"
               style={arrowStyle('left')}
             >
@@ -249,7 +266,11 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
           {hasMany && index < slides.length - 1 && (
             <button
               type="button"
-              onClick={() => setIndex((i) => Math.min(slides.length - 1, i + 1))}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIndex((i) => Math.min(slides.length - 1, i + 1));
+              }}
               aria-label="Next"
               style={arrowStyle('right')}
             >
@@ -261,6 +282,10 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
 
           {hasMany && (
             <div
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               style={{
                 position: 'absolute',
                 bottom: 10,
@@ -277,7 +302,11 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
                 <button
                   key={i}
                   type="button"
-                  onClick={() => setIndex(i)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIndex(i);
+                  }}
                   aria-label={`Slide ${i + 1}`}
                   style={{
                     width: 7,

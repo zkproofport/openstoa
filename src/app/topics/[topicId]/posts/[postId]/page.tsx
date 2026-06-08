@@ -408,7 +408,7 @@ export default function PostPage() {
 
   async function handleDeletePost() {
     if (!post || postDeleting) return;
-    const ok = window.confirm('정말 이 글을 삭제하시겠어요? / Delete this post?');
+    const ok = window.confirm('정말 이 글을 삭제하시겠어요?');
     if (!ok) return;
     setPostDeleting(true);
     try {
@@ -565,8 +565,11 @@ export default function PostPage() {
                   onClick={() => setMenuOpen((v) => !v)}
                   aria-label="Post actions"
                   style={{
+                    // Border removed to match the mobile kebab — the button
+                    // is a borderless glyph so it reads as a hit target
+                    // without competing with the surrounding card border.
                     background: menuOpen ? 'rgba(255,255,255,0.06)' : 'transparent',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    border: 'none',
                     color: '#9ca3af',
                     cursor: 'pointer',
                     padding: '4px 8px',
@@ -612,7 +615,7 @@ export default function PostPage() {
                           fontFamily: 'var(--font-mono)',
                         }}
                       >
-                        {pinning ? '…' : (post.isPinned ? 'Unpin post' : 'Pin post')}
+                        {pinning ? '…' : (post.isPinned ? '고정 해제' : '글 고정')}
                       </button>
                     )}
                     {(isAuthor || isAdmin) && (
@@ -621,7 +624,7 @@ export default function PostPage() {
                           type="button"
                           disabled={recorded}
                           onClick={() => !recorded && openEdit()}
-                          title={recorded ? '온체인 기록 이후엔 수정할 수 없어요 / Locked after on-chain record' : undefined}
+                          title={recorded ? '온체인 기록 이후엔 수정할 수 없어요' : undefined}
                           style={{
                             display: 'block',
                             width: '100%',
@@ -636,7 +639,7 @@ export default function PostPage() {
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          Edit / 수정
+                          수정
                         </button>
                         <button
                           type="button"
@@ -656,7 +659,7 @@ export default function PostPage() {
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          {postDeleting ? 'Deleting…' : 'Delete / 삭제'}
+                          {postDeleting ? '삭제 중…' : '삭제'}
                         </button>
                       </>
                     )}
@@ -784,6 +787,10 @@ export default function PostPage() {
           {/* when the viewer is a member. Web previously only showed the     */}
           {/* topic in the gray breadcrumb, which made it easy to miss which  */}
           {/* community the post belonged to AND whether the viewer was in.   */}
+          {/* Reddit/Threads-style header order: topic chip + Joined pill →
+              author avatar/name/time → title. Author row above title makes
+              attribution land before content, mirroring the mobile
+              PostDetailScreen and ChatRoom message header. */}
           {post.topicTitle ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
               <Link
@@ -831,13 +838,44 @@ export default function PostPage() {
               )}
             </div>
           ) : null}
+
+          {/* Author row — sits ABOVE the title (Reddit / Threads pattern).
+              Compact avatar + name + meta. Border on the bottom of the
+              title row separates the post body from the header. */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 14,
+            }}
+          >
+            <span
+              onClick={() => post.authorProfileImage && handleImageClick(post.authorProfileImage)}
+              style={{ cursor: post.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
+            >
+              <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
+            </span>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {post.authorNickname}
+                {post.isAI && <Badge type="ai" />}
+              </p>
+              <p style={{ fontSize: 15, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
+                {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+
           <h1
             style={{
               fontSize: 28,
               fontWeight: 800,
               letterSpacing: '-0.03em',
-              margin: '0 0 14px',
+              margin: '0 0 18px',
               lineHeight: 1.3,
+              paddingBottom: 16,
+              borderBottom: '1px solid var(--border)',
             }}
           >
             {post.isPinned && (
@@ -862,33 +900,6 @@ export default function PostPage() {
             )}
             {post.title}
           </h1>
-
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              marginBottom: 24,
-              paddingBottom: 20,
-              borderBottom: '1px solid var(--border)',
-            }}
-          >
-            <span
-              onClick={() => post.authorProfileImage && handleImageClick(post.authorProfileImage)}
-              style={{ cursor: post.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
-            >
-              <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
-            </span>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                {post.authorNickname}
-                {post.isAI && <Badge type="ai" />}
-              </p>
-              <p style={{ fontSize: 15, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
-                {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
-          </div>
 
           {post.tags && post.tags.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 16 }}>

@@ -29,10 +29,26 @@ function setCachedSession(data: UserSession | null) {
 }
 
 export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
-  const [user, setUser] = useState<UserSession | null>(() => getCachedSession());
-  const [sessionChecked, setSessionChecked] = useState(() => !!getCachedSession());
+  // Initial render MUST match SSR (no localStorage on the server).
+  // Reading `getCachedSession()` in the useState initializer caused React
+  // #418: the server rendered the guest placeholder span while the client's
+  // first paint rendered the cached <Link href="/my">{nickname}</Link>, so
+  // the SSR vs CSR HTML structure diverged on every page load and React
+  // tore down + retried hydration in a postMessage retry loop. The cache
+  // is now applied AFTER mount so SSR and the first client render match.
+  const [user, setUser] = useState<UserSession | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
+    // Hydrate from cache first (avoids flashing the "Sign in" pill for
+    // already-signed-in users) and mark the session as checked so the
+    // header switches from the placeholder span to the real chip.
+    const cached = getCachedSession();
+    if (cached?.userId) {
+      setUser(cached);
+      setSessionChecked(true);
+    }
+
     fetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
