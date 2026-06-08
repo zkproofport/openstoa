@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 function CloseIcon() {
   return (
@@ -64,7 +65,14 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, list.length]);
 
+  // Mount guard for SSR — createPortal needs document.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   if (list.length === 0) return null;
+  if (!mounted) return null;
 
   const hasMany = list.length > 1;
   const current = list[index];
@@ -98,7 +106,10 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
     zIndex: 1001,
   };
 
-  return (
+  // Portal lightbox to document.body so it is NOT a descendant of any
+  // ancestor <Link>/<a>. Otherwise even with stopPropagation, native
+  // anchor activation on nested-clickable can navigate to the post page.
+  return createPortal(
     <div
       onClick={onClose}
       onTouchStart={handleTouchStart}
@@ -227,6 +238,7 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
           </span>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

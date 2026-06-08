@@ -1599,13 +1599,13 @@ export function PostDetailScreen() {
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
       />
-      {/* Single KeyboardStickyView — matches PostCreate's pattern exactly:
-          always mounted as a child of the parent flex:1 View, conditional
-          content swap between the collapsed Add Comment button (when not
-          composing) and the real input pill (when composing). KeyboardStickyView
-          slides up with the keyboard automatically; when keyboard is closed
-          it sits at the parent View's bottom = above the bottom tab bar. */}
-      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+      {/* offset.closed = tabBarHeight: PostDetail lives inside the bottom-tab
+          navigator, so y=0 from the screen bottom is occupied by the tab
+          bar (~83px on iPhone). Without this offset the pill is hidden
+          behind the tab bar and onPress hits never reach it (= "tap does
+          nothing, keyboard never opens"). PostCreate uses closed:0 because
+          it's a stack-modal route with no tab bar underneath. */}
+      <KeyboardStickyView offset={{ closed: tabBarHeight, opened: 0 }}>
         {composing ? renderInputPill() : renderAddCommentBar()}
       </KeyboardStickyView>
 

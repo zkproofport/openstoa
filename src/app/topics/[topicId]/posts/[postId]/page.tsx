@@ -615,7 +615,7 @@ export default function PostPage() {
                           fontFamily: 'var(--font-mono)',
                         }}
                       >
-                        {pinning ? '…' : (post.isPinned ? '고정 해제' : '글 고정')}
+                        {pinning ? '…' : (post.isPinned ? 'Unpin post' : 'Pin post')}
                       </button>
                     )}
                     {(isAuthor || isAdmin) && (
@@ -624,7 +624,7 @@ export default function PostPage() {
                           type="button"
                           disabled={recorded}
                           onClick={() => !recorded && openEdit()}
-                          title={recorded ? '온체인 기록 이후엔 수정할 수 없어요' : undefined}
+                          title={recorded ? 'Cannot edit after on-chain recording' : undefined}
                           style={{
                             display: 'block',
                             width: '100%',
@@ -639,7 +639,7 @@ export default function PostPage() {
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          수정
+                          Edit
                         </button>
                         <button
                           type="button"
@@ -659,7 +659,7 @@ export default function PostPage() {
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          {postDeleting ? '삭제 중…' : '삭제'}
+                          {postDeleting ? 'Deleting…' : 'Delete'}
                         </button>
                       </>
                     )}
