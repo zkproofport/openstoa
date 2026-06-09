@@ -1557,9 +1557,14 @@ export function PostDetailScreen() {
   // `insets.bottom` here doubled the safe-area space and left a gap.
   const renderAddCommentBar = () => (
     <View
+      // Match renderInputPill — without the safe-area inset paddingBottom,
+      // the collapsed pill sits at the View's bottom edge which is under
+      // the BottomTabBar (~83pt). Mirrors PostCreate's KeyboardSafeScroll
+      // behavior which auto-handles safe area; we don't use it here so we
+      // re-add the inset manually.
       style={[
         styles.addCommentBar,
-        { paddingBottom: 8 },
+        { paddingBottom: keyboardOpen ? 6 : Math.max(insets.bottom, 8) },
       ]}
     >
       <TouchableOpacity
