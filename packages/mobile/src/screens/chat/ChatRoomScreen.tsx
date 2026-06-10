@@ -407,6 +407,15 @@ export function ChatRoomScreen() {
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    // A message the user sends only ever lives in `liveMessages` (SSE) for
+    // the lifetime of this mount — it is never written into this history
+    // cache. With the global 30s staleTime, re-entering the room within
+    // that window served the stale cached pages (missing the just-sent
+    // message) and skipped the catch-up fetch (first open), so the message
+    // vanished even though it is persisted server-side. Force a fresh
+    // history pull on every mount so re-entry always reflects the DB.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // ── Catch-up messages fetched via ?since=<iso> on SSE (re)connect ─────────

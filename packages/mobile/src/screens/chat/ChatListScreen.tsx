@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,11 +7,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
+import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
@@ -163,6 +164,8 @@ export function ChatListScreen() {
   const { t } = useTranslation();
   const client = useOpenStoaClient();
   const navigation = useNavigation<any>();
+  const queryClient = useQueryClient();
+  const sessionUserId = useOpenStoaSession((s: { userId: string | null }) => s.userId);
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
@@ -209,6 +212,19 @@ export function ChatListScreen() {
       return new Date(lastMsgB.createdAt).getTime() - new Date(lastMsgA.createdAt).getTime();
     });
   }, [topics, chatQueries]);
+
+  // Re-sync the last-message preview whenever the list regains focus. A
+  // message the user just sent in a ChatRoom is persisted server-side but
+  // the cached `chat-last` query stays fresh for 30s, so navigating back
+  // showed the OLD last message. Invalidating on focus forces each row to
+  // refetch its latest message (and the topic list itself, for new rooms).
+  useFocusEffect(
+    useCallback(() => {
+      if (isGuest) return;
+      queryClient.invalidateQueries({ queryKey: ['chat-last'] });
+      queryClient.invalidateQueries({ queryKey: ['my-topics'] });
+    }, [queryClient, isGuest]),
+  );
 
   if (isGuest) {
     // Same component as ProfileTab's guest fallback so the two tabs
@@ -259,12 +275,16 @@ export function ChatListScreen() {
         const lastMessage = chatQuery?.data?.messages?.[0];
         const chatLoading = chatQuery?.isLoading ?? false;
 
-        // Unread: message present and different from last-seen id
+        // Unread: message present, different from last-seen id, AND not
+        // authored by me. A message I just sent is the latest row but must
+        // never count as "unread" — that produced the bogus "1" badge on a
+        // topic where my own message was the most recent one.
         const lastSeenId = seenMessageIds.get(item.id);
         const hasUnread =
           lastMessage != null &&
           lastMessage.type === 'message' &&
-          lastMessage.id !== lastSeenId;
+          lastMessage.id !== lastSeenId &&
+          lastMessage.userId !== sessionUserId;
         // We show badge "1" when unread — no per-topic count without
         // a dedicated unread API; presence of any new message is enough.
         const unreadCount = hasUnread ? 1 : 0;
