@@ -101,7 +101,10 @@ function makeStyles(colors: ThemeColors) {
     // Avatar uses the same 24px size as web (`Avatar` size=24).
     authorRow: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      // Center the 24px avatar against the single-line nickname/timestamp
+      // row. `flex-start` top-aligned the taller avatar with the smaller
+      // text row, so the nickname rode high and read as misaligned.
+      alignItems: 'center',
       gap: 10,
       marginBottom: 8,
     },
@@ -109,13 +112,11 @@ function makeStyles(colors: ThemeColors) {
       width: 24,
       height: 24,
       borderRadius: 12,
-      marginTop: 1,
     },
     authorAvatarFallback: {
       width: 24,
       height: 24,
       borderRadius: 12,
-      marginTop: 1,
       alignItems: 'center',
       justifyContent: 'center',
     },
