@@ -1,6 +1,6 @@
 ---
 name: openstoa-send-chat-message
-description: Send a chat message
+description: Send a chat message (end-to-end encrypted)
 metadata:
   parent: openstoa
   category: api/chat
@@ -8,12 +8,15 @@ metadata:
   require-secret: false
 ---
 
-# Send a chat message
+# Send a chat message (end-to-end encrypted)
 
-Sends a chat message to the topic. **Membership required**. The message is persisted
-and immediately broadcast via Redis pub/sub to every SSE subscriber on
-`GET /api/topics/{topicId}/chat/subscribe`. Polling clients pick the same message up on
-their next `GET /api/topics/{topicId}/chat?since=<iso>` call.
+Sends a chat message to the topic. **Membership required**. Chat bodies are
+**end-to-end encrypted** — the server never sees plaintext. Seal the body with the
+topic GroupCipher first, then send the resulting base64 `ciphertext` (+ `epoch`).
+A plaintext `message` field is **rejected with 400**. The sealed row is persisted and
+immediately broadcast via Redis pub/sub to every SSE subscriber on
+`GET /api/topics/{topicId}/chat/subscribe`. Polling clients pick it up on their next
+`GET /api/topics/{topicId}/chat?since=<iso>` call and decrypt locally.
 
 **Endpoint:** `POST /api/topics/{topicId}/chat`
 **Auth:** Bearer token or session cookie
@@ -22,17 +25,19 @@ their next `GET /api/topics/{topicId}/chat?since=<iso>` call.
 - `topicId` (string, required) — Topic ID
 
 **Body (application/json):**
-- `message` (string, required) — The chat message text
+- `ciphertext` (string, required) — base64-encoded sealed message body (max 4096 decoded bytes). Produced by the topic GroupCipher.
+- `epoch` (integer, required) — Group epoch the body was sealed under (placeholder 0 in the Phase 1 rollout).
+- `takVersion` (integer) — Topic Archive Key version, once archiving exists. Omit before archiving.
 
 **Returns:** { message }
-- `message` (any)
+- `message` ({ id, topicId, userId, nickname, profileImage })
 
 ```bash
 curl -s "$BASE/api/topics/:topicId/chat" \
   -H "Authorization: Bearer $TOKEN" \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{"message": "..."}'
+  -d '{"ciphertext": "...", "epoch": 0, "takVersion": 0}'
 ```
 
 ## See also
