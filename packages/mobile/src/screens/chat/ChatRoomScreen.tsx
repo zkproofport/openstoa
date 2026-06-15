@@ -51,6 +51,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
+import { placeholderGroupCipher, toDisplayMessage } from '../../crypto/chatCipher';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
@@ -396,12 +397,16 @@ export function ChatRoomScreen() {
       const res = await client.get<{ messages: ChatPage['messages']; total: number }>(
         `/api/topics/${topicId}/chat?${qs}`,
       );
-      // Server returns newest-first; the oldest is the last item.
+      // Server returns newest-first; the oldest is the last item. Use the
+      // raw row for the cursor (id only), and decrypt sealed bodies for display.
       const oldest = res.messages.length > 0
         ? res.messages[res.messages.length - 1]
         : null;
+      const decrypted = await Promise.all(
+        res.messages.map((m) => toDisplayMessage(topicId, m)),
+      );
       return {
-        messages: res.messages,
+        messages: decrypted,
         nextCursor: res.messages.length === 50 && oldest ? oldest.id : undefined,
       } as ChatPage;
     },
@@ -476,10 +481,14 @@ export function ChatRoomScreen() {
           `/api/topics/${topicId}/chat?limit=500&since=${encodeURIComponent(cursorIso)}`,
         );
         if (cancelled || res.messages.length === 0) return;
+        const decrypted = await Promise.all(
+          res.messages.map((m) => toDisplayMessage(topicId, m)),
+        );
+        if (cancelled) return;
         setCatchupMessages((curr) => {
           const ids = new Set(curr.map((m) => m.id));
           const next = [...curr];
-          for (const m of res.messages) if (!ids.has(m.id)) next.push(m);
+          for (const m of decrypted) if (!ids.has(m.id)) next.push(m);
           return next;
         });
       } catch (e) {
@@ -577,7 +586,11 @@ export function ChatRoomScreen() {
     setSending(true);
     setDraft('');
     try {
-      await client.post(`/api/topics/${topicId}/chat`, { message: text });
+      const sealed = await placeholderGroupCipher.seal(topicId, text);
+      await client.post(`/api/topics/${topicId}/chat`, {
+        ciphertext: sealed.ciphertext,
+        epoch: sealed.epoch,
+      });
     } catch {
       setDraft(text);
     } finally {
@@ -591,7 +604,11 @@ export function ChatRoomScreen() {
     setUploading(true);
     try {
       const publicUrl = await client.uploadFile(localUri);
-      await client.post(`/api/topics/${topicId}/chat`, { message: publicUrl });
+      const sealed = await placeholderGroupCipher.seal(topicId, publicUrl);
+      await client.post(`/api/topics/${topicId}/chat`, {
+        ciphertext: sealed.ciphertext,
+        epoch: sealed.epoch,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       Alert.alert('Upload failed', msg);

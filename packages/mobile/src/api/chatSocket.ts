@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import EventSource from 'react-native-sse';
 import { useHost } from '@openstoa/miniapp-bridge';
 import type { ChatMessage, PresencePayload } from '@openstoa/api-types';
+import { toDisplayMessage } from '../crypto/chatCipher';
 
 type SSEEventName = 'message' | 'presence' | 'ping';
 
@@ -58,8 +59,14 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
         const onMessage = (e: any) => {
           if (cancelled) return;
           try {
-            const data = JSON.parse(e.data) as ChatMessage;
-            setMessages((prev) => [...prev, data]);
+            const raw = JSON.parse(e.data) as ChatMessage;
+            // Decrypt the sealed body before display (async); dedupe by id.
+            toDisplayMessage(topicId, raw).then((data) => {
+              if (cancelled) return;
+              setMessages((prev) =>
+                prev.some((m) => m.id === data.id) ? prev : [...prev, data],
+              );
+            });
           } catch (err) {
             // ignore malformed
           }
