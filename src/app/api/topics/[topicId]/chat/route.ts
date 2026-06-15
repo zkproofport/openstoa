@@ -8,6 +8,22 @@ import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/chat';
 
+// Max sealed ciphertext size (decoded bytes). Placeholder symmetric cipher in
+// Phase 1; MLS framing in Phase 2. Bounds payload size (anti-DoS, SI-4 precursor).
+const MAX_CIPHERTEXT_BYTES = 4096;
+
+/** Strictly decode a canonical base64 string, or return null if malformed. */
+function decodeBase64Strict(s: unknown): Buffer | null {
+  if (typeof s !== 'string' || s.length === 0) return null;
+  // Reject anything outside the base64 alphabet (incl. whitespace/newlines).
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(s)) return null;
+  if (s.length % 4 !== 0) return null;
+  const buf = Buffer.from(s, 'base64');
+  // Buffer.from is lenient; require a canonical round-trip to reject sloppy input.
+  if (buf.toString('base64') !== s) return null;
+  return buf;
+}
+
 /**
  * @openapi
  * /api/topics/{topicId}/chat:
@@ -152,13 +168,16 @@ export async function GET(
       orderByCol = desc(chatMessages.createdAt);
     }
 
-    const [messages, [{ value: total }]] = await Promise.all([
+    const [rows, [{ value: total }]] = await Promise.all([
       db
         .select({
           id: chatMessages.id,
           topicId: chatMessages.topicId,
           userId: chatMessages.userId,
           message: chatMessages.message,
+          ciphertext: chatMessages.ciphertext,
+          epoch: chatMessages.epoch,
+          takVersion: chatMessages.takVersion,
           type: chatMessages.type,
           isAI: chatMessages.isAI,
           createdAt: chatMessages.createdAt,
@@ -175,6 +194,29 @@ export async function GET(
         .from(chatMessages)
         .where(eq(chatMessages.topicId, topicId)),
     ]);
+
+    // Shape rows for the wire: user messages expose only the sealed body
+    // (base64) — never plaintext. System rows ('join' | 'leave') expose
+    // their plaintext system text (public nicknames only).
+    const messages = rows.map((r) => ({
+      id: r.id,
+      topicId: r.topicId,
+      userId: r.userId,
+      nickname: r.nickname,
+      profileImage: r.profileImage,
+      type: r.type,
+      isAI: r.isAI,
+      createdAt: r.createdAt,
+      message: r.type === 'message' ? null : r.message,
+      sealed:
+        r.type === 'message' && r.ciphertext
+          ? {
+              ciphertext: Buffer.from(r.ciphertext).toString('base64'),
+              epoch: r.epoch ?? 0,
+              takVersion: r.takVersion ?? null,
+            }
+          : null,
+    }));
 
     logger.info(ROUTE, 'Chat history fetched', {
       userId: session.userId,
@@ -195,12 +237,15 @@ export async function GET(
  * /api/topics/{topicId}/chat:
  *   post:
  *     tags: [Chat]
- *     summary: Send a chat message
+ *     summary: Send a chat message (end-to-end encrypted)
  *     description: |
- *       Sends a chat message to the topic. **Membership required**. The message is persisted
- *       and immediately broadcast via Redis pub/sub to every SSE subscriber on
- *       `GET /api/topics/{topicId}/chat/subscribe`. Polling clients pick the same message up on
- *       their next `GET /api/topics/{topicId}/chat?since=<iso>` call.
+ *       Sends a chat message to the topic. **Membership required**. Chat bodies are
+ *       **end-to-end encrypted** — the server never sees plaintext. Seal the body with the
+ *       topic GroupCipher first, then send the resulting base64 `ciphertext` (+ `epoch`).
+ *       A plaintext `message` field is **rejected with 400**. The sealed row is persisted and
+ *       immediately broadcast via Redis pub/sub to every SSE subscriber on
+ *       `GET /api/topics/{topicId}/chat/subscribe`. Polling clients pick it up on their next
+ *       `GET /api/topics/{topicId}/chat?since=<iso>` call and decrypt locally.
  *     operationId: sendChatMessage
  *     x-related-skills: [get-chat-history, subscribe-chat-sse]
  *     parameters:
@@ -217,12 +262,19 @@ export async function GET(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [message]
+ *             required: [ciphertext, epoch]
  *             properties:
- *               message:
+ *               ciphertext:
  *                 type: string
- *                 maxLength: 1000
- *                 description: The chat message text
+ *                 format: byte
+ *                 description: base64-encoded sealed message body (max 4096 decoded bytes). Produced by the topic GroupCipher.
+ *               epoch:
+ *                 type: integer
+ *                 description: Group epoch the body was sealed under (placeholder 0 in the Phase 1 rollout).
+ *               takVersion:
+ *                 type: integer
+ *                 nullable: true
+ *                 description: Topic Archive Key version, once archiving exists. Omit before archiving.
  *     responses:
  *       201:
  *         description: Message sent
@@ -234,7 +286,7 @@ export async function GET(
  *                 message:
  *                   $ref: '#/components/schemas/ChatMessage'
  *       400:
- *         description: Invalid or missing message
+ *         description: Missing/invalid ciphertext, or a plaintext message field was supplied
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
@@ -266,17 +318,48 @@ export async function POST(
       return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { message } = body;
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const { ciphertext, epoch, takVersion } = body as Record<string, unknown>;
 
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      logger.warn(ROUTE, 'Missing or empty message', { userId: session.userId, topicId });
-      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+    // SI-1: the server must never accept a plaintext chat body. User messages
+    // are end-to-end encrypted and arrive only as sealed `ciphertext`.
+    if ('message' in body) {
+      logger.warn(ROUTE, 'Plaintext message field rejected', { userId: session.userId, topicId });
+      return NextResponse.json(
+        { error: 'Plaintext message not accepted — send sealed ciphertext' },
+        { status: 400 },
+      );
     }
 
-    if (message.length > 1000) {
-      logger.warn(ROUTE, 'Message too long', { userId: session.userId, topicId, length: message.length });
-      return NextResponse.json({ error: 'Message must be 1000 characters or fewer' }, { status: 400 });
+    const sealedBytes = decodeBase64Strict(ciphertext);
+    if (!sealedBytes || sealedBytes.length === 0) {
+      logger.warn(ROUTE, 'Missing or invalid ciphertext', { userId: session.userId, topicId });
+      return NextResponse.json({ error: 'Valid base64 ciphertext is required' }, { status: 400 });
+    }
+    if (sealedBytes.length > MAX_CIPHERTEXT_BYTES) {
+      logger.warn(ROUTE, 'Ciphertext too large', { userId: session.userId, topicId, bytes: sealedBytes.length });
+      return NextResponse.json(
+        { error: `Ciphertext must be ${MAX_CIPHERTEXT_BYTES} bytes or fewer` },
+        { status: 400 },
+      );
+    }
+
+    // epoch: required non-negative safe integer (placeholder 0 in Phase 1).
+    if (typeof epoch !== 'number' || !Number.isSafeInteger(epoch) || epoch < 0) {
+      logger.warn(ROUTE, 'Invalid epoch', { userId: session.userId, topicId, epoch });
+      return NextResponse.json({ error: 'epoch must be a non-negative integer' }, { status: 400 });
+    }
+
+    // takVersion: optional non-negative integer (Phase 3 archive key version).
+    if (
+      takVersion !== undefined &&
+      takVersion !== null &&
+      (typeof takVersion !== 'number' || !Number.isSafeInteger(takVersion) || takVersion < 0)
+    ) {
+      return NextResponse.json({ error: 'takVersion must be a non-negative integer' }, { status: 400 });
     }
 
     const user = await db.query.users.findFirst({
@@ -288,7 +371,9 @@ export async function POST(
       .values({
         topicId,
         userId: session.userId,
-        message: message.trim(),
+        ciphertext: sealedBytes,
+        epoch,
+        takVersion: (takVersion as number | undefined) ?? null,
         type: 'message',
         isAI: session.isAI ?? false,
       })
@@ -300,7 +385,12 @@ export async function POST(
       userId: inserted.userId,
       nickname: user?.nickname ?? session.nickname,
       profileImage: user?.profileImage ?? null,
-      message: inserted.message,
+      message: null,
+      sealed: {
+        ciphertext: Buffer.from(inserted.ciphertext!).toString('base64'),
+        epoch: inserted.epoch ?? 0,
+        takVersion: inserted.takVersion ?? null,
+      },
       type: inserted.type,
       isAI: inserted.isAI,
       createdAt: inserted.createdAt,

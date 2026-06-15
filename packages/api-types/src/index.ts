@@ -134,13 +134,49 @@ export interface Comment {
 
 export type ChatMessageType = 'message' | 'join' | 'leave';
 
+/**
+ * A user message body sealed by the topic's GroupCipher. The server stores
+ * and routes these opaque bytes (base64 on the wire) and never decrypts them
+ * (security invariant SI-1: no plaintext chat body server-side).
+ */
+export interface SealedMessage {
+  /** base64-encoded sealed ciphertext bytes */
+  ciphertext: string;
+  /** group epoch the message was sealed under (placeholder 0 in Phase 1) */
+  epoch: number;
+  /** Topic Archive Key version, once archiving exists (Phase 3); omitted before */
+  takVersion?: number | null;
+}
+
+/**
+ * Adapter boundary between chat call sites and the encryption implementation.
+ * Phase 1 ships a placeholder symmetric cipher; Phase 2 swaps in MLS. Client
+ * send/receive code depends only on this interface, so replacing the
+ * implementation requires zero call-site changes.
+ */
+export interface GroupCipher {
+  /** Encrypt a plaintext message body for a topic. */
+  seal(topicId: string, plaintext: string): Promise<SealedMessage>;
+  /** Decrypt a sealed message body for a topic. */
+  open(topicId: string, sealed: SealedMessage): Promise<string>;
+}
+
 export interface ChatMessage {
   id: UuidString;
   topicId: UuidString;
   userId: NullifierId;
   nickname: string;
   profileImage?: string | null;
-  message: string;
+  /**
+   * System rows (`type` = 'join' | 'leave') carry plaintext system text here.
+   * User rows (`type` = 'message') leave this null and use `sealed` instead.
+   */
+  message?: string | null;
+  /**
+   * Sealed body for user messages (`type` = 'message'). Null for system rows.
+   * Clients decrypt this via the topic GroupCipher; the server never does.
+   */
+  sealed?: SealedMessage | null;
   type: ChatMessageType;
   isAI?: boolean;
   createdAt: Iso8601;

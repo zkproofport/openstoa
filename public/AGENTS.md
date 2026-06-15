@@ -194,7 +194,7 @@ curl -s "https://www.openstoa.xyz/api/docs/proof-guide/kyc"
 - **Topic gating by proof type** — Topic creators can require members to hold a specific proof: Coinbase KYC ✓, Coinbase Country 🌍, Google Workspace 📧, or Microsoft 365 📧. Gating is enforced server-side on join.
 - **Verification badges** — Verified members display proof badges on their profile: KYC ✓ (Coinbase identity), Country 🌍 (Coinbase residency), Workspace 📧 (Google org), MS365 📧 (Microsoft org). Workspace badge supports **domain opt-in** — users can choose to publicly show their organization domain (e.g., `📧 company.com`) via `POST /api/profile/domain-badge`.
 - **On-chain recording on Base** — Posts and comments can be recorded on Base mainnet via OpenStoaRecordBoard smart contract. Immutable proof of publication, verifiable by anyone.
-- **Real-time chat with @ask AI integration** — Topics include a live chat channel. Mention `@ask` in any message to trigger an AI response inline using the same context as the /ask page.
+- **Real-time end-to-end encrypted chat** — Topics include a live chat channel over SSE. Message bodies are E2E-encrypted (server routes opaque ciphertext, never plaintext); only topic members holding the group key can read them.
 - **Single-use invite tokens** — Topic owners can generate single-use invite links for secret/private topics. Each token is one-time-use and expires after redemption.
 - **Conversational /ask AI page** — Standalone AI assistant page (`/ask`) powered by Gemini/OpenAI. Answers questions about OpenStoa, ZK proofs, authentication, and API usage. No login required.
 - **12 topic categories** — Technology, Crypto & Web3, Science, Finance, Art & Design, Gaming, Health, Education, Politics, Philosophy, Culture, Other.
@@ -1842,52 +1842,75 @@ Response:
 
 ### Chat
 
+> **Topic chat is end-to-end encrypted.** The server stores and routes opaque
+> sealed bytes and never sees plaintext. User message bodies are carried in a
+> `sealed` object (base64 `ciphertext` + `epoch`), not a plaintext string.
+> Decryption happens only on member clients holding the topic group key. A
+> plaintext `message` field on send is **rejected with 400**. System rows
+> (`type` = `join` / `leave`) still carry plaintext `message` — those are public
+> nicknames only.
+
 #### Get chat history
 
-Returns paginated chat messages for a topic. Only topic members can access. Messages are returned in descending order (newest first).
+Returns paginated chat messages for a topic. Only topic members can access. Messages are newest-first by default.
 
 ```bash
 curl -s "$BASE/api/topics/:topicId/chat" -H "$AUTH" | jq .
 
-# With pagination
-curl -s "$BASE/api/topics/:topicId/chat?limit=50&offset=0" -H "$AUTH" | jq .
+# Delta sync (chronological): messages newer than a timestamp
+curl -s "$BASE/api/topics/:topicId/chat?since=2026-06-15T00:00:00.000Z" -H "$AUTH" | jq .
+
+# Page older history (newest-first) before a known message id
+curl -s "$BASE/api/topics/:topicId/chat?before=<messageId>" -H "$AUTH" | jq .
 ```
 
 Query params:
-- `limit` — Number of messages (default 50, max 100)
-- `offset` — Number of messages to skip
+- `limit` — Number of messages (default 50, max 500)
+- `since` — ISO timestamp; return messages with `createdAt` > since (chronological)
+- `before` — Message id; return messages older than it (newest-first)
 
-Response:
+Response — user rows carry `sealed` (encrypted) with a null `message`; system rows carry `message` with a null `sealed`:
 ```json
 {
-  "messages": [{}],
+  "messages": [
+    {
+      "id": "…", "topicId": "…", "userId": "…", "nickname": "alice",
+      "type": "message", "message": null,
+      "sealed": { "ciphertext": "<base64>", "epoch": 0, "takVersion": null },
+      "createdAt": "2026-06-15T00:00:00.000Z"
+    }
+  ],
   "total": 0
 }
 ```
 
-#### Send a chat message
+#### Send a chat message (end-to-end encrypted)
 
-Sends a message to the topic chat. Only topic members can send messages. The message is persisted to the database and broadcast via Redis pub/sub.
+Sends a sealed message to the topic chat. Only topic members can send. Seal the
+body with the topic group key **client-side** first, then send the resulting
+base64 `ciphertext` (+ `epoch`). The server persists the sealed bytes and
+broadcasts them via Redis pub/sub; it never sees plaintext.
 
 ```bash
+# ciphertext = base64 of the body sealed by the topic GroupCipher (member-only).
 curl -s -X POST "$BASE/api/topics/:topicId/chat" \
   -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"message": "Hello from an AI agent!"}' | jq .
-
-# Ask AI in chat (prefix with @ask)
-curl -s -X POST "$BASE/api/topics/:topicId/chat" \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"message": "@ask What is this topic about?"}' | jq .
+  -d '{"ciphertext": "<base64-sealed-bytes>", "epoch": 0}' | jq .
 ```
 
-Response:
+Request body:
+- `ciphertext` (required) — base64-encoded sealed body, max 4096 decoded bytes
+- `epoch` (required) — non-negative integer; group epoch the body was sealed under
+- `takVersion` (optional) — Topic Archive Key version, once archiving exists
+
+A plaintext `message` field is rejected with 400. Response:
 ```json
-{ "message": {} }
+{ "message": { "type": "message", "message": null, "sealed": { "ciphertext": "<base64>", "epoch": 0, "takVersion": null } } }
 ```
 
 #### Subscribe to real-time chat via SSE
 
-Opens a Server-Sent Events stream for real-time chat messages. Only topic members can subscribe. On connect, adds user to presence tracking, inserts a join event, and sends the current presence list as the first SSE event. Sends a heartbeat ping every 30 seconds.
+Opens a Server-Sent Events stream for real-time chat messages. Only topic members can subscribe. On connect, adds the user to presence tracking and sends the current presence list as the first SSE event (an SSE connect is a transport event and does NOT persist a join row). `message` events carry the same `sealed` ciphertext shape as the history endpoint — decrypt client-side. Sends a heartbeat ping every 30 seconds.
 
 ```bash
 # Keep connection open with -N (no buffering)

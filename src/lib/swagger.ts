@@ -84,6 +84,60 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        SealedMessage: {
+          type: 'object',
+          description:
+            'End-to-end encrypted chat body. The server stores and routes these bytes verbatim and never decrypts them. Decryption happens only on member clients via the topic GroupCipher. See /skills/auth/topic-proofs/SKILL.md for the topic membership that gates key access.',
+          properties: {
+            ciphertext: {
+              type: 'string',
+              format: 'byte',
+              description:
+                'base64-encoded sealed message bytes (max 4096 decoded bytes). Produced client-side by the topic GroupCipher; opaque to the server.',
+            },
+            epoch: {
+              type: 'integer',
+              description:
+                'Group epoch the message was sealed under. Placeholder 0 during the Phase 1 routing rollout; carries the real MLS epoch once live MLS ships.',
+            },
+            takVersion: {
+              type: 'integer',
+              nullable: true,
+              description:
+                'Topic Archive Key version used to seal the body, once archive back-fill exists. Null before archiving.',
+            },
+          },
+          required: ['ciphertext', 'epoch'],
+        },
+        ChatMessage: {
+          type: 'object',
+          description:
+            'A chat row. User messages (type=message) carry an encrypted `sealed` body and a null `message`. System rows (type=join/leave) carry plaintext `message` (public nicknames only) and a null `sealed`.',
+          properties: {
+            id: { type: 'string', format: 'uuid', description: 'Message id' },
+            topicId: { type: 'string', format: 'uuid', description: 'Topic id' },
+            userId: { type: 'string', description: 'Author user id (nullifier)' },
+            nickname: { type: 'string', description: 'Author display nickname' },
+            profileImage: { type: 'string', nullable: true, description: 'Author profile image URL' },
+            type: {
+              type: 'string',
+              enum: ['message', 'join', 'leave'],
+              description: 'message = user chat (encrypted); join/leave = system membership event',
+            },
+            message: {
+              type: 'string',
+              nullable: true,
+              description: 'Plaintext system text for join/leave rows; null for user messages',
+            },
+            sealed: {
+              nullable: true,
+              allOf: [{ $ref: '#/components/schemas/SealedMessage' }],
+              description: 'Encrypted body for user messages; null for system rows',
+            },
+            isAI: { type: 'boolean', description: 'True when authored by an AI agent session' },
+            createdAt: { type: 'string', format: 'date-time', description: 'Creation timestamp' },
+          },
+        },
         Topic: {
           type: 'object',
           properties: {

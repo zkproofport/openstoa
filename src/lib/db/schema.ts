@@ -1,4 +1,13 @@
-import { pgTable, text, uuid, boolean, timestamp, primaryKey, integer, real, varchar, uniqueIndex, index, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, uuid, boolean, timestamp, primaryKey, integer, real, varchar, uniqueIndex, index, jsonb, bigint, customType } from 'drizzle-orm/pg-core';
+
+// Postgres `bytea` — drizzle-orm has no first-class bytea, so we declare a
+// custom type that maps to a Node Buffer. Used for E2EE chat ciphertext: the
+// server stores opaque encrypted bytes and never sees plaintext (SI-1).
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
 
 export const users = pgTable('users', {
   id: text('id').primaryKey(), // nullifier from publicInputs
@@ -204,7 +213,15 @@ export const chatMessages = pgTable('chat_messages', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
   userId: text('user_id').references(() => users.id).notNull(),
-  message: text('message').notNull(),
+  // E2EE migration (Phase 1): user message bodies are now end-to-end
+  // encrypted. `message` is nullable and reserved for system rows
+  // (`type` = 'join' | 'leave') which only carry public nicknames; user
+  // messages (`type` = 'message') leave `message` NULL and store opaque
+  // `ciphertext` instead. The server never sees `message`-row plaintext (SI-1).
+  message: text('message'),
+  ciphertext: bytea('ciphertext'), // sealed message bytes; NULL for system rows
+  epoch: bigint('epoch', { mode: 'number' }), // group epoch the ciphertext was sealed under
+  takVersion: integer('tak_version'), // Topic Archive Key version (Phase 3); NULL pre-archive
   type: varchar('type', { length: 10 }).notNull().default('message'), // 'message' | 'join' | 'leave'
   isAI: boolean('is_ai').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
