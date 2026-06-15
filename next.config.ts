@@ -23,6 +23,17 @@ const nextConfig: NextConfig = {
       './node_modules/ethers/**/*',
     ],
   },
+  async headers() {
+    return [
+      {
+        // AASA must be served as application/json for iOS Associated Domains
+        // (webcredentials / passkey). Extensionless /public files default to
+        // application/octet-stream, which iOS AASA validation rejects.
+        source: '/.well-known/apple-app-site-association',
+        headers: [{ key: 'Content-Type', value: 'application/json' }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
