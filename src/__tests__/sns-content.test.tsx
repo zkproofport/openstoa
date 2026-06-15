@@ -77,11 +77,16 @@ describe('SNSContent', () => {
   });
 
   describe('plain URL auto-linking', () => {
-    it('auto-links a plain URL with an <a> tag', () => {
+    it('auto-links a plain URL as a role=link span (not a nested <a>)', () => {
       const html = 'Visit https://example.com for more info';
       const output = render(html);
-      expect(output).toContain('<a ');
-      expect(output).toContain('href="https://example.com"');
+      // React #418 hydration fix (commit f98187e): inline body links render
+      // as <span role="link"> rather than <a href>, because an inline <a>
+      // nested inside PostCard's outer <Link> produced a nested anchor and a
+      // hydration loop. The URL is the span's text content; a click delegate
+      // navigates from it.
+      expect(output).toContain('role="link"');
+      expect(output).toContain('>https://example.com</span>');
     });
   });
 
