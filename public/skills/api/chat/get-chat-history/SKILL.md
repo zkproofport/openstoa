@@ -35,7 +35,7 @@ lower-latency alternative.
 - `before` (string) — Message id; return messages older than this one
 
 **Returns:** { messages, total }
-- `messages` (any[])
+- `messages` ({ id, topicId, userId, nickname, profileImage }[])
 - `total` (integer)
 
 ```bash
@@ -45,4 +45,4 @@ curl -s "$BASE/api/topics/:topicId/chat?limit=...&since=...&before=..." \
 
 ## See also
 - [Subscribe to real-time chat via SSE](/skills/api/chat/subscribe-chat-sse/SKILL.md)
-- [Send a chat message](/skills/api/chat/send-chat-message/SKILL.md)
+- [Send a chat message (end-to-end encrypted)](/skills/api/chat/send-chat-message/SKILL.md)

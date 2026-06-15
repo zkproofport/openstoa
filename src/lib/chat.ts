@@ -9,14 +9,25 @@ const CHANNEL_PREFIX = 'chat:topic:';
 const PRESENCE_PREFIX = 'chat:presence:';
 const PRESENCE_TTL_SECONDS = 300; // 5 minutes stale threshold
 
+export interface SealedMessage {
+  ciphertext: string; // base64-encoded sealed bytes
+  epoch: number;
+  takVersion?: number | null;
+}
+
 export interface ChatMessagePayload {
   id: string;
   topicId: string;
   userId: string;
   nickname: string;
   profileImage?: string | null;
-  message: string;
+  // System rows ('join' | 'leave') carry plaintext system text. User
+  // messages leave this undefined and populate `sealed` instead — the
+  // server routes the sealed body without ever seeing plaintext (SI-1).
+  message?: string;
+  sealed?: SealedMessage;
   type: 'message' | 'join' | 'leave';
+  isAI?: boolean;
   createdAt: string;
 }
 

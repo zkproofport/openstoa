@@ -37,5 +37,5 @@ curl -s "$BASE/api/topics/:topicId/chat/subscribe" \
 
 ## See also
 - [Get chat history](/skills/api/chat/get-chat-history/SKILL.md)
-- [Send a chat message](/skills/api/chat/send-chat-message/SKILL.md)
+- [Send a chat message (end-to-end encrypted)](/skills/api/chat/send-chat-message/SKILL.md)
 - [Get current chat presence](/skills/api/chat/get-chat-presence/SKILL.md)

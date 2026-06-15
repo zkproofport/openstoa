@@ -78,6 +78,13 @@
       "when": 1778760000000,
       "tag": "0010_search_trgm_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1781525977721,
+      "tag": "0011_outstanding_vector",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,28 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
 import LinkPreview from '@/components/LinkPreview';
+import { placeholderGroupCipher } from '@/lib/crypto/groupCipherPlaceholder';
+
+// Server rows for user messages carry an encrypted `sealed` body, not plaintext.
+// Decrypt for local display so MessageRow keeps rendering `msg.message` as text.
+// System rows (join/leave) carry plaintext `message` and pass through unchanged.
+async function toDisplayMessage(
+  topicId: string,
+  raw: { type?: string; sealed?: { ciphertext: string; epoch: number } | null; message?: string },
+): Promise<ChatMessage> {
+  if (raw?.type === 'message') {
+    let text = '';
+    if (raw.sealed?.ciphertext) {
+      try {
+        text = await placeholderGroupCipher.open(topicId, raw.sealed);
+      } catch {
+        text = '[unable to decrypt]';
+      }
+    }
+    return { ...(raw as ChatMessage), message: text };
+  }
+  return raw as ChatMessage;
+}
 
 // Match the mobile chat URL detector (ChatRoomScreen.tsx). Keep them in
 // sync so the same message renders an OG card on both surfaces.
@@ -332,10 +354,11 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
       // The endpoint returns `{ publicUrl: ... }` (see app/api/upload/route.ts).
       const { publicUrl } = await up.json();
       if (!publicUrl) throw new Error('no url');
+      const sealed = await placeholderGroupCipher.seal(topicId, publicUrl);
       await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: publicUrl }),
+        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch }),
       });
     } catch {
       // best-effort; the user can retry
@@ -349,10 +372,11 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
     if (!text || sending) return;
     setSending(true);
     try {
+      const sealed = await placeholderGroupCipher.seal(topicId, text);
       const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch }),
       });
       if (res.ok) {
         setInputValue('');
@@ -388,12 +412,14 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
     // Fetch history
     fetch(`/api/topics/${topicId}/chat?limit=50`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+      .then(async (data) => {
+        if (!mountedRef.current || !data?.messages) return;
+        // Decrypt each sealed body for display, then reverse DESC→chronological.
+        const decrypted = await Promise.all(
+          data.messages.map((m: Parameters<typeof toDisplayMessage>[1]) => toDisplayMessage(topicId, m)),
+        );
         if (!mountedRef.current) return;
-        if (data?.messages) {
-          // History comes in DESC order (newest first), reverse for chronological display
-          setMessages([...data.messages].reverse());
-        }
+        setMessages(decrypted.reverse());
       })
       .catch(() => {});
 
@@ -414,11 +440,14 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
       es.addEventListener('message', (e) => {
         if (!mountedRef.current) return;
         try {
-          const msg: ChatMessage = JSON.parse(e.data);
-          setMessages((prev) => {
-            // Deduplicate by id
-            if (prev.some((m) => m.id === msg.id)) return prev;
-            return [...prev, msg];
+          const raw = JSON.parse(e.data);
+          // Decrypt the sealed body before display (async; dedupe on arrival).
+          toDisplayMessage(topicId, raw).then((msg) => {
+            if (!mountedRef.current) return;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
           });
         } catch {}
       });
