@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenStoa PRF cross-device test</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; background:#0b0b0f; color:#e5e7eb; padding:20px; }
+    button { background:#2563eb; color:#fff; border:0; border-radius:10px; padding:14px 18px; font-size:16px; }
+    pre { white-space:pre-wrap; word-break:break-all; background:#16161d; padding:12px; border-radius:8px; font-size:13px; }
+    .ok { color:#16a34a; } .fail { color:#dc2626; } .muted { color:#71717a; font-size:12px; }
+  </style>
+</head>
+<body>
+  <h2>Passkey PRF — cross-platform reproduction</h2>
+  <p class="muted">
+    rpId: stg-community.zkproofport.app · same salt + same synced passkey as the iOS app.<br/>
+    Open in Safari signed into the SAME iCloud account as the iPhone, then tap.
+  </p>
+  <button id="run">Run PRF (get)</button>
+  <pre id="out">idle</pre>
+  <script>
+    // base64url <-> bytes
+    function b64uToBytes(s) {
+      s = s.replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4) s += '=';
+      const bin = atob(s);
+      const b = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+      return b;
+    }
+    function bytesToB64u(buf) {
+      const b = new Uint8Array(buf);
+      let s = '';
+      for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    // SAME values as the iOS PoC (src/poc/passkeyPrf.ts):
+    const SALT_B64U = 'b3BlbnN0b2EtbWFzdGVyL3Yx';           // PRF salt
+    const CRED_ID_B64U = 'JHNTPHZ_Vjgoe4bFuJTcl28ZBHw';    // passkey registered on iPhone
+    const EXPECTED = '2CsjO4w9kByEbtuLrkvCtd3tedDbyOdJHZRs5B-dJd4'; // iPhone PRF output
+
+    const out = document.getElementById('out');
+    document.getElementById('run').onclick = async () => {
+      out.textContent = 'requesting passkey…';
+      try {
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const cred = await navigator.credentials.get({
+          publicKey: {
+            challenge,
+            rpId: 'stg-community.zkproofport.app',
+            allowCredentials: [{ type: 'public-key', id: b64uToBytes(CRED_ID_B64U) }],
+            userVerification: 'required',
+            extensions: { prf: { eval: { first: b64uToBytes(SALT_B64U) } } },
+          },
+        });
+        const ext = cred.getClientExtensionResults();
+        const first = ext && ext.prf && ext.prf.results && ext.prf.results.first;
+        if (!first) {
+          out.innerHTML = '<span class="fail">PRF returned no result</span>\n' + JSON.stringify(ext);
+          return;
+        }
+        const prf = bytesToB64u(first);
+        const match = prf === EXPECTED;
+        out.innerHTML =
+          (match ? '<span class="ok">✅ MATCH — cross-platform PRF reproduced</span>' : '<span class="fail">❌ MISMATCH</span>') +
+          '\n\nweb PRF:  ' + prf +
+          '\niOS PRF:  ' + EXPECTED +
+          '\nUA: ' + navigator.userAgent;
+      } catch (e) {
+        out.innerHTML = '<span class="fail">error</span>\n' + (e && e.message || String(e)) + '\n' + (e && e.stack || '');
+      }
+    };
+  </script>
+</body>
+</html>
