@@ -30,7 +30,12 @@ describe.sequential('record-onchain', { timeout: 60000 }, () => {
   it('getOnChainRecordCount returns count >= 1 after recording', async () => {
     const { getOnChainRecordCount } = await import('@/lib/contract');
 
-    const count = await getOnChainRecordCount(postIdHash);
+    // Base Sepolia's multi-backend RPC has eventual-consistency lag after the
+    // recording tx (Alchemy fan-out can return a stale read past tx.wait(1)).
+    // Under full-suite load the default 2×200ms retry window is too short, so
+    // widen it here (~5s) to absorb the lag. (C)-flake stabilization; see
+    // .claude/agents/tester.md. Unrelated to MLS chat work.
+    const count = await getOnChainRecordCount(postIdHash, { retries: 10, delayMs: 500 });
 
     expect(count).toBeGreaterThanOrEqual(1n);
   });
