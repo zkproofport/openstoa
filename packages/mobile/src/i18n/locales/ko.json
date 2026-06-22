@@ -380,7 +380,8 @@
       "error": {
         "title": "채팅을 불러오지 못했어요"
       },
-      "noMessagesYet": "아직 메시지가 없어요"
+      "noMessagesYet": "아직 메시지가 없어요",
+      "encryptedMessage": "🔒 암호화된 메시지"
     }
   }
 }

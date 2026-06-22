@@ -110,7 +110,7 @@ export async function broadcastMembershipSystemEvent(
     // transitions create a row, so history stays clean.
     const [row] = await db
       .insert(chatMessages)
-      .values({ topicId, userId, message, type })
+      .values({ topicId, userId, systemText: message, type })
       .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
 
     const payload: ChatMessagePayload = {

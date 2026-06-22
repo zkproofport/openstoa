@@ -213,12 +213,14 @@ export const chatMessages = pgTable('chat_messages', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
   userId: text('user_id').references(() => users.id).notNull(),
-  // E2EE migration (Phase 1): user message bodies are now end-to-end
-  // encrypted. `message` is nullable and reserved for system rows
+  // E2EE migration complete (Phase 2, P2-22): the legacy plaintext `message`
+  // column is gone. `system_text` is nullable and reserved for system rows
   // (`type` = 'join' | 'leave') which only carry public nicknames; user
-  // messages (`type` = 'message') leave `message` NULL and store opaque
-  // `ciphertext` instead. The server never sees `message`-row plaintext (SI-1).
-  message: text('message'),
+  // messages (`type` = 'message') leave `system_text` NULL and store opaque
+  // `ciphertext` instead. The server never sees user chat plaintext (SI-1) —
+  // there is no longer any column a user body could land in except encrypted
+  // `ciphertext`.
+  systemText: text('system_text'),
   ciphertext: bytea('ciphertext'), // sealed message bytes; NULL for system rows
   epoch: bigint('epoch', { mode: 'number' }), // group epoch the ciphertext was sealed under
   takVersion: integer('tak_version'), // Topic Archive Key version (Phase 3); NULL pre-archive
@@ -228,6 +230,57 @@ export const chatMessages = pgTable('chat_messages', {
 }, (table) => ({
   topicIdx: index('chat_msg_topic_idx').on(table.topicId),
   topicCreatedIdx: index('chat_msg_topic_created_idx').on(table.topicId, table.createdAt),
+}));
+
+// MLS group state — the server stores PUBLIC state only (no secrets, no
+// plaintext). One row per topic: the topic IS the MLS group. `current_epoch`
+// is the authoritative counter the Delivery Service advances via epoch-CAS
+// (SI-2, one Commit per epoch). The server runs NO MLS crypto (C1) — it routes
+// ciphertext and parses Commit framing (crypto-free) to enforce consistency.
+export const mlsGroups = pgTable('mls_groups', {
+  topicId: uuid('topic_id').primaryKey().references(() => topics.id),
+  groupId: bytea('group_id').notNull(), // MLS group_id (public)
+  currentEpoch: bigint('current_epoch', { mode: 'number' }).notNull(),
+  ciphersuite: text('ciphersuite').notNull(), // MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519 (0x0001)
+  groupInfo: bytea('group_info'), // public GroupInfo for External Commit; NULL until first published
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Per-device KeyPackage directory (RFC 9420 §10) — PUBLIC keys only. A device
+// publishes KeyPackages here; an existing member consumes exactly one (atomic,
+// SI-3) to MLS-Add that device to a group. `consumed_at` enforces single-use;
+// `is_last_resort` packages are reusable fallbacks (always-on AI members).
+export const deviceKeyPackages = pgTable('device_key_packages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id).notNull(), // nullifier
+  deviceId: text('device_id').notNull(),
+  keyPackage: bytea('key_package').notNull(), // public KeyPackage bytes
+  isAI: boolean('is_ai').notNull().default(false),
+  isLastResort: boolean('is_last_resort').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }), // NULL = available
+}, (table) => ({
+  // Supports the atomic consume query (find one unconsumed package per user).
+  userConsumedIdx: index('device_kp_user_consumed_idx').on(table.userId, table.consumedAt),
+}));
+
+// MLS handshake log (Delivery Service catch-up). The server stores every Commit
+// + its Welcome per epoch so (a) members offline during a Commit re-sync by
+// pulling missed epochs (GET ?sinceEpoch), and (b) newly-added members fetch
+// their Welcome. Public ciphertext only — no secrets (C1/SI-1). `epoch` is the
+// NEW epoch the Commit produced (asserted epoch + 1). The (topic_id, epoch)
+// primary key also makes two commits for the same new epoch impossible at the
+// storage layer — a belt-and-suspenders backstop to the epoch-CAS (SI-2).
+export const mlsCommits = pgTable('mls_commits', {
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  epoch: bigint('epoch', { mode: 'number' }).notNull(), // new epoch produced by this commit
+  commit: bytea('commit').notNull(), // the Commit MLSMessage bytes
+  welcome: bytea('welcome'), // Welcome for added members; NULL when none added
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.topicId, table.epoch] }),
+  topicEpochIdx: index('mls_commits_topic_epoch_idx').on(table.topicId, table.epoch),
 }));
 
 export const userVerifications = pgTable('user_verifications', {

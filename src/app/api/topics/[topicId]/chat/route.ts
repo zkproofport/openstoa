@@ -174,7 +174,7 @@ export async function GET(
           id: chatMessages.id,
           topicId: chatMessages.topicId,
           userId: chatMessages.userId,
-          message: chatMessages.message,
+          systemText: chatMessages.systemText,
           ciphertext: chatMessages.ciphertext,
           epoch: chatMessages.epoch,
           takVersion: chatMessages.takVersion,
@@ -207,7 +207,10 @@ export async function GET(
       type: r.type,
       isAI: r.isAI,
       createdAt: r.createdAt,
-      message: r.type === 'message' ? null : r.message,
+      // Wire field stays `message` (system text) for client compatibility;
+      // it is sourced from the renamed `system_text` column and is always null
+      // for user rows (their body lives only in `sealed.ciphertext`).
+      message: r.type === 'message' ? null : r.systemText,
       sealed:
         r.type === 'message' && r.ciphertext
           ? {

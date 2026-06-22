@@ -4,20 +4,25 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
 import LinkPreview from '@/components/LinkPreview';
-import { placeholderGroupCipher } from '@/lib/crypto/groupCipherPlaceholder';
+import { getMlsSessionStore } from '@/lib/mls/webTransport';
 
 // Server rows for user messages carry an encrypted `sealed` body, not plaintext.
 // Decrypt for local display so MessageRow keeps rendering `msg.message` as text.
 // System rows (join/leave) carry plaintext `message` and pass through unchanged.
 async function toDisplayMessage(
   topicId: string,
-  raw: { type?: string; sealed?: { ciphertext: string; epoch: number } | null; message?: string },
+  raw: { id?: string; type?: string; sealed?: { ciphertext: string; epoch: number } | null; message?: string },
 ): Promise<ChatMessage> {
   if (raw?.type === 'message') {
     let text = '';
     if (raw.sealed?.ciphertext) {
       try {
-        text = await placeholderGroupCipher.open(topicId, raw.sealed);
+        // openCached: MLS keys are consumed on first decrypt (forward secrecy),
+        // so cache the plaintext by id → history survives reloads/restarts.
+        const opened = raw.id
+          ? await getMlsSessionStore().openCached(topicId, raw.id, raw.sealed)
+          : await getMlsSessionStore().open(topicId, raw.sealed);
+        text = opened ?? '[unable to decrypt]';
       } catch {
         text = '[unable to decrypt]';
       }
@@ -354,12 +359,25 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
       // The endpoint returns `{ publicUrl: ... }` (see app/api/upload/route.ts).
       const { publicUrl } = await up.json();
       if (!publicUrl) throw new Error('no url');
-      const sealed = await placeholderGroupCipher.seal(topicId, publicUrl);
-      await fetch(`/api/topics/${topicId}/chat`, {
+      const sealed = await getMlsSessionStore().seal(topicId, publicUrl);
+      const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch }),
       });
+      // Optimistic local echo (sender can't decrypt its own MLS message).
+      if (res.ok) {
+        try {
+          const { message: payload } = await res.json();
+          if (payload?.id) {
+            setMessages((prev) =>
+              prev.some((m) => m.id === payload.id) ? prev : [...prev, { ...payload, message: publicUrl }],
+            );
+            // Cache own plaintext so it survives a restart (sender can't self-decrypt).
+            void getMlsSessionStore().cachePlaintext(topicId, payload.id, publicUrl);
+          }
+        } catch {}
+      }
     } catch {
       // best-effort; the user can retry
     } finally {
@@ -372,13 +390,26 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
     if (!text || sending) return;
     setSending(true);
     try {
-      const sealed = await placeholderGroupCipher.seal(topicId, text);
+      const sealed = await getMlsSessionStore().seal(topicId, text);
       const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch }),
       });
       if (res.ok) {
+        // Optimistic local echo: an MLS sender cannot decrypt its own sealed
+        // message (the sender ratchet has advanced), so show the known
+        // plaintext directly. The SSE echo carries the same id and dedupes.
+        try {
+          const { message: payload } = await res.json();
+          if (payload?.id) {
+            setMessages((prev) =>
+              prev.some((m) => m.id === payload.id) ? prev : [...prev, { ...payload, message: text }],
+            );
+            // Cache own plaintext so it survives a restart (sender can't self-decrypt).
+            void getMlsSessionStore().cachePlaintext(topicId, payload.id, text);
+          }
+        } catch {}
         setInputValue('');
         inputRef.current?.focus();
       }

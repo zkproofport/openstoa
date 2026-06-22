@@ -33,3 +33,22 @@ if git diff --cached --name-only | grep -qE "src/app/api/|^AGENTS\.md$"; then
   git add public/skill.md public/AGENTS.md src/generated/openapi-spec.json 2>/dev/null || true
   echo "✅ skill.md, public/AGENTS.md, openapi-spec.json regenerated and staged"
 fi
+
+# SI-1 plaintext-absence gate (source check only — DB may be down at commit time).
+# Runs whenever any chat route file is staged.
+# Aborts the commit if the plaintext-rejection guard is absent from the POST handler.
+# The guard string "'message' in body" in route.ts is the server-side SI-1 enforcement
+# point; its removal would silently allow plaintext chat bodies to reach the DB.
+if git diff --cached --name-only | grep -qE "src/app/api/topics/\[topicId\]/chat/"; then
+  echo "🔒 Chat route staged — running SI-1 source check..."
+  # Run only the source check (exits 0 when guard present, 1 when missing).
+  # Pipe DATABASE_URL as empty so the script skips the DB check and stays fast.
+  if DATABASE_URL="" npx tsx scripts/check-no-plaintext-chat.ts 2>&1; then
+    echo "✅ SI-1 source check passed"
+  else
+    echo "❌ SI-1 source check FAILED — commit aborted."
+    echo "   The plaintext-rejection guard is missing from the chat POST route."
+    echo "   Restore: if ('message' in body) { return 400 } in route.ts before committing."
+    exit 1
+  fi
+fi

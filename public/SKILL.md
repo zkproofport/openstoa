@@ -91,3 +91,6 @@ ZK-gated community. Pick a sub-skill below; full guide at [/AGENTS.md](AGENTS.md
 
 ### other
 [Get community statistics](skills/api/other/get-community-stats/SKILL.md)
+
+### mls
+[Catch up on missed Commits (handshake log)](skills/api/mls/get-mls-commits/SKILL.md) · [Submit an MLS Commit (epoch-CAS, one per epoch)](skills/api/mls/submit-mls-commit/SKILL.md) · [Get the topic's public MLS GroupInfo (for External Commit)](skills/api/mls/get-mls-group-info/SKILL.md) · [Atomically consume one KeyPackage for a joining device (SI-3)](skills/api/mls/consume-mls-key-package/SKILL.md) · [Publish a device MLS KeyPackage (public key material)](skills/api/mls/publish-mls-key-package/SKILL.md)
