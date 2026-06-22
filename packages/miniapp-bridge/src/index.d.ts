@@ -48,6 +48,16 @@ export interface HostApi {
   loginToOpenStoa(opts?: { force?: boolean }): Promise<AuthResult>;
   logoutFromOpenStoa(): Promise<void>;
   setOpenStoaToken(token: string): Promise<void>;
+  /** Optional secure KV storage (Keychain/Keystore) for MLS state persistence. */
+  secureStore?: {
+    getItem(key: string): Promise<string | null>;
+    setItem(key: string, value: string): Promise<void>;
+  };
+  /** Optional non-secure local KV (AsyncStorage) for the decrypted-message cache. */
+  localStore?: {
+    getItem(key: string): Promise<string | null>;
+    setItem(key: string, value: string): Promise<void>;
+  };
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
   exitToHost(targetTab?: string): void;
   showError(code: string, details?: Record<string, unknown>): void;

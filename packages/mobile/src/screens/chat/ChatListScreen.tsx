@@ -334,7 +334,14 @@ export function ChatListScreen() {
                   numberOfLines={1}
                 >
                   {lastMessage
-                    ? `${lastMessage.nickname}: ${lastMessage.message}`
+                    ? lastMessage.type === 'message'
+                      ? // E2EE user messages carry no plaintext on the wire (body
+                        // is in `sealed`). Decrypting here is unsafe — open() would
+                        // bootstrap/rejoin the MLS group and churn epochs just from
+                        // viewing the list — so show a placeholder instead.
+                        `${lastMessage.nickname}: ${t('openstoa.chat.encryptedMessage')}`
+                      : // System rows (join/leave) carry public text in `message`.
+                        `${lastMessage.nickname}: ${lastMessage.message}`
                     : t('openstoa.chat.noMessagesYet')}
                 </Text>
               )}

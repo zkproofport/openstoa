@@ -51,8 +51,9 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
-import { placeholderGroupCipher, toDisplayMessage } from '../../crypto/chatCipher';
+import { getMlsSessionStore, toDisplayMessageMls } from '../../crypto/mobileTransport';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { useHost } from '@openstoa/miniapp-bridge';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
@@ -362,6 +363,10 @@ export function ChatRoomScreen() {
   const topicTitle: string = route.params?.topicTitle ?? t('openstoa.tabs.chat');
 
   const client = useOpenStoaClient();
+  const host = useHost();
+  // Pass the host secure store so MLS state persists across restarts (same leaf
+  // restored, no re-join). Singleton: first caller (here or chatSocket) wins.
+  const mls = getMlsSessionStore(client, host.secureStore, host.localStore);
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
   const listRef = useRef<FlatList<ChatMessage>>(null);
@@ -403,7 +408,7 @@ export function ChatRoomScreen() {
         ? res.messages[res.messages.length - 1]
         : null;
       const decrypted = await Promise.all(
-        res.messages.map((m) => toDisplayMessage(topicId, m)),
+        res.messages.map((m) => toDisplayMessageMls(mls, topicId, m)),
       );
       return {
         messages: decrypted,
@@ -430,6 +435,10 @@ export function ChatRoomScreen() {
   // into the `open` state we ask the server for everything newer than the
   // last message we already have and merge it in.
   const [catchupMessages, setCatchupMessages] = useState<ChatMessage[]>([]);
+  // Optimistically-echoed own messages (plaintext). An MLS sender can't decrypt
+  // its own sealed message, so without this the SSE echo shows "[unable to
+  // decrypt]". Spread FIRST in the merge so it wins the first-wins dedup.
+  const [sentMessages, setSentMessages] = useState<ChatMessage[]>([]);
 
   // ── Merge history + catchup + live, deduplicated, newest last ─────────────
   const allMessages = useMemo<ChatMessage[]>(() => {
@@ -437,7 +446,7 @@ export function ChatRoomScreen() {
 
     const seen = new Set<string>();
     const merged: ChatMessage[] = [];
-    for (const m of [...historyMsgs, ...catchupMessages, ...liveMessages]) {
+    for (const m of [...sentMessages, ...historyMsgs, ...catchupMessages, ...liveMessages]) {
       if (!seen.has(m.id)) {
         seen.add(m.id);
         merged.push(m);
@@ -449,7 +458,7 @@ export function ChatRoomScreen() {
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     return merged;
-  }, [data, catchupMessages, liveMessages]);
+  }, [data, sentMessages, catchupMessages, liveMessages]);
 
   // ── Track last-seen timestamp per topic + drive SSE reconnect catchup ────
   // Update the cross-mount last-seen marker every time the bottom of the
@@ -482,7 +491,7 @@ export function ChatRoomScreen() {
         );
         if (cancelled || res.messages.length === 0) return;
         const decrypted = await Promise.all(
-          res.messages.map((m) => toDisplayMessage(topicId, m)),
+          res.messages.map((m) => toDisplayMessageMls(mls, topicId, m)),
         );
         if (cancelled) return;
         setCatchupMessages((curr) => {
@@ -586,11 +595,18 @@ export function ChatRoomScreen() {
     setSending(true);
     setDraft('');
     try {
-      const sealed = await placeholderGroupCipher.seal(topicId, text);
-      await client.post(`/api/topics/${topicId}/chat`, {
+      const sealed = await mls.seal(topicId, text);
+      const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
         ciphertext: sealed.ciphertext,
         epoch: sealed.epoch,
       });
+      if (res?.message?.id) {
+        setSentMessages((curr) =>
+          curr.some((m) => m.id === res.message.id) ? curr : [...curr, { ...res.message, message: text }],
+        );
+        // Cache own plaintext so it survives a restart (sender can't self-decrypt).
+        void mls.cachePlaintext(topicId, res.message.id, text);
+      }
     } catch {
       setDraft(text);
     } finally {
@@ -604,11 +620,18 @@ export function ChatRoomScreen() {
     setUploading(true);
     try {
       const publicUrl = await client.uploadFile(localUri);
-      const sealed = await placeholderGroupCipher.seal(topicId, publicUrl);
-      await client.post(`/api/topics/${topicId}/chat`, {
+      const sealed = await mls.seal(topicId, publicUrl);
+      const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
         ciphertext: sealed.ciphertext,
         epoch: sealed.epoch,
       });
+      if (res?.message?.id) {
+        setSentMessages((curr) =>
+          curr.some((m) => m.id === res.message.id) ? curr : [...curr, { ...res.message, message: publicUrl }],
+        );
+        // Cache own plaintext so it survives a restart (sender can't self-decrypt).
+        void mls.cachePlaintext(topicId, res.message.id, publicUrl);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       Alert.alert('Upload failed', msg);

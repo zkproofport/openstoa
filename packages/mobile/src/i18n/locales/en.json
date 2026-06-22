@@ -380,7 +380,8 @@
       "error": {
         "title": "Couldn't load chats"
       },
-      "noMessagesYet": "No messages yet"
+      "noMessagesYet": "No messages yet",
+      "encryptedMessage": "🔒 Encrypted message"
     }
   }
 }

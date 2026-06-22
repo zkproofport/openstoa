@@ -69,6 +69,31 @@ export interface HostApi {
    */
   setOpenStoaToken(token: string): Promise<void>;
 
+  /**
+   * Optional host-provided secure key→value storage (iOS Keychain / Android
+   * Keystore via expo-secure-store on ZKProofport). The mini-app uses it to
+   * persist E2EE chat MLS ClientState (~2KB/topic) across app restarts so it
+   * restores the same leaf instead of re-joining (a re-join drops history).
+   * When absent, the mini-app keeps MLS state in memory only.
+   */
+  secureStore?: {
+    getItem(key: string): Promise<string | null>;
+    setItem(key: string, value: string): Promise<void>;
+  };
+
+  /**
+   * Optional host-provided non-secure local KV (AsyncStorage on ZKProofport).
+   * Used for bulk, less-sensitive data the mini-app must persist across
+   * restarts — e.g. the E2EE chat decrypted-message cache (plaintext keyed by
+   * message id). MLS deletes per-message keys on decryption, so without this
+   * cache message history can't be re-decrypted after a restart. Not the
+   * secure store (Keychain is for keys, not many bulk rows).
+   */
+  localStore?: {
+    getItem(key: string): Promise<string | null>;
+    setItem(key: string, value: string): Promise<void>;
+  };
+
   /** Generate a ZK proof on the host (e.g. via mopro on ZKProofport). */
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
 

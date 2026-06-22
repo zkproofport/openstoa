@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import EventSource from 'react-native-sse';
 import { useHost } from '@openstoa/miniapp-bridge';
 import type { ChatMessage, PresencePayload } from '@openstoa/api-types';
-import { toDisplayMessage } from '../crypto/chatCipher';
+import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
+import { getMlsSessionStore, toDisplayMessageMls } from '../crypto/mobileTransport';
 
 type SSEEventName = 'message' | 'presence' | 'ping';
 
@@ -21,6 +22,10 @@ export interface UseChatSocketResult {
  */
 export function useChatSocket(topicId: string | null | undefined): UseChatSocketResult {
   const host = useHost();
+  const client = useOpenStoaClient();
+  // Pass the host secure store so MLS state persists across restarts (same leaf
+  // restored, no re-join). Singleton: first caller (here or ChatRoomScreen) wins.
+  const mls = getMlsSessionStore(client, host.secureStore, host.localStore);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<PresencePayload | null>(null);
   const [status, setStatus] = useState<UseChatSocketResult['status']>('idle');
@@ -61,7 +66,11 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
           try {
             const raw = JSON.parse(e.data) as ChatMessage;
             // Decrypt the sealed body before display (async); dedupe by id.
-            toDisplayMessage(topicId, raw).then((data) => {
+            // NOTE: the sender's OWN message can't be decrypted here (MLS sender
+            // ratchet advanced) → it surfaces as "[unable to decrypt]". The send
+            // path must optimistically echo the local plaintext (same fix as
+            // web ChatPanel) — finalize during simulator verification (P2-21).
+            toDisplayMessageMls(mls, topicId, raw).then((data) => {
               if (cancelled) return;
               setMessages((prev) =>
                 prev.some((m) => m.id === data.id) ? prev : [...prev, data],
