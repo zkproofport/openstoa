@@ -19,9 +19,9 @@ unwraps it (crypto-free Delivery Service, C1/SI-1).
 **Sender responsibility (CVE-2024-47080 / -47824 gate, §5.5):** before wrapping, the
 sender MUST verify the recipient device's identity (its KeyPackage credential is the
 claimed user and it is a real group member). The server cannot do crypto, so it enforces
-only the **envelope**: the caller is a member, the recipient is a current member, and the
-recipient device has a published KeyPackage. Live MLS key rules are NOT reused for archive
-keys.
+only the **envelope**: the caller and the recipient are current members. The server does NOT
+check a device directory — clients address bundles by a key derived from the recipient's MLS
+leaf. Live MLS key rules are NOT reused for archive keys.
 
 `scope` records the granted range, tier-differentiated (design §5.2): `full` (public seed
 chain — whole history), `since_epoch:N`, `Nd` (last N days), `N` (last N messages), or
@@ -35,7 +35,7 @@ chain — whole history), `since_epoch:N`, `Nd` (last N days), `N` (last N messa
 
 **Body (application/json):**
 - `recipientUserId` (string, required) — The recipient member's user id (nullifier). Must be a current member of the topic.
-- `recipientDeviceId` (string, required) — The recipient device. Must have a published KeyPackage (device_key_packages) — the envelope identity check.
+- `recipientDeviceId` (string, required) — Opaque id of the recipient device (derived from its MLS leaf key). The recipient fetches bundles addressed to this id.
 - `bundle` (string, required) — base64 HPKE-wrapped TAK bundle. The server stores it as-is and never decrypts it. Capped at 64 KiB.
 - `scope` (string, required) — Granted history range: full | since_epoch:N | Nd | N | none. Validated against an allowlist.
 

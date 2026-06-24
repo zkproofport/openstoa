@@ -170,6 +170,9 @@ export class TakSessionStore {
    * — can derive every archived epoch. Returns how many bundles were sent.
    */
   async distributePublicRoot(topicId: string): Promise<number> {
+    // Catch up first so we see every current member's leaf — a holder whose
+    // history decrypted from cache never MLS-opened, so its tree could be stale.
+    await this.mls.sync(topicId);
     const root = await this.ensurePublicRoot(topicId);
     const payload: tak.PublicBundle = { tier: 'public', rootKey: b64(root) };
     const leaves = await this.allMemberLeaves(topicId);
@@ -194,6 +197,7 @@ export class TakSessionStore {
       if (t) taks[String(e)] = b64(t);
     }
     const payload: tak.ScopedBundle = { tier: 'scoped', taks };
+    await this.mls.sync(topicId);
     const leaves = await this.mls.readState(topicId, async (s) => tak.findRecipientLeaves(s, recipientUserId));
     const scope = epochs.length ? `since_epoch:${Math.min(...epochs)}` : 'none';
     let n = 0;

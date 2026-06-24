@@ -103,25 +103,33 @@ describe.sequential('TAK back-fill — server Delivery Service', () => {
     expect((await after.json()).bundles.length).toBe(0);
   });
 
-  it('3. envelope gate: deliver to a non-member recipient -> 403', async () => {
+  it('3. recipientUserId is informational (addressing is by device) — member caller -> 201', async () => {
+    // The MLS leaf credential is a device id, not the user nullifier, so the
+    // server cannot map recipientUserId to a member and does not gate on it.
+    // A member caller may post with any recipientUserId; the bundle is addressed
+    // and HPKE-sealed by device. (Caller-must-be-member is covered by test 7.)
     const stranger = await freshUser();
     const res = await authPost(`/api/topics/${publicTopicId}/tak/bundles`, {
       recipientUserId: stranger.userId,
-      recipientDeviceId: 'x',
+      recipientDeviceId: 'some-leaf-device',
       bundle: B64('b'),
       scope: 'full',
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
   });
 
-  it('4. envelope gate: deliver to a member but an unpublished device -> 403', async () => {
+  it('4. envelope gate: a member recipient is accepted with any leaf-derived device id -> 201', async () => {
+    // The server addresses bundles by an opaque leaf-derived device id (clients
+    // publish no KeyPackage for genesis/External-Commit), so it does NOT gate on
+    // a device directory — only on membership. The CVE device-identity check is
+    // client-side (wrap only to a validated ratchet-tree leaf key).
     const res = await authPost(`/api/topics/${publicTopicId}/tak/bundles`, {
       recipientUserId: recipient.userId,
-      recipientDeviceId: 'never-published-device',
+      recipientDeviceId: 'leaf-derived-device-id',
       bundle: B64('b'),
       scope: 'full',
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
   });
 
   it('5. hostile scope -> 400', async () => {

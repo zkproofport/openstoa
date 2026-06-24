@@ -295,7 +295,10 @@ export const mlsCommits = pgTable('mls_commits', {
 export const takBundles = pgTable('tak_bundles', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
-  recipientUserId: text('recipient_user_id').references(() => users.id).notNull(), // nullifier
+  // Informational only (no FK): the MLS leaf credential is a device id, not the
+  // user nullifier, so a sender can't supply the recipient's real user id.
+  // Bundles are addressed and HPKE-sealed by `recipientDeviceId` (leaf-derived).
+  recipientUserId: text('recipient_user_id').notNull(),
   recipientDeviceId: text('recipient_device_id').notNull(),
   ciphertext: bytea('ciphertext').notNull(), // HPKE-wrapped TAK bundle (server never unwraps)
   scope: text('scope').notNull(), // full | since_epoch:N | 30d | 100 | none

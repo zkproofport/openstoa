@@ -111,7 +111,7 @@ describe('TAK bundle deliver / fetch / ack', () => {
   it('stores a bundle and returns it as undelivered, oldest first', async () => {
     await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('bundle-1'), 'full');
     await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('bundle-2'), 'since_epoch:3');
-    const pending = await fetchUndeliveredBundles(db, TOPIC, USER_B, DEV_1);
+    const pending = await fetchUndeliveredBundles(db, TOPIC, DEV_1);
     expect(pending.map((p) => p.ciphertext.toString())).toEqual(['bundle-1', 'bundle-2']);
     expect(pending[1].scope).toBe('since_epoch:3');
   });
@@ -119,25 +119,25 @@ describe('TAK bundle deliver / fetch / ack', () => {
   it('isolates bundles by recipient device', async () => {
     await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('for-dev1'), 'full');
     await storeTakBundle(db, TOPIC, USER_B, DEV_2, Buffer.from('for-dev2'), 'full');
-    const d1 = await fetchUndeliveredBundles(db, TOPIC, USER_B, DEV_1);
+    const d1 = await fetchUndeliveredBundles(db, TOPIC, DEV_1);
     expect(d1.map((p) => p.ciphertext.toString())).toEqual(['for-dev1']);
   });
 
   it('ack marks delivered (so it stops appearing) and is scoped to the device', async () => {
     const id = await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('b'), 'full');
     // Another device cannot ack dev1's bundle.
-    expect(await markBundlesDelivered(db, TOPIC, USER_B, DEV_2, [id])).toBe(0);
-    expect((await fetchUndeliveredBundles(db, TOPIC, USER_B, DEV_1)).length).toBe(1);
+    expect(await markBundlesDelivered(db, TOPIC, DEV_2, [id])).toBe(0);
+    expect((await fetchUndeliveredBundles(db, TOPIC, DEV_1)).length).toBe(1);
     // The owning device acks it; re-ack is a no-op.
-    expect(await markBundlesDelivered(db, TOPIC, USER_B, DEV_1, [id])).toBe(1);
-    expect(await markBundlesDelivered(db, TOPIC, USER_B, DEV_1, [id])).toBe(0);
-    expect((await fetchUndeliveredBundles(db, TOPIC, USER_B, DEV_1)).length).toBe(0);
+    expect(await markBundlesDelivered(db, TOPIC, DEV_1, [id])).toBe(1);
+    expect(await markBundlesDelivered(db, TOPIC, DEV_1, [id])).toBe(0);
+    expect((await fetchUndeliveredBundles(db, TOPIC, DEV_1)).length).toBe(0);
   });
 
   it('ack of an empty / unknown id list does nothing', async () => {
-    expect(await markBundlesDelivered(db, TOPIC, USER_B, DEV_1, [])).toBe(0);
+    expect(await markBundlesDelivered(db, TOPIC, DEV_1, [])).toBe(0);
     expect(
-      await markBundlesDelivered(db, TOPIC, USER_B, DEV_1, ['11111111-1111-4111-8111-111111111111']),
+      await markBundlesDelivered(db, TOPIC, DEV_1, ['11111111-1111-4111-8111-111111111111']),
     ).toBe(0);
   });
 });

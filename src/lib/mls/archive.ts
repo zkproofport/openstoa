@@ -65,13 +65,15 @@ export interface PendingBundle {
 export async function fetchUndeliveredBundles(
   executor: SqlExecutor,
   topicId: string,
-  recipientUserId: string,
   recipientDeviceId: string,
 ): Promise<PendingBundle[]> {
+  // Addressed by device only. The MLS leaf credential is a device id, not the
+  // user's nullifier, so a sender (which reads keys from the ratchet tree)
+  // cannot know the recipient's user id — bundles are keyed by the leaf-derived
+  // device id, and confidentiality comes from the HPKE wrap to that leaf's key.
   const res = (await executor.execute(sql`
     SELECT id, ciphertext, scope, created_at FROM tak_bundles
     WHERE topic_id = ${topicId}
-      AND recipient_user_id = ${recipientUserId}
       AND recipient_device_id = ${recipientDeviceId}
       AND delivered_at IS NULL
     ORDER BY created_at ASC, id ASC
@@ -93,7 +95,6 @@ export async function fetchUndeliveredBundles(
 export async function markBundlesDelivered(
   executor: SqlExecutor,
   topicId: string,
-  recipientUserId: string,
   recipientDeviceId: string,
   ids: string[],
 ): Promise<number> {
@@ -105,7 +106,6 @@ export async function markBundlesDelivered(
   const res = (await executor.execute(sql`
     UPDATE tak_bundles SET delivered_at = now()
     WHERE topic_id = ${topicId}
-      AND recipient_user_id = ${recipientUserId}
       AND recipient_device_id = ${recipientDeviceId}
       AND delivered_at IS NULL
       AND id IN (${idList})

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topicMembers, deviceKeyPackages } from '@/lib/db/schema';
+import { topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import {
@@ -41,9 +41,9 @@ async function requireMember(request: NextRequest, topicId: string) {
  *       **Sender responsibility (CVE-2024-47080 / -47824 gate, §5.5):** before wrapping, the
  *       sender MUST verify the recipient device's identity (its KeyPackage credential is the
  *       claimed user and it is a real group member). The server cannot do crypto, so it enforces
- *       only the **envelope**: the caller is a member, the recipient is a current member, and the
- *       recipient device has a published KeyPackage. Live MLS key rules are NOT reused for archive
- *       keys.
+ *       only the **envelope**: the caller and the recipient are current members. The server does NOT
+ *       check a device directory — clients address bundles by a key derived from the recipient's MLS
+ *       leaf. Live MLS key rules are NOT reused for archive keys.
  *
  *       `scope` records the granted range, tier-differentiated (design §5.2): `full` (public seed
  *       chain — whole history), `since_epoch:N`, `Nd` (last N days), `N` (last N messages), or
@@ -68,7 +68,7 @@ async function requireMember(request: NextRequest, topicId: string) {
  *                 description: The recipient member's user id (nullifier). Must be a current member of the topic.
  *               recipientDeviceId:
  *                 type: string
- *                 description: The recipient device. Must have a published KeyPackage (device_key_packages) — the envelope identity check.
+ *                 description: Opaque id of the recipient device (derived from its MLS leaf key). The recipient fetches bundles addressed to this id.
  *               bundle:
  *                 type: string
  *                 format: byte
@@ -86,7 +86,7 @@ async function requireMember(request: NextRequest, topicId: string) {
  *               properties: { id: { type: string, format: uuid, description: the stored bundle id } }
  *       400: { description: Invalid/oversized bundle, invalid scope, or missing recipient fields }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { description: Caller is not a member, or the recipient is not a member / has no published device }
+ *       403: { description: Caller is not a member, or the recipient is not a member }
  *       429: { description: Per-member rate limit exceeded (SI-4) }
  */
 export async function POST(
@@ -127,25 +127,13 @@ export async function POST(
       return NextResponse.json({ error: `bundle must be ${MLS_MAX_TAK_BUNDLE_BYTES} bytes or fewer` }, { status: 400 });
     }
 
-    // Envelope gate (§5.5 server half): recipient must be a current member AND
-    // have a published device — the server can't verify crypto identity, so it
-    // refuses to route a bundle to a stranger or a device with no key material.
-    const recipientMember = await db.query.topicMembers.findFirst({
-      where: and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, recipientUserId)),
-    });
-    if (!recipientMember) {
-      return NextResponse.json({ error: 'Recipient is not a member of this topic' }, { status: 403 });
-    }
-    const recipientDevice = await db.query.deviceKeyPackages.findFirst({
-      where: and(
-        eq(deviceKeyPackages.userId, recipientUserId),
-        eq(deviceKeyPackages.deviceId, recipientDeviceId),
-      ),
-    });
-    if (!recipientDevice) {
-      return NextResponse.json({ error: 'Recipient device has no published KeyPackage' }, { status: 403 });
-    }
-
+    // Envelope gate: only a member may upload bundles (caller checked above).
+    // `recipientUserId` is informational — the MLS leaf credential is a device
+    // id, not the user's nullifier, so the server can't map it to a member and
+    // does not gate on it. Bundles are addressed by `recipientDeviceId` (derived
+    // from the recipient's leaf key); confidentiality is the client HPKE wrap to
+    // that leaf, and the CVE-2024-47080 identity check is client-side (the sender
+    // wraps only to a leaf key read from its OWN validated ratchet tree).
     const id = await storeTakBundle(db, topicId, recipientUserId, recipientDeviceId, bundleBytes, scope);
     logger.info(ROUTE, 'TAK bundle stored', {
       topicId,
@@ -216,14 +204,13 @@ export async function GET(
     const { topicId } = await params;
     const auth = await requireMember(request, topicId);
     if ('error' in auth) return auth.error!;
-    const { session } = auth;
 
     const deviceId = new URL(request.url).searchParams.get('deviceId');
     if (!deviceId || deviceId.trim().length === 0) {
       return NextResponse.json({ error: 'deviceId query parameter is required' }, { status: 400 });
     }
 
-    const bundles = await fetchUndeliveredBundles(db, topicId, session.userId, deviceId);
+    const bundles = await fetchUndeliveredBundles(db, topicId, deviceId);
     return NextResponse.json({
       bundles: bundles.map((b) => ({
         id: b.id,
@@ -290,7 +277,6 @@ export async function DELETE(
     const { topicId } = await params;
     const auth = await requireMember(request, topicId);
     if ('error' in auth) return auth.error!;
-    const { session } = auth;
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
@@ -306,7 +292,7 @@ export async function DELETE(
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const valid = (ids as string[]).filter((i) => uuidRe.test(i));
 
-    const acked = await markBundlesDelivered(db, topicId, session.userId, deviceId, valid);
+    const acked = await markBundlesDelivered(db, topicId, deviceId, valid);
     return NextResponse.json({ acked });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

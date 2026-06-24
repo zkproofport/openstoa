@@ -113,6 +113,13 @@
       "when": 1782307936731,
       "tag": "0015_sweet_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1782318393112,
+      "tag": "0016_supreme_black_panther",
+      "breakpoints": true
     }
   ]
 }
