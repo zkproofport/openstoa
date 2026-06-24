@@ -48,6 +48,29 @@ async function impl() {
   return _impl;
 }
 
+/**
+ * The shared CiphersuiteImpl (memoized, noble provider) for the TAK archive
+ * layer — HPKE seal/open, KDF, AEAD, MLS exporter. Same instance the group
+ * lifecycle uses, so archive AEAD matches the live-message path (noble) and
+ * interops with the web client.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ciphersuiteImpl(): Promise<any> {
+  return impl();
+}
+
+/** RFC 9420 MLS exporter (re-exported) — derives the per-epoch TAK. */
+export function mlsExporter(
+  exporterSecret: Uint8Array,
+  label: string,
+  context: Uint8Array,
+  length: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cs: any,
+): Promise<Uint8Array> {
+  return T().mlsExporter(exporterSecret, label, context, length, cs);
+}
+
 export interface SealedMessage {
   ciphertext: string;
   epoch: number;
