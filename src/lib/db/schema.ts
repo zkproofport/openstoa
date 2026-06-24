@@ -283,6 +283,65 @@ export const mlsCommits = pgTable('mls_commits', {
   topicEpochIdx: index('mls_commits_topic_epoch_idx').on(table.topicId, table.epoch),
 }));
 
+// TAK (Topic Archive Key) bundles — encrypted history keys delivered to a new
+// member/device so it can read messages from before it joined (Phase 3, D5
+// to-device). The server stores ONLY the HPKE-wrapped ciphertext bundle
+// (C1/SI-1): it never sees a TAK in the clear, and never unwraps. A bundle is
+// wrapped to ONE recipient device's public key; `scope` records the granted
+// history range, tier-differentiated (full | since_epoch:N | 30d | 100 | none).
+// The CVE-2024-47080/-47824 device-identity check (§5.5) is performed by the
+// SENDER client before wrapping; the server additionally enforces the envelope
+// (recipient is a current member with a published device package, SI-4 caps).
+export const takBundles = pgTable('tak_bundles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  recipientUserId: text('recipient_user_id').references(() => users.id).notNull(), // nullifier
+  recipientDeviceId: text('recipient_device_id').notNull(),
+  ciphertext: bytea('ciphertext').notNull(), // HPKE-wrapped TAK bundle (server never unwraps)
+  scope: text('scope').notNull(), // full | since_epoch:N | 30d | 100 | none
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }), // NULL = not yet fetched by recipient
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // The recipient device polls its own undelivered bundles for a topic.
+  recipientIdx: index('tak_bundles_recipient_idx').on(table.topicId, table.recipientUserId, table.recipientDeviceId),
+}));
+
+// archive-holder succession state (Phase 3, SI-6) — PUBLIC topics ONLY. The
+// designated holder forward-rewraps the public seed chain on every membership
+// change so any single current member can derive every archived epoch's TAK.
+// On holder inactivity (`holder_lease_expires_at` past) the next succession_rank
+// member takes over; the lease makes succession single-winner so the seed chain
+// never forks. private/secret/AI topics have NO row here (SI-6b: no standing
+// custodian — a forward-rewrap custodian would be a member-held escrow that
+// defeats the per-epoch revocability those tiers depend on).
+export const archiveHolders = pgTable('archive_holders', {
+  topicId: uuid('topic_id').primaryKey().references(() => topics.id),
+  holderUserId: text('holder_user_id').references(() => users.id).notNull(),
+  holderDeviceId: text('holder_device_id').notNull(),
+  epochCovered: bigint('epoch_covered', { mode: 'number' }).notNull(), // highest epoch this holder has forward-rewrapped
+  successionRank: integer('succession_rank').notNull().default(0), // owner=0, admin=1, ... (succession order)
+  holderLeaseExpiresAt: timestamp('holder_lease_expires_at', { withTimezone: true }), // inactivity → single-winner succession
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// archive store (Phase 3) — past messages re-encrypted under a TAK so a newly
+// joined member can read history that MLS forward secrecy would otherwise lock
+// out. The CLIENT (never the server — SI-1) re-encrypts the plaintext under the
+// current TAK and uploads the ciphertext; the server stores opaque bytes keyed
+// by the original message and the TAK version used. One archive row per
+// message (unique topic_id+message_id); `since` pagination is by created order.
+export const chatArchive = pgTable('chat_archive', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  messageId: uuid('message_id').notNull(), // original chat_messages.id
+  takVersion: integer('tak_version').notNull(), // which TAK encrypted this row
+  ciphertext: bytea('ciphertext').notNull(), // TAK-encrypted body (server never unwraps)
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  topicMsgIdx: uniqueIndex('chat_archive_topic_msg_idx').on(table.topicId, table.messageId),
+  topicCreatedIdx: index('chat_archive_topic_created_idx').on(table.topicId, table.createdAt),
+}));
+
 export const userVerifications = pgTable('user_verifications', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
