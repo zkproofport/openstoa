@@ -37,6 +37,33 @@ async function impl() {
   return _impl;
 }
 
+/**
+ * The shared CiphersuiteImpl (memoized) for code that needs the raw crypto
+ * primitives (HPKE seal/open, KDF, AEAD, MLS exporter) — e.g. the TAK archive
+ * layer. Same instance the group lifecycle uses, so the provider matches
+ * (browser subtle here; the mobile copy swaps in the noble provider).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ciphersuiteImpl(): Promise<any> {
+  return impl();
+}
+
+/**
+ * RFC 9420 MLS exporter (re-exported from ts-mls) — derives an application
+ * secret from a group's exporter secret. Used by the TAK layer to derive a
+ * per-epoch archive key bound to (label, context).
+ */
+export function mlsExporter(
+  exporterSecret: Uint8Array,
+  label: string,
+  context: Uint8Array,
+  length: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cs: any,
+): Promise<Uint8Array> {
+  return T().mlsExporter(exporterSecret, label, context, length, cs);
+}
+
 export interface SealedMessage {
   ciphertext: string; // base64 MLSMessage (mls_private_message)
   epoch: number;
