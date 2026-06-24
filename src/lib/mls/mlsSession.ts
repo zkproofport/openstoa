@@ -268,6 +268,19 @@ export class MlsSessionStore {
     }
   }
 
+  /**
+   * Run `fn` with the live group state under the topic lock — the read accessor
+   * the TAK archive layer uses to derive per-epoch keys and read verified leaf
+   * keys from the ratchet tree (Phase 3). Serialized with seal/open/commit so it
+   * never observes a torn mid-mutation state.
+   */
+  readState<T>(topicId: string, fn: (state: gc.GroupState) => Promise<T>): Promise<T> {
+    return this.withLock(topicId, async () => {
+      const s = await this.getSession(topicId);
+      return fn(s.state);
+    });
+  }
+
   /** Apply an incoming Commit (live SSE fan-out). */
   applyCommit(topicId: string, commitB64: string): Promise<void> {
     return this.withLock(topicId, async () => {
