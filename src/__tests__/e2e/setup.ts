@@ -2,7 +2,10 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 import { readFileSync, existsSync } from 'fs';
 
-// Load .env.test
+// Load env: .env.test.local (gitignored, per-developer local overrides) wins
+// over the committed .env.test defaults; a shell env var wins over both. This
+// is what lets the same e2e suite run against localhost or staging.
+config({ path: resolve(__dirname, '../../../.env.test.local') });
 config({ path: resolve(__dirname, '../../../.env.test') });
 
 // Load cached token if env vars not set (global-setup sets them in same process,
