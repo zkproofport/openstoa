@@ -99,12 +99,6 @@ export class TakSessionStore {
   }
   private async setEpochTak(topicId: string, epoch: number, t: Uint8Array): Promise<void> {
     await this.store.set(this.epochKey(topicId, epoch), b64(t));
-    let s = this.cachedEpochs.get(topicId);
-    if (!s) {
-      s = new Set();
-      this.cachedEpochs.set(topicId, s);
-    }
-    s.add(epoch);
   }
 
   // In-flight ensurePublicRoot per topic. Without this, a holder that calls
@@ -113,9 +107,7 @@ export class TakSessionStore {
   // get sealed under one while the other is distributed — so receivers can't
   // decrypt. Memoizing the promise makes concurrent callers share one generation.
   private rootPromises = new Map<string, Promise<Uint8Array>>();
-  // Epoch TAKs this session has cached (the shareable history a private grant
-  // can hand out) + leaves we've already granted to (avoid re-granting).
-  private cachedEpochs = new Map<string, Set<number>>();
+  // Leaves we've already granted to (avoid re-granting the same device).
   private grantedLeaves = new Map<string, Set<string>>();
 
   /** Holder bootstrap: generate the public archive root once, then reuse it. */
@@ -245,18 +237,24 @@ export class TakSessionStore {
    * Returns the number of leaves newly granted.
    */
   async grantPrivateHistory(topicId: string): Promise<number> {
-    // Ensure we at least hold the current epoch's TAK, then bundle everything
-    // we've cached (our shareable slice of history).
+    // Ensure we hold the current epoch's TAK, then bundle every epoch TAK we
+    // have. We probe the PERSISTED store for epochs 0..current rather than an
+    // in-memory set, so a member that restarted still grants its full archived
+    // history (the in-memory set is lost on reload; the keys survive).
     await this.cacheCurrentEpochTak(topicId);
-    const epochs = [...(this.cachedEpochs.get(topicId) ?? [])].sort((a, b) => a - b);
+    const current = await this.mls.readState(topicId, async (s) => gc.currentEpoch(s));
     const taks: Record<string, string> = {};
-    for (const e of epochs) {
+    let minEpoch = current;
+    for (let e = 0; e <= current; e++) {
       const t = await this.getEpochTak(topicId, e);
-      if (t) taks[String(e)] = b64(t);
+      if (t) {
+        taks[String(e)] = b64(t);
+        if (e < minEpoch) minEpoch = e;
+      }
     }
     if (Object.keys(taks).length === 0) return 0;
     const payload: tak.ScopedBundle = { tier: 'scoped', taks };
-    const scope = `since_epoch:${epochs[0]}`;
+    const scope = `since_epoch:${minEpoch}`;
 
     await this.mls.sync(topicId);
     const myDev = await this.myDeviceId(topicId);
