@@ -134,6 +134,20 @@ describe('TAK bundle deliver / fetch / ack', () => {
     expect((await fetchUndeliveredBundles(db, TOPIC, DEV_1)).length).toBe(0);
   });
 
+  it('dedupes an undelivered bundle for the same (device, scope) — re-distribution is a no-op', async () => {
+    const id1 = await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('b'), 'full');
+    expect(id1).not.toBe('');
+    // Same device + scope, still undelivered → skipped (collapses holder re-runs).
+    expect(await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('b'), 'full')).toBe('');
+    expect((await fetchUndeliveredBundles(db, TOPIC, DEV_1)).length).toBe(1);
+    // A different scope is NOT a duplicate.
+    expect(await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('b'), 'since_epoch:2')).not.toBe('');
+    expect((await fetchUndeliveredBundles(db, TOPIC, DEV_1)).length).toBe(2);
+    // After delivery, a fresh bundle of the same scope can be stored again.
+    await markBundlesDelivered(db, TOPIC, DEV_1, [id1]);
+    expect(await storeTakBundle(db, TOPIC, USER_B, DEV_1, Buffer.from('b2'), 'full')).not.toBe('');
+  });
+
   it('ack of an empty / unknown id list does nothing', async () => {
     expect(await markBundlesDelivered(db, TOPIC, DEV_1, [])).toBe(0);
     expect(
