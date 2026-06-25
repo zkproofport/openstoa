@@ -444,20 +444,26 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Claim the public archive-holder lease; only the single winner distributes
-  // the root to all member leaves (SI-6). A 409 (someone else holds it) is the
-  // normal no-op path. Best-effort — never throws into the chat flow.
-  const distributeIfHolder = useCallback(async () => {
+  // Provision archive access for later members, by tier. public: claim the
+  // single-winner holder lease (409 = someone else holds it, no-op) and the
+  // winner distributes the root to all leaves (SI-6). private: explicitly grant
+  // the epochs we hold to new member leaves (SI-6b — no custodian/lease). secret:
+  // nothing (the owner grants explicitly). Best-effort — never throws into chat.
+  const provisionArchiveAccess = useCallback(async () => {
     try {
       const tak = getTakSessionStore();
-      const deviceId = await tak.myDeviceId(topicId);
-      const r = await fetch(`/api/topics/${topicId}/tak/holder`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId }),
-      });
-      if (r.ok) await tak.distributePublicRoot(topicId);
+      if (visibilityRef.current === 'public') {
+        const deviceId = await tak.myDeviceId(topicId);
+        const r = await fetch(`/api/topics/${topicId}/tak/holder`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId }),
+        });
+        if (r.ok) await tak.distributePublicRoot(topicId);
+      } else if (visibilityRef.current === 'private') {
+        await tak.grantPrivateHistory(topicId);
+      }
     } catch {}
   }, [topicId]);
 
@@ -508,7 +514,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
       // distribute the archive root to every current member leaf so later
       // joiners can read history. Single-winner on the server; idempotent for
       // recipients. Custodian-free tiers (private/secret) skip this by design.
-      if (visibilityRef.current === 'public') void distributeIfHolder();
+      void provisionArchiveAccess();
     })();
 
     function connect() {
@@ -531,7 +537,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
           const raw = JSON.parse(e.data);
           // A new member joined → if we hold the public archive lease, push them
           // the root so they can back-fill history (SI-6, membership change).
-          if (raw?.type === 'join' && visibilityRef.current === 'public') void distributeIfHolder();
+          if (raw?.type === 'join') void provisionArchiveAccess();
           // Decrypt the sealed body before display (async; dedupe on arrival).
           toDisplayMessage(topicId, raw).then((msg) => {
             if (!mountedRef.current) return;
@@ -574,7 +580,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
         esRef.current = null;
       }
     };
-  }, [topicId, isGuest, isMember, distributeIfHolder]);
+  }, [topicId, isGuest, isMember, provisionArchiveAccess]);
 
   // ─── Guest / non-member state ──────────────────────────────────────────────
   if (isGuest || !isMember) {

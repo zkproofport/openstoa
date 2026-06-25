@@ -194,6 +194,34 @@ describe('TAK orchestration — scoped grant (private)', () => {
   });
 });
 
+describe('TAK orchestration — private auto-grant (grantPrivateHistory, leaf-targeted, SI-6b)', () => {
+  it('grants cached epochs to a NEW leaf so it back-fills; without the grant it reads nothing', async () => {
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'priv-auto';
+    const alice = makeClient(ds, tt, 'alice');
+    // Alice (genesis, epoch 0) archives an epoch-0 message under the per-epoch TAK.
+    await alice.mls.seal(T, 'genesis');
+    await alice.tak.archiveOnSend(T, 'm-p0', 'private-epoch0', 'private');
+
+    // Bob joins at epoch 1 — he was NOT present at epoch 0, so he can't derive
+    // its TAK; before any grant his back-fill yields nothing (scope-out).
+    const bob = makeClient(ds, tt, 'bob');
+    const seed = await alice.mls.seal(T, 'seed');
+    await bob.mls.open(T, seed);
+    await fanOutCommits(ds, T, [alice]);
+    expect((await bob.tak.backfill(T, 'private')).length).toBe(0);
+
+    // Alice auto-grants her cached history to new member leaves (addresses bob's
+    // leaf directly — no user-id targeting). SI-6b: explicit, no custodian row.
+    const granted = await alice.tak.grantPrivateHistory(T);
+    expect(granted).toBeGreaterThanOrEqual(1);
+
+    const history = await bob.tak.backfill(T, 'private');
+    expect(history.find((h) => h.messageId === 'm-p0')?.plaintext).toBe('private-epoch0');
+  });
+});
+
 describe('TAK orchestration — CVE: bundles are device-bound', () => {
   it('a third member cannot read a bundle addressed to another device', async () => {
     const ds = new MemoryDS();

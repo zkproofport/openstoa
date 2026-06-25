@@ -475,14 +475,19 @@ export function ChatRoomScreen() {
   // archive) to recover pre-join history. For public topics, claim the single-
   // winner holder lease and, if held, distribute the archive root to all member
   // leaves so later joiners can read history. All best-effort — never blocks chat.
-  const distributeIfHolder = useCallback(async () => {
+  const provisionArchiveAccess = useCallback(async () => {
     try {
-      if (visibilityRef.current !== 'public') return;
-      const deviceId = await tak.myDeviceId(topicId);
-      await client.post(`/api/topics/${topicId}/tak/holder`, { deviceId }); // throws on 409 (not holder)
-      await tak.distributePublicRoot(topicId);
+      if (visibilityRef.current === 'public') {
+        const deviceId = await tak.myDeviceId(topicId);
+        await client.post(`/api/topics/${topicId}/tak/holder`, { deviceId }); // throws on 409 (not holder)
+        await tak.distributePublicRoot(topicId);
+      } else if (visibilityRef.current === 'private') {
+        // SI-6b: explicit per-leaf grant of the epochs we hold; no custodian.
+        await tak.grantPrivateHistory(topicId);
+      }
+      // secret: no auto-grant — the owner grants explicitly.
     } catch {
-      /* someone else holds the lease, or topic isn't public — no-op */
+      /* lease held elsewhere / nothing to grant — no-op */
     }
   }, [client, tak, topicId]);
 
@@ -504,12 +509,12 @@ export function ChatRoomScreen() {
           });
         }
       } catch {}
-      if (!cancelled) await distributeIfHolder();
+      if (!cancelled) await provisionArchiveAccess();
     })();
     return () => {
       cancelled = true;
     };
-  }, [client, tak, topicId, distributeIfHolder]);
+  }, [client, tak, topicId, provisionArchiveAccess]);
 
   // A new member joined (live SSE) → if we hold the public lease, push them the
   // archive root so they can back-fill (membership-change distribution, SI-6).
@@ -519,12 +524,12 @@ export function ChatRoomScreen() {
       if (liveMessages[i].type === 'join') {
         if (liveMessages[i].id !== lastJoinRef.current) {
           lastJoinRef.current = liveMessages[i].id;
-          void distributeIfHolder();
+          void provisionArchiveAccess();
         }
         break;
       }
     }
-  }, [liveMessages, distributeIfHolder]);
+  }, [liveMessages, provisionArchiveAccess]);
 
   // ── Track last-seen timestamp per topic + drive SSE reconnect catchup ────
   // Update the cross-mount last-seen marker every time the bottom of the

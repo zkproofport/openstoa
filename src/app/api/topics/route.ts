@@ -370,11 +370,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Only public visibility is currently supported
-    if (visibility && visibility !== 'public') {
-      logger.warn(ROUTE, 'Non-public visibility attempted', { userId: session.userId, visibility });
+    // Visibility tiers (design §5.2): public (listed, join immediately),
+    // private (listed, join needs owner/admin approval), secret (hidden,
+    // invite-only). The join route + listing filters already honor all three.
+    const VALID_VISIBILITIES = ['public', 'private', 'secret'];
+    if (visibility !== undefined && (typeof visibility !== 'string' || !VALID_VISIBILITIES.includes(visibility))) {
+      logger.warn(ROUTE, 'Invalid visibility', { userId: session.userId, visibility });
       return NextResponse.json(
-        { error: 'Only public topics are currently supported. Private and secret topics are coming soon.' },
+        { error: `visibility must be one of: ${VALID_VISIBILITIES.join(', ')}` },
         { status: 400 },
       );
     }
@@ -508,7 +511,7 @@ export async function POST(request: NextRequest) {
       ? (requiredDomain?.trim() || null)
       : null;
 
-    const validVisibility = 'public'; // Only public supported for now
+    const validVisibility = (visibility as string) || 'public'; // validated above; defaults to public
 
     const [topic] = await db
       .insert(topics)
