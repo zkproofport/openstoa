@@ -101,14 +101,28 @@ export class TakSessionStore {
     await this.store.set(this.epochKey(topicId, epoch), b64(t));
   }
 
+  // In-flight ensurePublicRoot per topic. Without this, a holder that calls
+  // ensurePublicRoot concurrently (distribute-on-open + archive-on-send) would
+  // race: both read no root, both generate a DIFFERENT random root, then archives
+  // get sealed under one while the other is distributed — so receivers can't
+  // decrypt. Memoizing the promise makes concurrent callers share one generation.
+  private rootPromises = new Map<string, Promise<Uint8Array>>();
+
   /** Holder bootstrap: generate the public archive root once, then reuse it. */
-  async ensurePublicRoot(topicId: string): Promise<Uint8Array> {
-    let r = await this.getRoot(topicId);
-    if (!r) {
-      r = tak.generatePublicRootKey();
-      await this.setRoot(topicId, r);
+  ensurePublicRoot(topicId: string): Promise<Uint8Array> {
+    let p = this.rootPromises.get(topicId);
+    if (!p) {
+      p = (async () => {
+        let r = await this.getRoot(topicId);
+        if (!r) {
+          r = tak.generatePublicRootKey();
+          await this.setRoot(topicId, r);
+        }
+        return r;
+      })();
+      this.rootPromises.set(topicId, p);
     }
-    return r;
+    return p;
   }
 
   /** Derive + cache the current epoch's TAK (call as each epoch is processed). */

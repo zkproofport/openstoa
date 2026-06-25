@@ -138,6 +138,35 @@ describe('TAK orchestration — public whole-history back-fill', () => {
   });
 });
 
+describe('TAK orchestration — concurrent distribute + archive (root race)', () => {
+  it('a holder that distributes and archives concurrently uses ONE root, so a joiner decrypts', async () => {
+    // Regression: ensurePublicRoot must be atomic. If distribute-on-open and
+    // archive-on-send each generated their own random root, the archive would be
+    // sealed under a different root than the one distributed and a joiner could
+    // never decrypt it (the mobile cross-platform bug).
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'race-topic';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'genesis'); // bootstrap alice as genesis
+
+    // Fire archive-on-send and holder distribution CONCURRENTLY (the race).
+    await Promise.all([
+      alice.tak.archiveOnSend(T, 'm-race-1', 'raced-message', 'public'),
+      alice.tak.distributePublicRoot(T),
+    ]);
+
+    const bob = makeClient(ds, tt, 'bob');
+    const seed = await alice.mls.seal(T, 'seed');
+    await bob.mls.open(T, seed);
+    await fanOutCommits(ds, T, [alice]);
+    await alice.tak.distributePublicRoot(T); // cover bob's leaf
+
+    const history = await bob.tak.backfill(T, 'public');
+    expect(history.find((h) => h.messageId === 'm-race-1')?.plaintext).toBe('raced-message');
+  });
+});
+
 describe('TAK orchestration — scoped grant (private)', () => {
   it('a joiner reads only granted epochs; nothing without a grant', async () => {
     const ds = new MemoryDS();
