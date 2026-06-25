@@ -99,6 +99,12 @@ export class TakSessionStore {
   }
   private async setEpochTak(topicId: string, epoch: number, t: Uint8Array): Promise<void> {
     await this.store.set(this.epochKey(topicId, epoch), b64(t));
+    let s = this.cachedEpochs.get(topicId);
+    if (!s) {
+      s = new Set();
+      this.cachedEpochs.set(topicId, s);
+    }
+    s.add(epoch);
   }
 
   // In-flight ensurePublicRoot per topic. Without this, a holder that calls
@@ -107,6 +113,10 @@ export class TakSessionStore {
   // get sealed under one while the other is distributed — so receivers can't
   // decrypt. Memoizing the promise makes concurrent callers share one generation.
   private rootPromises = new Map<string, Promise<Uint8Array>>();
+  // Epoch TAKs this session has cached (the shareable history a private grant
+  // can hand out) + leaves we've already granted to (avoid re-granting).
+  private cachedEpochs = new Map<string, Set<number>>();
+  private grantedLeaves = new Map<string, Set<string>>();
 
   /** Holder bootstrap: generate the public archive root once, then reuse it. */
   ensurePublicRoot(topicId: string): Promise<Uint8Array> {
@@ -218,6 +228,51 @@ export class TakSessionStore {
     for (const lf of leaves) {
       const wrapped = await tak.wrapBundleToLeaf(lf.hpkePublicKey, payload);
       await this.transport.postBundle(topicId, recipientUserId, tak.leafDeviceId(lf.hpkePublicKey), serializeWrapped(wrapped), scope);
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * Auto-grant for a PRIVATE topic (SI-6b): hand the epoch TAKs this member
+   * holds to every current member leaf it hasn't granted yet — addressed by
+   * leaf (the MLS credential is a device id, not a user id, so we can't target
+   * by user). This is an explicit point-in-time grant, NOT a standing custodian:
+   * no archive_holders row, no forward-rewrap, so a removed member's future
+   * epochs are never shared and a full churn leaves the archive unrecoverable
+   * (the intended escrow-free behavior). SECRET topics do NOT auto-grant — the
+   * owner grants explicitly (grantScoped) — so callers gate this to private.
+   * Returns the number of leaves newly granted.
+   */
+  async grantPrivateHistory(topicId: string): Promise<number> {
+    // Ensure we at least hold the current epoch's TAK, then bundle everything
+    // we've cached (our shareable slice of history).
+    await this.cacheCurrentEpochTak(topicId);
+    const epochs = [...(this.cachedEpochs.get(topicId) ?? [])].sort((a, b) => a - b);
+    const taks: Record<string, string> = {};
+    for (const e of epochs) {
+      const t = await this.getEpochTak(topicId, e);
+      if (t) taks[String(e)] = b64(t);
+    }
+    if (Object.keys(taks).length === 0) return 0;
+    const payload: tak.ScopedBundle = { tier: 'scoped', taks };
+    const scope = `since_epoch:${epochs[0]}`;
+
+    await this.mls.sync(topicId);
+    const myDev = await this.myDeviceId(topicId);
+    let granted = this.grantedLeaves.get(topicId);
+    if (!granted) {
+      granted = new Set();
+      this.grantedLeaves.set(topicId, granted);
+    }
+    const leaves = await this.allMemberLeaves(topicId);
+    let n = 0;
+    for (const lf of leaves) {
+      const dev = tak.leafDeviceId(lf.hpkePublicKey);
+      if (dev === myDev || granted.has(dev)) continue; // skip self + already-granted
+      const wrapped = await tak.wrapBundleToLeaf(lf.hpkePublicKey, payload);
+      await this.transport.postBundle(topicId, lf.identity, dev, serializeWrapped(wrapped), scope);
+      granted.add(dev);
       n++;
     }
     return n;
