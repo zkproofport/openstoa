@@ -13,6 +13,7 @@
 import type { ChatMessage } from '@openstoa/api-types';
 import type { OpenStoaClient } from '../api/openstoaClient';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
+import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
 
 function statusOf(e: unknown): number | null {
   const m = String(e instanceof Error ? e.message : e).match(/→ (\d{3}):/);
@@ -99,6 +100,67 @@ export function getMlsSessionStore(
     _store = new MlsSessionStore(createMlsTransport(client), deviceIdentity(), store, msgCache);
   }
   return _store;
+}
+
+// TAK layer (Phase 3) over the authenticated client. Server is crypto-free —
+// this only moves opaque ciphertext for the archive + bundle endpoints.
+export function createTakTransport(client: OpenStoaClient): TakTransport {
+  const base = (t: string) => `/api/topics/${t}`;
+  return {
+    async postArchive(topicId, messageId, takVersion, archiveB64) {
+      await client.post(`${base(topicId)}/archive`, { messageId, takVersion, archive: archiveB64 });
+    },
+    async getArchive(topicId) {
+      const out: ArchiveEntry[] = [];
+      let cursor = '';
+      for (;;) {
+        const r = await client.get<{ archive: ArchiveEntry[] }>(`${base(topicId)}/archive?limit=500${cursor}`);
+        out.push(...r.archive);
+        if (r.archive.length < 500) break;
+        const last = r.archive[r.archive.length - 1];
+        cursor = `&since=${encodeURIComponent(last.createdAt)}&sinceMsg=${last.messageId}`;
+      }
+      return out;
+    },
+    async postBundle(topicId, recipientUserId, recipientDeviceId, bundleB64, scope) {
+      await client.post(`${base(topicId)}/tak/bundles`, {
+        recipientUserId,
+        recipientDeviceId,
+        bundle: bundleB64,
+        scope,
+      });
+    },
+    async getBundles(topicId, deviceId) {
+      const r = await client.get<{ bundles: TakBundleRow[] }>(
+        `${base(topicId)}/tak/bundles?deviceId=${encodeURIComponent(deviceId)}`,
+      );
+      return r.bundles;
+    },
+    async ackBundles(topicId, deviceId, ids) {
+      await client.delete(`${base(topicId)}/tak/bundles`, { body: JSON.stringify({ deviceId, ids }) });
+    },
+  };
+}
+
+let _takStore: TakSessionStore | null = null;
+export function getTakSessionStore(
+  client: OpenStoaClient,
+  hostSecureStore?: HostSecureStore,
+  hostLocalStore?: HostSecureStore,
+): TakSessionStore {
+  if (!_takStore) {
+    // TAK material (root + per-epoch keys) is sensitive → host secure store
+    // (Keychain/Keystore); falls back to in-memory if absent. Reuses the live
+    // MLS session store for group-state reads.
+    const store: SecureKVStore = hostSecureStore
+      ? { get: (k) => hostSecureStore.getItem(k), set: (k, v) => hostSecureStore.setItem(k, v) }
+      : (() => {
+          const m = new Map<string, string>();
+          return { get: async (k: string) => m.get(k) ?? null, set: async (k: string, v: string) => void m.set(k, v) };
+        })();
+    _takStore = new TakSessionStore(getMlsSessionStore(client, hostSecureStore, hostLocalStore), createTakTransport(client), store);
+  }
+  return _takStore;
 }
 
 /**

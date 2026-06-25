@@ -229,6 +229,23 @@ export class MlsSessionStore {
     }
   }
 
+  /** Catch up to the latest epoch (TAK holder calls this before reading leaves). */
+  sync(topicId: string): Promise<void> {
+    return this.withLock(topicId, async () => {
+      const s = await this.getSession(topicId);
+      await this.catchUp(topicId, s);
+      await this.persist(topicId, s);
+    });
+  }
+
+  /** Run `fn` with the live group state under the topic lock (TAK layer reads). */
+  readState<T>(topicId: string, fn: (state: gc.GroupState) => Promise<T>): Promise<T> {
+    return this.withLock(topicId, async () => {
+      const s = await this.getSession(topicId);
+      return fn(s.state);
+    });
+  }
+
   applyCommit(topicId: string, commitB64: string): Promise<void> {
     return this.withLock(topicId, async () => {
       const s = await this.getSession(topicId);

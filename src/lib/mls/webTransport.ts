@@ -5,6 +5,7 @@
  * event handlers / effects, never during SSR.
  */
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
+import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
 
 function httpTransport(): MlsTransport {
   const base = (t: string) => `/api/topics/${t}/mls`;
@@ -105,4 +106,72 @@ export function getMlsSessionStore(): MlsSessionStore {
     _store = new MlsSessionStore(httpTransport(), deviceIdentity(), idb, idb);
   }
   return _store;
+}
+
+// HTTP transport for the Phase 3 TAK layer (archive + bundle endpoints). The
+// server is crypto-free — this only moves opaque ciphertext.
+function httpTakTransport(): TakTransport {
+  const base = (t: string) => `/api/topics/${t}`;
+  const json = { 'Content-Type': 'application/json' };
+  return {
+    async postArchive(topicId, messageId, takVersion, archiveB64) {
+      const r = await fetch(`${base(topicId)}/archive`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: json,
+        body: JSON.stringify({ messageId, takVersion, archive: archiveB64 }),
+      });
+      if (!r.ok && r.status !== 200) throw new Error(`archive POST ${r.status}`);
+    },
+    async getArchive(topicId) {
+      // Walk the keyset cursor to completion so callers get the full archive.
+      const out: ArchiveEntry[] = [];
+      let cursor = '';
+      for (;;) {
+        const r = await fetch(`${base(topicId)}/archive?limit=500${cursor}`, { credentials: 'include' });
+        if (!r.ok) throw new Error(`archive GET ${r.status}`);
+        const page = (await r.json()).archive as ArchiveEntry[];
+        out.push(...page);
+        if (page.length < 500) break;
+        const last = page[page.length - 1];
+        cursor = `&since=${encodeURIComponent(last.createdAt)}&sinceMsg=${last.messageId}`;
+      }
+      return out;
+    },
+    async postBundle(topicId, recipientUserId, recipientDeviceId, bundleB64, scope) {
+      const r = await fetch(`${base(topicId)}/tak/bundles`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: json,
+        body: JSON.stringify({ recipientUserId, recipientDeviceId, bundle: bundleB64, scope }),
+      });
+      if (!r.ok) throw new Error(`bundle POST ${r.status}`);
+    },
+    async getBundles(topicId, deviceId) {
+      const r = await fetch(`${base(topicId)}/tak/bundles?deviceId=${encodeURIComponent(deviceId)}`, {
+        credentials: 'include',
+      });
+      if (!r.ok) throw new Error(`bundle GET ${r.status}`);
+      return (await r.json()).bundles as TakBundleRow[];
+    },
+    async ackBundles(topicId, deviceId, ids) {
+      const r = await fetch(`${base(topicId)}/tak/bundles`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: json,
+        body: JSON.stringify({ deviceId, ids }),
+      });
+      if (!r.ok) throw new Error(`bundle DELETE ${r.status}`);
+    },
+  };
+}
+
+let _takStore: TakSessionStore | null = null;
+export function getTakSessionStore(): TakSessionStore {
+  if (!_takStore) {
+    // Reuse the same IndexedDB store (TAK keys are namespaced tak.root.* /
+    // tak.epoch.*) and the live MLS session store for group-state reads.
+    _takStore = new TakSessionStore(getMlsSessionStore(), httpTakTransport(), indexedDbStore());
+  }
+  return _takStore;
 }

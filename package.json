@@ -12,6 +12,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "vitest run -c vitest.config.e2e.ts",
+    "test:e2e:local": "E2E_BASE_URL=http://localhost:3200 vitest run -c vitest.config.e2e.ts",
+    "test:e2e:staging": "E2E_BASE_URL=https://stg-community.zkproofport.app vitest run -c vitest.config.e2e.ts",
     "generate:skill": "npx tsx scripts/generate-skill.ts",
     "prebuild": "npx tsx scripts/generate-skill.ts",
     "verify:no-plaintext-chat": "npx tsx scripts/check-no-plaintext-chat.ts"

@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
 import LinkPreview from '@/components/LinkPreview';
-import { getMlsSessionStore } from '@/lib/mls/webTransport';
+import { getMlsSessionStore, getTakSessionStore } from '@/lib/mls/webTransport';
+import type { Visibility } from '@/lib/mls/takSession';
 
 // Server rows for user messages carry an encrypted `sealed` body, not plaintext.
 // Decrypt for local display so MessageRow keeps rendering `msg.message` as text.
@@ -344,6 +345,9 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+  // Topic visibility drives the TAK tier (public root vs scoped per-epoch).
+  // Resolved once per topic in the history effect; defaults to public.
+  const visibilityRef = useRef<Visibility>('public');
 
   // Uploads via /api/upload and posts the returned URL as a chat message.
   // The message body is the bare URL — MessageRow's isImageUrl detection
@@ -375,6 +379,9 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
             );
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, publicUrl);
+            // Re-encrypt for the archive so later members can read it (Phase 3).
+            // Fire-and-forget: an archive failure must never break sending.
+            void getTakSessionStore().archiveOnSend(topicId, payload.id, publicUrl, visibilityRef.current).catch(() => {});
           }
         } catch {}
       }
@@ -408,6 +415,8 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
             );
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, text);
+            // Re-encrypt for the archive so later members can read it (Phase 3).
+            void getTakSessionStore().archiveOnSend(topicId, payload.id, text, visibilityRef.current).catch(() => {});
           }
         } catch {}
         setInputValue('');
@@ -435,24 +444,72 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // Claim the public archive-holder lease; only the single winner distributes
+  // the root to all member leaves (SI-6). A 409 (someone else holds it) is the
+  // normal no-op path. Best-effort — never throws into the chat flow.
+  const distributeIfHolder = useCallback(async () => {
+    try {
+      const tak = getTakSessionStore();
+      const deviceId = await tak.myDeviceId(topicId);
+      const r = await fetch(`/api/topics/${topicId}/tak/holder`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId }),
+      });
+      if (r.ok) await tak.distributePublicRoot(topicId);
+    } catch {}
+  }, [topicId]);
+
   useEffect(() => {
     if (isGuest || !isMember) return;
 
     mountedRef.current = true;
 
-    // Fetch history
-    fetch(`/api/topics/${topicId}/chat?limit=50`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then(async (data) => {
-        if (!mountedRef.current || !data?.messages) return;
-        // Decrypt each sealed body for display, then reverse DESC→chronological.
-        const decrypted = await Promise.all(
-          data.messages.map((m: Parameters<typeof toDisplayMessage>[1]) => toDisplayMessage(topicId, m)),
-        );
-        if (!mountedRef.current) return;
-        setMessages(decrypted.reverse());
-      })
-      .catch(() => {});
+    // Fetch history, then TAK back-fill pre-join messages (Phase 3).
+    (async () => {
+      // Resolve the topic's visibility once → selects the TAK tier. Best-effort:
+      // default 'public' if the lookup fails.
+      try {
+        const tr = await fetch(`/api/topics/${topicId}`, { credentials: 'include' });
+        if (tr.ok) {
+          const tj = await tr.json();
+          const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
+          if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
+        }
+      } catch {}
+
+      const data = await fetch(`/api/topics/${topicId}/chat?limit=50`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (!mountedRef.current || !data?.messages) return;
+      const decrypted = await Promise.all(
+        data.messages.map((m: Parameters<typeof toDisplayMessage>[1]) => toDisplayMessage(topicId, m)),
+      );
+      if (!mountedRef.current) return;
+      setMessages(decrypted.reverse());
+
+      // Back-fill: fetch TAK bundles + archive, decrypt history MLS forward
+      // secrecy locked out, and fill in any '[unable to decrypt]' rows. Entirely
+      // best-effort — never blocks or breaks the live chat.
+      try {
+        const recovered = await getTakSessionStore().backfill(topicId, visibilityRef.current);
+        if (mountedRef.current && recovered.length) {
+          const byId = new Map(recovered.map((r) => [r.messageId, r.plaintext]));
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.message === '[unable to decrypt]' && byId.has(m.id) ? { ...m, message: byId.get(m.id)! } : m,
+            ),
+          );
+        }
+      } catch {}
+
+      // Public holder upkeep (SI-6): claim the lease and, if we hold it,
+      // distribute the archive root to every current member leaf so later
+      // joiners can read history. Single-winner on the server; idempotent for
+      // recipients. Custodian-free tiers (private/secret) skip this by design.
+      if (visibilityRef.current === 'public') void distributeIfHolder();
+    })();
 
     function connect() {
       if (!mountedRef.current) return;
@@ -472,6 +529,9 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
         if (!mountedRef.current) return;
         try {
           const raw = JSON.parse(e.data);
+          // A new member joined → if we hold the public archive lease, push them
+          // the root so they can back-fill history (SI-6, membership change).
+          if (raw?.type === 'join' && visibilityRef.current === 'public') void distributeIfHolder();
           // Decrypt the sealed body before display (async; dedupe on arrival).
           toDisplayMessage(topicId, raw).then((msg) => {
             if (!mountedRef.current) return;
@@ -514,7 +574,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
         esRef.current = null;
       }
     };
-  }, [topicId, isGuest, isMember]);
+  }, [topicId, isGuest, isMember, distributeIfHolder]);
 
   // ─── Guest / non-member state ──────────────────────────────────────────────
   if (isGuest || !isMember) {

@@ -5,10 +5,16 @@ import { config } from 'dotenv';
 const CACHE_FILE = resolve(__dirname, '../../../.e2e-token-cache.json');
 
 export async function setup() {
+  // Per-environment selection: .env.test.local (gitignored) overrides the
+  // committed .env.test defaults, and a shell env var overrides both (dotenv
+  // never clobbers an already-set var). So `E2E_BASE_URL=http://localhost:3200`
+  // — inline or in .env.test.local — runs the suite against a local server with
+  // no deploy, while the default .env.test targets staging.
+  config({ path: resolve(__dirname, '../../../.env.test.local') });
   config({ path: resolve(__dirname, '../../../.env.test') });
 
   const baseUrl = process.env.E2E_BASE_URL;
-  if (!baseUrl) throw new Error('E2E_BASE_URL is required in .env.test');
+  if (!baseUrl) throw new Error('E2E_BASE_URL is required (set it in .env.test, .env.test.local, or the shell)');
 
   console.log(`[E2E Setup] Base URL: ${baseUrl}`);
 

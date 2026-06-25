@@ -51,7 +51,8 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
-import { getMlsSessionStore, toDisplayMessageMls } from '../../crypto/mobileTransport';
+import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls } from '../../crypto/mobileTransport';
+import type { Visibility } from '../../crypto/takSession';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -367,6 +368,12 @@ export function ChatRoomScreen() {
   // Pass the host secure store so MLS state persists across restarts (same leaf
   // restored, no re-join). Singleton: first caller (here or chatSocket) wins.
   const mls = getMlsSessionStore(client, host.secureStore, host.localStore);
+  const tak = getTakSessionStore(client, host.secureStore, host.localStore);
+  // TAK back-fill: recovered plaintext for pre-join messages MLS can't decrypt,
+  // keyed by message id; merged into the list below. Topic visibility selects
+  // the TAK tier (public root vs scoped) — resolved once on mount.
+  const [recovered, setRecovered] = useState<Record<string, string>>({});
+  const visibilityRef = useRef<Visibility>('public');
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
   const listRef = useRef<FlatList<ChatMessage>>(null);
@@ -449,7 +456,10 @@ export function ChatRoomScreen() {
     for (const m of [...sentMessages, ...historyMsgs, ...catchupMessages, ...liveMessages]) {
       if (!seen.has(m.id)) {
         seen.add(m.id);
-        merged.push(m);
+        // Fill pre-join rows MLS couldn't decrypt with TAK-recovered history.
+        merged.push(
+          m.message === '[unable to decrypt]' && recovered[m.id] ? { ...m, message: recovered[m.id] } : m,
+        );
       }
     }
     // Sort chronologically (oldest → newest); the FlatList renders top-down.
@@ -458,7 +468,63 @@ export function ChatRoomScreen() {
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     return merged;
-  }, [data, sentMessages, catchupMessages, liveMessages]);
+  }, [data, sentMessages, catchupMessages, liveMessages, recovered]);
+
+  // ── TAK back-fill + public holder upkeep (Phase 3) ────────────────────────
+  // On mount: resolve visibility, then back-fill (ingest bundles + decrypt the
+  // archive) to recover pre-join history. For public topics, claim the single-
+  // winner holder lease and, if held, distribute the archive root to all member
+  // leaves so later joiners can read history. All best-effort — never blocks chat.
+  const distributeIfHolder = useCallback(async () => {
+    try {
+      if (visibilityRef.current !== 'public') return;
+      const deviceId = await tak.myDeviceId(topicId);
+      await client.post(`/api/topics/${topicId}/tak/holder`, { deviceId }); // throws on 409 (not holder)
+      await tak.distributePublicRoot(topicId);
+    } catch {
+      /* someone else holds the lease, or topic isn't public — no-op */
+    }
+  }, [client, tak, topicId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const tj = await client.get<{ topic?: { visibility?: string }; visibility?: string }>(`/api/topics/${topicId}`);
+        const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
+        if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
+      } catch {}
+      try {
+        const history = await tak.backfill(topicId, visibilityRef.current);
+        if (!cancelled && history.length) {
+          setRecovered((prev) => {
+            const next = { ...prev };
+            for (const h of history) next[h.messageId] = h.plaintext;
+            return next;
+          });
+        }
+      } catch {}
+      if (!cancelled) await distributeIfHolder();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, tak, topicId, distributeIfHolder]);
+
+  // A new member joined (live SSE) → if we hold the public lease, push them the
+  // archive root so they can back-fill (membership-change distribution, SI-6).
+  const lastJoinRef = useRef<string | null>(null);
+  useEffect(() => {
+    for (let i = liveMessages.length - 1; i >= 0; i--) {
+      if (liveMessages[i].type === 'join') {
+        if (liveMessages[i].id !== lastJoinRef.current) {
+          lastJoinRef.current = liveMessages[i].id;
+          void distributeIfHolder();
+        }
+        break;
+      }
+    }
+  }, [liveMessages, distributeIfHolder]);
 
   // ── Track last-seen timestamp per topic + drive SSE reconnect catchup ────
   // Update the cross-mount last-seen marker every time the bottom of the
@@ -606,6 +672,8 @@ export function ChatRoomScreen() {
         );
         // Cache own plaintext so it survives a restart (sender can't self-decrypt).
         void mls.cachePlaintext(topicId, res.message.id, text);
+        // Re-encrypt for the archive so later members can read it (Phase 3).
+        void tak.archiveOnSend(topicId, res.message.id, text, visibilityRef.current).catch(() => {});
       }
     } catch {
       setDraft(text);
@@ -631,6 +699,8 @@ export function ChatRoomScreen() {
         );
         // Cache own plaintext so it survives a restart (sender can't self-decrypt).
         void mls.cachePlaintext(topicId, res.message.id, publicUrl);
+        // Re-encrypt for the archive so later members can read it (Phase 3).
+        void tak.archiveOnSend(topicId, res.message.id, publicUrl, visibilityRef.current).catch(() => {});
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
