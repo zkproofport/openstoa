@@ -94,6 +94,26 @@ export interface HostApi {
     setItem(key: string, value: string): Promise<void>;
   };
 
+  /**
+   * Optional host-provided WebAuthn PRF (hmac-secret) for Phase 4 E2EE key
+   * recovery (design §6.2/§6.4). The host (react-native-passkeys on ZKProofport)
+   * registers/asserts a synced passkey and evaluates PRF with `saltB64`,
+   * returning a deterministic 32-byte output the mini-app derives a master_key
+   * wrapping key from. `mode: 'create'` registers a new passkey (first-time
+   * backup); `'get'` asserts an existing one (recovery). Because the passkey is
+   * synced (iCloud Keychain / Google Password Manager), the same salt yields the
+   * same PRF on any of the user's devices → cross-device master_key recovery with
+   * no escrow. Absent → passkey recovery unavailable on this host; the
+   * recovery-code path still works.
+   */
+  passkeyPrf?(opts: {
+    mode: 'create' | 'get';
+    /** base64 domain-separation salt (fixed per app) fed to the PRF eval. */
+    saltB64: string;
+    /** For 'get': the credential to assert. Omitted on 'create'. */
+    credentialId?: string;
+  }): Promise<{ credentialId: string; prfOutputB64: string }>;
+
   /** Generate a ZK proof on the host (e.g. via mopro on ZKProofport). */
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
 

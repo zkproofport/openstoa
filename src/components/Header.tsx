@@ -259,6 +259,33 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             Docs
           </Link>
 
+          {user && (
+            <Link
+              href="/recovery"
+              className="header-nav-link"
+              style={{
+                color: '#999', fontSize: 12, textDecoration: 'none',
+                fontFamily: 'var(--font-mono)', fontWeight: 500,
+                letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+                transition: 'all 0.15s',
+                padding: '6px 14px', borderRadius: 6,
+                border: '1px solid transparent',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.color = '#ccc';
+                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.color = '#999';
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
+                (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
+              }}
+            >
+              Recovery
+            </Link>
+          )}
+
           {!sessionChecked ? (
             <span style={{ width: 70, height: 30 }} />
           ) : user ? (

@@ -666,6 +666,17 @@ export function EditProfileScreen() {
           </View>
         )}
 
+        {/* Chat recovery (Phase 4 E2EE key backup / recovery) */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Chat recovery</Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('AccountRecovery' as never)}
+          >
+            <Text style={styles.actionButtonText}>Back up &amp; recover encrypted chat keys</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Account actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('openstoa.editProfile.account')}</Text>

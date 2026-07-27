@@ -372,3 +372,41 @@ export const inviteTokens = pgTable('invite_tokens', {
 }, (table) => ({
   tokenIdx: uniqueIndex('invite_token_idx').on(table.token),
 }));
+
+// Phase 4 key recovery (design §6.4, SI-5/SI-8). Every column here holds ONLY
+// wrapped ciphertext: the server stores neither the WebAuthn PRF key nor the
+// recovery code and never runs the unwrap crypto, so a DB dump yields nothing
+// decryptable (SI-8 no escrow). All rows cascade-delete with the user account.
+
+// One recovery-code-wrapped master_key per user (design §6.4.1). wrapped_master
+// = AEAD(HKDF(recovery_code), master_key); recovery_code is client-CSPRNG ≥128-bit
+// (SI-5) and lives only with the user.
+export const keyBackups = pgTable('key_backups', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  wrappedMaster: bytea('wrapped_master').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// N passkeys per user — one prf_wrapped master_key per registered WebAuthn
+// credential (design §9.5 multi-passkey; dev-plan M3 child-table split so a
+// single prf_wrapped column no longer caps the user at one passkey).
+export const keyBackupPasskeys = pgTable('key_backup_passkeys', {
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  credentialId: text('credential_id').notNull(),
+  prfWrapped: bytea('prf_wrapped').notNull(), // AEAD(HKDF(passkey PRF output), master_key)
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.credentialId] }),
+}));
+
+// The user's TAK keychain (every topic's archive root + epoch keys this user
+// holds) encrypted under HKDF(master_key, "openstoa-tak-backup/v1"). Lets a
+// recovered master_key re-read all archived history with no other member online
+// (Option 1, design §6.4.1) — history recovery no longer depends on a live member
+// re-granting TAK bundles. Server never unwraps (SI-8). One snapshot row per user.
+export const takKeyBackups = pgTable('tak_key_backups', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  ciphertext: bytea('ciphertext').notNull(), // AEAD(deriveTakBackupKey(master_key), TAK-keychain JSON)
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
