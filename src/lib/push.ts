@@ -235,78 +235,8 @@ export async function dispatchCiphertextForMessage(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Real Expo adapter (thin edge). Content-free by construction.
-// ---------------------------------------------------------------------------
-
-const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
-
-/**
- * Expo push adapter. Sends ONLY the content-free dummy — it never receives or
- * forwards message content. Credentials come from `EXPO_ACCESS_TOKEN`.
- */
-class ExpoPushProvider implements PushProvider {
-  constructor(private readonly accessToken: string) {}
-  async send(target: PushTarget, payload: DummyPushPayload): Promise<void> {
-    const res = await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.accessToken}`,
-      },
-      // Expo accepts ios/android Expo push tokens on the same endpoint. Only the
-      // dummy title/body + topicId leave the server — no content.
-      body: JSON.stringify({
-        to: target.pushToken,
-        title: payload.title,
-        body: payload.body,
-        data: payload.data,
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`Expo push failed: ${res.status} ${await res.text().catch(() => '')}`);
-    }
-  }
-
-  /**
-   * Phase B (design §13.5). Sends the placeholder title/body plus the opaque
-   * ciphertext in `data.ct`, with `mutableContent` so APNs sets
-   * `aps.mutable-content=1` and the iOS NSE wakes to decrypt + rewrite the
-   * preview. Only the already-sealed `ct` leaves the server (SI-1) — never
-   * logged, never decoded here. Expo's HTTP API does not expose true Android
-   * data-only delivery, so the Android background decrypt path lives in the
-   * native FCM handler (proofport-app scaffold); on Expo/Android this still
-   * delivers the ciphertext in `data` for the handler to consume.
-   */
-  async sendCiphertext(target: PushTarget, payload: CiphertextPushPayload): Promise<void> {
-    const res = await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.accessToken}`,
-      },
-      body: JSON.stringify({
-        to: target.pushToken,
-        title: payload.title,
-        body: payload.body,
-        data: payload.data,
-        mutableContent: payload.mutableContent,
-        priority: 'high',
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`Expo push failed: ${res.status} ${await res.text().catch(() => '')}`);
-    }
-  }
-}
-
-/**
- * Resolve the configured push provider, or null when push is not configured.
- * NOT a hardcoded fallback (CLAUDE.md): when `EXPO_ACCESS_TOKEN` is absent we
- * return null and dispatch no-ops — push is simply disabled, not faked.
- */
-export function getPushProvider(): PushProvider | null {
-  const token = process.env.EXPO_ACCESS_TOKEN;
-  if (!token) return null;
-  return new ExpoPushProvider(token);
-}
+// The real Expo push adapter + `getPushProvider()` factory live in
+// `@/lib/pushProvider` (the thin, swappable HTTP edge). Keeping the provider in a
+// separate module lets the dispatch logic here stay provider-agnostic and lets
+// the adapter be unit-tested against a mocked fetch without touching this file.
+export { getPushProvider, ExpoPushProvider } from '@/lib/pushProvider';
