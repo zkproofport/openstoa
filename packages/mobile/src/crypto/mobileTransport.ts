@@ -14,6 +14,7 @@ import type { ChatMessage } from '@openstoa/api-types';
 import type { OpenStoaClient } from '../api/openstoaClient';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
+import * as km from './keyManager';
 
 function statusOf(e: unknown): number | null {
   const m = String(e instanceof Error ? e.message : e).match(/→ (\d{3}):/);
@@ -79,6 +80,25 @@ type HostSecureStore = {
   setItem(key: string, value: string): Promise<void>;
 };
 
+function adapt(h?: HostSecureStore): SecureKVStore | undefined {
+  return h ? { get: (k) => h.getItem(k), set: (k, v) => h.setItem(k, v) } : undefined;
+}
+
+// Phase 4: the device master_key lives (plaintext bytes) in the host secure store
+// (Keychain/Keystore) — the ONE unencrypted-at-rest secret, itself OS-protected;
+// MLS state / TAK keys / message cache are written through EncryptingKVStore,
+// sealed under HKDF(master_key,"local-store"). Gated on a host secure store being
+// present; without one the mobile side stays in-memory (prior behavior, no key).
+let _masterKeyPromise: Promise<Uint8Array> | null = null;
+function masterKey(rootStore: SecureKVStore): Promise<Uint8Array> {
+  if (!_masterKeyPromise) _masterKeyPromise = km.loadOrCreateMasterKey(rootStore);
+  return _masterKeyPromise;
+}
+function encrypting(raw: SecureKVStore | undefined, rootStore: SecureKVStore | undefined): SecureKVStore | undefined {
+  if (!raw || !rootStore) return raw; // no root → no master_key → pass through (in-memory/plain)
+  return km.EncryptingKVStore.lazy(raw, () => masterKey(rootStore));
+}
+
 let _store: MlsSessionStore | null = null;
 export function getMlsSessionStore(
   client: OpenStoaClient,
@@ -88,15 +108,14 @@ export function getMlsSessionStore(
   if (!_store) {
     // MLS ClientState → host secure store (Keychain/Keystore) so an app restart
     // restores the same leaf instead of re-joining (which dropped history).
-    const store: SecureKVStore | undefined = hostSecureStore
-      ? { get: (k) => hostSecureStore.getItem(k), set: (k, v) => hostSecureStore.setItem(k, v) }
-      : undefined;
+    const rawSecure = adapt(hostSecureStore);
     // Decrypted-message cache → host local store (AsyncStorage). MLS keys are
     // consumed on first decrypt, so cached plaintext is what makes message
     // history survive restarts. Absent stores → in-memory only (prior behavior).
-    const msgCache: SecureKVStore | undefined = hostLocalStore
-      ? { get: (k) => hostLocalStore.getItem(k), set: (k, v) => hostLocalStore.setItem(k, v) }
-      : undefined;
+    const rawLocal = adapt(hostLocalStore);
+    // Encrypt both at rest under the master_key (rootStore = the secure store).
+    const store = encrypting(rawSecure, rawSecure);
+    const msgCache = encrypting(rawLocal, rawSecure);
     _store = new MlsSessionStore(createMlsTransport(client), deviceIdentity(), store, msgCache);
   }
   return _store;
@@ -142,6 +161,28 @@ export function createTakTransport(client: OpenStoaClient): TakTransport {
   };
 }
 
+// Debounced upload of the master_key-encrypted TAK keychain (design §6.4.1) so a
+// recovered master_key re-reads all archived history without another member
+// online. Best-effort; a failure never breaks chat.
+let _takBackupTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleTakKeychainBackup(client: OpenStoaClient, rootStore: SecureKVStore): void {
+  if (_takBackupTimer) clearTimeout(_takBackupTimer);
+  _takBackupTimer = setTimeout(() => {
+    void (async () => {
+      try {
+        if (!_takStore) return;
+        const keychain = await _takStore.exportKeychain();
+        if (Object.keys(keychain).length === 0) return;
+        await km.uploadTakKeychain(await masterKey(rootStore), keychain, (ciphertext) =>
+          client.post('/api/keys/tak-backup', { ciphertext }),
+        );
+      } catch {
+        /* best-effort backup; retried on the next keychain change */
+      }
+    })();
+  }, 1500);
+}
+
 let _takStore: TakSessionStore | null = null;
 export function getTakSessionStore(
   client: OpenStoaClient,
@@ -150,17 +191,75 @@ export function getTakSessionStore(
 ): TakSessionStore {
   if (!_takStore) {
     // TAK material (root + per-epoch keys) is sensitive → host secure store
-    // (Keychain/Keystore); falls back to in-memory if absent. Reuses the live
-    // MLS session store for group-state reads.
-    const store: SecureKVStore = hostSecureStore
-      ? { get: (k) => hostSecureStore.getItem(k), set: (k, v) => hostSecureStore.setItem(k, v) }
-      : (() => {
-          const m = new Map<string, string>();
-          return { get: async (k: string) => m.get(k) ?? null, set: async (k: string, v: string) => void m.set(k, v) };
-        })();
-    _takStore = new TakSessionStore(getMlsSessionStore(client, hostSecureStore, hostLocalStore), createTakTransport(client), store);
+    // (Keychain/Keystore), encrypted at rest under the master_key; falls back to
+    // in-memory if no host store. Reuses the live MLS session store for reads.
+    const rawSecure = adapt(hostSecureStore);
+    const store: SecureKVStore =
+      encrypting(rawSecure, rawSecure) ??
+      (() => {
+        const m = new Map<string, string>();
+        return { get: async (k: string) => m.get(k) ?? null, set: async (k: string, v: string) => void m.set(k, v) };
+      })();
+    const onChange = rawSecure ? () => scheduleTakKeychainBackup(client, rawSecure) : undefined;
+    _takStore = new TakSessionStore(
+      getMlsSessionStore(client, hostSecureStore, hostLocalStore),
+      createTakTransport(client),
+      store,
+      onChange,
+    );
   }
   return _takStore;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 key-backup client (used by the mobile recovery / induction UI, P4-05).
+// The host supplies WebAuthn PRF output via react-native-passkeys through the
+// bridge; these helpers move the wrapped master_key + TAK backup over the client.
+// ---------------------------------------------------------------------------
+
+/** The device's master_key (loaded/created on first call). Requires a host secure store. */
+export function getDeviceMasterKey(hostSecureStore: HostSecureStore): Promise<Uint8Array> {
+  return masterKey(adapt(hostSecureStore)!);
+}
+
+/** HTTP client for /api/keys/backup + /api/keys/tak-backup over the authenticated client. */
+export function keyBackupHttp(client: OpenStoaClient) {
+  return {
+    async getBackup(): Promise<km.KeyBackupState> {
+      return client.get<km.KeyBackupState>('/api/keys/backup');
+    },
+    async postRecovery(wrappedMasterB64: string): Promise<void> {
+      await client.post('/api/keys/backup', { type: 'recovery', wrappedMaster: wrappedMasterB64 });
+    },
+    async postPasskey(credentialId: string, prfWrappedB64: string): Promise<void> {
+      await client.post('/api/keys/backup', { type: 'passkey', credentialId, prfWrapped: prfWrappedB64 });
+    },
+    async getTakBackup(): Promise<string | null> {
+      return (await client.get<{ ciphertext: string | null }>('/api/keys/tak-backup')).ciphertext;
+    },
+  };
+}
+
+/**
+ * Install a recovered master_key + restore the TAK keychain from the server
+ * backup. Resets the store singletons so they rebuild under the recovered key;
+ * chat then re-joins MLS as a new leaf and reads archived history the keychain
+ * covers. Caller passes the host stores so the rebuilt singletons match.
+ */
+export async function recoverDevice(
+  client: OpenStoaClient,
+  recoveredMasterKey: Uint8Array,
+  hostSecureStore: HostSecureStore,
+  hostLocalStore?: HostSecureStore,
+): Promise<void> {
+  const rootStore = adapt(hostSecureStore)!;
+  await km.installMasterKey(rootStore, recoveredMasterKey);
+  _masterKeyPromise = Promise.resolve(recoveredMasterKey);
+  _store = null;
+  _takStore = null; // rebuild under the recovered key
+  const tak = getTakSessionStore(client, hostSecureStore, hostLocalStore);
+  const keychain = await km.restoreTakKeychain(recoveredMasterKey, () => keyBackupHttp(client).getTakBackup());
+  if (keychain) await tak.importKeychain(keychain);
 }
 
 /**

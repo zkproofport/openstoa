@@ -6,6 +6,7 @@
  */
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
+import * as km from './keyManager';
 
 function httpTransport(): MlsTransport {
   const base = (t: string) => `/api/topics/${t}/mls`;
@@ -97,13 +98,36 @@ function indexedDbStore(): SecureKVStore {
   };
 }
 
+// Single memoized IndexedDB handle shared by the root (master_key) store and the
+// encrypting wrapper — avoids opening multiple connections to the same DB.
+let _idb: SecureKVStore | null = null;
+function idbStore(): SecureKVStore {
+  if (!_idb) _idb = indexedDbStore();
+  return _idb;
+}
+
+// Phase 4: the device master_key lives (plaintext bytes) in the raw idb under a
+// reserved key; everything else (MLS state, TAK keys, message cache) is written
+// through EncryptingKVStore, sealed under HKDF(master_key,"local-store"). Memoized.
+let _masterKeyPromise: Promise<Uint8Array> | null = null;
+function masterKey(): Promise<Uint8Array> {
+  if (!_masterKeyPromise) _masterKeyPromise = km.loadOrCreateMasterKey(idbStore());
+  return _masterKeyPromise;
+}
+
+let _encStore: SecureKVStore | null = null;
+function encStore(): SecureKVStore {
+  if (!_encStore) _encStore = km.EncryptingKVStore.lazy(idbStore(), masterKey);
+  return _encStore;
+}
+
 let _store: MlsSessionStore | null = null;
 export function getMlsSessionStore(): MlsSessionStore {
   if (!_store) {
-    // One IndexedDB store backs both the MLS ClientState and the decrypted
-    // message cache; keys are namespaced (mls.state.* / mls.identity / mls.msg.*).
-    const idb = indexedDbStore();
-    _store = new MlsSessionStore(httpTransport(), deviceIdentity(), idb, idb);
+    // MLS ClientState + decrypted message cache, both at-rest encrypted under the
+    // master_key. Keys are namespaced (mls.state.* / mls.identity / mls.msg.*).
+    const s = encStore();
+    _store = new MlsSessionStore(httpTransport(), deviceIdentity(), s, s);
   }
   return _store;
 }
@@ -166,12 +190,100 @@ function httpTakTransport(): TakTransport {
   };
 }
 
+// Debounced upload of the master_key-encrypted TAK keychain to the server, so a
+// recovered master_key re-reads all archived history with no other member online
+// (design §6.4.1). Fired after any TAK write; best-effort (a failure never breaks
+// chat — the local keychain is still authoritative).
+let _takBackupTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleTakKeychainBackup(): void {
+  if (_takBackupTimer) clearTimeout(_takBackupTimer);
+  _takBackupTimer = setTimeout(() => {
+    void (async () => {
+      try {
+        const keychain = await getTakSessionStore().exportKeychain();
+        if (Object.keys(keychain).length === 0) return;
+        await km.uploadTakKeychain(await masterKey(), keychain, async (ciphertext) => {
+          const r = await fetch('/api/keys/tak-backup', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ciphertext }),
+          });
+          if (!r.ok) throw new Error(`tak-backup POST ${r.status}`);
+        });
+      } catch {
+        /* best-effort backup; retried on the next keychain change */
+      }
+    })();
+  }, 1500);
+}
+
 let _takStore: TakSessionStore | null = null;
 export function getTakSessionStore(): TakSessionStore {
   if (!_takStore) {
-    // Reuse the same IndexedDB store (TAK keys are namespaced tak.root.* /
-    // tak.epoch.*) and the live MLS session store for group-state reads.
-    _takStore = new TakSessionStore(getMlsSessionStore(), httpTakTransport(), indexedDbStore());
+    // Reuse the encrypting store (TAK keys namespaced tak.root.* / tak.epoch.*)
+    // and the live MLS session store for group-state reads. onKeychainChange
+    // schedules the encrypted server backup.
+    _takStore = new TakSessionStore(getMlsSessionStore(), httpTakTransport(), encStore(), scheduleTakKeychainBackup);
   }
   return _takStore;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 key-backup client (used by the recovery / induction UI, P4-05)
+// ---------------------------------------------------------------------------
+
+/** The device's master_key (loaded/created on first call). */
+export function getDeviceMasterKey(): Promise<Uint8Array> {
+  return masterKey();
+}
+
+/** HTTP client for /api/keys/backup + /api/keys/tak-backup (cookie auth). */
+export function keyBackupHttp() {
+  const json = { 'Content-Type': 'application/json' };
+  return {
+    async getBackup(): Promise<km.KeyBackupState> {
+      const r = await fetch('/api/keys/backup', { credentials: 'include' });
+      if (!r.ok) throw new Error(`keys/backup GET ${r.status}`);
+      return (await r.json()) as km.KeyBackupState;
+    },
+    async postRecovery(wrappedMasterB64: string): Promise<void> {
+      const r = await fetch('/api/keys/backup', {
+        method: 'POST',
+        credentials: 'include',
+        headers: json,
+        body: JSON.stringify({ type: 'recovery', wrappedMaster: wrappedMasterB64 }),
+      });
+      if (!r.ok) throw new Error(`keys/backup POST recovery ${r.status}`);
+    },
+    async postPasskey(credentialId: string, prfWrappedB64: string): Promise<void> {
+      const r = await fetch('/api/keys/backup', {
+        method: 'POST',
+        credentials: 'include',
+        headers: json,
+        body: JSON.stringify({ type: 'passkey', credentialId, prfWrapped: prfWrappedB64 }),
+      });
+      if (!r.ok) throw new Error(`keys/backup POST passkey ${r.status}`);
+    },
+    async getTakBackup(): Promise<string | null> {
+      const r = await fetch('/api/keys/tak-backup', { credentials: 'include' });
+      if (!r.ok) throw new Error(`keys/tak-backup GET ${r.status}`);
+      return (await r.json()).ciphertext as string | null;
+    },
+  };
+}
+
+/**
+ * Install a recovered master_key on this device and restore the TAK keychain from
+ * the server backup (recovery path). After this, chat re-joins MLS as a new leaf
+ * and reads all archived history the recovered keychain covers.
+ */
+export async function recoverDevice(recoveredMasterKey: Uint8Array): Promise<void> {
+  await km.installMasterKey(idbStore(), recoveredMasterKey);
+  _masterKeyPromise = Promise.resolve(recoveredMasterKey); // refresh memo for the encrypting store
+  _encStore = null;
+  _store = null;
+  _takStore = null; // rebuild stores under the recovered key
+  const keychain = await km.restoreTakKeychain(recoveredMasterKey, () => keyBackupHttp().getTakBackup());
+  if (keychain) await getTakSessionStore().importKeychain(keychain);
 }

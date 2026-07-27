@@ -77,6 +77,10 @@ export class TakSessionStore {
     private mls: MlsSessionStore,
     private transport: TakTransport,
     private store: SecureKVStore,
+    // Phase 4 (§6.4.1): fired after any TAK material is written so the wiring
+    // layer can re-upload the master_key-encrypted keychain backup. Optional —
+    // tests and pre-Phase-4 callers omit it.
+    private onKeychainChange?: () => void,
   ) {}
 
   private rootKey(t: string) {
@@ -85,6 +89,22 @@ export class TakSessionStore {
   private epochKey(t: string, e: number) {
     return `tak.epoch.${t}.${e}`;
   }
+  // A single manifest of every TAK store key we've written. SecureKVStore has no
+  // list operation (Keychain can't enumerate), so we track keys explicitly to be
+  // able to snapshot the whole keychain for the Phase 4 server backup.
+  private manifestKey() {
+    return 'tak.manifest';
+  }
+
+  private async recordKey(storeKey: string): Promise<void> {
+    const raw = await this.store.get(this.manifestKey());
+    const set: Record<string, true> = raw ? (JSON.parse(raw) as Record<string, true>) : {};
+    if (!set[storeKey]) {
+      set[storeKey] = true;
+      await this.store.set(this.manifestKey(), JSON.stringify(set));
+    }
+    this.onKeychainChange?.();
+  }
 
   private async getRoot(topicId: string): Promise<Uint8Array | null> {
     const v = await this.store.get(this.rootKey(topicId));
@@ -92,6 +112,7 @@ export class TakSessionStore {
   }
   private async setRoot(topicId: string, root: Uint8Array): Promise<void> {
     await this.store.set(this.rootKey(topicId), b64(root));
+    await this.recordKey(this.rootKey(topicId));
   }
   private async getEpochTak(topicId: string, epoch: number): Promise<Uint8Array | null> {
     const v = await this.store.get(this.epochKey(topicId, epoch));
@@ -99,6 +120,40 @@ export class TakSessionStore {
   }
   private async setEpochTak(topicId: string, epoch: number, t: Uint8Array): Promise<void> {
     await this.store.set(this.epochKey(topicId, epoch), b64(t));
+    await this.recordKey(this.epochKey(topicId, epoch));
+  }
+
+  /**
+   * Snapshot the whole TAK keychain (every root + epoch key held, across all
+   * topics) as a plain `{ storeKey: base64Value }` map. The wiring layer seals
+   * this under HKDF(master_key, tak-backup) and uploads it so a recovered
+   * master_key re-reads all archived history (design §6.4.1). Excludes the
+   * manifest bookkeeping key itself.
+   */
+  async exportKeychain(): Promise<Record<string, string>> {
+    const raw = await this.store.get(this.manifestKey());
+    if (!raw) return {};
+    const set = JSON.parse(raw) as Record<string, true>;
+    const out: Record<string, string> = {};
+    for (const k of Object.keys(set)) {
+      const v = await this.store.get(k);
+      if (v != null) out[k] = v;
+    }
+    return out;
+  }
+
+  /**
+   * Restore a keychain snapshot into the local store (recovery path). Writes each
+   * key and rebuilds the manifest so a later export round-trips. Does NOT fire
+   * onKeychainChange (restoring is not a new local change to re-upload).
+   */
+  async importKeychain(map: Record<string, string>): Promise<void> {
+    const set: Record<string, true> = {};
+    for (const [k, v] of Object.entries(map)) {
+      await this.store.set(k, v);
+      set[k] = true;
+    }
+    await this.store.set(this.manifestKey(), JSON.stringify(set));
   }
 
   // In-flight ensurePublicRoot per topic. Without this, a holder that calls

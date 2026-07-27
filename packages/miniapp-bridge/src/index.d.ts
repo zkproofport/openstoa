@@ -58,6 +58,12 @@ export interface HostApi {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
   };
+  /** Optional WebAuthn PRF (react-native-passkeys) for Phase 4 E2EE key recovery. */
+  passkeyPrf?(opts: {
+    mode: 'create' | 'get';
+    saltB64: string;
+    credentialId?: string;
+  }): Promise<{ credentialId: string; prfOutputB64: string }>;
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
   exitToHost(targetTab?: string): void;
   showError(code: string, details?: Record<string, unknown>): void;
