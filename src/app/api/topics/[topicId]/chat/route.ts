@@ -6,7 +6,12 @@ import { eq, and, desc, count, gt, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { checkGrantAllows } from '@/lib/aiGrants';
-import { dispatchDummyForMessage, getPushProvider } from '@/lib/push';
+import {
+  dispatchDummyForMessage,
+  dispatchCiphertextForMessage,
+  getPushProvider,
+  getPushMode,
+} from '@/lib/push';
 
 const ROUTE = '/api/topics/[topicId]/chat';
 
@@ -414,14 +419,31 @@ export async function POST(
     const redis = getRedis();
     await redis.publish(`chat:topic:${topicId}`, JSON.stringify({ event: 'message', data: payload }));
 
-    // Phase 6 push (design §13, D12-D14): fire a CONTENT-FREE dummy notification
-    // to every other member's device. Fire-and-forget — a push failure (or an
-    // unconfigured provider) must NEVER break the 200 response, and the payload
-    // carries zero message content (SI-1 for push). The message is already
-    // persisted + broadcast above; push is best-effort on top.
-    dispatchDummyForMessage(db, topicId, session.userId, getPushProvider()).catch((err) =>
-      logger.warn(ROUTE, 'push dispatch failed', { topicId, err: String(err) }),
-    );
+    // Push (design §13, D12-D14): notify every other member's device.
+    // Fire-and-forget — a push failure (or an unconfigured provider) must NEVER
+    // break the 200 response. Mode is env-gated (`PUSH_MODE`):
+    //   content-free (Phase A, default) — a dummy "New message" with zero
+    //     content (SI-1); the tapped app fetches + decrypts locally.
+    //   ciphertext   (Phase B, §13.5) — additionally carries the OPAQUE sealed
+    //     ciphertext already stored above, so an on-device NSE / FCM handler can
+    //     preview on the lockscreen; over the size budget it self-falls-back to
+    //     the content-free dummy. Either way no plaintext ever leaves the server.
+    const pushProvider = getPushProvider();
+    const pushDispatch =
+      getPushMode() === 'ciphertext'
+        ? dispatchCiphertextForMessage(
+            db,
+            {
+              topicId,
+              senderUserId: session.userId,
+              messageId: inserted.id,
+              sealedCiphertextB64: payload.sealed.ciphertext,
+              epoch: payload.sealed.epoch,
+            },
+            pushProvider,
+          )
+        : dispatchDummyForMessage(db, topicId, session.userId, pushProvider);
+    pushDispatch.catch((err) => logger.warn(ROUTE, 'push dispatch failed', { topicId, err: String(err) }));
 
     // NOTE: The inline @ask AI command was intentionally removed. AI inside
     // topic chat will return later as a first-class participant (a real
