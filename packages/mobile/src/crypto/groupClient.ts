@@ -194,6 +194,52 @@ export function currentEpoch(state: GroupState): number {
 }
 
 /**
+ * Leaf index (not node index) of the member whose basic-credential identity
+ * equals `identity`, or null if no such member exists in the validated ratchet
+ * tree. Used to target an MLS Remove at a specific device leaf (e.g. an AI
+ * member being revoked). Reads only the local validated state — never a
+ * server-supplied value.
+ */
+export function findLeafIndexByIdentity(state: GroupState, identity: string): number | null {
+  const tree = state.ratchetTree as Array<
+    { nodeType?: string; leaf?: { credential?: { credentialType?: string; identity?: Uint8Array } } } | undefined
+  >;
+  for (let i = 0; i < tree.length; i++) {
+    const node = tree[i];
+    if (!node || node.nodeType !== 'leaf' || !node.leaf) continue;
+    const cred = node.leaf.credential;
+    if (!cred || cred.credentialType !== 'basic' || !cred.identity) continue;
+    if (dec.decode(cred.identity) === identity) return i / 2; // node index → leaf index
+  }
+  return null;
+}
+
+/**
+ * Remove a member leaf via a Remove Commit (D11 revocation). Produces a Commit
+ * that drops `leafIndex` and advances the epoch, so the removed device is
+ * excluded from every future epoch (post-compromise security) while remaining
+ * members keep reading. Returns the new state, the base64 Commit to POST to
+ * /mls/commit (epoch-CAS), and the refreshed GroupInfo for later External
+ * Commits (e.g. re-adding the member from its reusable last-resort KeyPackage).
+ * Note (D11): this only gates FUTURE epochs — plaintext the member already
+ * received is NOT cryptographically revocable; that is paired with the server
+ * grant DELETE for immediate access-gating.
+ */
+export async function removeMember(
+  state: GroupState,
+  leafIndex: number,
+): Promise<{ state: GroupState; commitB64: string; groupInfoB64: string }> {
+  const cs = await impl();
+  const proposal = { proposalType: 'remove', remove: { removed: leafIndex } };
+  const res = await T().createCommit(
+    { state, cipherSuite: cs, pskIndex: T().emptyPskIndex },
+    { extraProposals: [proposal], ratchetTreeExtension: true },
+  );
+  const commitB64 = b64(T().encodeMlsMessage(res.commit));
+  return { state: res.newState, commitB64, groupInfoB64: await exportGroupInfo(res.newState) };
+}
+
+/**
  * Serialize the live MLS ClientState to base64 for durable persistence
  * (Keychain/Keystore via the host secure store). Encodes the full GroupState —
  * everything needed to keep sealing/opening as the same leaf after an app

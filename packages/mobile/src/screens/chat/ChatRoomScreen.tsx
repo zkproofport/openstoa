@@ -12,8 +12,10 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -53,6 +55,15 @@ import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
 import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls } from '../../crypto/mobileTransport';
 import type { Visibility } from '../../crypto/takSession';
+import type { TakSessionStore } from '../../crypto/takSession';
+import type { MlsSessionStore } from '../../crypto/mlsSession';
+import {
+  grantAiConsent,
+  grantAiHistory,
+  removeAiMember,
+  type AiMemberDirectory,
+  type AiGrantSpec,
+} from '../../crypto/aiMember';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -275,13 +286,92 @@ function makeStyles(colors: ThemeColors) {
       color: colors.brand.primary,
       textDecorationLine: 'underline' as const,
     },
+    bubbleAuthorRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      marginBottom: 2,
+      marginLeft: 2,
+    },
     bubbleAuthor: {
       fontSize: 12,
       fontWeight: '600' as const,
       color: colors.brand.primary,
-      marginBottom: 2,
-      marginLeft: 2,
     },
+    // AI-member badge (design §7 D9 — nickname + AI badge, is_ai=true).
+    aiBadge: {
+      fontSize: 9,
+      fontWeight: '700' as const,
+      color: colors.background.primary,
+      backgroundColor: colors.brand.primary,
+      overflow: 'hidden' as const,
+      borderRadius: 4,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      marginLeft: 6,
+    },
+    // ── AI consent sheet ──────────────────────────────────────────────────
+    headerBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+    headerBtnLabel: { fontSize: 13, fontWeight: '600' as const, color: colors.brand.primary },
+    sheetBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      justifyContent: 'flex-end' as const,
+    },
+    sheet: {
+      backgroundColor: colors.background.primary,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      padding: 20,
+      paddingBottom: 32,
+    },
+    sheetTitle: { fontSize: 17, fontWeight: '700' as const, color: colors.text.primary, marginBottom: 4 },
+    sheetSubtitle: { fontSize: 13, color: colors.text.secondary, marginBottom: 16 },
+    sheetLabel: { fontSize: 13, fontWeight: '600' as const, color: colors.text.primary, marginTop: 12, marginBottom: 6 },
+    sheetInput: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border.default,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: colors.text.primary,
+      backgroundColor: colors.background.secondary,
+    },
+    abilityRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      paddingVertical: 6,
+    },
+    abilityLabel: { fontSize: 14, color: colors.text.primary },
+    scopeRow: { flexDirection: 'row' as const, marginTop: 4 },
+    scopeChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border.default,
+      marginRight: 8,
+    },
+    scopeChipActive: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
+    scopeChipLabel: { fontSize: 13, color: colors.text.primary },
+    scopeChipLabelActive: { color: colors.background.primary, fontWeight: '600' as const },
+    sheetActions: { flexDirection: 'row' as const, justifyContent: 'flex-end' as const, marginTop: 20 },
+    sheetBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, marginLeft: 8 },
+    sheetBtnPrimary: { backgroundColor: colors.brand.primary },
+    sheetBtnPrimaryDisabled: { backgroundColor: colors.border.strong },
+    sheetBtnLabel: { fontSize: 14, color: colors.text.secondary },
+    sheetBtnPrimaryLabel: { fontSize: 14, color: colors.background.primary, fontWeight: '600' as const },
+    grantRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border.default,
+    },
+    grantId: { fontSize: 12, color: colors.text.secondary, flex: 1, marginRight: 12 },
+    removeLabel: { fontSize: 13, fontWeight: '600' as const, color: colors.status.danger },
     bubbleTime: {
       fontSize: 10,
       color: colors.text.tertiary,
@@ -376,8 +466,23 @@ export function ChatRoomScreen() {
   const visibilityRef = useRef<Visibility>('public');
   // The caller's topic role — secret-tier history is granted only by the owner.
   const roleRef = useRef<string | null>(null);
+  // Mirror the role into state so the owner-only AI controls re-render on load.
+  const [role, setRole] = useState<string | null>(null);
+  const [aiSheetOpen, setAiSheetOpen] = useState(false);
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
+
+  // AI-grant + KeyPackage Delivery-Service surface over the authenticated client
+  // (server is crypto-free — this only moves metadata + opaque public bytes).
+  const aiDir = useMemo<AiMemberDirectory>(
+    () => ({
+      publishKeyPackage: (t, body) => client.post<{ id: string }>(`/api/topics/${t}/mls/key-packages`, body),
+      createGrant: (t, spec) =>
+        client.post<{ grant: { id: string } }>(`/api/topics/${t}/ai/grants`, spec).then((r) => ({ id: r.grant.id })),
+      revokeGrant: (t, id) => client.delete(`/api/topics/${t}/ai/grants/${id}`).then(() => undefined),
+    }),
+    [client],
+  );
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -503,6 +608,7 @@ export function ChatRoomScreen() {
         const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
         if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
         roleRef.current = tj?.currentUserRole ?? null;
+        setRole(tj?.currentUserRole ?? null);
       } catch {}
       try {
         const history = await tak.backfill(topicId, visibilityRef.current);
@@ -623,20 +729,38 @@ export function ChatRoomScreen() {
     }
   }, [allMessages, scrollToBottom]);
 
-  // ── Presence header decoration ─────────────────────────────────────────────
+  // ── Presence + owner AI-agent header decoration ────────────────────────────
+  const isOwnerRole = role === 'owner' || role === 'admin';
   useEffect(() => {
     navigation.setOptions({
       title: topicTitle,
-      headerRight: presence
-        ? () => (
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {isOwnerRole ? (
+            <TouchableOpacity style={styles.headerBtn} onPress={() => setAiSheetOpen(true)} activeOpacity={0.7}>
+              <Text style={styles.headerBtnLabel}>AI</Text>
+            </TouchableOpacity>
+          ) : null}
+          {presence ? (
             <View style={styles.presenceBadge}>
               <View style={styles.presenceDot} />
               <Text style={styles.presenceCount}>{presence.count}</Text>
             </View>
-          )
-        : undefined,
+          ) : null}
+        </View>
+      ),
     });
-  }, [navigation, topicTitle, presence, styles.presenceBadge, styles.presenceDot, styles.presenceCount]);
+  }, [
+    navigation,
+    topicTitle,
+    presence,
+    isOwnerRole,
+    styles.headerBtn,
+    styles.headerBtnLabel,
+    styles.presenceBadge,
+    styles.presenceDot,
+    styles.presenceCount,
+  ]);
 
   // ── Scroll handler: history pagination + near-bottom tracking ─────────────
   const onScrollTop = useCallback(
@@ -896,6 +1020,16 @@ export function ChatRoomScreen() {
       </View>
     </KeyboardAvoidingView>
     <ImageViewerModal url={imageViewerUrl} onClose={() => setImageViewerUrl(null)} />
+    <AiAgentSheet
+      visible={aiSheetOpen}
+      onClose={() => setAiSheetOpen(false)}
+      topicId={topicId}
+      client={client}
+      dir={aiDir}
+      mls={mls}
+      tak={tak}
+      styles={styles}
+    />
     </>
   );
 }
@@ -1106,9 +1240,12 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
 
   return (
     <View style={styles.messageRow}>
-      {/* Author name — other users only, first in group */}
+      {/* Author name — other users only, first in group. AI members show a badge. */}
       {!isOwn && !sameAuthor ? (
-        <Text style={styles.bubbleAuthor}>{item.nickname}</Text>
+        <View style={styles.bubbleAuthorRow}>
+          <Text style={styles.bubbleAuthor}>{item.nickname}</Text>
+          {item.isAI ? <Text style={styles.aiBadge}>AI</Text> : null}
+        </View>
       ) : null}
 
       {/* Bubble row */}
@@ -1189,5 +1326,216 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
         </View>
       ) : null}
     </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AiAgentSheet — owner consent surface to add / remove an AI member (design §7)
+// ---------------------------------------------------------------------------
+
+// Ability allowlist offered in the consent sheet (subset of the server's
+// ALLOWED_CMDS). Defaults follow the task: chat read + send + summarize.
+const AI_ABILITIES: { cmd: string; label: string; default: boolean }[] = [
+  { cmd: '/openstoa/chat/read', label: 'Read chat', default: true },
+  { cmd: '/openstoa/chat/send', label: 'Send messages', default: true },
+  { cmd: '/ai/summarize', label: 'Summarize', default: true },
+  { cmd: '/openstoa/post/read', label: 'Read posts', default: false },
+];
+type HistoryScope = 'none' | '30d' | 'full';
+const SCOPES: { key: HistoryScope; label: string }[] = [
+  { key: 'none', label: 'No history' },
+  { key: '30d', label: 'Last 30 days' },
+  { key: 'full', label: 'Full history' },
+];
+
+interface AiGrantWire {
+  id: string;
+  aiUserId: string;
+  cmd: string[];
+  historyGrant: string;
+}
+
+interface AiAgentSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  topicId: string;
+  client: ReturnType<typeof useOpenStoaClient>;
+  dir: AiMemberDirectory;
+  mls: MlsSessionStore;
+  tak: TakSessionStore;
+  styles: Styles;
+}
+
+function AiAgentSheet({ visible, onClose, topicId, client, dir, mls, tak, styles }: AiAgentSheetProps) {
+  const [aiUserId, setAiUserId] = useState('');
+  const [abilities, setAbilities] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(AI_ABILITIES.map((a) => [a.cmd, a.default])),
+  );
+  const [scope, setScope] = useState<HistoryScope>('30d');
+  const [grants, setGrants] = useState<AiGrantWire[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const refreshGrants = useCallback(async () => {
+    try {
+      const r = await client.get<{ grants: AiGrantWire[] }>(`/api/topics/${topicId}/ai/grants`);
+      setGrants(r.grants ?? []);
+    } catch {
+      /* non-fatal — the list just stays empty */
+    }
+  }, [client, topicId]);
+
+  useEffect(() => {
+    if (visible) void refreshGrants();
+  }, [visible, refreshGrants]);
+
+  // Resolve the chosen history scope → the epochs to hand the bot. The
+  // epoch↔time map comes from the archive rows themselves (tak_version = epoch,
+  // created_at ≈ send time). `none` grants nothing; `full` grants every archived
+  // epoch; `30d` only epochs with in-window archives. grantScoped then sends only
+  // the epochs the owner actually holds — anything else stays unreadable.
+  const resolveScopeEpochs = useCallback(
+    async (s: HistoryScope): Promise<number[]> => {
+      if (s === 'none') return [];
+      const rows = await client
+        .get<{ archive: { takVersion: number; createdAt: string }[] }>(`/api/topics/${topicId}/archive?limit=500`)
+        .then((r) => r.archive)
+        .catch(() => [] as { takVersion: number; createdAt: string }[]);
+      const cutoff = s === '30d' ? Date.now() - 30 * 86_400_000 : -Infinity;
+      const epochs = new Set<number>();
+      for (const r of rows) if (Date.parse(r.createdAt) >= cutoff) epochs.add(r.takVersion);
+      return [...epochs];
+    },
+    [client, topicId],
+  );
+
+  const onAdd = useCallback(async () => {
+    const id = aiUserId.trim();
+    if (!id || busy) return;
+    const cmd = AI_ABILITIES.filter((a) => abilities[a.cmd]).map((a) => a.cmd);
+    if (cmd.length === 0) {
+      Alert.alert('Pick at least one ability');
+      return;
+    }
+    setBusy(true);
+    try {
+      // Consent (D9): create the UCAN-shaped grant. The AI's MLS credential
+      // identity is its user id, so the same id targets the scoped TAK + Remove.
+      const spec: AiGrantSpec = { aiUserId: id, cmd, historyGrant: scope === 'none' ? 'none' : scope === '30d' ? '30d' : 'full' };
+      await grantAiConsent(dir, topicId, spec);
+      // Deliver the in-scope epoch TAKs to the bot's leaf (out-of-scope omitted).
+      const epochs = await resolveScopeEpochs(scope);
+      if (epochs.length) await grantAiHistory(tak, topicId, id, epochs).catch(() => 0);
+      setAiUserId('');
+      await refreshGrants();
+    } catch (err) {
+      Alert.alert('Add AI agent failed', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [aiUserId, abilities, scope, busy, dir, tak, topicId, resolveScopeEpochs, refreshGrants]);
+
+  const onRemove = useCallback(
+    async (grant: AiGrantWire) => {
+      setBusy(true);
+      try {
+        // Revoke (D11): grant DELETE (immediate access-gate) + MLS Remove
+        // Commit (excludes the bot from future epochs). Already-delivered
+        // plaintext is not cryptographically revocable — future access only.
+        await removeAiMember(mls, dir, topicId, grant.aiUserId, grant.id).catch(async (e) => {
+          // If the bot never joined the MLS group there is no leaf to remove;
+          // still ensure the grant is revoked so the access-gate closes.
+          await dir.revokeGrant(topicId, grant.id).catch(() => {});
+          throw e;
+        });
+      } catch {
+        /* revoke already attempted; surface nothing further */
+      } finally {
+        await refreshGrants();
+        setBusy(false);
+      }
+    },
+    [mls, dir, topicId, refreshGrants],
+  );
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity style={styles.sheet} activeOpacity={1} onPress={() => {}}>
+          <Text style={styles.sheetTitle}>Add AI agent</Text>
+          <Text style={styles.sheetSubtitle}>
+            The agent joins with its own key and acts only within the abilities you grant.
+          </Text>
+
+          <Text style={styles.sheetLabel}>AI agent ID</Text>
+          <TextInput
+            style={styles.sheetInput}
+            placeholder="0x… (the agent's user id)"
+            value={aiUserId}
+            onChangeText={setAiUserId}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy}
+          />
+
+          <Text style={styles.sheetLabel}>Abilities</Text>
+          {AI_ABILITIES.map((a) => (
+            <View key={a.cmd} style={styles.abilityRow}>
+              <Text style={styles.abilityLabel}>{a.label}</Text>
+              <Switch
+                value={!!abilities[a.cmd]}
+                onValueChange={(v) => setAbilities((prev) => ({ ...prev, [a.cmd]: v }))}
+                disabled={busy}
+              />
+            </View>
+          ))}
+
+          <Text style={styles.sheetLabel}>History access</Text>
+          <View style={styles.scopeRow}>
+            {SCOPES.map((s) => {
+              const active = scope === s.key;
+              return (
+                <TouchableOpacity
+                  key={s.key}
+                  style={[styles.scopeChip, active && styles.scopeChipActive]}
+                  onPress={() => setScope(s.key)}
+                  disabled={busy}
+                >
+                  <Text style={[styles.scopeChipLabel, active && styles.scopeChipLabelActive]}>{s.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {grants.length > 0 ? (
+            <>
+              <Text style={styles.sheetLabel}>Active AI agents</Text>
+              {grants.map((g) => (
+                <View key={g.id} style={styles.grantRow}>
+                  <Text style={styles.grantId} numberOfLines={1}>
+                    {g.aiUserId}
+                  </Text>
+                  <TouchableOpacity onPress={() => onRemove(g)} disabled={busy}>
+                    <Text style={styles.removeLabel}>Remove AI</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </>
+          ) : null}
+
+          <View style={styles.sheetActions}>
+            <TouchableOpacity style={styles.sheetBtn} onPress={onClose} disabled={busy}>
+              <Text style={styles.sheetBtnLabel}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sheetBtn, styles.sheetBtnPrimary, (busy || !aiUserId.trim()) && styles.sheetBtnPrimaryDisabled]}
+              onPress={onAdd}
+              disabled={busy || !aiUserId.trim()}
+            >
+              {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.sheetBtnPrimaryLabel}>Add</Text>}
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   );
 }
