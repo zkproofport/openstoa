@@ -374,6 +374,8 @@ export function ChatRoomScreen() {
   // the TAK tier (public root vs scoped) — resolved once on mount.
   const [recovered, setRecovered] = useState<Record<string, string>>({});
   const visibilityRef = useRef<Visibility>('public');
+  // The caller's topic role — secret-tier history is granted only by the owner.
+  const roleRef = useRef<string | null>(null);
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
   const listRef = useRef<FlatList<ChatMessage>>(null);
@@ -484,8 +486,10 @@ export function ChatRoomScreen() {
       } else if (visibilityRef.current === 'private') {
         // SI-6b: explicit per-leaf grant of the epochs we hold; no custodian.
         await tak.grantPrivateHistory(topicId);
+      } else if (visibilityRef.current === 'secret' && roleRef.current === 'owner') {
+        // secret: no auto-grant by default — only the owner shares history.
+        await tak.grantPrivateHistory(topicId);
       }
-      // secret: no auto-grant — the owner grants explicitly.
     } catch {
       /* lease held elsewhere / nothing to grant — no-op */
     }
@@ -495,9 +499,10 @@ export function ChatRoomScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const tj = await client.get<{ topic?: { visibility?: string }; visibility?: string }>(`/api/topics/${topicId}`);
+        const tj = await client.get<{ topic?: { visibility?: string }; visibility?: string; currentUserRole?: string | null }>(`/api/topics/${topicId}`);
         const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
         if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
+        roleRef.current = tj?.currentUserRole ?? null;
       } catch {}
       try {
         const history = await tak.backfill(topicId, visibilityRef.current);

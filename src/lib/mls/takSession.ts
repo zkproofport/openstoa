@@ -236,16 +236,22 @@ export class TakSessionStore {
    * owner grants explicitly (grantScoped) — so callers gate this to private.
    * Returns the number of leaves newly granted.
    */
-  async grantPrivateHistory(topicId: string): Promise<number> {
-    // Ensure we hold the current epoch's TAK, then bundle every epoch TAK we
-    // have. We probe the PERSISTED store for epochs 0..current rather than an
-    // in-memory set, so a member that restarted still grants its full archived
-    // history (the in-memory set is lost on reload; the keys survive).
+  async grantPrivateHistory(topicId: string, opts?: { windowDays?: number }): Promise<number> {
     await this.cacheCurrentEpochTak(topicId);
-    const current = await this.mls.readState(topicId, async (s) => gc.currentEpoch(s));
+    // Bound the grant to a recent window (design §5.2 private default 30d). The
+    // epoch→time map comes from the archive rows themselves (created_at ≈ send
+    // time, tak_version = epoch) — no extra plumbing — and we only grant epochs
+    // that actually have archived content in-window. windowDays<=0 = full history.
+    const windowDays = opts?.windowDays ?? 30;
+    const cutoffMs = windowDays > 0 ? Date.now() - windowDays * 86_400_000 : -Infinity;
+    const rows = await this.transport.getArchive(topicId);
+    const inWindow = new Set<number>();
+    for (const r of rows) {
+      if (Date.parse(r.createdAt) >= cutoffMs) inWindow.add(r.takVersion);
+    }
     const taks: Record<string, string> = {};
-    let minEpoch = current;
-    for (let e = 0; e <= current; e++) {
+    let minEpoch = Infinity;
+    for (const e of inWindow) {
       const t = await this.getEpochTak(topicId, e);
       if (t) {
         taks[String(e)] = b64(t);

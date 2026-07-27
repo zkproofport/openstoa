@@ -348,6 +348,8 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
   // Topic visibility drives the TAK tier (public root vs scoped per-epoch).
   // Resolved once per topic in the history effect; defaults to public.
   const visibilityRef = useRef<Visibility>('public');
+  // The caller's topic role — secret-tier history is granted only by the owner.
+  const roleRef = useRef<string | null>(null);
 
   // Uploads via /api/upload and posts the returned URL as a chat message.
   // The message body is the bare URL — MessageRow's isImageUrl detection
@@ -463,6 +465,9 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
         if (r.ok) await tak.distributePublicRoot(topicId);
       } else if (visibilityRef.current === 'private') {
         await tak.grantPrivateHistory(topicId);
+      } else if (visibilityRef.current === 'secret' && roleRef.current === 'owner') {
+        // secret: no auto-grant by default — only the owner shares history.
+        await tak.grantPrivateHistory(topicId);
       }
     } catch {}
   }, [topicId]);
@@ -482,6 +487,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
           const tj = await tr.json();
           const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
           if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
+          roleRef.current = (tj?.currentUserRole as string | null) ?? null;
         }
       } catch {}
 

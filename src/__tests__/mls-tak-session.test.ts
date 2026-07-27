@@ -63,7 +63,8 @@ class MemoryTak implements TakTransport {
   async postArchive(t: string, messageId: string, takVersion: number, ciphertext: string) {
     const list = this.archive.get(t) ?? [];
     if (list.some((r) => r.messageId === messageId)) return; // idempotent (topic, message)
-    list.push({ messageId, takVersion, ciphertext, createdAt: this.next() });
+    // Real ISO timestamp so the private grant's time-window (Date.parse) works.
+    list.push({ messageId, takVersion, ciphertext, createdAt: new Date().toISOString() });
     this.archive.set(t, list);
   }
   async getArchive(t: string) {
@@ -71,7 +72,9 @@ class MemoryTak implements TakTransport {
   }
   async postBundle(t: string, recipientUserId: string, recipientDeviceId: string, bundle: string, scope: string) {
     const list = this.bundles.get(t) ?? [];
-    list.push({ id: this.next(), bundle, scope, createdAt: this.next(), recipientUserId, recipientDeviceId, delivered: false });
+    // Mirror the server-side dedup: skip an undelivered duplicate (topic, device, scope).
+    if (list.some((b) => b.recipientDeviceId === recipientDeviceId && b.scope === scope && !b.delivered)) return;
+    list.push({ id: this.next(), bundle, scope, createdAt: new Date().toISOString(), recipientUserId, recipientDeviceId, delivered: false });
     this.bundles.set(t, list);
   }
   async getBundles(t: string, deviceId: string) {
@@ -219,6 +222,33 @@ describe('TAK orchestration — private auto-grant (grantPrivateHistory, leaf-ta
 
     const history = await bob.tak.backfill(T, 'private');
     expect(history.find((h) => h.messageId === 'm-p0')?.plaintext).toBe('private-epoch0');
+  });
+
+  it('bounds the grant to a time window — an epoch whose only archive is old is excluded', async () => {
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'priv-window';
+    const alice = makeClient(ds, tt, 'alice');
+    // epoch 0: an OLD message (age its archive 40 days back).
+    await alice.mls.seal(T, 'genesis');
+    await alice.tak.archiveOnSend(T, 'm-old', 'old-epoch0', 'private');
+    tt.archive.get(T)!.find((r) => r.messageId === 'm-old')!.createdAt = new Date(
+      Date.now() - 40 * 86_400_000,
+    ).toISOString();
+
+    // epoch 1: a RECENT message (bob's join advances the epoch).
+    const bob = makeClient(ds, tt, 'bob');
+    const seed = await alice.mls.seal(T, 'seed');
+    await bob.mls.open(T, seed);
+    await fanOutCommits(ds, T, [alice]);
+    await alice.tak.archiveOnSend(T, 'm-new', 'new-epoch1', 'private');
+
+    // A 30-day grant covers epoch 1 (recent) but NOT epoch 0 (40d old) → bob
+    // reads m-new and cannot read m-old (it never receives the epoch-0 TAK).
+    await alice.tak.grantPrivateHistory(T, { windowDays: 30 });
+    const h = await bob.tak.backfill(T, 'private');
+    expect(h.find((x) => x.messageId === 'm-new')?.plaintext).toBe('new-epoch1');
+    expect(h.find((x) => x.messageId === 'm-old')).toBeUndefined();
   });
 });
 

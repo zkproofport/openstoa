@@ -30,7 +30,14 @@ interface Rows<T> {
 // TAK bundles (to-device delivery)
 // ---------------------------------------------------------------------------
 
-/** Store one HPKE-wrapped TAK bundle for a recipient device. Returns its id. */
+/**
+ * Store one HPKE-wrapped TAK bundle for a recipient device, DEDUPED: if an
+ * undelivered bundle already exists for the same (topic, recipient device,
+ * scope) it is NOT inserted again. This collapses the redundant re-distribution
+ * a holder/granter does on every mount + join event (incl. React strict-mode
+ * double-mounts) into one pending bundle per recipient. Returns the new id, or
+ * '' when a duplicate was skipped.
+ */
 export async function storeTakBundle(
   executor: SqlExecutor,
   topicId: string,
@@ -41,10 +48,15 @@ export async function storeTakBundle(
 ): Promise<string> {
   const res = (await executor.execute(sql`
     INSERT INTO tak_bundles (topic_id, recipient_user_id, recipient_device_id, ciphertext, scope, created_at)
-    VALUES (${topicId}, ${recipientUserId}, ${recipientDeviceId}, ${ciphertext}, ${scope}, now())
+    SELECT ${topicId}, ${recipientUserId}, ${recipientDeviceId}, ${ciphertext}, ${scope}, now()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM tak_bundles
+      WHERE topic_id = ${topicId} AND recipient_device_id = ${recipientDeviceId}
+        AND scope = ${scope} AND delivered_at IS NULL
+    )
     RETURNING id
   `)) as Rows<{ id: string }>;
-  return res.rows[0].id;
+  return res.rows[0]?.id ?? '';
 }
 
 export interface PendingBundle {
