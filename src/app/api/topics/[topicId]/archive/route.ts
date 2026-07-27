@@ -11,6 +11,7 @@ import {
   MLS_RATE_ARCHIVE,
 } from '@/lib/mls/http';
 import { storeArchiveRow, getArchiveSince, type ArchiveCursor } from '@/lib/mls/archive';
+import { checkGrantAllows } from '@/lib/aiGrants';
 
 const ROUTE = '/api/topics/[topicId]/archive';
 const ARCHIVE_PAGE_DEFAULT = 200;
@@ -183,6 +184,16 @@ export async function GET(
     const { topicId } = await params;
     const auth = await requireMember(request, topicId);
     if ('error' in auth) return auth.error!;
+
+    // Phase 5 (D9): an AI reader must hold an active grant allowing history read
+    // — this keeps out-of-scope past unreadable at the server gate. Humans are
+    // gated by membership only.
+    if (auth.session.isAI) {
+      const allowed = await checkGrantAllows(db, topicId, auth.session.userId, '/openstoa/post/read');
+      if (!allowed) {
+        return NextResponse.json({ error: 'AI grant required: /openstoa/post/read not permitted' }, { status: 403 });
+      }
+    }
 
     const sp = new URL(request.url).searchParams;
     const since = sp.get('since');

@@ -345,6 +345,38 @@ export const chatArchive = pgTable('chat_archive', {
   topicCreatedIdx: index('chat_archive_topic_created_idx').on(table.topicId, table.createdAt),
 }));
 
+// Phase 5 (design §7, D9/D11) — UCAN-shaped scoped delegation from a human
+// OWNER to an AI member. Mirrors the UCAN 1.0 Delegation payload (cmd/pol/meta,
+// see docs/research/openstoa-ucan-capability-schema.md): `cmd` is the ability
+// allowlist (attenuated command paths), `history_grant` is the TAK scope the AI
+// may back-fill (never wider than the grant), `depth` bounds sub-delegation
+// (≤3, UCAN §7.2), `dpop_jkt` binds an ephemeral transport key against key
+// theft (RFC 9449), `consent_anchor` is the optional EAS attestation UID for
+// on-chain revocation. This table holds NO key material and NO plaintext (C1/
+// SI-1) — it is pure access-control metadata the server evaluates before an AI
+// caller performs a chat send / history read.
+//
+// D11 revocation note: setting `revoked_at` gates FUTURE server-mediated AI
+// actions (checkGrantAllows → false → 403) and pairs with a client-driven MLS
+// Remove (future PCS). Past plaintext the AI already received is NOT
+// cryptographically revocable (RFC 9420) — revocation = server access-gating +
+// MLS Remove(future) + grant revoke, never a retroactive unshare.
+export const aiGrants = pgTable('ai_grants', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  granterUserId: text('granter_user_id').references(() => users.id).notNull(), // human owner (nullifier)
+  aiUserId: text('ai_user_id').notNull(), // bot nullifier (no FK: bot may not have a users row yet)
+  cmd: text('cmd').array().notNull(), // ability allowlist, e.g. ['/openstoa/chat/send', '/openstoa/post/read']
+  historyGrant: text('history_grant').notNull(), // TAK scope: none | Nd | since_epoch:N | full (isValidTakScope)
+  depth: integer('depth').notNull().default(1), // max delegation depth (≤3)
+  dpopJkt: text('dpop_jkt'), // RFC 9449 JWK thumbprint (key-theft binding); nullable
+  consentAnchor: text('consent_anchor'), // EAS attestation UID; nullable
+  revokedAt: timestamp('revoked_at', { withTimezone: true }), // null = active
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  topicAiIdx: index('ai_grants_topic_ai_idx').on(table.topicId, table.aiUserId),
+}));
+
 export const userVerifications = pgTable('user_verifications', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
