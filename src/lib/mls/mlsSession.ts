@@ -308,4 +308,34 @@ export class MlsSessionStore {
       await this.persist(topicId, s);
     });
   }
+
+  /**
+   * Remove a member (by MLS credential identity) with a Remove Commit, advancing
+   * the epoch so the removed device is excluded from every FUTURE epoch (D11
+   * post-compromise security). Catches up to the latest epoch first, then posts
+   * under epoch-CAS, rebasing on a 409 (another Commit landed between our read
+   * and post). Returns the new current epoch. Throws if the identity is not a
+   * current member. Callers pair this with the server grant DELETE for immediate
+   * access-gating — already-delivered plaintext is not cryptographically
+   * revocable.
+   */
+  removeMember(topicId: string, identity: string): Promise<number> {
+    return this.withLock(topicId, async () => {
+      const s = await this.getSession(topicId);
+      for (let attempt = 0; attempt < BOOTSTRAP_RETRIES; attempt++) {
+        await this.catchUp(topicId, s);
+        const leafIndex = gc.findLeafIndexByIdentity(s.state, identity);
+        if (leafIndex == null) throw new Error(`identity ${identity} is not a member of topic ${topicId}`);
+        const r = await gc.removeMember(s.state, leafIndex);
+        const res = await this.transport.postCommit(topicId, r.commitB64, r.groupInfoB64);
+        if (res.ok) {
+          s.state = r.state;
+          await this.persist(topicId, s);
+          return gc.currentEpoch(s.state);
+        }
+        // epoch-CAS conflict: another Commit landed; loop to catch up + rebuild.
+      }
+      throw new Error(`removeMember failed for topic ${topicId} after ${BOOTSTRAP_RETRIES} attempts`);
+    });
+  }
 }
