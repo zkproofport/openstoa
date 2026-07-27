@@ -114,6 +114,24 @@ export interface HostApi {
     credentialId?: string;
   }): Promise<{ credentialId: string; prfOutputB64: string }>;
 
+  /**
+   * Optional host-provided OS push registration for Phase 6 content-free
+   * notifications (design §13, D12-D14). The host requests notification
+   * permission and obtains an OS/Expo push token, returning it alongside a
+   * stable, client-generated opaque `routingHandle` (persisted by the host so
+   * it survives restarts; NO rotation in Phase A). The mini-app POSTs the result
+   * to `/api/push/register` so the near-blind gateway can map `routingHandle →
+   * pushToken`. The server only ever sends a DUMMY "New message" — no message
+   * content leaves the device unencrypted. Returns null when push is
+   * unavailable on this host (permission denied, no push support, simulator),
+   * in which case the mini-app simply skips registration.
+   */
+  registerForPush?(): Promise<{
+    routingHandle: string;
+    pushToken: string;
+    platform: 'ios' | 'android';
+  } | null>;
+
   /** Generate a ZK proof on the host (e.g. via mopro on ZKProofport). */
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
 

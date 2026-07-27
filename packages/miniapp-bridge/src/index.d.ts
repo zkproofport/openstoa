@@ -64,6 +64,12 @@ export interface HostApi {
     saltB64: string;
     credentialId?: string;
   }): Promise<{ credentialId: string; prfOutputB64: string }>;
+  /** Optional OS push registration for Phase 6 content-free notifications. Null when unavailable. */
+  registerForPush?(): Promise<{
+    routingHandle: string;
+    pushToken: string;
+    platform: 'ios' | 'android';
+  } | null>;
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
   exitToHost(targetTab?: string): void;
   showError(code: string, details?: Record<string, unknown>): void;
