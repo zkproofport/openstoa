@@ -53,6 +53,11 @@ const options: swaggerJsdoc.Options = {
       },
       { name: 'Tags', description: 'Tag search and listing' },
       { name: 'OG', description: 'Open Graph metadata proxy for link previews' },
+      {
+        name: 'AI',
+        description:
+          'AI-member capability delegation (UCAN-shaped). A topic owner grants a scoped, revocable capability (cmd allowlist + history scope + depth) to an AI member; the server enforces it on chat send / history read.',
+      },
     ],
     components: {
       securitySchemes: {

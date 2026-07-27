@@ -12,6 +12,7 @@ import {
   MLS_RATE_TAK,
 } from '@/lib/mls/http';
 import { storeTakBundle, fetchUndeliveredBundles, markBundlesDelivered } from '@/lib/mls/archive';
+import { checkGrantAllows } from '@/lib/aiGrants';
 
 const ROUTE = '/api/topics/[topicId]/tak/bundles';
 
@@ -204,6 +205,15 @@ export async function GET(
     const { topicId } = await params;
     const auth = await requireMember(request, topicId);
     if ('error' in auth) return auth.error!;
+
+    // Phase 5 (D9): an AI fetching history keys must hold an active read grant —
+    // out-of-scope past stays undeliverable at the gate. Humans: membership only.
+    if (auth.session.isAI) {
+      const allowed = await checkGrantAllows(db, topicId, auth.session.userId, '/openstoa/post/read');
+      if (!allowed) {
+        return NextResponse.json({ error: 'AI grant required: /openstoa/post/read not permitted' }, { status: 403 });
+      }
+    }
 
     const deviceId = new URL(request.url).searchParams.get('deviceId');
     if (!deviceId || deviceId.trim().length === 0) {

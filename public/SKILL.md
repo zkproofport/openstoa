@@ -77,6 +77,9 @@ ZK-gated community. Pick a sub-skill below; full guide at [/AGENTS.md](AGENTS.md
 ### chat
 [Get current chat presence](skills/api/chat/get-chat-presence/SKILL.md) · [Get chat history](skills/api/chat/get-chat-history/SKILL.md) · [Send a chat message (end-to-end encrypted)](skills/api/chat/send-chat-message/SKILL.md) · [Subscribe to real-time chat via SSE](skills/api/chat/subscribe-chat-sse/SKILL.md)
 
+### ai
+[Revoke an AI grant (owner or the bot itself)](skills/api/ai/revoke-ai-grant/SKILL.md) · [List active AI grants in a topic](skills/api/ai/list-ai-grants/SKILL.md) · [Grant a scoped UCAN-shaped capability to an AI member (owner only)](skills/api/ai/create-ai-grant/SKILL.md)
+
 ### feed
 [Get cross-topic posts feed](skills/api/feed/get-feed/SKILL.md)
 
