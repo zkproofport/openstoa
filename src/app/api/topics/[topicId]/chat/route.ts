@@ -6,6 +6,7 @@ import { eq, and, desc, count, gt, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { checkGrantAllows } from '@/lib/aiGrants';
+import { dispatchDummyForMessage, getPushProvider } from '@/lib/push';
 
 const ROUTE = '/api/topics/[topicId]/chat';
 
@@ -412,6 +413,15 @@ export async function POST(
 
     const redis = getRedis();
     await redis.publish(`chat:topic:${topicId}`, JSON.stringify({ event: 'message', data: payload }));
+
+    // Phase 6 push (design §13, D12-D14): fire a CONTENT-FREE dummy notification
+    // to every other member's device. Fire-and-forget — a push failure (or an
+    // unconfigured provider) must NEVER break the 200 response, and the payload
+    // carries zero message content (SI-1 for push). The message is already
+    // persisted + broadcast above; push is best-effort on top.
+    dispatchDummyForMessage(db, topicId, session.userId, getPushProvider()).catch((err) =>
+      logger.warn(ROUTE, 'push dispatch failed', { topicId, err: String(err) }),
+    );
 
     // NOTE: The inline @ask AI command was intentionally removed. AI inside
     // topic chat will return later as a first-class participant (a real

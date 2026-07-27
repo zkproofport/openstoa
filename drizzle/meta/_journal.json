@@ -134,6 +134,13 @@
       "when": 1785155720398,
       "tag": "0018_jazzy_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785156714063,
+      "tag": "0019_unique_shiver_man",
+      "breakpoints": true
     }
   ]
 }

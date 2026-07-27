@@ -11,6 +11,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { usePushRegistration } from '../../hooks/usePushRegistration';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -173,6 +174,10 @@ export function ChatListScreen() {
   // We still call the hooks below unconditionally so rules-of-hooks holds,
   // but gate `enabled` so guests don't fire 401s in a loop.
   const { isGuest } = useRequireAuth();
+
+  // Phase 6 push: register this device for content-free chat notifications once
+  // the user is authenticated. No-op on hosts without push support.
+  usePushRegistration(!isGuest);
 
   // Without view=all, /api/topics returns only joined topics for authenticated
   // users (verified via openstoa/src/app/api/topics/route.ts).

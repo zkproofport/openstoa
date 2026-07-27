@@ -442,3 +442,26 @@ export const takKeyBackups = pgTable('tak_key_backups', {
   ciphertext: bytea('ciphertext').notNull(), // AEAD(deriveTakBackupKey(master_key), TAK-keychain JSON)
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+// Phase 6 push notifications — Phase A (design §13, D12/D13/D14). The server is a
+// near-blind push gateway: it maps an opaque, client-generated `routing_handle`
+// → OS `push_token` and NEVER puts message content in a push payload (SI-1 for
+// push — the dummy body is a constant "New message"). This table holds tokens
+// ONLY: no keys, no plaintext, no ciphertext. `routing_handle` is a simple
+// opaque handle with NO rotation in Phase A (PRF-rotating handles + dummy
+// traffic are Phase 8, §13.3). Unique on (user_id, routing_handle) so a device
+// re-registering the same handle rotates its token via upsert instead of
+// duplicating. Rows cascade-delete with the user account.
+export const pushTokens = pgTable('push_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(), // nullifier
+  routingHandle: text('routing_handle').notNull(), // opaque, client-generated, no rotation (Phase A)
+  pushToken: text('push_token').notNull(), // OS/Expo push token (no message content ever stored here)
+  platform: varchar('platform', { length: 10 }).notNull(), // 'ios' | 'android'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  userHandleIdx: uniqueIndex('push_tokens_user_handle_idx').on(table.userId, table.routingHandle),
+  // Supports the topic-member fan-out join (push_tokens.user_id = topic_members.user_id).
+  userIdx: index('push_tokens_user_idx').on(table.userId),
+}));
