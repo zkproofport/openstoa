@@ -7,6 +7,7 @@ import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 import Avatar from '@/components/Avatar';
 import ImageLightbox from '@/components/ImageLightbox';
+import AiAgentSettings from '@/components/AiAgentSettings';
 import { truncateId, resizeImage } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -852,6 +853,14 @@ export default function MyPage() {
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* AI Agents / API keys section */}
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                  AI Agents
+                </h3>
+                <AiAgentSettings />
               </div>
 
               {/* Account section */}

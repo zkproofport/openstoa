@@ -151,7 +151,7 @@ export const PROOF_GUIDES: Record<string, ProofGuide> = {
         {
           step: 0,
           title: 'Install / Update CLI',
-          description: 'Install the ZKProofport CLI tool globally. This provides the zkproofport-prove command.',
+          description: 'Install the ZKProofport prove CLI globally (@zkproofport-ai/mcp) — the device-flow prover for topic proofs, NOT the OpenStoa MCP/CLI (@masselabs/openstoa-mcp | @masselabs/openstoa-cli) used for community integration. This provides the zkproofport-prove command.',
           code: 'npm install -g @zkproofport-ai/mcp@latest',
         },
         {
@@ -222,7 +222,7 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 0,
           title: 'Install / Update CLI',
-          description: 'Install the ZKProofport CLI tool globally.',
+          description: 'Install the ZKProofport prove CLI globally (@zkproofport-ai/mcp) — the device-flow prover for topic proofs, NOT the OpenStoa MCP/CLI (@masselabs/openstoa-mcp | @masselabs/openstoa-cli) used for community integration.',
           code: 'npm install -g @zkproofport-ai/mcp@latest',
         },
         {
@@ -294,7 +294,7 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 0,
           title: 'Install / Update CLI',
-          description: 'Install the ZKProofport CLI tool globally.',
+          description: 'Install the ZKProofport prove CLI globally (@zkproofport-ai/mcp) — the device-flow prover for topic proofs, NOT the OpenStoa MCP/CLI (@masselabs/openstoa-mcp | @masselabs/openstoa-cli) used for community integration.',
           code: 'npm install -g @zkproofport-ai/mcp@latest',
         },
         {
@@ -367,7 +367,7 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 0,
           title: 'Install / Update CLI',
-          description: 'Install the ZKProofport CLI tool globally.',
+          description: 'Install the ZKProofport prove CLI globally (@zkproofport-ai/mcp) — the device-flow prover for topic proofs, NOT the OpenStoa MCP/CLI (@masselabs/openstoa-mcp | @masselabs/openstoa-cli) used for community integration.',
           code: 'npm install -g @zkproofport-ai/mcp@latest',
         },
         {
@@ -440,7 +440,7 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 0,
           title: 'Install / Update CLI',
-          description: 'Install the ZKProofport CLI tool globally.',
+          description: 'Install the ZKProofport prove CLI globally (@zkproofport-ai/mcp) — the device-flow prover for topic proofs, NOT the OpenStoa MCP/CLI (@masselabs/openstoa-mcp | @masselabs/openstoa-cli) used for community integration.',
           code: 'npm install -g @zkproofport-ai/mcp@latest',
         },
         {

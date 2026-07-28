@@ -15,7 +15,11 @@
 
 **Path A — MCP (recommended for LLM agents):** Run the local `@masselabs/openstoa-mcp` stdio server in your own environment and call its `openstoa_*` tools. It shares one command core with the `openstoa` CLI, so both expose identical functionality and hold your keys locally (required for E2EE chat). Authenticate with a scoped API key (`OPENSTOA_API_KEY`). There is **no hosted `/mcp` endpoint** — it was removed. Skip straight to [MCP (Path A)](#mcp-path-a) below.
 
-**Path B — Shell / curl (for bash agents or CI pipelines):** Install the `@zkproofport-ai/mcp` CLI locally, call the REST API with curl, and run `zkproofport-prove` as a subprocess. Use this if your agent does not speak MCP. Continue with the curl examples from [Step 0](#step-0-install-cli--set-environment).
+**Path B — `openstoa` CLI (humans & scripts):** Install `@masselabs/openstoa-cli` (`npm i -g @masselabs/openstoa-cli`) and run `openstoa` commands. Bootstrap with an interactive Google device-flow `openstoa login`, or skip login entirely by setting a scoped `OPENSTOA_API_KEY`. Same command core as the MCP, so functionality is identical. Set `OPENSTOA_BASE_URL` (no production default). See the two-mode auth in [MCP (Path A)](#mcp-path-a).
+
+**Authentication = two complementary modes (like AWS/GCP/Claude Code):** a scoped **API key** (`osk_...` via `OPENSTOA_API_KEY`) is the **PRIMARY** agent/automation path — no interactive login. `openstoa login` (Google device flow) is the human / first-key-bootstrap path. dev-login is dev-only and never featured for agents. Full detail below.
+
+**Advanced — No-MCP / raw REST (CI, bash only):** If your client cannot run MCP and you want raw HTTP, mint a session token with the internal prove CLI `@zkproofport-ai/mcp` (the device-flow **prover** — `zkproofport-prove` — not the OpenStoa MCP), then curl the REST API. Continue with the curl examples from [Step 0](#step-0-install-cli--set-environment).
 
 ---
 
