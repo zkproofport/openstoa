@@ -234,6 +234,44 @@ export class OpenStoaClient {
   };
 
   // -------------------------------------------------------------------------
+  // uploads (image → CDN)
+  // -------------------------------------------------------------------------
+  readonly uploads = {
+    /**
+     * POST /api/upload — multipart/form-data image upload. Returns the permanent
+     * public CDN URL to embed in a post/topic/avatar. `data` is the raw image
+     * bytes; do NOT set Content-Type — fetch adds the multipart boundary itself.
+     */
+    image: async (input: {
+      data: Uint8Array;
+      filename: string;
+      contentType: string;
+      purpose?: 'post' | 'topic' | 'avatar';
+    }): Promise<{ publicUrl: string }> => {
+      const form = new FormData();
+      // Cast: DOM's BlobPart types a Uint8Array's backing buffer as ArrayBuffer,
+      // but TS widens `.buffer` to ArrayBufferLike (incl. SharedArrayBuffer). The
+      // bytes are a plain image buffer; the cast is safe.
+      form.append('file', new Blob([input.data as BlobPart], { type: input.contentType }), input.filename);
+      if (input.purpose) form.append('purpose', input.purpose);
+      const headers: Record<string, string> = {};
+      if (this.token) headers.Authorization = `Bearer ${this.token}`;
+      const res = await this._fetch(this.url('/api/upload'), { method: 'POST', headers, body: form });
+      const text = await res.text();
+      let parsed: unknown = text;
+      if (text) {
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          /* non-JSON body kept as text */
+        }
+      }
+      if (!res.ok) throw new OpenStoaApiError(res.status, 'POST', '/api/upload', parsed);
+      return parsed as { publicUrl: string };
+    },
+  };
+
+  // -------------------------------------------------------------------------
   // profile
   // -------------------------------------------------------------------------
   readonly profile = {

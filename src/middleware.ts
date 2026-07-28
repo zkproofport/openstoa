@@ -12,7 +12,6 @@ const PUBLIC_PATHS = [
   '/api/auth/session',
   '/api/auth/dev-login',
   '/api/health',
-  '/mcp',
   '/api/docs/openapi.json',
   '/api/beta-signup',
   '/api/ask',

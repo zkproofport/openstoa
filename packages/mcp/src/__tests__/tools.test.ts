@@ -34,12 +34,18 @@ function mockCommands(overrides: Record<string, (...a: unknown[]) => unknown> = 
     topicCreate: make('topicCreate'),
     topicJoin: make('topicJoin'),
     topicLeave: make('topicLeave'),
+    topicUpdate: make('topicUpdate'),
+    topicMembers: make('topicMembers'),
     categoriesList: make('categoriesList'),
     postList: make('postList'),
     postGet: make('postGet'),
     postCreate: make('postCreate'),
+    postUpdate: make('postUpdate'),
+    postDelete: make('postDelete'),
     commentList: make('commentList'),
     commentAdd: make('commentAdd'),
+    commentDelete: make('commentDelete'),
+    uploadImage: make('uploadImage'),
     chatJoin: make('chatJoin'),
     chatSend: make('chatSend'),
     chatRead: make('chatRead'),
@@ -65,12 +71,18 @@ describe('MCP tools → command core', () => {
       'openstoa_topic_create',
       'openstoa_topic_join',
       'openstoa_topic_leave',
+      'openstoa_topic_update',
+      'openstoa_topic_members',
       'openstoa_categories_list',
       'openstoa_post_list',
       'openstoa_post_get',
       'openstoa_post_create',
+      'openstoa_post_update',
+      'openstoa_post_delete',
       'openstoa_comment_list',
       'openstoa_comment_add',
+      'openstoa_comment_delete',
+      'openstoa_upload_image',
       'openstoa_chat_join',
       'openstoa_chat_send',
       'openstoa_chat_read',
@@ -100,6 +112,37 @@ describe('MCP tools → command core', () => {
     registerTools(host, cmds);
     await handlers.get('openstoa_topic_create')!({ title: 'T', visibility: 'private', categoryId: 'c1' });
     expect(calls.find((c) => c.method === 'topicCreate')?.args[0]).toMatchObject({ title: 'T', visibility: 'private', categoryId: 'c1' });
+  });
+
+  it('topic_join forwards proof + publicInputs for gated topics', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ topicJoin: () => ({ topicId: 't1', joined: true }) });
+    registerTools(host, cmds);
+    await handlers.get('openstoa_topic_join')!({ topicId: 't1', proof: '0xp', publicInputs: '0xi' });
+    expect(calls.find((c) => c.method === 'topicJoin')?.args).toEqual(['t1', { proof: '0xp', publicInputs: '0xi' }]);
+  });
+
+  it('upload_image decodes base64 to bytes and forwards metadata', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ uploadImage: () => ({ publicUrl: 'https://cdn/x.png' }) });
+    registerTools(host, cmds);
+    const base64 = Buffer.from([0xde, 0xad, 0xbe, 0xef]).toString('base64');
+    const res = await handlers.get('openstoa_upload_image')!({ base64, filename: 'x.png', contentType: 'image/png', purpose: 'post' });
+    const arg = calls.find((c) => c.method === 'uploadImage')?.args[0] as { data: Uint8Array; filename: string; contentType: string; purpose: string };
+    expect(arg.data).toBeInstanceOf(Uint8Array);
+    expect(Array.from(arg.data)).toEqual([0xde, 0xad, 0xbe, 0xef]);
+    expect(arg).toMatchObject({ filename: 'x.png', contentType: 'image/png', purpose: 'post' });
+    expect(JSON.parse(res.content[0].text).publicUrl).toBe('https://cdn/x.png');
+  });
+
+  it('post_delete / comment_delete dispatch with the right ids', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands();
+    registerTools(host, cmds);
+    await handlers.get('openstoa_post_delete')!({ postId: 'p1' });
+    await handlers.get('openstoa_comment_delete')!({ commentId: 'c1' });
+    expect(calls.find((c) => c.method === 'postDelete')?.args).toEqual(['p1']);
+    expect(calls.find((c) => c.method === 'commentDelete')?.args).toEqual(['c1']);
   });
 
   it('chat_read forwards paging options', async () => {

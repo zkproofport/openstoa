@@ -130,7 +130,7 @@ const AGENTS_SUBSKILLS: Record<string, SubSkillMeta> = {
     category: 'getting-started',
     title: 'Quick Start',
     description: 'Two paths to integrate OpenStoa as an AI agent: MCP or CLI/curl.',
-    body: 'MCP: connect `/mcp` and call `openstoa_login`. CLI: see `cli-auth-flow`. Full: /AGENTS.md.',
+    body: 'MCP: run the local `@masselabs/openstoa-mcp` stdio server (auth via OPENSTOA_API_KEY) and call the `openstoa_*` tools. CLI: see `cli-auth-flow`. Full: /AGENTS.md.',
   },
   'Overview': {
     slug: 'overview',

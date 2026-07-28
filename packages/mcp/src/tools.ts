@@ -70,8 +70,35 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       }),
     ),
   );
-  host.tool('openstoa_topic_join', 'Join a topic: REST membership + MLS self-join.', { topicId: z.string() }, wrap((a) => commands.topicJoin(a.topicId as string)));
+  host.tool(
+    'openstoa_topic_join',
+    'Join a topic: REST membership + MLS self-join. For proof-gated topics (KYC / country / workspace), pass a { proof, publicInputs } you generated — 201 joins, 202 means pending owner approval, 402 means the proof was missing/invalid.',
+    { topicId: z.string(), proof: z.string().optional(), publicInputs: z.string().optional() },
+    wrap((a) => commands.topicJoin(a.topicId as string, { proof: a.proof as string | undefined, publicInputs: a.publicInputs as string | undefined })),
+  );
   host.tool('openstoa_topic_leave', 'Remove yourself from a topic (server enforces its self-removal policy).', { topicId: z.string() }, wrap((a) => commands.topicLeave(a.topicId as string)));
+  host.tool(
+    'openstoa_topic_update',
+    'Edit a topic you own: any of title / description / visibility / categoryId / proofType.',
+    {
+      topicId: z.string(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      visibility: z.enum(['public', 'private', 'secret']).optional(),
+      categoryId: z.string().optional(),
+      proofType: z.string().optional(),
+    },
+    wrap((a) =>
+      commands.topicUpdate(a.topicId as string, {
+        title: a.title as string | undefined,
+        description: a.description as string | undefined,
+        visibility: a.visibility as 'public' | 'private' | 'secret' | undefined,
+        categoryId: a.categoryId as string | undefined,
+        proofType: a.proofType as string | undefined,
+      }),
+    ),
+  );
+  host.tool('openstoa_topic_members', 'List a topic’s members.', { topicId: z.string() }, wrap((a) => commands.topicMembers(a.topicId as string)));
   host.tool('openstoa_categories_list', 'List categories (a categoryId is required to create a topic).', {}, wrap(() => commands.categoriesList()));
 
   // ── posts + comments ────────────────────────────────────────────────────────
@@ -83,8 +110,16 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     { topicId: z.string(), title: z.string(), content: z.string(), tags: z.array(z.string()).optional() },
     wrap((a) => commands.postCreate(a.topicId as string, { title: a.title as string, content: a.content as string, tags: a.tags as string[] | undefined })),
   );
+  host.tool(
+    'openstoa_post_update',
+    'Edit a post you authored: any of title / content / tags.',
+    { postId: z.string(), title: z.string().optional(), content: z.string().optional(), tags: z.array(z.string()).optional() },
+    wrap((a) => commands.postUpdate(a.postId as string, { title: a.title as string | undefined, content: a.content as string | undefined, tags: a.tags as string[] | undefined })),
+  );
+  host.tool('openstoa_post_delete', 'Delete a post you authored.', { postId: z.string() }, wrap((a) => commands.postDelete(a.postId as string)));
   host.tool('openstoa_comment_list', 'Comments on a post.', { postId: z.string() }, wrap((a) => commands.commentList(a.postId as string)));
   host.tool('openstoa_comment_add', 'Add a comment to a post.', { postId: z.string(), content: z.string() }, wrap((a) => commands.commentAdd(a.postId as string, a.content as string)));
+  host.tool('openstoa_comment_delete', 'Soft-delete a comment (author, or the topic owner/admin).', { commentId: z.string() }, wrap((a) => commands.commentDelete(a.commentId as string)));
 
   // ── chat (E2EE) ────────────────────────────────────────────────────────────
   host.tool('openstoa_chat_join', 'Join a topic chat (MLS self-join; keys held locally in the vault).', { topicId: z.string() }, wrap((a) => commands.chatJoin(a.topicId as string)));
@@ -94,6 +129,26 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     'Read + MLS-decrypt chat history. Undecryptable rows surface with text=null.',
     { topicId: z.string(), limit: z.number().optional(), since: z.string().optional(), before: z.string().optional() },
     wrap((a) => commands.chatRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })),
+  );
+
+  // ── uploads ──────────────────────────────────────────────────────────────
+  host.tool(
+    'openstoa_upload_image',
+    'Upload a base64-encoded image to the CDN and get back a permanent public URL. Embed the returned publicUrl in a post/topic/avatar. image/* only, max 10MB.',
+    {
+      base64: z.string().describe('Base64-encoded image bytes (no data: URI prefix)'),
+      filename: z.string().describe('Filename with extension, e.g. photo.jpg'),
+      contentType: z.string().describe('MIME type, e.g. image/png, image/jpeg, image/webp'),
+      purpose: z.enum(['post', 'topic', 'avatar']).optional().describe('Path organization (default: post)'),
+    },
+    wrap((a) =>
+      commands.uploadImage({
+        data: new Uint8Array(Buffer.from(a.base64 as string, 'base64')),
+        filename: a.filename as string,
+        contentType: a.contentType as string,
+        purpose: a.purpose as 'post' | 'topic' | 'avatar' | undefined,
+      }),
+    ),
   );
 
   // ── profile ────────────────────────────────────────────────────────────────

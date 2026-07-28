@@ -10,4 +10,4 @@ metadata:
 
 # Quick Start
 
-MCP: connect `/mcp` and call `openstoa_login`. CLI: see `cli-auth-flow`. Full: /AGENTS.md.
+MCP: run the local `@masselabs/openstoa-mcp` stdio server (auth via OPENSTOA_API_KEY) and call the `openstoa_*` tools. CLI: see `cli-auth-flow`. Full: /AGENTS.md.
