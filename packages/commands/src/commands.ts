@@ -27,6 +27,14 @@ import type {
 import { FileSessionStore, type SessionData, type SessionStore } from './session';
 import { readCredentials } from './credentials';
 import { resolveHome, type CommandConfig } from './config';
+import {
+  defaultSpawnProve,
+  startDeviceLogin,
+  awaitProof,
+  type ProveSpawner,
+  type PendingDeviceLogin,
+  type DeviceCodeInfo,
+} from './deviceLogin';
 import * as path from 'node:path';
 
 export interface LoginResult {
@@ -35,11 +43,29 @@ export interface LoginResult {
   isAI?: boolean;
 }
 
+/** Result of a completed Google device-flow login (adds the first-login flag). */
+export interface GoogleLoginResult extends LoginResult {
+  /** True when the user still has a temp `anon_` nickname and must set a real one. */
+  needsNickname?: boolean;
+}
+
+/** Discriminated result of the MCP 2-call `authenticate` handshake. */
+export type GoogleAuthResult =
+  | ({
+      status: 'pending_user_login';
+      verificationUrl: string;
+      userCode: string;
+      instructions: string;
+    })
+  | ({ status: 'authenticated'; message: string } & GoogleLoginResult);
+
 export interface CommandsDeps {
   chat: ChatClient;
   sessionStore: SessionStore;
   baseUrl: string;
   session: SessionData | null;
+  /** Injectable prove.js spawner for the Google device flow (default: real spawn). */
+  proveSpawner?: ProveSpawner;
 }
 
 export class Commands {
@@ -47,12 +73,16 @@ export class Commands {
   private readonly store: SessionStore;
   private readonly baseUrl: string;
   private session: SessionData | null;
+  private readonly proveSpawner: ProveSpawner;
+  /** In-flight device login held between the two MCP `authenticate` calls. */
+  private pendingGoogleLogin: PendingDeviceLogin | null = null;
 
   constructor(deps: CommandsDeps) {
     this.chat = deps.chat;
     this.store = deps.sessionStore;
     this.baseUrl = deps.baseUrl;
     this.session = deps.session;
+    this.proveSpawner = deps.proveSpawner ?? defaultSpawnProve;
   }
 
   // ── auth ────────────────────────────────────────────────────────────────
@@ -73,8 +103,98 @@ export class Commands {
     return { userId: r.userId, nickname: r.nickname };
   }
 
+  /**
+   * Google device-flow login — the human / first-key-bootstrap path (the
+   * API-key path stays the primary agent credential). Blocking/interactive
+   * variant for the CLI: it starts the device flow, surfaces the
+   * `verificationUrl` + `userCode` via `onDeviceCode`, then blocks until the
+   * user approves at google.com/device, exchanges the proof for an OpenStoa
+   * session, persists it, and returns the identity.
+   *
+   * Ported from the removed hosted `src/lib/mcp/auth.ts` device-flow.
+   */
+  async loginWithGoogle(
+    opts: { onDeviceCode?: (info: DeviceCodeInfo) => void; timeoutMs?: number } = {},
+  ): Promise<GoogleLoginResult> {
+    const pending = await this.startGoogleDeviceFlow(opts.timeoutMs);
+    opts.onDeviceCode?.({ verificationUrl: pending.verificationUrl, userCode: pending.userCode });
+    return this.finishGoogleLogin(pending);
+  }
+
+  /**
+   * MCP-facing Google login: a single method that implements the ORIGINAL 2-call
+   * pending/confirm handshake (an MCP tool can't block interactively). First
+   * call → start the challenge + spawn prove.js, return
+   * `{ status: 'pending_user_login', verificationUrl, userCode, instructions }`.
+   * Second call (no args) → await the proof, verify, persist, and return the
+   * authenticated session. A second call while a login is pending completes it,
+   * matching the original tool's behavior.
+   */
+  async authenticateGoogle(opts: { timeoutMs?: number } = {}): Promise<GoogleAuthResult> {
+    // Phase 2: a login is already pending → finish it.
+    if (this.pendingGoogleLogin) {
+      const pending = this.pendingGoogleLogin;
+      this.pendingGoogleLogin = null;
+      const r = await this.finishGoogleLogin(pending);
+      return {
+        status: 'authenticated',
+        message:
+          'Authenticated successfully. Token stored for this session.' +
+          (r.needsNickname ? ' Call openstoa_profile_set_nickname to set a display name before posting.' : ''),
+        ...r,
+      };
+    }
+    // Phase 1: start a new device flow.
+    const pending = await this.startGoogleDeviceFlow(opts.timeoutMs);
+    this.pendingGoogleLogin = pending;
+    return {
+      status: 'pending_user_login',
+      verificationUrl: pending.verificationUrl,
+      userCode: pending.userCode,
+      instructions:
+        `Tell the human user to open ${pending.verificationUrl} in a browser and enter code ${pending.userCode}. ` +
+        `Once they confirm login is complete, call openstoa_authenticate again with no arguments. Proof generation takes 30-90 seconds.`,
+    };
+  }
+
+  /** Start the challenge, then spawn prove.js and wait for the device code. */
+  private async startGoogleDeviceFlow(timeoutMs?: number): Promise<PendingDeviceLogin> {
+    const challenge = await this.chat.rest.request<{ challengeId?: string; scope?: string }>(
+      '/api/auth/challenge',
+      { method: 'POST', body: {} },
+    );
+    if (!challenge?.challengeId || !challenge?.scope) {
+      throw new Error('auth challenge failed: server did not return a challengeId + scope');
+    }
+    return startDeviceLogin(this.proveSpawner, challenge.scope, challenge.challengeId, timeoutMs);
+  }
+
+  /** Await the proof, verify it at /api/auth/verify/ai, adopt the token, persist. */
+  private async finishGoogleLogin(pending: PendingDeviceLogin): Promise<GoogleLoginResult> {
+    const proofResult = await awaitProof(pending);
+    // rest.request throws OpenStoaApiError (status + server body) on a non-2xx,
+    // so a failed verify surfaces the server error verbatim.
+    const verify = await this.chat.rest.request<{
+      token?: string;
+      userId?: string;
+      needsNickname?: boolean;
+      error?: string;
+    }>('/api/auth/verify/ai', {
+      method: 'POST',
+      body: { challengeId: pending.challengeId, result: proofResult },
+    });
+    if (!verify?.token) throw new Error(verify?.error ?? 'auth verify/ai did not return a token');
+    this.chat.useToken(verify.token);
+    // verify/ai returns no nickname; read it from the session (same as login --token).
+    const s = await this.chat.rest.auth.session();
+    await this.persist({ baseUrl: this.baseUrl, token: verify.token, userId: s.userId, nickname: s.nickname });
+    return { userId: s.userId, nickname: s.nickname, isAI: s.isAI, needsNickname: verify.needsNickname };
+  }
+
   /** Drop the persisted session (token + identity). Vault MLS keys are untouched. */
   async logout(): Promise<void> {
+    this.pendingGoogleLogin?.child.kill();
+    this.pendingGoogleLogin = null;
     await this.store.clear();
     this.session = null;
   }

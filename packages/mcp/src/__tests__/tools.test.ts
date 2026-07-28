@@ -28,6 +28,7 @@ function mockCommands(overrides: Record<string, (...a: unknown[]) => unknown> = 
   };
   const cmds = {
     login: make('login'),
+    authenticateGoogle: make('authenticateGoogle'),
     whoami: make('whoami'),
     topicsList: make('topicsList'),
     topicGet: make('topicGet'),
@@ -66,6 +67,7 @@ describe('MCP tools → command core', () => {
     const { cmds } = mockCommands();
     registerTools(host, cmds);
     for (const name of [
+      'openstoa_authenticate',
       'openstoa_login',
       'openstoa_whoami',
       'openstoa_topics_list',
@@ -98,6 +100,33 @@ describe('MCP tools → command core', () => {
     ]) {
       expect(handlers.has(name), `missing tool ${name}`).toBe(true);
     }
+  });
+
+  it('openstoa_authenticate: 2-call pending → authenticated handshake (device-flow login)', async () => {
+    const { host, handlers } = fakeHost();
+    let call = 0;
+    const { cmds, calls } = mockCommands({
+      authenticateGoogle: () => {
+        call += 1;
+        return call === 1
+          ? { status: 'pending_user_login', verificationUrl: 'https://google.com/device', userCode: 'ABCD-1234', instructions: 'open it' }
+          : { status: 'authenticated', userId: '0xnull', nickname: 'anon_null', needsNickname: true, message: 'ok' };
+      },
+    });
+    registerTools(host, cmds);
+    const first = await handlers.get('openstoa_authenticate')!({});
+    expect(JSON.parse(first.content[0].text)).toMatchObject({ status: 'pending_user_login', verificationUrl: 'https://google.com/device', userCode: 'ABCD-1234' });
+    const second = await handlers.get('openstoa_authenticate')!({});
+    expect(JSON.parse(second.content[0].text)).toMatchObject({ status: 'authenticated', userId: '0xnull', needsNickname: true });
+    expect(calls.filter((c) => c.method === 'authenticateGoogle')).toHaveLength(2);
+  });
+
+  it('openstoa_login is token-only (adopt external Bearer; dev-login not exposed)', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ login: () => ({ userId: 'u', nickname: 'n', isAI: true }) });
+    registerTools(host, cmds);
+    await handlers.get('openstoa_login')!({ token: 'JWT123' });
+    expect(calls.find((c) => c.method === 'login')?.args).toEqual([{ token: 'JWT123' }]);
   });
 
   it('chat_send dispatches to commands.chatSend with the right args and returns JSON', async () => {

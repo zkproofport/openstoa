@@ -26,7 +26,8 @@
     "test": "vitest run --exclude 'src/__tests__/e2e/**'"
   },
   "dependencies": {
-    "@masselabs/openstoa": "file:../sdk"
+    "@masselabs/openstoa": "file:../sdk",
+    "@zkproofport-ai/mcp": "^0.2.9"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

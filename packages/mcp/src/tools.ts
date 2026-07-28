@@ -39,11 +39,37 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     };
 
   // ── auth ────────────────────────────────────────────────────────────────
+  // Two complementary modes (like AWS/GCP/Claude Code):
+  //   1. API key (OPENSTOA_API_KEY) — the PRIMARY agent/automation path, set at
+  //      startup; no tool call needed.
+  //   2. openstoa_authenticate — Google device-flow login for a human / to
+  //      bootstrap the first API key.
+  // dev-login is intentionally NOT exposed here (agents use API keys / device
+  // flow, never dev-login). openstoa_login remains only to adopt an external
+  // Bearer that was minted elsewhere.
+  host.tool(
+    'openstoa_authenticate',
+    `Authenticate with OpenStoa via Google device-flow login — fully automated ZK login.
+
+This wraps the entire ZKProofport login internally; you do NOT call any @zkproofport-ai/mcp tools yourself.
+
+USAGE (2 calls, no arguments):
+1. Call with no arguments → returns { status: "pending_user_login", verificationUrl, userCode, instructions }.
+   Ask the human to open verificationUrl in a browser and enter userCode.
+2. After the user confirms, call again with no arguments → waits for ZK proof generation (30-90s),
+   exchanges it for an OpenStoa session token, stores it for this server, and returns
+   { status: "authenticated", userId, nickname, needsNickname }.
+
+If needsNickname is true, call openstoa_profile_set_nickname before posting. For an always-on agent,
+prefer a scoped API key (OPENSTOA_API_KEY) instead — no interactive login needed.`,
+    {},
+    wrap(() => commands.authenticateGoogle()),
+  );
   host.tool(
     'openstoa_login',
-    'Authenticate. dev-login by default; pass { token } to adopt an externally-obtained Bearer (e.g. an isAI verify token).',
-    { nickname: z.string().optional(), token: z.string().optional() },
-    wrap((a) => commands.login({ nickname: a.nickname as string | undefined, token: a.token as string | undefined })),
+    'Adopt an externally-obtained Bearer token (e.g. an isAI verify token minted elsewhere) as this session. For a fresh login use openstoa_authenticate (Google device flow) or a scoped API key (OPENSTOA_API_KEY). dev-login is intentionally not exposed here.',
+    { token: z.string() },
+    wrap((a) => commands.login({ token: a.token as string })),
   );
   host.tool('openstoa_whoami', 'Current session payload (includes the isAI badge).', {}, wrap(() => commands.whoami()));
 

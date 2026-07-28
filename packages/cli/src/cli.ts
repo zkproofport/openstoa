@@ -4,7 +4,7 @@
  * resolves a Commands instance and calls one of its methods, so the CLI and the
  * MCP server stay in lockstep. `--json` emits the raw structured result.
  */
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
@@ -63,14 +63,39 @@ export function buildProgram(
   }
 
   // ── auth ──────────────────────────────────────────────────────────────
+  // Default is the Google device-flow login (the official human/bootstrap path).
+  // API keys (--api-key / OPENSTOA_API_KEY / ~/.openstoa/credentials) remain the
+  // primary agent/automation path and short-circuit login entirely. `--dev` is a
+  // hidden dev-only escape hatch (the server blocks it in production).
   program
     .command('login')
-    .description('dev-login (default) or adopt an existing Bearer with --token')
-    .option('--nickname <name>', 'nickname for a fresh dev-login user')
+    .description('log in with Google (device flow, default); --token adopts an existing Bearer')
+    .option('--google', 'log in with Google via the device flow (the default)')
     .option('--token <jwt>', 'adopt an externally-obtained Bearer (e.g. an AI verify token)')
-    .action((opts: { nickname?: string; token?: string }) =>
-      run((c) => c.login({ nickname: opts.nickname, token: opts.token }), fmt.fmtLogin),
-    );
+    .addOption(new Option('--dev', 'DEV ONLY: dev-login (dev/staging; server returns 404 in production)').hideHelp())
+    .addOption(new Option('--nickname <name>', 'nickname for a fresh --dev dev-login user').hideHelp())
+    .action((opts: { google?: boolean; token?: string; dev?: boolean; nickname?: string }) => {
+      if (opts.token) {
+        return run((c) => c.login({ token: opts.token }), fmt.fmtLogin);
+      }
+      if (opts.dev) {
+        // Hidden dev-login path — still usable locally/staging for tests; the
+        // server returns 404 in production, surfaced as a clear error.
+        return run((c) => c.login({ nickname: opts.nickname }), fmt.fmtLogin);
+      }
+      // Default (and explicit --google): Google device-flow login. Print the
+      // device prompt to stderr so --json stdout stays a clean result object.
+      return run(
+        (c) =>
+          c.loginWithGoogle({
+            onDeviceCode: (info) =>
+              process.stderr.write(
+                `\nOpen ${info.verificationUrl} and enter code ${info.userCode}\nWaiting for authorization...\n`,
+              ),
+          }),
+        fmt.fmtLogin,
+      );
+    });
 
   program
     .command('logout')

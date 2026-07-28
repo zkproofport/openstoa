@@ -17,6 +17,7 @@ function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => 
   };
   const cmds = {
     login: make('login'),
+    loginWithGoogle: make('loginWithGoogle'),
     logout: make('logout'),
     whoami: make('whoami'),
     topicsList: make('topicsList'),
@@ -128,12 +129,68 @@ describe('CLI dispatch', () => {
     expect(h.config()).toMatchObject({ apiKey: 'osk_scopedkey' });
   });
 
-  it('login --token dispatches with the token', async () => {
+  it('login --token dispatches login({ token }) (adopt an external Bearer)', async () => {
     const h = harness({ login: () => ({ userId: 'u', nickname: 'n', isAI: true }) });
     await h.parse(['login', '--token', 'JWT123']);
     const call = h.calls.find((c) => c.method === 'login');
-    expect(call?.args[0]).toEqual({ nickname: undefined, token: 'JWT123' });
+    expect(call?.args[0]).toEqual({ token: 'JWT123' });
+    expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(false);
     expect(h.out.join('\n')).toContain('[AI]');
+  });
+
+  it('bare login → Google device flow (NOT dev-login); prints the device prompt to stderr', async () => {
+    const errs: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    (process.stderr as unknown as { write: (s: string) => boolean }).write = (s: string) => {
+      errs.push(s);
+      return true;
+    };
+    try {
+      const h = harness({
+        loginWithGoogle: (opts) => {
+          // surface a device code as the real flow would, then resolve as logged-in
+          (opts as { onDeviceCode?: (i: { verificationUrl: string; userCode: string }) => void }).onDeviceCode?.({
+            verificationUrl: 'https://google.com/device',
+            userCode: 'ABCD-1234',
+          });
+          return { userId: 'u', nickname: 'n' };
+        },
+      });
+      await h.parse(['login']);
+      expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(true);
+      expect(h.calls.some((c) => c.method === 'login')).toBe(false); // no dev-login
+      expect(errs.join('')).toContain('https://google.com/device');
+      expect(errs.join('')).toContain('ABCD-1234');
+      expect(h.out.join('\n')).toContain('Logged in as n');
+    } finally {
+      (process.stderr as unknown as { write: typeof origWrite }).write = origWrite;
+    }
+  });
+
+  it('login --google → Google device flow (explicit, same as bare login)', async () => {
+    const h = harness({ loginWithGoogle: () => ({ userId: 'u', nickname: 'n' }) });
+    await h.parse(['login', '--google']);
+    expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(true);
+    expect(h.calls.some((c) => c.method === 'login')).toBe(false);
+  });
+
+  it('login --dev dispatches the (hidden) dev-login with --nickname', async () => {
+    const h = harness({ login: () => ({ userId: 'u', nickname: 'devnick' }) });
+    await h.parse(['login', '--dev', '--nickname', 'devnick']);
+    const call = h.calls.find((c) => c.method === 'login');
+    expect(call?.args[0]).toEqual({ nickname: 'devnick' });
+    expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(false);
+  });
+
+  it('--dev and --nickname are HIDDEN from `login --help` (device flow is the advertised default)', async () => {
+    const program = buildProgram(() => Promise.resolve({} as unknown as Commands), () => {});
+    const login = program.commands.find((c) => c.name() === 'login')!;
+    const help = login.helpInformation();
+    expect(help).not.toContain('--dev');
+    expect(help).not.toContain('--nickname');
+    // the visible surface: device-flow default + token
+    expect(help).toContain('--google');
+    expect(help).toContain('--token');
   });
 
   it('comment add joins the text words', async () => {
