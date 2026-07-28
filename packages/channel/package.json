@@ -1,7 +1,7 @@
 {
   "name": "@masselabs/openstoa-channel",
-  "version": "0.1.0",
-  "description": "OpenStoa messaging-channel adapter \u2014 lets a self-hosted AI-agent runtime (OpenClaw, Hermes) participate in OpenStoa E2EE chat + DM as a channel, over the shared @masselabs/openstoa SDK (SI-1 blind server).",
+  "version": "0.1.1",
+  "description": "OpenStoa messaging-channel adapter — lets a self-hosted AI-agent runtime (OpenClaw, Hermes) participate in OpenStoa E2EE chat + DM as a channel, over the shared @masselabs/openstoa SDK (SI-1 blind server).",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -40,8 +40,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@masselabs/openstoa": "^0.1.0",
-    "@masselabs/openstoa-commands": "^0.1.0"
+    "@masselabs/openstoa": "^0.1.1",
+    "@masselabs/openstoa-commands": "^0.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -49,5 +49,5 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "//local-dev": "Inter-package @masselabs/* deps are plain semver so the published tarballs resolve from the registry. Local resolution comes from the committed package-lock.json, which records each sibling as a Link node (resolved: ../sdk, link: true) \u2014 a plain npm install in a fresh clone recreates the symlink without asking the registry. If that link is ever lost, run ./packages/link-local.sh and commit the regenerated lock. See packages/README.md."
+  "//local-dev": "Inter-package @masselabs/* deps are plain semver so the published tarballs resolve from the registry. Local resolution comes from the committed package-lock.json, which records each sibling as a Link node (resolved: ../sdk, link: true) — a plain npm install in a fresh clone recreates the symlink without asking the registry. If that link is ever lost, run ./packages/link-local.sh and commit the regenerated lock. See packages/README.md."
 }
