@@ -8,6 +8,7 @@
     "start": "next start -p 3200",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:apply": "tsx scripts/migrate.ts",
     "db:push": "drizzle-kit push",
     "test": "vitest",
     "test:run": "vitest run",

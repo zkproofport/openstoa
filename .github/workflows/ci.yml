@@ -108,14 +108,34 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # Five suites (mls-archive, mls-commit-cas, mls-key-packages.concurrency,
+      # push, push-ciphertext) are integration tests: they open their own pg Pool
+      # and exercise real SQL (CAS commits, holder leases, cursor windows). They
+      # default to `postgresql://proofport:proofport@localhost:5432/openstoa`, so
+      # this service must match those credentials — locally they hit the compose
+      # Postgres, which is why they pass there and needed a DB here too.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: proofport
+          POSTGRES_PASSWORD: proofport
+          POSTGRES_DB: openstoa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U proofport"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
-      # Points at the redis:7 service container above. Nothing else is injected:
-      # `next build` and the unit suite were verified to run with no other env
-      # set (no DATABASE_URL, no COMMUNITY_JWT_SECRET, no R2 credentials). Any
-      # code path that genuinely requires a secret must throw rather than fall
-      # back to a default — do not add placeholder values here to make a job go
-      # green.
+      # Both point at the service containers above. Nothing else is injected:
+      # `next build` and the unit suite run with no other env set (no
+      # COMMUNITY_JWT_SECRET, no R2 credentials). Any code path that genuinely
+      # requires a secret must throw rather than fall back to a default — do not
+      # add placeholder values here to make a job go green.
       REDIS_URL: redis://localhost:6379
+      DATABASE_URL: postgresql://proofport:proofport@localhost:5432/openstoa
 
     steps:
       - name: Checkout
@@ -128,6 +148,12 @@ jobs:
 
       - name: Install
         run: npm ci --no-audit --no-fund
+
+      - name: Apply migrations
+        # Same runner the server uses at boot (src/instrumentation.ts). NOT
+        # `npm run db:migrate` (drizzle-kit): against a fresh database that
+        # aborts with a column-name collision and creates zero tables.
+        run: npm run db:migrate:apply
 
       - name: Unit tests
         # `packages/**` is excluded: the five publishable packages have their own
