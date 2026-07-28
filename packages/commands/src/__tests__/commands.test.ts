@@ -36,12 +36,15 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
       setToken: (t: string) => {
         token = t;
       },
+      request: rec('request'),
       auth: { session: rec('auth.session') },
       categories: { list: rec('categories.list') },
       topics: {
         list: rec('topics.list'),
         get: rec('topics.get'),
         create: rec('topics.create'),
+        update: rec('topics.update'),
+        members: rec('topics.members'),
         posts: rec('topics.posts'),
         createPost: rec('topics.createPost'),
         removeMember: rec('topics.removeMember'),
@@ -50,8 +53,12 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
         getWithComments: rec('posts.getWithComments'),
         comments: rec('posts.comments'),
         addComment: rec('posts.addComment'),
+        update: rec('posts.update'),
+        remove: rec('posts.remove'),
       },
+      comments: { remove: rec('comments.remove') },
       profile: { setNickname: rec('profile.setNickname') },
+      uploads: { image: rec('uploads.image') },
       apiKeys: {
         create: rec('apiKeys.create'),
         list: rec('apiKeys.list'),
@@ -106,6 +113,83 @@ describe('Commands dispatch → SDK', () => {
     const { cmds, calls } = build();
     await cmds.topicLeave('t7');
     expect(calls.find((c) => c.method === 'topics.removeMember')?.args).toEqual(['t7', 'u1']);
+  });
+
+  it('topic update / members dispatch with the right args', async () => {
+    const { cmds, calls } = build({ 'topics.update': (id: unknown, patch: unknown) => ({ id, ...(patch as object) }), 'topics.members': () => [{ userId: 'u1' }] });
+    await cmds.topicUpdate('t7', { title: 'New', visibility: 'private' });
+    await cmds.topicMembers('t7');
+    expect(calls.find((c) => c.method === 'topics.update')?.args).toEqual(['t7', { title: 'New', visibility: 'private' }]);
+    expect(calls.find((c) => c.method === 'topics.members')?.args).toEqual(['t7']);
+  });
+
+  it('topicJoin with proof submits proof to the join route, then MLS self-joins on 201', async () => {
+    const { cmds, calls } = build({
+      request: () => ({ status: 201, json: async () => ({ success: true }) }),
+    });
+    const r = await cmds.topicJoin('t7', { proof: '0xproof', publicInputs: '0xpub' });
+    const req = calls.find((c) => c.method === 'request');
+    expect(req?.args[0]).toBe('/api/topics/t7/join');
+    expect(req?.args[1]).toMatchObject({ method: 'POST', raw: true, body: { proof: '0xproof', publicInputs: '0xpub' } });
+    // 201 → MLS self-join runs.
+    expect(calls.some((c) => c.method === 'joinTopic')).toBe(true);
+    expect(r).toEqual({ topicId: 't7', joined: true });
+  });
+
+  it('topicJoin with proof returns pending on 202 and does NOT MLS-join', async () => {
+    const { cmds, calls } = build({
+      request: () => ({ status: 202, json: async () => ({ message: 'Join request submitted' }) }),
+    });
+    const r = await cmds.topicJoin('t7', { proof: '0xproof', publicInputs: '0xpub' });
+    expect(calls.some((c) => c.method === 'joinTopic')).toBe(false);
+    expect(r).toEqual({ topicId: 't7', joined: false, pending: true, message: 'Join request submitted' });
+  });
+
+  it('topicJoin with proof throws the server error on 402/403', async () => {
+    const { cmds } = build({
+      request: () => ({ status: 402, json: async () => ({ error: 'Proof required', requiredProofType: 'kyc' }) }),
+    });
+    await expect(cmds.topicJoin('t7', { proof: '0xp', publicInputs: '0xi' })).rejects.toThrow(/Proof required/);
+  });
+
+  it('topicJoin rejects a proof without publicInputs (and vice-versa) before any request', async () => {
+    const { cmds, calls } = build();
+    await expect(cmds.topicJoin('t7', { proof: '0xp' })).rejects.toThrow(/publicInputs is required/);
+    await expect(cmds.topicJoin('t7', { publicInputs: '0xi' })).rejects.toThrow(/proof is required/);
+    expect(calls.some((c) => c.method === 'request')).toBe(false);
+  });
+
+  it('post update / delete + comment delete dispatch', async () => {
+    const { cmds, calls } = build({ 'posts.remove': (id: unknown) => ({ id, isDeleted: true }) });
+    await cmds.postUpdate('p1', { title: 'T2', tags: ['a'] });
+    await cmds.postDelete('p1');
+    await cmds.commentDelete('c1');
+    expect(calls.find((c) => c.method === 'posts.update')?.args).toEqual(['p1', { title: 'T2', tags: ['a'] }]);
+    expect(calls.find((c) => c.method === 'posts.remove')?.args).toEqual(['p1']);
+    expect(calls.find((c) => c.method === 'comments.remove')?.args).toEqual(['c1']);
+  });
+
+  it('commentDelete rejects an empty commentId before any dispatch', async () => {
+    const { cmds, calls } = build();
+    await expect(cmds.commentDelete('  ')).rejects.toThrow(/commentId is required/);
+    expect(calls.some((c) => c.method === 'comments.remove')).toBe(false);
+  });
+
+  it('uploadImage forwards bytes to uploads.image and returns the publicUrl', async () => {
+    const { cmds, calls } = build({ 'uploads.image': (i: unknown) => ({ publicUrl: 'https://cdn/x.png', echo: i }) });
+    const data = new Uint8Array([1, 2, 3]);
+    const r = await cmds.uploadImage({ data, filename: 'x.png', contentType: 'image/png', purpose: 'post' });
+    expect(calls.find((c) => c.method === 'uploads.image')?.args[0]).toMatchObject({ filename: 'x.png', contentType: 'image/png', purpose: 'post' });
+    expect(r.publicUrl).toBe('https://cdn/x.png');
+  });
+
+  it('uploadImage rejects non-image content type, empty data, empty filename, and >10MB before dispatch', async () => {
+    const { cmds, calls } = build();
+    await expect(cmds.uploadImage({ data: new Uint8Array([1]), filename: 'x.pdf', contentType: 'application/pdf' })).rejects.toThrow(/only image/);
+    await expect(cmds.uploadImage({ data: new Uint8Array([]), filename: 'x.png', contentType: 'image/png' })).rejects.toThrow(/data is empty/);
+    await expect(cmds.uploadImage({ data: new Uint8Array([1]), filename: '  ', contentType: 'image/png' })).rejects.toThrow(/filename is required/);
+    await expect(cmds.uploadImage({ data: new Uint8Array(10 * 1024 * 1024 + 1), filename: 'big.png', contentType: 'image/png' })).rejects.toThrow(/10MB/);
+    expect(calls.some((c) => c.method === 'uploads.image')).toBe(false);
   });
 
   it('posts + comments dispatch', async () => {

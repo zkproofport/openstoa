@@ -176,4 +176,40 @@ describe('OpenStoaClient', () => {
     const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
     await expect(c.apiKeys.create({ name: 'k', cmd: ['/root/x'], historyGrant: 'none' })).rejects.toMatchObject({ status: 400 });
   });
+
+  // ── uploads (multipart image → CDN) ────────────────────────────────────────
+  // Own mock: the shared mockFetch JSON.parses the body, but upload sends FormData.
+  function uploadMockFetch(status: number, json: unknown) {
+    const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: unknown }> = [];
+    const fn = (async (input: string | URL, init?: RequestInit) => {
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries((init?.headers ?? {}) as Record<string, string>)) headers[k.toLowerCase()] = v;
+      calls.push({ url: String(input), method: init?.method ?? 'GET', headers, body: init?.body });
+      const text = JSON.stringify(json);
+      return { ok: status >= 200 && status < 300, status, text: async () => text, json: async () => json } as unknown as Response;
+    }) as unknown as typeof fetch;
+    return { fn, calls };
+  }
+
+  it('uploads.image POSTs multipart form-data (file + purpose), sets Bearer, and never a manual Content-Type', async () => {
+    const { fn, calls } = uploadMockFetch(200, { publicUrl: 'https://cdn.example.com/posts/x/photo.jpg' });
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    const r = await c.uploads.image({ data: new Uint8Array([1, 2, 3]), filename: 'photo.jpg', contentType: 'image/jpeg', purpose: 'post' });
+    expect(r.publicUrl).toBe('https://cdn.example.com/posts/x/photo.jpg');
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toBe('http://h/api/upload');
+    expect(calls[0].headers['authorization']).toBe('Bearer T');
+    // fetch derives the multipart boundary itself — we must not pin Content-Type.
+    expect(calls[0].headers['content-type']).toBeUndefined();
+    expect(calls[0].body).toBeInstanceOf(FormData);
+    const form = calls[0].body as FormData;
+    expect(form.get('purpose')).toBe('post');
+    expect(form.get('file')).toBeInstanceOf(Blob);
+  });
+
+  it('uploads.image surfaces a non-2xx as OpenStoaApiError (e.g. 413 too large)', async () => {
+    const { fn } = uploadMockFetch(413, { error: 'File size must not exceed 10MB' });
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    await expect(c.uploads.image({ data: new Uint8Array([1]), filename: 'x.png', contentType: 'image/png' })).rejects.toMatchObject({ status: 413, name: 'OpenStoaApiError' });
+  });
 });

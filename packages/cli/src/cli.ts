@@ -6,8 +6,21 @@
  */
 import { Command } from 'commander';
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { basename, extname } from 'node:path';
 import { createCommands, type Commands, type CommandConfig } from '@masselabs/openstoa-commands';
 import * as fmt from './format';
+
+/** Map a file extension to an image MIME type for `upload` (server accepts image/* only). */
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+};
 
 export type CommandsFactory = (config: CommandConfig) => Promise<Commands>;
 const defaultFactory: CommandsFactory = (config) => createCommands(config);
@@ -73,8 +86,45 @@ export function buildProgram(
   const topics = program.command('topics').description('topic operations');
   topics.command('list').description('topics you are a member of').action(() => run((c) => c.topicsList(), fmt.fmtTopics));
   topics.command('get <topicId>').description('topic details').action((topicId: string) => run((c) => c.topicGet(topicId), fmt.fmtTopic));
-  topics.command('join <topicId>').description('join (REST) + MLS self-join').action((topicId: string) => run((c) => c.topicJoin(topicId), (r) => `Joined ${r.topicId}`));
+  topics
+    .command('join <topicId>')
+    .description('join (REST) + MLS self-join; pass a proof for gated topics')
+    .option('--proof <hex>', 'ZK proof bytes for a proof-gated topic (KYC / country / workspace)')
+    .option('--public-inputs <hex>', 'ZK proof public inputs (required alongside --proof)')
+    .action((topicId: string, opts: { proof?: string; publicInputs?: string }) =>
+      run(
+        (c) => c.topicJoin(topicId, { proof: opts.proof, publicInputs: opts.publicInputs }),
+        (r) => (r.pending ? `Join request pending approval for ${r.topicId}` : `Joined ${r.topicId}`),
+      ),
+    );
   topics.command('leave <topicId>').description('remove yourself (server enforces its self-removal policy)').action((topicId: string) => run((c) => c.topicLeave(topicId), (r) => `Left ${r.topicId}`));
+  topics
+    .command('members <topicId>')
+    .description('list a topic’s members')
+    .action((topicId: string) =>
+      run((c) => c.topicMembers(topicId), (ms) => (ms.length === 0 ? '(no members)' : ms.map((m) => `${m.userId}  ${m.nickname ?? ''}`).join('\n'))),
+    );
+  topics
+    .command('update <topicId>')
+    .description('edit a topic you own')
+    .option('--title <title>')
+    .option('--description <desc>')
+    .option('--visibility <v>', 'public | private | secret')
+    .option('--category-id <id>')
+    .option('--proof-type <type>')
+    .action((topicId: string, opts: { title?: string; description?: string; visibility?: string; categoryId?: string; proofType?: string }) =>
+      run(
+        (c) =>
+          c.topicUpdate(topicId, {
+            title: opts.title,
+            description: opts.description,
+            visibility: opts.visibility as 'public' | 'private' | 'secret' | undefined,
+            categoryId: opts.categoryId,
+            proofType: opts.proofType,
+          }),
+        fmt.fmtTopic,
+      ),
+    );
   topics
     .command('create')
     .description('create a topic')
@@ -130,6 +180,25 @@ export function buildProgram(
       ),
     );
 
+  post
+    .command('update <postId>')
+    .description('edit a post you authored')
+    .option('--title <title>')
+    .option('--content <content>')
+    .option('--tags <tags>', 'comma-separated tags')
+    .action((postId: string, opts: { title?: string; content?: string; tags?: string }) =>
+      run(
+        (c) =>
+          c.postUpdate(postId, {
+            title: opts.title,
+            content: opts.content,
+            tags: opts.tags ? opts.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+          }),
+        fmt.fmtPost,
+      ),
+    );
+  post.command('delete <postId>').description('delete a post you authored').action((postId: string) => run((c) => c.postDelete(postId), (r) => `Deleted ${r.id}`));
+
   // ── comments ──────────────────────────────────────────────────────────
   const comment = program.command('comment').description('comment operations');
   comment.command('list <postId>').description('comments on a post').action((postId: string) => run((c) => c.commentList(postId), fmt.fmtComments));
@@ -137,6 +206,33 @@ export function buildProgram(
     .command('add <postId> <text...>')
     .description('add a comment')
     .action((postId: string, text: string[]) => run((c) => c.commentAdd(postId, text.join(' ')), fmt.fmtComment));
+  comment
+    .command('delete <commentId>')
+    .description('soft-delete a comment (author, or topic owner/admin)')
+    .action((commentId: string) => run((c) => c.commentDelete(commentId), (r) => `Deleted comment ${r.commentId}`));
+
+  // ── upload (image → CDN public URL) ─────────────────────────────────────
+  program
+    .command('upload <file>')
+    .description('upload an image file to the CDN; prints the public URL to embed')
+    .option('--purpose <p>', 'post | topic | avatar', 'post')
+    .option('--content-type <mime>', 'override the MIME type (else inferred from the file extension)')
+    .action((file: string, opts: { purpose?: string; contentType?: string }) =>
+      run(
+        (c) => {
+          const data = new Uint8Array(readFileSync(file));
+          const contentType = opts.contentType ?? IMAGE_MIME[extname(file).toLowerCase()];
+          if (!contentType) throw new Error(`cannot infer image MIME type from '${file}'; pass --content-type`);
+          return c.uploadImage({
+            data,
+            filename: basename(file),
+            contentType,
+            purpose: opts.purpose as 'post' | 'topic' | 'avatar' | undefined,
+          });
+        },
+        (r) => r.publicUrl,
+      ),
+    );
 
   // ── chat (E2EE) ─────────────────────────────────────────────────────────
   const chat = program.command('chat').description('E2EE chat (MLS keys held locally in the vault)');

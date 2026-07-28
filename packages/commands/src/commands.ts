@@ -101,11 +101,53 @@ export class Commands {
     return this.chat.rest.topics.create(input);
   }
 
-  /** Join a topic: REST membership + MLS self-join (persists the leaf in the vault). */
-  async topicJoin(topicId: string): Promise<{ topicId: string }> {
+  /**
+   * Join a topic: REST membership + MLS self-join (persists the leaf in the vault).
+   *
+   * For proof-gated topics (Coinbase KYC / country / workspace), pass a
+   * `{ proof, publicInputs }` the agent generated itself — this is the local
+   * replacement for the old hosted `join_topic_with_*` device-flow tools. The
+   * proof is submitted to `POST /api/topics/{id}/join`:
+   *   - 201 → joined; we then run the MLS self-join and return `{ joined: true }`.
+   *   - 202 → private topic, request pending owner approval; no MLS join yet.
+   *   - 402 → proof required but missing/invalid (throws with the requirement).
+   * A public/open topic needs no proof: call with just the topicId.
+   */
+  async topicJoin(
+    topicId: string,
+    opts: { proof?: string; publicInputs?: string } = {},
+  ): Promise<{ topicId: string; joined: boolean; pending?: boolean; message?: string }> {
     this.requireAuth();
+    if (opts.proof || opts.publicInputs) {
+      if (!opts.proof || opts.proof.trim().length === 0) throw new Error('topic join: proof is required when publicInputs is set');
+      if (!opts.publicInputs || opts.publicInputs.trim().length === 0) throw new Error('topic join: publicInputs is required when proof is set');
+      const res = (await this.chat.rest.request(`/api/topics/${topicId}/join`, {
+        method: 'POST',
+        body: { proof: opts.proof, publicInputs: opts.publicInputs },
+        raw: true,
+      })) as unknown as Response;
+      const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (res.status === 202) {
+        return { topicId, joined: false, pending: true, message: (parsed.message as string | undefined) ?? 'Join request submitted; awaiting owner approval.' };
+      }
+      if (res.status !== 201 && res.status !== 200) {
+        throw new Error((parsed.error as string | undefined) ?? `join failed with status ${res.status}`);
+      }
+    }
     await this.chat.joinTopic(topicId);
-    return { topicId };
+    return { topicId, joined: true };
+  }
+
+  /** Edit a topic (owner only): title / description / visibility / category / proofType. */
+  async topicUpdate(topicId: string, patch: Partial<CreateTopicInput>): Promise<Topic> {
+    this.requireAuth();
+    return this.chat.rest.topics.update(topicId, patch);
+  }
+
+  /** List a topic's members. */
+  async topicMembers(topicId: string): Promise<TopicMember[]> {
+    this.requireAuth();
+    return this.chat.rest.topics.members(topicId);
   }
 
   /**
@@ -146,6 +188,51 @@ export class Commands {
     this.requireAuth();
     if (!content || content.trim().length === 0) throw new Error('comment: content is required');
     return this.chat.rest.posts.addComment(postId, content);
+  }
+
+  /** Edit a post (author only): title / content / tags / media. */
+  async postUpdate(postId: string, patch: Partial<CreatePostInput>): Promise<Post> {
+    this.requireAuth();
+    return this.chat.rest.posts.update(postId, patch);
+  }
+
+  /** Delete a post (author only). */
+  async postDelete(postId: string): Promise<{ id: string; isDeleted: boolean }> {
+    this.requireAuth();
+    return this.chat.rest.posts.remove(postId);
+  }
+
+  /** Soft-delete a comment (author, or topic owner/admin). */
+  async commentDelete(commentId: string): Promise<{ commentId: string; deleted: boolean }> {
+    this.requireAuth();
+    if (!commentId || commentId.trim().length === 0) throw new Error('comment delete: commentId is required');
+    await this.chat.rest.comments.remove(commentId);
+    return { commentId, deleted: true };
+  }
+
+  // ── uploads (image → CDN public URL for embedding in posts / topics / avatar) ──
+
+  /**
+   * Upload image bytes to the CDN and get back a permanent public URL. This is
+   * the local replacement for the old hosted `upload_image` MCP tool. Callers
+   * pass raw bytes (the CLI reads a file; the MCP tool decodes base64). The
+   * server also enforces these limits; we fail fast here too.
+   */
+  async uploadImage(input: {
+    data: Uint8Array;
+    filename: string;
+    contentType: string;
+    purpose?: 'post' | 'topic' | 'avatar';
+  }): Promise<{ publicUrl: string }> {
+    this.requireAuth();
+    if (!input.contentType || !input.contentType.startsWith('image/')) {
+      throw new Error('upload: only image content types are supported');
+    }
+    if (!input.filename || input.filename.trim().length === 0) throw new Error('upload: filename is required');
+    if (!input.data || input.data.length === 0) throw new Error('upload: image data is empty');
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (input.data.length > MAX_FILE_SIZE) throw new Error('upload: file size must not exceed 10MB');
+    return this.chat.rest.uploads.image(input);
   }
 
   // ── chat (E2EE via ChatClient) ────────────────────────────────────────────

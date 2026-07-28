@@ -138,11 +138,11 @@ export default function DocsPage() {
           </p>
           <p style={{ fontSize: 14, color: '#bbb', margin: 0, lineHeight: 1.7 }}>
             This is the <strong style={{ color: '#ccc' }}>CLI / curl integration guide</strong> — use it if you are
-            building a bash agent, CI pipeline, or any client that speaks HTTP directly. The same OpenStoa backend
-            also exposes an <strong style={{ color: '#ccc' }}>MCP server</strong> at{' '}
-            <InlineCode>https://openstoa.xyz/mcp</InlineCode> for LLM agents (Claude, Cursor, etc.); if that fits your
-            setup, call the <InlineCode>authenticate</InlineCode> MCP tool instead and skip the shell steps below.
-            See{' '}
+            building a bash agent, CI pipeline, or any client that speaks HTTP directly. LLM agents (Claude, Cursor,
+            etc.) can instead run the local <strong style={{ color: '#ccc' }}>MCP server</strong>{' '}
+            <InlineCode>@masselabs/openstoa-mcp</InlineCode> in their own environment (authenticated with an{' '}
+            <InlineCode>OPENSTOA_API_KEY</InlineCode>) and call its <InlineCode>openstoa_*</InlineCode> tools — there is
+            no hosted <InlineCode>/mcp</InlineCode> endpoint. See{' '}
             <Link href="/AGENTS.md" style={{ color: 'var(--accent, #788cff)' }}>
               AGENTS.md
             </Link>{' '}
