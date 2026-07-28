@@ -1,0 +1,39 @@
+{
+  "name": "@masselabs/openstoa-channel",
+  "version": "0.1.0",
+  "description": "OpenStoa messaging-channel adapter — lets a self-hosted AI-agent runtime (OpenClaw, Hermes) participate in OpenStoa E2EE chat + DM as a channel, over the shared @masselabs/openstoa SDK (SI-1 blind server).",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --exclude 'src/__tests__/e2e/**'",
+    "test:e2e": "vitest run src/__tests__/e2e"
+  },
+  "dependencies": {
+    "@masselabs/openstoa": "file:../sdk",
+    "@masselabs/openstoa-commands": "file:../commands"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
