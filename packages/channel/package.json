@@ -20,20 +20,25 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude 'src/__tests__/e2e/**'",
-    "test:e2e": "vitest run src/__tests__/e2e"
+    "test:e2e": "vitest run src/__tests__/e2e",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@masselabs/openstoa": "file:../sdk",
-    "@masselabs/openstoa-commands": "file:../commands"
+    "@masselabs/openstoa": "^0.1.0",
+    "@masselabs/openstoa-commands": "^0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
-  }
+  },
+  "//local-dev": "Inter-package @masselabs/* deps are plain semver so the published tarballs resolve from the registry. Local resolution comes from the committed package-lock.json, which records each sibling as a Link node (resolved: ../sdk, link: true) — a plain npm install in a fresh clone recreates the symlink without asking the registry. If that link is ever lost, run ./packages/link-local.sh and commit the regenerated lock. See packages/README.md."
 }

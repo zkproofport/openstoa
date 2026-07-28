@@ -20,13 +20,20 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude 'src/__tests__/e2e/**'",
-    "test:e2e": "vitest run src/__tests__/e2e"
+    "test:e2e": "vitest run src/__tests__/e2e",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@noble/ciphers": "2.1.1",
+    "@noble/curves": "2.0.1",
+    "@noble/hashes": "2.0.1",
     "ts-mls": "^1.6.2"
   },
   "optionalDependencies": {

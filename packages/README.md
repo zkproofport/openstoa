@@ -14,6 +14,39 @@ own `package.json`.
 | `miniapp-bridge/` | `@openstoa/miniapp-bridge` — `HostApi` interface + React `HostProvider` so the mobile package stays host-agnostic. |
 | `api-types/` | `@openstoa/api-types` — REST domain types shared between web and mobile. |
 
+### Publishable `@masselabs/*` packages
+
+| Package | npm name | Ships |
+|---------|----------|-------|
+| `sdk/` | `@masselabs/openstoa` | typed REST client + Node MLS E2EE chat crypto |
+| `commands/` | `@masselabs/openstoa-commands` | shared command core (CLI + MCP) |
+| `cli/` | `@masselabs/openstoa-cli` | `openstoa` bin |
+| `mcp/` | `@masselabs/openstoa-mcp` | `openstoa-mcp` stdio server |
+| `channel/` | `@masselabs/openstoa-channel` | agent-runtime channel adapter |
+
+These five are published to npmjs, so their inter-package deps are declared as
+plain semver (`^0.1.0`) — a `file:../sibling` spec would ship a tarball whose
+dependency points at a path that does not exist on the consumer's disk.
+
+Local resolution comes from each package's committed `package-lock.json`, which
+records the sibling as a Link node (`"resolved": "../sdk", "link": true`). A
+plain `npm install` in a fresh clone honours that entry and recreates the
+symlink without ever asking the registry, so `npm install` / `npm test` /
+`npm run build` all work out of the box — verified against the real npmjs
+registry, where `@masselabs/*` does not exist yet.
+
+`./packages/link-local.sh` is the repair tool for when that link is lost (lock
+deleted or regenerated from scratch, a `^0.1.0` spec bumped ahead of the
+sibling's version). It installs each sibling as a `--no-save` folder link and
+is idempotent. **Commit the resulting `package-lock.json`** — that is what
+keeps the next clone seamless.
+
+Note that `overrides` cannot be used for this: npm rejects an override that
+redirects a *direct* dependency of the same package (`EOVERRIDE`). npm
+workspaces are also out — `Dockerfile.prod` copies only the root
+`package.json` before `npm install`, and `packages/mobile` is consumed by the
+parent `proofport-app` repo via `file:` and must keep its standalone layout.
+
 ## Who depends on these?
 
 - `proofport-app/` (ZKProofport host) — `file:../openstoa/packages/{mobile,miniapp-bridge,api-types}`.

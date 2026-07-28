@@ -21,6 +21,7 @@ export { readCredentials } from './credentials';
 export type { Credentials } from './credentials';
 export { expandHome, resolveHome } from './config';
 export type { CommandConfig, KeystoreBackend } from './config';
+export { isEntrypoint } from './entrypoint';
 
 // Re-export the SDK domain types callers format against, so an adapter only ever
 // needs to depend on @masselabs/openstoa-commands.

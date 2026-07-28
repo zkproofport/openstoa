@@ -18,8 +18,7 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { pathToFileURL } from 'node:url';
-import { createCommands, type KeystoreBackend } from '@masselabs/openstoa-commands';
+import { createCommands, isEntrypoint, type KeystoreBackend } from '@masselabs/openstoa-commands';
 import { registerTools, type ToolHost } from './tools';
 
 export async function startServer(): Promise<void> {
@@ -41,7 +40,9 @@ export async function startServer(): Promise<void> {
   await server.connect(transport);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Only auto-run when invoked as the executable (not when imported by tests).
+// isEntrypoint resolves argv[1] through the npm bin symlink — see its docs.
+if (isEntrypoint(import.meta.url, process.argv[1])) {
   startServer().catch((err) => {
     process.stderr.write(`openstoa-mcp: ${(err as Error).message ?? String(err)}\n`);
     process.exit(1);

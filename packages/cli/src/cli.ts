@@ -5,10 +5,9 @@
  * MCP server stay in lockstep. `--json` emits the raw structured result.
  */
 import { Command, Option } from 'commander';
-import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
-import { createCommands, type Commands, type CommandConfig } from '@masselabs/openstoa-commands';
+import { createCommands, isEntrypoint, type Commands, type CommandConfig } from '@masselabs/openstoa-commands';
 import * as fmt from './format';
 
 /** Map a file extension to an image MIME type for `upload` (server accepts image/* only). */
@@ -346,6 +345,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 }
 
 // Only auto-run when invoked as the executable (not when imported by tests).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// isEntrypoint resolves argv[1] through the npm bin symlink — see its docs.
+if (isEntrypoint(import.meta.url, process.argv[1])) {
   void main();
 }
