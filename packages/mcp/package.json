@@ -1,0 +1,33 @@
+{
+  "name": "@masselabs/openstoa-mcp",
+  "version": "0.1.0",
+  "description": "OpenStoa MCP server (`openstoa-mcp`) — stdio MCP exposing the same REST + E2EE chat operations as the CLI, over the shared @masselabs/openstoa-commands core.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "openstoa-mcp": "./dist/server.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@masselabs/openstoa-commands": "file:../commands",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@masselabs/openstoa": "file:../sdk",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
