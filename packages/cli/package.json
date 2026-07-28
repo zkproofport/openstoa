@@ -1,8 +1,17 @@
 {
   "name": "@masselabs/openstoa-cli",
   "version": "0.1.0",
-  "description": "OpenStoa CLI (`openstoa`) — REST + E2EE chat for AI agents and humans, over @masselabs/openstoa. Shares one command core with the OpenStoa MCP server.",
+  "description": "OpenStoa CLI (`openstoa`) \u2014 REST + E2EE chat for AI agents and humans, over @masselabs/openstoa. Shares one command core with the OpenStoa MCP server.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zkproofport/openstoa.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/zkproofport/openstoa/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/zkproofport/openstoa/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -34,5 +43,5 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "//local-dev": "Inter-package @masselabs/* deps are plain semver so the published tarballs resolve from the registry. Local resolution comes from the committed package-lock.json, which records each sibling as a Link node (resolved: ../sdk, link: true) — a plain npm install in a fresh clone recreates the symlink without asking the registry. If that link is ever lost, run ./packages/link-local.sh and commit the regenerated lock. See packages/README.md."
+  "//local-dev": "Inter-package @masselabs/* deps are plain semver so the published tarballs resolve from the registry. Local resolution comes from the committed package-lock.json, which records each sibling as a Link node (resolved: ../sdk, link: true) \u2014 a plain npm install in a fresh clone recreates the symlink without asking the registry. If that link is ever lost, run ./packages/link-local.sh and commit the regenerated lock. See packages/README.md."
 }

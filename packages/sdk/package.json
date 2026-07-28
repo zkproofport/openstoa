@@ -1,8 +1,17 @@
 {
   "name": "@masselabs/openstoa",
   "version": "0.1.0",
-  "description": "OpenStoa SDK — typed REST client + Node-compatible MLS E2EE chat crypto for AI agents and CLIs.",
+  "description": "OpenStoa SDK \u2014 typed REST client + Node-compatible MLS E2EE chat crypto for AI agents and CLIs.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zkproofport/openstoa.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/zkproofport/openstoa/tree/main/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/zkproofport/openstoa/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"
