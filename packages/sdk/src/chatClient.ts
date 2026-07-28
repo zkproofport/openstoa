@@ -24,6 +24,7 @@ import {
   type SealedMessage,
 } from './mls';
 import { OpenStoaClient, type OpenStoaClientOptions } from './rest/openStoaClient';
+import type { DmChannel } from './rest/types';
 import { mlsTransport, takTransport } from './rest/transports';
 import { createFileVaultStore } from './keystore';
 
@@ -179,6 +180,25 @@ export class ChatClient {
     // sync() forces bootstrap (genesis if first, else External-Commit join) and
     // catches up to the latest epoch. Persists the leaf in the vault.
     await mls.sync(topicId);
+  }
+
+  /**
+   * Start (or get) a 1:1 DM with `peerUserId`, then bootstrap the MLS session so
+   * the caller can immediately `sendChat`/`readChat` on the returned topicId. A DM
+   * is a hidden 2-member topic: the initiator's `sync()` does MLS genesis; when the
+   * peer later calls `startDm` (idempotent → same topicId) their `sync()` joins via
+   * External Commit — exactly the topic-chat join path. Returns the DM topicId.
+   */
+  async startDm(peerUserId: string): Promise<string> {
+    const { topicId } = await this.rest.dm.start(peerUserId);
+    const { mls } = await this.session(topicId);
+    await mls.sync(topicId);
+    return topicId;
+  }
+
+  /** List the caller's DM channels (routing metadata only — never message content). */
+  async listDms(): Promise<DmChannel[]> {
+    return this.rest.dm.list();
   }
 
   /**

@@ -221,10 +221,12 @@ export async function GET(request: NextRequest) {
 
       logger.info(ROUTE, 'Guest fetching all topics', { sort, categorySlug });
 
+      // kind='dm' topics are private 1:1 channels — never surfaced in any
+      // public/topic listing (they live behind GET /api/dm). Exclude here.
       const allTopics = await db.query.topics.findMany({
         where: qPattern
-          ? (t, { or: o, ilike: il }) => o(il(t.title, qPattern), il(t.description, qPattern))
-          : undefined,
+          ? (t, { or: o, ilike: il, and: a, eq: e }) => a(e(t.kind, 'topic'), o(il(t.title, qPattern), il(t.description, qPattern)))
+          : (t, { eq: e }) => e(t.kind, 'topic'),
         orderBy: (t, { desc: d }) =>
           sort === 'new'
             ? [d(t.createdAt)]
@@ -267,10 +269,11 @@ export async function GET(request: NextRequest) {
     if (view === 'all') {
       logger.info(ROUTE, 'Fetching all topics with member counts', { userId: session.userId, sort, categorySlug });
 
+      // Exclude DM channels (kind='dm') from every topic listing (see guest branch).
       const allTopics = await db.query.topics.findMany({
         where: qPattern
-          ? (t, { or: o, ilike: il }) => o(il(t.title, qPattern), il(t.description, qPattern))
-          : undefined,
+          ? (t, { or: o, ilike: il, and: a, eq: e }) => a(e(t.kind, 'topic'), o(il(t.title, qPattern), il(t.description, qPattern)))
+          : (t, { eq: e }) => e(t.kind, 'topic'),
         orderBy: (t, { desc: d }) =>
           sort === 'new'
             ? [d(t.createdAt)]
@@ -324,8 +327,10 @@ export async function GET(request: NextRequest) {
     }
 
     const topicIds = memberships.map((m) => m.topicId);
+    // DM channels the user belongs to are surfaced via GET /api/dm, never in the
+    // topic list — exclude kind='dm' here too.
     const userTopics = await db.query.topics.findMany({
-      where: (t, { inArray }) => inArray(t.id, topicIds),
+      where: (t, { inArray, and: a, eq: e }) => a(inArray(t.id, topicIds), e(t.kind, 'topic')),
     });
 
     const userTopicsWithCategory = userTopics.map((t) => ({

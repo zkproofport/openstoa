@@ -17,6 +17,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
@@ -107,8 +108,37 @@ export function TopicMembersScreen() {
   const { topicId } = route.params;
   const client = useOpenStoaClient();
   const queryClient = useQueryClient();
+  const sessionUserId = useOpenStoaSession((s: { userId: string | null }) => s.userId);
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
+
+  // "Message" a member: start-or-get a 1:1 DM (idempotent) then open the shared
+  // ChatRoom on the DM topicId. The DM reuses the whole E2EE chat stack.
+  const startDmMutation = useMutation({
+    mutationFn: ({ userId }: { userId: string }) =>
+      client.post<{ topicId: string }>('/api/dm', { userId }),
+    onError: (err: Error) => {
+      Alert.alert(t('openstoa.members.actionFailed'), err.message);
+    },
+  });
+
+  const openDm = useCallback(
+    (member: Member) => {
+      startDmMutation.mutate(
+        { userId: member.userId },
+        {
+          onSuccess: (res) => {
+            // Cross-tab jump into the Chat tab's shared ChatRoom.
+            (navigation as unknown as { navigate: (name: string, params: unknown) => void }).navigate(
+              'ChatTab',
+              { screen: 'ChatRoom', params: { topicId: res.topicId, topicTitle: member.nickname } },
+            );
+          },
+        },
+      );
+    },
+    [startDmMutation, navigation],
+  );
 
   React.useLayoutEffect(() => {
     navigation.setOptions({ title: t('openstoa.members.title') });
@@ -299,13 +329,23 @@ export function TopicMembersScreen() {
             </Text>
             <Text style={styles.roleText}>{roleLabel}</Text>
           </View>
+          {item.userId !== sessionUserId ? (
+            <TouchableOpacity
+              onPress={() => openDm(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Message ${item.nickname}`}
+            >
+              <Feather name="message-circle" size={18} color={colors.brand.primary} />
+            </TouchableOpacity>
+          ) : null}
           {isPressable ? (
             <Feather name="more-vertical" size={18} color={colors.text.tertiary} />
           ) : null}
         </Container>
       );
     },
-    [isOwner, onMemberLongPress, t, styles, colors],
+    [isOwner, onMemberLongPress, t, styles, colors, sessionUserId, openDm],
   );
 
   if (membersQuery.isLoading) {

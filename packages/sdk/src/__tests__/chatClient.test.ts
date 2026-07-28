@@ -35,6 +35,7 @@ function makeDs() {
   const chat = new Map<string, StoredMsg[]>();
   const archive = new Map<string, ArchiveRow[]>();
   const bundles = new Map<string, BundleRow[]>();
+  const dmChannels = new Map<string, { topicId: string; a: string; b: string }>(); // key = canonical pair
   let seq = 0;
   const tokenUser: Record<string, string> = {}; // Bearer token → userId
   const now = () => new Date(Date.now() + seq).toISOString();
@@ -70,6 +71,24 @@ function makeDs() {
     }
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/join$/)) && method === 'POST') {
       return json(201, { success: true });
+    }
+    // DM start-or-get (idempotent on the canonical participant pair) + list.
+    if (p === '/api/dm') {
+      if (method === 'POST') {
+        const pair = [userId, body.userId].sort().join('|');
+        let ch = dmChannels.get(pair);
+        if (!ch) {
+          ch = { topicId: 'dm-' + pair.replace(/[^a-zA-Z0-9]/g, '_'), a: userId, b: body.userId };
+          dmChannels.set(pair, ch);
+        }
+        return json(ch ? 201 : 200, { topicId: ch.topicId });
+      }
+      if (method === 'GET') {
+        const dms = [...dmChannels.values()]
+          .filter((ch) => ch.a === userId || ch.b === userId)
+          .map((ch) => ({ topicId: ch.topicId, peer: { userId: ch.a === userId ? ch.b : ch.a, nickname: 'u', profileImage: null }, lastActivityAt: null }));
+        return json(200, { dms });
+      }
     }
     // MLS group-info
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/mls\/group-info$/))) {
@@ -261,6 +280,33 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     // Now B back-fills and reads the pre-join message.
     const history = await b.backfill(T);
     expect(history.find((h) => h.messageId === preJoinId)?.plaintext).toBe('secret-before-B');
+  });
+
+  it('DM: startDm is idempotent per pair, and A↔B round-trip works over the DM topicId', async () => {
+    const { fetchImpl, chat } = makeDs();
+    // No dev-login → each client's userId is its bearer token (tok-A / tok-B).
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
+
+    // Idempotency: either party, either order → the SAME topicId.
+    const t1 = await a.startDm('tok-B'); // A genesis
+    const t2 = await b.startDm('tok-A'); // B External-Commit join
+    const t3 = await a.startDm('tok-B'); // repeat
+    expect(t1).toBe(t2);
+    expect(t1).toBe(t3);
+
+    // A appears in B's DM list with A as the peer.
+    const dms = await b.listDms();
+    expect(dms.find((d) => d.topicId === t1)?.peer.userId).toBe('tok-A');
+
+    const plaintext = 'dm secret — 안녕 🔐';
+    const msgId = await a.sendChat(t1, plaintext);
+    const history = await b.readChat(t1);
+    expect(history.find((h) => h.id === msgId)?.text).toBe(plaintext);
+
+    // SI-1: the DS stored only opaque ciphertext for the DM.
+    const stored = chat.get(t1)!.find((r) => r.id === msgId)!;
+    expect(Buffer.from(stored.ciphertext, 'base64').toString('utf8')).not.toContain('dm secret');
   });
 
   it('accepts an injected OpenStoaClient (shared REST instance)', async () => {

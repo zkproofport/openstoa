@@ -32,6 +32,10 @@ function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => 
     chatJoin: make('chatJoin'),
     chatSend: make('chatSend'),
     chatRead: make('chatRead'),
+    dmStart: make('dmStart'),
+    dmList: make('dmList'),
+    dmSend: make('dmSend'),
+    dmRead: make('dmRead'),
     profileGet: make('profileGet'),
     profileSetNickname: make('profileSetNickname'),
     apiKeyCreate: make('apiKeyCreate'),
@@ -76,6 +80,34 @@ describe('CLI dispatch', () => {
     await h.parse(['chat', 'read', 't1', '--limit', '5']);
     const call = h.calls.find((c) => c.method === 'chatRead');
     expect(call?.args).toEqual(['t1', { limit: 5, since: undefined, before: undefined }]);
+  });
+
+  // ── dm ────────────────────────────────────────────────────────────────────
+  it('dm start <userId> → dmStart(userId)', async () => {
+    const h = harness({ dmStart: (userId) => ({ topicId: `dm-${userId}` }) });
+    await h.parse(['dm', 'start', 'bob']);
+    expect(h.calls.find((c) => c.method === 'dmStart')?.args).toEqual(['bob']);
+    expect(h.out.join('\n')).toContain('dm-bob');
+  });
+
+  it('dm list → dmList() and formats peers', async () => {
+    const h = harness({ dmList: () => [{ topicId: 't1', peer: { userId: 'bob', nickname: 'bob', profileImage: null }, lastActivityAt: null }] });
+    await h.parse(['dm', 'list']);
+    expect(h.calls.some((c) => c.method === 'dmList')).toBe(true);
+    expect(h.out.join('\n')).toContain('bob');
+  });
+
+  it('dm send joins words into one text arg', async () => {
+    const h = harness({ dmSend: () => ({ messageId: 'm1' }) });
+    await h.parse(['dm', 'send', 't1', 'hello', '안녕']);
+    expect(h.calls.find((c) => c.method === 'dmSend')?.args).toEqual(['t1', 'hello 안녕']);
+    expect(h.out.join('\n')).toContain('m1');
+  });
+
+  it('dm read parses --limit and forwards it', async () => {
+    const h = harness({ dmRead: () => [] });
+    await h.parse(['dm', 'read', 't1', '--limit', '5']);
+    expect(h.calls.find((c) => c.method === 'dmRead')?.args).toEqual(['t1', { limit: 5, since: undefined, before: undefined }]);
   });
 
   it('--json emits the raw structured result', async () => {

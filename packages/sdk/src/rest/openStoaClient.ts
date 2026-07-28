@@ -18,6 +18,7 @@ import type {
   CreatePostInput,
   Comment,
   Category,
+  DmChannel,
   ChatMessageRow,
   CommitLogEntryWire,
   ArchiveEntryWire,
@@ -208,6 +209,18 @@ export class OpenStoaClient {
     /** POST /api/topics/{id}/posts — create a post in a topic. */
     createPost: async (topicId: string, input: CreatePostInput): Promise<Post> =>
       (await this.request<{ post: Post }>(`/api/topics/${topicId}/posts`, { method: 'POST', body: input })).post,
+  };
+
+  // -------------------------------------------------------------------------
+  // dm (1:1 direct chat — a hidden 2-member topic; reuses the chat/MLS/TAK API)
+  // -------------------------------------------------------------------------
+  readonly dm = {
+    /** POST /api/dm — start-or-get a DM with `userId`. Idempotent → same topicId. */
+    start: (userId: string): Promise<{ topicId: string }> =>
+      this.request<{ topicId: string }>('/api/dm', { method: 'POST', body: { userId } }),
+    /** GET /api/dm — the caller's DM channels (routing metadata only, SI-1). */
+    list: async (): Promise<DmChannel[]> =>
+      (await this.request<{ dms: DmChannel[] }>('/api/dm')).dms,
   };
 
   // -------------------------------------------------------------------------

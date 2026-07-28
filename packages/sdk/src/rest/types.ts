@@ -41,6 +41,17 @@ export interface TopicMember {
   [k: string]: unknown;
 }
 
+/**
+ * A 1:1 direct-message channel as returned by GET /api/dm. A DM is a hidden
+ * 2-member topic; `topicId` drives the exact same chat/MLS/TAK endpoints as a
+ * normal topic. SI-1: this carries ONLY routing metadata — never message content.
+ */
+export interface DmChannel {
+  topicId: string;
+  peer: { userId: string; nickname: string; profileImage: string | null };
+  lastActivityAt: string | null;
+}
+
 export interface CreateTopicInput {
   title: string;
   description?: string;

@@ -131,6 +131,20 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     wrap((a) => commands.chatRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })),
   );
 
+  // ── dm (1:1 direct chat — reuse openstoa_chat_send / openstoa_chat_read) ──
+  host.tool(
+    'openstoa_dm_start',
+    'Start (or get) a 1:1 DM with a user by their userId. Idempotent — either party, in either order, resolves to the SAME topicId. Then use openstoa_chat_send / openstoa_chat_read on that topicId to message (a DM reuses the E2EE chat stack).',
+    { userId: z.string() },
+    wrap((a) => commands.dmStart(a.userId as string)),
+  );
+  host.tool(
+    'openstoa_dm_list',
+    'List your 1:1 DM channels: peer + last activity only (SI-1 — no message content). Use the topicId with openstoa_chat_read / openstoa_chat_send.',
+    {},
+    wrap(() => commands.dmList()),
+  );
+
   // ── uploads ──────────────────────────────────────────────────────────────
   host.tool(
     'openstoa_upload_image',

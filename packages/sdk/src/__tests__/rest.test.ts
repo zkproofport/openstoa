@@ -81,6 +81,24 @@ describe('OpenStoaClient', () => {
     expect('plaintext' in body).toBe(false);
   });
 
+  it('dm.start POSTs { userId } to /api/dm and returns { topicId }', async () => {
+    const { fn, calls } = mockFetch(() => ({ status: 201, json: { topicId: 'dm-1' } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    const r = await c.dm.start('bob');
+    expect(calls[0].method).toBe('POST');
+    expect(new URL(calls[0].url).pathname).toBe('/api/dm');
+    expect(calls[0].body).toEqual({ userId: 'bob' });
+    expect(r).toEqual({ topicId: 'dm-1' });
+  });
+
+  it('dm.list unwraps { dms } and carries only routing metadata (SI-1)', async () => {
+    const { fn } = mockFetch(() => ({ json: { dms: [{ topicId: 't1', peer: { userId: 'bob', nickname: 'bob', profileImage: null }, lastActivityAt: null }] } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    const dms = await c.dm.list();
+    expect(dms).toHaveLength(1);
+    expect(dms[0].peer.nickname).toBe('bob');
+  });
+
   it('group-info GET maps 404 → null, and 200 → the groupInfo string', async () => {
     const { fn } = mockFetch((rec) =>
       rec.url.includes('/notfound/') ? { status: 404 } : { json: { groupInfo: 'GI-B64' } },

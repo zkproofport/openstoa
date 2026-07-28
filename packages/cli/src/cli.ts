@@ -251,6 +251,27 @@ export function buildProgram(
       run((c) => c.chatRead(topicId, { limit: opts.limit, since: opts.since, before: opts.before }), fmt.fmtChat),
     );
 
+  // ── dm (1:1 direct chat — E2EE, reuses the chat stack) ────────────────────
+  const dm = program.command('dm').description('1:1 direct messages (E2EE; a hidden 2-member topic)');
+  dm
+    .command('start <userId>')
+    .description('start or get a DM with a user (idempotent → same topic)')
+    .action((userId: string) => run((c) => c.dmStart(userId), (r) => `DM topic ${r.topicId}`));
+  dm.command('list').description('your DM channels').action(() => run((c) => c.dmList(), fmt.fmtDms));
+  dm
+    .command('send <topicId> <text...>')
+    .description('seal + send a message in a DM')
+    .action((topicId: string, text: string[]) => run((c) => c.dmSend(topicId, text.join(' ')), (r) => `Sent ${r.messageId}`));
+  dm
+    .command('read <topicId>')
+    .description('read + MLS-decrypt DM history')
+    .option('--limit <n>', 'max messages', (v) => parseInt(v, 10))
+    .option('--since <iso>', 'only messages after this ISO timestamp')
+    .option('--before <iso>', 'only messages before this ISO timestamp')
+    .action((topicId: string, opts: { limit?: number; since?: string; before?: string }) =>
+      run((c) => c.dmRead(topicId, { limit: opts.limit, since: opts.since, before: opts.before }), fmt.fmtChat),
+    );
+
   // ── profile ───────────────────────────────────────────────────────────
   const profile = program.command('profile').description('profile operations');
   profile.command('get').description('current profile / session').action(() => run((c) => c.profileGet(), fmt.fmtSession));

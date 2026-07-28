@@ -49,6 +49,8 @@ function mockCommands(overrides: Record<string, (...a: unknown[]) => unknown> = 
     chatJoin: make('chatJoin'),
     chatSend: make('chatSend'),
     chatRead: make('chatRead'),
+    dmStart: make('dmStart'),
+    dmList: make('dmList'),
     profileGet: make('profileGet'),
     profileSetNickname: make('profileSetNickname'),
     apiKeyCreate: make('apiKeyCreate'),
@@ -86,6 +88,8 @@ describe('MCP tools → command core', () => {
       'openstoa_chat_join',
       'openstoa_chat_send',
       'openstoa_chat_read',
+      'openstoa_dm_start',
+      'openstoa_dm_list',
       'openstoa_profile_get',
       'openstoa_profile_set_nickname',
       'openstoa_apikey_create',
@@ -151,6 +155,21 @@ describe('MCP tools → command core', () => {
     registerTools(host, cmds);
     await handlers.get('openstoa_chat_read')!({ topicId: 't1', limit: 10 });
     expect(calls.find((c) => c.method === 'chatRead')?.args).toEqual(['t1', { limit: 10, since: undefined, before: undefined }]);
+  });
+
+  it('dm_start dispatches to dmStart(userId); dm_list dispatches to dmList()', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({
+      dmStart: (userId) => ({ topicId: `dm-${userId}` }),
+      dmList: () => [{ topicId: 't1', peer: { userId: 'bob', nickname: 'bob', profileImage: null }, lastActivityAt: null }],
+    });
+    registerTools(host, cmds);
+    const started = await handlers.get('openstoa_dm_start')!({ userId: 'bob' });
+    expect(calls.find((c) => c.method === 'dmStart')?.args).toEqual(['bob']);
+    expect(JSON.parse(started.content[0].text)).toEqual({ topicId: 'dm-bob' });
+    const listed = await handlers.get('openstoa_dm_list')!({});
+    expect(calls.some((c) => c.method === 'dmList')).toBe(true);
+    expect(JSON.parse(listed.content[0].text)[0].peer.nickname).toBe('bob');
   });
 
   it('apikey_create dispatches with defaults for cmd/historyGrant and returns { rawKey, key }', async () => {

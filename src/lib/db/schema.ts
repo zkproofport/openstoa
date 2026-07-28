@@ -42,13 +42,26 @@ export const topics = pgTable('topics', {
   requiredDomain: text('required_domain'), // e.g., 'company.com' for workspace/MS 365 gating
   inviteCode: text('invite_code').unique().notNull(),
   visibility: varchar('visibility', { length: 10 }).notNull().default('public'), // 'public' | 'private' | 'secret'
+  // A DM (1:1 direct chat) is modeled as a hidden 2-member topic so it reuses the
+  // whole E2EE chat/MLS/TAK stack unchanged (P-D). `kind='dm'` topics are excluded
+  // from every public/topic listing (GET /api/topics, feed, search); a normal
+  // community topic keeps the default `'topic'`.
+  kind: varchar('kind', { length: 10 }).notNull().default('topic'), // 'topic' | 'dm'
+  // Canonical-ordered participant pair `min(a,b)|max(a,b)` for `kind='dm'` rows,
+  // NULL for normal topics. The unique index below makes `POST /api/dm` idempotent
+  // (either order of the pair maps to the same row) at the storage layer.
+  dmPair: text('dm_pair'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   score: real('score').notNull().default(0),
   lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow(),
   blindedAt: timestamp('blinded_at', { withTimezone: true }),
   blindedBy: varchar('blinded_by', { length: 10 }), // 'owner' | 'admin'
-});
+}, (table) => ({
+  // Postgres treats NULLs as distinct, so normal topics (dm_pair = NULL) never
+  // collide here; only DM rows are constrained to one per canonical pair.
+  dmPairIdx: uniqueIndex('topics_dm_pair_idx').on(table.dmPair),
+}));
 
 export const topicMembers = pgTable('topic_members', {
   topicId: uuid('topic_id').references(() => topics.id).notNull(),

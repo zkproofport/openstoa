@@ -30,6 +30,8 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
     joinTopic: rec('joinTopic'),
     sendChat: rec('sendChat'),
     readChat: rec('readChat'),
+    startDm: rec('startDm'),
+    listDms: rec('listDms'),
     getDeviceId: rec('getDeviceId'),
     rest: {
       getToken: () => token,
@@ -220,6 +222,36 @@ describe('Commands dispatch → SDK', () => {
     const order = calls.map((c) => c.method).filter((m) => m === 'joinTopic' || m === 'readChat');
     expect(order).toEqual(['joinTopic', 'readChat']);
     expect(calls.find((c) => c.method === 'readChat')?.args).toEqual(['t1', { limit: 5 }]);
+  });
+
+  // ── dm (1:1 direct chat, P-D) ──────────────────────────────────────────────
+  it('dmStart dispatches to chat.startDm and returns the topicId', async () => {
+    const { cmds, calls } = build({ startDm: (peer: unknown) => `dm-${peer}` });
+    const r = await cmds.dmStart('peer-x');
+    expect(calls.find((c) => c.method === 'startDm')?.args).toEqual(['peer-x']);
+    expect(r).toEqual({ topicId: 'dm-peer-x' });
+  });
+
+  it('dmStart rejects an empty/whitespace peer userId before any dispatch', async () => {
+    const { cmds, calls } = build();
+    await expect(cmds.dmStart('   ')).rejects.toThrow(/userId is required/);
+    expect(calls.some((c) => c.method === 'startDm')).toBe(false);
+  });
+
+  it('dmList dispatches to chat.listDms', async () => {
+    const { cmds, calls } = build({ listDms: () => [{ topicId: 't1', peer: { userId: 'bob', nickname: 'bob', profileImage: null }, lastActivityAt: null }] });
+    const r = await cmds.dmList();
+    expect(calls.some((c) => c.method === 'listDms')).toBe(true);
+    expect(r).toEqual([{ topicId: 't1', peer: { userId: 'bob', nickname: 'bob', profileImage: null }, lastActivityAt: null }]);
+  });
+
+  it('dmSend / dmRead alias chatSend / chatRead (join-first, same as topic chat)', async () => {
+    const { cmds, calls } = build({ sendChat: () => 'm1', readChat: () => [] });
+    await cmds.dmSend('t1', 'hi');
+    await cmds.dmRead('t1', { limit: 3 });
+    expect(calls.filter((c) => c.method === 'joinTopic').length).toBe(2);
+    expect(calls.find((c) => c.method === 'sendChat')?.args).toEqual(['t1', 'hi']);
+    expect(calls.find((c) => c.method === 'readChat')?.args).toEqual(['t1', { limit: 3 }]);
   });
 
   it('profile set-nickname dispatches + persists', async () => {

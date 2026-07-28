@@ -16,6 +16,7 @@ import type {
   Post,
   Comment,
   Category,
+  DmChannel,
   CreateTopicInput,
   CreatePostInput,
   SessionPayload,
@@ -261,6 +262,36 @@ export class Commands {
     this.requireAuth();
     await this.chat.joinTopic(topicId);
     return this.chat.readChat(topicId, opts);
+  }
+
+  // ── dm (1:1 direct chat — a hidden 2-member topic reusing the chat stack) ──
+
+  /**
+   * Start (or get) a DM with another user. Idempotent — either party, in either
+   * order, resolves to the SAME topicId. Also bootstraps the caller's MLS session
+   * so the returned topicId is immediately usable with `dmSend`/`dmRead`.
+   */
+  async dmStart(peerUserId: string): Promise<{ topicId: string }> {
+    this.requireAuth();
+    if (!peerUserId || peerUserId.trim().length === 0) throw new Error('dm start: peer userId is required');
+    const topicId = await this.chat.startDm(peerUserId);
+    return { topicId };
+  }
+
+  /** List the caller's DM channels (peer + last activity only — SI-1, no content). */
+  async dmList(): Promise<DmChannel[]> {
+    this.requireAuth();
+    return this.chat.listDms();
+  }
+
+  /** Send a message in a DM. Thin alias over `chatSend` on the DM's topicId. */
+  async dmSend(topicId: string, text: string): Promise<{ messageId: string }> {
+    return this.chatSend(topicId, text);
+  }
+
+  /** Read + decrypt DM history. Thin alias over `chatRead` on the DM's topicId. */
+  async dmRead(topicId: string, opts: { limit?: number; since?: string; before?: string } = {}): Promise<ChatMessage[]> {
+    return this.chatRead(topicId, opts);
   }
 
   // ── profile ────────────────────────────────────────────────────────────────

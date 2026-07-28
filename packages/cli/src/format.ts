@@ -3,7 +3,7 @@
  * emits the raw structured result; these only make the default output readable.
  * They never print tokens or chat plaintext beyond what the user just typed/read.
  */
-import type { ChatMessage, Topic, Post, Comment, SessionPayload } from '@masselabs/openstoa-commands';
+import type { ChatMessage, Topic, Post, Comment, SessionPayload, DmChannel } from '@masselabs/openstoa-commands';
 import type { LoginResult } from '@masselabs/openstoa-commands';
 import type { ApiKeyMeta, ApiKeyCreateResult } from '@masselabs/openstoa-commands';
 
@@ -73,6 +73,13 @@ function fmtApiKey(k: ApiKeyMeta): string {
 export function fmtApiKeys(ks: ApiKeyMeta[]): string {
   if (ks.length === 0) return '(no API keys)';
   return ks.map(fmtApiKey).join('\n');
+}
+
+export function fmtDms(dms: DmChannel[]): string {
+  if (dms.length === 0) return '(no direct messages)';
+  return dms
+    .map((d) => `${d.topicId}  ${d.peer.nickname} (${d.peer.userId})`)
+    .join('\n');
 }
 
 export function fmtChat(msgs: ChatMessage[]): string {

@@ -18,6 +18,7 @@ export type {
   ChatMessage,
   Topic,
   TopicMember,
+  DmChannel,
   Post,
   Comment,
   Category,
