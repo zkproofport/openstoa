@@ -1,0 +1,181 @@
+# OpenStoa — CI
+#
+# Three jobs:
+#   packages   — matrix over the five publishable @masselabs/* packages:
+#                install -> typecheck -> unit tests.
+#   server     — the root Next.js app: unit tests (against a real redis:7 service
+#                container) + `next build`.
+#   mcp-smoke  — boots the built `openstoa-mcp` stdio binary and asserts it
+#                answers a real MCP `initialize` + `tools/list` handshake.
+#
+# The repo-level e2e suites (`src/__tests__/e2e/**`, `packages/*/src/__tests__/e2e/**`)
+# are deliberately NOT run here: they require a deployed/live container plus R2,
+# OAuth and wallet secrets. Run them with `npm run test:e2e:*` against staging.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Publishable @masselabs/* packages.
+  #
+  # These are NOT npm workspaces: each package has its own package-lock.json and
+  # installs independently. Inter-package deps are plain semver (`^0.1.0`) and
+  # resolve locally because each lock records the sibling as a Link node
+  # ("resolved": "../sdk", "link": true) — `npm ci` recreates the symlink from a
+  # clean checkout without ever contacting the registry.
+  #
+  # Because the symlink points at the sibling *source* folder, the sibling's
+  # `dist/` must exist before typecheck/tests run (package.json `types`/`exports`
+  # point into dist, and dist is gitignored). Hence `local-deps`: build the
+  # dependency chain first, in order.
+  # ---------------------------------------------------------------------------
+  packages:
+    name: package (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: sdk
+            local-deps: ''
+          - package: commands
+            local-deps: 'sdk'
+          - package: cli
+            local-deps: 'sdk commands'
+          - package: mcp
+            local-deps: 'sdk commands'
+          - package: channel
+            local-deps: 'sdk commands'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build local dependencies (in order)
+        shell: bash
+        run: |
+          for dep in ${{ matrix.local-deps }}; do
+            echo "::group::packages/$dep"
+            ( cd "packages/$dep" && npm ci --no-audit --no-fund && npm run build )
+            echo "::endgroup::"
+          done
+
+      - name: Install
+        working-directory: packages/${{ matrix.package }}
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        working-directory: packages/${{ matrix.package }}
+        run: npx tsc --noEmit
+
+      - name: Test
+        working-directory: packages/${{ matrix.package }}
+        run: npm test
+
+      - name: Build
+        working-directory: packages/${{ matrix.package }}
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Root Next.js server.
+  # ---------------------------------------------------------------------------
+  server:
+    name: server (next build + unit tests)
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Points at the redis:7 service container above. Nothing else is injected:
+      # `next build` and the unit suite were verified to run with no other env
+      # set (no DATABASE_URL, no COMMUNITY_JWT_SECRET, no R2 credentials). Any
+      # code path that genuinely requires a secret must throw rather than fall
+      # back to a default — do not add placeholder values here to make a job go
+      # green.
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Unit tests
+        # `packages/**` is excluded: the five publishable packages have their own
+        # matrix job above (with their own lockfiles + built dist), and
+        # packages/mobile has no lockfile at all, so it cannot be installed
+        # reproducibly here. The repo e2e suite is excluded for the reason in the
+        # file header. The other three excludes restate vitest.config.ts's
+        # defaults, which a CLI `--exclude` would otherwise replace.
+        run: |
+          npx vitest run \
+            --exclude '**/node_modules/**' \
+            --exclude '**/dist/**' \
+            --exclude '**/.next/**' \
+            --exclude '**/__tests__/e2e/**' \
+            --exclude 'packages/**'
+
+      - name: Build
+        # `prebuild` regenerates public/skill.md + public/skills/** from the
+        # OpenAPI JSDoc, so this also proves the skill generator still runs.
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # MCP stdio binary smoke test.
+  #
+  # Guards the entrypoint-guard class of bug that once shipped a CLI bin which
+  # exited 0 without doing anything. Type-checks and unit tests cannot catch it;
+  # only running the built binary and getting a JSON-RPC answer back can.
+  # ---------------------------------------------------------------------------
+  mcp-smoke:
+    name: mcp stdio smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build sdk -> commands -> mcp
+        shell: bash
+        run: |
+          for pkg in sdk commands mcp; do
+            echo "::group::packages/$pkg"
+            ( cd "packages/$pkg" && npm ci --no-audit --no-fund && npm run build )
+            echo "::endgroup::"
+          done
+
+      - name: Boot openstoa-mcp and complete an MCP handshake
+        run: node scripts/mcp-smoke.mjs

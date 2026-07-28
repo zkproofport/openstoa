@@ -1,0 +1,43 @@
+# OpenStoa — Release Please
+#
+# Runs release-please in *manifest mode* over six independently-versioned
+# components in this one repo:
+#
+#   .                 -> openstoa-server   (private Next.js server, never published to npm)
+#   packages/sdk      -> openstoa-sdk      (@masselabs/openstoa)
+#   packages/commands -> openstoa-commands (@masselabs/openstoa-commands)
+#   packages/cli      -> openstoa-cli      (@masselabs/openstoa-cli)
+#   packages/mcp      -> openstoa-mcp      (@masselabs/openstoa-mcp)
+#   packages/channel  -> openstoa-channel  (@masselabs/openstoa-channel)
+#
+# Conventional commits on `main` accumulate into a single release PR. Merging it
+# tags + creates one GitHub Release per changed component, named
+# `<component>-v<version>` (e.g. `openstoa-cli-v0.1.1`). `npm-publish.yml` then
+# routes on that tag. See docs/releasing.md.
+#
+# Requires the `RELEASE_PLEASE_TOKEN` repository secret (a PAT with `repo`
+# scope). The default GITHUB_TOKEN is deliberately not used: PRs it opens do not
+# trigger other workflows, so CI would never run on the release PR.
+
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Release Please
+        uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

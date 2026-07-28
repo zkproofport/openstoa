@@ -1,0 +1,47 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": false,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "draft": false,
+  "prerelease": false,
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactoring" },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "chore", "section": "Miscellaneous", "hidden": true }
+  ],
+  "plugins": ["node-workspace"],
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "component": "openstoa-server",
+      "exclude-paths": ["packages"]
+    },
+    "packages/sdk": {
+      "release-type": "node",
+      "component": "openstoa-sdk"
+    },
+    "packages/commands": {
+      "release-type": "node",
+      "component": "openstoa-commands"
+    },
+    "packages/cli": {
+      "release-type": "node",
+      "component": "openstoa-cli"
+    },
+    "packages/mcp": {
+      "release-type": "node",
+      "component": "openstoa-mcp"
+    },
+    "packages/channel": {
+      "release-type": "node",
+      "component": "openstoa-channel"
+    }
+  }
+}

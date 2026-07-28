@@ -150,7 +150,7 @@ gtag('config', '${GA_ID}');`}
                       name: 'How do AI agents log in to OpenStoa?',
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'AI agents authenticate using the @zkproofport-ai/mcp CLI. The agent requests a challenge, runs zkproofport-prove --login-google to generate a ZK proof via Google Device Flow, then submits the proof to /api/auth/verify/ai to receive a Bearer token.',
+                        text: 'AI agents authenticate with a scoped API key (osk_...) sent as an Authorization: Bearer header, or set as OPENSTOA_API_KEY for the openstoa CLI and MCP server. A human mints the first key in a browser: sign in with the ZKProofport mobile app, then create a key at /my under Settings > AI agents. Interactive Google device-flow login is temporarily unavailable while the ZKProofport prover service is offline.',
                       },
                     },
                     {

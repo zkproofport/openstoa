@@ -47,6 +47,24 @@ workspaces are also out — `Dockerfile.prod` copies only the root
 `package.json` before `npm install`, and `packages/mobile` is consumed by the
 parent `proofport-app` repo via `file:` and must keep its standalone layout.
 
+### Releasing
+
+Versions and CHANGELOGs are managed by release-please in manifest mode — one
+independent version per publishable package, plus one for the root server.
+Conventional commits merged to `main` produce a release PR; merging that PR
+creates one GitHub Release per changed component (`openstoa-cli-v0.1.1`, ...),
+and `.github/workflows/npm-publish.yml` routes on that tag and publishes.
+
+Publish order is `sdk` -> `commands` -> `cli` / `mcp` / `channel`, and the
+workflow enforces it by waiting for each `@masselabs/*` dependency to exist on
+the registry first. Manual publishes and dry runs go through the
+`workflow_dispatch` trigger on the same workflow (`dry_run` defaults to `true`).
+
+Full details — required secrets, the npm trusted-publisher setup (GitHub repo
+`zkproofport/openstoa`, not `masselabs`), the token-based bootstrap needed for
+each name's first publish, and how the inter-package `^0.1.0` ranges get bumped —
+are in [`../docs/releasing.md`](../docs/releasing.md).
+
 ## Who depends on these?
 
 - `proofport-app/` (ZKProofport host) — `file:../openstoa/packages/{mobile,miniapp-bridge,api-types}`.

@@ -1,0 +1,338 @@
+# OpenStoa — Publish the @masselabs/* packages to npm
+#
+# Two entry points:
+#
+#   1. `release: [published]` — fired by the GitHub Release that release-please
+#      creates when a release PR is merged. The tag carries the component, e.g.
+#      `openstoa-cli-v0.1.1`, and this workflow routes on it:
+#
+#        openstoa-sdk-v*      -> packages/sdk      (@masselabs/openstoa)
+#        openstoa-commands-v* -> packages/commands (@masselabs/openstoa-commands)
+#        openstoa-cli-v*      -> packages/cli      (@masselabs/openstoa-cli)
+#        openstoa-mcp-v*      -> packages/mcp      (@masselabs/openstoa-mcp)
+#        openstoa-channel-v*  -> packages/channel  (@masselabs/openstoa-channel)
+#        openstoa-server-v*   -> NOTHING. The repo root is the private Next.js
+#                                server (`"private": true`); it is deployed by
+#                                the parent proofport-app-dev repo's deploy.yml
+#                                (service=community) and must never be published.
+#
+#   2. `workflow_dispatch` — manual publish / verification. `dry_run` defaults to
+#      true, so the default manual run can never publish for real.
+#
+# Dependency order matters: cli/mcp/channel declare `@masselabs/openstoa-commands`
+# (and commands declares `@masselabs/openstoa`) as plain registry semver, so a
+# consumer installing the published tarball needs those versions to already exist
+# on npm. When several components are released at once GitHub fires several
+# Release events in parallel, so each run waits (bounded) for its own
+# `@masselabs/*` runtime dependencies to appear on the registry before it
+# publishes, and fails loudly if they never do. There is deliberately no
+# `concurrency` group: it would cancel queued sibling runs and silently drop a
+# package's publish.
+#
+# Auth: OIDC trusted publishing by default (no long-lived secret); if the
+# `NPM_TOKEN` secret is set it is used instead. npm's trusted-publisher config
+# lives in npmjs *package settings* and must reference the GitHub org/repo
+# `zkproofport/openstoa` (NOT `masselabs` — `@masselabs` is only the npm scope)
+# plus this workflow's filename, `npm-publish.yml`. Because a trusted publisher
+# can only be attached to a package that already exists on npm, the first-ever
+# publish of each of the five names needs the NPM_TOKEN path. See
+# docs/releasing.md.
+
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to publish'
+        type: choice
+        required: true
+        default: sdk
+        options:
+          - sdk
+          - commands
+          - cli
+          - mcp
+          - channel
+          - all
+      dry_run:
+        description: 'Dry run — runs npm publish --dry-run, never publishes'
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Decide what to publish. Kept in its own job so the "nothing to publish"
+  # outcome is a visible, green, explained result rather than a skipped job with
+  # no explanation.
+  # ---------------------------------------------------------------------------
+  resolve:
+    name: resolve target
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.route.outputs.targets }}
+      dry_run: ${{ steps.route.outputs.dry_run }}
+      dist_tag: ${{ steps.route.outputs.dist_tag }}
+    steps:
+      - name: Route
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          # Canonical dependency order. Any selection is emitted as a subsequence
+          # of this list so publishing never runs out of order.
+          ORDER="sdk commands cli mcp channel"
+
+          targets=""
+          dist_tag="latest"
+          dry_run="false"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            dry_run="$INPUT_DRY_RUN"
+            if [ "$INPUT_PACKAGE" = "all" ]; then
+              targets="$ORDER"
+            else
+              targets="$INPUT_PACKAGE"
+            fi
+            echo "Manual dispatch: package=$INPUT_PACKAGE dry_run=$dry_run"
+          else
+            if [[ ! "$TAG_NAME" =~ ^(.+)-v([0-9].*)$ ]]; then
+              echo "::error::Release tag '$TAG_NAME' does not match the expected '<component>-v<version>' shape produced by release-please-config.json (include-component-in-tag: true)."
+              exit 1
+            fi
+            component="${BASH_REMATCH[1]}"
+            version="${BASH_REMATCH[2]}"
+            echo "Release tag '$TAG_NAME' -> component='$component' version='$version'"
+
+            case "$component" in
+              openstoa-server)  targets="" ;;
+              openstoa-sdk)     targets="sdk" ;;
+              openstoa-commands) targets="commands" ;;
+              openstoa-cli)     targets="cli" ;;
+              openstoa-mcp)     targets="mcp" ;;
+              openstoa-channel) targets="channel" ;;
+              *)
+                echo "::error::Unrecognised release component '$component'. Add it to the routing table in .github/workflows/npm-publish.yml (and to release-please-config.json if it is a new package)."
+                exit 1
+                ;;
+            esac
+
+            case "$TAG_NAME" in
+              *beta*) dist_tag="beta" ;;
+              *)      dist_tag="latest" ;;
+            esac
+          fi
+
+          {
+            echo "targets=$targets"
+            echo "dry_run=$dry_run"
+            echo "dist_tag=$dist_tag"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -z "$targets" ]; then
+            {
+              echo "### Nothing published"
+              echo ""
+              echo "Release \`$TAG_NAME\` is the **openstoa-server** component — the private Next.js"
+              echo "server at the repo root (\`\"private\": true\`). It is deployed by the parent"
+              echo "\`proofport-app-dev\` repo's \`deploy.yml\` (\`service=community\`) and is never"
+              echo "published to npm. This is the expected outcome, not a failure."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Publish plan"
+              echo ""
+              echo "| field | value |"
+              echo "|---|---|"
+              echo "| targets (in dependency order) | \`$targets\` |"
+              echo "| dist-tag | \`$dist_tag\` |"
+              echo "| dry run | \`$dry_run\` |"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Build, verify and publish. A single job with an ordered loop rather than a
+  # matrix: a matrix gives no ordering guarantee, and sdk must reach the registry
+  # before commands, which must reach it before cli/mcp/channel.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: publish
+    needs: resolve
+    if: needs.resolve.outputs.targets != ''
+    runs-on: ubuntu-latest
+    env:
+      TARGETS: ${{ needs.resolve.outputs.targets }}
+      DRY_RUN: ${{ needs.resolve.outputs.dry_run }}
+      DIST_TAG: ${{ needs.resolve.outputs.dist_tag }}
+      # Job-scoped so the publish step resolves the `${NODE_AUTH_TOKEN}` in the
+      # .npmrc setup-node wrote. Empty when the secret is unset — the
+      # "Configure npm auth" step then removes the token line so npm uses OIDC.
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # npm's trusted-publishing docs require "npm CLI version 11.5.1 or
+          # later and Node version 22.14.0 or higher"
+          # (https://docs.npmjs.com/trusted-publishers). The packages themselves
+          # only declare engines.node >= 20 and CI tests on 20 — this job runs on
+          # 22 solely because OIDC publishing needs it.
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm >= 11.5.1 (OIDC trusted publishing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@^11.5.1
+          npm --version
+          node --version
+
+      - name: Configure npm auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          # setup-node wrote an .npmrc (path in NPM_CONFIG_USERCONFIG) containing
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`. When no
+          # NPM_TOKEN secret is set that line would resolve to an empty token,
+          # which npm treats as broken credentials instead of falling through to
+          # OIDC — so strip it and let trusted publishing take over.
+          npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "auth mode: NPM_TOKEN (bootstrap / fallback path)"
+          else
+            if [ -f "$npmrc" ]; then
+              grep -v '_authToken' "$npmrc" > "$npmrc.tmp" || true
+              mv "$npmrc.tmp" "$npmrc"
+            fi
+            echo "auth mode: OIDC trusted publishing (no NPM_TOKEN secret set)"
+          fi
+
+      - name: Build, verify and publish (dependency order)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Local build-time dependency chain. These resolve through each
+          # package-lock.json's Link node to the sibling *source* folder, so the
+          # sibling's dist/ must exist before typecheck/test/build.
+          local_deps() {
+            case "$1" in
+              sdk)      echo "" ;;
+              commands) echo "sdk" ;;
+              cli)      echo "sdk commands" ;;
+              mcp)      echo "sdk commands" ;;
+              channel)  echo "sdk commands" ;;
+              *) echo "::error::Unknown package '$1'" >&2; exit 1 ;;
+            esac
+          }
+
+          prepared=""
+          prepare() {
+            local pkg="$1"
+            case " $prepared " in *" $pkg "*) return 0 ;; esac
+            echo "::group::prepare packages/$pkg"
+            ( cd "packages/$pkg" && npm ci --no-audit --no-fund && npm run build )
+            echo "::endgroup::"
+            prepared="$prepared $pkg"
+          }
+
+          # Wait (bounded) for every @masselabs/* runtime dependency range to be
+          # resolvable on the registry. Sibling Release events publish in
+          # parallel runs, so a short wait is normal; never resolving is a hard
+          # failure with an actionable message.
+          wait_for_registry_deps() {
+            local pkg="$1"
+            local specs
+            specs="$(node -e '
+              const p = require("./packages/" + process.argv[1] + "/package.json");
+              const deps = p.dependencies || {};
+              const out = Object.keys(deps)
+                .filter((n) => n.startsWith("@masselabs/"))
+                .map((n) => n + "@" + deps[n]);
+              process.stdout.write(out.join("\n"));
+            ' "$pkg")"
+            [ -z "$specs" ] && return 0
+
+            local attempts=20 delay=15
+            while IFS= read -r spec; do
+              [ -z "$spec" ] && continue
+              local i=1 resolved=""
+              while [ "$i" -le "$attempts" ]; do
+                resolved="$(npm view "$spec" version 2>/dev/null | tail -1 || true)"
+                if [ -n "$resolved" ]; then
+                  echo "  registry dependency OK: $spec -> $resolved"
+                  break
+                fi
+                echo "  waiting for $spec on the registry (attempt $i/$attempts)..."
+                sleep "$delay"
+                i=$((i + 1))
+              done
+              if [ -z "$resolved" ]; then
+                echo "::error::packages/$pkg depends on '$spec', which does not exist on npm after $((attempts * delay))s. Publish that package first (dependency order: sdk -> commands -> cli/mcp/channel). See docs/releasing.md."
+                exit 1
+              fi
+            done <<< "$specs"
+          }
+
+          published=""
+          for pkg in $TARGETS; do
+            for dep in $(local_deps "$pkg"); do
+              prepare "$dep"
+            done
+            prepare "$pkg"
+
+            echo "::group::verify packages/$pkg"
+            ( cd "packages/$pkg" && npx tsc --noEmit )
+            ( cd "packages/$pkg" && npm test )
+            echo "::endgroup::"
+
+            name="$(node -p "require('./packages/$pkg/package.json').name")"
+            version="$(node -p "require('./packages/$pkg/package.json').version")"
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::group::npm publish --dry-run $name@$version"
+              # Registry preflight is skipped on dry runs on purpose: a dry run
+              # is also how a brand-new package name is verified before any of
+              # its siblings exist on npm.
+              ( cd "packages/$pkg" && npm publish --dry-run --access public --tag "$DIST_TAG" )
+              echo "::endgroup::"
+              published="$published|$name@$version (dry run)"
+            else
+              echo "::group::registry preflight for packages/$pkg"
+              wait_for_registry_deps "$pkg"
+              echo "::endgroup::"
+              echo "::group::npm publish $name@$version --tag $DIST_TAG"
+              ( cd "packages/$pkg" && npm publish --access public --tag "$DIST_TAG" )
+              echo "::endgroup::"
+              published="$published|$name@$version"
+            fi
+          done
+
+          {
+            echo "### Published"
+            echo ""
+            echo "| package | dist-tag |"
+            echo "|---|---|"
+            IFS='|' read -ra rows <<< "${published#|}"
+            for row in "${rows[@]}"; do
+              [ -z "$row" ] && continue
+              echo "| \`$row\` | \`$DIST_TAG\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
