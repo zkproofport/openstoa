@@ -11,7 +11,10 @@
  * is untouched and keeps working.
  *
  * Config via env: OPENSTOA_BASE_URL (required if no saved session),
- * OPENSTOA_VAULT_ROOT, OPENSTOA_KEYSTORE, OPENSTOA_DEVICE_ID.
+ * OPENSTOA_VAULT_ROOT, OPENSTOA_KEYSTORE, OPENSTOA_DEVICE_ID, OPENSTOA_API_KEY
+ * (a scoped key from `openstoa apikey create` — when set, no interactive
+ * `openstoa login` is needed at all; createCommands also reads this env var
+ * itself, so passing it here is redundant-but-explicit, mirroring OPENSTOA_BASE_URL).
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -25,6 +28,7 @@ export async function startServer(): Promise<void> {
     vaultRoot: process.env.OPENSTOA_VAULT_ROOT,
     backend: process.env.OPENSTOA_KEYSTORE as KeystoreBackend | undefined,
     deviceId: process.env.OPENSTOA_DEVICE_ID,
+    apiKey: process.env.OPENSTOA_API_KEY,
   });
 
   const server = new McpServer(

@@ -345,36 +345,49 @@ export const chatArchive = pgTable('chat_archive', {
   topicCreatedIdx: index('chat_archive_topic_created_idx').on(table.topicId, table.createdAt),
 }));
 
-// Phase 5 (design §7, D9/D11) — UCAN-shaped scoped delegation from a human
-// OWNER to an AI member. Mirrors the UCAN 1.0 Delegation payload (cmd/pol/meta,
-// see docs/research/openstoa-ucan-capability-schema.md): `cmd` is the ability
-// allowlist (attenuated command paths), `history_grant` is the TAK scope the AI
-// may back-fill (never wider than the grant), `depth` bounds sub-delegation
-// (≤3, UCAN §7.2), `dpop_jkt` binds an ephemeral transport key against key
-// theft (RFC 9449), `consent_anchor` is the optional EAS attestation UID for
-// on-chain revocation. This table holds NO key material and NO plaintext (C1/
-// SI-1) — it is pure access-control metadata the server evaluates before an AI
-// caller performs a chat send / history read.
+// Profile-level AI capability model (design §7). Replaces the earlier per-topic
+// `ai_grants` table: an AI is not a separate account granted by a topic owner —
+// it is an `isAI` session acting on a USER's own account (the AI's nullifier may
+// equal the human owner's; the two are distinguished per-request by the session
+// flag, exactly like posts already do with `is_ai`). So capabilities are
+// configured by the account owner in their PROFILE and apply to every isAI
+// session on that account across the whole app, not per-topic.
 //
-// D11 revocation note: setting `revoked_at` gates FUTURE server-mediated AI
-// actions (checkGrantAllows → false → 403) and pairs with a client-driven MLS
-// Remove (future PCS). Past plaintext the AI already received is NOT
-// cryptographically revocable (RFC 9420) — revocation = server access-gating +
-// MLS Remove(future) + grant revoke, never a retroactive unshare.
-export const aiGrants = pgTable('ai_grants', {
+// One row per user: `cmd` is the ability allowlist (a subset of ALLOWED_CMDS in
+// src/lib/aiPermissions.ts; empty = the AI may do nothing), `history_grant` is
+// the chat archive (TAK) scope the AI may back-fill (none | Nd | since_epoch:N |
+// full, isValidTakScope). This table holds NO key material and NO plaintext
+// (C1/SI-1) — it is pure access-control metadata the server evaluates before an
+// isAI caller performs a gated action.
+export const aiPermissions = pgTable('ai_permissions', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  cmd: text('cmd').array().notNull().default([]), // ability allowlist (subset of ALLOWED_CMDS); [] = no capabilities
+  historyGrant: text('history_grant').notNull().default('none'), // TAK scope: none | Nd | since_epoch:N | full (isValidTakScope)
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Durable, revocable API keys (design §7 follow-up). An agent authenticates with
+// `Authorization: Bearer <rawKey>` instead of an interactive login — the key IS
+// the scoped credential: its OWN `cmd`/`history_grant` gate requests directly
+// (never a fresh ai_permissions profile lookup, per src/lib/session.ts +
+// src/lib/aiPermissions.ts requireAiCapability). Only the SHA-256 hash of the
+// raw key is ever stored (SI-1/SI-4: a DB dump never yields a usable key); the
+// raw key is returned to the caller exactly once, at issuance, and is never
+// logged. `key_hash` is UNIQUE so auth is a single indexed lookup, not a scan.
+export const apiKeys = pgTable('api_keys', {
   id: uuid('id').primaryKey().defaultRandom(),
-  topicId: uuid('topic_id').references(() => topics.id).notNull(),
-  granterUserId: text('granter_user_id').references(() => users.id).notNull(), // human owner (nullifier)
-  aiUserId: text('ai_user_id').notNull(), // bot nullifier (no FK: bot may not have a users row yet)
-  cmd: text('cmd').array().notNull(), // ability allowlist, e.g. ['/openstoa/chat/send', '/openstoa/post/read']
-  historyGrant: text('history_grant').notNull(), // TAK scope: none | Nd | since_epoch:N | full (isValidTakScope)
-  depth: integer('depth').notNull().default(1), // max delegation depth (≤3)
-  dpopJkt: text('dpop_jkt'), // RFC 9449 JWK thumbprint (key-theft binding); nullable
-  consentAnchor: text('consent_anchor'), // EAS attestation UID; nullable
-  revokedAt: timestamp('revoked_at', { withTimezone: true }), // null = active
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(), // user-chosen label, e.g. "laptop CLI"
+  keyHash: text('key_hash').notNull().unique(), // sha256(rawKey) hex digest — NEVER the raw key
+  prefix: varchar('prefix', { length: 16 }).notNull(), // first ~12 chars of the raw key, display only
+  isAI: boolean('is_ai').notNull().default(true), // sets session.isAI when authenticating with this key
+  cmd: text('cmd').array().notNull().default([]), // capability allowlist bound to THIS key (subset of ALLOWED_CMDS)
+  historyGrant: text('history_grant').notNull().default('none'), // TAK scope bound to this key
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }), // best-effort, bumped on successful auth
+  revokedAt: timestamp('revoked_at', { withTimezone: true }), // null = active
 }, (table) => ({
-  topicAiIdx: index('ai_grants_topic_ai_idx').on(table.topicId, table.aiUserId),
+  userIdx: index('api_keys_user_idx').on(table.userId),
 }));
 
 export const userVerifications = pgTable('user_verifications', {

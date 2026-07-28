@@ -7,6 +7,7 @@ import { getUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-
 import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 import { updateTopicScore } from '@/lib/topicScore';
+import { requireAiCapability } from '@/lib/aiPermissions';
 
 const ROUTE = '/api/posts/[postId]/comments';
 
@@ -97,6 +98,14 @@ export async function POST(
         { error: 'Not a member of this topic' },
         { status: 403 },
       );
+    }
+
+    // Profile-level AI capability (design §7): an isAI commenter must hold the
+    // comment/write capability in its owner's profile. Humans unaffected.
+    const commentGate = await requireAiCapability(db, session, '/openstoa/comment/write');
+    if (commentGate) {
+      logger.warn(ROUTE, 'AI caller lacks comment/write capability', { userId: session.userId, postId });
+      return commentGate;
     }
 
     const body = await request.json();

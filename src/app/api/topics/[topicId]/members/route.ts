@@ -6,6 +6,7 @@ import { eq, and, ilike, sql } from 'drizzle-orm';
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { topics } from '@/lib/db/schema';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
+import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/members';
@@ -329,6 +330,15 @@ export async function DELETE(
     }
 
     const { topicId } = await params;
+
+    // Profile-level AI capability (design §7): membership removal is gated by
+    // the topic/leave capability for isAI callers. Humans unaffected.
+    const leaveGate = await requireAiCapability(db, session, '/openstoa/topic/leave');
+    if (leaveGate) {
+      logger.warn(ROUTE, 'AI caller lacks topic/leave capability', { userId: session.userId, topicId });
+      return leaveGate;
+    }
+
     const body = await request.json();
     const { userId } = body;
 

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { requireAiCapability } from '@/lib/aiPermissions';
 
 const ROUTE = '/api/profile/nickname';
 
@@ -69,6 +70,14 @@ export async function PUT(request: NextRequest) {
     if (!session) {
       logger.warn(ROUTE, 'Unauthenticated request');
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    // Profile-level AI capability (design §7): an isAI caller editing profile
+    // must hold the profile/edit capability. Humans unaffected.
+    const editGate = await requireAiCapability(db, session, '/openstoa/profile/edit');
+    if (editGate) {
+      logger.warn(ROUTE, 'AI caller lacks profile/edit capability', { userId: session.userId });
+      return editGate;
     }
 
     const body = await request.json();

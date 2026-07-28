@@ -15,6 +15,7 @@ import {
 import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
 import { buildProofRequirement } from '@/lib/proof-guides';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
+import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/topics/[topicId]/join';
@@ -188,6 +189,14 @@ export async function POST(
     }
 
     const { topicId } = await params;
+
+    // Profile-level AI capability (design §7): an isAI caller must hold the
+    // topic/join capability in its owner's profile. Humans unaffected.
+    const joinGate = await requireAiCapability(db, session, '/openstoa/topic/join');
+    if (joinGate) {
+      logger.warn(ROUTE, 'AI caller lacks topic/join capability', { userId: session.userId, topicId });
+      return joinGate;
+    }
 
     logger.info(ROUTE, 'Join attempt', { userId: session.userId, topicId });
 

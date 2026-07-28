@@ -19,8 +19,12 @@ import type {
   CreateTopicInput,
   CreatePostInput,
   SessionPayload,
+  ApiKeyMeta,
+  ApiKeyCreateInput,
+  ApiKeyCreateResult,
 } from '@masselabs/openstoa';
 import { FileSessionStore, type SessionData, type SessionStore } from './session';
+import { readCredentials } from './credentials';
 import { resolveHome, type CommandConfig } from './config';
 import * as path from 'node:path';
 
@@ -196,6 +200,26 @@ export class Commands {
     return this.chat.rest.categories.list();
   }
 
+  // ── API keys (design §7 follow-up: scoped credential, no interactive login) ──
+
+  /** Issue a new scoped API key. The result's `rawKey` is shown ONCE by the caller. */
+  async apiKeyCreate(input: ApiKeyCreateInput): Promise<ApiKeyCreateResult> {
+    this.requireAuth();
+    if (!input.name || input.name.trim().length === 0) throw new Error('apikey create: name is required');
+    return this.chat.rest.apiKeys.create(input);
+  }
+
+  async apiKeyList(): Promise<ApiKeyMeta[]> {
+    this.requireAuth();
+    return this.chat.rest.apiKeys.list();
+  }
+
+  async apiKeyRevoke(id: string): Promise<{ revoked: boolean; id: string }> {
+    this.requireAuth();
+    if (!id || id.trim().length === 0) throw new Error('apikey revoke: id is required');
+    return this.chat.rest.apiKeys.revoke(id);
+  }
+
   // ── internals ────────────────────────────────────────────────────────────────
 
   private requireAuth(): void {
@@ -220,6 +244,19 @@ export class Commands {
  * Build a Commands wired to a real ChatClient + file-backed session. This is the
  * single construction path both the CLI and MCP server use.
  */
+/**
+ * Resolve the API key to use, in priority order: explicit `config.apiKey` >
+ * `OPENSTOA_API_KEY` env > `<home>/credentials` file. Returns undefined if
+ * none is set (falls back to the saved interactive-login session token).
+ * Exported so the priority chain is directly unit-testable without spinning
+ * up a full ChatClient.
+ */
+export async function resolveApiKey(config: CommandConfig, home: string): Promise<string | undefined> {
+  if (config.apiKey) return config.apiKey;
+  if (process.env.OPENSTOA_API_KEY) return process.env.OPENSTOA_API_KEY;
+  return (await readCredentials(home))?.apiKey;
+}
+
 export async function createCommands(config: CommandConfig = {}): Promise<Commands> {
   if (config.backend && config.backend !== 'vault') {
     throw new Error(
@@ -235,11 +272,17 @@ export async function createCommands(config: CommandConfig = {}): Promise<Comman
       'No OpenStoa base URL. Pass --base-url, set OPENSTOA_BASE_URL, or run `openstoa login --base-url <url>` first.',
     );
   }
+  // API-key auth (design §7 follow-up): an agent skips interactive login
+  // entirely when a scoped key is available. See resolveApiKey for priority;
+  // falling back to the saved session token preserves the pre-existing
+  // `openstoa login` flow when no key is configured anywhere.
+  const apiKey = await resolveApiKey(config, home);
   const chat = new ChatClient({
     baseUrl,
     vaultRoot: config.vaultRoot,
     deviceId: config.deviceId,
-    token: saved?.token,
+    apiKey,
+    token: apiKey ? undefined : saved?.token,
   });
   return new Commands({ chat, sessionStore, baseUrl, session: saved });
 }

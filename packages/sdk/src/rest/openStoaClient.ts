@@ -23,8 +23,11 @@ import type {
   ArchiveEntryWire,
   TakBundleRowWire,
   ConsumedKeyPackageWire,
-  AiGrant,
-  AiGrantSpecInput,
+  AiPermissions,
+  AiPermissionsInput,
+  ApiKeyMeta,
+  ApiKeyCreateInput,
+  ApiKeyCreateResult,
 } from './types';
 
 export interface OpenStoaClientOptions {
@@ -32,6 +35,13 @@ export interface OpenStoaClientOptions {
   baseUrl: string;
   /** Bearer token (from dev-login / verify). Optional at construction; set later. */
   token?: string;
+  /**
+   * A scoped API key (`osk_...`, from `POST /api/profile/api-keys`) — an
+   * alternative to `token` that lets an agent skip interactive login
+   * entirely. Sent identically as `Authorization: Bearer <apiKey>`; the
+   * server tells the two apart by prefix. If both are given, `token` wins.
+   */
+  apiKey?: string;
   /** Injectable fetch (tests). Defaults to the global fetch. */
   fetch?: typeof fetch;
 }
@@ -67,7 +77,7 @@ export class OpenStoaClient {
   constructor(opts: OpenStoaClientOptions) {
     if (!opts.baseUrl) throw new Error('OpenStoaClient: baseUrl is required');
     this.baseUrl = opts.baseUrl.replace(/\/$/, '');
-    this.token = opts.token ?? null;
+    this.token = opts.token ?? opts.apiKey ?? null;
     this._fetch = opts.fetch ?? globalThis.fetch;
     if (!this._fetch) throw new Error('OpenStoaClient: no fetch available; pass opts.fetch');
   }
@@ -320,14 +330,29 @@ export class OpenStoaClient {
   };
 
   // -------------------------------------------------------------------------
-  // AI grants
+  // AI permissions (profile-level capability set for the caller's isAI sessions)
   // -------------------------------------------------------------------------
-  readonly aiGrants = {
-    list: async (topicId: string): Promise<AiGrant[]> =>
-      (await this.request<{ grants: AiGrant[] }>(`/api/topics/${topicId}/ai/grants`)).grants,
-    create: async (topicId: string, spec: AiGrantSpecInput): Promise<AiGrant> =>
-      (await this.request<{ grant: AiGrant }>(`/api/topics/${topicId}/ai/grants`, { method: 'POST', body: spec })).grant,
-    revoke: (topicId: string, grantId: string): Promise<unknown> =>
-      this.request(`/api/topics/${topicId}/ai/grants/${grantId}`, { method: 'DELETE' }),
+  readonly aiPermissions = {
+    /** GET the caller's AI capability configuration (cmd + historyGrant + allowedCmd). */
+    get: (): Promise<AiPermissions> =>
+      this.request<AiPermissions>(`/api/profile/ai-permissions`),
+    /** PUT (replace) the caller's AI capability configuration. */
+    set: (input: AiPermissionsInput): Promise<AiPermissions> =>
+      this.request<AiPermissions>(`/api/profile/ai-permissions`, { method: 'PUT', body: input }),
+  };
+
+  // -------------------------------------------------------------------------
+  // API keys (durable, revocable credentials — an agent's `osk_...` Bearer)
+  // -------------------------------------------------------------------------
+  readonly apiKeys = {
+    /** POST /api/profile/api-keys — issue a new scoped key. `rawKey` is shown ONCE. */
+    create: (input: ApiKeyCreateInput): Promise<ApiKeyCreateResult> =>
+      this.request<ApiKeyCreateResult>(`/api/profile/api-keys`, { method: 'POST', body: input }),
+    /** GET /api/profile/api-keys — metadata only, never the raw key or hash. */
+    list: async (): Promise<ApiKeyMeta[]> =>
+      (await this.request<{ apiKeys: ApiKeyMeta[] }>(`/api/profile/api-keys`)).apiKeys,
+    /** DELETE /api/profile/api-keys/{id} — revoke; takes effect immediately. */
+    revoke: (id: string): Promise<{ revoked: boolean; id: string }> =>
+      this.request(`/api/profile/api-keys/${id}`, { method: 'DELETE' }),
   };
 }

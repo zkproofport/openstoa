@@ -677,6 +677,17 @@ export function EditProfileScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* AI permissions — what an AI agent logged in as you may do */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>AI agent</Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('AiPermissions' as never)}
+          >
+            <Text style={styles.actionButtonText}>Manage AI permissions</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Account actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('openstoa.editProfile.account')}</Text>

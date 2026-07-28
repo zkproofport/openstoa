@@ -10,18 +10,19 @@
  *   2. bot publishes its OWN reusable isAI last-resort KeyPackage, then
  *      self-joins the MLS group via External Commit → a real leaf, its OWN key.
  *   3. owner archives messages across two epochs (under the per-epoch TAK).
- *   4. owner creates a UCAN-shaped grant (cmd + history scope) and grants the
- *      bot ONLY the in-scope epoch TAK.
+ *   4. owner grants the bot ONLY the in-scope epoch TAK (scoped history).
  *   5. assert: the bot decrypts ONLY in-scope history (out-of-scope unreadable);
  *      the last-resort KeyPackage is reusable (bot re-addable).
- *   6. owner revokes (grant DELETE + MLS Remove Commit) → bot removed at a new
- *      epoch; the grant is gone.
+ *   6. owner removes the bot (MLS Remove Commit) → bot removed at a new epoch.
  *   7. zero human key sharing: the bot's leaf key ≠ any human leaf key.
  *
- * The isAI-ENFORCEMENT 403 branch (chat send / history read without a grant,
- * and a cmd outside the allowlist) is proven at the UNIT level in
- * src/__tests__/ai-grants.test.ts, because /api/auth/dev-login cannot mint an
- * `isAI` session. The MLS join / scope / remove mechanics here run for real.
+ * AI *capability* is no longer a per-topic grant — it is the account owner's
+ * PROFILE permission set (PUT /api/profile/ai-permissions), enforced server-side.
+ * The isAI-ENFORCEMENT 403 branch (a gated route rejecting an isAI session that
+ * lacks the cmd) is proven at the UNIT level in src/__tests__/ai-permissions.test.ts
+ * and over HTTP in src/__tests__/e2e/ai-permissions.test.ts, because
+ * /api/auth/dev-login can mint an isAI session (via the `isAI` flag). The MLS
+ * join / scope / remove mechanics here run for real.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as gc from '@/lib/mls/groupClient';
@@ -30,11 +31,9 @@ import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntr
 import {
   botPublishKeyPackage,
   botJoin,
-  grantAiConsent,
   grantAiHistory,
   removeAiMember,
   type AiMemberDirectory,
-  type AiGrantSpec,
 } from '@/lib/mls/aiMember';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:3200';
@@ -149,7 +148,7 @@ function httpTak(token: string): TakTransport {
   };
 }
 
-/** HTTP AiMemberDirectory over the KeyPackage + AI-grant endpoints (Bearer). */
+/** HTTP AiMemberDirectory over the KeyPackage endpoints (Bearer). */
 function httpDir(token: string): AiMemberDirectory {
   const h = bearer(token);
   return {
@@ -161,19 +160,6 @@ function httpDir(token: string): AiMemberDirectory {
       });
       if (!r.ok) throw new Error(`key-packages POST ${r.status} ${await r.text()}`);
       return { id: (await r.json()).id as string };
-    },
-    async createGrant(topicId, spec) {
-      const r = await fetch(`${BASE}/api/topics/${topicId}/ai/grants`, {
-        method: 'POST',
-        headers: h,
-        body: JSON.stringify(spec),
-      });
-      if (!r.ok) throw new Error(`ai/grants POST ${r.status} ${await r.text()}`);
-      return { id: (await r.json()).grant.id as string };
-    },
-    async revokeGrant(topicId, grantId) {
-      const r = await fetch(`${BASE}/api/topics/${topicId}/ai/grants/${grantId}`, { method: 'DELETE', headers: h });
-      if (!r.ok) throw new Error(`ai/grants DELETE ${r.status}`);
     },
   };
 }
@@ -233,8 +219,6 @@ describe.sequential('P5 AI-membership (E2E, real container + real MLS client)', 
   let botMls: MlsSessionStore;
   let botTak: TakSessionStore;
   let botDir: AiMemberDirectory;
-  let ownerDir: AiMemberDirectory;
-  let grantId: string;
   // Archive rows are keyed by a UUID message id (server validates the shape).
   const msgE0 = crypto.randomUUID();
   const msgE1 = crypto.randomUUID();
@@ -266,7 +250,6 @@ describe.sequential('P5 AI-membership (E2E, real container + real MLS client)', 
     botMls = new MlsSessionStore(httpMls(bot.token), BOT_ID, memKv());
     botTak = new TakSessionStore(botMls, httpTak(bot.token), memKv());
     botDir = httpDir(bot.token);
-    ownerDir = httpDir(owner.token);
   });
 
   it('1. owner genesis + archives an epoch-0 private message', async () => {
@@ -311,17 +294,13 @@ describe.sequential('P5 AI-membership (E2E, real container + real MLS client)', 
     expect(keys.get(BOT_ID)).not.toBe(keys.get(CAROL_ID));
   });
 
-  it('6. owner consent → creates the UCAN-shaped grant', async () => {
-    const spec: AiGrantSpec = {
-      aiUserId: bot.userId,
-      cmd: ['/openstoa/chat/read', '/openstoa/chat/send', '/ai/summarize'],
-      historyGrant: 'since_epoch:1',
-    };
-    const grant = await grantAiConsent(ownerDir, topicId, spec);
-    grantId = grant.id;
-    expect(grantId).toBeTruthy();
-    const list = await (await fetch(`${BASE}/api/topics/${topicId}/ai/grants`, { headers: bearer(owner.token) })).json();
-    expect(list.grants.some((g: { id: string }) => g.id === grantId)).toBe(true);
+  it('6. AI capability is configured in the owner PROFILE, not per-topic here', () => {
+    // The per-topic UCAN grant was retired: an isAI session is gated by the
+    // account owner's profile capability set (PUT /api/profile/ai-permissions),
+    // enforced server-side. That gate is covered in ai-permissions.test.ts
+    // (unit) and ai-permissions e2e. This MLS membership flow only proves the
+    // cryptographic mechanics (join / scoped history / remove).
+    expect(true).toBe(true);
   });
 
   it('7. before any TAK grant the bot reads NO pre-join history (forward secrecy)', async () => {
@@ -340,13 +319,9 @@ describe.sequential('P5 AI-membership (E2E, real container + real MLS client)', 
     expect(history.find((h) => h.messageId === msgE0)).toBeUndefined();
   });
 
-  it('9. owner revokes (grant DELETE + MLS Remove) → bot gone from a new epoch; grant inactive', async () => {
-    const newEpoch = await removeAiMember(ownerMls, ownerDir, topicId, BOT_ID, grantId);
+  it('9. owner removes the bot (MLS Remove) → bot gone from a new epoch', async () => {
+    const newEpoch = await removeAiMember(ownerMls, topicId, BOT_ID);
     expect(newEpoch).toBe(3);
-
-    // Access-gate: the grant no longer appears in the active list.
-    const list = await (await fetch(`${BASE}/api/topics/${topicId}/ai/grants`, { headers: bearer(owner.token) })).json();
-    expect(list.grants.some((g: { id: string }) => g.id === grantId)).toBe(false);
 
     // The bot's leaf is removed from the owner's validated tree at the new epoch.
     await ownerMls.readState(topicId, async (s) => expect(gc.findLeafIndexByIdentity(s, BOT_ID)).toBeNull());

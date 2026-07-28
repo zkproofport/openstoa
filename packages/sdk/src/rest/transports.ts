@@ -5,7 +5,7 @@
  * cookies. The server stays crypto-free; these only move opaque bytes.
  */
 import type { MlsTransport, TakTransport } from '../mls';
-import type { AiMemberDirectory, AiGrantSpec } from '../mls';
+import type { AiMemberDirectory } from '../mls';
 import type { OpenStoaClient } from './openStoaClient';
 
 export function mlsTransport(client: OpenStoaClient): MlsTransport {
@@ -36,9 +36,5 @@ export function takTransport(client: OpenStoaClient): TakTransport {
 export function aiMemberDirectory(client: OpenStoaClient): AiMemberDirectory {
   return {
     publishKeyPackage: (topicId, body) => client.mls.publishKeyPackage(topicId, body),
-    createGrant: (topicId, spec: AiGrantSpec) => client.aiGrants.create(topicId, spec),
-    revokeGrant: async (topicId, grantId) => {
-      await client.aiGrants.revoke(topicId, grantId);
-    },
   };
 }

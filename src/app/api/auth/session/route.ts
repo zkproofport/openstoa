@@ -50,13 +50,14 @@ export async function GET(request: NextRequest) {
     const totalRecorded = user[0]?.totalRecorded ?? 0;
     const role = user[0]?.role ?? 'user';
 
-    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname: session.nickname, totalRecorded, role });
+    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname: session.nickname, totalRecorded, role, isAI: session.isAI });
     return NextResponse.json({
       userId: session.userId,
       nickname: session.nickname,
       verifiedAt: session.verifiedAt,
       totalRecorded,
       ...(role === 'admin' ? { role } : {}),
+      ...(session.isAI ? { isAI: true } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

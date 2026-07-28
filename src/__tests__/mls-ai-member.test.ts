@@ -17,11 +17,9 @@ import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntr
 import {
   botPublishKeyPackage,
   botJoin,
-  grantAiConsent,
   grantAiHistory,
   removeAiMember,
   type AiMemberDirectory,
-  type AiGrantSpec,
 } from '@/lib/mls/aiMember';
 import { parseCommitFraming } from '@/lib/mls/framing';
 
@@ -95,10 +93,9 @@ class MemoryTak implements TakTransport {
   }
 }
 
-/** In-memory AI directory: atomic KeyPackage consume (last-resort reusable) + grant CRUD. */
+/** In-memory AI directory: atomic KeyPackage consume (last-resort reusable). */
 class MemoryDirectory implements AiMemberDirectory {
   keyPackages = new Map<string, { id: string; deviceId: string; keyPackage: string; isAI: boolean; isLastResort: boolean; consumed: boolean }[]>();
-  grants = new Map<string, { id: string; spec: AiGrantSpec; revoked: boolean }[]>();
   private seq = 0;
   async publishKeyPackage(topicId: string, body: { keyPackage: string; deviceId: string; isAI: boolean; isLastResort: boolean }) {
     const list = this.keyPackages.get(topicId) ?? [];
@@ -114,20 +111,6 @@ class MemoryDirectory implements AiMemberDirectory {
     if (!kp) return null;
     if (!kp.isLastResort) kp.consumed = true;
     return kp;
-  }
-  async createGrant(topicId: string, spec: AiGrantSpec) {
-    const list = this.grants.get(topicId) ?? [];
-    const id = `grant-${this.seq++}`;
-    list.push({ id, spec, revoked: false });
-    this.grants.set(topicId, list);
-    return { id };
-  }
-  async revokeGrant(topicId: string, grantId: string) {
-    const g = (this.grants.get(topicId) ?? []).find((x) => x.id === grantId);
-    if (g) g.revoked = true;
-  }
-  activeGrant(topicId: string, aiUserId: string) {
-    return (this.grants.get(topicId) ?? []).find((g) => g.spec.aiUserId === aiUserId && !g.revoked) ?? null;
   }
 }
 
@@ -247,10 +230,10 @@ describe('aiMember — bot self-join, scoped history, revoke (D9/D11, ZAEP)', ()
     expect(keys.get(BOT_ID)).not.toBe(keys.get('owner-human'));
     expect(keys.get(BOT_ID)).not.toBe(keys.get('carol-human'));
 
-    // Owner consent → create the UCAN-shaped grant.
-    const spec: AiGrantSpec = { aiUserId: BOT_ID, cmd: ['/openstoa/chat/read', '/ai/summarize'], historyGrant: 'since_epoch:1' };
-    const grant = await grantAiConsent(dir, T, spec);
-    expect(dir.activeGrant(T, BOT_ID)?.id).toBe(grant.id);
+    // AI capability is now configured in the owner's PROFILE
+    // (PUT /api/profile/ai-permissions), not as a per-topic grant here. This
+    // test covers only the MLS/TAK cryptographic membership mechanics; the
+    // capability gate is exercised in ai-permissions.test.ts.
 
     // Before any TAK grant the bot reads NO pre-join history (forward secrecy).
     expect((await bot.tak.backfill(T, 'private')).length).toBe(0);
@@ -270,10 +253,9 @@ describe('aiMember — bot self-join, scoped history, revoke (D9/D11, ZAEP)', ()
     expect(c1?.id).toBe(pub.id);
     expect(c2?.id).toBe(pub.id); // reusable: same package returned twice
 
-    // ── Revoke (D11): grant DELETE (immediate gate) + MLS Remove (future) ────
-    const epochAfter = await removeAiMember(owner.mls, dir, T, BOT_ID, grant.id);
+    // ── Remove (§9.4): MLS Remove Commit excludes the bot from future epochs ──
+    const epochAfter = await removeAiMember(owner.mls, T, BOT_ID);
     expect(epochAfter).toBe(3);
-    expect(dir.activeGrant(T, BOT_ID)).toBeNull(); // access-gate: grant gone
     // The bot's leaf is removed from the owner's validated tree at the new epoch.
     const keysAfter = await leafKeys(owner.mls, T);
     expect(keysAfter.get(BOT_ID)).toBeUndefined();

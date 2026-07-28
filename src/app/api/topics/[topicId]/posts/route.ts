@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { normaliseSearchQuery } from '@/lib/search';
 import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
+import { requireAiCapability } from '@/lib/aiPermissions';
 
 import { getBatchUserBadges, filterBadgesByTopicProofType, type Badge } from '@/lib/verification-cache';
 import { attachReactionsToPosts } from '@/lib/reactions';
@@ -503,6 +504,14 @@ export async function POST(
         { error: 'Not a member of this topic' },
         { status: 403 },
       );
+    }
+
+    // Profile-level AI capability (design §7): an isAI author must hold the
+    // post/write capability in its owner's profile. Humans unaffected.
+    const writeGate = await requireAiCapability(db, session, '/openstoa/post/write');
+    if (writeGate) {
+      logger.warn(ROUTE, 'AI caller lacks post/write capability', { userId: session.userId, topicId });
+      return writeGate;
     }
 
     const body = await request.json();

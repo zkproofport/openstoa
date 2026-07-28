@@ -72,6 +72,17 @@ function isApiRoute(pathname: string): boolean {
   return pathname.startsWith('/api/');
 }
 
+// Bearer tokens shaped like `osk_<hex>` are API keys (src/lib/apiKeys.ts), not
+// JWTs — `jwtVerify` below would always throw for them. This constant is
+// duplicated (not imported) from `src/lib/apiKeys.ts` on purpose: middleware
+// runs on the Edge runtime and cannot pull in that module's `@/lib/db` import
+// chain (Node-only `pg` driver). Keep the two literals in sync if this changes.
+const API_KEY_PREFIX = 'osk_';
+
+function isApiKeyToken(token: string): boolean {
+  return token.startsWith(API_KEY_PREFIX);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -124,6 +135,18 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL('/', request.url);
     loginUrl.searchParams.set('returnTo', pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // API-key Bearer tokens can't be JWT-verified here (Edge runtime has no DB
+  // access to hash-lookup the key). Defer to the route handler's getSession()
+  // (Node runtime, real DB validation) — every route already 401s on a null
+  // session, so an invalid/unknown/revoked key is still rejected, just one
+  // layer later. This also means the nickname-required gate below is skipped
+  // for API-key requests; that's an accepted trade-off (nickname is a UX
+  // guard, not a security boundary, and a key can only be minted from an
+  // already-authenticated profile session).
+  if (!cookieToken && bearerToken && isApiKeyToken(bearerToken)) {
+    return NextResponse.next();
   }
 
   const COMMUNITY_JWT_SECRET = process.env.COMMUNITY_JWT_SECRET;

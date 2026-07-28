@@ -5,6 +5,7 @@
  */
 import type { ChatMessage, Topic, Post, Comment, SessionPayload } from '@masselabs/openstoa-commands';
 import type { LoginResult } from '@masselabs/openstoa-commands';
+import type { ApiKeyMeta, ApiKeyCreateResult } from '@masselabs/openstoa-commands';
 
 export function fmtLogin(r: LoginResult): string {
   return `Logged in as ${r.nickname} (${r.userId})${r.isAI ? ' [AI]' : ''}`;
@@ -49,6 +50,29 @@ export function fmtComment(c: Comment): string {
 export function fmtComments(cs: Comment[]): string {
   if (cs.length === 0) return '(no comments)';
   return cs.map(fmtComment).join('\n');
+}
+
+export function fmtApiKeyCreate(r: ApiKeyCreateResult): string {
+  const caps = r.key.cmd.length > 0 ? r.key.cmd.join(', ') : '(none)';
+  return [
+    `Created key "${r.key.name}" (${r.key.id})`,
+    `  Capabilities: ${caps}`,
+    `  History grant: ${r.key.historyGrant}`,
+    '',
+    `RAW KEY (shown once — save it now, it cannot be retrieved again):`,
+    `  ${r.rawKey}`,
+  ].join('\n');
+}
+
+function fmtApiKey(k: ApiKeyMeta): string {
+  const status = k.revokedAt ? ' [revoked]' : '';
+  const caps = k.cmd.length > 0 ? k.cmd.join(', ') : '(none)';
+  return `${k.id}  ${k.name} (${k.prefix}...)${status} — ${caps}`;
+}
+
+export function fmtApiKeys(ks: ApiKeyMeta[]): string {
+  if (ks.length === 0) return '(no API keys)';
+  return ks.map(fmtApiKey).join('\n');
 }
 
 export function fmtChat(msgs: ChatMessage[]): string {

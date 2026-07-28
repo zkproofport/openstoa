@@ -6,6 +6,7 @@ import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteOrphanedR2Urls } from '@/lib/r2';
+import { requireAiCapability } from '@/lib/aiPermissions';
 
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { attachPollsToPosts } from '@/lib/polls';
@@ -483,6 +484,14 @@ export async function DELETE(
 
     const { postId } = await params;
 
+    // Profile-level AI capability (design §7): an isAI caller must hold the
+    // post/delete capability in its owner's profile. Humans unaffected.
+    const deleteGate = await requireAiCapability(db, session, '/openstoa/post/delete');
+    if (deleteGate) {
+      logger.warn(ROUTE, 'AI caller lacks post/delete capability', { userId: session.userId, postId });
+      return deleteGate;
+    }
+
     logger.info(ROUTE, 'Deleting post', { userId: session.userId, postId });
 
     // Check post exists. We also fetch `media` so we can purge any
@@ -580,6 +589,15 @@ export async function PATCH(
     }
 
     const { postId } = await params;
+
+    // Profile-level AI capability (design §7): an isAI editor must hold the
+    // post/write capability in its owner's profile. Humans unaffected.
+    const writeGate = await requireAiCapability(db, session, '/openstoa/post/write');
+    if (writeGate) {
+      logger.warn(ROUTE, 'AI caller lacks post/write capability', { userId: session.userId, postId });
+      return writeGate;
+    }
+
     const body = await request.json();
     const { title, content, tags: tagNames, media: mediaIn, poll: pollIn } = body;
 

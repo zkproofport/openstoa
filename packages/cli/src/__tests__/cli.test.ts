@@ -34,6 +34,9 @@ function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => 
     chatRead: make('chatRead'),
     profileGet: make('profileGet'),
     profileSetNickname: make('profileSetNickname'),
+    apiKeyCreate: make('apiKeyCreate'),
+    apiKeyList: make('apiKeyList'),
+    apiKeyRevoke: make('apiKeyRevoke'),
   } as unknown as Commands;
   const out: string[] = [];
   const factory = (config: CommandConfig) => {
@@ -84,7 +87,13 @@ describe('CLI dispatch', () => {
   it('global flags feed the Commands config', async () => {
     const h = harness({ whoami: () => ({ userId: 'u', nickname: 'n' }) });
     await h.parse(['--base-url', 'http://x:3200', '--vault-root', '/tmp/v', '--keystore', 'vault', 'whoami']);
-    expect(h.config()).toEqual({ baseUrl: 'http://x:3200', vaultRoot: '/tmp/v', backend: 'vault', deviceId: undefined });
+    expect(h.config()).toEqual({ baseUrl: 'http://x:3200', vaultRoot: '/tmp/v', backend: 'vault', deviceId: undefined, apiKey: undefined });
+  });
+
+  it('--api-key feeds the Commands config (skips interactive login)', async () => {
+    const h = harness({ whoami: () => ({ userId: 'u', nickname: 'n', isAI: true }) });
+    await h.parse(['--api-key', 'osk_scopedkey', 'whoami']);
+    expect(h.config()).toMatchObject({ apiKey: 'osk_scopedkey' });
   });
 
   it('login --token dispatches with the token', async () => {
@@ -99,5 +108,45 @@ describe('CLI dispatch', () => {
     const h = harness({ commentAdd: () => ({ id: 'c1', authorId: 'a', content: 'nice one' }) });
     await h.parse(['comment', 'add', 'p1', 'nice', 'one']);
     expect(h.calls.find((c) => c.method === 'commentAdd')?.args).toEqual(['p1', 'nice one']);
+  });
+
+  // ── API keys ────────────────────────────────────────────────────────────
+  it('apikey create parses --cmd into an array and forwards --history-grant', async () => {
+    const h = harness({
+      apiKeyCreate: (input) => ({ rawKey: 'osk_new', key: { id: 'k1', ...(input as object) } }),
+    });
+    await h.parse(['apikey', 'create', '--name', 'laptop', '--cmd', '/openstoa/chat/read, /openstoa/post/write', '--history-grant', '7d']);
+    const call = h.calls.find((c) => c.method === 'apiKeyCreate');
+    expect(call?.args[0]).toMatchObject({
+      name: 'laptop',
+      cmd: ['/openstoa/chat/read', '/openstoa/post/write'],
+      historyGrant: '7d',
+      isAI: true,
+    });
+    expect(h.out.join('\n')).toContain('osk_new');
+  });
+  it('apikey create defaults cmd to [] and historyGrant to none when omitted', async () => {
+    const h = harness({ apiKeyCreate: (input) => ({ rawKey: 'osk_new', key: { id: 'k1', ...(input as object) } }) });
+    await h.parse(['apikey', 'create', '--name', 'bare']);
+    const call = h.calls.find((c) => c.method === 'apiKeyCreate');
+    expect(call?.args[0]).toMatchObject({ name: 'bare', cmd: [], historyGrant: 'none', isAI: true });
+  });
+  it('apikey create --no-ai sets isAI:false', async () => {
+    const h = harness({ apiKeyCreate: (input) => ({ rawKey: 'osk_new', key: { id: 'k1', ...(input as object) } }) });
+    await h.parse(['apikey', 'create', '--name', 'human-key', '--no-ai']);
+    const call = h.calls.find((c) => c.method === 'apiKeyCreate');
+    expect(call?.args[0]).toMatchObject({ isAI: false });
+  });
+  it('apikey list → apiKeyList()', async () => {
+    const h = harness({ apiKeyList: () => [{ id: 'k1', name: 'laptop', prefix: 'osk_aaaa1234', isAI: true, cmd: [], historyGrant: 'none' }] });
+    await h.parse(['apikey', 'list']);
+    expect(h.calls.some((c) => c.method === 'apiKeyList')).toBe(true);
+    expect(h.out.join('\n')).toContain('laptop');
+  });
+  it('apikey revoke <id> → apiKeyRevoke(id)', async () => {
+    const h = harness({ apiKeyRevoke: (id) => ({ revoked: true, id }) });
+    await h.parse(['apikey', 'revoke', 'k1']);
+    expect(h.calls.find((c) => c.method === 'apiKeyRevoke')?.args).toEqual(['k1']);
+    expect(h.out.join('\n')).toContain('k1');
   });
 });

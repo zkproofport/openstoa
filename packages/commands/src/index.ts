@@ -3,10 +3,12 @@
  * and MCP server. Both front-ends call the same `Commands` methods over the same
  * `@masselabs/openstoa` SDK (typed REST + E2EE MLS chat), so they cannot diverge.
  */
-export { Commands, createCommands } from './commands';
+export { Commands, createCommands, resolveApiKey } from './commands';
 export type { CommandsDeps, LoginResult } from './commands';
 export { FileSessionStore, MemorySessionStore } from './session';
 export type { SessionData, SessionStore } from './session';
+export { readCredentials } from './credentials';
+export type { Credentials } from './credentials';
 export { expandHome, resolveHome } from './config';
 export type { CommandConfig, KeystoreBackend } from './config';
 
@@ -22,4 +24,7 @@ export type {
   CreateTopicInput,
   CreatePostInput,
   SessionPayload,
+  ApiKeyMeta,
+  ApiKeyCreateInput,
+  ApiKeyCreateResult,
 } from '@masselabs/openstoa';

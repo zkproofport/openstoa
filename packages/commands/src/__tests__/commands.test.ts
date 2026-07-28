@@ -52,6 +52,11 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
         addComment: rec('posts.addComment'),
       },
       profile: { setNickname: rec('profile.setNickname') },
+      apiKeys: {
+        create: rec('apiKeys.create'),
+        list: rec('apiKeys.list'),
+        revoke: rec('apiKeys.revoke'),
+      },
     },
   };
   return { chat: chat as unknown as ChatClient, calls, setToken: (t: string | null) => (token = t) };
@@ -167,5 +172,44 @@ describe('Commands dispatch → SDK', () => {
     const probe = '안녕 🔐 test';
     await cmds.chatSend('t1', probe);
     expect(calls.find((c) => c.method === 'sendChat')?.args).toEqual(['t1', probe]);
+  });
+
+  // ── API keys (design §7 follow-up) ───────────────────────────────────────
+  it('apiKeyCreate dispatches with the input and returns the SDK result verbatim', async () => {
+    const { cmds, calls } = build({
+      'apiKeys.create': (input: unknown) => ({ rawKey: 'osk_new', key: { id: 'k1', ...(input as object) } }),
+    });
+    const r = await cmds.apiKeyCreate({ name: 'laptop', cmd: ['/openstoa/chat/read'], historyGrant: 'none' });
+    expect(calls.find((c) => c.method === 'apiKeys.create')?.args).toEqual([{ name: 'laptop', cmd: ['/openstoa/chat/read'], historyGrant: 'none' }]);
+    expect(r.rawKey).toBe('osk_new');
+  });
+  it('apiKeyCreate rejects an empty/whitespace name before any dispatch', async () => {
+    const { cmds, calls } = build();
+    await expect(cmds.apiKeyCreate({ name: '', cmd: [], historyGrant: 'none' })).rejects.toThrow(/name is required/);
+    await expect(cmds.apiKeyCreate({ name: '   ', cmd: [], historyGrant: 'none' })).rejects.toThrow(/name is required/);
+    expect(calls.some((c) => c.method === 'apiKeys.create')).toBe(false);
+  });
+  it('apiKeyList dispatches with no args', async () => {
+    const { cmds, calls } = build({ 'apiKeys.list': () => [{ id: 'k1' }] });
+    const r = await cmds.apiKeyList();
+    expect(calls.find((c) => c.method === 'apiKeys.list')?.args).toEqual([]);
+    expect(r).toEqual([{ id: 'k1' }]);
+  });
+  it('apiKeyRevoke dispatches with the id', async () => {
+    const { cmds, calls } = build({ 'apiKeys.revoke': (id: unknown) => ({ revoked: true, id }) });
+    const r = await cmds.apiKeyRevoke('k1');
+    expect(calls.find((c) => c.method === 'apiKeys.revoke')?.args).toEqual(['k1']);
+    expect(r).toEqual({ revoked: true, id: 'k1' });
+  });
+  it('apiKeyRevoke rejects an empty id before any dispatch', async () => {
+    const { cmds, calls } = build();
+    await expect(cmds.apiKeyRevoke('')).rejects.toThrow(/id is required/);
+    expect(calls.some((c) => c.method === 'apiKeys.revoke')).toBe(false);
+  });
+  it('apiKey ops throw "Not logged in" when no token is set (same guard as every other op)', async () => {
+    const { cmds, setToken } = build({}, null);
+    setToken(null);
+    await expect(cmds.apiKeyList()).rejects.toThrow(/Not logged in/);
+    await expect(cmds.apiKeyCreate({ name: 'k', cmd: [], historyGrant: 'none' })).rejects.toThrow(/Not logged in/);
   });
 });
