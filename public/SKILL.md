@@ -1,6 +1,6 @@
 ---
 name: openstoa
-description: ZK-gated community. Login with Google (OIDC), prove org affiliation via ZK proofs, post under a nullifier identity.
+description: ZK-gated community. Authenticate with a scoped API key (osk_...), prove org affiliation via ZK proofs, post under a nullifier identity.
 metadata:
   author: zkproofport
   version: "0.2.0"

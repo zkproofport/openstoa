@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { Commands, CommandConfig } from '@masselabs/openstoa-commands';
-import { buildProgram } from '../cli';
+import { buildProgram, DEVICE_LOGIN_DISABLED } from '../cli';
 
 function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => unknown>> = {}) {
   const calls: Array<{ method: string; args: unknown[] }> = [];
@@ -17,6 +17,9 @@ function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => 
   };
   const cmds = {
     login: make('login'),
+    // TEMPORARILY DISABLED — the device flow is commented out in the commands core
+    // (ZKProofport prover offline). Kept here so the "never dispatched" assertions
+    // below would catch a regression that silently re-wires the CLI to it.
     loginWithGoogle: make('loginWithGoogle'),
     logout: make('logout'),
     whoami: make('whoami'),
@@ -138,40 +141,33 @@ describe('CLI dispatch', () => {
     expect(h.out.join('\n')).toContain('[AI]');
   });
 
-  it('bare login → Google device flow (NOT dev-login); prints the device prompt to stderr', async () => {
-    const errs: string[] = [];
-    const origWrite = process.stderr.write.bind(process.stderr);
-    (process.stderr as unknown as { write: (s: string) => boolean }).write = (s: string) => {
-      errs.push(s);
-      return true;
-    };
-    try {
-      const h = harness({
-        loginWithGoogle: (opts) => {
-          // surface a device code as the real flow would, then resolve as logged-in
-          (opts as { onDeviceCode?: (i: { verificationUrl: string; userCode: string }) => void }).onDeviceCode?.({
-            verificationUrl: 'https://google.com/device',
-            userCode: 'ABCD-1234',
-          });
-          return { userId: 'u', nickname: 'n' };
-        },
-      });
-      await h.parse(['login']);
-      expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(true);
-      expect(h.calls.some((c) => c.method === 'login')).toBe(false); // no dev-login
-      expect(errs.join('')).toContain('https://google.com/device');
-      expect(errs.join('')).toContain('ABCD-1234');
-      expect(h.out.join('\n')).toContain('Logged in as n');
-    } finally {
-      (process.stderr as unknown as { write: typeof origWrite }).write = origWrite;
-    }
+  // ── device flow disabled (ZKProofport prover ai.zkproofport.app is offline) ──
+  // The device-flow success-path tests moved to
+  // packages/commands/src/__tests__/deviceLogin.test.ts, which is commented out
+  // alongside the implementation. What is asserted HERE is the replacement
+  // behavior: bare login / --google fail fast with the API-key guidance and never
+  // touch the network.
+
+  it('bare login fails fast with the API-key guidance and never starts a device flow', async () => {
+    const h = harness();
+    await expect(h.parse(['login'])).rejects.toThrow(DEVICE_LOGIN_DISABLED);
+    expect(h.calls).toHaveLength(0); // no Commands instance touched at all
+    expect(h.out).toHaveLength(0);
   });
 
-  it('login --google → Google device flow (explicit, same as bare login)', async () => {
-    const h = harness({ loginWithGoogle: () => ({ userId: 'u', nickname: 'n' }) });
-    await h.parse(['login', '--google']);
-    expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(true);
+  it('login --google fails the same way (option kept only to explain itself)', async () => {
+    const h = harness();
+    await expect(h.parse(['login', '--google'])).rejects.toThrow(DEVICE_LOGIN_DISABLED);
+    expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(false);
     expect(h.calls.some((c) => c.method === 'login')).toBe(false);
+  });
+
+  it('the disabled-login error names every working alternative', () => {
+    expect(DEVICE_LOGIN_DISABLED).toContain('OPENSTOA_API_KEY');
+    expect(DEVICE_LOGIN_DISABLED).toContain('--api-key');
+    expect(DEVICE_LOGIN_DISABLED).toContain('--token');
+    expect(DEVICE_LOGIN_DISABLED).toContain('/my');
+    expect(DEVICE_LOGIN_DISABLED).toContain('openstoa apikey create');
   });
 
   it('login --dev dispatches the (hidden) dev-login with --nickname', async () => {
@@ -180,17 +176,31 @@ describe('CLI dispatch', () => {
     const call = h.calls.find((c) => c.method === 'login');
     expect(call?.args[0]).toEqual({ nickname: 'devnick' });
     expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(false);
+    expect(h.out.join('\n')).toContain('Logged in as devnick');
   });
 
-  it('--dev and --nickname are HIDDEN from `login --help` (device flow is the advertised default)', async () => {
+  it('login --dev works without --nickname (server assigns one)', async () => {
+    const h = harness({ login: () => ({ userId: 'u', nickname: 'anon_1' }) });
+    await h.parse(['login', '--dev']);
+    expect(h.calls.find((c) => c.method === 'login')?.args[0]).toEqual({ nickname: undefined });
+  });
+
+  it('--dev and --nickname stay HIDDEN from `login --help`; --google is visible and marked unavailable', async () => {
     const program = buildProgram(() => Promise.resolve({} as unknown as Commands), () => {});
     const login = program.commands.find((c) => c.name() === 'login')!;
     const help = login.helpInformation();
     expect(help).not.toContain('--dev');
     expect(help).not.toContain('--nickname');
-    // the visible surface: device-flow default + token
+    // --google is kept registered so `--help` explains why it no longer works.
     expect(help).toContain('--google');
+    expect(help).toContain('TEMPORARILY UNAVAILABLE');
     expect(help).toContain('--token');
+  });
+
+  it('`--api-key` is documented on the root program as the login-free path', () => {
+    const program = buildProgram(() => Promise.resolve({} as unknown as Commands), () => {});
+    expect(program.helpInformation()).toContain('--api-key');
+    expect(program.helpInformation()).toContain('OPENSTOA_API_KEY');
   });
 
   it('comment add joins the text words', async () => {

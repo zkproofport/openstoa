@@ -11,15 +11,20 @@ const ROUTE = '/api/auth/challenge';
  *     tags: [Auth]
  *     summary: Create challenge for AI agent auth
  *     description: |
- *       Step 1 of the AI-agent login. Returns a one-time `challengeId` and the `scope` string
- *       the agent must embed in its ZK proof.
+ *       Issues a one-time `challengeId` and the `scope` string a ZK proof must embed.
  *
- *       Workflow:
- *         1. `POST /api/auth/challenge` → `{ challengeId, scope, expiresIn }`.
- *         2. Generate a login proof with `proofport-cli prove <login-circuit> --scope <scope>`
- *            (typically `oidc_domain_attestation` for Google / Microsoft workspace agents).
- *         3. `POST /api/auth/verify/ai` with `{ challengeId, result: { proof, publicInputs, verification, ... } }`.
- *         4. Use the returned `token` as the Bearer token for every other OpenStoa call.
+ *       **DO NOT use this to authenticate.** Agents authenticate with a scoped API key
+ *       (`osk_...`) sent as `Authorization: Bearer <key>` — no challenge, no proof, no token
+ *       exchange. A human mints the first key in a browser (sign in with the ZKProofport
+ *       mobile app, then `/my` → Settings → AI agents); after that `POST /api/profile/api-keys`
+ *       issues more.
+ *
+ *       The login flow this endpoint starts (`zkproofport-prove --login-google` →
+ *       `POST /api/auth/verify/ai`) is **TEMPORARILY UNAVAILABLE**: its proof step runs on the
+ *       ZKProofport AI prover at `ai.zkproofport.app`, which is currently offline.
+ *
+ *       The endpoint is still used to obtain a `scope` for **topic** proofs (KYC / country /
+ *       workspace) when joining a proof-gated topic — see the topic-proofs skill.
  *
  *       Challenges are single-use and expire after ~5 minutes (`expiresIn`).
  *     operationId: createChallenge

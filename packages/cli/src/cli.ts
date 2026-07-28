@@ -24,6 +24,20 @@ const IMAGE_MIME: Record<string, string> = {
 export type CommandsFactory = (config: CommandConfig) => Promise<Commands>;
 const defaultFactory: CommandsFactory = (config) => createCommands(config);
 
+/**
+ * Error surfaced for `openstoa login` / `login --google`. The interactive Google
+ * device flow is disabled because it depends on the ZKProofport AI prover
+ * (ai.zkproofport.app), which is offline. Exported so the tests assert the exact
+ * user-facing guidance rather than a substring of a duplicated literal.
+ */
+export const DEVICE_LOGIN_DISABLED =
+  'Interactive Google login is temporarily unavailable (the ZKProofport prover service is offline). ' +
+  'Use a scoped API key instead: set OPENSTOA_API_KEY (or --api-key <key>, or ~/.openstoa/credentials), ' +
+  'or adopt an existing Bearer with `openstoa login --token <jwt>`.\n' +
+  'To get your first key: sign in to the OpenStoa web site with the ZKProofport mobile app, ' +
+  'then open /my → AI agents → create an API key. From an already-authenticated session you can also run ' +
+  '`openstoa apikey create --name <label>`.';
+
 interface GlobalOpts {
   baseUrl?: string;
   vaultRoot?: string;
@@ -62,14 +76,21 @@ export function buildProgram(
   }
 
   // ── auth ──────────────────────────────────────────────────────────────
-  // Default is the Google device-flow login (the official human/bootstrap path).
-  // API keys (--api-key / OPENSTOA_API_KEY / ~/.openstoa/credentials) remain the
-  // primary agent/automation path and short-circuit login entirely. `--dev` is a
-  // hidden dev-only escape hatch (the server blocks it in production).
+  // A scoped API key (--api-key / OPENSTOA_API_KEY / ~/.openstoa/credentials) is
+  // THE auth path: it short-circuits login entirely. `--token` adopts a Bearer
+  // minted elsewhere. `--dev` is a hidden dev-only escape hatch (the server
+  // returns 404 in production).
+  //
+  // TEMPORARILY DISABLED — the interactive Google device flow. It calls the
+  // ZKProofport AI prover (ai.zkproofport.app), which is offline (shut down for
+  // cost), so it can only fail. `--google` stays registered so `login --help`
+  // explains the situation instead of silently dropping the option. To restore:
+  // bring the prover back up, then uncomment `deviceLogin.ts` + the commands-core
+  // block + this action's device path + the MCP openstoa_authenticate tool.
   program
     .command('login')
-    .description('log in with Google (device flow, default); --token adopts an existing Bearer')
-    .option('--google', 'log in with Google via the device flow (the default)')
+    .description('adopt an existing Bearer with --token; API keys (OPENSTOA_API_KEY / --api-key) need no login')
+    .option('--google', 'TEMPORARILY UNAVAILABLE: interactive Google device-flow login (prover service offline)')
     .option('--token <jwt>', 'adopt an externally-obtained Bearer (e.g. an AI verify token)')
     .addOption(new Option('--dev', 'DEV ONLY: dev-login (dev/staging; server returns 404 in production)').hideHelp())
     .addOption(new Option('--nickname <name>', 'nickname for a fresh --dev dev-login user').hideHelp())
@@ -82,18 +103,9 @@ export function buildProgram(
         // server returns 404 in production, surfaced as a clear error.
         return run((c) => c.login({ nickname: opts.nickname }), fmt.fmtLogin);
       }
-      // Default (and explicit --google): Google device-flow login. Print the
-      // device prompt to stderr so --json stdout stays a clean result object.
-      return run(
-        (c) =>
-          c.loginWithGoogle({
-            onDeviceCode: (info) =>
-              process.stderr.write(
-                `\nOpen ${info.verificationUrl} and enter code ${info.userCode}\nWaiting for authorization...\n`,
-              ),
-          }),
-        fmt.fmtLogin,
-      );
+      // Bare `login` and `--google` both land here: fail fast with the API-key
+      // guidance instead of attempting a device flow that cannot succeed.
+      throw new Error(DEVICE_LOGIN_DISABLED);
     });
 
   program

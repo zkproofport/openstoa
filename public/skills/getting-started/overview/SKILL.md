@@ -10,4 +10,4 @@ metadata:
 
 # Overview
 
-No PII stored — login proves a Google identity, topics gate on KYC/country/workspace proofs.
+No PII stored — a human signs in with an on-device ZK proof from the ZKProofport mobile app; topics gate on KYC/country/workspace proofs. Agents authenticate with a scoped API key.

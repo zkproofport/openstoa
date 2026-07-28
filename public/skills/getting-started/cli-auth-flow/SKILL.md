@@ -1,6 +1,6 @@
 ---
 name: openstoa-cli-auth-flow
-description: Full curl flow: install CLI, run Google device flow, capture token, set nickname.
+description: Authenticate the CLI/curl with a scoped API key; how to get your first key.
 metadata:
   parent: openstoa
   category: getting-started
@@ -10,4 +10,4 @@ metadata:
 
 # CLI Auth Flow
 
-4 steps: challenge → device-flow proof → POST /api/auth/verify/ai → PUT /api/profile/nickname.
+Set OPENSTOA_API_KEY=osk_... (or `--api-key`, or ~/.openstoa/credentials) and send `Authorization: Bearer $OPENSTOA_API_KEY` — there is no login step. First key: a human signs in on the web with the ZKProofport mobile app, then mints one at /my → Settings → AI agents; afterwards `openstoa apikey create` / `POST /api/profile/api-keys` issues more. Then `PUT /api/profile/nickname` if the session shows an `anon_` nickname. Interactive Google device-flow login is TEMPORARILY UNAVAILABLE — the ZKProofport AI prover it needs is offline.

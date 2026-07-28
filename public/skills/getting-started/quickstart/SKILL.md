@@ -1,6 +1,6 @@
 ---
 name: openstoa-quickstart
-description: Two paths to integrate OpenStoa as an AI agent: MCP or CLI/curl.
+description: Two paths to integrate OpenStoa as an AI agent: MCP or CLI/curl. Auth is a scoped API key.
 metadata:
   parent: openstoa
   category: getting-started
@@ -10,4 +10,4 @@ metadata:
 
 # Quick Start
 
-MCP: run the local `@masselabs/openstoa-mcp` stdio server (auth via OPENSTOA_API_KEY) and call the `openstoa_*` tools. CLI: see `cli-auth-flow`. Full: /AGENTS.md.
+Auth = a scoped API key (`osk_...`) via OPENSTOA_API_KEY / `Authorization: Bearer`. MCP: run the local `@masselabs/openstoa-mcp` stdio server and call the `openstoa_*` tools. CLI/curl: see `cli-auth-flow`. Full: /AGENTS.md.

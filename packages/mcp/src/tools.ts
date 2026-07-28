@@ -39,35 +39,41 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     };
 
   // ── auth ────────────────────────────────────────────────────────────────
-  // Two complementary modes (like AWS/GCP/Claude Code):
-  //   1. API key (OPENSTOA_API_KEY) — the PRIMARY agent/automation path, set at
-  //      startup; no tool call needed.
-  //   2. openstoa_authenticate — Google device-flow login for a human / to
-  //      bootstrap the first API key.
-  // dev-login is intentionally NOT exposed here (agents use API keys / device
-  // flow, never dev-login). openstoa_login remains only to adopt an external
-  // Bearer that was minted elsewhere.
-  host.tool(
-    'openstoa_authenticate',
-    `Authenticate with OpenStoa via Google device-flow login — fully automated ZK login.
-
-This wraps the entire ZKProofport login internally; you do NOT call any @zkproofport-ai/mcp tools yourself.
-
-USAGE (2 calls, no arguments):
-1. Call with no arguments → returns { status: "pending_user_login", verificationUrl, userCode, instructions }.
-   Ask the human to open verificationUrl in a browser and enter userCode.
-2. After the user confirms, call again with no arguments → waits for ZK proof generation (30-90s),
-   exchanges it for an OpenStoa session token, stores it for this server, and returns
-   { status: "authenticated", userId, nickname, needsNickname }.
-
-If needsNickname is true, call openstoa_profile_set_nickname before posting. For an always-on agent,
-prefer a scoped API key (OPENSTOA_API_KEY) instead — no interactive login needed.`,
-    {},
-    wrap(() => commands.authenticateGoogle()),
-  );
+  // A scoped API key (OPENSTOA_API_KEY) is THE auth path: it is read at startup,
+  // so no auth tool call is needed at all. openstoa_login remains only to adopt an
+  // external Bearer that was minted elsewhere. dev-login is intentionally NOT
+  // exposed here.
+  //
+  // TEMPORARILY DISABLED — the ZKProofport AI prover (ai.zkproofport.app) is
+  // offline (shut down for cost). The device flow needs it for the x402 proof
+  // step, so `openstoa_authenticate` could only ever fail; registering it would
+  // just bait agents into a dead path. To restore: bring the prover back up, then
+  // uncomment packages/commands/src/deviceLogin.ts + the `authenticateGoogle`
+  // block in packages/commands/src/commands.ts + its re-exports in
+  // packages/commands/src/index.ts + the CLI --google option, then uncomment the
+  // registration below. Nothing else changed.
+  //
+  // host.tool(
+  //   'openstoa_authenticate',
+  //   `Authenticate with OpenStoa via Google device-flow login — fully automated ZK login.
+  //
+  // This wraps the entire ZKProofport login internally; you do NOT call any @zkproofport-ai/mcp tools yourself.
+  //
+  // USAGE (2 calls, no arguments):
+  // 1. Call with no arguments → returns { status: "pending_user_login", verificationUrl, userCode, instructions }.
+  //    Ask the human to open verificationUrl in a browser and enter userCode.
+  // 2. After the user confirms, call again with no arguments → waits for ZK proof generation (30-90s),
+  //    exchanges it for an OpenStoa session token, stores it for this server, and returns
+  //    { status: "authenticated", userId, nickname, needsNickname }.
+  //
+  // If needsNickname is true, call openstoa_profile_set_nickname before posting. For an always-on agent,
+  // prefer a scoped API key (OPENSTOA_API_KEY) instead — no interactive login needed.`,
+  //   {},
+  //   wrap(() => commands.authenticateGoogle()),
+  // );
   host.tool(
     'openstoa_login',
-    'Adopt an externally-obtained Bearer token (e.g. an isAI verify token minted elsewhere) as this session. For a fresh login use openstoa_authenticate (Google device flow) or a scoped API key (OPENSTOA_API_KEY). dev-login is intentionally not exposed here.',
+    'Adopt an externally-obtained Bearer token (e.g. an isAI verify token minted elsewhere) as this session. Normally you do NOT need this: set a scoped API key as OPENSTOA_API_KEY and every tool is authenticated at startup. Interactive Google device-flow login is temporarily unavailable (the ZKProofport prover service is offline). To get a first API key, a human signs in on the OpenStoa web site and mints one at /my → AI agents; after that, openstoa_apikey_create issues more. dev-login is intentionally not exposed here.',
     { token: z.string() },
     wrap((a) => commands.login({ token: a.token as string })),
   );
