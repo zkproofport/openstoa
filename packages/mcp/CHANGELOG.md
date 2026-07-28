@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.2](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.1.1...openstoa-mcp-v0.1.2) (2026-07-28)
+
+
+### Bug Fixes
+
+* **packages:** add missing READMEs so npm pages are not empty ([4af6e3f](https://github.com/zkproofport/openstoa/commit/4af6e3fc06b392cc2e58a4b8be679677c74cb402))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @masselabs/openstoa-commands bumped from ^0.1.1 to ^0.1.2
+  * devDependencies
+    * @masselabs/openstoa bumped from ^0.1.1 to ^0.1.2
+
 ## [0.1.1](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.1.0...openstoa-mcp-v0.1.1) (2026-07-28)
 
 
