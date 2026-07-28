@@ -45,6 +45,9 @@ function mockCommands(overrides: Record<string, (...a: unknown[]) => unknown> = 
     chatRead: make('chatRead'),
     profileGet: make('profileGet'),
     profileSetNickname: make('profileSetNickname'),
+    apiKeyCreate: make('apiKeyCreate'),
+    apiKeyList: make('apiKeyList'),
+    apiKeyRevoke: make('apiKeyRevoke'),
   } as unknown as Commands;
   return { cmds, calls };
 }
@@ -73,6 +76,9 @@ describe('MCP tools → command core', () => {
       'openstoa_chat_read',
       'openstoa_profile_get',
       'openstoa_profile_set_nickname',
+      'openstoa_apikey_create',
+      'openstoa_apikey_list',
+      'openstoa_apikey_revoke',
     ]) {
       expect(handlers.has(name), `missing tool ${name}`).toBe(true);
     }
@@ -102,6 +108,31 @@ describe('MCP tools → command core', () => {
     registerTools(host, cmds);
     await handlers.get('openstoa_chat_read')!({ topicId: 't1', limit: 10 });
     expect(calls.find((c) => c.method === 'chatRead')?.args).toEqual(['t1', { limit: 10, since: undefined, before: undefined }]);
+  });
+
+  it('apikey_create dispatches with defaults for cmd/historyGrant and returns { rawKey, key }', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ apiKeyCreate: (i) => ({ rawKey: 'osk_new', key: { id: 'k1', ...(i as object) } }) });
+    registerTools(host, cmds);
+    const res = await handlers.get('openstoa_apikey_create')!({ name: 'agent-key' });
+    expect(calls.find((c) => c.method === 'apiKeyCreate')?.args[0]).toMatchObject({ name: 'agent-key', cmd: [], historyGrant: 'none' });
+    expect(JSON.parse(res.content[0].text).rawKey).toBe('osk_new');
+  });
+  it('apikey_create forwards explicit cmd/historyGrant/isAI', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ apiKeyCreate: (i) => ({ rawKey: 'osk_new', key: { id: 'k1', ...(i as object) } }) });
+    registerTools(host, cmds);
+    await handlers.get('openstoa_apikey_create')!({ name: 'k', cmd: ['/openstoa/chat/read'], historyGrant: '7d', isAI: false });
+    expect(calls.find((c) => c.method === 'apiKeyCreate')?.args[0]).toMatchObject({ name: 'k', cmd: ['/openstoa/chat/read'], historyGrant: '7d', isAI: false });
+  });
+  it('apikey_list / apikey_revoke dispatch correctly', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ apiKeyList: () => [{ id: 'k1' }], apiKeyRevoke: (id) => ({ revoked: true, id }) });
+    registerTools(host, cmds);
+    await handlers.get('openstoa_apikey_list')!({});
+    await handlers.get('openstoa_apikey_revoke')!({ id: 'k1' });
+    expect(calls.find((c) => c.method === 'apiKeyList')).toBeTruthy();
+    expect(calls.find((c) => c.method === 'apiKeyRevoke')?.args).toEqual(['k1']);
   });
 
   it('a thrown command error becomes an isError result, not a crash', async () => {

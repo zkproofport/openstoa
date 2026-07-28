@@ -17,6 +17,7 @@ interface GlobalOpts {
   vaultRoot?: string;
   keystore?: 'vault' | 'keychain';
   deviceId?: string;
+  apiKey?: string;
   json?: boolean;
 }
 
@@ -32,13 +33,14 @@ export function buildProgram(
     .option('--vault-root <dir>', 'the .openstoa home dir for keys + session (default ~/.openstoa)')
     .option('--keystore <backend>', 'keystore backend: vault (default) | keychain')
     .option('--device-id <id>', 'stable MLS device identity override')
+    .option('--api-key <key>', 'scoped API key — skips interactive login (else OPENSTOA_API_KEY, else ~/.openstoa/credentials)')
     .option('--json', 'machine-readable JSON output')
     .enablePositionalOptions();
 
   const globals = (): GlobalOpts => program.opts<GlobalOpts>();
   const config = (): CommandConfig => {
     const g = globals();
-    return { baseUrl: g.baseUrl, vaultRoot: g.vaultRoot, backend: g.keystore, deviceId: g.deviceId };
+    return { baseUrl: g.baseUrl, vaultRoot: g.vaultRoot, backend: g.keystore, deviceId: g.deviceId, apiKey: g.apiKey };
   };
 
   async function run<T>(fn: (c: Commands) => Promise<T>, human: (r: T) => string): Promise<void> {
@@ -160,6 +162,33 @@ export function buildProgram(
     .command('set-nickname <nickname>')
     .description('set / replace your nickname')
     .action((nickname: string) => run((c) => c.profileSetNickname(nickname), (r) => `Nickname set to ${r.nickname}`));
+
+  // ── API keys (scoped credential — skip interactive login) ────────────────
+  const apikey = program.command('apikey').description('durable API key management (Bearer auth without login)');
+  apikey
+    .command('create')
+    .description('issue a new scoped key — the raw key is shown ONCE, save it now')
+    .requiredOption('--name <name>', 'label to identify this key later')
+    .option('--cmd <list>', 'comma-separated capability allowlist, e.g. /openstoa/chat/read,/openstoa/post/write', '')
+    .option('--history-grant <scope>', 'chat archive scope this key may back-fill: none | Nd | since_epoch:N | full', 'none')
+    .option('--no-ai', 'do not mark sessions authenticated with this key as isAI (default: isAI=true)')
+    .action((opts: { name: string; cmd?: string; historyGrant?: string; ai?: boolean }) =>
+      run(
+        (c) =>
+          c.apiKeyCreate({
+            name: opts.name,
+            cmd: opts.cmd ? opts.cmd.split(',').map((s) => s.trim()).filter(Boolean) : [],
+            historyGrant: opts.historyGrant ?? 'none',
+            isAI: opts.ai,
+          }),
+        fmt.fmtApiKeyCreate,
+      ),
+    );
+  apikey.command('list').description('list your API keys (metadata only — never the raw key)').action(() => run((c) => c.apiKeyList(), fmt.fmtApiKeys));
+  apikey
+    .command('revoke <id>')
+    .description('revoke an API key — takes effect immediately')
+    .action((id: string) => run((c) => c.apiKeyRevoke(id), (r) => `Revoked ${r.id}`));
 
   return program;
 }

@@ -13,6 +13,13 @@ export interface CommandConfig {
   backend?: KeystoreBackend;
   /** Stable MLS device identity override (else auto-persisted in the vault). */
   deviceId?: string;
+  /**
+   * A scoped API key (`osk_...`), an alternative to interactive `login` that
+   * lets an agent authenticate with zero login round-trip (design §7
+   * follow-up). Priority in `createCommands`: this field > `OPENSTOA_API_KEY`
+   * env > `<home>/credentials` file > the saved session token.
+   */
+  apiKey?: string;
 }
 
 /** Expand a leading `~` to the user's home directory. */

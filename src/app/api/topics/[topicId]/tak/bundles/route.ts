@@ -12,7 +12,7 @@ import {
   MLS_RATE_TAK,
 } from '@/lib/mls/http';
 import { storeTakBundle, fetchUndeliveredBundles, markBundlesDelivered } from '@/lib/mls/archive';
-import { checkGrantAllows } from '@/lib/aiGrants';
+import { requireAiCapability } from '@/lib/aiPermissions';
 
 const ROUTE = '/api/topics/[topicId]/tak/bundles';
 
@@ -206,14 +206,11 @@ export async function GET(
     const auth = await requireMember(request, topicId);
     if ('error' in auth) return auth.error!;
 
-    // Phase 5 (D9): an AI fetching history keys must hold an active read grant —
-    // out-of-scope past stays undeliverable at the gate. Humans: membership only.
-    if (auth.session.isAI) {
-      const allowed = await checkGrantAllows(db, topicId, auth.session.userId, '/openstoa/post/read');
-      if (!allowed) {
-        return NextResponse.json({ error: 'AI grant required: /openstoa/post/read not permitted' }, { status: 403 });
-      }
-    }
+    // Profile-level AI capability (design §7): an isAI caller fetching history
+    // keys must hold the chat/read capability — out-of-scope past stays
+    // undeliverable at the gate. Humans: membership only.
+    const readGate = await requireAiCapability(db, auth.session, '/openstoa/chat/read');
+    if (readGate) return readGate;
 
     const deviceId = new URL(request.url).searchParams.get('deviceId');
     if (!deviceId || deviceId.trim().length === 0) {

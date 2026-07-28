@@ -5,7 +5,7 @@ import { chatMessages, topicMembers, users } from '@/lib/db/schema';
 import { eq, and, desc, count, gt, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
-import { checkGrantAllows } from '@/lib/aiGrants';
+import { requireAiCapability } from '@/lib/aiPermissions';
 import {
   dispatchDummyForMessage,
   dispatchCiphertextForMessage,
@@ -126,6 +126,14 @@ export async function GET(
     if (!membership) {
       logger.warn(ROUTE, 'User is not a member', { userId: session.userId, topicId });
       return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
+    }
+
+    // Profile-level AI capability (design §7): an isAI reader must hold the
+    // chat/read capability in its owner's profile, else 403. Humans unaffected.
+    const readGate = await requireAiCapability(db, session, '/openstoa/chat/read');
+    if (readGate) {
+      logger.warn(ROUTE, 'AI caller lacks chat/read capability', { userId: session.userId, topicId });
+      return readGate;
     }
 
     const { searchParams } = new URL(request.url);
@@ -328,14 +336,13 @@ export async function POST(
       return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
     }
 
-    // Phase 5 (D9): an AI caller must hold an active grant whose cmd allows
-    // sending. Humans (no isAI) are unaffected — membership is their only gate.
-    if (session.isAI) {
-      const allowed = await checkGrantAllows(db, topicId, session.userId, '/openstoa/chat/send');
-      if (!allowed) {
-        logger.warn(ROUTE, 'AI caller lacks chat/send grant', { userId: session.userId, topicId });
-        return NextResponse.json({ error: 'AI grant required: /openstoa/chat/send not permitted' }, { status: 403 });
-      }
+    // Profile-level AI capability (design §7): an isAI caller must hold the
+    // chat/send capability in its owner's profile, else 403. Humans (no isAI)
+    // are unaffected — membership is their only gate.
+    const sendGate = await requireAiCapability(db, session, '/openstoa/chat/send');
+    if (sendGate) {
+      logger.warn(ROUTE, 'AI caller lacks chat/send capability', { userId: session.userId, topicId });
+      return sendGate;
     }
 
     const body = await request.json().catch(() => null);

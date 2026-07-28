@@ -139,19 +139,54 @@ export interface ConsumedKeyPackageWire {
   isLastResort: boolean;
 }
 
-export interface AiGrant {
-  id: string;
-  aiUserId?: string;
-  cmd?: string[];
-  historyGrant?: string;
-  [k: string]: unknown;
+/**
+ * Profile-level AI capability configuration (design §7). Replaces the retired
+ * per-topic `AiGrant`. An AI is an `isAI` session acting on a user's own
+ * account; the account owner configures what such sessions may do here.
+ */
+export interface AiPermissions {
+  /** Ability allowlist currently granted to the caller's AI sessions. */
+  cmd: string[];
+  /** Chat archive scope the AI may back-fill: none | Nd | since_epoch:N | full. */
+  historyGrant: string;
+  /** The full capability catalogue a user may grant (present on GET responses). */
+  allowedCmd?: string[];
 }
 
-export interface AiGrantSpecInput {
-  aiUserId: string;
+export interface AiPermissionsInput {
   cmd: string[];
   historyGrant: string;
-  depth?: number;
-  dpopJkt?: string | null;
-  consentAnchor?: string | null;
+}
+
+/**
+ * Durable, revocable API key (design §7 follow-up). An agent authenticates
+ * with `Authorization: Bearer <rawKey>` instead of an interactive login — the
+ * key IS the scoped credential; its `cmd`/`historyGrant` gate requests
+ * directly. Metadata only — a key's raw value/hash is never returned except
+ * once, in `ApiKeyCreateResult.rawKey`, at issuance.
+ */
+export interface ApiKeyMeta {
+  id: string;
+  name: string;
+  /** First ~12 chars of the raw key, for display/identification only. */
+  prefix: string;
+  isAI: boolean;
+  cmd: string[];
+  historyGrant: string;
+  createdAt?: string | null;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+}
+
+export interface ApiKeyCreateInput {
+  name: string;
+  cmd: string[];
+  historyGrant: string;
+  isAI?: boolean;
+}
+
+export interface ApiKeyCreateResult {
+  /** The full secret key. Shown exactly once — store it now, it cannot be retrieved again. */
+  rawKey: string;
+  key: ApiKeyMeta;
 }

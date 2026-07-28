@@ -41,7 +41,6 @@ export {
   EncryptingKVStore,
   botPublishKeyPackage,
   botJoin,
-  grantAiConsent,
   grantAiHistory,
   removeAiMember,
 } from './mls';
@@ -57,5 +56,4 @@ export type {
   GroupState,
   Device,
   AiMemberDirectory,
-  AiGrantSpec,
 } from './mls';

@@ -132,4 +132,48 @@ describe('OpenStoaClient', () => {
   it('requires a baseUrl', () => {
     expect(() => new OpenStoaClient({ baseUrl: '' })).toThrow(/baseUrl/);
   });
+
+  // ── API keys (design §7 follow-up: scoped Bearer credential, no interactive login) ──
+  it('constructing with apiKey (no token) sends it as the Bearer on every request', async () => {
+    const { fn, calls } = mockFetch(() => ({ json: { topics: [] } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', apiKey: 'osk_scopedkey123', fetch: fn });
+    expect(c.getToken()).toBe('osk_scopedkey123');
+    await c.topics.list();
+    expect(calls[0].headers['authorization']).toBe('Bearer osk_scopedkey123');
+  });
+  it('an explicit token takes precedence over apiKey when both are given', async () => {
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'JWT_TOKEN', apiKey: 'osk_scopedkey123' });
+    expect(c.getToken()).toBe('JWT_TOKEN');
+  });
+  it('apiKeys.create posts the input and returns { rawKey, key } — never re-sends the raw key elsewhere', async () => {
+    const { fn, calls } = mockFetch(() => ({
+      status: 201,
+      json: { rawKey: 'osk_brandnew', key: { id: 'k1', name: 'laptop', prefix: 'osk_brandn', isAI: true, cmd: ['/openstoa/chat/read'], historyGrant: 'none' } },
+    }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    const r = await c.apiKeys.create({ name: 'laptop', cmd: ['/openstoa/chat/read'], historyGrant: 'none' });
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].body).toEqual({ name: 'laptop', cmd: ['/openstoa/chat/read'], historyGrant: 'none' });
+    expect(r.rawKey).toBe('osk_brandnew');
+    expect(r.key.id).toBe('k1');
+  });
+  it('apiKeys.list unwraps { apiKeys } into an array', async () => {
+    const { fn } = mockFetch(() => ({ json: { apiKeys: [{ id: 'k1' }, { id: 'k2' }] } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    const list = await c.apiKeys.list();
+    expect(list.map((k) => k.id)).toEqual(['k1', 'k2']);
+  });
+  it('apiKeys.revoke issues a DELETE to the key-scoped path', async () => {
+    const { fn, calls } = mockFetch(() => ({ json: { revoked: true, id: 'k1' } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    const r = await c.apiKeys.revoke('k1');
+    expect(calls[0].method).toBe('DELETE');
+    expect(calls[0].url).toContain('/api/profile/api-keys/k1');
+    expect(r.revoked).toBe(true);
+  });
+  it('apiKeys.create surfaces a 400 as OpenStoaApiError (e.g. unknown cmd)', async () => {
+    const { fn } = mockFetch(() => ({ status: 400, json: { error: 'unknown cmd: /root/x' } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
+    await expect(c.apiKeys.create({ name: 'k', cmd: ['/root/x'], historyGrant: 'none' })).rejects.toMatchObject({ status: 400 });
+  });
 });

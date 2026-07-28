@@ -24,6 +24,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const nickname = body.nickname || `dev_user_${randomBytes(4).toString('hex')}`;
     const userId = `0x${randomBytes(32).toString('hex')}`;
+    // Dev-only: mint an `isAI` session so E2E tests can exercise the profile-
+    // level AI capability gate over real HTTP (mirrors an agent CLI session).
+    const isAI = body.isAI === true;
 
     // Create user in DB
     const existing = await db.query.users.findFirst({ where: eq(users.id, userId) });
@@ -31,11 +34,11 @@ export async function POST(request: NextRequest) {
       await db.insert(users).values({ id: userId, nickname });
     }
 
-    const token = await createSession(userId, nickname);
+    const token = await createSession(userId, nickname, { isAI });
 
-    logger.info(ROUTE, 'Dev user created', { userId, nickname });
+    logger.info(ROUTE, 'Dev user created', { userId, nickname, isAI });
 
-    return NextResponse.json({ userId, nickname, token });
+    return NextResponse.json({ userId, nickname, token, isAI });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Error', { error: message });

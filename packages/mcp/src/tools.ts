@@ -99,4 +99,26 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   // ── profile ────────────────────────────────────────────────────────────────
   host.tool('openstoa_profile_get', 'Current profile / session.', {}, wrap(() => commands.profileGet()));
   host.tool('openstoa_profile_set_nickname', 'Set / replace your nickname.', { nickname: z.string() }, wrap((a) => commands.profileSetNickname(a.nickname as string)));
+
+  // ── API keys (durable, scoped credential — no interactive login needed) ────
+  host.tool(
+    'openstoa_apikey_create',
+    'Issue a new scoped API key. The returned rawKey is shown ONCE — save it (e.g. as OPENSTOA_API_KEY) immediately; it cannot be retrieved again.',
+    {
+      name: z.string(),
+      cmd: z.array(z.string()).optional(),
+      historyGrant: z.string().optional(),
+      isAI: z.boolean().optional(),
+    },
+    wrap((a) =>
+      commands.apiKeyCreate({
+        name: a.name as string,
+        cmd: (a.cmd as string[] | undefined) ?? [],
+        historyGrant: (a.historyGrant as string | undefined) ?? 'none',
+        isAI: a.isAI as boolean | undefined,
+      }),
+    ),
+  );
+  host.tool('openstoa_apikey_list', 'List your API keys (metadata only — never the raw key).', {}, wrap(() => commands.apiKeyList()));
+  host.tool('openstoa_apikey_revoke', 'Revoke an API key — takes effect immediately.', { id: z.string() }, wrap((a) => commands.apiKeyRevoke(a.id as string)));
 }

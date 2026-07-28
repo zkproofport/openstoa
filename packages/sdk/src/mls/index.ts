@@ -24,12 +24,10 @@ export { EncryptingKVStore } from './keyManager';
 export type { SealedMessage, GroupState, Device } from './groupClient';
 export type {
   AiMemberDirectory,
-  AiGrantSpec,
 } from './aiMember';
 export {
   botPublishKeyPackage,
   botJoin,
-  grantAiConsent,
   grantAiHistory,
   removeAiMember,
 } from './aiMember';
