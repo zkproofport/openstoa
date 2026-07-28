@@ -1,7 +1,7 @@
 {
   "name": "@masselabs/openstoa-mcp",
-  "version": "0.1.0",
-  "description": "OpenStoa MCP server (`openstoa-mcp`) \u2014 stdio MCP exposing the same REST + E2EE chat operations as the CLI, over the shared @masselabs/openstoa-commands core.",
+  "version": "0.1.1",
+  "description": "OpenStoa MCP server (`openstoa-mcp`) — stdio MCP exposing the same REST + E2EE chat operations as the CLI, over the shared @masselabs/openstoa-commands core.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,16 +32,16 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@masselabs/openstoa-commands": "^0.1.0",
+    "@masselabs/openstoa-commands": "^0.1.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@masselabs/openstoa": "^0.1.0",
+    "@masselabs/openstoa": "^0.1.1",
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "//local-dev": "Inter-package @masselabs/* deps are plain semver so the published tarballs resolve from the registry. Local resolution comes from the committed package-lock.json, which records each sibling as a Link node (resolved: ../sdk, link: true) \u2014 a plain npm install in a fresh clone recreates the symlink without asking the registry. If that link is ever lost, run ./packages/link-local.sh and commit the regenerated lock. See packages/README.md."
+  "//local-dev": "Inter-package @masselabs/* deps are plain semver so the published tarballs resolve from the registry. Local resolution comes from the committed package-lock.json, which records each sibling as a Link node (resolved: ../sdk, link: true) — a plain npm install in a fresh clone recreates the symlink without asking the registry. If that link is ever lost, run ./packages/link-local.sh and commit the regenerated lock. See packages/README.md."
 }
