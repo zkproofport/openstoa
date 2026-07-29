@@ -31,9 +31,12 @@ interface CommunityLayoutProps {
 
 const HEADER_HEIGHT = 49; // sticky header height (padding 12*2 + content ~25)
 const LEFT_WIDTH = 240;
-const RIGHT_WIDTH = 300;
 const GAP = 20;
 const MAX_WIDTH = 1400;
+// A topic page with live chat gets a wider shell so the chat column can grow
+// without eating into the centre feed. Column widths themselves live in the
+// media queries below (`.layout-right-sidebar`).
+const MAX_WIDTH_WITH_CHAT = 1600;
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -57,6 +60,11 @@ export default function CommunityLayout({
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+
+  // Signed-in members of a topic get the dedicated full-height chat column.
+  // Guests and non-members keep the stacked sidebar (chat shows a join prompt,
+  // so filling the column with it would only add dead space).
+  const chatColumn = Boolean(topicId && isMember && !isGuest);
 
   // Close mobile menu on route changes
   useEffect(() => {
@@ -183,8 +191,9 @@ export default function CommunityLayout({
 
       {/* ── Main 3-column layout ── */}
       <div
+        className={chatColumn ? 'layout-with-chat-column' : undefined}
         style={{
-          maxWidth: MAX_WIDTH,
+          maxWidth: chatColumn ? MAX_WIDTH_WITH_CHAT : MAX_WIDTH,
           margin: '0 auto',
           padding: `0 ${GAP}px`,
           display: 'flex',
@@ -235,18 +244,29 @@ export default function CommunityLayout({
           {children}
         </div>
 
-        {/* Right sidebar -- hidden below 1024px (handled by CSS) */}
+        {/* Right sidebar -- hidden below 1024px (handled by CSS).
+            Width comes from CSS so it can widen at larger breakpoints. */}
         <div
-          className="layout-right-sidebar"
+          className={`layout-right-sidebar${chatColumn ? ' chat-column' : ''}`}
           style={{
-            width: RIGHT_WIDTH,
             flexShrink: 0,
             position: 'sticky',
             top: HEADER_HEIGHT + 16,
-            maxHeight: `calc(100vh - ${HEADER_HEIGHT + 32}px)`,
-            overflowY: 'auto',
             paddingTop: 20,
             paddingBottom: 20,
+            ...(chatColumn
+              ? {
+                  // Fixed height + hidden overflow: the chat message list is the
+                  // only scroller, so the composer stays pinned to the bottom.
+                  height: `calc(100vh - ${HEADER_HEIGHT + 32}px)`,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column' as const,
+                }
+              : {
+                  maxHeight: `calc(100vh - ${HEADER_HEIGHT + 32}px)`,
+                  overflowY: 'auto' as const,
+                }),
           }}
         >
           <RightSidebar
@@ -256,6 +276,7 @@ export default function CommunityLayout({
             topicMemberCount={topicMemberCount}
             isGuest={isGuest}
             isMember={isMember}
+            chatColumn={chatColumn}
           />
         </div>
       </div>
@@ -346,6 +367,33 @@ export default function CommunityLayout({
 
       {/* ── Responsive CSS ── */}
       <style>{`
+        /* Right column width. The chat column is deliberately wider than the
+           informational sidebar and keeps growing on roomier displays so the
+           message text stops wrapping every few words. --chat-col-w is the
+           single source of truth: the column reads it for its width and the
+           page's floating compose button reads it to stay clear of the chat. */
+        .layout-with-chat-column { --chat-col-w: 320px; }
+        @media (min-width: 1200px) { .layout-with-chat-column { --chat-col-w: 380px; } }
+        @media (min-width: 1400px) { .layout-with-chat-column { --chat-col-w: 420px; } }
+        @media (min-width: 1600px) { .layout-with-chat-column { --chat-col-w: 460px; } }
+
+        .layout-right-sidebar {
+          width: 300px;
+        }
+        .layout-right-sidebar.chat-column {
+          width: var(--chat-col-w, 320px);
+        }
+
+        /* Floating compose button: viewport-anchored by default, nudged left of
+           the chat column once that column is on screen (>=1024px). */
+        .topic-compose-fab {
+          right: 32px;
+        }
+        @media (min-width: 1024px) {
+          .layout-with-chat-column .topic-compose-fab {
+            right: calc((100vw - min(100vw, ${MAX_WIDTH_WITH_CHAT}px)) / 2 + ${GAP}px + var(--chat-col-w) + 16px);
+          }
+        }
         /* Hide left sidebar on small screens */
         @media (max-width: 767px) {
           .layout-left-sidebar {

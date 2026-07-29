@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { relativeTime } from '@/lib/utils';
 import ChatPanel from '@/components/ChatPanel';
@@ -26,6 +26,10 @@ interface RightSidebarProps {
   topicMemberCount?: number;
   isGuest?: boolean;
   isMember?: boolean;
+  /** Dedicated full-height chat column (topic page, signed-in member).
+   *  The chat fills the remaining column height instead of sitting in a
+   *  fixed-height card with dead space underneath. */
+  chatColumn?: boolean;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -57,19 +61,23 @@ function stripAndTruncate(html: string, maxLen: number): string {
   return text.slice(0, maxLen).trimEnd() + '...';
 }
 
-// ─── Expanded chat overlay ────────────────────────────────────────────────────
+// ─── Maximized chat shell ─────────────────────────────────────────────────────
 
-function ExpandedChatOverlay({
-  topicId,
-  isGuest,
-  isMember,
+/**
+ * Chrome only — backdrop plus a near-fullscreen dialog with an empty slot.
+ * The live ChatPanel DOM node is moved into `slotRef` by the parent, so
+ * maximizing never mounts a second panel: the socket, the decrypted message
+ * list and the composer draft all survive the transition.
+ */
+function MaximizedChatShell({
+  slotRef,
   onClose,
 }: {
-  topicId: string;
-  isGuest: boolean;
-  isMember: boolean;
+  slotRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
   // Close on Escape key
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -78,6 +86,11 @@ function ExpandedChatOverlay({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Move focus into the dialog so it is never left behind the backdrop.
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   // Lock body scroll while overlay is open
   useEffect(() => {
@@ -102,80 +115,48 @@ function ExpandedChatOverlay({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.55)',
+        background: 'rgba(0,0,0,0.62)',
         zIndex: 95,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        padding: 24,
         animation: 'chatOverlayFadeIn 0.18s ease',
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Live chat"
+        tabIndex={-1}
         style={{
-          width: 480,
-          height: 600,
+          width: '100%',
+          maxWidth: 1160,
+          height: '100%',
+          maxHeight: 'none',
           background: 'var(--surface)',
           border: '1px solid var(--border)',
-          borderRadius: 12,
+          borderRadius: 14,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+          outline: 'none',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
         }}
       >
-        {/* Overlay header */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--border)',
-          flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 15 }}>💬</span>
-            <span style={{
-              fontSize: 13,
-              fontWeight: 700,
-              fontFamily: 'var(--font-mono)',
-              textTransform: 'uppercase' as const,
-              letterSpacing: '0.08em',
-              color: 'var(--foreground)',
-            }}>Live Chat</span>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close expanded chat"
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              color: 'var(--muted)',
-              cursor: 'pointer',
-              width: 30,
-              height: 30,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        {/* Chat fills remaining space */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember} fullHeight hideHeader />
-        </div>
+        {/* Slot — the docked ChatPanel node is relocated here while maximized.
+            It brings its own header (topic title, presence, restore button). */}
+        <div
+          ref={slotRef}
+          style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        />
       </div>
       <style>{`
         @keyframes chatOverlayFadeIn {
-          from { opacity: 0; transform: scale(0.97); }
-          to   { opacity: 1; transform: scale(1); }
+          from { opacity: 0; }
+          to   { opacity: 1; }
         }
       `}</style>
     </div>,
@@ -192,10 +173,45 @@ export default function RightSidebar({
   topicMemberCount,
   isGuest,
   isMember,
+  chatColumn,
 }: RightSidebarProps) {
   const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
   const [chatExpanded, setChatExpanded] = useState(false);
+
+  // A single detached host element carries the ChatPanel. It is appended to the
+  // docked slot or to the maximized dialog slot, so the panel is *moved*, never
+  // re-created — no second EventSource, no history refetch, no lost draft.
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+  const dockSlotRef = useRef<HTMLDivElement>(null);
+  const maximizedSlotRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = document.createElement('div');
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+    el.style.flex = '1';
+    el.style.minHeight = '0';
+    hostRef.current = el;
+    setHost(el);
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const target = chatExpanded ? maximizedSlotRef.current : dockSlotRef.current;
+    if (target && el.parentNode !== target) target.appendChild(el);
+  }, [chatExpanded, host, topicId, chatColumn]);
+
+  // Returning to the docked panel puts focus back on the control that opened
+  // the maximized view instead of dropping it on <body>.
+  const collapseChat = useCallback(() => {
+    setChatExpanded(false);
+    requestAnimationFrame(() => {
+      hostRef.current?.querySelector<HTMLButtonElement>('.chat-expand-btn')?.focus();
+    });
+  }, []);
 
   // Fetch recent posts from feed endpoint (falls back to topics endpoint)
   useEffect(() => {
@@ -258,26 +274,46 @@ export default function RightSidebar({
   }, []);
 
   return (
-    <aside style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {/* Topic-specific info (when on a topic page) */}
+    <aside
+      style={
+        chatColumn
+          ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 }
+          : { display: 'flex', flexDirection: 'column', gap: 0 }
+      }
+    >
+      {/* Topic-specific info (when on a topic page). In chat-column mode the
+          chat header already carries the topic name, so this card collapses to
+          the description + member count and gives its height to the chat. */}
       {topicId && topicTitle && (
-        <div style={sidebarCardStyle}>
+        <div style={
+          chatColumn
+            ? { ...sidebarCardStyle, padding: '12px 14px', marginBottom: 10, flexShrink: 0 }
+            : sidebarCardStyle
+        }>
           <div style={sectionHeadingStyle}>About this topic</div>
-          <div style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: 'var(--foreground)',
-            marginBottom: 6,
-            letterSpacing: '-0.01em',
-          }}>
-            {topicTitle}
-          </div>
+          {!chatColumn && (
+            <div style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: 'var(--foreground)',
+              marginBottom: 6,
+              letterSpacing: '-0.01em',
+            }}>
+              {topicTitle}
+            </div>
+          )}
           {topicDescription && (
             <p style={{
               fontSize: 13,
               color: 'var(--muted)',
-              margin: '0 0 10px',
+              margin: chatColumn ? '0 0 8px' : '0 0 10px',
               lineHeight: 1.5,
+              ...(chatColumn ? {
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical' as const,
+              } : null),
             }}>
               {topicDescription}
             </p>
@@ -303,28 +339,43 @@ export default function RightSidebar({
         </div>
       )}
 
-      {/* Live Chat */}
+      {/* Live Chat dock — the panel node lives here while not maximized. */}
       {topicId && (
-        <div style={{ marginBottom: 12 }}>
-          <ChatPanel
-            topicId={topicId}
-            isGuest={isGuest ?? true}
-            isMember={isMember ?? false}
-            // Inline header button — never overlaps PresenceDots.
-            onExpand={() => setChatExpanded(true)}
-          />
-          {chatExpanded && (
-            <ExpandedChatOverlay
-              topicId={topicId}
-              isGuest={isGuest ?? true}
-              isMember={isMember ?? false}
-              onClose={() => setChatExpanded(false)}
-            />
-          )}
-        </div>
+        <div
+          ref={dockSlotRef}
+          style={
+            chatColumn
+              ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
+              : { marginBottom: 12 }
+          }
+        />
       )}
 
-      {/* Recent Posts */}
+      {/* The panel itself renders into a stable detached host, so moving it
+          between the dock and the maximized dialog never remounts it. */}
+      {topicId && host && createPortal(
+        <ChatPanel
+          topicId={topicId}
+          isGuest={isGuest ?? true}
+          isMember={isMember ?? false}
+          title={chatColumn ? topicTitle : undefined}
+          fullHeight={chatColumn || chatExpanded}
+          framed={chatColumn && !chatExpanded}
+          expanded={chatExpanded}
+          // Inline header button — never overlaps PresenceDots.
+          onExpand={() => setChatExpanded(true)}
+          onCollapse={collapseChat}
+        />,
+        host,
+      )}
+
+      {chatExpanded && (
+        <MaximizedChatShell slotRef={maximizedSlotRef} onClose={collapseChat} />
+      )}
+
+      {/* Recent Posts — hidden in chat-column mode, where the column height
+          belongs to the chat. The topic feed is already in the center column. */}
+      {!chatColumn && (
       <div style={sidebarCardStyle}>
         <div style={sectionHeadingStyle}>Recent Posts</div>
         {recentPosts.length === 0 ? (
@@ -404,6 +455,20 @@ export default function RightSidebar({
           </div>
         )}
       </div>
+      )}
+
+      <style>{`
+        .chat-expand-btn:hover,
+        .chat-collapse-btn:hover {
+          color: var(--foreground);
+          background: rgba(120, 140, 255, 0.12);
+        }
+        .chat-expand-btn:focus-visible,
+        .chat-collapse-btn:focus-visible {
+          outline: 2px solid var(--accent);
+          outline-offset: 1px;
+        }
+      `}</style>
     </aside>
   );
 }

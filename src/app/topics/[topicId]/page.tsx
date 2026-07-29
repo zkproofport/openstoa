@@ -1439,10 +1439,12 @@ export default function TopicPage() {
       {sessionChecked && !isGuest && topic?.isMember && !composing && (
         <button
           onClick={() => setComposing(true)}
+          // `right` comes from CSS (CommunityLayout) so the button can step
+          // aside for the live chat column instead of covering its composer.
+          className="topic-compose-fab"
           style={{
             position: 'fixed',
             bottom: 32,
-            right: 32,
             width: 56,
             height: 56,
             borderRadius: '50%',

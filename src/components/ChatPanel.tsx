@@ -121,6 +121,15 @@ interface ChatPanelProps {
   hideHeader?: boolean;
   /** Close handler for mobile overlay */
   onClose?: () => void;
+  /** Keep the card chrome (surface + border) while still filling the parent
+   *  height — used by the docked desktop chat column. */
+  framed?: boolean;
+  /** Topic name for the header. Falls back to the generic "Live Chat" label. */
+  title?: string;
+  /** Maximized presentation: roomier type and a centered reading measure. */
+  expanded?: boolean;
+  /** Restore control shown in the header while maximized. */
+  onCollapse?: () => void;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -140,21 +149,34 @@ const panelFullHeightStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   height: '100%',
+  minHeight: 0,
   overflow: 'hidden',
+};
+
+// Docked chat column: fills the sidebar height but keeps the card chrome so it
+// reads as part of the same surface family as the other sidebar cards.
+const panelFramedFullHeightStyle: React.CSSProperties = {
+  ...panelFullHeightStyle,
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: 12,
 };
 
 const headerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
+  gap: 8,
   padding: '10px 14px',
   borderBottom: '1px solid var(--border)',
+  flexShrink: 0,
 };
 
 const headerLeftStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
+  minWidth: 0,
 };
 
 const headerTitleStyle: React.CSSProperties = {
@@ -182,10 +204,24 @@ const messagesContainerStyle: React.CSSProperties = {
   gap: 6,
 };
 
+const iconButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: 'var(--muted)',
+  cursor: 'pointer',
+  padding: 3,
+  borderRadius: 4,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  lineHeight: 1,
+  flexShrink: 0,
+};
+
 // ─── Avatar dots component ────────────────────────────────────────────────────
 
-function PresenceDots({ users }: { users: PresenceUser[] }) {
-  const shown = users.slice(0, 5);
+function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number }) {
+  const shown = users.slice(0, max);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
       {shown.map((u) =>
@@ -226,9 +262,9 @@ function PresenceDots({ users }: { users: PresenceUser[] }) {
           </div>
         )
       )}
-      {users.length > 5 && (
+      {users.length > max && (
         <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 2 }}>
-          +{users.length - 5}
+          +{users.length - max}
         </span>
       )}
     </div>
@@ -237,11 +273,11 @@ function PresenceDots({ users }: { users: PresenceUser[] }) {
 
 // ─── Message row ──────────────────────────────────────────────────────────────
 
-function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
+function MessageRow({ msg, grouped, roomy }: { msg: ChatMessage; grouped?: boolean; roomy?: boolean }) {
   if (msg.type === 'join' || msg.type === 'leave') {
     return (
       <div style={{
-        fontSize: 11,
+        fontSize: roomy ? 12 : 11,
         color: 'var(--muted)',
         fontStyle: 'italic',
         padding: '1px 0',
@@ -261,11 +297,11 @@ function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
   const hideMessageText = urlOnly && (inlineImage !== null || firstUrl !== null);
 
   return (
-    <div style={{ lineHeight: 1.4, marginTop: grouped ? -2 : 0 }}>
+    <div style={{ lineHeight: roomy ? 1.5 : 1.4, marginTop: grouped ? -2 : 0 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap' }}>
         {!grouped && (
           <span style={{
-            fontSize: 12,
+            fontSize: roomy ? 13 : 12,
             fontWeight: 700,
             color: 'var(--accent)',
             flexShrink: 0,
@@ -279,7 +315,7 @@ function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
         )}
         {!hideMessageText && (
           <span style={{
-            fontSize: 13,
+            fontSize: roomy ? 14 : 13,
             color: 'var(--foreground)',
             wordBreak: 'break-word' as const,
             flex: 1,
@@ -302,7 +338,7 @@ function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
             alt=""
             style={{
               maxWidth: '100%',
-              maxHeight: 240,
+              maxHeight: roomy ? 380 : 240,
               borderRadius: 8,
               border: '1px solid var(--border)',
               display: 'block',
@@ -332,7 +368,19 @@ function MessageRow({ msg, grouped }: { msg: ChatMessage; grouped?: boolean }) {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hideHeader, onClose, onExpand }: ChatPanelProps) {
+export default function ChatPanel({
+  topicId,
+  isGuest,
+  isMember,
+  fullHeight,
+  hideHeader,
+  onClose,
+  onExpand,
+  framed,
+  title,
+  expanded,
+  onCollapse,
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
@@ -588,17 +636,67 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
     };
   }, [topicId, isGuest, isMember, provisionArchiveAccess]);
 
+  // Root chrome: card by default, flex column when it has to fill its parent.
+  const rootStyle = fullHeight
+    ? framed
+      ? panelFramedFullHeightStyle
+      : panelFullHeightStyle
+    : panelStyle;
+
+  // Maximized view keeps a comfortable reading measure — lines should not run
+  // the full width of a 1100px dialog.
+  const measureStyle: React.CSSProperties = expanded
+    ? { width: '100%', maxWidth: 860, margin: '0 auto' }
+    : { width: '100%' };
+
+  // Topic pages pass the topic name; everything else keeps the generic label.
+  const headerLabel = (
+    <div style={headerLeftStyle}>
+      <span style={{ fontSize: expanded ? 16 : 14, flexShrink: 0 }}>💬</span>
+      {title ? (
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontSize: expanded ? 15 : 13,
+            fontWeight: 700,
+            color: 'var(--foreground)',
+            letterSpacing: '-0.01em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap' as const,
+          }}>
+            {title}
+          </div>
+          <div style={{
+            fontSize: 10,
+            fontFamily: 'var(--font-mono)',
+            textTransform: 'uppercase' as const,
+            letterSpacing: '0.08em',
+            color: 'var(--muted)',
+            marginTop: 1,
+          }}>
+            Live Chat{presence.count > 0 ? ` · ${presence.count} online` : ''}
+          </div>
+        </div>
+      ) : (
+        <>
+          <span style={headerTitleStyle}>Live Chat</span>
+          {presence.count > 0 && <span style={onlineCountStyle}>{presence.count} online</span>}
+        </>
+      )}
+    </div>
+  );
+
   // ─── Guest / non-member state ──────────────────────────────────────────────
   if (isGuest || !isMember) {
     return (
-      <div style={fullHeight ? panelFullHeightStyle : panelStyle}>
+      <div style={rootStyle}>
         {!hideHeader && (
           <div style={headerStyle}>
             <div style={headerLeftStyle}>
               <span style={{ fontSize: 14 }}>💬</span>
               <span style={headerTitleStyle}>Live Chat</span>
             </div>
-            {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
+            {onClose && <button onClick={onClose} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
           </div>
         )}
         <div style={{
@@ -616,39 +714,31 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
 
   // ─── Member state ─────────────────────────────────────────────────────────
   return (
-    <div style={fullHeight ? panelFullHeightStyle : panelStyle}>
+    <div style={rootStyle}>
       {/* Header */}
       {!hideHeader && (
       <div style={headerStyle}>
-        <div style={headerLeftStyle}>
-          <span style={{ fontSize: 14 }}>💬</span>
-          <span style={headerTitleStyle}>Live Chat</span>
-          {presence.count > 0 && (
-            <span style={onlineCountStyle}>{presence.count} online</span>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {onExpand && (
+        {headerLabel}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {presence.users.length > 0 && <PresenceDots users={presence.users} max={expanded ? 8 : 4} />}
+          <div style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: connected ? '#22c55e' : '#6b7280',
+            flexShrink: 0,
+          }} title={connected ? 'Connected' : 'Reconnecting'} />
+          {onExpand && !expanded && (
             <button
               type="button"
               onClick={onExpand}
               className="chat-expand-btn"
-              aria-label="Expand chat"
-              title="Expand chat"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--muted)',
-                cursor: 'pointer',
-                padding: 2,
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: 1,
-              }}
+              aria-label="Maximize chat"
+              aria-expanded={false}
+              title="Maximize chat"
+              style={iconButtonStyle}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="15 3 21 3 21 9" />
                 <polyline points="9 21 3 21 3 15" />
                 <line x1="21" y1="3" x2="14" y2="10" />
@@ -656,56 +746,83 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
               </svg>
             </button>
           )}
-          {presence.users.length > 0 && <PresenceDots users={presence.users} />}
-          <div style={{
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            background: connected ? '#22c55e' : '#6b7280',
-            flexShrink: 0,
-          }} />
-          {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
+          {onCollapse && expanded && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="chat-collapse-btn"
+              aria-label="Restore chat to sidebar"
+              aria-expanded={true}
+              title="Restore chat (Esc)"
+              style={iconButtonStyle}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 14 10 14 10 20" />
+                <polyline points="20 10 14 10 14 4" />
+                <line x1="14" y1="10" x2="21" y2="3" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+          )}
+          {onClose && <button onClick={onClose} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
         </div>
       </div>
       )}
 
-      {/* Messages */}
+      {/* Messages — the only scroller once the panel fills its parent. */}
       <div style={fullHeight ? {
         ...messagesContainerStyle,
         maxHeight: 'none',
         flex: 1,
+        minHeight: 0,
+        padding: expanded ? '16px 20px' : '10px 14px',
         overflowY: 'auto' as const,
       } : messagesContainerStyle}>
-        {messages.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
-            No messages yet
-          </div>
-        ) : (
-          messages.map((msg, i) => {
-            // Same-author messages within 60s collapse into a single
-            // group (matches the mobile chat). Hide the nickname row
-            // and trim the gap.
-            const prev = messages[i - 1];
-            const grouped =
-              prev != null &&
-              prev.type === 'message' &&
-              msg.type === 'message' &&
-              prev.userId === msg.userId &&
-              !!prev.isAI === !!msg.isAI &&
-              new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 60_000;
-            return <MessageRow key={msg.id} msg={msg} grouped={grouped} />;
-          })
-        )}
-        <div ref={messagesEndRef} />
+        <div style={{
+          ...measureStyle,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: expanded ? 8 : 6,
+          // Short conversations sit on the composer instead of floating at the
+          // top of a tall column. `margin-top: auto` (not justify-content) so a
+          // long list still scrolls from the very first message.
+          ...(fullHeight ? { marginTop: 'auto' } : null),
+        }}>
+          {messages.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
+              No messages yet
+            </div>
+          ) : (
+            messages.map((msg, i) => {
+              // Same-author messages within 60s collapse into a single
+              // group (matches the mobile chat). Hide the nickname row
+              // and trim the gap.
+              const prev = messages[i - 1];
+              const grouped =
+                prev != null &&
+                prev.type === 'message' &&
+                msg.type === 'message' &&
+                prev.userId === msg.userId &&
+                !!prev.isAI === !!msg.isAI &&
+                new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 60_000;
+              return <MessageRow key={msg.id} msg={msg} grouped={grouped} roomy={expanded} />;
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Input */}
+      {/* Composer — pinned to the bottom of the panel. */}
+      <div style={{
+        borderTop: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
       <div style={{
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        padding: '8px 10px',
-        borderTop: '1px solid var(--border)',
+        padding: expanded ? '12px 20px' : '8px 10px',
+        ...measureStyle,
       }}>
         <input
           ref={fileInputRef}
@@ -772,9 +889,9 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
             background: 'transparent',
             border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: 8,
-            padding: '7px 10px',
+            padding: expanded ? '9px 12px' : '7px 10px',
             color: 'var(--foreground)',
-            fontSize: 13,
+            fontSize: expanded ? 14 : 13,
             outline: 'none',
             boxSizing: 'border-box',
             opacity: connected ? 1 : 0.5,
@@ -788,8 +905,8 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
             color: '#fff',
             border: 'none',
             borderRadius: 8,
-            padding: '7px 12px',
-            fontSize: 13,
+            padding: expanded ? '9px 16px' : '7px 12px',
+            fontSize: expanded ? 14 : 13,
             fontWeight: 600,
             cursor: 'pointer',
             flexShrink: 0,
@@ -799,6 +916,7 @@ export default function ChatPanel({ topicId, isGuest, isMember, fullHeight, hide
         >
           {sending ? '...' : 'Send'}
         </button>
+        </div>
       </div>
     </div>
   );
