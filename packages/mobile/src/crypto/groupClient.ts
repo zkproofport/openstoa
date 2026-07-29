@@ -4,11 +4,15 @@
  * (openstoa/src/lib/mls/groupClient.ts): same wire format, same base64, so a
  * group created on web interoperates with a mobile device and vice versa.
  *
- * Difference from the web copy: ts-mls is loaded with a lazy `require` INSIDE
- * the accessor (not a top-level import). Per the Phase 0 on-device findings,
- * this (a) ensures ts-mls loads only after the host's boot WebCrypto polyfill
- * (index.js → ensureSubtleCrypto) has attached crypto.subtle, and (b) avoids
- * Metro `inlineRequires` resolving a top-level module namespace to undefined.
+ * Differences from the web copy (both are mobile-runtime workarounds; the MLS
+ * logic below is identical and must stay in sync):
+ *  1. ts-mls is loaded with a lazy `require` INSIDE the accessor (not a
+ *     top-level import). Per the Phase 0 on-device findings, this (a) ensures
+ *     ts-mls loads only after the host's boot WebCrypto polyfill (index.js →
+ *     ensureSubtleCrypto) has attached crypto.subtle, and (b) avoids Metro
+ *     `inlineRequires` resolving a top-level module namespace to undefined.
+ *  2. AES-GCM is served from @noble/ciphers instead of the host's WebCrypto —
+ *     see installAesGcmInterop below.
  *
  * NOTE: duplicated from the web copy (the mobile package is consumed standalone
  * via file: + Metro and can't import the Next app's src/). Keep the two in sync
@@ -27,19 +31,127 @@ function T(): any {
 
 export const MLS_SUITE_NAME = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519'; // 0x0001 (RFC 9420 MTI)
 
+// ---------------------------------------------------------------------------
+// AES-GCM interop shim (mobile only)
+// ---------------------------------------------------------------------------
+// On Hermes `crypto.subtle` is react-native-quick-crypto, whose AES-GCM
+// *encrypt* produces ciphertext that standard WebCrypto (the web client) cannot
+// decrypt — mobile→web breaks while web→mobile keeps working, because
+// quick-crypto's *decrypt* accepts standard ciphertext.
+//
+// ts-mls's `nobleCryptoProvider` only replaces the MLS application-message
+// AEAD. HPKE — Commit UpdatePath secrets, Welcome, and every TAK archive/key
+// bundle (takClient `cs.hpke.seal`) — is built by ts-mls on `@hpke/core`'s
+// `Aes128Gcm`, which calls `crypto.subtle` directly and is unreachable through
+// ts-mls's public API. So a mobile-produced External Commit still carried a
+// quick-crypto-sealed path secret that other members could not HPKE-open:
+// their `processCommit` threw → `catchUp` threw → every later mobile message
+// rendered as "[unable to decrypt]" for them.
+//
+// Fix: serve raw AES-GCM keys from `@noble/ciphers` (pure JS, spec-exact:
+// 16-byte tag appended, `additionalData` honoured) instead of the host's
+// WebCrypto, so NO AES-GCM operation in the mini-app depends on it. Everything
+// else (HKDF, X25519, Ed25519, SHA-2 — all proven on-device) falls through
+// untouched. On a spec-correct WebCrypto this is byte-identical, so it is inert
+// on web/node and safe for any other host consumer of subtle AES-GCM.
+const NOBLE_AES_KEY = '__openstoaNobleAesGcmKey';
+let _aesShimInstalled = false;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function algNameOf(a: any): string {
+  return (typeof a === 'string' ? a : a?.name) ?? '';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function asBytes(d: any): Uint8Array {
+  if (d instanceof Uint8Array) return d;
+  if (ArrayBuffer.isView(d)) return new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+  return new Uint8Array(d);
+}
+
+function toArrayBuffer(u: Uint8Array): ArrayBuffer {
+  return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
+}
+
+function installAesGcmInterop(): void {
+  if (_aesShimInstalled) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const subtle: any = (globalThis as any).crypto?.subtle;
+  if (!subtle) return; // no WebCrypto yet — ts-mls would fail anyway; leave as-is
+  _aesShimInstalled = true;
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { gcm } = require('@noble/ciphers/aes.js');
+
+  const nativeImportKey = subtle.importKey.bind(subtle);
+  const nativeEncrypt = subtle.encrypt.bind(subtle);
+  const nativeDecrypt = subtle.decrypt.bind(subtle);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawKeyOf = (key: any): Uint8Array | null =>
+    key && typeof key === 'object' && key[NOBLE_AES_KEY] instanceof Uint8Array ? key[NOBLE_AES_KEY] : null;
+
+  // Only `raw` AES-GCM keys are intercepted; the marker object carries the key
+  // bytes so encrypt/decrypt can run them through noble. WebCrypto CryptoKeys
+  // are imported non-extractable, so the bytes are otherwise unrecoverable.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  subtle.importKey = async (format: string, keyData: any, algorithm: any, extractable: boolean, usages: string[]) => {
+    if (format === 'raw' && algNameOf(algorithm) === 'AES-GCM') {
+      return {
+        type: 'secret',
+        extractable,
+        usages,
+        algorithm: { name: 'AES-GCM', length: asBytes(keyData).length * 8 },
+        [NOBLE_AES_KEY]: new Uint8Array(asBytes(keyData)),
+      };
+    }
+    return nativeImportKey(format, keyData, algorithm, extractable, usages);
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nobleParams = (algorithm: any, raw: Uint8Array) => {
+    // tagLength defaults to 128 in WebCrypto, which is what noble produces.
+    if (algorithm.tagLength !== undefined && algorithm.tagLength !== 128) return null;
+    const aad = algorithm.additionalData ? asBytes(algorithm.additionalData) : undefined;
+    return gcm(raw, asBytes(algorithm.iv), aad && aad.length > 0 ? aad : undefined);
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  subtle.encrypt = async (algorithm: any, key: any, data: any) => {
+    const raw = rawKeyOf(key);
+    if (raw && algNameOf(algorithm) === 'AES-GCM') {
+      const cipher = nobleParams(algorithm, raw);
+      if (cipher) return toArrayBuffer(cipher.encrypt(asBytes(data)));
+    }
+    return nativeEncrypt(algorithm, key, data);
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  subtle.decrypt = async (algorithm: any, key: any, data: any) => {
+    const raw = rawKeyOf(key);
+    if (raw && algNameOf(algorithm) === 'AES-GCM') {
+      const cipher = nobleParams(algorithm, raw);
+      if (cipher) return toArrayBuffer(cipher.decrypt(asBytes(data)));
+    }
+    return nativeDecrypt(algorithm, key, data);
+  };
+}
+
+/** Test hook: true once the AES-GCM interop shim is active. */
+export function aesGcmInteropInstalled(): boolean {
+  return _aesShimInstalled;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _impl: any = null;
 async function impl() {
   if (!_impl) {
-    // Use ts-mls's noble crypto provider (pure-JS @noble/ciphers AES-GCM) on
-    // mobile instead of the default provider, which routes AES-GCM through
-    // crypto.subtle. On Hermes that subtle is react-native-quick-crypto, whose
-    // AES-GCM *encrypt* produces ciphertext that standard WebCrypto (the web
-    // client) cannot decrypt — so mobile→web messages failed to open while
-    // web→mobile worked (quick-crypto decrypt is fine). The noble AEAD is
-    // byte-standard (16-byte tag appended) and interoperates with the web
-    // client's subtle AES-GCM. HPKE/Ed25519 still use @hpke/core / subtle (both
-    // proven working on-device), so only the application-message AEAD changes.
+    // Route every AES-GCM operation away from the host's WebCrypto first (see
+    // installAesGcmInterop) — this covers HPKE (@hpke/core), which ts-mls's
+    // noble provider does NOT.
+    installAesGcmInterop();
+    // ts-mls's noble crypto provider additionally keeps the MLS
+    // application-message AEAD, hashes and KDF in pure JS.
     _impl = await T().getCiphersuiteImpl(
       T().getCiphersuiteFromName(MLS_SUITE_NAME),
       T().nobleCryptoProvider,

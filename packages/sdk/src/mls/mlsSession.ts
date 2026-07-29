@@ -186,15 +186,13 @@ export class MlsSessionStore {
   seal(topicId: string, plaintext: string): Promise<SealedMessage> {
     return this.withLock(topicId, async () => {
       const s = await this.getSession(topicId);
-      // Advance to the latest epoch first so we never seal under a stale epoch
-      // that newer members can't read (until live commit SSE lands, this is the
-      // sync point). Best-effort: a transient catch-up failure still lets the
-      // send proceed at the current epoch.
-      try {
-        await this.catchUp(topicId, s);
-      } catch {
-        /* seal at current epoch */
-      }
+      // Advance to the latest epoch first — until live commit SSE lands this is
+      // the only sync point. A message sealed under a STALE epoch is
+      // cryptographically undecryptable for every member who joined after that
+      // epoch: silent, permanent data loss that surfaces as "[unable to
+      // decrypt]" forever. So a catch-up failure FAILS THE SEND (the caller
+      // keeps the draft and retries) instead of corrupting the conversation.
+      await this.catchUp(topicId, s);
       const r = await gc.sealMessage(s.state, plaintext);
       s.state = r.state;
       await this.persist(topicId, s);

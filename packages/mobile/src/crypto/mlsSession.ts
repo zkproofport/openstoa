@@ -159,11 +159,12 @@ export class MlsSessionStore {
   seal(topicId: string, plaintext: string): Promise<SealedMessage> {
     return this.withLock(topicId, async () => {
       const s = await this.getSession(topicId);
-      try {
-        await this.catchUp(topicId, s);
-      } catch {
-        /* seal at current epoch */
-      }
+      // Advance to the latest epoch first — a message sealed under a STALE
+      // epoch is undecryptable for every member who joined after that epoch
+      // (silent, permanent "[unable to decrypt]"), so a catch-up failure fails
+      // the send instead of corrupting the conversation. Keep in sync with the
+      // web copy (openstoa/src/lib/mls/mlsSession.ts).
+      await this.catchUp(topicId, s);
       const r = await gc.sealMessage(s.state, plaintext);
       s.state = r.state;
       await this.persist(topicId, s);

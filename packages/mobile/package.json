@@ -7,6 +7,7 @@
   "types": "index.d.ts",
   "license": "MIT",
   "peerDependencies": {
+    "@noble/ciphers": ">=2",
     "@openstoa/api-types": "*",
     "@openstoa/miniapp-bridge": "*",
     "@react-navigation/bottom-tabs": ">=7",
