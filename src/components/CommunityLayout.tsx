@@ -389,6 +389,16 @@ export default function CommunityLayout({
         @media (min-width: 1400px) { .layout-with-chat-column { --chat-col-w: 420px; } }
         @media (min-width: 1600px) { .layout-with-chat-column { --chat-col-w: 460px; } }
 
+        /* Geometry of the right-edge chat panel (RightSidebar's "expand to
+           sidebar" mode). Declared here because it is derived from this shell's
+           max width and gutter: the panel's right edge lines up with the page's
+           right gutter, and it is always at least as wide as --chat-col-w so it
+           fully covers the docked column it replaces. */
+        :root {
+          --chat-overlay-w: clamp(360px, 32vw, 560px);
+          --chat-overlay-right: max(12px, calc((100vw - min(100vw, ${MAX_WIDTH_WITH_CHAT}px)) / 2 + ${GAP}px));
+        }
+
         .layout-right-sidebar {
           width: 300px;
         }
@@ -404,6 +414,11 @@ export default function CommunityLayout({
         @media (min-width: 1024px) {
           .layout-with-chat-column .topic-compose-fab {
             right: calc((100vw - min(100vw, ${MAX_WIDTH_WITH_CHAT}px)) / 2 + ${GAP}px + var(--chat-col-w) + 16px);
+          }
+          /* The right-edge chat panel is wider than the docked column, so step
+             the compose button further in while that panel is open. */
+          body.chat-sidebar-open .topic-compose-fab {
+            right: calc(var(--chat-overlay-right) + var(--chat-overlay-w) + 16px);
           }
         }
         /* Hide left sidebar on small screens */
@@ -439,9 +454,12 @@ export default function CommunityLayout({
             display: none !important;
           }
         }
-        /* Hide expand button on mobile (right sidebar is hidden there anyway) */
+        /* Below 1024px the chat is the full-screen mobile sheet, which is
+           already the maximal presentation — there is nothing to expand into,
+           so the two-way choice is not offered. (The sheet renders the panel
+           with hideHeader, so this is belt and braces.) */
         @media (max-width: 1023px) {
-          .chat-expand-btn {
+          .chat-mode-btn {
             display: none !important;
           }
         }

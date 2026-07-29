@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { relativeTime } from '@/lib/utils';
-import ChatPanel from '@/components/ChatPanel';
+import ChatPanel, { type ChatMode } from '@/components/ChatPanel';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { createPortal } from 'react-dom';
 
@@ -43,6 +43,18 @@ const sidebarCardStyle: React.CSSProperties = {
   marginBottom: 12,
 };
 
+/** Sticky header height — keep in sync with CommunityLayout's HEADER_HEIGHT. */
+const HEADER_HEIGHT = 49;
+
+/**
+ * Which expand style the user reached for last (`sidebar` | `modal`). It is a
+ * *preference*, never a restored state: every page load starts in the docked
+ * panel, exactly as it does today. Absent/unknown value → `sidebar`.
+ */
+const CHAT_MODE_KEY = 'openstoa:chat-mode';
+
+type ExpandMode = Exclude<ChatMode, 'docked'>;
+
 const sectionHeadingStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 700,
@@ -62,7 +74,91 @@ function stripAndTruncate(html: string, maxLen: number): string {
   return text.slice(0, maxLen).trimEnd() + '...';
 }
 
-// ─── Maximized chat shell ─────────────────────────────────────────────────────
+// ─── Expanded chat shells ─────────────────────────────────────────────────────
+
+/**
+ * Chrome only — a tall column pinned to the page's right gutter, wider than the
+ * docked chat column and sized to cover it completely. Deliberately NOT modal:
+ * no backdrop, no scroll lock, no focus trap, so the page beside it stays
+ * readable and clickable — that is the whole point of choosing this over the
+ * modal.
+ *
+ * Like the modal shell it only provides an empty slot; the parent moves the
+ * single live ChatPanel node into it.
+ */
+function SidebarChatShell({
+  slotRef,
+  onClose,
+}: {
+  slotRef: React.RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Escape returns to the docked panel, same as the modal.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Reparenting the panel node blurs whatever was focused inside it, so put
+  // focus on the new container instead of dropping it on <body>.
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, []);
+
+  // The floating compose button on the topic page is positioned relative to the
+  // docked chat column; nudge it clear of this wider overlay while it is open.
+  useEffect(() => {
+    document.body.classList.add('chat-sidebar-open');
+    return () => document.body.classList.remove('chat-sidebar-open');
+  }, []);
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      role="region"
+      aria-label="Live chat side panel"
+      tabIndex={-1}
+      style={{
+        position: 'fixed',
+        top: HEADER_HEIGHT + 12,
+        // Geometry vars come from CommunityLayout, which owns the page shell
+        // measurements this panel has to line up with.
+        right: 'var(--chat-overlay-right)',
+        bottom: 12,
+        width: 'var(--chat-overlay-w)',
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        outline: 'none',
+        zIndex: 90,
+        boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+        animation: 'chatSidebarSlideIn 0.18s ease',
+      }}
+    >
+      {/* Slot — the docked ChatPanel node is relocated here. It brings its own
+          header (topic title, presence, the two expand controls). */}
+      <div
+        ref={slotRef}
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+      />
+      <style>{`
+        @keyframes chatSidebarSlideIn {
+          from { opacity: 0; transform: translateX(18px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
+    </div>,
+    document.body,
+  );
+}
 
 /**
  * Chrome only — backdrop plus a near-fullscreen dialog with an empty slot.
@@ -178,16 +274,32 @@ export default function RightSidebar({
 }: RightSidebarProps) {
   const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
-  const [chatExpanded, setChatExpanded] = useState(false);
+  // Always docked on load — the first screen must stay exactly as it is today.
+  // Expanding is an explicit act; nothing here is ever restored from storage.
+  const [chatMode, setChatMode] = useState<ChatMode>('docked');
+  // The expand style the user last used. Persisted, but it only decides which
+  // segment regains focus after docking — never which mode the page opens in.
+  const [preferredExpand, setPreferredExpand] = useState<ExpandMode>('sidebar');
   // Only the visible surface owns the live chat session — see DESKTOP_CHAT_QUERY.
   const isDesktop = useMediaQuery(DESKTOP_CHAT_QUERY);
+  // An expanded mode only survives where there is a live chat to expand:
+  //  - below the desktop breakpoint the chat is the full-screen mobile sheet
+  //    (CommunityLayout) and this sidebar is off screen, so an overlay here
+  //    would float over the sheet — and mount a second panel;
+  //  - off a topic page, or for guests/non-members, there is no panel at all.
+  // Resizing down while expanded therefore falls back to docked, not to a
+  // stranded overlay.
+  const canExpand = Boolean(topicId && isMember && !isGuest);
+  const effectiveMode: ChatMode = isDesktop && canExpand ? chatMode : 'docked';
 
   // A single detached host element carries the ChatPanel. It is appended to the
-  // docked slot or to the maximized dialog slot, so the panel is *moved*, never
-  // re-created — no second EventSource, no history refetch, no lost draft.
+  // docked slot, the right-edge panel slot or the modal dialog slot, so the
+  // panel is *moved* between the three, never re-created — no second
+  // EventSource, no history refetch, no lost draft.
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [host, setHost] = useState<HTMLDivElement | null>(null);
   const dockSlotRef = useRef<HTMLDivElement>(null);
+  const sidebarSlotRef = useRef<HTMLDivElement>(null);
   const maximizedSlotRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -200,21 +312,57 @@ export default function RightSidebar({
     setHost(el);
   }, []);
 
+  // Read the stored preference once, on the client (reading localStorage during
+  // render would desync the SSR markup from hydration). Note it feeds
+  // `preferredExpand`, NOT `chatMode` — a reload never lands in an overlay.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CHAT_MODE_KEY);
+      if (saved === 'sidebar' || saved === 'modal') setPreferredExpand(saved);
+    } catch {
+      // private mode / storage disabled — keep the default preference
+    }
+  }, []);
+
   useLayoutEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    const target = chatExpanded ? maximizedSlotRef.current : dockSlotRef.current;
+    const target =
+      effectiveMode === 'modal'
+        ? maximizedSlotRef.current
+        : effectiveMode === 'sidebar'
+          ? sidebarSlotRef.current
+          : dockSlotRef.current;
     if (target && el.parentNode !== target) target.appendChild(el);
-  }, [chatExpanded, host, topicId, chatColumn]);
+  }, [effectiveMode, host, topicId, chatColumn]);
 
-  // Returning to the docked panel puts focus back on the control that opened
-  // the maximized view instead of dropping it on <body>.
-  const collapseChat = useCallback(() => {
-    setChatExpanded(false);
+  // Single entry point for the two-way choice. Expanding records the style as
+  // the preference; docking deliberately does NOT overwrite it, so the last
+  // *expand* style is what survives a reload.
+  //
+  // Focus: moving the panel node between hosts blurs whatever was focused
+  // inside it, so without this every switch would drop keyboard focus on
+  // <body>. It lands on the segment that matters — the active one while
+  // expanded, the preferred one once docked.
+  const applyChatMode = useCallback((next: ChatMode) => {
+    setChatMode(next);
+    if (next !== 'docked') {
+      setPreferredExpand(next);
+      try {
+        window.localStorage.setItem(CHAT_MODE_KEY, next);
+      } catch {
+        // storage unavailable — the preference simply does not persist
+      }
+    }
+    const focusMode = next === 'docked' ? preferredExpand : next;
     requestAnimationFrame(() => {
-      hostRef.current?.querySelector<HTMLButtonElement>('.chat-expand-btn')?.focus();
+      hostRef.current
+        ?.querySelector<HTMLButtonElement>(`.chat-mode-btn[data-chat-mode="${focusMode}"]`)
+        ?.focus();
     });
-  }, []);
+  }, [preferredExpand]);
+
+  const collapseChat = useCallback(() => applyChatMode('docked'), [applyChatMode]);
 
   // Fetch recent posts from feed endpoint (falls back to topics endpoint)
   useEffect(() => {
@@ -342,7 +490,12 @@ export default function RightSidebar({
         </div>
       )}
 
-      {/* Live Chat dock — the panel node lives here while not maximized. */}
+      {/* Live Chat dock — the panel node lives here while docked. In the two
+          expanded modes the panel is moved out and this slot is left empty; no
+          stand-in is rendered because both shells cover the column completely
+          (the right-edge panel is always at least as wide as --chat-col-w, and
+          the modal has a backdrop), and a covered button would only add an
+          unreachable tab stop. */}
       {topicId && (
         <div
           ref={dockSlotRef}
@@ -366,17 +519,19 @@ export default function RightSidebar({
           isGuest={isGuest ?? true}
           isMember={isMember ?? false}
           title={chatColumn ? topicTitle : undefined}
-          fullHeight={chatColumn || chatExpanded}
-          framed={chatColumn && !chatExpanded}
-          expanded={chatExpanded}
-          // Inline header button — never overlaps PresenceDots.
-          onExpand={() => setChatExpanded(true)}
-          onCollapse={collapseChat}
+          fullHeight={chatColumn || effectiveMode !== 'docked'}
+          framed={chatColumn && effectiveMode === 'docked'}
+          mode={effectiveMode}
+          // Inline header controls — never overlap PresenceDots.
+          onModeChange={applyChatMode}
         />,
         host,
       )}
 
-      {chatExpanded && (
+      {effectiveMode === 'sidebar' && (
+        <SidebarChatShell slotRef={sidebarSlotRef} onClose={collapseChat} />
+      )}
+      {effectiveMode === 'modal' && (
         <MaximizedChatShell slotRef={maximizedSlotRef} onClose={collapseChat} />
       )}
 
@@ -465,13 +620,11 @@ export default function RightSidebar({
       )}
 
       <style>{`
-        .chat-expand-btn:hover,
-        .chat-collapse-btn:hover {
+        .chat-mode-btn:hover {
           color: var(--foreground);
           background: rgba(120, 140, 255, 0.12);
         }
-        .chat-expand-btn:focus-visible,
-        .chat-collapse-btn:focus-visible {
+        .chat-mode-btn:focus-visible {
           outline: 2px solid var(--accent);
           outline-offset: 1px;
         }

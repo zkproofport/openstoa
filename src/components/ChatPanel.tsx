@@ -124,10 +124,24 @@ interface ChatMessage {
   createdAt: string;
 }
 
+/**
+ * How the live chat is presented.
+ *  - `docked`  — the default column inside the right sidebar (unchanged).
+ *  - `sidebar` — a wider full-height column pinned to the right edge; the page
+ *                stays visible and interactive beside it.
+ *  - `modal`   — the centered near-fullscreen overlay.
+ * Only the presentation changes: the same panel instance is reparented between
+ * the three hosts, so the socket, decrypted history and draft all survive.
+ */
+export type ChatMode = 'docked' | 'sidebar' | 'modal';
+
 interface ChatPanelProps {
-  /** When set, an inline expand button appears in the header.
-   *  Keeps the affordance from overlapping the PresenceDots avatars. */
-  onExpand?: () => void;
+  /** Current presentation. Defaults to `docked`. */
+  mode?: ChatMode;
+  /** When set, the two expand controls appear in the header. Picking the
+   *  active mode again returns to `docked`. Placed inline so the controls
+   *  never overlap the PresenceDots avatars. */
+  onModeChange?: (mode: ChatMode) => void;
   topicId: string;
   isGuest: boolean;
   isMember: boolean;
@@ -142,10 +156,6 @@ interface ChatPanelProps {
   framed?: boolean;
   /** Topic name for the header. Falls back to the generic "Live Chat" label. */
   title?: string;
-  /** Maximized presentation: roomier type and a centered reading measure. */
-  expanded?: boolean;
-  /** Restore control shown in the header while maximized. */
-  onCollapse?: () => void;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -233,6 +243,82 @@ const iconButtonStyle: React.CSSProperties = {
   lineHeight: 1,
   flexShrink: 0,
 };
+
+// Segmented pair: "expand to sidebar" | "open in modal". Reads as one control
+// so the two options are obviously alternatives, not unrelated actions.
+const modeGroupStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 2,
+  padding: 2,
+  borderRadius: 7,
+  border: '1px solid var(--border)',
+  background: 'rgba(255,255,255,0.03)',
+  flexShrink: 0,
+};
+
+// ─── Expand-mode controls ─────────────────────────────────────────────────────
+
+/**
+ * One segment of the expand choice. `active` marks the mode the chat is
+ * currently in — pressing it again returns to the docked panel, which is why
+ * it is a toggle (`aria-pressed`) rather than a plain action button.
+ */
+function ModeButton({
+  active,
+  label,
+  mode,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  /** Target presentation — also the focus handle (`[data-chat-mode]`). */
+  mode: Exclude<ChatMode, 'docked'>;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="chat-mode-btn"
+      data-chat-mode={mode}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      style={{
+        ...iconButtonStyle,
+        padding: '4px 6px',
+        borderRadius: 5,
+        background: active ? 'rgba(120, 140, 255, 0.18)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--muted)',
+        transition: 'background 0.12s, color 0.12s',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Right-hand column pinned to the edge of the page. */
+const SidebarIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <line x1="14" y1="3" x2="14" y2="21" />
+    <rect x="14" y="3" width="7" height="18" fill="currentColor" stroke="none" opacity="0.32" />
+  </svg>
+);
+
+/** Centered overlay — the four outward arrows already used for maximize. */
+const ModalIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polyline points="15 3 21 3 21 9" />
+    <polyline points="9 21 3 21 3 15" />
+    <line x1="21" y1="3" x2="14" y2="10" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
 
 // ─── Avatar dots component ────────────────────────────────────────────────────
 
@@ -422,12 +508,15 @@ export default function ChatPanel({
   fullHeight,
   hideHeader,
   onClose,
-  onExpand,
+  mode = 'docked',
+  onModeChange,
   framed,
   title,
-  expanded,
-  onCollapse,
 }: ChatPanelProps) {
+  // Both expanded presentations get the roomier type scale; only the modal
+  // needs a reading measure (a 1160px dialog would otherwise run text edge to
+  // edge, while the sidebar column is already a comfortable width).
+  const roomy = mode !== 'docked';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
@@ -721,18 +810,22 @@ export default function ChatPanel({
 
   // Maximized view keeps a comfortable reading measure — lines should not run
   // the full width of a 1100px dialog.
-  const measureStyle: React.CSSProperties = expanded
-    ? { width: '100%', maxWidth: 860, margin: '0 auto' }
+  // Longhand margins on purpose: the message list also sets `marginTop: auto`
+  // to sit short conversations on the composer, and React patches a changed
+  // `margin` shorthand *after* the untouched longhand on re-render, which would
+  // reset that to 0 and float the messages to the top of the dialog.
+  const measureStyle: React.CSSProperties = mode === 'modal'
+    ? { width: '100%', maxWidth: 860, marginLeft: 'auto', marginRight: 'auto' }
     : { width: '100%' };
 
   // Topic pages pass the topic name; everything else keeps the generic label.
   const headerLabel = (
     <div style={headerLeftStyle}>
-      <span style={{ fontSize: expanded ? 16 : 14, flexShrink: 0 }}>💬</span>
+      <span style={{ fontSize: roomy ? 16 : 14, flexShrink: 0 }}>💬</span>
       {title ? (
         <div style={{ minWidth: 0 }}>
           <div style={{
-            fontSize: expanded ? 15 : 13,
+            fontSize: roomy ? 15 : 13,
             fontWeight: 700,
             color: 'var(--foreground)',
             letterSpacing: '-0.01em',
@@ -796,7 +889,7 @@ export default function ChatPanel({
       <div style={headerStyle}>
         {headerLabel}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {presence.users.length > 0 && <PresenceDots users={presence.users} max={expanded ? 8 : 4} />}
+          {presence.users.length > 0 && <PresenceDots users={presence.users} max={roomy ? 8 : 4} />}
           <div style={{
             width: 7,
             height: 7,
@@ -804,41 +897,27 @@ export default function ChatPanel({
             background: connected ? '#22c55e' : '#6b7280',
             flexShrink: 0,
           }} title={connected ? 'Connected' : 'Reconnecting'} />
-          {onExpand && !expanded && (
-            <button
-              type="button"
-              onClick={onExpand}
-              className="chat-expand-btn"
-              aria-label="Maximize chat"
-              aria-expanded={false}
-              title="Maximize chat"
-              style={iconButtonStyle}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 3 21 3 21 9" />
-                <polyline points="9 21 3 21 3 15" />
-                <line x1="21" y1="3" x2="14" y2="10" />
-                <line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
-            </button>
-          )}
-          {onCollapse && expanded && (
-            <button
-              type="button"
-              onClick={onCollapse}
-              className="chat-collapse-btn"
-              aria-label="Restore chat to sidebar"
-              aria-expanded={true}
-              title="Restore chat (Esc)"
-              style={iconButtonStyle}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="4 14 10 14 10 20" />
-                <polyline points="20 10 14 10 14 4" />
-                <line x1="14" y1="10" x2="21" y2="3" />
-                <line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
-            </button>
+          {/* Two-way expand choice. Each button toggles: pressing the active
+              mode docks the panel again (Esc does the same). */}
+          {onModeChange && (
+            <div style={modeGroupStyle} role="group" aria-label="Chat layout">
+              <ModeButton
+                mode="sidebar"
+                active={mode === 'sidebar'}
+                label={mode === 'sidebar' ? 'Dock chat panel (Esc)' : 'Expand to sidebar'}
+                onClick={() => onModeChange(mode === 'sidebar' ? 'docked' : 'sidebar')}
+              >
+                {SidebarIcon}
+              </ModeButton>
+              <ModeButton
+                mode="modal"
+                active={mode === 'modal'}
+                label={mode === 'modal' ? 'Dock chat panel (Esc)' : 'Open in modal'}
+                onClick={() => onModeChange(mode === 'modal' ? 'docked' : 'modal')}
+              >
+                {ModalIcon}
+              </ModeButton>
+            </div>
           )}
           {onClose && <button onClick={onClose} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
         </div>
@@ -851,14 +930,14 @@ export default function ChatPanel({
         maxHeight: 'none',
         flex: 1,
         minHeight: 0,
-        padding: expanded ? '16px 20px' : '10px 14px',
+        padding: roomy ? '16px 20px' : '10px 14px',
         overflowY: 'auto' as const,
       } : messagesContainerStyle}>
         <div style={{
           ...measureStyle,
           display: 'flex',
           flexDirection: 'column',
-          gap: expanded ? 8 : 6,
+          gap: roomy ? 8 : 6,
           // Short conversations sit on the composer instead of floating at the
           // top of a tall column. `margin-top: auto` (not justify-content) so a
           // long list still scrolls from the very first message.
@@ -886,7 +965,7 @@ export default function ChatPanel({
                   key={msg.id}
                   msg={msg}
                   grouped={grouped}
-                  roomy={expanded}
+                  roomy={roomy}
                   own={myUserId != null && msg.userId === myUserId}
                 />
               );
@@ -905,7 +984,7 @@ export default function ChatPanel({
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        padding: expanded ? '12px 20px' : '8px 10px',
+        padding: roomy ? '12px 20px' : '8px 10px',
         ...measureStyle,
       }}>
         <input
@@ -973,9 +1052,9 @@ export default function ChatPanel({
             background: 'transparent',
             border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: 8,
-            padding: expanded ? '9px 12px' : '7px 10px',
+            padding: roomy ? '9px 12px' : '7px 10px',
             color: 'var(--foreground)',
-            fontSize: expanded ? 14 : 13,
+            fontSize: roomy ? 14 : 13,
             outline: 'none',
             boxSizing: 'border-box',
             opacity: connected ? 1 : 0.5,
@@ -989,8 +1068,8 @@ export default function ChatPanel({
             color: '#fff',
             border: 'none',
             borderRadius: 8,
-            padding: expanded ? '9px 16px' : '7px 12px',
-            fontSize: expanded ? 14 : 13,
+            padding: roomy ? '9px 16px' : '7px 12px',
+            fontSize: roomy ? 14 : 13,
             fontWeight: 600,
             cursor: 'pointer',
             flexShrink: 0,
