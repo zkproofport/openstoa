@@ -4,6 +4,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import Link from 'next/link';
 import { relativeTime } from '@/lib/utils';
 import ChatPanel from '@/components/ChatPanel';
+import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { createPortal } from 'react-dom';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -178,6 +179,8 @@ export default function RightSidebar({
   const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
   const [chatExpanded, setChatExpanded] = useState(false);
+  // Only the visible surface owns the live chat session — see DESKTOP_CHAT_QUERY.
+  const isDesktop = useMediaQuery(DESKTOP_CHAT_QUERY);
 
   // A single detached host element carries the ChatPanel. It is appended to the
   // docked slot or to the maximized dialog slot, so the panel is *moved*, never
@@ -352,8 +355,12 @@ export default function RightSidebar({
       )}
 
       {/* The panel itself renders into a stable detached host, so moving it
-          between the dock and the maximized dialog never remounts it. */}
-      {topicId && host && createPortal(
+          between the dock and the maximized dialog never remounts it.
+          Gated on `isDesktop`: below 1024px this sidebar is `display: none` but
+          would still MOUNT the panel, giving the page two live ChatPanels (this
+          one plus CommunityLayout's mobile sheet). Both would race to MLS-open
+          the same message and the loser would render '[unable to decrypt]'. */}
+      {topicId && host && isDesktop && createPortal(
         <ChatPanel
           topicId={topicId}
           isGuest={isGuest ?? true}

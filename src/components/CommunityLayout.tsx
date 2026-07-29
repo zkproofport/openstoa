@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
 import ChatPanel from '@/components/ChatPanel';
+import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,9 @@ export default function CommunityLayout({
   // Guests and non-members keep the stacked sidebar (chat shows a join prompt,
   // so filling the column with it would only add dead space).
   const chatColumn = Boolean(topicId && isMember && !isGuest);
+
+  // Exactly one ChatPanel may be live at a time — see DESKTOP_CHAT_QUERY.
+  const isDesktop = useMediaQuery(DESKTOP_CHAT_QUERY);
 
   // Close mobile menu on route changes
   useEffect(() => {
@@ -357,9 +361,17 @@ export default function CommunityLayout({
                 Close
               </button>
             </div>
-            {/* Chat content — fills remaining space */}
+            {/* Chat content — fills remaining space.
+                Gated on `!isDesktop`: above 1024px this sheet is `display: none`
+                but would still MOUNT the panel, so the page would carry two live
+                ChatPanels (this one plus the right sidebar's). Both open their own
+                SSE stream and race to MLS-open the same message; MLS drops each
+                per-message key after the first decrypt (forward secrecy), so the
+                losing panel renders '[unable to decrypt]'. */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember ?? false} fullHeight hideHeader onClose={() => setMobileChatOpen(false)} />
+              {!isDesktop && (
+                <ChatPanel topicId={topicId} isGuest={isGuest} isMember={isMember ?? false} fullHeight hideHeader onClose={() => setMobileChatOpen(false)} />
+              )}
             </div>
           </div>
         </>

@@ -13,19 +13,33 @@ import type { Visibility } from '@/lib/mls/takSession';
 async function toDisplayMessage(
   topicId: string,
   raw: { id?: string; type?: string; sealed?: { ciphertext: string; epoch: number } | null; message?: string },
+  // Plaintext of messages THIS panel just sent, keyed by sealed ciphertext.
+  // Consulted before any MLS work — see `pendingSendsRef`.
+  pendingSends?: Map<string, string>,
 ): Promise<ChatMessage> {
   if (raw?.type === 'message') {
     let text = '';
     if (raw.sealed?.ciphertext) {
-      try {
-        // openCached: MLS keys are consumed on first decrypt (forward secrecy),
-        // so cache the plaintext by id → history survives reloads/restarts.
-        const opened = raw.id
-          ? await getMlsSessionStore().openCached(topicId, raw.id, raw.sealed)
-          : await getMlsSessionStore().open(topicId, raw.sealed);
-        text = opened ?? '[unable to decrypt]';
-      } catch {
-        text = '[unable to decrypt]';
+      // An MLS sender can NEVER decrypt its own application message (its send
+      // ratchet has already advanced). The SSE echo of a message we just sent
+      // can outrun the POST response that carries the server-assigned id, so
+      // resolve it from the plaintext we still hold rather than attempting a
+      // decrypt that is guaranteed to fail. Without this the echo resolves to
+      // '[unable to decrypt]' and the id-dedupe below then KEEPS that row.
+      const own = pendingSends?.get(raw.sealed.ciphertext);
+      if (own != null) {
+        text = own;
+      } else {
+        try {
+          // openCached: MLS keys are consumed on first decrypt (forward secrecy),
+          // so cache the plaintext by id → history survives reloads/restarts.
+          const opened = raw.id
+            ? await getMlsSessionStore().openCached(topicId, raw.id, raw.sealed)
+            : await getMlsSessionStore().open(topicId, raw.sealed);
+          text = opened ?? '[unable to decrypt]';
+        } catch {
+          text = '[unable to decrypt]';
+        }
       }
     }
     return { ...(raw as ChatMessage), message: text };
@@ -60,7 +74,9 @@ function isImageUrl(url: string): boolean {
 }
 
 // Render plain text with embedded URLs turned into clickable links.
-function renderLinkedText(text: string): React.ReactNode {
+// `linkColor` differs inside an own-message bubble, where the accent-on-accent
+// link would be unreadable (mobile does the same — `linkOwn` vs `linkOther`).
+function renderLinkedText(text: string, linkColor = 'var(--accent)'): React.ReactNode {
   URL_REGEX.lastIndex = 0;
   const out: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -75,7 +91,7 @@ function renderLinkedText(text: string): React.ReactNode {
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        style={{ color: 'var(--accent)', wordBreak: 'break-all' }}
+        style={{ color: linkColor, textDecoration: 'underline', wordBreak: 'break-all' }}
       >
         {match[1]}
       </a>,
@@ -273,15 +289,18 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
 
 // ─── Message row ──────────────────────────────────────────────────────────────
 
-function MessageRow({ msg, grouped, roomy }: { msg: ChatMessage; grouped?: boolean; roomy?: boolean }) {
+function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: boolean; roomy?: boolean; own?: boolean }) {
+  // System rows are about the room, not about a person — centered on both
+  // surfaces so they never read as somebody's message.
   if (msg.type === 'join' || msg.type === 'leave') {
     return (
       <div style={{
         fontSize: roomy ? 12 : 11,
         color: 'var(--muted)',
         fontStyle: 'italic',
-        padding: '1px 0',
+        padding: '2px 0',
         lineHeight: 1.4,
+        textAlign: 'center' as const,
       }}>
         {msg.nickname} {msg.type === 'join' ? 'entered the chat' : 'left the chat'}
       </div>
@@ -296,42 +315,81 @@ function MessageRow({ msg, grouped, roomy }: { msg: ChatMessage; grouped?: boole
   // visual noise mobile already avoids.
   const hideMessageText = urlOnly && (inlineImage !== null || firstUrl !== null);
 
+  // Bubble treatment mirrors mobile (ChatRoomScreen `bubbleOwn`/`bubbleOther`):
+  // own messages sit right in an accent bubble, everyone else left on a neutral
+  // surface, with the tail corner squared off on the speaker's side.
+  const timestamp = !grouped && (
+    <span style={{
+      fontSize: 10,
+      fontFamily: 'var(--font-mono)',
+      color: 'var(--muted)',
+      flexShrink: 0,
+      paddingBottom: 2,
+    }}>
+      {relativeTime(msg.createdAt)}
+    </span>
+  );
+
   return (
-    <div style={{ lineHeight: roomy ? 1.5 : 1.4, marginTop: grouped ? -2 : 0 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap' }}>
-        {!grouped && (
-          <span style={{
-            fontSize: roomy ? 13 : 12,
-            fontWeight: 700,
-            color: 'var(--accent)',
-            flexShrink: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-          }}>
-            {msg.nickname}
-            {msg.isAI && <Badge type="ai" />}
-          </span>
-        )}
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: own ? 'flex-end' : 'flex-start',
+      lineHeight: roomy ? 1.5 : 1.4,
+      marginTop: grouped ? -2 : 0,
+      maxWidth: '100%',
+    }}>
+      {/* Author — other people only, first message of a group (mobile parity). */}
+      {!own && !grouped && (
+        <span style={{
+          fontSize: roomy ? 13 : 12,
+          fontWeight: 700,
+          color: 'var(--accent)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          marginBottom: 2,
+          paddingLeft: 2,
+        }}>
+          {msg.nickname}
+          {msg.isAI && <Badge type="ai" />}
+        </span>
+      )}
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: 6,
+        maxWidth: '85%',
+        // Timestamp sits on the outside of the bubble on both surfaces: left of
+        // an own bubble, right of someone else's (mobile `bubbleTimeOwn/Other`).
+        // The column's alignItems already packs the row to the correct edge.
+        flexDirection: own ? 'row' : 'row-reverse',
+      }}>
+        {timestamp}
         {!hideMessageText && (
           <span style={{
             fontSize: roomy ? 14 : 13,
-            color: 'var(--foreground)',
+            color: own ? '#fff' : 'var(--foreground)',
+            background: own ? 'var(--accent)' : 'rgba(255,255,255,0.055)',
+            borderRadius: 14,
+            ...(own ? { borderBottomRightRadius: 4 } : { borderBottomLeftRadius: 4 }),
+            padding: roomy ? '8px 12px' : '6px 10px',
             wordBreak: 'break-word' as const,
-            flex: 1,
             minWidth: 0,
           }}>
-            {renderLinkedText(msg.message)}
+            {renderLinkedText(msg.message, own ? 'rgba(255,255,255,0.95)' : 'var(--accent)')}
           </span>
         )}
       </div>
+
       {inlineImage && (
         <a
           href={inlineImage}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          style={{ display: 'block', marginTop: 4 }}
+          style={{ display: 'block', marginTop: 4, maxWidth: '85%' }}
         >
           <img
             src={inlineImage}
@@ -339,7 +397,7 @@ function MessageRow({ msg, grouped, roomy }: { msg: ChatMessage; grouped?: boole
             style={{
               maxWidth: '100%',
               maxHeight: roomy ? 380 : 240,
-              borderRadius: 8,
+              borderRadius: 12,
               border: '1px solid var(--border)',
               display: 'block',
             }}
@@ -347,19 +405,8 @@ function MessageRow({ msg, grouped, roomy }: { msg: ChatMessage; grouped?: boole
         </a>
       )}
       {firstUrl && !inlineImage && (
-        <div style={{ marginTop: 6, marginBottom: 2 }}>
+        <div style={{ marginTop: 6, marginBottom: 2, maxWidth: '85%' }}>
           <LinkPreview url={firstUrl} />
-        </div>
-      )}
-      {!grouped && (
-        <div style={{
-          fontSize: 10,
-          fontFamily: 'var(--font-mono)',
-          color: 'var(--muted)',
-          marginTop: 1,
-          textAlign: 'right' as const,
-        }}>
-          {relativeTime(msg.createdAt)}
         </div>
       )}
     </div>
@@ -387,6 +434,9 @@ export default function ChatPanel({
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Own-message alignment needs the caller's id. Same source the rest of the
+  // web app uses for "is this me" checks (see topics/[topicId]/members).
+  const [myUserId, setMyUserId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -398,6 +448,18 @@ export default function ChatPanel({
   const visibilityRef = useRef<Visibility>('public');
   // The caller's topic role — secret-tier history is granted only by the owner.
   const roleRef = useRef<string | null>(null);
+  // Plaintext of messages sent from THIS panel, keyed by the sealed ciphertext
+  // (known at seal() time, i.e. before the POST is even issued). The SSE echo
+  // carries the same ciphertext, so this resolves our own messages without an
+  // MLS open — which a sender can never satisfy. Bounded so a long session
+  // cannot grow it without limit.
+  const pendingSendsRef = useRef(new Map<string, string>());
+
+  const rememberOwnPlaintext = useCallback((ciphertext: string, plaintext: string) => {
+    const m = pendingSendsRef.current;
+    m.set(ciphertext, plaintext);
+    while (m.size > 200) m.delete(m.keys().next().value as string);
+  }, []);
 
   // Uploads via /api/upload and posts the returned URL as a chat message.
   // The message body is the bare URL — MessageRow's isImageUrl detection
@@ -414,6 +476,7 @@ export default function ChatPanel({
       const { publicUrl } = await up.json();
       if (!publicUrl) throw new Error('no url');
       const sealed = await getMlsSessionStore().seal(topicId, publicUrl);
+      rememberOwnPlaintext(sealed.ciphertext, publicUrl);
       const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -448,6 +511,7 @@ export default function ChatPanel({
     setSending(true);
     try {
       const sealed = await getMlsSessionStore().seal(topicId, text);
+      rememberOwnPlaintext(sealed.ciphertext, text);
       const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -485,6 +549,16 @@ export default function ChatPanel({
       handleSend();
     }
   }
+
+  useEffect(() => {
+    if (isGuest) return;
+    let alive = true;
+    fetch('/api/auth/session')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d?.userId) setMyUserId(d.userId); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [isGuest]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -544,7 +618,9 @@ export default function ChatPanel({
         .catch(() => null);
       if (!mountedRef.current || !data?.messages) return;
       const decrypted = await Promise.all(
-        data.messages.map((m: Parameters<typeof toDisplayMessage>[1]) => toDisplayMessage(topicId, m)),
+        data.messages.map((m: Parameters<typeof toDisplayMessage>[1]) =>
+          toDisplayMessage(topicId, m, pendingSendsRef.current),
+        ),
       );
       if (!mountedRef.current) return;
       setMessages(decrypted.reverse());
@@ -593,7 +669,7 @@ export default function ChatPanel({
           // the root so they can back-fill history (SI-6, membership change).
           if (raw?.type === 'join') void provisionArchiveAccess();
           // Decrypt the sealed body before display (async; dedupe on arrival).
-          toDisplayMessage(topicId, raw).then((msg) => {
+          toDisplayMessage(topicId, raw, pendingSendsRef.current).then((msg) => {
             if (!mountedRef.current) return;
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
@@ -805,7 +881,15 @@ export default function ChatPanel({
                 prev.userId === msg.userId &&
                 !!prev.isAI === !!msg.isAI &&
                 new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 60_000;
-              return <MessageRow key={msg.id} msg={msg} grouped={grouped} roomy={expanded} />;
+              return (
+                <MessageRow
+                  key={msg.id}
+                  msg={msg}
+                  grouped={grouped}
+                  roomy={expanded}
+                  own={myUserId != null && msg.userId === myUserId}
+                />
+              );
             })
           )}
           <div ref={messagesEndRef} />
