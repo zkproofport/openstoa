@@ -32,8 +32,7 @@ Local resolution comes from each package's committed `package-lock.json`, which
 records the sibling as a Link node (`"resolved": "../sdk", "link": true`). A
 plain `npm install` in a fresh clone honours that entry and recreates the
 symlink without ever asking the registry, so `npm install` / `npm test` /
-`npm run build` all work out of the box — verified against the real npmjs
-registry, where `@masselabs/*` does not exist yet.
+`npm run build` all work out of the box regardless of what the registry holds.
 
 `./packages/link-local.sh` is the repair tool for when that link is lost (lock
 deleted or regenerated from scratch, a `^0.1.0` spec bumped ahead of the
@@ -52,7 +51,7 @@ parent `proofport-app` repo via `file:` and must keep its standalone layout.
 Versions and CHANGELOGs are managed by release-please in manifest mode — one
 independent version per publishable package, plus one for the root server.
 Conventional commits merged to `main` produce a release PR; merging that PR
-creates one GitHub Release per changed component (`openstoa-cli-v0.1.1`, ...),
+creates one GitHub Release per changed component (`openstoa-cli-v0.1.2`, ...),
 and `.github/workflows/npm-publish.yml` routes on that tag and publishes.
 
 Publish order is `sdk` -> `commands` -> `cli` / `mcp` / `channel`, and the

@@ -135,12 +135,17 @@ settings on npmjs.com, with:
 
 **Bootstrap caveat:** a trusted publisher is configured on an *existing* package,
 and npm's docs do not describe pre-configuring a name that has never been
-published. All five `@masselabs/*` names are currently unpublished (`npm view`
-returns `E404`), so the **first publish of each name has to go through the token
+published, so the **first publish of each name has to go through the token
 path**: set the `NPM_TOKEN` secret, run the workflow once per package, then add
 the trusted publisher on npmjs and delete the secret. The workflow supports both
 without any edit — when `NPM_TOKEN` is unset it strips the token line from the
 generated `.npmrc` so npm falls through to OIDC.
+
+That bootstrap is done: all five `@masselabs/*` names now exist on npm (`0.1.2`
+at the time of writing), so a trusted publisher can be configured on each. The
+published tarballs carry no provenance attestation yet, which is what you would
+expect from a token publish — once the trusted publisher is in place and
+`NPM_TOKEN` is removed, subsequent publishes get one.
 
 **Provenance** (the "Built and signed on GitHub Actions" badge) is generated
 automatically by trusted publishing, but only for a **public repository and a
@@ -151,7 +156,7 @@ public package**.
 | job | what it does |
 |---|---|
 | `packages` | matrix over `sdk`/`commands`/`cli`/`mcp`/`channel`: builds the local dependency chain first (their dist/ is gitignored but resolved through lockfile link nodes), then `npm ci` -> `tsc --noEmit` -> `npm test` -> `npm run build`. |
-| `server` | root `npm ci` -> vitest unit suite against a `redis:7` service container -> `npm run build` (which also re-runs `scripts/generate-skill.ts` via `prebuild`). |
+| `server` | root `npm ci` -> `npm run db:migrate:apply` against `redis:7` + `postgres:16-alpine` service containers (several suites open a real `pg` Pool; `npm run db:migrate` / drizzle-kit cannot be used, it aborts on a fresh DB) -> vitest unit suite -> `npm run build` (which also re-runs `scripts/generate-skill.ts` via `prebuild`). |
 | `mcp-smoke` | builds `sdk` -> `commands` -> `mcp`, then runs `scripts/mcp-smoke.mjs`, which spawns the real `openstoa-mcp` stdio binary, completes an MCP `initialize` + `tools/list` handshake over stdin/stdout, and fails on any hang or crash. This is the guard for the entrypoint-guard class of bug that once shipped a CLI bin that exited 0 without doing anything. |
 
 The e2e suites (`src/__tests__/e2e/**`, `packages/*/src/__tests__/e2e/**`) are
