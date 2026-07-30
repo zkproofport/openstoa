@@ -393,12 +393,13 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
         {timestamp}
         {!hideMessageText && (
           <span style={{
-            // This is the message body itself — genuine Korean/long-form
-            // prose can land here, so it gets the real body-copy floor
-            // (16px) in BOTH densities, not just `roomy`. Was 13/14px; bubbles
-            // grow slightly as a result — a deliberate floor-driven change,
-            // not a like-for-like token swap (see migration report).
-            fontSize: 'var(--text-body)',
+            // Message bubble text — reverted to the pre-migration size per
+            // user feedback ("채팅 말풍선에서는 기존 크기가 더 좋은거 같아"):
+            // the 16px body-copy floor made bubbles read as oversized. This
+            // is a deliberate EXCEPTION to the floor, scoped to bubble text
+            // only — the composer `<input>` below stays at the 16px floor
+            // (iOS Safari zooms the page on focus below that).
+            fontSize: roomy ? 14 : 13,
             color: own ? '#fff' : 'var(--foreground)',
             background: own ? 'var(--accent)' : 'rgba(255,255,255,0.055)',
             borderRadius: 14,

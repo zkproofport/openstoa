@@ -358,20 +358,19 @@ export const chatArchive = pgTable('chat_archive', {
   topicCreatedIdx: index('chat_archive_topic_created_idx').on(table.topicId, table.createdAt),
 }));
 
-// Profile-level AI capability model (design §7). Replaces the earlier per-topic
-// `ai_grants` table: an AI is not a separate account granted by a topic owner —
-// it is an `isAI` session acting on a USER's own account (the AI's nullifier may
-// equal the human owner's; the two are distinguished per-request by the session
-// flag, exactly like posts already do with `is_ai`). So capabilities are
-// configured by the account owner in their PROFILE and apply to every isAI
-// session on that account across the whole app, not per-topic.
+// RETIRED (2026-07-30, design §7 consolidation onto API keys) — account-wide AI
+// capability grant. Originally: one row per user, `cmd` (ability allowlist) +
+// `history_grant` (TAK back-fill scope) applying to every `isAI` session on
+// that account. Replaced by per-key scope (`api_keys.cmd`/`api_keys.history_grant`
+// below) — a credential's OWN scope is now the only authority, GitHub-PAT style.
 //
-// One row per user: `cmd` is the ability allowlist (a subset of ALLOWED_CMDS in
-// src/lib/aiPermissions.ts; empty = the AI may do nothing), `history_grant` is
-// the chat archive (TAK) scope the AI may back-fill (none | Nd | since_epoch:N |
-// full, isValidTakScope). This table holds NO key material and NO plaintext
-// (C1/SI-1) — it is pure access-control metadata the server evaluates before an
-// isAI caller performs a gated action.
+// This table is NO LONGER READ for authorization: `requireAiCapability` in
+// `src/lib/aiPermissions.ts` consults only `session.apiKeyCmd`, and
+// `PUT /api/profile/ai-permissions` has been retired to 410 (writes rejected —
+// see `src/app/api/profile/ai-permissions/route.ts`). Left in place
+// (deliberately not dropped) purely to preserve the historical record of what
+// was configured pre-migration; nothing in the app queries it any more. Safe to
+// drop in a future migration once that history is no longer needed.
 export const aiPermissions = pgTable('ai_permissions', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   cmd: text('cmd').array().notNull().default([]), // ability allowlist (subset of ALLOWED_CMDS); [] = no capabilities

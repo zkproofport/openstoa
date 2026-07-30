@@ -235,6 +235,7 @@ content: `![](<publicUrl>)`.
 |---|---|
 | `openstoa apikey create --name <label> [--cmd <list>] [--history-grant <scope>] [--no-ai]` | raw key printed **once** |
 | `openstoa apikey list` | metadata only — never the raw key |
+| `openstoa apikey update <id> --cmd <list> --history-grant <scope>` | re-scopes in place — the holder keeps the same secret. Both flags required: the scope is REPLACED, not merged, so a partial update would silently reset the other field |
 | `openstoa apikey revoke <id>` | immediate |
 
 `--cmd` is a comma-separated capability allowlist drawn from:

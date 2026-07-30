@@ -35,6 +35,14 @@ export function I18nProvider({
     if (!isSupportedLocale(next)) return; // never adopt an invalid locale
     setLocaleState(next);
     writeCookie(next);
+    // `<html lang>` is set server-side once per request (`layout.tsx` via
+    // `getServerLocale()`) — a Server Component never re-runs from a client
+    // state change, so without this the attribute would only catch up after
+    // a full reload even though the cookie (and every `t()` call) already
+    // reflect the new locale. Mirrors `CommunityLayout.tsx`'s own pattern of
+    // reaching past React for a DOM detail React doesn't own here
+    // (`document.body.classList.toggle('chat-rail-open', ...)`).
+    document.documentElement.lang = next;
   }, []);
 
   const t = useCallback(

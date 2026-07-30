@@ -40,7 +40,7 @@ export function ProfileStack() {
       <Stack.Screen name="ProfileHome" component={ProfileHomeScreen} options={{ title: t('openstoa.tabs.profile') }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: t('openstoa.profile.editTitle') }} />
       <Stack.Screen name="AccountRecovery" component={AccountRecoveryScreen} options={{ title: 'Chat recovery' }} />
-      <Stack.Screen name="AiPermissions" component={AiPermissionsScreen} options={{ title: 'AI permissions' }} />
+      <Stack.Screen name="AiPermissions" component={AiPermissionsScreen} options={{ title: t('openstoa.apiKeys.title') }} />
       <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ title: 'Notifications' }} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: t('openstoa.feed.postTitle') }} />
       <Stack.Screen name="PostCreate" component={PostCreateScreen} options={{ title: t('openstoa.topics.newPostTitle') }} />

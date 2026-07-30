@@ -151,25 +151,6 @@ export interface ConsumedKeyPackageWire {
 }
 
 /**
- * Profile-level AI capability configuration (design §7). Replaces the retired
- * per-topic `AiGrant`. An AI is an `isAI` session acting on a user's own
- * account; the account owner configures what such sessions may do here.
- */
-export interface AiPermissions {
-  /** Ability allowlist currently granted to the caller's AI sessions. */
-  cmd: string[];
-  /** Chat archive scope the AI may back-fill: none | Nd | since_epoch:N | full. */
-  historyGrant: string;
-  /** The full capability catalogue a user may grant (present on GET responses). */
-  allowedCmd?: string[];
-}
-
-export interface AiPermissionsInput {
-  cmd: string[];
-  historyGrant: string;
-}
-
-/**
  * Durable, revocable API key (design §7 follow-up). An agent authenticates
  * with `Authorization: Bearer <rawKey>` instead of an interactive login — the
  * key IS the scoped credential; its `cmd`/`historyGrant` gate requests
@@ -194,6 +175,16 @@ export interface ApiKeyCreateInput {
   cmd: string[];
   historyGrant: string;
   isAI?: boolean;
+}
+
+/**
+ * Re-scope an existing key in place, so an agent whose scope was too narrow
+ * does not have to be re-issued (which would mean distributing a new secret).
+ * Only the scope is editable — `name` and `isAI` are fixed at issuance.
+ */
+export interface ApiKeyUpdateInput {
+  cmd: string[];
+  historyGrant: string;
 }
 
 export interface ApiKeyCreateResult {

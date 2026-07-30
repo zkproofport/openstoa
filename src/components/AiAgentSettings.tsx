@@ -11,12 +11,7 @@ import {
 } from '@/lib/apiKeyForm';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
-// Shapes returned by the (unchanged) profile routes.
-interface AiPermissions {
-  cmd: string[];
-  historyGrant: string;
-  allowedCmd: string[];
-}
+// Shape returned by GET /api/profile/api-keys.
 interface ApiKeyMeta {
   id: string;
   name: string;
@@ -66,6 +61,17 @@ const primaryBtn = (enabled: boolean): React.CSSProperties => ({
   opacity: enabled ? 1 : 0.5,
   transition: 'opacity 0.12s',
 });
+const secondaryBtn = (enabled: boolean): React.CSSProperties => ({
+  background: 'rgba(255,255,255,0.06)',
+  color: '#e5e7eb',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 8,
+  padding: '4px 12px',
+  fontSize: 'var(--text-caption)',
+  fontWeight: 600,
+  cursor: enabled ? 'pointer' : 'not-allowed',
+  opacity: enabled ? 1 : 0.5,
+});
 
 function scopeLabel(scope: string): string {
   return HISTORY_SCOPES.find((s) => s.key === scope)?.label ?? scope;
@@ -77,7 +83,7 @@ function fmtDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
 }
 
-/** Reusable checkbox grid for capability selection (shared by perms + key create). */
+/** Reusable checkbox grid for capability selection (shared by create + edit). */
 function CapabilityGrid({
   allowedCmd,
   selected,
@@ -184,13 +190,7 @@ export default function AiAgentSettings() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [allowedCmd, setAllowedCmd] = useState<string[]>([]);
 
-  // AI permissions (profile-level, mirrors the mobile screen).
-  const [permsCmd, setPermsCmd] = useState<Set<string>>(new Set());
-  const [permsHistory, setPermsHistory] = useState('none');
-  const [permsSaving, setPermsSaving] = useState(false);
-  const [permsFeedback, setPermsFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  // API keys.
+  // API keys — the only unit of AI capability scope (design §7 consolidation).
   const [keys, setKeys] = useState<ApiKeyMeta[]>([]);
   const [newName, setNewName] = useState('');
   const [newCmd, setNewCmd] = useState<Set<string>>(new Set());
@@ -204,24 +204,24 @@ export default function AiAgentSettings() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
 
+  // Inline scope edit — at most one key row editing at a time.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCmd, setEditCmd] = useState<Set<string>>(new Set());
+  const [editHistory, setEditHistory] = useState('none');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [permRes, keysRes] = await Promise.all([
-        fetch('/api/profile/ai-permissions'),
-        fetch('/api/profile/api-keys'),
-      ]);
-      if (permRes.status === 401 || keysRes.status === 401) {
+      const keysRes = await fetch('/api/profile/api-keys');
+      if (keysRes.status === 401) {
         throw new Error(t('aiAgentSettings.signInRequired'));
       }
-      if (!permRes.ok) throw new Error(t('aiAgentSettings.loadPermsFailed'));
       if (!keysRes.ok) throw new Error(t('aiAgentSettings.loadKeysFailed'));
-      const perm = (await permRes.json()) as AiPermissions;
       const keyList = (await keysRes.json()) as { apiKeys: ApiKeyMeta[]; allowedCmd?: string[] };
-      setAllowedCmd(perm.allowedCmd ?? keyList.allowedCmd ?? []);
-      setPermsCmd(new Set(perm.cmd ?? []));
-      setPermsHistory(perm.historyGrant || 'none');
+      setAllowedCmd(keyList.allowedCmd ?? []);
       setKeys(keyList.apiKeys ?? []);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : t('aiAgentSettings.loadFailed'));
@@ -234,16 +234,6 @@ export default function AiAgentSettings() {
     void loadAll();
   }, [loadAll]);
 
-  const togglePermsCmd = useCallback((cmd: string) => {
-    setPermsCmd((prev) => {
-      const next = new Set(prev);
-      if (next.has(cmd)) next.delete(cmd);
-      else next.add(cmd);
-      return next;
-    });
-    setPermsFeedback(null);
-  }, []);
-
   const toggleNewCmd = useCallback((cmd: string) => {
     setNewCmd((prev) => {
       const next = new Set(prev);
@@ -253,26 +243,14 @@ export default function AiAgentSettings() {
     });
   }, []);
 
-  async function savePerms() {
-    setPermsSaving(true);
-    setPermsFeedback(null);
-    try {
-      const res = await fetch('/api/profile/ai-permissions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cmd: orderedCmd(allowedCmd, permsCmd), historyGrant: permsHistory }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? t('aiAgentSettings.savePermsFailed'));
-      }
-      setPermsFeedback({ ok: true, msg: t('aiAgentSettings.permsUpdated') });
-    } catch (e) {
-      setPermsFeedback({ ok: false, msg: e instanceof Error ? e.message : t('common.networkError') });
-    } finally {
-      setPermsSaving(false);
-    }
-  }
+  const toggleEditCmd = useCallback((cmd: string) => {
+    setEditCmd((prev) => {
+      const next = new Set(prev);
+      if (next.has(cmd)) next.delete(cmd);
+      else next.add(cmd);
+      return next;
+    });
+  }, []);
 
   const nameError = newName ? validateApiKeyName(newName) : null;
   const canCreate = !creating && validateApiKeyName(newName) === null;
@@ -314,6 +292,41 @@ export default function AiAgentSettings() {
     }
   }
 
+  function startEdit(k: ApiKeyMeta) {
+    setEditingId(k.id);
+    setEditCmd(new Set(k.cmd));
+    setEditHistory(k.historyGrant || 'none');
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function saveEdit(keyId: string) {
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/profile/api-keys/${keyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd: orderedCmd(allowedCmd, editCmd), historyGrant: editHistory }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? t('aiAgentSettings.editKeyFailed'));
+      }
+      const data = (await res.json()) as { key: ApiKeyMeta };
+      setKeys((prev) => prev.map((k) => (k.id === keyId ? data.key : k)));
+      setEditingId(null);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : t('common.networkError'));
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   async function revokeKey(id: string) {
     setRevokingId(id);
     setRevokeError(null);
@@ -326,6 +339,7 @@ export default function AiAgentSettings() {
       // Reflect revocation locally (metadata only).
       setKeys((prev) => prev.map((k) => (k.id === id ? { ...k, revokedAt: new Date().toISOString() } : k)));
       setConfirmingRevoke(null);
+      if (editingId === id) setEditingId(null);
     } catch (e) {
       setRevokeError(e instanceof Error ? e.message : t('common.networkError'));
     } finally {
@@ -353,30 +367,7 @@ export default function AiAgentSettings() {
         {t('aiAgentSettings.intro')}
       </p>
 
-      {/* ── AI permission scope (profile-wide) ─────────────────────────────── */}
-      <div>
-        <h3 className="os-label" style={sectionTitleStyle}>{t('aiAgentSettings.permissionScope')}</h3>
-        <p style={{ fontSize: 'var(--text-label)', color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
-          {t('aiAgentSettings.permissionScopeDesc')}
-        </p>
-        <div style={subCardStyle}>
-          <CapabilityGrid allowedCmd={allowedCmd} selected={permsCmd} onToggle={togglePermsCmd} idPrefix="perm" />
-          <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 'var(--text-caption)', color: '#9ca3af', margin: '0 0 8px' }}>{t('aiAgentSettings.historyBackfill')}</p>
-            <HistoryScopeChips value={permsHistory} onChange={(v) => { setPermsHistory(v); setPermsFeedback(null); }} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
-            <button type="button" onClick={savePerms} disabled={permsSaving} style={primaryBtn(!permsSaving)}>
-              {permsSaving ? t('aiAgentSettings.saving') : t('aiAgentSettings.savePermissions')}
-            </button>
-            {permsFeedback && (
-              <span style={{ fontSize: 'var(--text-caption)', color: permsFeedback.ok ? '#4ade80' : '#f87171' }}>{permsFeedback.msg}</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Create API key ─────────────────────────────────────────────────── */}
+      {/* ── API keys — the only unit of AI capability scope ────────────────── */}
       <div>
         <h3 className="os-label" style={sectionTitleStyle}>{t('aiAgentSettings.apiKeys')}</h3>
         <p style={{ fontSize: 'var(--text-label)', color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
@@ -482,18 +473,28 @@ export default function AiAgentSettings() {
           </div>
         </div>
 
-        {/* Existing keys — metadata only */}
+        {/* Existing keys — each row IS the scope; edit or revoke per key */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
           {keys.length === 0 ? (
             <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', padding: '4px 0' }}>{t('aiAgentSettings.noApiKeys')}</div>
           ) : (
             keys.map((k) => {
               const revoked = !!k.revokedAt;
+              const isEditing = editingId === k.id;
               return (
                 <div key={k.id} style={{ ...subCardStyle, opacity: revoked ? 0.55 : 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <ApiKeyMetaSummary k={k} />
                     <span style={{ flex: 1 }} />
+                    {!revoked && !isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => startEdit(k)}
+                        style={secondaryBtn(true)}
+                      >
+                        {t('aiAgentSettings.editScope')}
+                      </button>
+                    )}
                     {!revoked && (
                       confirmingRevoke === k.id ? (
                         <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
@@ -525,12 +526,33 @@ export default function AiAgentSettings() {
                       )
                     )}
                   </div>
-                  <div style={{ fontSize: 'var(--text-label)', color: '#6b7280', marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                    <span>{t('aiAgentSettings.scopeLabel', { value: k.cmd.length === 0 ? t('aiAgentSettings.scopeNone') : k.cmd.map(cmdLabel).join(', ') })}</span>
-                    <span>{t('aiAgentSettings.historyLabel', { value: scopeLabel(k.historyGrant) })}</span>
-                    <span>{t('aiAgentSettings.createdLabel', { value: fmtDate(k.createdAt) })}</span>
-                    <span>{t('aiAgentSettings.lastUsedLabel', { value: fmtDate(k.lastUsedAt) })}</span>
-                  </div>
+
+                  {isEditing ? (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <p style={{ fontSize: 'var(--text-caption)', color: '#9ca3af', margin: '0 0 6px' }}>{t('aiAgentSettings.keyScope')}</p>
+                      <CapabilityGrid allowedCmd={allowedCmd} selected={editCmd} onToggle={toggleEditCmd} idPrefix={`edit-${k.id}`} />
+                      <div style={{ marginTop: 14 }}>
+                        <p style={{ fontSize: 'var(--text-caption)', color: '#9ca3af', margin: '0 0 8px' }}>{t('aiAgentSettings.keyHistoryBackfill')}</p>
+                        <HistoryScopeChips value={editHistory} onChange={setEditHistory} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+                        <button type="button" onClick={() => saveEdit(k.id)} disabled={savingEdit} style={primaryBtn(!savingEdit)}>
+                          {savingEdit ? t('aiAgentSettings.saving') : t('aiAgentSettings.saveScope')}
+                        </button>
+                        <button type="button" onClick={cancelEdit} disabled={savingEdit} style={secondaryBtn(!savingEdit)}>
+                          {t('common.cancel')}
+                        </button>
+                        {editError && <span style={{ fontSize: 'var(--text-caption)', color: '#f87171' }}>{editError}</span>}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 'var(--text-label)', color: '#6b7280', marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      <span>{t('aiAgentSettings.scopeLabel', { value: k.cmd.length === 0 ? t('aiAgentSettings.scopeNone') : k.cmd.map(cmdLabel).join(', ') })}</span>
+                      <span>{t('aiAgentSettings.historyLabel', { value: scopeLabel(k.historyGrant) })}</span>
+                      <span>{t('aiAgentSettings.createdLabel', { value: fmtDate(k.createdAt) })}</span>
+                      <span>{t('aiAgentSettings.lastUsedLabel', { value: fmtDate(k.lastUsedAt) })}</span>
+                    </div>
+                  )}
                 </div>
               );
             })

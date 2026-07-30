@@ -42,4 +42,4 @@ curl -s "$BASE/api/profile/api-keys" \
 ## See also
 - [List your API keys](/skills/api/profile/list-api-keys/SKILL.md)
 - [Revoke an API key](/skills/api/profile/revoke-api-key/SKILL.md)
-- [Get your AI capability configuration](/skills/api/profile/get-ai-permissions/SKILL.md)
+- [RETIRED — use API keys instead](/skills/api/profile/get-ai-permissions/SKILL.md)

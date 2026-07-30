@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import HeaderSearchBar from '@/components/HeaderSearchBar';
+import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface UserSession {
@@ -272,62 +273,21 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
             {t('header.docs')}
           </Link>
 
-          {user && (
-            <Link
-              href="/dm"
-              className="header-nav-link"
-              style={{
-                color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
-                fontFamily: 'var(--font-mono)', fontWeight: 500,
-                letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-                transition: 'all 0.15s',
-                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
-                border: '1px solid transparent',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.color = '#ccc';
-                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.color = '#999';
-                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
-              }}
-            >
-              {t('header.messages')}
-            </Link>
-          )}
+          {/* FIX7: the "Messages" text link that used to live here full-page-
+              navigated to `/dm`, duplicating this chat toggle button — two
+              controls for one destination, and only one of them opened the
+              rail. Removed; the toggle below is now the SOLE chat/DM entry
+              point in the header. `/dm` itself still resolves as a direct
+              URL (bookmarks, the rail's own open-in-new-tab target) — it is
+              just no longer linked from here.
+              FIX8: the "Recovery" text link that used to sit next to it was
+              removed the same way — recovery now lives in the profile/account
+              area (`/my`'s Settings tab, mirroring mobile's `ProfileStack` ->
+              `AccountRecoveryScreen`), not the top-level nav. `/recovery`
+              itself still resolves as a direct URL. */}
 
-          {user && (
-            <Link
-              href="/recovery"
-              className="header-nav-link"
-              style={{
-                color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
-                fontFamily: 'var(--font-mono)', fontWeight: 500,
-                letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-                transition: 'all 0.15s',
-                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
-                border: '1px solid transparent',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.color = '#ccc';
-                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.color = '#999';
-                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
-              }}
-            >
-              {t('header.recovery')}
-            </Link>
-          )}
-
-          {/* Chat rail toggle — gated the same way as the other signed-in-only
-              links above (Messages/Recovery). `onChatToggle` is only passed by
+          {/* Chat rail toggle — gated on a resolved signed-in session, same
+              as the removed links above. `onChatToggle` is only passed by
               `CommunityLayout`, so standalone Header usages (recovery/docs/
               profile pages) never render a button with nothing to toggle. */}
           {user && onChatToggle && (
@@ -358,6 +318,10 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               </svg>
             </button>
           )}
+
+          {/* FIX6: language is not an auth-gated preference — visible for
+              guests and signed-in users alike, unlike every link above it. */}
+          <LocaleSwitcher />
 
           {!sessionChecked ? (
             <span style={{ width: 70, height: 30 }} />

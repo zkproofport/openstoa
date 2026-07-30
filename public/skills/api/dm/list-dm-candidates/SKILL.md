@@ -1,6 +1,6 @@
 ---
 name: openstoa-list-dm-candidates
-description: List the people you are allowed to DM
+description: List the people you may start a NEW DM with
 metadata:
   parent: openstoa
   category: api/dm
@@ -8,23 +8,30 @@ metadata:
   require-secret: false
 ---
 
-# List the people you are allowed to DM
+# List the people you may start a NEW DM with
 
-Returns every person the authenticated caller may start a 1:1 direct message with —
-that is, every member of every topic the caller belongs to, **de-duplicated so one
-person appears exactly once** no matter how many topics you share, with the caller
-themselves excluded. Use it to render a "new conversation" picker: pick a `userId`
-from here, then `POST /api/dm { userId }` to start-or-get the channel.
+Returns every person the authenticated caller may start a **NEW** 1:1 direct message
+with — that is, every member of every topic the caller belongs to, **de-duplicated so
+one person appears exactly once** no matter how many topics you share, with the caller
+themselves excluded, AND with anyone the caller already has a DM channel with also
+excluded (call `GET /api/dm` for those — this list is for DISCOVERING new people, not
+for resuming existing conversations). Use it to render a "new conversation" picker: pick
+a `userId` from here, then `POST /api/dm { userId }` to start the channel.
 
 **DM is restricted to shared-topic peers by design.** Identities are anonymous
 nullifiers, so shared-topic membership is what keeps DM from becoming an open spam
 and harassment channel. There is no endpoint that opens a DM to an arbitrary user —
-if someone is not in this list, `POST /api/dm` is not the way to reach them; join a
-topic they are in first.
+if someone is not in this list AND not already in `GET /api/dm`, `POST /api/dm` is not
+the way to reach them; join a topic they are in first.
 
 Existing DM rooms are NOT topics: `kind='dm'` channels are excluded when computing
-"topics you belong to", so a past DM counterpart never appears here unless you also
-genuinely share a real topic with them.
+"topics you belong to", so a past DM counterpart never appears here via a shared-topic
+path either. **Important for callers who already know a `userId`** (e.g. re-opening a
+known conversation): `POST /api/dm` remains valid for an EXISTING DM partner even
+though they are absent from this list — it never re-checks shared-topic membership
+once a channel exists. Only use this endpoint to discover WHO you can newly message;
+don't treat "missing from here" as "can no longer message them" without first checking
+`GET /api/dm`.
 
 `badges` is the union of what each shared topic would show for that person (a badge
 is only visible in a topic that gates on that proof type) — never more than the

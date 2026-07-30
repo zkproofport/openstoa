@@ -412,6 +412,38 @@
       "self": "This is you",
       "noBadges": "No badges yet",
       "notDmableAi": "AI members can't be messaged directly"
+    },
+    "apiKeys": {
+      "title": "AI agent",
+      "intro": "An AI agent logged in as you acts on your account. Each API key you create carries its OWN scope — exactly what that key's sessions may do across OpenStoa. There is no account-wide AI permission any more: create a key with the scope you want, then edit or revoke it any time. Your own actions are never restricted.",
+      "loadFailed": "Failed to load API keys.",
+      "createFailedTitle": "Couldn't create key",
+      "editFailedTitle": "Couldn't update key scope",
+      "revokeFailedTitle": "Couldn't revoke key",
+      "clipboardUnavailableTitle": "Clipboard unavailable",
+      "clipboardUnavailableMessage": "Rebuild the host app to enable copy — you can still select and copy the text manually.",
+      "createNewKey": "Create a new key",
+      "keyNamePlaceholder": "Key name (e.g. laptop CLI)",
+      "keyScope": "Key scope (capabilities)",
+      "historyBackfill": "Chat history this key may back-fill",
+      "createKey": "Create key",
+      "copyNowTitle": "Copy your key now — it will not be shown again",
+      "hashOnlyStored": "Only a hash is stored server-side. If you lose it, revoke and create a new one.",
+      "copy": "Copy",
+      "dismiss": "I've saved it — dismiss",
+      "yourKeys": "Your keys",
+      "noKeys": "No API keys yet.",
+      "revoked": "Revoked",
+      "editScope": "Edit scope",
+      "saveScope": "Save scope",
+      "revoke": "Revoke",
+      "revokeConfirmTitle": "Revoke this key?",
+      "revokeConfirmMessage": "\"{{name}}\" will stop working immediately. This can't be undone.",
+      "scopeLabel": "Scope: {{value}}",
+      "scopeNone": "none",
+      "historyLabel": "History: {{value}}",
+      "createdLabel": "Created: {{value}}",
+      "lastUsedLabel": "Last used: {{value}}"
     }
   }
 }

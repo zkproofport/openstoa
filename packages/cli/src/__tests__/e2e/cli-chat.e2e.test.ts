@@ -52,7 +52,7 @@ describe.sequential('CLI E2EE chat (real container)', () => {
   let probe: string;
 
   it('agent A logs in, picks a category, creates a topic, and joins its chat (MLS genesis)', async () => {
-    const login = JSON.parse(await cli(rootA, ['--json', 'login', '--nickname', `cli_e2e_a_${Date.now().toString(36)}`]));
+    const login = JSON.parse(await cli(rootA, ['--json', 'login', '--dev', '--nickname', `cli_e2e_a_${Date.now().toString(36)}`]));
     expect(login.userId).toBeTruthy();
 
     const categories = JSON.parse(await cli(rootA, ['--json', 'categories']));
@@ -69,7 +69,7 @@ describe.sequential('CLI E2EE chat (real container)', () => {
   });
 
   it('agent B logs in and joins the chat (MLS External Commit) BEFORE A sends', async () => {
-    const login = JSON.parse(await cli(rootB, ['--json', 'login', '--nickname', `cli_e2e_b_${Date.now().toString(36)}`]));
+    const login = JSON.parse(await cli(rootB, ['--json', 'login', '--dev', '--nickname', `cli_e2e_b_${Date.now().toString(36)}`]));
     expect(login.userId).toBeTruthy();
     const joined = JSON.parse(await cli(rootB, ['--json', 'chat', 'join', topicId]));
     expect(joined.topicId).toBe(topicId);

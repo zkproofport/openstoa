@@ -67,12 +67,31 @@ describe('buildDmCandidatesQuery — de-duplication and exclusions live in SQL',
     const { sql, params } = sqlFor();
     expect(sql).toMatch(/"topics"\."kind" = \$\d/);
     expect(params).toContain('topic');
-    expect(params).not.toContain('dm');
+    // NOT `params.not.toContain('dm')` — FIX9's NOT EXISTS anti-join below
+    // legitimately binds 'dm' too, for a DIFFERENT clause ("existing_dm".kind).
+    // That the SHARED-TOPIC join specifically filters on 'topic' is already
+    // pinned by the regex + toContain assertions above.
   });
 
   it('excludes the caller themselves via peer.user_id <> mine.user_id', () => {
     const { sql } = sqlFor();
     expect(sql).toMatch(/"peer"\."user_id" <> "mine"\."user_id"/);
+  });
+
+  it('FIX9: excludes an existing DM partner via a NOT EXISTS anti-join on dm_pair — not a JS filter', () => {
+    const { sql, params } = sqlFor();
+    expect(sql.toLowerCase()).toContain('not exists');
+    // The subquery must target kind='dm' rows specifically.
+    expect(sql).toMatch(/"existing_dm"\."kind" = \$\d/);
+    expect(params).toContain('dm');
+    // Both possible dm_pair orderings are checked directly (peer|caller and
+    // caller|peer) — see buildDmCandidatesQuery's doc for why, instead of
+    // replicating canonicalDmPair's sort() as a SQL comparison.
+    expect(sql).toMatch(/"existing_dm"\."dm_pair" in \("peer"\."user_id" \|\| '\|' \|\| \$\d, \$\d \|\| '\|' \|\| "peer"\."user_id"\)/i);
+    // A future "simplify this into a JS filter" refactor would drop the
+    // NOT EXISTS clause from the emitted SQL, failing this test — exactly
+    // the guard the de-duplication / self-exclusion tests above already
+    // provide for their own invariants.
   });
 
   it('filters on the caller membership and applies the limit', () => {

@@ -10,6 +10,16 @@
  *   boundary     — 0 candidates; force=true bypasses the cache
  *   contract     — isDmCandidate is exactly `candidates.some(userId match)`
  *   race         — invalidateDmCandidates() forces the NEXT call to refetch
+ *   contract     — FIX9: isDmCandidate is TRUE for an existing DM partner
+ *                  even when the server-side candidates list now excludes
+ *                  them (see dm-candidates.test.ts), by also checking
+ *                  GET /api/dm — a genuinely separate source, not a JS
+ *                  post-filter of the candidates list
+ *   race         — FIX9: invalidateDmCandidates() also drops the existing-DM
+ *                  cache, so starting a DM is reflected immediately, not
+ *                  after the 60s TTL
+ *   ext-failure  — FIX9: a failed /api/dm lookup degrades to "not an existing
+ *                  partner" (fails closed) rather than crashing or throwing
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -20,6 +30,19 @@ async function freshModule() {
 
 function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body } as unknown as Response;
+}
+
+/** Routes a fetch mock by URL prefix — needed once a test touches BOTH
+ *  `/api/dm/candidates` and `/api/dm`. A handler may return a `Response` (ok)
+ *  or a rejected `Promise` (network failure), matching real `fetch()`. */
+function routeFetch(routes: Array<[string, () => Response | Promise<never>]>) {
+  return vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+    for (const [prefix, handler] of routes) {
+      if (url.startsWith(prefix)) return Promise.resolve(handler());
+    }
+    return Promise.reject(new Error(`unexpected fetch: ${url}`));
+  });
 }
 
 beforeEach(() => {
@@ -160,5 +183,101 @@ describe('isDmCandidate', () => {
     expect(await isDmCandidate('u1')).toBe(true);
     invalidateDmCandidates();
     expect(await isDmCandidate('u1')).toBe(false);
+  });
+
+  it('FIX9 CONTRACT: an existing DM partner is DM-able even though the server-side candidates list now excludes them', async () => {
+    const { isDmCandidate } = await freshModule();
+    vi.stubGlobal(
+      'fetch',
+      routeFetch([
+        // '/api/dm/candidates' MUST be listed before '/api/dm' — prefix match.
+        ['/api/dm/candidates', () => jsonResponse({ candidates: [] })],
+        ['/api/dm', () => jsonResponse({ dms: [{ topicId: 'd1', peer: { userId: 'u1', nickname: 'bob', profileImage: null }, lastActivityAt: null }] })],
+      ]),
+    );
+
+    expect(await isDmCandidate('u1')).toBe(true);
+  });
+
+  it('a genuine new-conversation candidate (no existing DM) is still DM-able via the candidates list', async () => {
+    const { isDmCandidate } = await freshModule();
+    vi.stubGlobal(
+      'fetch',
+      routeFetch([
+        ['/api/dm/candidates', () => jsonResponse({ candidates: [{ userId: 'u2', nickname: 'carol', profileImage: null, badges: [], sharedTopics: [{ id: 't1', title: 'x' }] }] })],
+        ['/api/dm', () => jsonResponse({ dms: [] })],
+      ]),
+    );
+
+    expect(await isDmCandidate('u2')).toBe(true);
+  });
+
+  it('someone who is NEITHER a candidate NOR an existing DM partner is not DM-able', async () => {
+    const { isDmCandidate } = await freshModule();
+    vi.stubGlobal(
+      'fetch',
+      routeFetch([
+        ['/api/dm/candidates', () => jsonResponse({ candidates: [] })],
+        ['/api/dm', () => jsonResponse({ dms: [] })],
+      ]),
+    );
+
+    expect(await isDmCandidate('u-nobody')).toBe(false);
+  });
+
+  it('EXT-FAILURE: a failed /api/dm lookup fails closed (falls through to the candidates list) rather than throwing', async () => {
+    const { isDmCandidate } = await freshModule();
+    vi.stubGlobal(
+      'fetch',
+      routeFetch([
+        ['/api/dm/candidates', () => jsonResponse({ candidates: [{ userId: 'u2', nickname: 'carol', profileImage: null, badges: [], sharedTopics: [{ id: 't1', title: 'x' }] }] })],
+        ['/api/dm', () => jsonResponse({ error: 'boom' }, false)],
+      ]),
+    );
+
+    // The candidates-list branch still works even though the DM-list branch failed.
+    expect(await isDmCandidate('u2')).toBe(true);
+  });
+
+  it('EXT-FAILURE: someone reachable ONLY via an existing DM is hidden when that lookup fails — fails CLOSED', async () => {
+    const { isDmCandidate } = await freshModule();
+    vi.stubGlobal(
+      'fetch',
+      routeFetch([
+        ['/api/dm/candidates', () => jsonResponse({ candidates: [] })],
+        ['/api/dm', () => Promise.reject(new Error('network down'))],
+      ]),
+    );
+
+    expect(await isDmCandidate('u1')).toBe(false);
+  });
+
+  it('RACE: invalidateDmCandidates() also drops the existing-DM cache, not just the candidates cache', async () => {
+    const { isDmCandidate, invalidateDmCandidates } = await freshModule();
+    let dmCall = 0;
+    vi.stubGlobal(
+      'fetch',
+      routeFetch([
+        ['/api/dm/candidates', () => jsonResponse({ candidates: [] })],
+        [
+          '/api/dm',
+          () => {
+            dmCall += 1;
+            // Before starting the DM, u1 is a stranger; after, they're a
+            // partner — simulating POST /api/dm succeeding in between.
+            return jsonResponse({
+              dms: dmCall === 1 ? [] : [{ topicId: 'd1', peer: { userId: 'u1', nickname: 'bob', profileImage: null }, lastActivityAt: null }],
+            });
+          },
+        ],
+      ]),
+    );
+
+    expect(await isDmCandidate('u1')).toBe(false);
+    // Without invalidation this would still read the (now stale) cached "no
+    // DMs yet" answer for up to 60s.
+    invalidateDmCandidates();
+    expect(await isDmCandidate('u1')).toBe(true);
+    expect(dmCall).toBe(2);
   });
 });

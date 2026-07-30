@@ -1,74 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import {
-  getAiPermissions,
-  setAiPermissions,
-  AiPermissionValidationError,
-  ALLOWED_CMDS,
-} from '@/lib/aiPermissions';
 
 const ROUTE = '/api/profile/ai-permissions';
+
+/**
+ * RETIRED (2026-07-30, design §7 consolidation onto API keys). The old model —
+ * one account-wide `cmd`/`historyGrant` grant applying to every `isAI` session
+ * — has been replaced by per-key scope: `POST /api/profile/api-keys` mints a
+ * key whose OWN `cmd`/`historyGrant` travel with it and are the only thing
+ * `requireAiCapability` (`src/lib/aiPermissions.ts`) ever consults. Kept as a
+ * 410 (not a bare 404) so an existing caller — old mobile builds, cached agent
+ * docs — gets an actionable, self-explanatory error instead of "not found",
+ * per the OpenStoa agent-UX rule (CLAUDE.md).
+ */
+function retired(method: 'GET' | 'PUT'): NextResponse {
+  return NextResponse.json(
+    {
+      error: 'This endpoint has been retired. AI capability is now scoped to individual API keys.',
+      migrateTo: {
+        create: 'POST /api/profile/api-keys — issue a key with its own cmd + historyGrant',
+        list: 'GET /api/profile/api-keys',
+        revoke: 'DELETE /api/profile/api-keys/{keyId}',
+      },
+      method,
+    },
+    { status: 410 },
+  );
+}
 
 /**
  * @openapi
  * /api/profile/ai-permissions:
  *   get:
  *     tags: [Profile]
- *     summary: Get your AI capability configuration
+ *     summary: 'RETIRED — use API keys instead'
+ *     deprecated: true
  *     description: |
- *       Returns the AI-permission set the current user has configured for their OWN account
- *       (design §7). In OpenStoa an AI is not a separate account — it is an `isAI` session acting
- *       on this user's account. This endpoint reports what such sessions are allowed to do across
- *       the whole app: `cmd` is the ability allowlist (a subset of `allowedCmd`), `historyGrant`
- *       is the chat archive scope the AI may back-fill. If the user has never configured
- *       permissions, `cmd` is `[]` (the AI may do nothing) and `historyGrant` is `none`.
- *
- *       An isAI session calling a gated route (topic join/leave, post write/delete, comment write,
- *       chat send/read, profile edit) without the matching `cmd` gets 403. Humans are unaffected.
+ *       **Retired.** Always returns 410. AI capability used to be a single account-wide grant
+ *       applying to every `isAI` session; it is now scoped to individual API keys instead
+ *       (GitHub-PAT style — the key's own `cmd`/`historyGrant` gate its requests, nothing wider).
+ *       Use `POST /api/profile/api-keys` to create a scoped key, `GET /api/profile/api-keys` to
+ *       list them, and `DELETE /api/profile/api-keys/{keyId}` to revoke one.
  *     operationId: getAiPermissions
- *     x-related-skills: [set-ai-permissions, create-api-key]
+ *     x-related-skills: [create-api-key, list-api-keys]
  *     responses:
- *       200:
- *         description: The caller's AI capability configuration
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 cmd:
- *                   type: array
- *                   items: { type: string }
- *                   description: Ability allowlist currently granted to the caller's AI sessions.
- *                 historyGrant:
- *                   type: string
- *                   description: 'Chat archive scope the AI may back-fill: none | Nd | since_epoch:N | full.'
- *                 allowedCmd:
- *                   type: array
- *                   items: { type: string }
- *                   description: The full set of capabilities a user may grant (for building the UI).
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
+ *       410:
+ *         description: Retired — see `migrateTo` in the response body for the replacement endpoints.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  try {
-    const session = await getSession(request);
-    if (!session) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const perm = await getAiPermissions(db, session.userId);
-    return NextResponse.json({
-      cmd: perm?.cmd ?? [],
-      historyGrant: perm?.historyGrant ?? 'none',
-      allowedCmd: ALLOWED_CMDS,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+  const session = await getSession(request);
+  if (!session) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+  logger.info(ROUTE, 'Retired endpoint hit', { userId: session.userId, method: 'GET' });
+  return retired('GET');
 }
 
 /**
@@ -76,75 +62,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * /api/profile/ai-permissions:
  *   put:
  *     tags: [Profile]
- *     summary: Set your AI capability configuration
+ *     summary: 'RETIRED — use API keys instead'
+ *     deprecated: true
  *     description: |
- *       Replaces the AI-permission set for the caller's OWN account (design §7). A user can only
- *       configure their own permissions — the record is keyed by the session user. `cmd` must be a
- *       (possibly empty) subset of the allowed commands; an empty array means the caller's AI
- *       sessions may do nothing. `historyGrant` must be a valid archive scope. Stores NO keys and
- *       NO plaintext (SI-1) — pure access-control metadata.
+ *       **Retired.** Always returns 410 — writes are rejected outright rather than silently
+ *       accepted, because an account-wide grant no longer has any effect (see GET for the
+ *       replacement). Accepting writes to an inert setting would be misleading: a caller could
+ *       believe they narrowed their AI's access when nothing enforces it any more.
  *     operationId: setAiPermissions
- *     x-related-skills: [get-ai-permissions, create-api-key]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [cmd, historyGrant]
- *             properties:
- *               cmd:
- *                 type: array
- *                 items: { type: string }
- *                 description: 'Ability allowlist — a (possibly empty) subset of the allowed commands, e.g. ["/openstoa/chat/send", "/openstoa/post/write"]. Unknown commands are rejected with 400.'
- *               historyGrant:
- *                 type: string
- *                 description: 'Chat archive scope the AI may back-fill: none | Nd | since_epoch:N | full. Invalid scope → 400.'
+ *     x-related-skills: [create-api-key, list-api-keys]
  *     responses:
- *       200:
- *         description: Updated AI capability configuration
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 cmd: { type: array, items: { type: string } }
- *                 historyGrant: { type: string }
- *       400: { description: Invalid cmd (unknown/too many) or historyGrant scope }
- *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       410:
+ *         description: Retired — see `migrateTo` in the response body for the replacement endpoints.
  */
 export async function PUT(request: NextRequest): Promise<NextResponse> {
-  try {
-    const session = await getSession(request);
-    if (!session) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const body = await request.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-    const { cmd, historyGrant } = body as Record<string, unknown>;
-
-    let row;
-    try {
-      row = await setAiPermissions(db, session.userId, { cmd, historyGrant });
-    } catch (e) {
-      if (e instanceof AiPermissionValidationError) {
-        return NextResponse.json({ error: e.message }, { status: 400 });
-      }
-      throw e;
-    }
-
-    logger.info(ROUTE, 'AI permissions updated', {
-      userId: session.userId,
-      cmd: row.cmd,
-      historyGrant: row.historyGrant,
-    });
-    return NextResponse.json({ cmd: row.cmd, historyGrant: row.historyGrant });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PUT', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+  const session = await getSession(request);
+  if (!session) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+  logger.info(ROUTE, 'Retired endpoint hit', { userId: session.userId, method: 'PUT' });
+  return retired('PUT');
 }

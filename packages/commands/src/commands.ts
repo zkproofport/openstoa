@@ -22,6 +22,7 @@ import type {
   SessionPayload,
   ApiKeyMeta,
   ApiKeyCreateInput,
+  ApiKeyUpdateInput,
   ApiKeyCreateResult,
 } from '@masselabs/openstoa';
 import { FileSessionStore, type SessionData, type SessionStore } from './session';
@@ -464,6 +465,22 @@ export class Commands {
   async apiKeyList(): Promise<ApiKeyMeta[]> {
     this.requireAuth();
     return this.chat.rest.apiKeys.list();
+  }
+
+  /**
+   * Re-scope a key in place so its holder keeps the secret it already has.
+   *
+   * `cmd` and `historyGrant` REPLACE the stored scope — the server does not
+   * merge — so both are required here rather than optional. A partial update
+   * would let `apikey update k1 --cmd ...` silently reset `historyGrant` to a
+   * default, quietly revoking archive access the caller never meant to touch.
+   */
+  async apiKeyUpdate(id: string, input: ApiKeyUpdateInput): Promise<ApiKeyMeta> {
+    this.requireAuth();
+    if (!id || id.trim().length === 0) throw new Error('apikey update: id is required');
+    if (!Array.isArray(input?.cmd)) throw new Error('apikey update: cmd is required (send [] to remove every capability)');
+    if (!input?.historyGrant) throw new Error('apikey update: historyGrant is required (send "none" to remove archive access)');
+    return this.chat.rest.apiKeys.update(id, input);
   }
 
   async apiKeyRevoke(id: string): Promise<{ revoked: boolean; id: string }> {

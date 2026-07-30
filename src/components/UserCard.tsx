@@ -28,7 +28,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from './Avatar';
 import Badge from './Badge';
-import { isDmCandidate } from '@/lib/dmCandidatesCache';
+import { isDmCandidate, invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 import { useChatRail } from '@/lib/chatRailContext';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -185,6 +185,10 @@ export default function UserCard({
         if (!res.ok) return;
         const data = await res.json();
         if (data?.topicId) {
+          // See ChatRail.tsx's startDm — the server now excludes this person
+          // from future candidate fetches (FIX9); invalidate the cache so
+          // isDmCandidate()/the picker reflect that immediately.
+          invalidateDmCandidates();
           setOpen(false);
           if (chatRail) {
             // Land the reader on the conversation they just started INSIDE

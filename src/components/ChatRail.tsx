@@ -43,11 +43,11 @@ import Badge from './Badge';
 import ChatPanel from './ChatPanel';
 import TopicMuteToggle from './TopicMuteToggle';
 import Spinner from './Spinner';
-import UserCard from './UserCard';
+import TopicMembersList, { type TopicMember } from './TopicMembersList';
 import { relativeTime } from '@/lib/utils';
 import type { DmChannel } from '@/lib/dm';
 import { newTabHref, isSameRoomAsPath, type RailRoom } from '@/lib/chatRail';
-import { getDmCandidates, type DmCandidate } from '@/lib/dmCandidatesCache';
+import { getDmCandidates, invalidateDmCandidates, type DmCandidate } from '@/lib/dmCandidatesCache';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface RailTopic {
@@ -56,16 +56,11 @@ interface RailTopic {
   memberCount?: number;
 }
 
-/** One row of `GET /api/topics/{topicId}/members` — same shape the
- *  standalone members page (`/topics/[topicId]/members`) renders, reused
- *  here so a topic room's member list looks identical wherever it appears. */
-interface RailMember {
-  userId: string;
-  nickname: string;
-  role: 'owner' | 'admin' | 'member';
-  profileImage?: string | null;
-  badges?: Array<{ type: string; label: string; domain?: string; country?: string }>;
-}
+/** One row of `GET /api/topics/{topicId}/members` — see `TopicMembersList.tsx`,
+ *  which also backs the standalone members page's popped-out members overlay
+ *  (`/chat/[topicId]`), so a topic room's member list looks identical
+ *  wherever it appears. */
+type RailMember = TopicMember;
 
 type ListTab = 'topics' | 'dms';
 
@@ -279,6 +274,11 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
         if (!res.ok) return;
         const data = await res.json();
         if (data?.topicId) {
+          // The server now excludes this person from future candidate
+          // fetches (FIX9) — invalidate so the picker (opened again) and
+          // isDmCandidate() reflect that immediately instead of the cached
+          // pre-DM state for up to 60s.
+          invalidateDmCandidates();
           openRoom({ kind: 'dm', topicId: data.topicId, title: candidate.nickname, profileImage: candidate.profileImage });
           loadDms();
         }
@@ -432,7 +432,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
                   zIndex: 2,
                 }}
               >
-                <MembersList members={members} failed={membersFailed} onRetry={loadMembers} viewerUserId={myUserId} />
+                <TopicMembersList members={members} failed={membersFailed} onRetry={loadMembers} viewerUserId={myUserId} />
               </div>
             )}
           </div>
@@ -569,117 +569,6 @@ function DmList({ dms, onOpen }: { dms: DmChannel[] | null; onOpen: (d: DmChanne
             <span style={{ fontSize: 'var(--text-label)', fontFamily: 'var(--font-mono)', color: 'var(--muted)', flexShrink: 0 }}>{relativeTime(d.lastActivityAt)}</span>
           )}
         </button>
-      ))}
-    </div>
-  );
-}
-
-/** A row's cursor is intentionally NOT pointer-styled like `rowStyle` (the
- *  list rows elsewhere in this file) — the row itself isn't a click target,
- *  only the `UserCard` trigger inside it is, and a whole-row pointer cursor
- *  would advertise a click that does nothing outside the avatar/name. */
-const memberRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  width: '100%',
-  padding: '10px var(--space-4)',
-  borderBottom: '1px solid var(--border)',
-  minHeight: 'var(--touch-target-min)',
-};
-
-/**
- * Topic room member list, toggled in place of `ChatPanel` by the header's
- * Members button. Reuses `UserCard` for the avatar/name — including its own
- * DM button and shared-topic gating — rather than a second bespoke "message
- * this person" affordance; DMing from here is exactly the same action as
- * DMing from the standalone `/topics/{id}/members` page or a feed avatar.
- */
-function MembersList({
-  members,
-  failed,
-  onRetry,
-  viewerUserId,
-}: {
-  members: RailMember[] | null;
-  failed: boolean;
-  onRetry: () => void;
-  viewerUserId: string | null;
-}) {
-  const { t } = useTranslation();
-  if (members === null && !failed) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
-        <Spinner />
-      </div>
-    );
-  }
-  if (failed) {
-    return (
-      <div style={{ padding: '28px var(--space-5)', textAlign: 'center', color: 'var(--muted)', fontSize: 'var(--text-caption)', lineHeight: 1.6 }}>
-        <p style={{ margin: '0 0 12px 0' }}>{t('chatRail.membersLoadError')}</p>
-        <button
-          type="button"
-          onClick={onRetry}
-          style={{
-            background: 'none',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 'var(--radius-pill)',
-            padding: '6px var(--space-4)',
-            color: 'var(--foreground)',
-            fontSize: 'var(--text-caption)',
-            cursor: 'pointer',
-            minHeight: 'var(--touch-target-min)',
-          }}
-        >
-          {t('chatRail.tryAgain')}
-        </button>
-      </div>
-    );
-  }
-  if (!members || members.length === 0) {
-    return (
-      <div style={emptyStateStyle}>
-        <p style={{ margin: 0 }}>{t('chatRail.noMembersFound')}</p>
-      </div>
-    );
-  }
-  return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-      {members.map((m) => (
-        <div key={m.userId} style={memberRowStyle} data-testid="rail-member-row">
-          <UserCard userId={m.userId} nickname={m.nickname} profileImage={m.profileImage} badges={m.badges} viewerUserId={viewerUserId}>
-            <Avatar src={m.profileImage} name={m.nickname} size={32} />
-          </UserCard>
-          <span
-            style={{
-              flex: 1,
-              minWidth: 0,
-              fontSize: 'var(--text-caption)',
-              fontWeight: 600,
-              color: 'var(--foreground)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {m.nickname}
-          </span>
-          {m.role !== 'member' && (
-            <span
-              style={{
-                fontSize: 'var(--text-label)',
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                color: 'var(--muted)',
-                flexShrink: 0,
-              }}
-            >
-              {t(`chatRail.roles.${m.role}`)}
-            </span>
-          )}
-        </div>
       ))}
     </div>
   );

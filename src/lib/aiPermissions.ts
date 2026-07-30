@@ -1,31 +1,33 @@
 /**
- * Profile-level AI capability model (design §7).
+ * AI capability allowlist + enforcement gate (design §7, consolidated onto API
+ * keys 2026-07-30).
  *
- * Replaces the earlier per-topic `ai_grants` delegation. The re-designed model:
- * an AI is not a separate account a topic owner grants into a topic — it is an
- * `isAI` session acting on a USER's own account (its nullifier may equal the
- * human owner's; the two are distinguished per-request by the session flag,
- * exactly like posts already do with `is_ai`). Therefore a user configures, in
- * their PROFILE, what their AI (any isAI session on their account) may do, and
- * that capability set applies across the whole app — not per-topic.
+ * The scoped API key IS the sole authority for what an `isAI` session may do —
+ * GitHub-PAT style: a token's own scope travels with it, and nothing above the
+ * token widens it. There is NO account-level fallback grant any more. The
+ * earlier per-account `ai_permissions` row (design §7's original "configure it
+ * once in your profile, it applies to every isAI session") has been retired:
+ * `PUT /api/profile/ai-permissions` no longer accepts writes and nothing reads
+ * the table for authorization (see `src/app/api/profile/ai-permissions/route.ts`
+ * and `src/lib/db/schema.ts` for the retirement notes). Scope now comes from
+ * exactly one place: the key created via `POST /api/profile/api-keys`
+ * (`src/lib/apiKeys.ts`), surfaced on the session as `apiKeyCmd` by
+ * `getApiKeySession` in `src/lib/session.ts`.
  *
- * This layer holds NO keys and NO plaintext (C1/SI-1) — it is pure access-
- * control metadata: an ability allowlist (`cmd`) and a chat-history scope
- * (`historyGrant` ↔ TAK scope). A db handle is passed in (mirrors aiGrants.ts /
- * keyBackupStore.ts) so routes and tests share one implementation.
+ * This module keeps only what is still load-bearing: the shared ability
+ * allowlist (`ALLOWED_CMDS`, reused by `@/lib/apiKeys` for key-scope
+ * validation) and `requireAiCapability`, the route guard every isAI-gated
+ * endpoint calls.
  */
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { db as sharedDb } from '@/lib/db';
-import { aiPermissions } from '@/lib/db/schema';
-import { isValidTakScope } from '@/lib/mls/http';
 
 type DB = typeof sharedDb;
 
-// Ability allowlist spanning the whole app. A permission set's `cmd` must be a
+// Ability allowlist spanning the whole app. An API key's `cmd` must be a
 // (possibly empty) subset of this set — an unknown or free-form command is
 // rejected at validation time (least-privilege, no silent-allow). Empty is
-// valid and the most restrictive: the AI may do nothing.
+// valid and the most restrictive: the key may do nothing.
 export const ALLOWED_CMDS = [
   '/openstoa/topic/join',
   '/openstoa/topic/leave',
@@ -44,114 +46,10 @@ export const ALLOWED_CMDS = [
 
 export type AllowedCmd = (typeof ALLOWED_CMDS)[number];
 
-// SI-4 caps on the metadata payload. A permission set carries a handful of
-// command paths — cap generously, reject abuse/enumeration.
+// SI-4 caps on the metadata payload. A key carries a handful of command
+// paths — cap generously, reject abuse/enumeration.
 export const MAX_CMD_COUNT = 32;
 export const MAX_CMD_LEN = 128;
-
-export class AiPermissionValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AiPermissionValidationError';
-  }
-}
-
-export interface AiPermissionInput {
-  cmd: unknown;
-  historyGrant: unknown;
-}
-
-export interface NormalizedAiPermission {
-  cmd: string[];
-  historyGrant: string;
-}
-
-export interface AiPermissionRow {
-  userId: string;
-  cmd: string[];
-  historyGrant: string;
-  updatedAt: Date | null;
-}
-
-const ALLOWED_CMD_SET = new Set<string>(ALLOWED_CMDS);
-
-/**
- * Validate + normalize an AI-permission request. Pure (no db) so the guard is
- * unit-testable in isolation. Throws AiPermissionValidationError on any invalid
- * input so the route can map it to a 400.
- *
- * `cmd` may be an EMPTY array — that is a valid, safe "my AI can do nothing"
- * configuration (unlike the old per-action grant, which required ≥1 cmd).
- */
-export function validateAiPermissionInput(input: AiPermissionInput): NormalizedAiPermission {
-  const { cmd, historyGrant } = input;
-
-  if (!Array.isArray(cmd)) {
-    throw new AiPermissionValidationError('cmd must be an array');
-  }
-  if (cmd.length > MAX_CMD_COUNT) {
-    throw new AiPermissionValidationError('too many cmd entries');
-  }
-  for (const c of cmd) {
-    if (typeof c !== 'string' || c.length === 0 || c.length > MAX_CMD_LEN) {
-      throw new AiPermissionValidationError('each cmd must be a non-empty string');
-    }
-    if (!ALLOWED_CMD_SET.has(c)) {
-      throw new AiPermissionValidationError(`unknown cmd: ${c}`);
-    }
-  }
-  // Dedupe while preserving order.
-  const cmds = Array.from(new Set(cmd as string[]));
-
-  // history_grant is the chat archive (TAK) scope the AI may back-fill —
-  // validated by the same allowlist as TAK bundles (none | Nd | since_epoch:N | full | N).
-  if (!isValidTakScope(historyGrant)) {
-    throw new AiPermissionValidationError('historyGrant must be a valid scope: none | Nd | since_epoch:N | full');
-  }
-
-  return { cmd: cmds, historyGrant: historyGrant as string };
-}
-
-/** The AI-permission row for a user, or null if the user has never configured one. */
-export async function getAiPermissions(db: DB, userId: string): Promise<AiPermissionRow | null> {
-  const row = await db.query.aiPermissions.findFirst({
-    where: eq(aiPermissions.userId, userId),
-  });
-  return (row as AiPermissionRow | undefined) ?? null;
-}
-
-/**
- * Upsert a user's AI-permission set after validating the input. Throws
- * AiPermissionValidationError on invalid input. The user always owns exactly
- * one row (keyed by userId), so this replaces the whole capability set.
- */
-export async function setAiPermissions(db: DB, userId: string, input: AiPermissionInput): Promise<AiPermissionRow> {
-  const norm = validateAiPermissionInput(input);
-  const [row] = await db
-    .insert(aiPermissions)
-    .values({ userId, cmd: norm.cmd, historyGrant: norm.historyGrant, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: aiPermissions.userId,
-      set: { cmd: norm.cmd, historyGrant: norm.historyGrant, updatedAt: new Date() },
-    })
-    .returning();
-  return row as AiPermissionRow;
-}
-
-/** Pure predicate: does this permission set allow `cmd`? Missing set → false (no silent allow). */
-export function permissionAllows(perm: AiPermissionRow | null, cmd: string): boolean {
-  if (!perm) return false;
-  return perm.cmd.includes(cmd);
-}
-
-/**
- * Enforcement lookup: does the user (`userId`) hold an AI-permission set whose
- * allowlist permits `cmd`? Used by `requireAiCapability` to 403 an isAI caller.
- */
-export async function checkAiCapability(db: DB, userId: string, cmd: string): Promise<boolean> {
-  const perm = await getAiPermissions(db, userId);
-  return permissionAllows(perm, cmd);
-}
 
 /**
  * Route helper reused across every isAI-gated endpoint. Returns a 403
@@ -159,18 +57,26 @@ export async function checkAiCapability(db: DB, userId: string, cmd: string): Pr
  * the route continues. Humans (isAI falsy) are never gated here — they pass
  * through unchanged (membership / authorship rules still apply upstream).
  *
- * `session.apiKeyCmd` (present only for an API-key-authenticated request, see
- * `src/lib/session.ts` → `getSession`) is checked directly instead of a fresh
- * `ai_permissions` lookup — the key IS the scoped credential, so its own
- * allowlist is authoritative and never widened by the account's profile grant.
+ * Fail-closed, key-only: the ONLY scope an isAI session can carry is
+ * `session.apiKeyCmd`, populated by `getApiKeySession` (`src/lib/session.ts`)
+ * when the caller authenticated with `Authorization: Bearer osk_...`. An isAI
+ * session with no key scope — e.g. a bare JWT minted by `/api/auth/dev-login`
+ * (dev-only) or the currently-unreachable `/api/auth/verify/ai` — declares no
+ * capabilities and is therefore DENIED, never granted an implicit account-wide
+ * allowance. A credential with no declared scope must not inherit one.
+ *
+ * `db` is accepted for call-site/signature stability (14 routes already call
+ * this with `db` as the first argument) but is intentionally unused: there is
+ * no DB lookup left in this gate — see the module docstring for why.
  */
 export async function requireAiCapability(
   db: DB,
   session: { userId: string; isAI?: boolean; apiKeyCmd?: string[] },
   cmd: AllowedCmd | string,
 ): Promise<NextResponse | null> {
+  void db;
   if (!session.isAI) return null;
-  const ok = session.apiKeyCmd ? session.apiKeyCmd.includes(cmd) : await checkAiCapability(db, session.userId, cmd);
+  const ok = (session.apiKeyCmd ?? []).includes(cmd);
   if (ok) return null;
   return NextResponse.json(
     { error: `AI capability required: ${cmd} not permitted` },

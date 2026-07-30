@@ -64,6 +64,7 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
       apiKeys: {
         create: rec('apiKeys.create'),
         list: rec('apiKeys.list'),
+        update: rec('apiKeys.update'),
         revoke: rec('apiKeys.revoke'),
       },
     },
@@ -311,6 +312,30 @@ describe('Commands dispatch → SDK', () => {
     expect(calls.find((c) => c.method === 'apiKeys.list')?.args).toEqual([]);
     expect(r).toEqual([{ id: 'k1' }]);
   });
+  it('apiKeyUpdate dispatches (id, scope) and returns the updated metadata', async () => {
+    const { cmds, calls } = build({
+      'apiKeys.update': (id: unknown, input: unknown) => ({ id, ...(input as object) }),
+    });
+    const r = await cmds.apiKeyUpdate('k1', { cmd: ['/openstoa/post/write'], historyGrant: '7d' });
+    expect(calls.find((c) => c.method === 'apiKeys.update')?.args).toEqual(['k1', { cmd: ['/openstoa/post/write'], historyGrant: '7d' }]);
+    expect(r).toMatchObject({ id: 'k1', historyGrant: '7d' });
+  });
+  it('apiKeyUpdate forwards an EMPTY cmd — "no capabilities" is a scope, not a missing field', async () => {
+    const { cmds, calls } = build({ 'apiKeys.update': (id: unknown, input: unknown) => ({ id, ...(input as object) }) });
+    await cmds.apiKeyUpdate('k1', { cmd: [], historyGrant: 'none' });
+    expect(calls.find((c) => c.method === 'apiKeys.update')?.args).toEqual(['k1', { cmd: [], historyGrant: 'none' }]);
+  });
+  it('apiKeyUpdate rejects an empty id / a non-array cmd / a missing historyGrant before any dispatch', async () => {
+    const { cmds, calls } = build();
+    const scope = { cmd: [], historyGrant: 'none' };
+    await expect(cmds.apiKeyUpdate('', scope)).rejects.toThrow(/id is required/);
+    await expect(cmds.apiKeyUpdate('   ', scope)).rejects.toThrow(/id is required/);
+    // A partial update would silently reset the field the caller omitted, so both are mandatory.
+    await expect(cmds.apiKeyUpdate('k1', { historyGrant: 'none' } as never)).rejects.toThrow(/cmd is required/);
+    await expect(cmds.apiKeyUpdate('k1', { cmd: [] } as never)).rejects.toThrow(/historyGrant is required/);
+    await expect(cmds.apiKeyUpdate('k1', { cmd: [], historyGrant: '' } as never)).rejects.toThrow(/historyGrant is required/);
+    expect(calls.some((c) => c.method === 'apiKeys.update')).toBe(false);
+  });
   it('apiKeyRevoke dispatches with the id', async () => {
     const { cmds, calls } = build({ 'apiKeys.revoke': (id: unknown) => ({ revoked: true, id }) });
     const r = await cmds.apiKeyRevoke('k1');
@@ -327,5 +352,6 @@ describe('Commands dispatch → SDK', () => {
     setToken(null);
     await expect(cmds.apiKeyList()).rejects.toThrow(/Not logged in/);
     await expect(cmds.apiKeyCreate({ name: 'k', cmd: [], historyGrant: 'none' })).rejects.toThrow(/Not logged in/);
+    await expect(cmds.apiKeyUpdate('k1', { cmd: [], historyGrant: 'none' })).rejects.toThrow(/Not logged in/);
   });
 });

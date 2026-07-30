@@ -20,10 +20,12 @@
  *     cryptographically revocable — that cost is documented, not silently ignored.
  *
  * NOTE: AI *capability* (what an isAI session may do) is no longer a per-topic
- * owner-issued grant. It is configured by the account owner in their PROFILE
- * (`PUT /api/profile/ai-permissions`) and enforced server-side (see
- * src/lib/aiPermissions.ts). This module only handles the MLS/TAK cryptographic
- * membership mechanics; it holds NO capability metadata.
+ * owner-issued grant, and no longer an account-wide profile setting either
+ * (that model was retired 2026-07-30). It is scoped to the individual API key
+ * the isAI session authenticates with (`POST`/`PATCH /api/profile/api-keys`)
+ * and enforced server-side (see src/lib/aiPermissions.ts). This module only
+ * handles the MLS/TAK cryptographic membership mechanics; it holds NO
+ * capability metadata.
  *
  * The KeyPackage HTTP is injected as an `AiMemberDirectory` so the module stays
  * portable (web fetch, mobile OpenStoaClient, in-memory in tests) and the server
@@ -104,8 +106,8 @@ export function grantAiHistory(
  * §9.4 — remove an AI member from the MLS group: an MLS Remove Commit that
  * excludes the bot's leaf from every future epoch (post-compromise security).
  * Returns the new epoch after the Remove. Capability revocation is separate and
- * lives in the owner's profile (`PUT /api/profile/ai-permissions` with the cmd
- * removed) — this function only handles the cryptographic membership removal.
+ * lives on the AI's API key (revoke it, or `PATCH /api/profile/api-keys/{id}`
+ * with the cmd removed) — this function only handles the cryptographic membership removal.
  * Documented cost: plaintext/TAKs the bot already received are NOT
  * cryptographically revocable — this gates future access, never the past.
  */

@@ -339,6 +339,23 @@ export function buildProgram(
     );
   apikey.command('list').description('list your API keys (metadata only — never the raw key)').action(() => run((c) => c.apiKeyList(), fmt.fmtApiKeys));
   apikey
+    // Both flags are required: the server REPLACES the scope, so accepting just
+    // one would silently reset the other (see Commands.apiKeyUpdate).
+    .command('update <id>')
+    .description('re-scope an existing key in place — the holder keeps the same secret')
+    .requiredOption('--cmd <list>', 'comma-separated capability allowlist — replaces the old one; pass "" to remove all')
+    .requiredOption('--history-grant <scope>', 'chat archive scope: none | Nd | since_epoch:N | full — replaces the old one')
+    .action((id: string, opts: { cmd: string; historyGrant: string }) =>
+      run(
+        (c) =>
+          c.apiKeyUpdate(id, {
+            cmd: opts.cmd ? opts.cmd.split(',').map((s) => s.trim()).filter(Boolean) : [],
+            historyGrant: opts.historyGrant,
+          }),
+        (k) => `Updated ${k.id}: cmd=[${k.cmd.join(', ')}] historyGrant=${k.historyGrant}`,
+      ),
+    );
+  apikey
     .command('revoke <id>')
     .description('revoke an API key — takes effect immediately')
     .action((id: string) => run((c) => c.apiKeyRevoke(id), (r) => `Revoked ${r.id}`));

@@ -59,6 +59,7 @@ function mockCommands(overrides: Record<string, (...a: unknown[]) => unknown> = 
     profileSetNickname: make('profileSetNickname'),
     apiKeyCreate: make('apiKeyCreate'),
     apiKeyList: make('apiKeyList'),
+    apiKeyUpdate: make('apiKeyUpdate'),
     apiKeyRevoke: make('apiKeyRevoke'),
   } as unknown as Commands;
   return { cmds, calls };
@@ -99,6 +100,7 @@ describe('MCP tools → command core', () => {
       'openstoa_profile_set_nickname',
       'openstoa_apikey_create',
       'openstoa_apikey_list',
+      'openstoa_apikey_update',
       'openstoa_apikey_revoke',
     ]) {
       expect(handlers.has(name), `missing tool ${name}`).toBe(true);
@@ -246,6 +248,20 @@ describe('MCP tools → command core', () => {
     registerTools(host, cmds);
     await handlers.get('openstoa_apikey_create')!({ name: 'k', cmd: ['/openstoa/chat/read'], historyGrant: '7d', isAI: false });
     expect(calls.find((c) => c.method === 'apiKeyCreate')?.args[0]).toMatchObject({ name: 'k', cmd: ['/openstoa/chat/read'], historyGrant: '7d', isAI: false });
+  });
+  it('apikey_update forwards (id, cmd, historyGrant) as a whole-scope replacement', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ apiKeyUpdate: (id: unknown, input: unknown) => ({ id, ...(input as object) }) });
+    registerTools(host, cmds);
+    await handlers.get('openstoa_apikey_update')!({ id: 'k1', cmd: ['/openstoa/post/write'], historyGrant: '7d' });
+    expect(calls.find((c) => c.method === 'apiKeyUpdate')?.args).toEqual(['k1', { cmd: ['/openstoa/post/write'], historyGrant: '7d' }]);
+  });
+  it('apikey_update passes an empty cmd through — clearing every capability is a valid scope', async () => {
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({ apiKeyUpdate: (id: unknown, input: unknown) => ({ id, ...(input as object) }) });
+    registerTools(host, cmds);
+    await handlers.get('openstoa_apikey_update')!({ id: 'k1', cmd: [], historyGrant: 'none' });
+    expect(calls.find((c) => c.method === 'apiKeyUpdate')?.args[1]).toEqual({ cmd: [], historyGrant: 'none' });
   });
   it('apikey_list / apikey_revoke dispatch correctly', async () => {
     const { host, handlers } = fakeHost();

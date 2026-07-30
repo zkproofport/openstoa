@@ -21,6 +21,10 @@
  *   UTF-8        — Korean + emoji topic titles render in the header
  *   hostile      — a script-shaped title renders as text, never as an element
  *   ext-failure  — a 500 / thrown fetch shows an error with a way back
+ *
+ * Also covers FIX3: the header's "· N members" count is now a real toggle
+ * (not dead text) that overlays the shared `TopicMembersList.tsx` treatment
+ * above `ChatPanel` — boundary 1/2/many members and a failed fetch.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
@@ -232,5 +236,106 @@ describe('EXT-FAILURE', () => {
 
     expect(text()).toContain('network down');
     expect(panelProps.current).toBeNull();
+  });
+});
+
+describe('members overlay (FIX3)', () => {
+  async function flush(times = 6) {
+    for (let i = 0; i < times; i++) {
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+  }
+
+  // NOT `button[aria-pressed]` — BareChatShell's own width-preset buttons
+  // (Narrow/Wide/Full) also carry `aria-pressed` and render earlier in the
+  // DOM, so that selector would grab the wrong control.
+  function membersButton(): HTMLButtonElement {
+    return container.querySelector('button[aria-label="Show members"], button[aria-label="Hide members"]') as HTMLButtonElement;
+  }
+
+  it('CONTRACT: the member count is a real button, not dead text', async () => {
+    routeFetch([
+      [`/api/topics/${TOPIC}`, () => json(topic())],
+      ['/api/auth/session', () => json({ userId: 'me' })],
+    ]);
+    await render();
+
+    const btn = membersButton();
+    expect(btn).not.toBeNull();
+    expect(btn.tagName).toBe('BUTTON');
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('BOUNDARY 1: toggling opens the overlay with exactly one member row, over a still-mounted ChatPanel', async () => {
+    // The members route MUST be listed before the general topic route below
+    // — routeFetch matches by prefix, and `/api/topics/{id}/members` starts
+    // with `/api/topics/{id}`, so the general route would otherwise win.
+    routeFetch([
+      [`/api/topics/${TOPIC}/members`, () => json({ members: [{ userId: 'u1', nickname: 'bob', role: 'member' }] })],
+      [`/api/topics/${TOPIC}`, () => json(topic())],
+      ['/api/auth/session', () => json({ userId: 'me' })],
+    ]);
+    await render();
+
+    await act(async () => { membersButton().click(); });
+    await flush();
+
+    expect(container.querySelectorAll('[data-testid="rail-member-row"]')).toHaveLength(1);
+    expect(text()).toContain('bob');
+    expect(container.querySelectorAll('[data-testid="chat-panel"]')).toHaveLength(1);
+    expect(membersButton().getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('BOUNDARY many: renders one row per member', async () => {
+    routeFetch([
+      [`/api/topics/${TOPIC}/members`, () => json({
+        members: [
+          { userId: 'me', nickname: 'me', role: 'owner' },
+          { userId: 'u1', nickname: 'bob', role: 'admin' },
+          { userId: 'u2', nickname: 'carol', role: 'member' },
+        ],
+      })],
+      [`/api/topics/${TOPIC}`, () => json(topic())],
+      ['/api/auth/session', () => json({ userId: 'me' })],
+    ]);
+    await render();
+
+    await act(async () => { membersButton().click(); });
+    await flush();
+
+    expect(container.querySelectorAll('[data-testid="rail-member-row"]')).toHaveLength(3);
+  });
+
+  it('EXT-FAILURE: a failed member fetch shows a retry, not an empty list', async () => {
+    routeFetch([
+      [`/api/topics/${TOPIC}/members`, () => json({ error: 'boom' }, false, 500)],
+      [`/api/topics/${TOPIC}`, () => json(topic())],
+      ['/api/auth/session', () => json({ userId: 'me' })],
+    ]);
+    await render();
+
+    await act(async () => { membersButton().click(); });
+    await flush();
+
+    expect(text()).toContain('Could not load the member list');
+    expect(container.querySelectorAll('[data-testid="rail-member-row"]')).toHaveLength(0);
+  });
+
+  it('clicking again closes the overlay (toggle, not one-way)', async () => {
+    routeFetch([
+      [`/api/topics/${TOPIC}/members`, () => json({ members: [{ userId: 'u1', nickname: 'bob', role: 'member' }] })],
+      [`/api/topics/${TOPIC}`, () => json(topic())],
+      ['/api/auth/session', () => json({ userId: 'me' })],
+    ]);
+    await render();
+
+    await act(async () => { membersButton().click(); });
+    await flush();
+    expect(container.querySelectorAll('[data-testid="rail-member-row"]')).toHaveLength(1);
+
+    await act(async () => { membersButton().click(); });
+    expect(container.querySelectorAll('[data-testid="rail-member-row"]')).toHaveLength(0);
   });
 });

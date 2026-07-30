@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   createApiKey: vi.fn(),
   listApiKeys: vi.fn(),
   revokeApiKey: vi.fn(),
+  updateApiKey: vi.fn(),
   incr: vi.fn().mockResolvedValue(1),
   expire: vi.fn(),
   publish: vi.fn().mockResolvedValue(1),
@@ -50,11 +51,12 @@ vi.mock('@/lib/apiKeys', async (importOriginal) => {
     createApiKey: mocks.createApiKey,
     listApiKeys: mocks.listApiKeys,
     revokeApiKey: mocks.revokeApiKey,
+    updateApiKey: mocks.updateApiKey,
   };
 });
 
 import { POST as keysPOST, GET as keysGET } from '@/app/api/profile/api-keys/route';
-import { DELETE as keysDELETE } from '@/app/api/profile/api-keys/[keyId]/route';
+import { PATCH as keysPATCH, DELETE as keysDELETE } from '@/app/api/profile/api-keys/[keyId]/route';
 import { POST as chatPOST } from '@/app/api/topics/[topicId]/chat/route';
 import { ApiKeyValidationError } from '@/lib/apiKeys';
 
@@ -189,5 +191,68 @@ describe('requireAiCapability apiKeyCmd short-circuit wired on a real guarded ro
     mocks.getSession.mockResolvedValue({ userId: 'bot1', nickname: 'b', isAI: true, apiKeyId: 'k1', apiKeyCmd: [] });
     const res = await chatPOST(req({ ciphertext: b64('c'), epoch: 0 }), { params: tParams() });
     expect(res.status).toBe(403);
+  });
+  it('FAIL-CLOSED: an isAI session with NO key scope at all (bare JWT, no apiKeyCmd) is 403\'d — never an implicit allow', async () => {
+    // No apiKeyId/apiKeyCmd on the session — e.g. a dev-login or verify/ai JWT
+    // that never went through an API key. Must be denied, not fall back to
+    // any account-wide grant (there isn't one any more).
+    mocks.getSession.mockResolvedValue({ userId: 'bot1', nickname: 'b', isAI: true });
+    const res = await chatPOST(req({ ciphertext: b64('c'), epoch: 0 }), { params: tParams() });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('PATCH /api/profile/api-keys/{keyId} (edit scope — authz / boundary / hostile / integrity)', () => {
+  it('401 when unauthenticated', async () => {
+    mocks.getSession.mockResolvedValue(null);
+    const res = await keysPATCH(req({ cmd: [], historyGrant: 'none' }), { params: kParams() });
+    expect(res.status).toBe(401);
+  });
+  it('400 when keyId is not a uuid', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    const res = await keysPATCH(req({ cmd: [], historyGrant: 'none' }), { params: Promise.resolve({ keyId: 'not-a-uuid' }) });
+    expect(res.status).toBe(400);
+    expect(mocks.updateApiKey).not.toHaveBeenCalled();
+  });
+  it('400 on invalid JSON body', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    const res = await keysPATCH({ json: async () => { throw new Error('bad'); }, cookies: { get: () => undefined }, headers: { get: () => null } } as never, { params: kParams() });
+    expect(res.status).toBe(400);
+  });
+  it('400 when updateApiKey rejects invalid input (unknown cmd / bad scope)', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    mocks.updateApiKey.mockRejectedValue(new ApiKeyValidationError('unknown cmd: /root/x'));
+    const res = await keysPATCH(req({ cmd: ['/root/x'], historyGrant: 'none' }), { params: kParams() });
+    expect(res.status).toBe(400);
+  });
+  it('404 when the key does not exist / is not owned by the caller / already revoked', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    mocks.updateApiKey.mockResolvedValue(null);
+    const res = await keysPATCH(req({ cmd: [], historyGrant: 'none' }), { params: kParams() });
+    expect(res.status).toBe(404);
+  });
+  it('200 updates the scope and returns metadata only — never the hash', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    mocks.updateApiKey.mockResolvedValue({
+      id: KEY_ID, userId: 'human1', name: 'laptop', keyHash: 'SHOULD-NOT-LEAK', prefix: 'osk_abcd1234',
+      isAI: true, cmd: ['/openstoa/post/write'], historyGrant: '7d', createdAt: new Date(), lastUsedAt: null, revokedAt: null,
+    });
+    const res = await keysPATCH(req({ cmd: ['/openstoa/post/write'], historyGrant: '7d' }), { params: kParams() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.key.cmd).toEqual(['/openstoa/post/write']);
+    expect(body.key.historyGrant).toBe('7d');
+    expect(JSON.stringify(body)).not.toContain('SHOULD-NOT-LEAK');
+    // Contract: scoped by the SESSION user, never a body-supplied id.
+    expect(mocks.updateApiKey).toHaveBeenCalledWith(expect.anything(), 'human1', KEY_ID, { cmd: ['/openstoa/post/write'], historyGrant: '7d' });
+  });
+  it('name/isAI are not accepted in the PATCH body — only cmd/historyGrant reach updateApiKey', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    mocks.updateApiKey.mockResolvedValue({
+      id: KEY_ID, userId: 'human1', name: 'laptop', keyHash: 'h', prefix: 'osk_abcd1234',
+      isAI: true, cmd: [], historyGrant: 'none', createdAt: new Date(), lastUsedAt: null, revokedAt: null,
+    });
+    await keysPATCH(req({ name: 'renamed', isAI: false, cmd: [], historyGrant: 'none' }), { params: kParams() });
+    expect(mocks.updateApiKey).toHaveBeenCalledWith(expect.anything(), 'human1', KEY_ID, { cmd: [], historyGrant: 'none' });
   });
 });

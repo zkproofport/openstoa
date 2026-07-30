@@ -44,6 +44,7 @@ function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => 
     profileSetNickname: make('profileSetNickname'),
     apiKeyCreate: make('apiKeyCreate'),
     apiKeyList: make('apiKeyList'),
+    apiKeyUpdate: make('apiKeyUpdate'),
     apiKeyRevoke: make('apiKeyRevoke'),
   } as unknown as Commands;
   const out: string[] = [];
@@ -241,6 +242,45 @@ describe('CLI dispatch', () => {
     await h.parse(['apikey', 'list']);
     expect(h.calls.some((c) => c.method === 'apiKeyList')).toBe(true);
     expect(h.out.join('\n')).toContain('laptop');
+  });
+  it('apikey update <id> parses --cmd into an array and forwards --history-grant', async () => {
+    const h = harness({ apiKeyUpdate: (id, input) => ({ id, name: 'laptop', prefix: 'osk_aaaa1234', isAI: true, ...(input as object) }) });
+    await h.parse(['apikey', 'update', 'k1', '--cmd', '/openstoa/chat/read, /openstoa/post/write', '--history-grant', 'full']);
+    expect(h.calls.find((c) => c.method === 'apiKeyUpdate')?.args).toEqual([
+      'k1',
+      { cmd: ['/openstoa/chat/read', '/openstoa/post/write'], historyGrant: 'full' },
+    ]);
+    expect(h.out.join('\n')).toContain('full');
+  });
+  it('apikey update with --cmd "" clears every capability (empty, not omitted)', async () => {
+    const h = harness({ apiKeyUpdate: (id, input) => ({ id, ...(input as object) }) });
+    await h.parse(['apikey', 'update', 'k1', '--cmd', '', '--history-grant', 'none']);
+    expect(h.calls.find((c) => c.method === 'apiKeyUpdate')?.args[1]).toEqual({ cmd: [], historyGrant: 'none' });
+  });
+  it('apikey update REQUIRES both flags — a partial update would silently reset the other field', async () => {
+    // A FRESH harness per case: commander keeps parsed option values on the
+    // Command instance, so a second parse against the same program would still
+    // see the first one's --cmd and wrongly satisfy the requiredOption. A real
+    // CLI process parses exactly once, which is what this reproduces.
+    // commander rejects a missing requiredOption by exiting rather than throwing
+    // a matchable message, so assert what matters: the run fails, and nothing is
+    // dispatched with a half-specified scope.
+    for (const partial of [
+      ['apikey', 'update', 'k1', '--cmd', '/openstoa/chat/read'],
+      ['apikey', 'update', 'k1', '--history-grant', 'full'],
+    ]) {
+      const h = harness({ apiKeyUpdate: () => ({ id: 'k1' }) });
+      await expect(h.parse(partial)).rejects.toThrow();
+      expect(h.calls.some((c) => c.method === 'apiKeyUpdate')).toBe(false);
+    }
+  });
+  it('apikey update help marks BOTH scope flags required (the guard above is not accidental)', () => {
+    const program = buildProgram();
+    const update = program.commands
+      .find((c) => c.name() === 'apikey')!
+      .commands.find((c) => c.name() === 'update')!;
+    const required = update.options.filter((o) => o.required || o.mandatory).map((o) => o.long);
+    expect(required).toEqual(expect.arrayContaining(['--cmd', '--history-grant']));
   });
   it('apikey revoke <id> → apiKeyRevoke(id)', async () => {
     const h = harness({ apiKeyRevoke: (id) => ({ revoked: true, id }) });

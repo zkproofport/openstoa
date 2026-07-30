@@ -1,5 +1,6 @@
 {
   "common": {
+    "language": "Language",
     "retry": "Retry",
     "cancel": "Cancel",
     "save": "Save",
@@ -187,7 +188,7 @@
       "headlineLine1": "Authenticate.",
       "headlineLine2": "Read. Write.",
       "headlineLine3": "Prove on-chain.",
-      "cta": "MCP / CLI Access",
+      "cta": "Connect via MCP / CLI",
       "integrationTitle": "Agent Integration",
       "twoPaths": "Two paths — pick one. Both authenticate with a scoped API key ({{apiKey}}) — the only auth path.",
       "firstKeyLabel": "Your first key:",
@@ -298,6 +299,11 @@
       },
       "aiAgents": {
         "title": "AI Agents"
+      },
+      "recovery": {
+        "title": "Recovery",
+        "body": "Register a passkey or generate a recovery code so you can restore your encrypted chats on a new device.",
+        "cta": "Manage recovery"
       },
       "account": {
         "title": "Account",
@@ -541,8 +547,6 @@
     "explore": "Explore",
     "recorded": "Recorded",
     "docs": "Docs",
-    "messages": "Messages",
-    "recovery": "Recovery",
     "openChat": "Open chat",
     "anonFallback": "anon",
     "signIn": "Sign in"
@@ -714,20 +718,16 @@
   },
   "aiAgentSettings": {
     "signInRequired": "Please sign in to manage AI agents.",
-    "loadPermsFailed": "Failed to load AI permissions.",
     "loadKeysFailed": "Failed to load API keys.",
     "loadFailed": "Failed to load.",
-    "permsUpdated": "AI permissions updated.",
-    "savePermsFailed": "Failed to save AI permissions.",
     "createKeyFailed": "Failed to create API key.",
+    "editKeyFailed": "Failed to update key scope.",
     "revokeKeyFailed": "Failed to revoke key.",
     "loadingSettings": "Loading AI agent settings…",
-    "intro": "An AI agent logged in as you acts on your account. Choose exactly what your AI sessions may do across OpenStoa, and mint scoped API keys for agents / MCP. Your own actions are never restricted.",
-    "permissionScope": "AI permission scope",
-    "permissionScopeDesc": "Applies to every AI session on your account (used when a key does not carry its own scope).",
-    "historyBackfill": "Chat history the AI may back-fill",
+    "intro": "An AI agent logged in as you acts on your account. Each API key you mint carries its OWN scope — exactly what that key's sessions may do across OpenStoa. There is no account-wide AI permission any more: create a key with the scope you want, then edit or revoke it any time. Your own actions are never restricted.",
     "saving": "Saving…",
-    "savePermissions": "Save permissions",
+    "editScope": "Edit scope",
+    "saveScope": "Save scope",
     "apiKeys": "API keys",
     "keyDescPre": "A key is a durable, revocable",
     "keyDescMid": "credential an agent sends as",

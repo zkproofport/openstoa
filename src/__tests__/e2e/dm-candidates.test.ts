@@ -211,6 +211,64 @@ describe('GET /api/dm/candidates — exclusions', () => {
   });
 });
 
+describe('GET /api/dm/candidates — FIX9: existing DM partners are excluded, but still DM-able', () => {
+  // Dedicated fixtures (not the shared alice/bob/carol above) — starting a
+  // real DM here is a one-way mutation for the rest of this file's run, so it
+  // must not corrupt the de-duplication/shared-topic assertions those tests
+  // make against the shared fixtures.
+  let erin: DevUser;
+  let frank: DevUser;
+  let sharedTopicId: string;
+
+  beforeAll(async () => {
+    const cats = await (await publicGet('/api/categories')).json();
+    const categoryId = cats.categories[0].id;
+
+    erin = await devLogin(uniq('e2e_cand_erin'));
+    frank = await devLogin(uniq('e2e_cand_frank'));
+
+    sharedTopicId = await createTopic(erin, `Cand FIX9 ${Date.now()}`, categoryId);
+    await join(frank, sharedTopicId);
+  }, 120000);
+
+  it('a shared-topic peer with NO existing DM is a candidate for both sides', async () => {
+    const erinCands = (await candidatesFor(erin)).map((c) => c.userId);
+    const frankCands = (await candidatesFor(frank)).map((c) => c.userId);
+    expect(erinCands).toContain(frank.userId);
+    expect(frankCands).toContain(erin.userId);
+  });
+
+  it('starting a DM removes the counterpart from BOTH sides candidates list, even though they still share a real topic', async () => {
+    const res = await asUser(erin).post('/api/dm', { userId: frank.userId });
+    expect([200, 201]).toContain(res.status);
+
+    const erinCands = (await candidatesFor(erin)).map((c) => c.userId);
+    const frankCands = (await candidatesFor(frank)).map((c) => c.userId);
+    expect(erinCands).not.toContain(frank.userId);
+    expect(frankCands).not.toContain(erin.userId);
+
+    // The shared REAL topic is untouched — they just no longer show up as a
+    // "new conversation" candidate for each other.
+    const stillJoint = await asUser(erin).get(`/api/topics/${sharedTopicId}/members`);
+    const memberIds = (await stillJoint.json()).members.map((m: { userId: string }) => m.userId);
+    expect(memberIds).toContain(erin.userId);
+    expect(memberIds).toContain(frank.userId);
+  });
+
+  it('POST /api/dm still succeeds (idempotent) for an existing partner absent from the candidates list', async () => {
+    // Confirms the exclusion is picker-only, not an actual DM-eligibility
+    // rule — POST /api/dm never re-derives eligibility from the candidates
+    // query.
+    const res = await asUser(frank).post('/api/dm', { userId: erin.userId });
+    expect(res.status).toBe(200); // idempotent hit, not a fresh 201
+  });
+
+  it('GET /api/dm (not /api/dm/candidates) is where an existing partner is discoverable', async () => {
+    const dms = await (await asUser(erin).get('/api/dm')).json();
+    expect(dms.dms.map((d: { peer: { userId: string } }) => d.peer.userId)).toContain(frank.userId);
+  });
+});
+
 describe('GET /api/dm/candidates — payload shape', () => {
   it('exposes only picker-relevant fields', async () => {
     const [row] = await candidatesFor(alice);

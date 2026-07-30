@@ -221,5 +221,16 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     ),
   );
   host.tool('openstoa_apikey_list', 'List your API keys (metadata only — never the raw key).', {}, wrap(() => commands.apiKeyList()));
+  host.tool(
+    'openstoa_apikey_update',
+    'Re-scope an existing API key in place, so its holder keeps the same secret. cmd and historyGrant REPLACE the stored scope — send the full intended scope, not a delta.',
+    { id: z.string(), cmd: z.array(z.string()), historyGrant: z.string() },
+    wrap((a) =>
+      commands.apiKeyUpdate(a.id as string, {
+        cmd: a.cmd as string[],
+        historyGrant: a.historyGrant as string,
+      }),
+    ),
+  );
   host.tool('openstoa_apikey_revoke', 'Revoke an API key — takes effect immediately.', { id: z.string() }, wrap((a) => commands.apiKeyRevoke(a.id as string)));
 }

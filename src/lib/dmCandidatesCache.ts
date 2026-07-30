@@ -34,6 +34,11 @@ const TTL_MS = 60_000;
 let cached: { at: number; data: DmCandidate[] } | null = null;
 let inflight: Promise<DmCandidatesResult> | null = null;
 
+// A SEPARATE small cache of existing-DM peer ids — see `isDmCandidate`'s doc
+// below for why this must not be folded into `cached` above.
+let cachedDmPeerIds: { at: number; ids: Set<string> } | null = null;
+let dmPeerIdsInflight: Promise<Set<string>> | null = null;
+
 /** Either a real list, or an explicit failure the caller can render as such. */
 export type DmCandidatesResult =
   | { ok: true; data: DmCandidate[] }
@@ -73,20 +78,74 @@ export async function getDmCandidates(force = false): Promise<DmCandidatesResult
   return inflight;
 }
 
-/** Drop the cached list so the next `getDmCandidates()` re-fetches. */
+/**
+ * Existing DM peer ids — a SEPARATE small cache from `cached` above, fetched
+ * from `GET /api/dm`. Backs `isDmCandidate`'s "already messaging them" branch
+ * (see its doc). This list is inherently small (bounded by how many DM
+ * channels the viewer has, not by topic-membership fan-out), so a plain
+ * client-side `Set` lookup here is not the "pull the cross-product into JS"
+ * pattern `buildDmCandidatesQuery`'s doc warns against — that pattern is
+ * about NOT cross-referencing two large, unbounded lists; this is a small,
+ * already-indexed (`topics.dm_pair` is unique) lookup on its own.
+ */
+async function getExistingDmPeerIds(force = false): Promise<Set<string>> {
+  if (!force && cachedDmPeerIds && Date.now() - cachedDmPeerIds.at < TTL_MS) return cachedDmPeerIds.ids;
+  if (!force && dmPeerIdsInflight) return dmPeerIdsInflight;
+
+  dmPeerIdsInflight = fetch('/api/dm', { credentials: 'include' })
+    .then(async (r): Promise<Set<string>> => {
+      if (!r.ok) return new Set();
+      const d = (await r.json()) as { dms?: Array<{ peer?: { userId?: string } }> };
+      const ids = new Set(
+        Array.isArray(d.dms)
+          ? d.dms.map((c) => c.peer?.userId).filter((id): id is string => typeof id === 'string')
+          : [],
+      );
+      cachedDmPeerIds = { at: Date.now(), ids };
+      return ids;
+    })
+    .catch(() => new Set<string>())
+    .finally(() => {
+      dmPeerIdsInflight = null;
+    });
+
+  return dmPeerIdsInflight;
+}
+
+/** Drop both caches so the next `getDmCandidates()` / `isDmCandidate()` call
+ *  re-fetches. Callers MUST invoke this right after a successful
+ *  `POST /api/dm` — otherwise the person just messaged keeps appearing in the
+ *  new-conversation picker (stale `cached`) for up to a minute, since the
+ *  server-side exclusion only takes effect on the NEXT fetch. */
 export function invalidateDmCandidates(): void {
   cached = null;
+  cachedDmPeerIds = null;
 }
 
 /**
- * Convenience check for `UserCard`: is `userId` someone the viewer may DM?
+ * Convenience check for `UserCard` / member-row DM buttons: is `userId`
+ * someone the viewer may open a conversation with RIGHT NOW?
  *
- * Fails CLOSED — a failed lookup answers `false`, so a transient blip hides the
- * DM button rather than offering one that would 403. That collapse is correct
- * HERE (a hidden button is a fine degradation) and wrong in the picker, which
- * must say "couldn't load" instead of "nobody to message".
+ * Two independent, OR'd conditions — NOT just "is in the candidate list":
+ *   1. They are an existing DM partner (`GET /api/dm`). `POST /api/dm` never
+ *      re-checks shared-topic membership once a channel exists (it is
+ *      idempotent purely on the canonical `dm_pair`), so someone you already
+ *      message must stay DM-able even if you no longer share a topic with
+ *      them (e.g. you both left it). This is also why this can't be answered
+ *      from `getDmCandidates()` alone: that list now EXCLUDES existing DM
+ *      partners (see `buildDmCandidatesQuery`'s doc) — it answers "who is a
+ *      NEW-conversation candidate", not "who may I message at all".
+ *   2. They are a genuine new-conversation candidate (shares a topic, no
+ *      existing DM) — the pre-existing check.
+ *
+ * Fails CLOSED on both branches — a failed lookup contributes `false`/empty,
+ * so a transient blip can only ever HIDE the DM button, never offer one that
+ * would 403. That collapse is correct HERE (a hidden button is a fine
+ * degradation) and wrong in the picker, which must say "couldn't load"
+ * instead of "nobody to message".
  */
 export async function isDmCandidate(userId: string): Promise<boolean> {
-  const res = await getDmCandidates();
-  return res.ok && res.data.some((c) => c.userId === userId);
+  const [candidatesRes, existingDmPeerIds] = await Promise.all([getDmCandidates(), getExistingDmPeerIds()]);
+  if (existingDmPeerIds.has(userId)) return true;
+  return candidatesRes.ok && candidatesRes.data.some((c) => c.userId === userId);
 }

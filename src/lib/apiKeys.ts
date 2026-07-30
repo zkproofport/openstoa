@@ -61,6 +61,17 @@ export interface NormalizedApiKeyInput {
   isAI: boolean;
 }
 
+/** PATCH input — scope only (name/isAI are fixed at issuance, never re-editable). */
+export interface UpdateApiKeyInput {
+  cmd: unknown;
+  historyGrant: unknown;
+}
+
+export interface NormalizedUpdateApiKeyInput {
+  cmd: string[];
+  historyGrant: string;
+}
+
 export interface ApiKeyRow {
   id: string;
   userId: string;
@@ -93,19 +104,11 @@ export function toApiKeyMeta(row: ApiKeyRow): ApiKeyMeta {
 }
 
 /**
- * Validate + normalize a key-creation request. Pure (no db) so it is
- * unit-testable in isolation. Throws ApiKeyValidationError on invalid input.
+ * Shared cmd/historyGrant validation for both create and update — the same
+ * least-privilege rules apply whether a key is being minted or re-scoped.
+ * Pure (no db). Throws ApiKeyValidationError on invalid input.
  */
-export function validateCreateApiKeyInput(input: CreateApiKeyInput): NormalizedApiKeyInput {
-  const { name, cmd, historyGrant, isAI } = input;
-
-  if (typeof name !== 'string' || name.trim().length === 0) {
-    throw new ApiKeyValidationError('name is required');
-  }
-  if (name.length > MAX_NAME_LEN) {
-    throw new ApiKeyValidationError('name is too long');
-  }
-
+function validateCmdAndHistoryGrant(cmd: unknown, historyGrant: unknown): NormalizedUpdateApiKeyInput {
   if (!Array.isArray(cmd)) {
     throw new ApiKeyValidationError('cmd must be an array');
   }
@@ -126,11 +129,40 @@ export function validateCreateApiKeyInput(input: CreateApiKeyInput): NormalizedA
     throw new ApiKeyValidationError('historyGrant must be a valid scope: none | Nd | since_epoch:N | full');
   }
 
+  return { cmd: cmds, historyGrant: historyGrant as string };
+}
+
+/**
+ * Validate + normalize a key-creation request. Pure (no db) so it is
+ * unit-testable in isolation. Throws ApiKeyValidationError on invalid input.
+ */
+export function validateCreateApiKeyInput(input: CreateApiKeyInput): NormalizedApiKeyInput {
+  const { name, cmd, historyGrant, isAI } = input;
+
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    throw new ApiKeyValidationError('name is required');
+  }
+  if (name.length > MAX_NAME_LEN) {
+    throw new ApiKeyValidationError('name is too long');
+  }
+
+  const scoped = validateCmdAndHistoryGrant(cmd, historyGrant);
+
   if (isAI !== undefined && typeof isAI !== 'boolean') {
     throw new ApiKeyValidationError('isAI must be a boolean');
   }
 
-  return { name: name.trim(), cmd: cmds, historyGrant: historyGrant as string, isAI: isAI === undefined ? true : isAI };
+  return { name: name.trim(), ...scoped, isAI: isAI === undefined ? true : isAI };
+}
+
+/**
+ * Validate + normalize a key-scope UPDATE request (PATCH). Pure (no db).
+ * Deliberately narrower than create: no `name`/`isAI` — those are fixed at
+ * issuance, only the scope itself (`cmd`/`historyGrant`) is re-editable.
+ * Throws ApiKeyValidationError on invalid input.
+ */
+export function validateUpdateApiKeyInput(input: UpdateApiKeyInput): NormalizedUpdateApiKeyInput {
+  return validateCmdAndHistoryGrant(input.cmd, input.historyGrant);
 }
 
 /**
@@ -188,6 +220,32 @@ export async function listApiKeys(db: DB, userId: string): Promise<ApiKeyRow[]> 
     orderBy: [desc(apiKeys.createdAt)],
   });
   return rows as ApiKeyRow[];
+}
+
+/**
+ * Update a key's scope (cmd + historyGrant) in place — the "edit" half of
+ * "GitHub-PAT style: create with a scope, edit the scope, or revoke." Does
+ * NOT touch name/isAI/keyHash — only the two fields that gate requests.
+ * Scoping the WHERE by userId (and requiring non-revoked) means a foreign or
+ * already-revoked keyId simply matches no row — same shape as revokeApiKey,
+ * so a caller can't distinguish "not yours" from "doesn't exist" (no
+ * ownership oracle). Throws ApiKeyValidationError on invalid input BEFORE
+ * touching the db. Returns the updated row, or null if not found / not owned
+ * / already revoked.
+ */
+export async function updateApiKey(
+  db: DB,
+  userId: string,
+  keyId: string,
+  input: UpdateApiKeyInput,
+): Promise<ApiKeyRow | null> {
+  const norm = validateUpdateApiKeyInput(input);
+  const [row] = await db
+    .update(apiKeys)
+    .set({ cmd: norm.cmd, historyGrant: norm.historyGrant })
+    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)))
+    .returning();
+  return (row as ApiKeyRow | undefined) ?? null;
 }
 
 /**

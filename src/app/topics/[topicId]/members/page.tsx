@@ -9,6 +9,7 @@ import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import UserCard from '@/components/UserCard';
 import { useChatRail } from '@/lib/chatRailContext';
+import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface Member {
@@ -219,6 +220,10 @@ export default function MembersPage() {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? t('membersPage.openConversationFailed'));
       if (!d.topicId) throw new Error(t('membersPage.openConversationFailed'));
+      // See ChatRail.tsx's startDm — the server now excludes this person from
+      // future candidate fetches (FIX9); invalidate so isDmCandidate()/the
+      // picker reflect that immediately instead of the cached pre-DM state.
+      invalidateDmCandidates();
       if (chatRail) {
         chatRail.openRail({ kind: 'dm', topicId: d.topicId, title: nickname, profileImage: profileImage ?? null });
       } else {

@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 import Avatar from '@/components/Avatar';
 import ImageLightbox from '@/components/ImageLightbox';
 import AiAgentSettings from '@/components/AiAgentSettings';
+import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { truncateId, resizeImage } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -649,6 +651,15 @@ export default function MyPage() {
               flexDirection: 'column',
               gap: 'var(--space-6)',
             }}>
+              {/* Language section (FIX6) — same `LocaleSwitcher` the header
+                  renders, so the two never drift out of sync. */}
+              <div>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('common.language')}
+                </h3>
+                <LocaleSwitcher />
+              </div>
+
               {/* Profile Image section */}
               <div>
                 <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
@@ -1012,6 +1023,53 @@ export default function MyPage() {
                   {t('myPage.settings.aiAgents.title')}
                 </h3>
                 <AiAgentSettings />
+              </div>
+
+              {/* Recovery section (FIX8) — mirrors mobile's ProfileStack ->
+                  AccountRecoveryScreen: a link OUT of the profile/account
+                  area to the dedicated recovery flow, not the flow inlined
+                  here. `/recovery` (`AccountRecovery.tsx`) still owns the
+                  actual passkey/recovery-code UI and stays reachable as a
+                  direct URL; this is just where a signed-in user now
+                  DISCOVERS it, replacing the old top-level header link. */}
+              <div>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('myPage.settings.recovery.title')}
+                </h3>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-4)',
+                  padding: 'var(--space-4) var(--space-5)',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 'var(--radius-card)',
+                }}>
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>
+                    {t('myPage.settings.recovery.body')}
+                  </p>
+                  <Link
+                    href="/recovery"
+                    style={{
+                      flexShrink: 0,
+                      background: 'rgba(120,140,255,0.1)',
+                      color: 'var(--accent)',
+                      border: '1px solid rgba(120,140,255,0.2)',
+                      borderRadius: 'var(--radius-control)',
+                      padding: '8px var(--space-4)',
+                      fontSize: 'var(--text-body-sm)',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                      minHeight: 'var(--touch-target-min)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {t('myPage.settings.recovery.cta')}
+                  </Link>
+                </div>
               </div>
 
               {/* Account section */}

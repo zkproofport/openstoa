@@ -24,8 +24,7 @@ import type {
   ArchiveEntryWire,
   TakBundleRowWire,
   ConsumedKeyPackageWire,
-  AiPermissions,
-  AiPermissionsInput,
+  ApiKeyUpdateInput,
   ApiKeyMeta,
   ApiKeyCreateInput,
   ApiKeyCreateResult,
@@ -400,16 +399,15 @@ export class OpenStoaClient {
   };
 
   // -------------------------------------------------------------------------
-  // AI permissions (profile-level capability set for the caller's isAI sessions)
+  // (removed) AI permissions — the profile-level capability set is gone.
+  //
+  // Authorization now lives on the API KEY, GitHub-PAT style: each key carries
+  // its own `cmd` allowlist and `historyGrant`, and that is the only thing the
+  // server enforces. `GET`/`PUT /api/profile/ai-permissions` answer 410 Gone.
+  // Use `apiKeys.create` to issue a scoped key and `apiKeys.update` to re-scope
+  // one. Keeping a wrapper here that could only ever return 410 would be worse
+  // than its absence — a caller would discover the retirement at runtime.
   // -------------------------------------------------------------------------
-  readonly aiPermissions = {
-    /** GET the caller's AI capability configuration (cmd + historyGrant + allowedCmd). */
-    get: (): Promise<AiPermissions> =>
-      this.request<AiPermissions>(`/api/profile/ai-permissions`),
-    /** PUT (replace) the caller's AI capability configuration. */
-    set: (input: AiPermissionsInput): Promise<AiPermissions> =>
-      this.request<AiPermissions>(`/api/profile/ai-permissions`, { method: 'PUT', body: input }),
-  };
 
   // -------------------------------------------------------------------------
   // API keys (durable, revocable credentials — an agent's `osk_...` Bearer)
@@ -421,6 +419,18 @@ export class OpenStoaClient {
     /** GET /api/profile/api-keys — metadata only, never the raw key or hash. */
     list: async (): Promise<ApiKeyMeta[]> =>
       (await this.request<{ apiKeys: ApiKeyMeta[] }>(`/api/profile/api-keys`)).apiKeys,
+    /**
+     * PATCH /api/profile/api-keys/{id} — re-scope a key without reissuing it,
+     * so the holder keeps the secret it already has. `cmd`/`historyGrant` are
+     * replaced wholesale, not merged; send the full intended scope.
+     */
+    update: async (id: string, input: ApiKeyUpdateInput): Promise<ApiKeyMeta> =>
+      (
+        await this.request<{ key: ApiKeyMeta }>(`/api/profile/api-keys/${id}`, {
+          method: 'PATCH',
+          body: input,
+        })
+      ).key,
     /** DELETE /api/profile/api-keys/{id} — revoke; takes effect immediately. */
     revoke: (id: string): Promise<{ revoked: boolean; id: string }> =>
       this.request(`/api/profile/api-keys/${id}`, { method: 'DELETE' }),

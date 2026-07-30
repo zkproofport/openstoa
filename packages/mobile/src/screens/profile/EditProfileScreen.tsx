@@ -689,14 +689,14 @@ export function EditProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* AI permissions — what an AI agent logged in as you may do */}
+        {/* AI agent API keys — each key carries its own scope (design §7 consolidation) */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>AI agent</Text>
+          <Text style={styles.sectionTitle}>{t('openstoa.apiKeys.title')}</Text>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('AiPermissions' as never)}
           >
-            <Text style={styles.actionButtonText}>Manage AI permissions</Text>
+            <Text style={styles.actionButtonText}>{t('openstoa.apiKeys.yourKeys')}</Text>
           </TouchableOpacity>
         </View>
 

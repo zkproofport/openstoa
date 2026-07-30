@@ -28,12 +28,14 @@ vi.mock('next/navigation', () => ({
 }));
 
 const isDmCandidateMock = vi.hoisted(() => vi.fn(async (_userId: string) => false));
+const invalidateDmCandidatesMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/dmCandidatesCache', () => ({
   isDmCandidate: (userId: string) => isDmCandidateMock(userId),
+  invalidateDmCandidates: () => invalidateDmCandidatesMock(),
 }));
 
 import UserCard from '@/components/UserCard';
-import { ChatRailContext } from '@/lib/chatRailContext';
+import { publishChatRailApi, __resetChatRailStore } from '@/lib/chatRailStore';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 let container: HTMLDivElement;
@@ -70,24 +72,24 @@ function notDmableNote(): HTMLElement | null {
   return container.querySelector('[data-testid="user-card-not-dmable"]');
 }
 
-/** Mounts UserCard inside a ChatRailContext.Provider so `startDm` takes the
- *  "land in the rail" path instead of the router.push fallback.
- *  `UserCard` now reads copy through `useTranslation()` — see
- *  src/lib/i18n/I18nProvider.tsx — so every render needs the provider in the
- *  tree, same as the app root (src/app/layout.tsx). */
+/** Mounts UserCard with a rail API published to the module-level store
+ *  (`chatRailStore.ts`, the mechanism `useChatRail()` now reads — see
+ *  `chatRailContext.tsx`) so `startDm` takes the "land in the rail" path
+ *  instead of the router.push fallback. `UserCard` now reads copy through
+ *  `useTranslation()` — see src/lib/i18n/I18nProvider.tsx — so every render
+ *  needs the provider in the tree, same as the app root (src/app/layout.tsx). */
 async function mountWithRail(
   openRail: (room: unknown) => void,
   props: Partial<React.ComponentProps<typeof UserCard>> = {},
 ) {
+  publishChatRailApi({ openRail: openRail as never });
   const merged = { userId: 'peer-1', nickname: 'bob', viewerUserId: 'viewer-1', ...props };
   await act(async () => {
     root.render(
       <I18nProvider initialLocale="en">
-        <ChatRailContext.Provider value={{ openRail: openRail as never }}>
-          <UserCard {...merged}>
-            <span data-testid="avatar-slot">B</span>
-          </UserCard>
-        </ChatRailContext.Provider>
+        <UserCard {...merged}>
+          <span data-testid="avatar-slot">B</span>
+        </UserCard>
       </I18nProvider>,
     );
   });
@@ -100,7 +102,11 @@ beforeEach(() => {
   pushMock.mockClear();
   isDmCandidateMock.mockClear();
   isDmCandidateMock.mockResolvedValue(false);
+  invalidateDmCandidatesMock.mockClear();
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ userId: 'viewer-1' }))));
+  // No rail published by default — most tests exercise the router.push
+  // fallback path; `mountWithRail` opts a specific test into the rail path.
+  __resetChatRailStore();
 });
 
 afterEach(async () => {
@@ -109,6 +115,7 @@ afterEach(async () => {
   });
   container.remove();
   vi.unstubAllGlobals();
+  __resetChatRailStore();
 });
 
 async function mount(props: Partial<React.ComponentProps<typeof UserCard>> = {}) {
@@ -204,6 +211,8 @@ describe('AUTHZ — Message button gating', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/dm', expect.objectContaining({ method: 'POST' }));
     expect(pushMock).toHaveBeenCalledWith('/dm/dm-topic-1');
+    // FIX9: starting a DM invalidates the candidates cache immediately.
+    expect(invalidateDmCandidatesMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -377,7 +386,7 @@ describe('three honest end-states — self / no badges / not DM-able', () => {
 });
 
 describe('DM lands in the chat rail when one is reachable (see chatRailContext.tsx)', () => {
-  it('CONTRACT: inside a ChatRailContext, starting a DM calls openRail with the room and does NOT navigate', async () => {
+  it('CONTRACT: with a rail published, starting a DM calls openRail with the room and does NOT navigate', async () => {
     isDmCandidateMock.mockResolvedValue(true);
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);

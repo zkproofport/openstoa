@@ -412,6 +412,38 @@
       "self": "본인이에요",
       "noBadges": "아직 뱃지가 없어요",
       "notDmableAi": "AI 구성원에게는 DM을 보낼 수 없어요"
+    },
+    "apiKeys": {
+      "title": "AI 에이전트",
+      "intro": "회원님으로 로그인한 AI 에이전트는 회원님의 계정으로 동작합니다. 생성하는 API 키마다 자체 범위를 가지며, 그 범위가 OpenStoa 전반에서 해당 키의 세션이 할 수 있는 일을 정확히 결정합니다. 더 이상 계정 전체에 적용되는 AI 권한은 없습니다 — 원하는 범위로 키를 만들고 언제든 수정하거나 폐기하세요. 회원님 본인의 행동은 절대 제한되지 않습니다.",
+      "loadFailed": "API 키를 불러오지 못했습니다.",
+      "createFailedTitle": "키 생성 실패",
+      "editFailedTitle": "키 범위 수정 실패",
+      "revokeFailedTitle": "키 폐기 실패",
+      "clipboardUnavailableTitle": "클립보드를 사용할 수 없어요",
+      "clipboardUnavailableMessage": "호스트 앱을 다시 빌드하면 복사 기능을 쓸 수 있어요 — 지금은 텍스트를 직접 선택해서 복사해 주세요.",
+      "createNewKey": "새 키 만들기",
+      "keyNamePlaceholder": "키 이름 (예: 노트북 CLI)",
+      "keyScope": "키 범위 (권한)",
+      "historyBackfill": "이 키가 채워 넣을 수 있는 채팅 기록 범위",
+      "createKey": "키 생성",
+      "copyNowTitle": "지금 키를 복사하세요 — 다시 표시되지 않습니다",
+      "hashOnlyStored": "서버에는 해시만 저장됩니다. 키를 잃어버리면 폐기하고 새로 만드세요.",
+      "copy": "복사",
+      "dismiss": "저장했어요 — 닫기",
+      "yourKeys": "내 키",
+      "noKeys": "아직 API 키가 없습니다.",
+      "revoked": "폐기됨",
+      "editScope": "범위 수정",
+      "saveScope": "범위 저장",
+      "revoke": "폐기",
+      "revokeConfirmTitle": "이 키를 폐기할까요?",
+      "revokeConfirmMessage": "\"{{name}}\" 키가 즉시 사용 중지됩니다. 되돌릴 수 없습니다.",
+      "scopeLabel": "범위: {{value}}",
+      "scopeNone": "없음",
+      "historyLabel": "기록: {{value}}",
+      "createdLabel": "생성일: {{value}}",
+      "lastUsedLabel": "마지막 사용: {{value}}"
     }
   }
 }

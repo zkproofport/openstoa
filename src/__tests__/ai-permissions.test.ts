@@ -1,110 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * Profile-level AI capability model — unit tests (design §7).
+ * AI capability = API-key scope ONLY (design §7, consolidated onto API keys
+ * 2026-07-30). The old account-wide `ai_permissions` grant has been retired:
  *
- * Three layers, all DB-free:
- *   1. Pure validation + predicate in `src/lib/aiPermissions.ts`
- *      (validateAiPermissionInput / permissionAllows) — the edge-case matrix's
- *      boundary / hostile / empty / integrity rows.
- *   2. The REAL `requireAiCapability` gate (isAI short-circuit + capability
- *      lookup + 403), exercised against a mocked db.query.aiPermissions.
- *   3. Route wiring: the profile GET/PUT endpoints AND the isAI-capability gate
- *      on every guarded route (chat send/read, archive, tak, topic join/leave,
- *      post write/delete, comment write, profile edit). requireAiCapability is
- *      mocked here so we isolate the HTTP contract (that each route calls the
- *      gate with the right cmd and propagates its 403).
+ *   1. `requireAiCapability` (`src/lib/aiPermissions.ts`) — fail-closed, reads
+ *      ONLY `session.apiKeyCmd`. An isAI session with no key scope is denied,
+ *      never a fallback to an account-wide grant (there isn't one any more).
+ *   2. `GET/PUT /api/profile/ai-permissions` — retired to 410 on every call
+ *      (still 401 first if unauthenticated). Nothing reads `ai_permissions`
+ *      for authorization any more.
+ *   3. Route wiring — the isAI-capability gate is still called on every
+ *      guarded route with the right cmd (contract test, `requireAiCapability`
+ *      mocked here so we isolate the HTTP layer).
+ *
+ * Per-key scope creation/edit/revoke is covered in apiKeys.test.ts (db layer)
+ * and apiKeys-routes.test.ts (HTTP layer + the requireAiCapability
+ * apiKeyCmd short-circuit against a real guarded route).
  */
 
 // ───────────────────────────────────────────────────────────────────────────
-// 1. Pure validation + predicate (no db, no mocks)
-// ───────────────────────────────────────────────────────────────────────────
-import {
-  validateAiPermissionInput,
-  permissionAllows,
-  ALLOWED_CMDS,
-  AiPermissionValidationError,
-  MAX_CMD_COUNT,
-  type AiPermissionRow,
-} from '@/lib/aiPermissions';
-
-describe('validateAiPermissionInput — cmd allowlist (boundary / empty / hostile)', () => {
-  it('accepts an EMPTY cmd array (AI may do nothing — the safe default)', () => {
-    const n = validateAiPermissionInput({ cmd: [], historyGrant: 'none' });
-    expect(n.cmd).toEqual([]);
-  });
-  it('accepts a subset of ALLOWED_CMDS', () => {
-    const n = validateAiPermissionInput({ cmd: ['/openstoa/chat/send', '/openstoa/post/read'], historyGrant: 'full' });
-    expect(n.cmd).toEqual(['/openstoa/chat/send', '/openstoa/post/read']);
-  });
-  it('accepts the full ALLOWED_CMDS set', () => {
-    const n = validateAiPermissionInput({ cmd: [...ALLOWED_CMDS], historyGrant: 'none' });
-    expect(n.cmd).toEqual([...ALLOWED_CMDS]);
-  });
-  it('rejects a non-array cmd', () => {
-    expect(() => validateAiPermissionInput({ cmd: '/openstoa/chat/send', historyGrant: 'none' })).toThrow(AiPermissionValidationError);
-  });
-  it('rejects unknown cmd (no silent allow)', () => {
-    expect(() => validateAiPermissionInput({ cmd: ['/openstoa/chat/send', '/root/delete'], historyGrant: 'none' })).toThrow(/unknown cmd/);
-  });
-  it('rejects a non-string cmd entry', () => {
-    expect(() => validateAiPermissionInput({ cmd: [123], historyGrant: 'none' })).toThrow(AiPermissionValidationError);
-  });
-  it('rejects too many cmd entries (SI-4 cap)', () => {
-    const many = Array.from({ length: MAX_CMD_COUNT + 1 }, () => '/ai/summarize');
-    expect(() => validateAiPermissionInput({ cmd: many, historyGrant: 'none' })).toThrow(/too many/);
-  });
-  it('dedupes repeated cmd entries', () => {
-    const n = validateAiPermissionInput({ cmd: ['/ai/summarize', '/ai/summarize'], historyGrant: 'none' });
-    expect(n.cmd).toEqual(['/ai/summarize']);
-  });
-});
-
-describe('validateAiPermissionInput — historyGrant scope (boundary / hostile)', () => {
-  it('accepts none | full | since_epoch:N | Nd', () => {
-    for (const s of ['none', 'full', 'since_epoch:5', '30d']) {
-      const n = validateAiPermissionInput({ cmd: [], historyGrant: s });
-      expect(n.historyGrant).toBe(s);
-    }
-  });
-  it('rejects garbage scope', () => {
-    for (const s of ['everything', 'since_epoch:', 'since_epoch:-1', '', 'drop table', '0d', undefined, null, 123]) {
-      expect(() => validateAiPermissionInput({ cmd: [], historyGrant: s })).toThrow(AiPermissionValidationError);
-    }
-  });
-  it('SI-1: normalized permission carries ONLY metadata (cmd + historyGrant), no key/plaintext fields', () => {
-    const n = validateAiPermissionInput({ cmd: ['/openstoa/chat/send'], historyGrant: 'full' });
-    expect(Object.keys(n).sort()).toEqual(['cmd', 'historyGrant'].sort());
-  });
-});
-
-describe('permissionAllows — enforcement predicate (integrity / hostile)', () => {
-  const perm: AiPermissionRow = {
-    userId: 'u1', cmd: ['/openstoa/chat/send', '/openstoa/post/read'], historyGrant: 'full', updatedAt: new Date(),
-  };
-  it('allows a cmd in the set', () => {
-    expect(permissionAllows(perm, '/openstoa/chat/send')).toBe(true);
-    expect(permissionAllows(perm, '/openstoa/post/read')).toBe(true);
-  });
-  it('denies a cmd not in the set (scope beyond permission)', () => {
-    expect(permissionAllows(perm, '/openstoa/post/write')).toBe(false);
-    expect(permissionAllows(perm, '/openstoa/profile/edit')).toBe(false);
-  });
-  it('denies when the permission set is null (no config → 403)', () => {
-    expect(permissionAllows(null, '/openstoa/chat/send')).toBe(false);
-  });
-  it('denies against an empty allowlist (AI configured to do nothing)', () => {
-    expect(permissionAllows({ ...perm, cmd: [] }, '/openstoa/chat/send')).toBe(false);
-  });
-  it('ALLOWED_CMDS spans the app (topic/post/comment/chat/profile) + /ai helpers', () => {
-    for (const c of ['/openstoa/topic/join', '/openstoa/topic/leave', '/openstoa/post/write', '/openstoa/post/delete', '/openstoa/comment/write', '/openstoa/chat/send', '/openstoa/chat/read', '/openstoa/profile/edit', '/ai/summarize', '/ai/search']) {
-      expect(ALLOWED_CMDS).toContain(c);
-    }
-  });
-});
-
-// ───────────────────────────────────────────────────────────────────────────
-// Shared mocks for the db/session-backed layers
+// Shared mocks
 // ───────────────────────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -112,15 +28,12 @@ const mocks = vi.hoisted(() => ({
   expire: vi.fn(),
   publish: vi.fn().mockResolvedValue(1),
   topicMembersFindFirst: vi.fn(),
-  aiPermsFindFirst: vi.fn(),
   usersFindFirst: vi.fn(),
   postsFindFirst: vi.fn(),
   topicsFindFirst: vi.fn(),
   insertReturning: vi.fn(),
-  // aiPermissions module mocks (route-wiring layer)
+  // aiPermissions module mock (route-wiring layer only)
   requireAiCapability: vi.fn(),
-  getAiPermissions: vi.fn(),
-  setAiPermissions: vi.fn(),
 }));
 
 vi.mock('@/lib/session', () => ({ getSession: mocks.getSession }));
@@ -136,11 +49,12 @@ vi.mock('@/lib/push', () => ({
   getPushProvider: () => null,
   getPushMode: () => 'content-free',
 }));
+// Deliberately NO `aiPermissions` entry in `db.query` — proves the real gate
+// never touches the db at all any more (see section 1 below).
 vi.mock('@/lib/db', () => ({
   db: {
     query: {
       topicMembers: { findFirst: mocks.topicMembersFindFirst },
-      aiPermissions: { findFirst: mocks.aiPermsFindFirst },
       users: { findFirst: mocks.usersFindFirst },
       posts: { findFirst: mocks.postsFindFirst },
       topics: { findFirst: mocks.topicsFindFirst },
@@ -150,9 +64,10 @@ vi.mock('@/lib/db', () => ({
 }));
 
 // ───────────────────────────────────────────────────────────────────────────
-// 2. REAL requireAiCapability gate (db mocked, module NOT mocked)
+// 1. REAL requireAiCapability gate — fail-closed, key-only (db mocked above
+//    WITHOUT an aiPermissions query, so any lingering db fallback would throw)
 // ───────────────────────────────────────────────────────────────────────────
-describe('requireAiCapability — the real gate (authz / hostile)', () => {
+describe('requireAiCapability — the real gate (authz / hostile / fail-closed)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('non-AI session passes with NO capability lookup (humans unaffected)', async () => {
@@ -160,47 +75,109 @@ describe('requireAiCapability — the real gate (authz / hostile)', () => {
     const { db } = await import('@/lib/db');
     const res = await real.requireAiCapability(db as never, { userId: 'human', isAI: false }, '/openstoa/chat/send');
     expect(res).toBeNull();
-    expect(mocks.aiPermsFindFirst).not.toHaveBeenCalled();
   });
-  it('isAI session WITH the capability passes (null)', async () => {
+
+  it('isAI session WITH the cmd in apiKeyCmd passes (null)', async () => {
     const real = await vi.importActual<typeof import('@/lib/aiPermissions')>('@/lib/aiPermissions');
     const { db } = await import('@/lib/db');
-    mocks.aiPermsFindFirst.mockResolvedValue({ userId: 'bot', cmd: ['/openstoa/chat/send'], historyGrant: 'none', updatedAt: new Date() });
-    const res = await real.requireAiCapability(db as never, { userId: 'bot', isAI: true }, '/openstoa/chat/send');
+    const res = await real.requireAiCapability(db as never, { userId: 'bot', isAI: true, apiKeyCmd: ['/openstoa/chat/send'] }, '/openstoa/chat/send');
     expect(res).toBeNull();
   });
-  it('isAI session WITHOUT the capability → 403', async () => {
+
+  it('isAI session WITHOUT the cmd in apiKeyCmd → 403', async () => {
     const real = await vi.importActual<typeof import('@/lib/aiPermissions')>('@/lib/aiPermissions');
     const { db } = await import('@/lib/db');
-    mocks.aiPermsFindFirst.mockResolvedValue({ userId: 'bot', cmd: ['/openstoa/post/read'], historyGrant: 'none', updatedAt: new Date() });
-    const res = await real.requireAiCapability(db as never, { userId: 'bot', isAI: true }, '/openstoa/chat/send');
+    const res = await real.requireAiCapability(db as never, { userId: 'bot', isAI: true, apiKeyCmd: ['/openstoa/post/read'] }, '/openstoa/chat/send');
     expect(res).not.toBeNull();
     expect(res!.status).toBe(403);
   });
-  it('isAI session with NO configured permissions → 403 (no silent allow)', async () => {
+
+  it('isAI session with an EMPTY apiKeyCmd → 403 (safe default, no silent allow)', async () => {
     const real = await vi.importActual<typeof import('@/lib/aiPermissions')>('@/lib/aiPermissions');
     const { db } = await import('@/lib/db');
-    mocks.aiPermsFindFirst.mockResolvedValue(undefined);
-    const res = await real.requireAiCapability(db as never, { userId: 'bot', isAI: true }, '/openstoa/topic/join');
+    const res = await real.requireAiCapability(db as never, { userId: 'bot', isAI: true, apiKeyCmd: [] }, '/openstoa/topic/join');
     expect(res!.status).toBe(403);
+  });
+
+  it('FAIL-CLOSED: isAI session with NO apiKeyCmd at ALL (bare JWT, no API key) → 403, never an implicit allow', async () => {
+    // This is the exact shape of a dev-login or verify/ai JWT session — isAI
+    // true, but no apiKeyId/apiKeyCmd because it never went through an API
+    // key. Must be denied outright; there is no account-wide grant to fall
+    // back to any more.
+    const real = await vi.importActual<typeof import('@/lib/aiPermissions')>('@/lib/aiPermissions');
+    const { db } = await import('@/lib/db');
+    const res = await real.requireAiCapability(db as never, { userId: 'bot', isAI: true }, '/openstoa/topic/join');
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(403);
+  });
+
+  it('the gate never touches the db (no ai_permissions lookup exists any more)', async () => {
+    // db.query in the mock above has no `aiPermissions` key at all — if the
+    // gate still tried `db.query.aiPermissions.findFirst(...)` this would
+    // throw "Cannot read properties of undefined" instead of resolving.
+    const real = await vi.importActual<typeof import('@/lib/aiPermissions')>('@/lib/aiPermissions');
+    const { db } = await import('@/lib/db');
+    await expect(real.requireAiCapability(db as never, { userId: 'bot', isAI: true }, '/openstoa/chat/send')).resolves.not.toThrow();
   });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// 3. Route wiring (aiPermissions module mocked)
+// 2. Retired /api/profile/ai-permissions — always 410 (401 first if unauthed)
+// ───────────────────────────────────────────────────────────────────────────
+import { GET as aiPermsGET, PUT as aiPermsPUT } from '@/app/api/profile/ai-permissions/route';
+
+const req = (body: unknown, query = '') =>
+  ({ json: async () => body, url: `http://x/api/x${query}`, cookies: { get: () => undefined }, headers: { get: () => null } }) as never;
+
+const human = { userId: 'human1', nickname: 'h', isAI: false };
+
+describe('GET /api/profile/ai-permissions — retired', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('401 when unauthenticated', async () => {
+    mocks.getSession.mockResolvedValue(null);
+    const res = await aiPermsGET(req(null));
+    expect(res.status).toBe(401);
+  });
+  it('410 for an authenticated caller — endpoint is retired, never returns a live config', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    const res = await aiPermsGET(req(null));
+    expect(res.status).toBe(410);
+    const body = await res.json();
+    expect(body.migrateTo).toBeDefined();
+  });
+});
+
+describe('PUT /api/profile/ai-permissions — retired', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('401 when unauthenticated', async () => {
+    mocks.getSession.mockResolvedValue(null);
+    const res = await aiPermsPUT(req({ cmd: [], historyGrant: 'none' }));
+    expect(res.status).toBe(401);
+  });
+  it('410 for an authenticated caller — writes are rejected, not silently accepted (would be misleading)', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    const res = await aiPermsPUT(req({ cmd: ['/openstoa/chat/send'], historyGrant: 'full' }));
+    expect(res.status).toBe(410);
+  });
+  it('410 even for a hostile/garbage body — the route never parses cmd/historyGrant any more', async () => {
+    mocks.getSession.mockResolvedValue(human);
+    const res = await aiPermsPUT(req({ cmd: ['/root/delete'], historyGrant: 'DROP TABLE users;--' }));
+    expect(res.status).toBe(410);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// 3. Route wiring (aiPermissions module mocked — HTTP contract only)
 // ───────────────────────────────────────────────────────────────────────────
 vi.mock('@/lib/aiPermissions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/aiPermissions')>();
   return {
     ...actual,
     requireAiCapability: mocks.requireAiCapability,
-    getAiPermissions: mocks.getAiPermissions,
-    setAiPermissions: mocks.setAiPermissions,
   };
 });
 
 import { NextResponse } from 'next/server';
-import { GET as aiPermsGET, PUT as aiPermsPUT } from '@/app/api/profile/ai-permissions/route';
 import { POST as chatPOST, GET as chatGET } from '@/app/api/topics/[topicId]/chat/route';
 import { GET as archiveGET } from '@/app/api/topics/[topicId]/archive/route';
 import { GET as takGET } from '@/app/api/topics/[topicId]/tak/bundles/route';
@@ -210,18 +187,14 @@ import { POST as postsPOST } from '@/app/api/topics/[topicId]/posts/route';
 import { PATCH as postPATCH, DELETE as postDELETE } from '@/app/api/posts/[postId]/route';
 import { POST as commentsPOST } from '@/app/api/posts/[postId]/comments/route';
 import { PUT as nicknamePUT } from '@/app/api/profile/nickname/route';
-import { AiPermissionValidationError as AVE } from '@/lib/aiPermissions';
 
 const TOPIC = '00000000-0000-0000-0000-000000000001';
 const POST = '00000000-0000-0000-0000-0000000000bb';
 const tParams = () => Promise.resolve({ topicId: TOPIC });
 const pParams = () => Promise.resolve({ postId: POST });
 const b64 = (s: string) => Buffer.from(s).toString('base64');
-const req = (body: unknown, query = '') =>
-  ({ json: async () => body, url: `http://x/api/x${query}`, cookies: { get: () => undefined }, headers: { get: () => null } }) as never;
 
-const human = { userId: 'human1', nickname: 'h', isAI: false };
-const ai = { userId: 'bot1', nickname: 'b', isAI: true };
+const ai = { userId: 'bot1', nickname: 'b', isAI: true, apiKeyId: 'k1', apiKeyCmd: ['/openstoa/chat/send'] };
 const FORBIDDEN = () => NextResponse.json({ error: 'AI capability required' }, { status: 403 });
 
 beforeEach(() => {
@@ -229,57 +202,6 @@ beforeEach(() => {
   mocks.incr.mockResolvedValue(1);
   // Default: gate allows (returns null). Individual tests override to 403.
   mocks.requireAiCapability.mockResolvedValue(null);
-});
-
-describe('GET /api/profile/ai-permissions', () => {
-  it('401 when unauthenticated', async () => {
-    mocks.getSession.mockResolvedValue(null);
-    const res = await aiPermsGET(req(null));
-    expect(res.status).toBe(401);
-  });
-  it('200 with defaults when the user has no config', async () => {
-    mocks.getSession.mockResolvedValue(human);
-    mocks.getAiPermissions.mockResolvedValue(null);
-    const res = await aiPermsGET(req(null));
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.cmd).toEqual([]);
-    expect(body.historyGrant).toBe('none');
-    expect(body.allowedCmd).toEqual([...ALLOWED_CMDS]);
-  });
-  it('200 returns the stored config', async () => {
-    mocks.getSession.mockResolvedValue(human);
-    mocks.getAiPermissions.mockResolvedValue({ userId: 'human1', cmd: ['/openstoa/chat/send'], historyGrant: 'full', updatedAt: new Date() });
-    const res = await aiPermsGET(req(null));
-    const body = await res.json();
-    expect(body.cmd).toEqual(['/openstoa/chat/send']);
-    expect(body.historyGrant).toBe('full');
-  });
-});
-
-describe('PUT /api/profile/ai-permissions (authz / boundary / hostile)', () => {
-  it('401 when unauthenticated', async () => {
-    mocks.getSession.mockResolvedValue(null);
-    const res = await aiPermsPUT(req({ cmd: [], historyGrant: 'none' }));
-    expect(res.status).toBe(401);
-  });
-  it('200 sets the caller OWN permissions (keyed by session user)', async () => {
-    mocks.getSession.mockResolvedValue(human);
-    mocks.setAiPermissions.mockResolvedValue({ userId: 'human1', cmd: ['/openstoa/chat/send'], historyGrant: '7d', updatedAt: new Date() });
-    const res = await aiPermsPUT(req({ cmd: ['/openstoa/chat/send'], historyGrant: '7d' }));
-    expect(res.status).toBe(200);
-    // Contract: setAiPermissions called with the SESSION user id (not a body-supplied id).
-    expect(mocks.setAiPermissions).toHaveBeenCalledTimes(1);
-    expect(mocks.setAiPermissions.mock.calls[0][1]).toBe('human1');
-    const body = await res.json();
-    expect(body.cmd).toEqual(['/openstoa/chat/send']);
-  });
-  it('400 when setAiPermissions rejects invalid input (unknown cmd / bad scope)', async () => {
-    mocks.getSession.mockResolvedValue(human);
-    mocks.setAiPermissions.mockRejectedValue(new AVE('unknown cmd: /root/x'));
-    const res = await aiPermsPUT(req({ cmd: ['/root/x'], historyGrant: 'none' }));
-    expect(res.status).toBe(400);
-  });
 });
 
 describe('isAI capability gate is wired on every guarded route (contract)', () => {
@@ -325,7 +247,7 @@ describe('isAI capability gate is wired on every guarded route (contract)', () =
   });
 
   it('humans still flow through the gate helper, which no-ops for them', async () => {
-    // The real gate no-ops for non-AI (proven in section 2); routes call it
+    // The real gate no-ops for non-AI (proven in section 1); routes call it
     // unconditionally, so a human chat send still returns 201.
     mocks.getSession.mockResolvedValue(human);
     mocks.requireAiCapability.mockResolvedValue(null);

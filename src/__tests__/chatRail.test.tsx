@@ -76,6 +76,15 @@ vi.mock('@/components/TopicMuteToggle', () => ({
   default: () => React.createElement('div', { 'data-testid': 'mute-toggle' }),
 }));
 
+// Spies on the REAL `invalidateDmCandidates` (still calls through — the
+// dedupe/TTL logic below stays real, per the module doc) so FIX9's "starting
+// a DM invalidates the cache" contract is directly assertable, not just
+// inferred from its side effects.
+vi.mock('@/lib/dmCandidatesCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/dmCandidatesCache')>();
+  return { ...actual, invalidateDmCandidates: vi.fn(actual.invalidateDmCandidates) };
+});
+
 import ChatRail from '@/components/ChatRail';
 import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
@@ -157,10 +166,11 @@ beforeEach(() => {
   panelProps.mountCount = 0;
   panelProps.renderCount = 0;
   // `dmCandidatesCache` is a module-level cache shared across the whole test
-  // file (it is real, not mocked, so ChatRail's picker exercises the actual
-  // dedupe/TTL logic) — without this, test N+1 would silently see test N's
+  // file (its dedupe/TTL logic is real, only wrapped in a call-spy — see the
+  // vi.mock above) — without this, test N+1 would silently see test N's
   // cached candidates instead of its own routeFetch mock.
   invalidateDmCandidates();
+  vi.mocked(invalidateDmCandidates).mockClear();
 });
 
 afterEach(async () => {
@@ -396,6 +406,11 @@ describe('new-conversation picker', () => {
 
     expect(dmPosts).toBe(1);
     expect(panelProps.current).toMatchObject({ topicId: 'new-dm-topic' });
+    // FIX9: starting a DM invalidates the candidates cache immediately —
+    // otherwise the person just messaged would keep appearing in the
+    // new-conversation picker (stale cache) for up to 60s even though the
+    // server now excludes them.
+    expect(invalidateDmCandidates).toHaveBeenCalledTimes(1);
   });
 });
 

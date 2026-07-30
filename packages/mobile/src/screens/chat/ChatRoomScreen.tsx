@@ -406,9 +406,10 @@ export function ChatRoomScreen() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
-  // AI capability is now configured per-user in the Profile → AI permissions
-  // screen (PUT /api/profile/ai-permissions), not per-topic here. The former
-  // owner-only "Add AI agent" consent sheet was removed with that redesign.
+  // AI capability is scoped to the individual API key an isAI session
+  // authenticates with (Profile → AI agent → API keys), not per-topic here
+  // and not an account-wide profile setting either (retired 2026-07-30). The
+  // former owner-only "Add AI agent" consent sheet was removed with that redesign.
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);

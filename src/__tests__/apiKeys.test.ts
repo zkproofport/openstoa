@@ -60,11 +60,13 @@ vi.mock('@/lib/logger', () => ({
 
 import {
   validateCreateApiKeyInput,
+  validateUpdateApiKeyInput,
   hashApiKey,
   isApiKeyToken,
   createApiKey,
   listApiKeys,
   revokeApiKey,
+  updateApiKey,
   verifyApiKey,
   toApiKeyMeta,
   ApiKeyValidationError,
@@ -234,6 +236,54 @@ describe('listApiKeys / revokeApiKey (authz / race)', () => {
     const second = await revokeApiKey(db, 'u1', 'k1');
     expect(first).not.toBeNull();
     expect(second).toBeNull();
+  });
+});
+
+describe('validateUpdateApiKeyInput — edit scope (boundary / empty / hostile)', () => {
+  it('accepts an EMPTY cmd array (narrow to nothing)', () => {
+    const n = validateUpdateApiKeyInput({ cmd: [], historyGrant: 'none' });
+    expect(n.cmd).toEqual([]);
+  });
+  it('accepts a subset of ALLOWED_CMDS', () => {
+    const n = validateUpdateApiKeyInput({ cmd: ['/openstoa/chat/read'], historyGrant: '7d' });
+    expect(n.cmd).toEqual(['/openstoa/chat/read']);
+    expect(n.historyGrant).toBe('7d');
+  });
+  it('rejects unknown cmd, non-array cmd, too many entries, and garbage historyGrant — same rules as create', () => {
+    expect(() => validateUpdateApiKeyInput({ cmd: ['/root/delete'], historyGrant: 'none' })).toThrow(/unknown cmd/);
+    expect(() => validateUpdateApiKeyInput({ cmd: 'nope', historyGrant: 'none' })).toThrow(ApiKeyValidationError);
+    const many = Array.from({ length: MAX_CMD_COUNT + 1 }, () => '/ai/summarize');
+    expect(() => validateUpdateApiKeyInput({ cmd: many, historyGrant: 'none' })).toThrow(/too many/);
+    expect(() => validateUpdateApiKeyInput({ cmd: [], historyGrant: 'everything' })).toThrow(ApiKeyValidationError);
+  });
+  it('does NOT accept name/isAI — only cmd/historyGrant exist on the input shape', () => {
+    const n = validateUpdateApiKeyInput({ cmd: [], historyGrant: 'none' });
+    expect(Object.keys(n).sort()).toEqual(['cmd', 'historyGrant'].sort());
+  });
+});
+
+describe('updateApiKey (authz / integrity / race)', () => {
+  it('rejects invalid input before ever touching the db', async () => {
+    await expect(updateApiKey(db, 'u1', 'k1', { cmd: ['/root/x'], historyGrant: 'none' })).rejects.toThrow(ApiKeyValidationError);
+    expect(mocks.updateSet).not.toHaveBeenCalled();
+  });
+  it('updates ONLY cmd/historyGrant — never touches name/isAI/keyHash', async () => {
+    mocks.updateReturning.mockResolvedValue([
+      { id: 'k1', userId: 'u1', name: 'laptop', keyHash: 'h', prefix: 'osk_abcd1234', isAI: true, cmd: ['/openstoa/chat/read'], historyGrant: '7d', createdAt: new Date(), lastUsedAt: null, revokedAt: null },
+    ]);
+    const row = await updateApiKey(db, 'u1', 'k1', { cmd: ['/openstoa/chat/read'], historyGrant: '7d' });
+    expect(row?.cmd).toEqual(['/openstoa/chat/read']);
+    expect(mocks.updateSet).toHaveBeenCalledWith({ cmd: ['/openstoa/chat/read'], historyGrant: '7d' });
+  });
+  it('scopes the WHERE by userId — a foreign keyId matches no row (mocked as null)', async () => {
+    mocks.updateReturning.mockResolvedValue([]);
+    const result = await updateApiKey(db, 'attacker', 'someone-elses-key', { cmd: [], historyGrant: 'none' });
+    expect(result).toBeNull();
+  });
+  it('an already-revoked key matches no row (isNull(revokedAt) in the WHERE — same shape as revoke)', async () => {
+    mocks.updateReturning.mockResolvedValue([]);
+    const result = await updateApiKey(db, 'u1', 'revoked-key', { cmd: ['/ai/search'], historyGrant: 'none' });
+    expect(result).toBeNull();
   });
 });
 

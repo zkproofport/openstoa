@@ -1,13 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import BareChatShell from '@/components/BareChatShell';
 import ChatPanel from '@/components/ChatPanel';
 import Spinner from '@/components/Spinner';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
+import TopicMembersList, { type TopicMember } from '@/components/TopicMembersList';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+
+const MembersIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
 
 /**
  * Standalone full-page topic chat -- the "open in new tab" target for a topic
@@ -36,6 +46,46 @@ export default function TopicChatPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [needsNickname, setNeedsNickname] = useState(false);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  // Members overlay (FIX3): the header's "· N members" count was previously
+  // dead text. Toggling it renders the SAME member-list treatment the chat
+  // rail uses (`TopicMembersList.tsx`, shared rather than a second bespoke
+  // list) as an overlay ABOVE `ChatPanel`, not in place of it — replacing
+  // the panel would drop the SSE stream and re-run the initial history
+  // fetch on every peek at the members.
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<TopicMember[] | null>(null);
+  const [membersFailed, setMembersFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/auth/session')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive) setViewerUserId(d?.userId ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const loadMembers = useCallback(() => {
+    setMembers(null);
+    setMembersFailed(false);
+    fetch(`/api/topics/${topicId}/members`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed to load members'))))
+      .then((d) => setMembers(Array.isArray(d?.members) ? d.members : []))
+      .catch(() => setMembersFailed(true));
+  }, [topicId]);
+
+  const toggleMembers = useCallback(() => {
+    setShowMembers((v) => {
+      const next = !v;
+      if (next) loadMembers();
+      return next;
+    });
+  }, [loadMembers]);
 
   useEffect(() => {
     let alive = true;
@@ -155,15 +205,41 @@ export default function TopicChatPage() {
           </div>
           <div className="os-label" style={{ color: 'var(--muted)', marginTop: 1 }}>
             {t('chat.liveChat')}
-            {topic.memberCount != null
-              ? ` · ${topic.memberCount} ${topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}`
-              : ''}
+            {topic.memberCount != null && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  onClick={toggleMembers}
+                  aria-pressed={showMembers}
+                  aria-label={showMembers ? t('chatRail.hideMembers') : t('chatRail.showMembers')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    margin: 0,
+                    color: showMembers ? 'var(--accent)' : 'inherit',
+                    font: 'inherit',
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: 2,
+                  }}
+                >
+                  {MembersIcon}
+                  {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
+                </button>
+              </>
+            )}
           </div>
         </div>
         <TopicMuteToggle topicId={topicId} enabled={topic.isMember === true} style={{ lineHeight: 1, flexShrink: 0 }} />
       </div>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         <ChatPanel
           topicId={topicId}
           isGuest={false}
@@ -172,6 +248,20 @@ export default function TopicChatPage() {
           framed
           hideHeader
         />
+        {showMembers && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'var(--background)',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 2,
+            }}
+          >
+            <TopicMembersList members={members} failed={membersFailed} onRetry={loadMembers} viewerUserId={viewerUserId} />
+          </div>
+        )}
       </div>
     </BareChatShell>
   );

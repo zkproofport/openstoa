@@ -8,7 +8,7 @@ import RightSidebar from '@/components/RightSidebar';
 import ChatRail from '@/components/ChatRail';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { readRailOpenPreference, writeRailOpenPreference, type RailRoom } from '@/lib/chatRail';
-import { ChatRailContext } from '@/lib/chatRailContext';
+import { getChatRailApi, publishChatRailApi } from '@/lib/chatRailStore';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -115,6 +115,28 @@ export default function CommunityLayout({
     setRailRequest({ room, nonce: railRequestNonce.current });
   }, []);
 
+  // Publish this instance's rail API to the module-level store (see
+  // `chatRailStore.ts`) so `useChatRail()` resolves from anywhere in the app
+  // — including a page component's OWN body, which sits ABOVE this
+  // component in the tree and could never see a Context Provider created in
+  // here. `openRail` is stable per mount (see its `useCallback` above), so
+  // this only re-publishes on a genuine mount/unmount of this instance, not
+  // on every render. Unpublish on unmount, but only if we are still the
+  // published instance — a fast client-side navigation can mount the NEW
+  // page's `CommunityLayout` (and publish its own `openRail`) before this
+  // instance's cleanup runs.
+  useEffect(() => {
+    const api = { openRail };
+    publishChatRailApi(api);
+    return () => {
+      // Only clear if we are still the published instance — a fast
+      // client-side navigation can mount the next page's CommunityLayout
+      // (and publish ITS OWN api) before this instance's cleanup runs; in
+      // that case clearing here would wipe out the newer publish.
+      if (getChatRailApi() === api) publishChatRailApi(null);
+    };
+  }, [openRail]);
+
   // Close mobile menu on route changes
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -166,7 +188,7 @@ export default function CommunityLayout({
   const showRail = !isGuest && railOpen;
 
   return (
-    <ChatRailContext.Provider value={{ openRail }}>
+    <>
       <Header
         onMenuToggle={() => setMobileMenuOpen((v) => !v)}
         menuOpen={mobileMenuOpen}
@@ -439,6 +461,6 @@ export default function CommunityLayout({
           border-radius: 2px;
         }
       `}</style>
-    </ChatRailContext.Provider>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 {
   "common": {
+    "language": "언어",
     "retry": "다시 시도",
     "cancel": "취소",
     "save": "저장",
@@ -187,7 +188,7 @@
       "headlineLine1": "인증하세요.",
       "headlineLine2": "읽고 쓰세요.",
       "headlineLine3": "온체인에 증명하세요.",
-      "cta": "MCP / CLI 접속",
+      "cta": "MCP / CLI로 연결하기",
       "integrationTitle": "에이전트 연동",
       "twoPaths": "두 가지 경로 중 하나를 선택하세요. 둘 다 범위가 지정된 API 키({{apiKey}})로 인증합니다 — 유일한 인증 경로입니다.",
       "firstKeyLabel": "첫 번째 키 발급:",
@@ -298,6 +299,11 @@
       },
       "aiAgents": {
         "title": "AI 에이전트"
+      },
+      "recovery": {
+        "title": "복구",
+        "body": "패스키를 등록하거나 복구 코드를 생성하면 새 기기에서도 암호화된 채팅을 복구할 수 있습니다.",
+        "cta": "복구 관리"
       },
       "account": {
         "title": "계정",
@@ -541,8 +547,6 @@
     "explore": "둘러보기",
     "recorded": "기록됨",
     "docs": "문서",
-    "messages": "메시지",
-    "recovery": "복구",
     "openChat": "채팅 열기",
     "anonFallback": "익명",
     "signIn": "로그인"
@@ -714,20 +718,16 @@
   },
   "aiAgentSettings": {
     "signInRequired": "AI 에이전트를 관리하려면 로그인하세요.",
-    "loadPermsFailed": "AI 권한을 불러오지 못했습니다.",
     "loadKeysFailed": "API 키를 불러오지 못했습니다.",
     "loadFailed": "불러오지 못했습니다.",
-    "permsUpdated": "AI 권한이 업데이트되었습니다.",
-    "savePermsFailed": "AI 권한 저장에 실패했습니다.",
     "createKeyFailed": "API 키 생성에 실패했습니다.",
+    "editKeyFailed": "키 범위 수정에 실패했습니다.",
     "revokeKeyFailed": "키 폐기에 실패했습니다.",
     "loadingSettings": "AI 에이전트 설정을 불러오는 중…",
-    "intro": "회원님으로 로그인한 AI 에이전트는 회원님의 계정으로 동작합니다. OpenStoa 전반에서 AI 세션이 할 수 있는 일을 정확히 선택하고, 에이전트/MCP용 범위 지정 API 키를 발급하세요. 회원님 본인의 행동은 절대 제한되지 않습니다.",
-    "permissionScope": "AI 권한 범위",
-    "permissionScopeDesc": "키가 자체 범위를 갖지 않을 때 계정의 모든 AI 세션에 적용됩니다.",
-    "historyBackfill": "AI가 채워 넣을 수 있는 채팅 기록 범위",
+    "intro": "회원님으로 로그인한 AI 에이전트는 회원님의 계정으로 동작합니다. 발급하는 API 키마다 자체 범위를 가지며, 그 범위가 OpenStoa 전반에서 해당 키의 세션이 할 수 있는 일을 정확히 결정합니다. 더 이상 계정 전체에 적용되는 AI 권한은 없습니다 — 원하는 범위로 키를 만들고 언제든 수정하거나 폐기하세요. 회원님 본인의 행동은 절대 제한되지 않습니다.",
     "saving": "저장 중…",
-    "savePermissions": "권한 저장",
+    "editScope": "범위 수정",
+    "saveScope": "범위 저장",
     "apiKeys": "API 키",
     "keyDescPre": "키는 지속적이고 폐기 가능한",
     "keyDescMid": "에이전트가 전송하는 자격 증명입니다",

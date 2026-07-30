@@ -12,6 +12,9 @@
  *              read on next navigation matches
  *   ui       — t() re-renders consumers with the new locale's strings after
  *              setLocale
+ *   contract — setLocale flips `document.documentElement.lang` immediately
+ *              (FIX6 — the SSR-set attribute otherwise only catches up after
+ *              a full reload); an unsupported locale leaves it untouched
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
@@ -28,6 +31,7 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   document.cookie = 'NEXT_LOCALE=; path=/; max-age=0'; // clear
+  document.documentElement.lang = 'en';
   root = createRoot(container);
 });
 
@@ -36,6 +40,7 @@ afterEach(() => {
     root.unmount();
   });
   container.remove();
+  document.documentElement.lang = 'en';
 });
 
 function Probe() {
@@ -123,5 +128,26 @@ describe('I18nProvider', () => {
 
     expect(container.querySelector('[data-testid="locale"]')?.textContent).toBe('en');
     expect(document.cookie).not.toContain('NEXT_LOCALE=fr');
+  });
+
+  it('FIX6: setLocale to a supported locale flips document.documentElement.lang immediately', () => {
+    render('en');
+    expect(document.documentElement.lang).toBe('en');
+
+    act(() => {
+      container.querySelector<HTMLButtonElement>('[data-testid="to-ko"]')?.click();
+    });
+
+    expect(document.documentElement.lang).toBe('ko');
+  });
+
+  it('FIX6: an unsupported locale leaves document.documentElement.lang untouched', () => {
+    render('en');
+
+    act(() => {
+      container.querySelector<HTMLButtonElement>('[data-testid="to-invalid"]')?.click();
+    });
+
+    expect(document.documentElement.lang).toBe('en');
   });
 });
