@@ -42,6 +42,14 @@ export interface HostEnvironmentInfo {
 
 export type HapticType = 'light' | 'medium' | 'heavy' | 'selection';
 
+/** One notification tap handed from the host to the mini-app. */
+export interface PushNotificationTap {
+  /** Stable notification id, when the host can supply one — used to de-duplicate. */
+  id?: string;
+  /** The server-attached `data` payload; may arrive nested under a `body` key. */
+  data: Record<string, unknown>;
+}
+
 export interface HostApi {
   getEnvironment(): HostEnvironmentInfo;
   getOpenStoaToken(): Promise<string | null>;
@@ -70,6 +78,16 @@ export interface HostApi {
     pushToken: string;
     platform: 'ios' | 'android';
   } | null>;
+  /** Optional NON-prompting read of the OS notification permission. Absent → the mini-app treats the OS state as unknown. */
+  getPushPermissionStatus?(): Promise<'granted' | 'denied' | 'undetermined' | 'unavailable'>;
+  /** Optional subscription to notification TAPS (warm + cold start). Absent → tap routing unavailable. */
+  onPushNotificationTap?(listener: (tap: PushNotificationTap) => void): () => void;
+  /**
+   * Optional mirror of a Topic Archive Key into host storage the background push
+   * handler can read (design §13.6 strategy A). `takB64` is base64 of exactly 32
+   * raw bytes and must never be logged. Absent → no background preview on this host.
+   */
+  mirrorTopicArchiveKey?(topicId: string, takVersion: number, takB64: string): Promise<boolean>;
   generateProof(inputs: ProofInputs): Promise<ProofResult>;
   exitToHost(targetTab?: string): void;
   showError(code: string, details?: Record<string, unknown>): void;

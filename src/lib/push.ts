@@ -12,7 +12,11 @@
  * sealed ciphertext already stored for the message (the server NEVER decrypts —
  * the bytes are already E2EE), with `mutableContent` (iOS) / data-only
  * (Android) so an on-device NSE / FCM data handler can decrypt with the local
- * MLS keys and rewrite the lockscreen preview. If the encoded payload would
+ * MLS keys and rewrite the lockscreen preview. When the sender also supplied a
+ * TAK-sealed copy of the body (`pushArchive` on POST /chat) the payload carries
+ * it as `act`/`tv` — that is what the iOS NSE actually decrypts (design §13.6
+ * strategy A), since opening the live MLS `ct` would consume a forward-secret
+ * ratchet key and desync the app. If the encoded payload would
  * exceed the APNs ~4KB budget (`PUSH_MAX_PAYLOAD_BYTES`), the ciphertext is
  * DROPPED and the Phase A content-free dummy is sent instead so large messages
  * still notify. SI-1 for push is preserved in BOTH phases: Phase A carries no
@@ -56,7 +60,22 @@ export interface DummyPushPayload {
 export interface CiphertextPushPayload {
   title: string;
   body: string;
-  data: { topicId: string; messageId: string; epoch: number; ct: string };
+  data: {
+    topicId: string;
+    messageId: string;
+    epoch: number;
+    ct: string;
+    /**
+     * OPTIONAL TAK-sealed copy of the same body (design §13.6 strategy A), sent
+     * by the client as `pushArchive.ct` on POST /chat. The iOS NSE decrypts THIS
+     * — not `ct` — because opening the live MLS ciphertext would consume a
+     * forward-secret ratchet key and desync the app, while the Topic Archive Key
+     * is stable and consumes nothing. Absent → the NSE leaves the placeholder.
+     */
+    act?: string;
+    /** TAK version `act` was sealed under (0 = public archive root, else epoch). */
+    tv?: number;
+  };
   /** iOS: set APNs `aps.mutable-content=1` so the NSE is invoked. */
   mutableContent: true;
   /** Android: deliver as a data-only message for the background handler. */
@@ -111,6 +130,14 @@ export interface CiphertextDispatchInput {
   /** Base64 of the ALREADY-SEALED ciphertext (same opaque bytes stored). */
   sealedCiphertextB64: string;
   epoch: number;
+  /**
+   * OPTIONAL base64 of the TAK-sealed copy of the same body, supplied by the
+   * SENDER in the POST /chat body (`pushArchive.ct`). Opaque to the server — it
+   * is copied verbatim into `data.act` (SI-1: the server holds no key for it).
+   */
+  archiveCiphertextB64?: string;
+  /** TAK version `archiveCiphertextB64` was sealed under (0 = public root). */
+  takVersion?: number;
 }
 
 /** UTF-8 byte length of the JSON-encoded payload (what actually crosses the wire). */
@@ -126,21 +153,41 @@ function encodedSize(payload: CiphertextPushPayload): number {
  * copied verbatim — the server never decodes or inspects it (SI-1).
  */
 export function buildCiphertextPayload(
-  input: Pick<CiphertextDispatchInput, 'topicId' | 'messageId' | 'sealedCiphertextB64' | 'epoch'>,
+  input: Pick<
+    CiphertextDispatchInput,
+    'topicId' | 'messageId' | 'sealedCiphertextB64' | 'epoch' | 'archiveCiphertextB64' | 'takVersion'
+  >,
 ): CiphertextPushPayload | null {
-  const { topicId, messageId, sealedCiphertextB64, epoch } = input;
+  const { topicId, messageId, sealedCiphertextB64, epoch, archiveCiphertextB64, takVersion } = input;
   if (typeof sealedCiphertextB64 !== 'string' || sealedCiphertextB64.length === 0) return null;
   if (typeof messageId !== 'string' || messageId.length === 0) return null;
   if (typeof epoch !== 'number' || !Number.isSafeInteger(epoch) || epoch < 0) return null;
+  // The TAK copy is an OPTIONAL preview optimisation: a missing/degenerate one
+  // degrades to a ct-only payload (the NSE then just keeps the placeholder), it
+  // never sinks the whole notification.
+  const withArchive =
+    typeof archiveCiphertextB64 === 'string' &&
+    archiveCiphertextB64.length > 0 &&
+    typeof takVersion === 'number' &&
+    Number.isSafeInteger(takVersion) &&
+    takVersion >= 0;
+  const base = { topicId, messageId, epoch, ct: sealedCiphertextB64 };
   const payload: CiphertextPushPayload = {
     title: 'OpenStoa',
     body: 'New message',
-    data: { topicId, messageId, epoch, ct: sealedCiphertextB64 },
+    data: withArchive ? { ...base, act: archiveCiphertextB64, tv: takVersion } : base,
     mutableContent: true,
     dataOnly: true,
   };
-  if (encodedSize(payload) > PUSH_MAX_PAYLOAD_BYTES) return null;
-  return payload;
+  if (encodedSize(payload) <= PUSH_MAX_PAYLOAD_BYTES) return payload;
+  // Over budget. Shed the optional preview fields first — a ct-only push still
+  // notifies (and still serves the strategy-B fallback) where dropping to the
+  // content-free dummy would lose `ct` too.
+  if (withArchive) {
+    const ctOnly: CiphertextPushPayload = { ...payload, data: base };
+    if (encodedSize(ctOnly) <= PUSH_MAX_PAYLOAD_BYTES) return ctOnly;
+  }
+  return null; // even ct alone is over the cap → caller falls back to the dummy
 }
 
 /**

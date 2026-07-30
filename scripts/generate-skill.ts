@@ -644,7 +644,7 @@ const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
 const TAG_ORDER = [
   'Health', 'Auth', 'Account', 'Profile', 'Upload', 'Categories',
   'Topics', 'Members', 'JoinRequests', 'Posts', 'Comments', 'Votes',
-  'Reactions', 'Bookmarks', 'Pins', 'Records', 'Tags', 'Chat', 'AI',
+  'Reactions', 'Bookmarks', 'Pins', 'Records', 'Tags', 'Chat', 'Push', 'AI',
   'Feed', 'MyActivity', 'OG', 'Polls', 'Notes', 'Documentation', 'Other',
 ];
 

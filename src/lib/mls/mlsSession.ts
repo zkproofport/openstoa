@@ -203,12 +203,20 @@ export class MlsSessionStore {
   /**
    * Open a sealed message, catching up on missed commits first if the message
    * is from a later epoch. Returns null when the body can't be decrypted (e.g.
-   * a pre-join epoch — forward secrecy; Phase 3 TAK back-fills history).
+   * a pre-join epoch — forward secrecy; Phase 3 TAK back-fills history) AND when
+   * the session itself can't be established. Never rejects — see below.
    */
   open(topicId: string, sealed: SealedMessage): Promise<string | null> {
     return this.withLock(topicId, async () => {
-      const s = await this.getSession(topicId);
+      // getSession is INSIDE the try on purpose: a bootstrap/rejoin failure (DS
+      // unreachable, unreadable key store) must return null like any other
+      // undecryptable row, not reject. Callers map open/openCached over a whole
+      // history page, so a rejection here blanks every sibling message. Safe to
+      // swallow because nothing is persisted on this path and the next load
+      // retries — unlike seal(), where failing soft would silently seal under a
+      // stale epoch and permanently corrupt the conversation.
       try {
+        const s = await this.getSession(topicId);
         if (sealed.epoch > gc.currentEpoch(s.state)) {
           await this.catchUp(topicId, s);
         }

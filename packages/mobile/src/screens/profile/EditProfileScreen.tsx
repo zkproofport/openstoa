@@ -666,6 +666,18 @@ export function EditProfileScreen() {
           </View>
         )}
 
+        {/* Notifications — the account-wide push switch (P-M), reconciled with
+            the OS notification permission on the settings screen itself. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('NotificationSettings' as never)}
+          >
+            <Text style={styles.actionButtonText}>Push notification settings</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Chat recovery (Phase 4 E2EE key backup / recovery) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Chat recovery</Text>

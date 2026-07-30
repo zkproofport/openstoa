@@ -44,6 +44,24 @@ export interface HostEnvironmentInfo {
 
 export type HapticType = 'light' | 'medium' | 'heavy' | 'selection';
 
+/** One notification tap handed from the host to the mini-app. */
+export interface PushNotificationTap {
+  /**
+   * Stable id of the notification that was tapped, when the host can supply
+   * one. Used purely to de-duplicate: a cold-start replay and the OS listener
+   * can both surface the SAME tap, and routing twice would re-navigate.
+   */
+  id?: string;
+  /**
+   * The `data` payload the server attached (`{ topicId, messageId, epoch, ct }`
+   * — see `openstoa/src/lib/push.ts`). Passed through as-is: Expo does NOT
+   * splice `data` into the top level of the APNs payload, so depending on the
+   * transport the routing keys can also arrive nested under a `body` key. The
+   * mini-app unwraps both shapes rather than trusting one.
+   */
+  data: Record<string, unknown>;
+}
+
 export interface HostApi {
   /** Synchronous metadata about the host shell. */
   getEnvironment(): HostEnvironmentInfo;
@@ -131,6 +149,82 @@ export interface HostApi {
     pushToken: string;
     platform: 'ios' | 'android';
   } | null>;
+
+  /**
+   * Optional host-provided READ of the OS notification permission, WITHOUT
+   * prompting (expo-notifications `getPermissionsAsync`, not
+   * `requestPermissionsAsync`). The mini-app's in-app notification switch is a
+   * server-side preference and cannot see the OS state on its own, so without
+   * this it can only report "we asked the OS and got nothing back". With it the
+   * settings screen can say "blocked in system settings" up front and offer to
+   * open them.
+   *
+   *   - `granted`      — the OS will deliver pushes (incl. iOS provisional).
+   *   - `denied`       — the user declined; only system settings can undo it.
+   *   - `undetermined` — never asked yet; registering will prompt.
+   *   - `unavailable`  — no push on this build/device (simulator, no EAS
+   *                      project id, unsupported host).
+   *
+   * Absent → the mini-app degrades to "unknown" and simply shows the in-app
+   * switch with no OS-level claim.
+   */
+  getPushPermissionStatus?(): Promise<
+    'granted' | 'denied' | 'undetermined' | 'unavailable'
+  >;
+
+  /**
+   * Optional host-provided subscription to notification TAPS (design §13,
+   * P-O gap 5). Without it a chat push is delivered but tapping it does
+   * nothing — the mini-app never learns which topic the user came from.
+   *
+   * The host MUST cover both entry paths:
+   *   - the app was already running or backgrounded when the tap happened
+   *     (expo-notifications `addNotificationResponseReceivedListener`), and
+   *   - the app was LAUNCHED by the tap (`getLastNotificationResponseAsync`).
+   *     A cold-start tap is latched by the host and replayed to the first
+   *     subscriber, so a mini-app that subscribes a moment after launch still
+   *     receives it.
+   *
+   * Returns an unsubscribe function; the mini-app calls it on unmount.
+   * Absent → tap routing is simply unavailable on this host (older binary,
+   * standalone shell) and the mini-app degrades to a clean no-op.
+   */
+  onPushNotificationTap?(
+    listener: (tap: PushNotificationTap) => void,
+  ): () => void;
+
+  /**
+   * Optional host-provided mirror of a Topic Archive Key into wherever the
+   * host's background push handler can read it (design §13.6 strategy A).
+   *
+   * The handler that decorates an incoming chat notification with a real
+   * preview runs OUTSIDE the mini-app — an iOS Notification Service Extension
+   * in its own process, an Android FCM service with no JS runtime attached —
+   * so it cannot ask the mini-app for the key. It has to find the key already
+   * sitting in host-owned storage. This is how it gets there.
+   *
+   * It is the TAK and never an MLS key: opening the live MLS ciphertext would
+   * consume a forward-secret ratchet key, after which the mini-app could no
+   * longer derive the same key and the group would desync. The TAK is a stable
+   * symmetric key, so a background decrypt with it consumes nothing.
+   *
+   * On iOS the mini-app writes this itself through `secureStore` into the
+   * shared Keychain access group, so this member is only consulted on hosts
+   * that need a platform-specific path (Android, where the key goes into a
+   * Keystore-encrypted store the host's FCM service owns).
+   *
+   * `takB64` is base64 of exactly 32 raw bytes. It is raw key material: the
+   * host MUST keep it on-device and MUST NOT log it.
+   *
+   * Resolves true only when the key was actually stored. Never rejects, and
+   * absent → the host has no background preview path, in which case the
+   * recipient simply keeps getting the content-free "New message".
+   */
+  mirrorTopicArchiveKey?(
+    topicId: string,
+    takVersion: number,
+    takB64: string,
+  ): Promise<boolean>;
 
   /** Generate a ZK proof on the host (e.g. via mopro on ZKProofport). */
   generateProof(inputs: ProofInputs): Promise<ProofResult>;

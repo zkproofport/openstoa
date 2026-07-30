@@ -33,6 +33,20 @@ export interface ArchiveEntry {
   createdAt: string;
 }
 
+/** Output of `sealForPush` — the `pushArchive` wire fields plus the local key mirror. */
+export interface PushPreviewSeal {
+  /** base64(nonce ‖ AEAD(HKDF(TAK,'push-preview'), body)) — goes in `pushArchive.ct`. */
+  ct: string;
+  /** TAK version it was sealed under: 0 = public archive root, else the MLS epoch. */
+  takVersion: number;
+  /**
+   * base64 of the 32 raw TAK bytes. ONLY for mirroring into the local OS keychain
+   * the notification extension reads (mobile). NEVER send this to the server and
+   * NEVER log it.
+   */
+  takB64: string;
+}
+
 /** DS surface the TAK layer needs (server is crypto-free; this only moves bytes). */
 export interface TakTransport {
   postArchive(topicId: string, messageId: string, takVersion: number, archiveB64: string): Promise<void>;
@@ -200,15 +214,14 @@ export class TakSessionStore {
   }
 
   /**
-   * Re-encrypt a body we just sent and upload it to the archive (P3-13). public
-   * → encrypt under the shared root (tak_version 0); scoped → under the current
-   * epoch TAK (tak_version = epoch), which we also cache for later granting.
+   * The archive key this topic seals under right now: public → the shared root
+   * (tak_version 0); scoped → the current epoch TAK (tak_version = epoch), which
+   * is cached as a side effect so it can be granted later (the exporter secret is
+   * gone once the epoch advances).
    */
-  async archiveOnSend(topicId: string, messageId: string, plaintext: string, visibility: Visibility): Promise<void> {
+  private async currentArchiveKey(topicId: string, visibility: Visibility): Promise<{ key: Uint8Array; takVersion: number }> {
     if (visibility === 'public') {
-      const root = await this.ensurePublicRoot(topicId);
-      await this.transport.postArchive(topicId, messageId, 0, await tak.sealArchive(root, messageId, plaintext));
-      return;
+      return { key: await this.ensurePublicRoot(topicId), takVersion: 0 };
     }
     const epoch = await this.mls.readState(topicId, async (s) => gc.currentEpoch(s));
     let t = await this.getEpochTak(topicId, epoch);
@@ -216,7 +229,58 @@ export class TakSessionStore {
       t = await this.mls.readState(topicId, (s) => tak.deriveEpochTak(s, topicId, epoch));
       await this.setEpochTak(topicId, epoch, t);
     }
-    await this.transport.postArchive(topicId, messageId, epoch, await tak.sealArchive(t, messageId, plaintext));
+    return { key: t, takVersion: epoch };
+  }
+
+  /**
+   * Re-encrypt a body we just sent and upload it to the archive (P3-13). public
+   * → encrypt under the shared root (tak_version 0); scoped → under the current
+   * epoch TAK (tak_version = epoch), which we also cache for later granting.
+   */
+  async archiveOnSend(topicId: string, messageId: string, plaintext: string, visibility: Visibility): Promise<void> {
+    const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+    await this.transport.postArchive(topicId, messageId, takVersion, await tak.sealArchive(key, messageId, plaintext));
+  }
+
+  /**
+   * Seal a PUSH-PREVIEW copy of a body about to be sent (design §13.6 strategy
+   * A). The recipient's iOS Notification Service Extension cannot decrypt the
+   * live MLS ciphertext — that would consume a forward-secret ratchet key and
+   * desync the app — so it decrypts this TAK-sealed copy instead, using a key it
+   * reads from the shared Keychain. The sender therefore ships the copy INSIDE
+   * the `POST /chat` body (`pushArchive`): the separate archive upload happens
+   * after the POST returns, so it does not exist yet when the push fans out.
+   *
+   * Uses the SAME key as `archiveOnSend` but the fixed `push-preview` context
+   * (the server-assigned message id isn't known pre-POST — see takClient).
+   * Returns null on any failure: the preview is an optimisation and must never
+   * block sending. `takB64` is raw key material for the LOCAL OS-keychain mirror
+   * only — never send it to the server, never log it.
+   */
+  async sealForPush(topicId: string, plaintext: string, visibility: Visibility): Promise<PushPreviewSeal | null> {
+    try {
+      const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+      return { ct: await tak.sealPushPreview(key, plaintext), takVersion, takB64: b64(key) };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The TAK a RECEIVING device needs to open incoming push previews for a topic,
+   * without sealing anything. Used to mirror the key into the OS keychain the
+   * notification extension reads — a device that only ever reads a topic still
+   * has to hold the key. Same key/version as `sealForPush`. Returns null instead
+   * of throwing when the key can't be resolved (nothing to mirror). `takB64` is
+   * raw key material: local keychain only, never to the server, never logged.
+   */
+  async takForPush(topicId: string, visibility: Visibility): Promise<Omit<PushPreviewSeal, 'ct'> | null> {
+    try {
+      const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+      return { takVersion, takB64: b64(key) };
+    } catch {
+      return null;
+    }
   }
 
   private async allMemberLeaves(topicId: string): Promise<LeafRef[]> {

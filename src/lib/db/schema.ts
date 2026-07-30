@@ -491,3 +491,33 @@ export const pushTokens = pgTable('push_tokens', {
   // Supports the topic-member fan-out join (push_tokens.user_id = topic_members.user_id).
   userIdx: index('push_tokens_user_idx').on(table.userId),
 }));
+
+// Per-user GLOBAL push switch (P-M). Row-ABSENT means "notifications enabled" —
+// the default is opt-OUT, so every existing user keeps receiving pushes with no
+// backfill, and a row only appears once the user actually touches the setting.
+// `enabled` is a preference, NOT an OS permission: the device may still be
+// denied at the OS level (the client reconciles the two and offers to open the
+// system settings). One row per user; cascade-deletes with the account.
+export const pushPrefs = pgTable('push_prefs', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }), // nullifier
+  enabled: boolean('enabled').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Per-(user, topic) MUTE (P-S). Row-PRESENT means "this user does not want push
+// for this topic" — again absence is the permissive default, so joining a topic
+// never needs a preference row written. Muting is idempotent (INSERT ... ON
+// CONFLICT DO NOTHING) and unmuting is a DELETE, so double-taps and concurrent
+// toggles converge instead of erroring or duplicating. Rows cascade-delete with
+// both the user and the topic, so a deleted topic leaves no orphan mute.
+export const pushTopicMutes = pgTable('push_topic_mutes', {
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(), // nullifier
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.topicId] }),
+  // Supports "list every topic this user muted" (the settings/list read).
+  userIdx: index('push_topic_mutes_user_idx').on(table.userId),
+  // Supports the dispatch-side "is anyone in this candidate set muted here" scan.
+  topicIdx: index('push_topic_mutes_topic_idx').on(table.topicId),
+}));

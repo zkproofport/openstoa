@@ -19,7 +19,7 @@ export * as keyManager from './keyManager';
 export { MlsSessionStore } from './mlsSession';
 export type { MlsTransport, SecureKVStore, CommitLogEntry } from './mlsSession';
 export { TakSessionStore } from './takSession';
-export type { TakTransport, TakBundleRow, ArchiveEntry, Visibility } from './takSession';
+export type { TakTransport, TakBundleRow, ArchiveEntry, Visibility, PushPreviewSeal } from './takSession';
 export { EncryptingKVStore } from './keyManager';
 export type { SealedMessage, GroupState, Device } from './groupClient';
 export type {

@@ -267,6 +267,14 @@ export async function recoverDevice(
  * carry a sealed body → decrypt into `message`; system rows (join/leave) pass
  * through. Undecryptable (pre-join epoch — forward secrecy) fails soft to a
  * placeholder. Replaces the Phase 1 placeholder `toDisplayMessage`.
+ *
+ * FAILURE IS PER-ROW, NEVER PER-PAGE. Callers map this over a whole history page
+ * through `Promise.all` (ChatRoomScreen), so a single REJECTION would discard
+ * every sibling row and blank the list. A throw from anywhere below — a failed
+ * MLS bootstrap/rejoin, an unreadable key store, a corrupt cached row — must
+ * therefore degrade to the same '[unable to decrypt]' placeholder that a plain
+ * `null` produces, for THAT row only. This mirrors the web twin
+ * (openstoa/src/components/ChatPanel.tsx `toDisplayMessage`).
  */
 export async function toDisplayMessageMls(
   store: MlsSessionStore,
@@ -276,12 +284,16 @@ export async function toDisplayMessageMls(
   if (raw?.type === 'message') {
     let text = '';
     if (raw.sealed?.ciphertext) {
-      // openCached: MLS consumes per-message keys on first decrypt, so cache the
-      // plaintext by id → message history survives app restarts.
-      const opened = raw.id
-        ? await store.openCached(topicId, raw.id, raw.sealed)
-        : await store.open(topicId, raw.sealed);
-      text = opened ?? '[unable to decrypt]';
+      try {
+        // openCached: MLS consumes per-message keys on first decrypt, so cache the
+        // plaintext by id → message history survives app restarts.
+        const opened = raw.id
+          ? await store.openCached(topicId, raw.id, raw.sealed)
+          : await store.open(topicId, raw.sealed);
+        text = opened ?? '[unable to decrypt]';
+      } catch {
+        text = '[unable to decrypt]';
+      }
     }
     return { ...raw, message: text };
   }

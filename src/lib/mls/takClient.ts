@@ -123,6 +123,31 @@ export async function openArchive(tak: Uint8Array, messageId: string, sealedB64:
   }
 }
 
+/**
+ * Fixed archive context for the PUSH-PREVIEW copy of a message (design §13.6
+ * strategy A — the iOS NSE decrypts the TAK copy, never the live MLS message,
+ * because a stable TAK consumes no ratchet key and so can never desync the app).
+ *
+ * The normal archive binds its per-message AEAD key to the SERVER-assigned
+ * message id, but the preview copy has to be sealed BEFORE the POST that mints
+ * that id — so the preview uses this constant context instead. Consequence: the
+ * preview key is stable per (TAK, topic) rather than per message. That is safe
+ * here: confidentiality still rests entirely on the TAK (which the server never
+ * sees), and every seal draws a fresh random 12-byte nonce, so AES-GCM stays far
+ * inside its birthday bound (~n²/2^97) at any realistic chat volume.
+ */
+export const PUSH_PREVIEW_CONTEXT_ID = 'push-preview';
+
+/** Seal a body for the push preview under a TAK/root (see PUSH_PREVIEW_CONTEXT_ID). */
+export function sealPushPreview(tak: Uint8Array, plaintext: string): Promise<string> {
+  return sealArchive(tak, PUSH_PREVIEW_CONTEXT_ID, plaintext);
+}
+
+/** Decrypt a push-preview blob (the reference impl the NSE mirrors). Null on failure. */
+export function openPushPreview(tak: Uint8Array, sealedB64: string): Promise<string | null> {
+  return openArchive(tak, PUSH_PREVIEW_CONTEXT_ID, sealedB64);
+}
+
 // ---------------------------------------------------------------------------
 // Bundle wrapping (HPKE to a verified leaf key) + the CVE identity gate
 // ---------------------------------------------------------------------------

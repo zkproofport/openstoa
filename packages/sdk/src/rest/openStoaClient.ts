@@ -306,11 +306,30 @@ export class OpenStoaClient {
     /** GET /api/topics/{id}/chat — history (sealed bodies + system rows). */
     history: (topicId: string, opts: { limit?: number; since?: string; before?: string } = {}): Promise<{ messages: ChatMessageRow[]; total: number }> =>
       this.request(`/api/topics/${topicId}/chat`, { query: { limit: opts.limit, since: opts.since, before: opts.before } }),
-    /** POST /api/topics/{id}/chat — send a sealed body. `message` (plaintext) is rejected server-side. */
-    send: async (topicId: string, sealed: { ciphertext: string; epoch: number; takVersion?: number | null }): Promise<ChatMessageRow> =>
+    /**
+     * POST /api/topics/{id}/chat — send a sealed body. `message` (plaintext) is
+     * rejected server-side. `pushArchive` is the OPTIONAL TAK-sealed copy used
+     * only to let a recipient's iOS notification extension preview the message
+     * (design §13.6); omitted when absent, and a malformed one is ignored by the
+     * server rather than failing the send.
+     */
+    send: async (
+      topicId: string,
+      sealed: {
+        ciphertext: string;
+        epoch: number;
+        takVersion?: number | null;
+        pushArchive?: { ct: string; takVersion: number };
+      },
+    ): Promise<ChatMessageRow> =>
       (await this.request<{ message: ChatMessageRow }>(`/api/topics/${topicId}/chat`, {
         method: 'POST',
-        body: { ciphertext: sealed.ciphertext, epoch: sealed.epoch, takVersion: sealed.takVersion ?? null },
+        body: {
+          ciphertext: sealed.ciphertext,
+          epoch: sealed.epoch,
+          takVersion: sealed.takVersion ?? null,
+          ...(sealed.pushArchive ? { pushArchive: sealed.pushArchive } : {}),
+        },
       })).message,
   };
 

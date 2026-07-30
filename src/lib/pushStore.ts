@@ -10,6 +10,7 @@
  * Postgres in unit tests (join-heavy queries can't be meaningfully faked).
  */
 import { sql } from 'drizzle-orm';
+import { filterPushRecipients } from '@/lib/pushPrefs';
 
 interface SqlExecutor {
   execute(query: ReturnType<typeof sql>): Promise<unknown>;
@@ -84,6 +85,13 @@ export async function deleteToken(
  * topic_members guarantees non-members contribute no token; the sender filter
  * keeps the author from notifying itself. Returns one entry per registered
  * device (a member may hold several handles).
+ *
+ * The result is then passed through `filterPushRecipients` (pushPrefs.ts), which
+ * drops users who switched notifications off globally (P-M) or muted THIS topic
+ * (P-S). The filter lives here, on the single resolver both `push.ts`
+ * dispatchers already call, so neither Phase A nor Phase B can forget it and
+ * adding a third dispatcher inherits it for free. Preferences fail CLOSED — see
+ * `filterPushRecipients`.
  */
 export async function getTopicMemberTokens(
   executor: SqlExecutor,
@@ -98,10 +106,11 @@ export async function getTopicMemberTokens(
       AND pt.user_id <> ${senderUserId}
     ORDER BY pt.created_at ASC, pt.id ASC
   `)) as Rows<{ user_id: string; routing_handle: string; push_token: string; platform: string }>;
-  return res.rows.map((r) => ({
+  const targets: MemberPushTarget[] = res.rows.map((r) => ({
     userId: r.user_id,
     routingHandle: r.routing_handle,
     pushToken: r.push_token,
     platform: r.platform as PushPlatform,
   }));
+  return filterPushRecipients(executor, topicId, targets);
 }

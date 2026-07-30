@@ -209,12 +209,25 @@ export class ChatClient {
   async sendChat(topicId: string, text: string, opts: { archive?: boolean; visibility?: Visibility } = {}): Promise<string> {
     const { mls, tak } = await this.session(topicId);
     const sealed: SealedMessage = await mls.seal(topicId, text);
-    const row = await this.rest.chat.send(topicId, { ciphertext: sealed.ciphertext, epoch: sealed.epoch });
+    // Same TAK material serves two jobs, so resolve visibility once. Callers that
+    // opt out of archiving (`archive: false`) also opt out of the push preview —
+    // both are TAK-sealed copies of the body.
+    const archive = opts.archive !== false;
+    const visibility = archive ? opts.visibility ?? (await this.visibility(topicId)) : null;
+    // Push-preview copy (design §13.6 strategy A): sealed under the topic's TAK
+    // and attached to THIS request, because push fan-out happens inside it — the
+    // archiveOnSend upload below only lands after the response. Best-effort:
+    // sealForPush returns null on any failure and the send proceeds without it.
+    const preview = visibility ? await tak.sealForPush(topicId, text, visibility) : null;
+    const row = await this.rest.chat.send(topicId, {
+      ciphertext: sealed.ciphertext,
+      epoch: sealed.epoch,
+      ...(preview ? { pushArchive: { ct: preview.ct, takVersion: preview.takVersion } } : {}),
+    });
     // The MLS sender cannot decrypt its OWN application message — cache the
     // plaintext under the server id so readChat surfaces it after a restart.
     await mls.cachePlaintext(topicId, row.id, text);
-    if (opts.archive !== false) {
-      const visibility = opts.visibility ?? (await this.visibility(topicId));
+    if (visibility) {
       try {
         await tak.archiveOnSend(topicId, row.id, text, visibility);
       } catch {
