@@ -49,6 +49,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
 import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls } from '../../crypto/mobileTransport';
@@ -382,6 +383,11 @@ export function ChatRoomScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ChatStackParamList>>();
   const topicId: string = route.params?.topicId ?? '';
   const topicTitle: string = route.params?.topicTitle ?? t('openstoa.tabs.chat');
+  // 'topic' when the caller didn't say (see ChatStackParamList's doc) — the
+  // Members button below is additive chrome, so defaulting to "show it" is
+  // the safe direction; a DM param is always passed explicitly by every
+  // caller that opens one (ChatListScreen never guesses 'dm').
+  const kind: 'topic' | 'dm' = route.params?.kind ?? 'topic';
 
   const client = useOpenStoaClient();
   const sessionUserId = useOpenStoaSession((s) => s.userId);
@@ -433,7 +439,7 @@ export function ChatRoomScreen() {
             // already on the 'ChatRoom' route, so `navigate` would just
             // rewrite this screen's params instead of opening a fresh one,
             // and the back button would no longer return to this room.
-            navigation.push('ChatRoom', { topicId: res.topicId, topicTitle: target.nickname });
+            navigation.push('ChatRoom', { topicId: res.topicId, topicTitle: target.nickname, kind: 'dm' });
           },
         },
       );
@@ -686,11 +692,33 @@ export function ChatRoomScreen() {
   }, [allMessages, scrollToBottom]);
 
   // ── Presence header decoration ─────────────────────────────────────────────
+  // Member list, reachable from inside the room (not just from the topic's
+  // own detail screen) — reuses TopicMembersScreen wholesale rather than a
+  // second member-list surface. DM rooms skip this: the "members" are
+  // already the two people named in the header (see `kind` above).
+  const openMembers = useCallback(() => {
+    (navigation as unknown as { navigate: (name: string, params: unknown) => void }).navigate(
+      'TopicsTab',
+      { screen: 'TopicMembers', params: { topicId } },
+    );
+  }, [navigation, topicId]);
+
   useEffect(() => {
     navigation.setOptions({
       title: topicTitle,
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {kind !== 'dm' ? (
+            <TouchableOpacity
+              onPress={openMembers}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('openstoa.members.viewMembers')}
+              style={{ marginRight: 4 }}
+            >
+              <Feather name="users" size={20} color={colors.text.primary} />
+            </TouchableOpacity>
+          ) : null}
           {/* Per-topic push mute (P-S). Renders nothing until its state loads. */}
           <TopicMuteButton topicId={topicId} />
           {presence ? (
@@ -706,7 +734,11 @@ export function ChatRoomScreen() {
     navigation,
     topicTitle,
     topicId,
+    kind,
+    openMembers,
     presence,
+    colors.text.primary,
+    t,
     styles.presenceBadge,
     styles.presenceDot,
     styles.presenceCount,

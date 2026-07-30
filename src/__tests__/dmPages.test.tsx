@@ -118,8 +118,13 @@ function text(): string {
 
 function messageButtons(): HTMLButtonElement[] {
   return Array.from(container.querySelectorAll('button')).filter((b) =>
-    (b.getAttribute('aria-label') ?? '').startsWith('Message '),
+    (b.getAttribute('aria-label') ?? '').startsWith('DM '),
   );
+}
+
+/** The members page's in-page DM-start error banner (replaces `alert()`). */
+function dmErrorBanner(): string | null {
+  return container.querySelector('[role="alert"]')?.textContent ?? null;
 }
 
 function channel(topicId: string, nickname: string, lastActivityAt: string | null) {
@@ -346,12 +351,17 @@ describe('/dm/[topicId] — conversation', () => {
     expect(container.querySelector('[data-testid="layout"]')).toBeNull();
   });
 
-  it('CONTRACT: keeps a back-to-messages affordance and the per-topic mute control', async () => {
+  it('CONTRACT: no back-arrow — a Close affordance (from BareChatShell) and the per-topic mute control instead', async () => {
+    // P-2: a popped-out tab has no meaningful "back". The old back-arrow Link
+    // is gone; `BareChatShell` provides the one exit affordance (Close) plus
+    // the width control, both above this page's own identity row.
     routeFetch([['/api/dm', () => json({ dms: [channel(DM_A, 'bob', '2026-01-01T00:00:00Z')] })]]);
 
     await render(<DmConversationPage />);
 
-    expect(container.querySelector('a[aria-label="Back to messages"][href="/dm"]')).not.toBeNull();
+    expect(container.querySelector('a[aria-label="Back to messages"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Close"]')).not.toBeNull();
+    expect(container.querySelector('[role="group"][aria-label="Chat width"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="mute-toggle"]')).not.toBeNull();
   });
 
@@ -454,7 +464,7 @@ describe('/topics/[topicId]/members — Message action', () => {
 
     const btns = messageButtons();
     expect(btns).toHaveLength(1);
-    expect(btns[0].getAttribute('aria-label')).toBe('Message bob');
+    expect(btns[0].getAttribute('aria-label')).toBe('DM bob');
   });
 
   it('AUTHZ: no Message button is offered before the session id is known', async () => {
@@ -548,7 +558,9 @@ describe('/topics/[topicId]/members — Message action', () => {
     await render(<MembersPage />);
     await act(async () => { messageButtons()[0].click(); });
 
-    expect(window.alert).toHaveBeenCalledWith('Cannot start a DM with yourself');
+    // In-page error banner, not a blocking alert() dialog.
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(dmErrorBanner()).toContain('Cannot start a DM with yourself');
     expect(routerMock.push).not.toHaveBeenCalled();
   });
 
@@ -564,7 +576,8 @@ describe('/topics/[topicId]/members — Message action', () => {
     await render(<MembersPage />);
     await act(async () => { messageButtons()[0].click(); });
 
-    expect(window.alert).toHaveBeenCalledWith('User not found');
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(dmErrorBanner()).toContain('User not found');
     expect(routerMock.push).not.toHaveBeenCalled();
   });
 
@@ -581,7 +594,8 @@ describe('/topics/[topicId]/members — Message action', () => {
     await act(async () => { messageButtons()[0].click(); });
 
     expect(routerMock.push).not.toHaveBeenCalled();
-    expect(window.alert).toHaveBeenCalled();
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(dmErrorBanner()).not.toBeNull();
   });
 
   it('UTF-8: the button is labelled with the peer nickname verbatim', async () => {
@@ -592,6 +606,6 @@ describe('/topics/[topicId]/members — Message action', () => {
 
     await render(<MembersPage />);
 
-    expect(messageButtons()[0].getAttribute('aria-label')).toBe('Message 이수민 ✨');
+    expect(messageButtons()[0].getAttribute('aria-label')).toBe('DM 이수민 ✨');
   });
 });

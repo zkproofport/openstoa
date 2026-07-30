@@ -208,7 +208,7 @@ export function ChatListScreen() {
     // Title is a nicety for the header; the room screen falls back on its own
     // when the topic list hasn't loaded yet (or the user isn't a member).
     const topicTitle = topicsRef.current.find((topic) => topic.id === topicId)?.title;
-    navigation.navigate('ChatRoom', { topicId, topicTitle });
+    navigation.navigate('ChatRoom', { topicId, topicTitle, kind: 'topic' });
   }, [pendingChatTopicId, isGuest, navigation]);
 
   // Fetch the latest chat message per topic in parallel. Cached for 30s so
@@ -328,6 +328,7 @@ export function ChatListScreen() {
               navigation.navigate('ChatRoom', {
                 topicId: item.id,
                 topicTitle: item.title,
+                kind: 'topic',
               });
             }}
           >

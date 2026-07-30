@@ -15,7 +15,12 @@ export type ChatStackParamList = {
   ChatList: undefined;
   DmList: undefined;
   NewConversation: undefined;
-  ChatRoom: { topicId: string; topicTitle?: string };
+  // `kind` distinguishes a topic room (member list reachable, see the
+  // headerRight Members button in ChatRoomScreen) from a DM (no member list
+  // — the two participants are already named in the header). Optional so a
+  // caller that genuinely doesn't know defaults to the topic-room chrome
+  // (the more common case) rather than crashing on a missing param.
+  ChatRoom: { topicId: string; topicTitle?: string; kind?: 'topic' | 'dm' };
   InAppBrowser: { url: string; title?: string };
 };
 

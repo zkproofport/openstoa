@@ -63,7 +63,15 @@ export default function DmConversationPage() {
     return () => { alive = false; };
   }, [topicId, router]);
 
-  function backLink(label = 'Back to messages') {
+  /**
+   * Recovery link for the error/not-found states — named after its
+   * DESTINATION, not "Back". This is a popped-out tab with no meaningful
+   * browser history, so a "Back" label promises navigation it cannot perform.
+   * Closing lives in `BareChatShell`'s chrome; this is the separate case of
+   * "the conversation did not load, here is somewhere real to go".
+   * Mirrors `recoveryLink` in `src/app/chat/[topicId]/page.tsx`.
+   */
+  function recoveryLink(label = 'Open messages') {
     return (
       <Link href="/dm" style={{ color: 'var(--accent)', fontSize: 14 }}>
         {label}
@@ -103,7 +111,7 @@ export default function DmConversationPage() {
           <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 14, margin: '0 0 12px' }}>
             {error}
           </p>
-          {backLink()}
+          {recoveryLink()}
         </div>
       </BareChatShell>
     );
@@ -121,7 +129,7 @@ export default function DmConversationPage() {
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.6 }}>
             This conversation doesn&rsquo;t exist, or you&rsquo;re not part of it.
           </p>
-          {backLink()}
+          {recoveryLink()}
         </div>
       </BareChatShell>
     );
@@ -132,6 +140,10 @@ export default function DmConversationPage() {
       {/* Peer header — the DM topic's own title is the placeholder 'dm', so
           the counterpart's identity is what the conversation is named after
           (same as the mobile ChatRoom, which passes peer.nickname as title). */}
+      {/* No back-arrow here on purpose — see BareChatShell's module doc (P-2).
+          This is a popped-out tab; Close (in the shell's own chrome above)
+          is the one exit affordance, not a "back" that has nowhere real to
+          go. */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -140,15 +152,6 @@ export default function DmConversationPage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <Link
-          href="/dm"
-          aria-label="Back to messages"
-          style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', flexShrink: 0 }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </Link>
         <Avatar src={channel.peer.profileImage} name={channel.peer.nickname} size={36} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{

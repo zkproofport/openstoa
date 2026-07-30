@@ -218,7 +218,8 @@
       "transfer": "Transfer ownership",
       "transferConfirm": "Transfer ownership to {{nickname}}? You will become an admin.",
       "actionsForMember": "{{nickname}}",
-      "actionFailed": "Action failed"
+      "actionFailed": "Action failed",
+      "viewMembers": "Members"
     },
     "requests": {
       "title": "Pending requests",
@@ -406,7 +407,11 @@
       "sharedTopicsMore": "+{{count}} more"
     },
     "peerProfile": {
-      "message": "Message {{nickname}}"
+      "message": "DM {{nickname}}",
+      "viewProfile": "View {{nickname}}'s profile",
+      "self": "This is you",
+      "noBadges": "No badges yet",
+      "notDmableAi": "AI members can't be messaged directly"
     }
   }
 }

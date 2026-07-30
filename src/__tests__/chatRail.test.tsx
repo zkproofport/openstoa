@@ -35,15 +35,39 @@ import { createRoot, type Root } from 'react-dom/client';
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const pathnameMock = vi.hoisted(() => ({ current: '/topics' }));
+const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock('next/navigation', () => ({
   usePathname: () => pathnameMock.current,
+  // UserCard (rendered inside the member list) calls useRouter() unconditionally
+  // as its no-rail-context fallback path — never exercised by ChatRail's own
+  // tests (a ChatRailContext.Provider is never mounted here), but the hook
+  // still needs to resolve to something rather than throw.
+  useRouter: () => routerMock,
 }));
 
-const panelProps = vi.hoisted(() => ({ current: null as Record<string, unknown> | null, mountCount: 0 }));
+/**
+ * `mountCount` counts real MOUNTS (a `[]`-dep effect), not renders.
+ *
+ * It used to increment in the component body, which counted every render — so
+ * a guard named "mount-uniqueness" was actually measuring render count, and a
+ * re-render looked identical to a remount. That distinction is the whole point
+ * here: MLS drops each message's decrypt key after first use, so what must
+ * never happen is a SECOND live panel or a needless remount that re-runs the
+ * initial history fetch. `renderCount` is kept separately for assertions that
+ * genuinely care about re-renders.
+ */
+const panelProps = vi.hoisted(() => ({
+  current: null as Record<string, unknown> | null,
+  mountCount: 0,
+  renderCount: 0,
+}));
 vi.mock('@/components/ChatPanel', () => ({
   default: (props: Record<string, unknown>) => {
     panelProps.current = props;
-    panelProps.mountCount += 1;
+    panelProps.renderCount += 1;
+    React.useEffect(() => {
+      panelProps.mountCount += 1;
+    }, []);
     return React.createElement('div', { 'data-testid': 'chat-panel' });
   },
 }));
@@ -126,6 +150,7 @@ beforeEach(() => {
   pathnameMock.current = '/topics';
   panelProps.current = null;
   panelProps.mountCount = 0;
+  panelProps.renderCount = 0;
   // `dmCandidatesCache` is a module-level cache shared across the whole test
   // file (it is real, not mocked, so ChatRail's picker exercises the actual
   // dedupe/TTL logic) — without this, test N+1 would silently see test N's
@@ -462,5 +487,190 @@ describe('openRequest — external jump-to-room', () => {
 
     expect(byTestId('chat-panel')).toHaveLength(0);
     expect(text()).toContain('already viewing this conversation');
+  });
+
+  it('FOCUS: applying a room request moves DOM focus into the rail container', async () => {
+    routeFetch(defaultRoutes);
+    await mount();
+    expect(document.activeElement).not.toBe(container.querySelector('[data-testid="chat-rail"]'));
+
+    await rerenderWithRequest({ room: { kind: 'dm', topicId: 'd9', title: 'bob' }, nonce: 1 });
+
+    expect(document.activeElement).toBe(container.querySelector('[data-testid="chat-rail"]'));
+  });
+
+  it('FOCUS: a room: null request (return to list) does not steal focus — nothing to focus INTO', async () => {
+    routeFetch([
+      ...defaultRoutes.filter(([p]) => p !== '/api/topics'),
+      ['/api/topics', () => json({ topics: [{ id: 't1', title: 'Zoning Law' }] })],
+    ]);
+    await mount();
+    await act(async () => { byTestId('chat-rail-topic-row')[0].click(); });
+    const rail = container.querySelector('[data-testid="chat-rail"]') as HTMLElement;
+    // Focus something else first so we can tell the null-room request left it alone.
+    const decoy = document.createElement('button');
+    document.body.appendChild(decoy);
+    decoy.focus();
+    expect(document.activeElement).toBe(decoy);
+
+    await rerenderWithRequest({ room: null, nonce: 1 });
+
+    expect(document.activeElement).not.toBe(rail);
+    decoy.remove();
+  });
+});
+
+describe('room view — inline member list (topic rooms only)', () => {
+  const membersRoute = (topicId: string, members: Array<{ userId: string; nickname: string; role: 'owner' | 'admin' | 'member' }>): [string, (url: string) => Response] => [
+    `/api/topics/${topicId}/members`,
+    () => json({ members }),
+  ];
+
+  async function openTopicRoom(topicId = 't1', title = 'Zoning Law') {
+    routeFetch([
+      ...defaultRoutes.filter(([p]) => p !== '/api/topics'),
+      ['/api/topics', () => json({ topics: [{ id: topicId, title }] })],
+    ]);
+    await mount();
+    await act(async () => { byTestId('chat-rail-topic-row')[0].click(); });
+  }
+
+  function membersButton(): HTMLButtonElement | null {
+    return container.querySelector('button[aria-label="Show members"], button[aria-label="Hide members"]');
+  }
+
+  it('CONTRACT: the Members toggle is offered on a topic room', async () => {
+    await openTopicRoom();
+    expect(membersButton()).not.toBeNull();
+  });
+
+  it('CONTRACT: the Members toggle is absent on a DM room', async () => {
+    routeFetch([
+      ...defaultRoutes.filter(([p]) => p !== '/api/dm'),
+      ['/api/dm', () => json({ dms: [{ topicId: 'd1', peer: { userId: 'u1', nickname: 'bob', profileImage: null }, lastActivityAt: null }] })],
+    ]);
+    await mount();
+    await act(async () => { tabButtons()[1].click(); });
+    await act(async () => { byTestId('chat-rail-dm-row')[0].click(); });
+
+    expect(membersButton()).toBeNull();
+  });
+
+  it('BOUNDARY 1: toggling members fetches and renders exactly one row, over a still-mounted ChatPanel', async () => {
+    await openTopicRoom();
+    // The members route MUST be listed before the generic `/api/topics` route
+    // below — routeFetch matches by prefix, and `/api/topics/t1/members`
+    // starts with `/api/topics`, so the general route would otherwise win
+    // and hand back `{ topics: [...] }`, whose `.members` is undefined.
+    routeFetch([
+      membersRoute('t1', [{ userId: 'u1', nickname: 'bob', role: 'member' }]),
+      ...defaultRoutes,
+    ]);
+
+    await act(async () => { membersButton()!.click(); });
+    await flush();
+
+    expect(byTestId('rail-member-row')).toHaveLength(1);
+    expect(text()).toContain('bob');
+    // The panel stays mounted UNDER the overlay — replacing it would drop the
+    // SSE stream and re-run the history fetch on every peek at the members.
+    expect(byTestId('chat-panel')).toHaveLength(1);
+    expect(panelProps.mountCount).toBe(1);
+  });
+
+  it('BOUNDARY many: renders one row per member, with a role tag for non-plain-member roles', async () => {
+    await openTopicRoom();
+    routeFetch([
+      membersRoute('t1', [
+        { userId: 'me', nickname: 'me', role: 'owner' },
+        { userId: 'u1', nickname: 'bob', role: 'admin' },
+        { userId: 'u2', nickname: 'carol', role: 'member' },
+      ]),
+      ...defaultRoutes,
+    ]);
+
+    await act(async () => { membersButton()!.click(); });
+    await flush();
+
+    expect(byTestId('rail-member-row')).toHaveLength(3);
+    expect(text()).toContain('owner');
+    expect(text()).toContain('admin');
+  });
+
+  it('EXT-FAILURE: a failed member fetch shows a retry, not an empty list (would misread as "no members")', async () => {
+    await openTopicRoom();
+    let calls = 0;
+    routeFetch([
+      [`/api/topics/t1/members`, () => {
+        calls += 1;
+        return calls === 1 ? json({ error: 'boom' }, false, 500) : json({ members: [{ userId: 'u1', nickname: 'bob', role: 'member' }] });
+      }],
+      ...defaultRoutes,
+    ]);
+
+    await act(async () => { membersButton()!.click(); });
+    await flush();
+    expect(text()).toContain('Could not load the member list');
+
+    const retry = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Try again')!;
+    await act(async () => { retry.click(); });
+    await flush();
+
+    expect(byTestId('rail-member-row')).toHaveLength(1);
+  });
+
+  it('MOUNT-UNIQUE: the member list overlays ChatPanel without ever remounting it', async () => {
+    await openTopicRoom();
+    routeFetch([
+      membersRoute('t1', [{ userId: 'u1', nickname: 'bob', role: 'member' }]),
+      ...defaultRoutes,
+    ]);
+
+    // The member list is an OVERLAY: the panel stays mounted underneath, so
+    // the SSE stream, scroll position and already-decrypted history all
+    // survive a glance at the members. Replacing the panel instead would
+    // unmount it and re-run the initial fetch on every toggle.
+    await act(async () => { membersButton()!.click(); });
+    await flush();
+    expect(byTestId('chat-panel')).toHaveLength(1);
+    expect(panelProps.mountCount).toBe(1);
+
+    await act(async () => { membersButton()!.click(); });
+    // Still ONE mount across the whole round trip — never two live panels, and
+    // never a throwaway remount either.
+    expect(byTestId('chat-panel')).toHaveLength(1);
+    expect(panelProps.mountCount).toBe(1);
+  });
+
+  it('UTF-8: a Korean + emoji member nickname renders intact', async () => {
+    await openTopicRoom();
+    const nickname = '김철수 🚀';
+    routeFetch([
+      membersRoute('t1', [{ userId: 'u1', nickname, role: 'member' }]),
+      ...defaultRoutes,
+    ]);
+
+    await act(async () => { membersButton()!.click(); });
+    await flush();
+
+    expect(text()).toContain(nickname);
+  });
+
+  it('leaving the room (back to list) resets the member-list toggle for next time', async () => {
+    await openTopicRoom();
+    routeFetch([
+      membersRoute('t1', [{ userId: 'u1', nickname: 'bob', role: 'member' }]),
+      ...defaultRoutes,
+    ]);
+    await act(async () => { membersButton()!.click(); });
+    await flush();
+    expect(byTestId('rail-member-row')).toHaveLength(1);
+
+    await act(async () => { (container.querySelector('button[aria-label="Back to chat list"]') as HTMLButtonElement).click(); });
+    await act(async () => { byTestId('chat-rail-topic-row')[0].click(); });
+
+    // Back in the room — chat, not the member list, is the default view again.
+    expect(byTestId('chat-panel')).toHaveLength(1);
+    expect(byTestId('rail-member-row')).toHaveLength(0);
   });
 });

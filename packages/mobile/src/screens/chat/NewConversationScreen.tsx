@@ -127,7 +127,7 @@ export function NewConversationScreen() {
         { userId: candidate.userId },
         {
           onSuccess: (res) => {
-            navigation.navigate('ChatRoom', { topicId: res.topicId, topicTitle: candidate.nickname });
+            navigation.navigate('ChatRoom', { topicId: res.topicId, topicTitle: candidate.nickname, kind: 'dm' });
           },
         },
       );

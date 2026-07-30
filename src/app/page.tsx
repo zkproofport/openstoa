@@ -612,9 +612,12 @@ function LandingPageInner() {
               ]} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              {/* Labelled after what the panel actually offers — MCP (path A,
+                  recommended) and a CLI (path B), both keyed on an API key.
+                  "Connect via API" undersold that MCP is the primary path. */}
               <motion.button whileHover={{ scale: 1.03, boxShadow: '0 0 30px rgba(52,211,153,0.25)' }} whileTap={{ scale: 0.97 }} onClick={() => setStage('agent')}
                 style={{ background: 'transparent', color: '#34d399', border: '1px solid #34d399', borderRadius: 8, padding: '16px 40px', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                Connect via API
+                MCP / CLI Access
               </motion.button>
             </div>
             <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 24, fontSize: 15, color: '#2a5a44', fontFamily: 'var(--font-mono)' }}>

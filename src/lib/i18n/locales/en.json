@@ -1,0 +1,32 @@
+{
+  "common": {
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "ok": "OK",
+    "done": "Done"
+  },
+  "sidebar": {
+    "searchPlaceholder": "Search topics...",
+    "startTopic": "Start a Topic",
+    "chat": "Chat",
+    "categories": "Categories",
+    "all": "All",
+    "myTopics": "My Topics",
+    "exploreTopics": "Explore Topics",
+    "popularTags": "Popular Tags",
+    "community": "Community",
+    "stats": {
+      "topics": "Topics",
+      "members": "Members"
+    },
+    "onChainRecords": {
+      "title": "On-Chain Records",
+      "body": "Posts recorded on Base are permanently preserved on-chain.",
+      "cta": "View recorded posts"
+    },
+    "expand": "Expand",
+    "collapse": "Collapse"
+  }
+}

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import TopicAvatar from '@/components/TopicAvatar';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -68,20 +69,21 @@ const DEFAULT_CATEGORIES: Category[] = [
 const sidebarCardStyle: React.CSSProperties = {
   background: 'var(--surface)',
   border: '1px solid var(--border)',
-  borderRadius: 12,
-  padding: 16,
-  marginBottom: 12,
+  borderRadius: 'var(--radius-card)',
+  padding: 'var(--space-4)',
+  marginBottom: 'var(--space-3)',
 };
 
+// Font-size/weight/family + the language-conditional uppercase+tracking come
+// from the `.os-label` utility class (globals.css) — apply that class
+// alongside this style object at each usage site below. Uppercase +
+// letter-spacing on Hangul reads as broken kerning, so `.os-label` only
+// applies them for :lang(en); this object carries the language-agnostic
+// remainder only.
 const sectionHeadingStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 700,
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
   color: 'var(--muted)',
   marginBottom: 10,
-  padding: '0 4px',
-  fontFamily: 'var(--font-mono)',
+  padding: '0 var(--space-1)',
 };
 
 function sidebarItemStyle(active: boolean): React.CSSProperties {
@@ -121,6 +123,7 @@ export default function LeftSidebar({
 }: LeftSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useTranslation();
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [allTopics, setAllTopics] = useState<TopicItem[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -230,7 +233,7 @@ export default function LeftSidebar({
           </svg>
           <input
             type="text"
-            placeholder="Search topics..."
+            placeholder={t('sidebar.searchPlaceholder')}
             value={topicSearch}
             onChange={(e) => setTopicSearch(e.target.value)}
             style={{
@@ -238,9 +241,10 @@ export default function LeftSidebar({
               padding: '8px 10px 8px 32px',
               background: 'var(--surface)',
               border: '1px solid var(--border)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-control)',
               color: 'var(--foreground)',
-              fontSize: 13,
+              // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+              fontSize: 'var(--text-body)',
               outline: 'none',
               fontFamily: 'var(--font-mono)',
               transition: 'border-color 0.15s',
@@ -328,7 +332,7 @@ export default function LeftSidebar({
           }}>
             +
           </span>
-          <span>Start a Topic</span>
+          <span>{t('sidebar.startTopic')}</span>
         </Link>
       )}
 
@@ -374,13 +378,13 @@ export default function LeftSidebar({
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
             </svg>
           </span>
-          <span>Chat</span>
+          <span>{t('sidebar.chat')}</span>
         </button>
       )}
 
       {/* Categories with popular topics */}
       <div style={sidebarCardStyle}>
-        <div style={sectionHeadingStyle}>Categories</div>
+        <div className="os-label" style={sectionHeadingStyle}>{t('sidebar.categories')}</div>
         {/* All / Home item */}
         <button
           onClick={() => {
@@ -404,7 +408,7 @@ export default function LeftSidebar({
           <span style={{ fontSize: 15, width: 20, textAlign: 'center' as const }}>
             {'\u2302'}
           </span>
-          <span>All</span>
+          <span>{t('sidebar.all')}</span>
         </button>
 
         {/* My Topics — only visible when logged in */}
@@ -425,7 +429,7 @@ export default function LeftSidebar({
             }}
           >
             <span style={{ fontSize: 15, width: 20, textAlign: 'center' as const }}>⭐</span>
-            <span>My Topics</span>
+            <span>{t('sidebar.myTopics')}</span>
           </button>
         )}
 
@@ -446,7 +450,7 @@ export default function LeftSidebar({
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <span>Explore Topics</span>
+          <span>{t('sidebar.exploreTopics')}</span>
         </Link>
 
         {categories.map((cat) => {
@@ -454,14 +458,30 @@ export default function LeftSidebar({
           const catTopics = (topicsByCategory[cat.slug] ?? []).slice(0, 3);
           const isExpanded = expandedCategories.has(cat.slug);
 
+          const selectCategory = () => {
+            if (onCategorySelect) {
+              onCategorySelect(cat.slug);
+            } else {
+              router.push(`/topics?category=${encodeURIComponent(cat.slug)}`);
+            }
+          };
+
           return (
             <div key={cat.id}>
-              <button
-                onClick={() => {
-                  if (onCategorySelect) {
-                    onCategorySelect(cat.slug);
-                  } else {
-                    router.push(`/topics?category=${encodeURIComponent(cat.slug)}`);
+              {/* This row is a <div role="button">, not a native <button>,
+                  because it contains a second, independently-clickable
+                  <button> (the expand/collapse chevron below) — nesting a
+                  <button> inside a <button> is invalid HTML and previously
+                  caused a real hydration-mismatch warning once a category
+                  had topics (React refuses to nest interactive content). */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={selectCategory}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectCategory();
                   }
                 }}
                 onMouseEnter={() => setHoveredItem(cat.id)}
@@ -504,14 +524,14 @@ export default function LeftSidebar({
                       transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                       flexShrink: 0,
                     }}
-                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                    aria-label={isExpanded ? t('sidebar.collapse') : t('sidebar.expand')}
                   >
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
                   </button>
                 )}
-              </button>
+              </div>
 
               {/* Popular topics under this category */}
               {isExpanded && catTopics.length > 0 && (
@@ -561,7 +581,7 @@ export default function LeftSidebar({
       {/* Popular Tags */}
       {tags.length > 0 && (
         <div style={sidebarCardStyle}>
-          <div style={sectionHeadingStyle}>Popular Tags</div>
+          <div className="os-label" style={sectionHeadingStyle}>{t('sidebar.popularTags')}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {tags.map((tag) => {
               const isActive = activeTag === tag.slug;
@@ -620,14 +640,14 @@ export default function LeftSidebar({
 
       {/* Community Stats */}
       <div style={sidebarCardStyle}>
-        <div style={sectionHeadingStyle}>Community</div>
+        <div className="os-label" style={sectionHeadingStyle}>{t('sidebar.community')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {[
-            { label: 'Topics', value: stats.totalTopics },
-            { label: 'Members', value: stats.totalMembers },
-          ].map(({ label, value }) => (
+            { id: 'topics', labelKey: 'sidebar.stats.topics', value: stats.totalTopics },
+            { id: 'members', labelKey: 'sidebar.stats.members', value: stats.totalMembers },
+          ].map(({ id, labelKey, value }) => (
             <div
-              key={label}
+              key={id}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -637,7 +657,7 @@ export default function LeftSidebar({
                 padding: '0 4px',
               }}
             >
-              <span>{label}</span>
+              <span>{t(labelKey)}</span>
               <span style={{
                 fontFamily: 'var(--font-mono)',
                 fontWeight: 600,
@@ -657,11 +677,11 @@ export default function LeftSidebar({
         background: 'rgba(139,92,246,0.04)',
         border: '1px solid rgba(139,92,246,0.12)',
       }}>
-        <div style={{
+        <div className="os-label" style={{
           ...sectionHeadingStyle,
           color: '#a78bfa',
         }}>
-          On-Chain Records
+          {t('sidebar.onChainRecords.title')}
         </div>
         <p style={{
           fontSize: 13,
@@ -669,7 +689,7 @@ export default function LeftSidebar({
           margin: '0 0 10px',
           lineHeight: 1.5,
         }}>
-          Posts recorded on Base are permanently preserved on-chain.
+          {t('sidebar.onChainRecords.body')}
         </p>
         <Link
           href="/recorded"
@@ -683,7 +703,7 @@ export default function LeftSidebar({
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
         >
-          View recorded posts {'\u2192'}
+          {t('sidebar.onChainRecords.cta')} {'\u2192'}
         </Link>
       </div>
 

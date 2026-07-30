@@ -144,7 +144,7 @@ export function TopicMembersScreen() {
             // Cross-tab jump into the Chat tab's shared ChatRoom.
             (navigation as unknown as { navigate: (name: string, params: unknown) => void }).navigate(
               'ChatTab',
-              { screen: 'ChatRoom', params: { topicId: res.topicId, topicTitle: member.nickname } },
+              { screen: 'ChatRoom', params: { topicId: res.topicId, topicTitle: member.nickname, kind: 'dm' } },
             );
           },
         },
@@ -355,7 +355,7 @@ export function TopicMembersScreen() {
             onPress={() => openProfile(item)}
             activeOpacity={0.6}
             accessibilityRole="button"
-            accessibilityLabel={t('openstoa.peerProfile.message', { nickname: item.nickname })}
+            accessibilityLabel={t('openstoa.peerProfile.viewProfile', { nickname: item.nickname })}
           >
             <View style={styles.avatar}>
               <Feather name="user" size={18} color={colors.text.tertiary} />
@@ -372,7 +372,7 @@ export function TopicMembersScreen() {
               onPress={() => openDm(item)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel={`Message ${item.nickname}`}
+              accessibilityLabel={t('openstoa.peerProfile.message', { nickname: item.nickname })}
             >
               <Feather name="message-circle" size={18} color={colors.brand.primary} />
             </TouchableOpacity>

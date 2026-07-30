@@ -13,7 +13,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { canDm, initialFor, type PeerProfileTarget } from '../lib/peerProfile';
+import { canDm, dmUnavailableReason, initialFor, type PeerProfileTarget } from '../lib/peerProfile';
 
 export interface PeerProfileCardProps {
   /** The tapped member/author, or null to render nothing (mirrors the
@@ -113,6 +113,13 @@ function makeStyles(colors: ThemeColors) {
       fontWeight: '600',
       color: colors.brand.primary,
     },
+    note: {
+      marginTop: 12,
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.text.tertiary,
+      textAlign: 'center',
+    },
     messageButton: {
       marginTop: 20,
       alignSelf: 'stretch',
@@ -166,6 +173,11 @@ export function PeerProfileCard({
 
   const showDm = canDm(viewerUserId, target);
   const badges = target.badges ?? [];
+  // Three honest end-states, not one blank box: self, no badges, and
+  // not-DM-able are independent facts that can combine (your own card is
+  // `self` + usually also no badges) — each gets its own line instead of
+  // being collapsed into a generic empty area where the DM button isn't.
+  const unavailable = dmUnavailableReason(viewerUserId, target);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -203,6 +215,14 @@ export function PeerProfileCard({
                     </View>
                   ))}
                 </ScrollView>
+              ) : (
+                <Text style={styles.note}>{t('openstoa.peerProfile.noBadges')}</Text>
+              )}
+
+              {unavailable === 'self' ? (
+                <Text style={styles.note}>{t('openstoa.peerProfile.self')}</Text>
+              ) : unavailable === 'ai' ? (
+                <Text style={styles.note}>{t('openstoa.peerProfile.notDmableAi')}</Text>
               ) : null}
 
               {showDm ? (

@@ -68,6 +68,7 @@ vi.mock('@/components/ChatRail', () => ({
 import CommunityLayout from '@/components/CommunityLayout';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -88,7 +89,11 @@ function routeFetch() {
 }
 
 async function render(ui: React.ReactElement) {
-  await act(async () => { root.render(ui); });
+  // `LeftSidebar` (rendered directly here, and indirectly via
+  // `CommunityLayout`) now reads copy through `useTranslation()` — see
+  // src/lib/i18n/I18nProvider.tsx. Every render in this suite needs the
+  // provider in the tree, same as the app root (src/app/layout.tsx).
+  await act(async () => { root.render(<I18nProvider initialLocale="en">{ui}</I18nProvider>); });
   await act(async () => { await Promise.resolve(); });
 }
 

@@ -8,6 +8,7 @@ import Avatar from '@/components/Avatar';
 import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import UserCard from '@/components/UserCard';
+import { useChatRail } from '@/lib/chatRailContext';
 
 interface Member {
   userId: string;
@@ -82,6 +83,14 @@ export default function MembersPage() {
   // same batch would both still observe `dmLoading === null` and fire two POSTs
   // (idempotent server-side, but they race two navigations).
   const dmInFlightRef = useRef(false);
+  // In-page error for a failed DM start — replaces the `alert()` this used to
+  // use, matching the pattern the rest of this file already leans on
+  // (inline text, not a blocking browser dialog).
+  const [dmError, setDmError] = useState<string | null>(null);
+  // The single app-wide chat rail (present whenever this page renders inside
+  // `CommunityLayout`, which it always does — see the fallback note in
+  // `handleStartDm` for the one case it wouldn't be).
+  const chatRail = useChatRail();
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -189,11 +198,16 @@ export default function MembersPage() {
    * creating a second channel. The server also rejects a self-DM (400) and an
    * unknown user (404); the button is not rendered for your own row, and any
    * server rejection surfaces rather than navigating to a dead conversation.
+   *
+   * Lands in the conversation via the chat rail (open + focus), not a
+   * full-page navigation — pressing "DM" from a member row should not throw
+   * the reader out of the member list into an unrelated page.
    */
-  async function handleStartDm(userId: string) {
+  async function handleStartDm(userId: string, nickname: string, profileImage?: string | null) {
     if (dmInFlightRef.current) return;
     dmInFlightRef.current = true;
     setDmLoading(userId);
+    setDmError(null);
     try {
       const res = await fetch('/api/dm', {
         method: 'POST',
@@ -203,9 +217,16 @@ export default function MembersPage() {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? 'Failed to open conversation');
       if (!d.topicId) throw new Error('Failed to open conversation');
-      router.push(`/dm/${d.topicId}`);
+      if (chatRail) {
+        chatRail.openRail({ kind: 'dm', topicId: d.topicId, title: nickname, profileImage: profileImage ?? null });
+      } else {
+        // No rail reachable (should not happen — this page always renders
+        // inside CommunityLayout — but never leave the DM unreachable over a
+        // context-resolution edge case).
+        router.push(`/dm/${d.topicId}`);
+      }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      setDmError(err instanceof Error ? err.message : 'Failed to open conversation');
     } finally {
       dmInFlightRef.current = false;
       setDmLoading(null);
@@ -365,6 +386,36 @@ export default function MembersPage() {
           </button>
         </div>
 
+        {/* In-page DM-start failure — replaces the old alert() dialog. */}
+        {dmError && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '10px 14px',
+              marginBottom: 16,
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              borderRadius: 8,
+              color: '#ef4444',
+              fontSize: 13,
+            }}
+          >
+            <span>{dmError}</span>
+            <button
+              type="button"
+              onClick={() => setDmError(null)}
+              aria-label="Dismiss"
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* Tabs (only show if owner/admin) */}
         {isOwnerOrAdmin && (
           <div
@@ -515,15 +566,15 @@ export default function MembersPage() {
                 </div>
               </div>
 
-              {/* Message — starts (or reopens) a 1:1 DM with this member.
+              {/* DM — starts (or reopens) a 1:1 conversation with this member.
                   Rendered only once the session is known and never on your own
                   row: /api/dm rejects a self-DM with 400, so offering it would
                   be a button whose only outcome is an error. */}
               {sessionUserId && member.userId !== sessionUserId && (
                 <button
-                  onClick={() => handleStartDm(member.userId)}
+                  onClick={() => handleStartDm(member.userId, member.nickname, member.profileImage)}
                   disabled={dmLoading !== null}
-                  aria-label={`Message ${member.nickname}`}
+                  aria-label={`DM ${member.nickname}`}
                   style={{
                     fontSize: 15,
                     fontWeight: 500,
@@ -538,7 +589,7 @@ export default function MembersPage() {
                     flexShrink: 0,
                   }}
                 >
-                  {dmLoading === member.userId ? '...' : 'Message'}
+                  {dmLoading === member.userId ? '...' : 'DM'}
                 </button>
               )}
 

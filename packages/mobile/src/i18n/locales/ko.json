@@ -218,7 +218,8 @@
       "transfer": "소유권 이전",
       "transferConfirm": "{{nickname}}에게 소유권을 이전할까요? 이후 운영자가 됩니다.",
       "actionsForMember": "{{nickname}}",
-      "actionFailed": "작업에 실패했어요"
+      "actionFailed": "작업에 실패했어요",
+      "viewMembers": "구성원"
     },
     "requests": {
       "title": "대기 중인 요청",
@@ -406,7 +407,11 @@
       "sharedTopicsMore": "외 {{count}}개"
     },
     "peerProfile": {
-      "message": "{{nickname}}에게 메시지"
+      "message": "{{nickname}}에게 DM 보내기",
+      "viewProfile": "{{nickname}} 프로필 보기",
+      "self": "본인이에요",
+      "noBadges": "아직 뱃지가 없어요",
+      "notDmableAi": "AI 구성원에게는 DM을 보낼 수 없어요"
     }
   }
 }

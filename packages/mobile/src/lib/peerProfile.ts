@@ -48,6 +48,39 @@ export function canDm(
   return viewerUserId !== target.userId;
 }
 
+/** `null` = the DM button SHOULD show. Otherwise, why it doesn't. */
+export type DmUnavailableReason = 'self' | 'ai' | null;
+
+/**
+ * Decomposes `canDm`'s "no button" outcome into WHICH reason applies, so the
+ * profile card can say something honest instead of rendering a blank area
+ * where the button would be. Three honest end-states, not one blank box:
+ * self, no badges, and not-DM-able are independent facts about a card and
+ * can combine (e.g. your own card is `self` + usually also `noBadges`).
+ *
+ * Both call sites that open this card (`TopicMembersScreen`, a message
+ * author tap in `ChatRoomScreen`) only ever do so for someone who already
+ * shares the current topic with the viewer — unlike the web picker, there is
+ * no "browse anyone site-wide" surface on mobile — so the only structural
+ * reasons left (once both ids are actually known) are `self` and an AI
+ * member (an AI teammate is never one you message; see `canDm`).
+ *
+ * An unresolved viewer or target (`!viewerUserId || !target.userId`)
+ * deliberately returns `null` — a still-loading identity is not a real
+ * answer to "why can't I message them" and would render a wrong/premature
+ * note. `canDm` also answers `false` for that case, so no button AND no
+ * note both show, same as the button-omitted case it decomposes.
+ */
+export function dmUnavailableReason(
+  viewerUserId: string | null | undefined,
+  target: Pick<PeerProfileTarget, 'userId' | 'isAI'>,
+): DmUnavailableReason {
+  if (!viewerUserId || !target.userId) return null;
+  if (viewerUserId === target.userId) return 'self';
+  if (target.isAI) return 'ai';
+  return null;
+}
+
 /**
  * Avatar-fallback initial shown when `profileImage` is absent.
  *

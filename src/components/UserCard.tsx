@@ -15,12 +15,21 @@
  * sites (PostCard) wrap the avatar in an outer `<Link>`, and nesting a real
  * `<button>` inside an `<a>` is invalid HTML that some browsers repair by
  * closing the anchor early, breaking the surrounding click target.
+ *
+ * Three honest end-states, not one blank box: an opened card with nothing
+ * to say (no badges, no button) used to render as just an avatar + name,
+ * which reads as broken rather than as "there's genuinely nothing else
+ * here". `self`, `no badges`, and `not DM-able because no shared topic` are
+ * independent and can combine (e.g. your own card is `self` + usually `no
+ * badges`) — each renders its own explanatory line rather than being
+ * collapsed into a single generic empty state.
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from './Avatar';
 import Badge from './Badge';
 import { isDmCandidate } from '@/lib/dmCandidatesCache';
+import { useChatRail } from '@/lib/chatRailContext';
 
 export interface UserCardBadge {
   type: string;
@@ -28,6 +37,13 @@ export interface UserCardBadge {
   domain?: string | null;
   country?: string | null;
 }
+
+const noteStyle: React.CSSProperties = {
+  margin: '0 0 10px',
+  fontSize: 12,
+  lineHeight: 1.5,
+  color: 'var(--muted)',
+};
 
 // Short-lived session cache shared by every mounted UserCard — a page that
 // renders many avatars (feed, member list) must not issue one
@@ -76,10 +92,19 @@ export default function UserCard({
 }: UserCardProps) {
   const [open, setOpen] = useState(false);
   const [canDm, setCanDm] = useState(false);
+  // Distinguishes "still checking DM eligibility" from "checked, not
+  // eligible" — without this the not-DM-able note would flash on for the
+  // self/guest cases too, before the check has even had a chance to run.
+  const [dmChecked, setDmChecked] = useState(false);
   const [starting, setStarting] = useState(false);
   const [resolvedViewer, setResolvedViewer] = useState<string | null | undefined>(viewerUserId);
   const wrapRef = useRef<HTMLSpanElement>(null);
   const router = useRouter();
+  // The single app-wide chat rail, when this card is rendered inside
+  // `CommunityLayout` (feed, member list) — `null` on any surface that isn't
+  // (see `useChatRail`'s doc), in which case `startDm` falls back to a plain
+  // navigation.
+  const chatRail = useChatRail();
 
   useEffect(() => {
     setResolvedViewer(viewerUserId);
@@ -106,11 +131,15 @@ export default function UserCard({
   useEffect(() => {
     if (!open || isSelf || !resolvedViewer) {
       setCanDm(false);
+      setDmChecked(false);
       return;
     }
     let alive = true;
+    setDmChecked(false);
     isDmCandidate(userId).then((v) => {
-      if (alive) setCanDm(v);
+      if (!alive) return;
+      setCanDm(v);
+      setDmChecked(true);
     });
     return () => {
       alive = false;
@@ -155,7 +184,18 @@ export default function UserCard({
         const data = await res.json();
         if (data?.topicId) {
           setOpen(false);
-          router.push(`/dm/${data.topicId}`);
+          if (chatRail) {
+            // Land the reader on the conversation they just started INSIDE
+            // the rail, with focus — not a full-page navigation away from
+            // wherever they were (feed, member list). See `ChatRail.tsx`'s
+            // `openRequest` doc for the focus-on-apply behavior.
+            chatRail.openRail({ kind: 'dm', topicId: data.topicId, title: nickname, profileImage: profileImage ?? null });
+          } else {
+            // No rail reachable from this tree (card rendered outside
+            // `CommunityLayout`) — fall back to a full navigation so the DM
+            // is still reachable instead of silently doing nothing.
+            router.push(`/dm/${data.topicId}`);
+          }
         }
       } catch {
         // best-effort — the card stays open so the user can retry
@@ -163,7 +203,7 @@ export default function UserCard({
         setStarting(false);
       }
     },
-    [starting, userId, router],
+    [starting, userId, router, chatRail, nickname, profileImage],
   );
 
   return (
@@ -218,12 +258,25 @@ export default function UserCard({
               {nickname}
             </span>
           </div>
-          {badges != null && badges.length > 0 && (
+          {badges != null && badges.length > 0 ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
               {badges.map((b, i) => (
                 <Badge key={i} type={b.type} label={b.label} domain={b.domain ?? undefined} country={b.country ?? undefined} />
               ))}
             </div>
+          ) : (
+            <p data-testid="user-card-no-badges" style={noteStyle}>No badges yet.</p>
+          )}
+          {/* Self and no-shared-topic are two different reasons the DM button
+              is absent — say which one, rather than leaving a blank space
+              that reads as broken. Self takes no dependency on the (still
+              possibly in-flight) DM-candidacy check; not-DM-able waits for
+              `dmChecked` so it never flashes on before the check has run. */}
+          {isSelf && <p data-testid="user-card-self-note" style={noteStyle}>This is you.</p>}
+          {!isSelf && resolvedViewer != null && dmChecked && !canDm && (
+            <p data-testid="user-card-not-dmable" style={noteStyle}>
+              Share a topic with {nickname} to DM them.
+            </p>
           )}
           {!isSelf && resolvedViewer != null && canDm && (
             <button
@@ -244,7 +297,7 @@ export default function UserCard({
                 opacity: starting ? 0.6 : 1,
               }}
             >
-              {starting ? '...' : 'Message'}
+              {starting ? '...' : 'DM'}
             </button>
           )}
         </div>

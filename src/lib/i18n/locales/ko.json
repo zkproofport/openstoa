@@ -1,0 +1,32 @@
+{
+  "common": {
+    "retry": "다시 시도",
+    "cancel": "취소",
+    "save": "저장",
+    "delete": "삭제",
+    "ok": "확인",
+    "done": "완료"
+  },
+  "sidebar": {
+    "searchPlaceholder": "토픽 검색...",
+    "startTopic": "토픽 만들기",
+    "chat": "채팅",
+    "categories": "카테고리",
+    "all": "전체",
+    "myTopics": "내 토픽",
+    "exploreTopics": "토픽 둘러보기",
+    "popularTags": "인기 태그",
+    "community": "커뮤니티",
+    "stats": {
+      "topics": "토픽",
+      "members": "멤버"
+    },
+    "onChainRecords": {
+      "title": "온체인 기록",
+      "body": "Base에 기록된 게시물은 영구적으로 온체인에 보존됩니다.",
+      "cta": "기록된 게시물 보기"
+    },
+    "expand": "펼치기",
+    "collapse": "접기"
+  }
+}

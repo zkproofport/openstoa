@@ -1,30 +1,197 @@
 @import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Source+Serif+4:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;600;700&family=Source+Serif+4:wght@400;600;700&display=swap');
+
+/* ============================================================================
+ * Design tokens
+ *
+ * Color values mirror `packages/mobile/src/theme/colors.ts` exactly — web and
+ * mobile are one product and must resolve to the same grounds. TS mirror for
+ * JS-side use (canvas/SVG, matchMedia): `src/styles/tokens.ts`.
+ *
+ * Theme resolution order (highest wins):
+ *   1. `:root[data-theme="light"|"dark"]` — explicit override, set by a future
+ *      theme toggle (stamps the attribute on <html>). Wins over EVERYTHING
+ *      below via CSS specificity (attribute selector), regardless of source
+ *      order or OS preference.
+ *   2. `@media (prefers-color-scheme: light)` — OS preference, when no
+ *      override is set.
+ *   3. base `:root` — dark, the fallback when neither of the above applies
+ *      (OS prefers dark, or preference unknown/unsupported).
+ *
+ * NOTE: the three color blocks below intentionally repeat every value in
+ * full (no `light-dark()`) — that CSS Color 5 function has weak old-Safari
+ * support and is close to untestable under jsdom (no real cascade engine).
+ * Repetition here is deliberately verified by a static text-parse test
+ * (`src/__tests__/tokens.test.ts`) that keeps the three blocks in sync.
+ * ========================================================================== */
 
 :root {
-  --background: #050810;
-  --foreground: #e0e4ef;
-  --accent: #788cff;
-  --accent-hover: #8b9cf7;
-  --border: #151a2a;
-  --muted: #6b7280;
-  --surface: #0c0e18;
-  --surface-hover: #10131f;
+  color-scheme: dark;
 
+  /* ── Color: semantic roles ─────────────────────────────────────────────
+   * Role separation — do NOT interchange these:
+   *   --color-brand-accent  = verified / encrypted (green)
+   *   --color-brand-primary = action / link / focus (indigo)
+   *   --color-status-danger = danger (red)
+   */
+  --color-bg-primary: #0e0e10;
+  --color-bg-secondary: #17171b;
+  --color-bg-tertiary: #1f1f25;
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #a0a0ab;
+  --color-text-tertiary: #6e6e78;
+  --color-text-inverted: #0e0e10;
+  --color-brand-primary: #7c6bff;
+  --color-brand-primary-hover: #9384ff;
+  --color-brand-primary-muted: #28244c;
+  --color-brand-accent: #22d3a2;
+  --color-border-default: #2a2a33;
+  --color-border-strong: #3a3a45;
+  --color-status-success: #22d3a2;
+  --color-status-warning: #f0a619;
+  --color-status-danger: #ff6369;
+
+  /* ── Legacy aliases — DO NOT remove. ~50 components read these directly
+     (136 uses of --accent, 145 of --muted, 101 of --border, etc. as of the
+     2026-07 audit). They now resolve through the semantic tokens above, so
+     changing a --color-* value updates every consumer with zero call-site
+     edits. Migrate call sites onto the --color-* names incrementally. */
+  --background: var(--color-bg-primary);
+  --foreground: var(--color-text-primary);
+  --accent: var(--color-brand-primary);
+  --accent-hover: var(--color-brand-primary-hover);
+  --border: var(--color-border-default);
+  --muted: var(--color-text-secondary);
+  --surface: var(--color-bg-secondary);
+  --surface-hover: var(--color-bg-tertiary);
+
+  /* Landing-page-only decorative tokens (src/app/page.tsx) — bespoke to that
+     surface, not part of the semantic system, out of scope for this pass
+     (owned by a parallel agent — see report). */
   --human-bg: #0a0a14;
   --human-accent: #8b9cf7;
   --human-glow: rgba(139, 156, 247, 0.08);
-
   --agent-bg: #080c10;
   --agent-accent: #34d399;
   --agent-glow: rgba(52, 211, 153, 0.08);
-
   --center-glow: rgba(120, 140, 255, 0.06);
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-serif: 'Source Serif 4', Georgia, serif;
+  /* ── Typography — 7 steps, named by role (not size). `--text-label` is
+     reserved for uppercase Latin labels ONLY — never Korean or running body
+     copy (see `.os-label` below). `--text-body` (16px) is the Korean/
+     long-form prose floor and also satisfies the iOS Safari
+     "inputs <16px zoom on focus" rule. */
+  --text-label: 0.75rem; /* 12px — uppercase Latin labels only */
+  --text-caption: 0.8125rem; /* 13px — meta text: timestamps, counts */
+  --text-body-sm: 0.875rem; /* 14px — default UI text: buttons, nav items */
+  --text-body: 1rem; /* 16px — body copy floor / form inputs */
+  --text-body-lg: 1.125rem; /* 18px — emphasized body / lead paragraph */
+  --text-heading-sm: 1.375rem; /* 22px — card/section headings */
+  --text-heading-lg: 2rem; /* 32px — page headings / hero */
+
+  /* ── Line height — Korean wants more leading than Latin (see html:lang(ko)
+     below, which applies --leading-relaxed as the Korean prose default). */
+  --leading-tight: 1.4;
+  --leading-base: 1.6;
+  --leading-relaxed: 1.85;
+
+  /* ── Spacing — 4 / 8 / 12 / 16 / 24 / 32 / 48 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* ── Radius — 4 steps */
+  --radius-control: 6px; /* small control: input, chip, inline button */
+  --radius-card: 12px; /* card, panel */
+  --radius-modal: 16px; /* modal, sheet */
+  --radius-pill: 999px; /* pill, avatar, fully-rounded */
+
+  /* ── Breakpoints — named, 2 cut points / 3 ranges. CSS custom properties
+     cannot appear inside an `@media` condition, so this documents the
+     canonical numbers; matching JS constants (for `matchMedia`) live in
+     `src/styles/tokens.ts` (BREAKPOINTS / MEDIA_QUERIES). The pre-existing
+     literal `@media` rules in CommunityLayout.tsx / Header.tsx /
+     SNSContent.tsx / page.tsx are NOT migrated in this pass — see report. */
+  --bp-mobile-max: 640px;
+  --bp-tablet-max: 1023px;
+  /* desktop = min-width: 1024px, matches DESKTOP_CHAT_QUERY in useMediaQuery.ts */
+
+  /* ── Touch target */
+  --touch-target-min: 44px;
+
+  --font-sans: 'Inter', 'Noto Sans KR', 'Apple SD Gothic Neo', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Source Serif 4', 'Noto Serif KR', Georgia, serif;
   --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f5f5f7;
+    --color-bg-tertiary: #eeeef2;
+    --color-text-primary: #0e0e10;
+    --color-text-secondary: #5c5c66;
+    --color-text-tertiary: #9a9aa1;
+    --color-text-inverted: #ffffff;
+    --color-brand-primary: #5b49e8;
+    --color-brand-primary-hover: #4a3ac7;
+    --color-brand-primary-muted: #eae6fb;
+    --color-brand-accent: #11c28a;
+    --color-border-default: #e2e2e8;
+    --color-border-strong: #c8c8d0;
+    --color-status-success: #11c28a;
+    --color-status-warning: #f0a619;
+    --color-status-danger: #e5484d;
+  }
+}
+
+/* Explicit overrides — always win over both the base :root and the media
+   query above via the `[data-theme]` attribute selector's higher
+   specificity. A future theme toggle stamps this attribute on <html>. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg-primary: #0e0e10;
+  --color-bg-secondary: #17171b;
+  --color-bg-tertiary: #1f1f25;
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #a0a0ab;
+  --color-text-tertiary: #6e6e78;
+  --color-text-inverted: #0e0e10;
+  --color-brand-primary: #7c6bff;
+  --color-brand-primary-hover: #9384ff;
+  --color-brand-primary-muted: #28244c;
+  --color-brand-accent: #22d3a2;
+  --color-border-default: #2a2a33;
+  --color-border-strong: #3a3a45;
+  --color-status-success: #22d3a2;
+  --color-status-warning: #f0a619;
+  --color-status-danger: #ff6369;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f5f5f7;
+  --color-bg-tertiary: #eeeef2;
+  --color-text-primary: #0e0e10;
+  --color-text-secondary: #5c5c66;
+  --color-text-tertiary: #9a9aa1;
+  --color-text-inverted: #ffffff;
+  --color-brand-primary: #5b49e8;
+  --color-brand-primary-hover: #4a3ac7;
+  --color-brand-primary-muted: #eae6fb;
+  --color-brand-accent: #11c28a;
+  --color-border-default: #e2e2e8;
+  --color-border-strong: #c8c8d0;
+  --color-status-success: #11c28a;
+  --color-status-warning: #f0a619;
+  --color-status-danger: #e5484d;
 }
 
 html, body {
@@ -39,6 +206,41 @@ html, body {
 
 * {
   box-sizing: border-box;
+}
+
+/* ============================================================================
+ * Korean typography contract
+ * ========================================================================== */
+
+/* `word-break: keep-all` for Korean running text so Hangul doesn't break
+   mid-eojeol (the repo otherwise defaults to break-all/break-word almost
+   everywhere). Set once on <html> and inherited — `.os-break-all` below
+   opts specific elements (URLs, hashes, nullifiers) back into break-all,
+   where breaking anywhere is genuinely correct. */
+html:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  line-height: var(--leading-relaxed);
+}
+
+.os-break-all {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* Uppercase + letter-spacing label idiom — language-conditional. Applying
+   text-transform: uppercase to Hangul is a no-op, and tracking (letter-
+   spacing) on Hangul reads as broken kerning, so both are gated to :lang(en)
+   only. Base rule sets the font-size/weight contract for both languages. */
+.os-label {
+  font-size: var(--text-label);
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.os-label:lang(en) {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 ::selection {
@@ -80,8 +282,8 @@ html, body {
 .os-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px 24px;
+  border-radius: var(--radius-card);
+  padding: 20px var(--space-5);
   transition: border-color 0.15s, background 0.15s;
 }
 
@@ -94,15 +296,16 @@ html, body {
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 8px;
-  padding: 10px 24px;
-  font-size: 14px;
+  border-radius: var(--radius-control);
+  padding: 10px var(--space-5);
+  font-size: var(--text-body-sm);
   font-weight: 600;
   font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.15s;
   text-decoration: none;
   display: inline-block;
+  min-height: var(--touch-target-min);
 }
 
 .os-btn:hover {
@@ -114,15 +317,16 @@ html, body {
   background: transparent;
   color: var(--accent);
   border: 1px solid rgba(120, 140, 255, 0.25);
-  border-radius: 8px;
-  padding: 10px 24px;
-  font-size: 14px;
+  border-radius: var(--radius-control);
+  padding: 10px var(--space-5);
+  font-size: var(--text-body-sm);
   font-weight: 600;
   font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.15s;
   text-decoration: none;
   display: inline-block;
+  min-height: var(--touch-target-min);
 }
 
 .os-btn-outline:hover {
@@ -134,13 +338,15 @@ html, body {
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  padding: var(--space-3) 14px;
   color: var(--foreground);
-  font-size: 15px;
+  /* var(--text-body) = 16px: below that, iOS Safari zooms the page on focus. */
+  font-size: var(--text-body);
   outline: none;
   font-family: var(--font-sans);
   transition: border-color 0.15s;
+  min-height: var(--touch-target-min);
 }
 
 .os-input:focus {
@@ -148,13 +354,13 @@ html, body {
 }
 
 .os-badge {
-  font-size: 11px;
+  font-size: var(--text-label);
   font-family: var(--font-mono);
   background: rgba(120, 140, 255, 0.1);
   color: var(--accent);
   border: 1px solid rgba(120, 140, 255, 0.2);
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-control);
 }
 
 .os-tab {
@@ -163,12 +369,13 @@ html, body {
   border-bottom: 2px solid transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-body-sm);
   font-weight: 400;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   margin-bottom: -1px;
   font-family: var(--font-sans);
   transition: color 0.15s;
+  min-height: var(--touch-target-min);
 }
 
 .os-tab.active {
@@ -181,9 +388,9 @@ html, body {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 12px;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-caption);
   font-weight: 400;
   cursor: pointer;
   font-family: var(--font-sans);
@@ -200,12 +407,12 @@ html, body {
 /* Code blocks for docs */
 .os-code {
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: #34d399;
-  background: #050810;
+  font-size: var(--text-caption);
+  color: var(--color-brand-accent);
+  background: var(--color-bg-primary);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: var(--radius-control);
+  padding: var(--space-4);
   overflow-x: auto;
   line-height: 1.7;
   margin: 0;
@@ -213,10 +420,10 @@ html, body {
 
 .os-inline-code {
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: #34d399;
-  background: #050810;
-  padding: 2px 6px;
+  font-size: var(--text-caption);
+  color: var(--color-brand-accent);
+  background: var(--color-bg-primary);
+  padding: 2px var(--space-2);
   border-radius: 4px;
   border: 1px solid var(--border);
 }

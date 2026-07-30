@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
+import { getServerLocale } from '@/lib/i18n/getServerLocale';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -66,20 +68,22 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // NOTE: maximumScale/userScalable were previously locked to disable pinch-
+  // zoom. Removed — body text sits at 11-13px in ~130 places and disabling
+  // zoom on top of that is an accessibility defect, not a design choice.
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const isProd = process.env.APP_ENV === 'production';
   const GA_ID = isProd ? 'G-Y13TWH2S0W' : null;
+  const locale = await getServerLocale();
 
   return (
-    <html lang="en" className="dark">
+    <html lang={locale}>
       {GA_ID && (
         <>
           <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
@@ -191,7 +195,7 @@ gtag('config', '${GA_ID}');`}
             />
           </>
         )}
-        {children}
+        <I18nProvider initialLocale={locale}>{children}</I18nProvider>
       </body>
     </html>
   );

@@ -43,6 +43,7 @@ import Badge from './Badge';
 import ChatPanel from './ChatPanel';
 import TopicMuteToggle from './TopicMuteToggle';
 import Spinner from './Spinner';
+import UserCard from './UserCard';
 import { relativeTime } from '@/lib/utils';
 import type { DmChannel } from '@/lib/dm';
 import { newTabHref, isSameRoomAsPath, type RailRoom } from '@/lib/chatRail';
@@ -52,6 +53,17 @@ interface RailTopic {
   id: string;
   title: string;
   memberCount?: number;
+}
+
+/** One row of `GET /api/topics/{topicId}/members` — same shape the
+ *  standalone members page (`/topics/[topicId]/members`) renders, reused
+ *  here so a topic room's member list looks identical wherever it appears. */
+interface RailMember {
+  userId: string;
+  nickname: string;
+  role: 'owner' | 'admin' | 'member';
+  profileImage?: string | null;
+  badges?: Array<{ type: string; label: string; domain?: string; country?: string }>;
 }
 
 type ListTab = 'topics' | 'dms';
@@ -74,6 +86,15 @@ const NewTabIcon = (
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
     <polyline points="15 3 21 3 21 9" />
     <line x1="10" y1="14" x2="21" y2="3" />
+  </svg>
+);
+
+const MembersIcon = (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
   </svg>
 );
 
@@ -110,6 +131,11 @@ interface ChatRailProps {
 
 export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
   const pathname = usePathname();
+  // Focus target for `openRequest` (below) — an external "open this DM/topic"
+  // request (a member row's DM action, `UserCard`) should land the reader's
+  // attention IN the rail, not just silently mount content somewhere on the
+  // page they may not be looking at.
+  const railRef = useRef<HTMLDivElement>(null);
 
   const [room, setRoom] = useState<RailRoom | null>(() => openRequest?.room ?? null);
   const [tab, setTab] = useState<ListTab>('topics');
@@ -124,6 +150,9 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     appliedRequestNonce.current = openRequest.nonce;
     setPicking(false);
     setRoom(openRequest.room);
+    // Only a real room target has anywhere to send focus — a `room: null`
+    // request (return to the list) leaves focus wherever it already was.
+    if (openRequest.room) railRef.current?.focus();
   }, [openRequest]);
 
   const [topics, setTopics] = useState<RailTopic[] | null>(null);
@@ -131,9 +160,44 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
   const [candidates, setCandidates] = useState<DmCandidate[] | null>(null);
+  /** The lookup FAILED, as opposed to legitimately returning nobody. */
+  const [candidatesFailed, setCandidatesFailed] = useState(false);
   const [query, setQuery] = useState('');
   const dmInFlightRef = useRef(false);
   const [dmStarting, setDmStarting] = useState<string | null>(null);
+
+  // Room view: an inline member list, toggled in place of `ChatPanel` — see
+  // the header button below. Topic rooms only; a DM's "members" are the two
+  // people already named in the header, so there is nothing to show.
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<RailMember[] | null>(null);
+  const [membersFailed, setMembersFailed] = useState(false);
+
+  // Leaving a room (or switching to a different one) always lands back on
+  // chat, not wherever the previous room's toggle happened to be.
+  useEffect(() => {
+    setShowMembers(false);
+    setMembers(null);
+    setMembersFailed(false);
+  }, [room?.topicId]);
+
+  const loadMembers = useCallback(() => {
+    if (!room || room.kind !== 'topic') return;
+    setMembers(null);
+    setMembersFailed(false);
+    fetch(`/api/topics/${room.topicId}/members`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed to load members'))))
+      .then((d) => setMembers(Array.isArray(d?.members) ? d.members : []))
+      .catch(() => setMembersFailed(true));
+  }, [room]);
+
+  const toggleMembers = useCallback(() => {
+    setShowMembers((v) => {
+      const next = !v;
+      if (next) loadMembers();
+      return next;
+    });
+  }, [loadMembers]);
 
   useEffect(() => {
     let alive = true;
@@ -180,12 +244,21 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     setPicking(true);
     setQuery('');
     setCandidates(null);
-    getDmCandidates().then((list) => {
+    setCandidatesFailed(false);
+    getDmCandidates().then((res) => {
+      if (!res.ok) {
+        // Distinct from "no candidates". A failed lookup rendered as an empty
+        // list reads as "you share no topics with anyone", which is both wrong
+        // and undebuggable — and the failure is not cached, so Retry can work.
+        setCandidatesFailed(true);
+        setCandidates([]);
+        return;
+      }
       // Defensive — the server already excludes the caller, but a popover
       // that could ever offer "message yourself" is worse than a redundant
       // filter here. `myUserId` IS a dep (below) precisely so this never
       // closes over a stale `null` from before the session fetch resolved.
-      setCandidates(list.filter((c) => c.userId !== myUserId));
+      setCandidates(res.data.filter((c) => c.userId !== myUserId));
     });
   }, [myUserId]);
 
@@ -229,7 +302,11 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
 
   return (
     <div
+      ref={railRef}
       data-testid="chat-rail"
+      // Not part of the tab order (-1) — this is a programmatic focus target
+      // for `openRequest`, not a control the reader tabs to on their own.
+      tabIndex={-1}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -239,6 +316,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
         border: '1px solid var(--border)',
         borderRadius: 12,
         overflow: 'hidden',
+        outline: 'none',
       }}
     >
       {/* ── Header ── */}
@@ -273,6 +351,18 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
               {room.title}
             </span>
             <TopicMuteToggle topicId={room.topicId} enabled style={{ flexShrink: 0 }} />
+            {room.kind === 'topic' && (
+              <button
+                type="button"
+                onClick={toggleMembers}
+                aria-label={showMembers ? 'Hide members' : 'Show members'}
+                aria-pressed={showMembers}
+                title="Members"
+                style={{ ...iconBtnStyle, color: showMembers ? 'var(--accent)' : iconBtnStyle.color }}
+              >
+                {MembersIcon}
+              </button>
+            )}
             <Link
               href={newTabHref(room)}
               target="_blank"
@@ -318,13 +408,35 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
             </button>
           </div>
         ) : (
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          /* The member list OVERLAYS the panel rather than replacing it.
+             Swapping it in would unmount `ChatPanel`, which drops the SSE
+             stream, loses scroll position and re-runs the initial history
+             fetch on every peek at the member list — a real cost for a glance.
+             An overlay is still exactly ONE mounted panel, so it does not
+             reintroduce the double-mount hazard the module doc describes. */
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
             <ChatPanel topicId={room.topicId} isGuest={false} isMember fullHeight hideHeader roomy />
+            {showMembers && room.kind === 'topic' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'var(--background)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  zIndex: 2,
+                }}
+              >
+                <MembersList members={members} failed={membersFailed} onRetry={loadMembers} viewerUserId={myUserId} />
+              </div>
+            )}
           </div>
         )
       ) : picking ? (
         <NewConversationPicker
           candidates={filteredCandidates}
+          failed={candidatesFailed}
+          onRetry={openPicker}
           query={query}
           onQueryChange={setQuery}
           onCancel={() => setPicking(false)}
@@ -454,8 +566,118 @@ function DmList({ dms, onOpen }: { dms: DmChannel[] | null; onOpen: (d: DmChanne
   );
 }
 
+/** A row's cursor is intentionally NOT pointer-styled like `rowStyle` (the
+ *  list rows elsewhere in this file) — the row itself isn't a click target,
+ *  only the `UserCard` trigger inside it is, and a whole-row pointer cursor
+ *  would advertise a click that does nothing outside the avatar/name. */
+const memberRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  width: '100%',
+  padding: '10px 14px',
+  borderBottom: '1px solid var(--border)',
+};
+
+/**
+ * Topic room member list, toggled in place of `ChatPanel` by the header's
+ * Members button. Reuses `UserCard` for the avatar/name — including its own
+ * DM button and shared-topic gating — rather than a second bespoke "message
+ * this person" affordance; DMing from here is exactly the same action as
+ * DMing from the standalone `/topics/{id}/members` page or a feed avatar.
+ */
+function MembersList({
+  members,
+  failed,
+  onRetry,
+  viewerUserId,
+}: {
+  members: RailMember[] | null;
+  failed: boolean;
+  onRetry: () => void;
+  viewerUserId: string | null;
+}) {
+  if (members === null && !failed) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
+        <Spinner />
+      </div>
+    );
+  }
+  if (failed) {
+    return (
+      <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
+        <p style={{ margin: '0 0 12px 0' }}>Could not load the member list.</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          style={{
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 999,
+            padding: '6px 16px',
+            color: 'var(--foreground)',
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (!members || members.length === 0) {
+    return (
+      <div style={emptyStateStyle}>
+        <p style={{ margin: 0 }}>No members found.</p>
+      </div>
+    );
+  }
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      {members.map((m) => (
+        <div key={m.userId} style={memberRowStyle} data-testid="rail-member-row">
+          <UserCard userId={m.userId} nickname={m.nickname} profileImage={m.profileImage} badges={m.badges} viewerUserId={viewerUserId}>
+            <Avatar src={m.profileImage} name={m.nickname} size={32} />
+          </UserCard>
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'var(--foreground)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {m.nickname}
+          </span>
+          {m.role !== 'member' && (
+            <span
+              style={{
+                fontSize: 10,
+                fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                color: 'var(--muted)',
+                flexShrink: 0,
+              }}
+            >
+              {m.role}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function NewConversationPicker({
   candidates,
+  failed,
+  onRetry,
   query,
   onQueryChange,
   onCancel,
@@ -463,6 +685,9 @@ function NewConversationPicker({
   startingUserId,
 }: {
   candidates: DmCandidate[] | null;
+  /** The lookup failed — render that, never as "nobody to message". */
+  failed: boolean;
+  onRetry: () => void;
   query: string;
   onQueryChange: (q: string) => void;
   onCancel: () => void;
@@ -498,6 +723,25 @@ function NewConversationPicker({
         {candidates === null ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
             <Spinner />
+          </div>
+        ) : failed ? (
+          <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 12px 0' }}>Could not load the list of people you can message.</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{
+                background: 'none',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 999,
+                padding: '6px 16px',
+                color: 'var(--foreground)',
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Try again
+            </button>
           </div>
         ) : candidates.length === 0 ? (
           <div style={emptyStateStyle}>

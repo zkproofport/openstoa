@@ -68,7 +68,17 @@ export default function TopicChatPage() {
     return () => { alive = false; };
   }, [topicId, router]);
 
-  function backLink(label = 'Back to topic') {
+  /**
+   * Recovery link for the error/not-found states.
+   *
+   * Named after its DESTINATION, not "Back". This page is a popped-out tab
+   * (opened via the rail's open-in-new-tab action, or straight from a pasted
+   * URL), so it has no meaningful browser history to go back to — a "Back"
+   * label here promises navigation the tab cannot perform. Closing lives in
+   * `BareChatShell`'s own chrome; this is the separate case of "the room did
+   * not load, here is somewhere real to go instead".
+   */
+  function recoveryLink(label = 'Open topic page') {
     return (
       <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 14 }}>
         {label}
@@ -108,7 +118,7 @@ export default function TopicChatPage() {
           <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 14, margin: '0 0 12px' }}>
             {error ?? 'Topic not found'}
           </p>
-          {backLink()}
+          {recoveryLink()}
         </div>
       </BareChatShell>
     );
@@ -116,6 +126,10 @@ export default function TopicChatPage() {
 
   return (
     <BareChatShell>
+      {/* No back-arrow here on purpose — see BareChatShell's module doc (P-2).
+          This is a popped-out tab; Close (in the shell's own chrome above)
+          is the one exit affordance, not a "back" that has nowhere real to
+          go. */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -124,15 +138,6 @@ export default function TopicChatPage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <Link
-          href={`/topics/${topicId}`}
-          aria-label="Back to topic"
-          style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', flexShrink: 0 }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </Link>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
             fontSize: 16,

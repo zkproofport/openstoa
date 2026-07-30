@@ -8,6 +8,7 @@ import RightSidebar from '@/components/RightSidebar';
 import ChatRail from '@/components/ChatRail';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { readRailOpenPreference, writeRailOpenPreference, type RailRoom } from '@/lib/chatRail';
+import { ChatRailContext } from '@/lib/chatRailContext';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ export default function CommunityLayout({
   const showRail = !isGuest && railOpen;
 
   return (
-    <>
+    <ChatRailContext.Provider value={{ openRail }}>
       <Header
         onMenuToggle={() => setMobileMenuOpen((v) => !v)}
         menuOpen={mobileMenuOpen}
@@ -436,6 +437,6 @@ export default function CommunityLayout({
           border-radius: 2px;
         }
       `}</style>
-    </>
+    </ChatRailContext.Provider>
   );
 }

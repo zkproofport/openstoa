@@ -14,9 +14,9 @@
  *                  can double-mount a second `ChatPanel` for the same topic,
  *                  the very regression this whole redesign must not
  *                  reintroduce); no site chrome (Header/sidebars) is mounted;
- *                  a back-to-topic affordance and the mute toggle are still
- *                  present; ChatPanel is mounted with hideHeader + framed +
- *                  fullHeight
+ *                  no back-arrow (P-2 — BareChatShell's own Close replaces
+ *                  it) but the per-topic mute toggle is still present;
+ *                  ChatPanel is mounted with hideHeader + framed + fullHeight
  *   empty        — a topic with memberCount 0/undefined still renders
  *   UTF-8        — Korean + emoji topic titles render in the header
  *   hostile      — a script-shaped title renders as text, never as an element
@@ -154,11 +154,16 @@ describe('CONTRACT', () => {
     expect(container.querySelector('input[placeholder="Search topics..."]')).toBeNull();
   });
 
-  it('keeps a back-to-topic affordance and the per-topic mute control', async () => {
+  it('no back-arrow — a Close affordance (from BareChatShell) and the per-topic mute control instead', async () => {
+    // P-2: a popped-out tab has no meaningful "back". The old back-arrow Link
+    // is gone; `BareChatShell` provides the one exit affordance (Close) plus
+    // the width control, both above this page's own identity row.
     routeFetch([[`/api/topics/${TOPIC}`, () => json(topic())]]);
     await render();
 
-    expect(container.querySelector(`a[aria-label="Back to topic"][href="/topics/${TOPIC}"]`)).not.toBeNull();
+    expect(container.querySelector('a[aria-label="Back to topic"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Close"]')).not.toBeNull();
+    expect(container.querySelector('[role="group"][aria-label="Chat width"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="mute-toggle"]')).not.toBeNull();
   });
 

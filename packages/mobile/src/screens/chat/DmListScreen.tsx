@@ -197,6 +197,7 @@ export function DmListScreen() {
             navigation.navigate('ChatRoom', {
               topicId: item.topicId,
               topicTitle: item.peer.nickname,
+              kind: 'dm',
             })
           }
         >

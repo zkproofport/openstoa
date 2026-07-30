@@ -1,14 +1,18 @@
 /**
- * Peer profile card logic — `canDm` (DM-button visibility) and `initialFor`
- * (avatar-fallback initial).
+ * Peer profile card logic — `canDm` (DM-button visibility), `initialFor`
+ * (avatar-fallback initial), and `dmUnavailableReason` (the three-state
+ * card's self / AI-not-DM-able decomposition of `canDm`'s "no button").
  *
  * Edge-case matrix rows covered here:
  *   authz        — self-exclusion, missing/empty viewer id, AI target
  *   boundary     — empty / whitespace-only nickname
  *   UTF-8        — Korean and emoji nicknames (surrogate-pair safety)
+ *   contract     — dmUnavailableReason agrees with canDm: non-null reason
+ *                  iff canDm would hide the button for a RESOLVED pair;
+ *                  an unresolved pair answers null (no premature note)
  */
 import { describe, it, expect } from 'vitest';
-import { canDm, initialFor } from '../lib/peerProfile';
+import { canDm, dmUnavailableReason, initialFor } from '../lib/peerProfile';
 
 describe('canDm', () => {
   it('hides the button for self', () => {
@@ -35,6 +39,43 @@ describe('canDm', () => {
 
   it('shows the button for a non-AI target explicitly flagged isAI: false', () => {
     expect(canDm('user-1', { userId: 'user-2', isAI: false })).toBe(true);
+  });
+});
+
+describe('dmUnavailableReason', () => {
+  it('SELF: returns "self" when viewer and target are the same resolved id', () => {
+    expect(dmUnavailableReason('user-1', { userId: 'user-1' })).toBe('self');
+  });
+
+  it('AI: returns "ai" for a different, resolved, AI-flagged target', () => {
+    expect(dmUnavailableReason('user-1', { userId: 'ai-bot', isAI: true })).toBe('ai');
+  });
+
+  it('ELIGIBLE: returns null for a different, resolved, non-AI target', () => {
+    expect(dmUnavailableReason('user-1', { userId: 'user-2' })).toBeNull();
+    expect(dmUnavailableReason('user-1', { userId: 'user-2', isAI: false })).toBeNull();
+  });
+
+  it('UNRESOLVED: returns null (no premature note) when the viewer id is missing', () => {
+    expect(dmUnavailableReason(null, { userId: 'user-2' })).toBeNull();
+    expect(dmUnavailableReason(undefined, { userId: 'user-2' })).toBeNull();
+    expect(dmUnavailableReason('', { userId: 'user-2' })).toBeNull();
+  });
+
+  it('UNRESOLVED: returns null when the target id is empty', () => {
+    expect(dmUnavailableReason('user-1', { userId: '' })).toBeNull();
+  });
+
+  it('CONTRACT: agrees with canDm on every resolved pair — non-null reason iff canDm is false', () => {
+    const pairs: Array<[string, { userId: string; isAI?: boolean }]> = [
+      ['user-1', { userId: 'user-1' }],
+      ['user-1', { userId: 'user-2' }],
+      ['user-1', { userId: 'ai-bot', isAI: true }],
+      ['user-1', { userId: 'user-2', isAI: false }],
+    ];
+    for (const [viewer, target] of pairs) {
+      expect(dmUnavailableReason(viewer, target) !== null).toBe(!canDm(viewer, target));
+    }
   });
 });
 

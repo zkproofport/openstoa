@@ -37,7 +37,7 @@ describe('getDmCandidates', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(a).toEqual(b);
-    expect(a).toHaveLength(1);
+    expect(a).toEqual({ ok: true, data: [{ userId: 'u1', nickname: 'a', profileImage: null, badges: [], sharedTopics: [] }] });
   });
 
   it('a SECOND call within the TTL reuses the cache (still one fetch)', async () => {
@@ -66,28 +66,51 @@ describe('getDmCandidates', () => {
     const { getDmCandidates } = await freshModule();
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({ candidates: [] }))));
 
-    expect(await getDmCandidates()).toEqual([]);
+    // ok:true with no rows — genuinely nobody to message. The picker must show
+    // its explanatory empty state for THIS, and an error for ok:false below.
+    expect(await getDmCandidates()).toEqual({ ok: true, data: [] });
   });
 
-  it('EXT-FAILURE: a non-OK response degrades to an empty list, not a throw', async () => {
+  it('EXT-FAILURE: a non-OK response is reported as a failure, NOT as an empty list', async () => {
     const { getDmCandidates } = await freshModule();
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({ error: 'boom' }, false))));
 
-    await expect(getDmCandidates()).resolves.toEqual([]);
+    const res = await getDmCandidates();
+    expect(res.ok).toBe(false);
   });
 
-  it('EXT-FAILURE: a rejected fetch (network error) degrades to an empty list, not a throw', async () => {
+  it('EXT-FAILURE: a rejected fetch (network error) is a failure, not an empty list', async () => {
     const { getDmCandidates } = await freshModule();
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network down'))));
 
-    await expect(getDmCandidates()).resolves.toEqual([]);
+    await expect(getDmCandidates()).resolves.toEqual({ ok: false, status: null });
   });
 
-  it('a malformed body (candidates missing/not an array) degrades to an empty list', async () => {
+  it('REGRESSION: a failure is NOT cached, so an immediate retry re-fetches', async () => {
+    const { getDmCandidates } = await freshModule();
+    const rows = [{ userId: 'u1', nickname: 'a', profileImage: null, badges: [], sharedTopics: [] }];
+    let call = 0;
+    const fetchMock = vi.fn(() => {
+      call += 1;
+      return call === 1
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(jsonResponse({ candidates: rows }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Caching the failure was the actual defect: the picker showed "nobody to
+    // message" and kept showing it for the whole TTL even once the network was
+    // back, so Retry could not work.
+    expect(await getDmCandidates()).toEqual({ ok: false, status: null });
+    expect(await getDmCandidates()).toEqual({ ok: true, data: rows });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('a malformed body (candidates missing/not an array) yields an empty ok result', async () => {
     const { getDmCandidates } = await freshModule();
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({ candidates: 'nope' }))));
 
-    expect(await getDmCandidates()).toEqual([]);
+    expect(await getDmCandidates()).toEqual({ ok: true, data: [] });
   });
 });
 

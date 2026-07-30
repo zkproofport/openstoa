@@ -33,6 +33,7 @@ vi.mock('@/lib/dmCandidatesCache', () => ({
 }));
 
 import UserCard from '@/components/UserCard';
+import { ChatRailContext } from '@/lib/chatRailContext';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -57,6 +58,33 @@ function popover(): HTMLElement | null {
 }
 function messageBtn(): HTMLButtonElement | null {
   return container.querySelector('[data-testid="user-card-message"]');
+}
+function selfNote(): HTMLElement | null {
+  return container.querySelector('[data-testid="user-card-self-note"]');
+}
+function noBadgesNote(): HTMLElement | null {
+  return container.querySelector('[data-testid="user-card-no-badges"]');
+}
+function notDmableNote(): HTMLElement | null {
+  return container.querySelector('[data-testid="user-card-not-dmable"]');
+}
+
+/** Mounts UserCard inside a ChatRailContext.Provider so `startDm` takes the
+ *  "land in the rail" path instead of the router.push fallback. */
+async function mountWithRail(
+  openRail: (room: unknown) => void,
+  props: Partial<React.ComponentProps<typeof UserCard>> = {},
+) {
+  const merged = { userId: 'peer-1', nickname: 'bob', viewerUserId: 'viewer-1', ...props };
+  await act(async () => {
+    root.render(
+      <ChatRailContext.Provider value={{ openRail: openRail as never }}>
+        <UserCard {...merged}>
+          <span data-testid="avatar-slot">B</span>
+        </UserCard>
+      </ChatRailContext.Provider>,
+    );
+  });
 }
 
 beforeEach(() => {
@@ -238,5 +266,145 @@ describe('content safety and i18n', () => {
 
     expect(popover()!.textContent).toContain('KYC');
     expect(popover()!.textContent).toContain('acme.com');
+  });
+
+  it('the DM button reads "DM", not "Message"', async () => {
+    isDmCandidateMock.mockResolvedValue(true);
+    await mount();
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(messageBtn()!.textContent).toBe('DM');
+  });
+});
+
+describe('three honest end-states — self / no badges / not DM-able', () => {
+  it('SELF: shows "This is you" and never a not-DM-able note, regardless of badges', async () => {
+    await mount({ userId: 'viewer-1', viewerUserId: 'viewer-1' });
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(selfNote()).not.toBeNull();
+    expect(selfNote()!.textContent).toContain('This is you');
+    expect(notDmableNote()).toBeNull();
+    expect(messageBtn()).toBeNull();
+  });
+
+  it('NO BADGES: an empty badges array shows the explanatory note instead of a blank area', async () => {
+    isDmCandidateMock.mockResolvedValue(true);
+    await mount({ badges: [] });
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(noBadgesNote()).not.toBeNull();
+    expect(noBadgesNote()!.textContent).toContain('No badges yet');
+  });
+
+  it('NO BADGES: an omitted badges prop is treated the same as an empty array', async () => {
+    isDmCandidateMock.mockResolvedValue(true);
+    await mount({ badges: undefined });
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(noBadgesNote()).not.toBeNull();
+  });
+
+  it('badges present → no "no badges" note', async () => {
+    await mount({ badges: [{ type: 'kyc', label: 'KYC' }] });
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(noBadgesNote()).toBeNull();
+  });
+
+  it('NOT DM-ABLE: a non-candidate (no shared topic) explains why, instead of a blank area where the button would be', async () => {
+    isDmCandidateMock.mockResolvedValue(false);
+    await mount();
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(notDmableNote()).not.toBeNull();
+    expect(notDmableNote()!.textContent).toContain('bob');
+    expect(messageBtn()).toBeNull();
+  });
+
+  it('RACE: the not-DM-able note does not flash on before the candidacy check resolves', async () => {
+    let resolveCheck: (v: boolean) => void = () => {};
+    isDmCandidateMock.mockImplementation(() => new Promise((res) => { resolveCheck = res; }));
+    await mount();
+    await act(async () => { trigger().click(); });
+
+    // Check still in flight — neither the button nor the "not DM-able" note
+    // should be showing yet (that would be a false negative flash).
+    expect(notDmableNote()).toBeNull();
+    expect(messageBtn()).toBeNull();
+
+    await act(async () => { resolveCheck(false); });
+    await flush();
+    expect(notDmableNote()).not.toBeNull();
+  });
+
+  it('GUEST: an unresolved/guest viewer shows neither the not-DM-able note nor the button', async () => {
+    await mount({ viewerUserId: null });
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(notDmableNote()).toBeNull();
+    expect(messageBtn()).toBeNull();
+    expect(selfNote()).toBeNull();
+  });
+
+  it('self AND no badges combine — both notes render, not a collapsed blank box', async () => {
+    await mount({ userId: 'viewer-1', viewerUserId: 'viewer-1', badges: [] });
+    await act(async () => { trigger().click(); });
+    await flush();
+
+    expect(selfNote()).not.toBeNull();
+    expect(noBadgesNote()).not.toBeNull();
+  });
+});
+
+describe('DM lands in the chat rail when one is reachable (see chatRailContext.tsx)', () => {
+  it('CONTRACT: inside a ChatRailContext, starting a DM calls openRail with the room and does NOT navigate', async () => {
+    isDmCandidateMock.mockResolvedValue(true);
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dm') return Promise.resolve(json({ topicId: 'dm-topic-1' }));
+      return Promise.resolve(json({ userId: 'viewer-1' }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const openRail = vi.fn();
+
+    await mountWithRail(openRail, { profileImage: 'https://example.com/a.png' });
+    await act(async () => { trigger().click(); });
+    await flush();
+    await act(async () => { messageBtn()!.click(); });
+    await flush();
+
+    expect(openRail).toHaveBeenCalledWith({
+      kind: 'dm',
+      topicId: 'dm-topic-1',
+      title: 'bob',
+      profileImage: 'https://example.com/a.png',
+    });
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('a null profileImage stays null (not undefined) in the room handed to openRail', async () => {
+    isDmCandidateMock.mockResolvedValue(true);
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dm') return Promise.resolve(json({ topicId: 'dm-topic-2' }));
+      return Promise.resolve(json({ userId: 'viewer-1' }));
+    }));
+    const openRail = vi.fn();
+
+    await mountWithRail(openRail);
+    await act(async () => { trigger().click(); });
+    await flush();
+    await act(async () => { messageBtn()!.click(); });
+    await flush();
+
+    expect(openRail).toHaveBeenCalledWith(expect.objectContaining({ profileImage: null }));
   });
 });
