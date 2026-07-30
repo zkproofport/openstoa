@@ -22,6 +22,11 @@
  *   mount-unique — a room whose standalone page IS the current pathname is
  *                  never handed to ChatPanel (suppressPanel) — this is the
  *                  regression this whole redesign must not reintroduce
+ *   open-request — an external "jump to this room" request (the left-nav
+ *                  Chat entry, a topic page's "Open topic chat" — both wired
+ *                  in `CommunityLayout.tsx`) opens the right room on first
+ *                  mount AND while already mounted, and a repeat of the same
+ *                  target (new nonce, same room) still re-applies
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
@@ -77,9 +82,21 @@ async function flush(times = 6) {
   }
 }
 
-async function mount(onClose: () => void = () => {}) {
+type OpenRequest = { room: { kind: 'topic' | 'dm'; topicId: string; title: string } | null; nonce: number } | null;
+
+async function mount(onClose: () => void = () => {}, openRequest: OpenRequest = null) {
   await act(async () => {
-    root.render(<ChatRail onClose={onClose} />);
+    root.render(<ChatRail onClose={onClose} openRequest={openRequest} />);
+  });
+  await flush();
+}
+
+/** Re-render the SAME mounted ChatRail with a new `openRequest` — a prop
+ *  update, not a remount, exercising the "while already open" path rather
+ *  than the lazy-`useState` mount-time path. */
+async function rerenderWithRequest(openRequest: OpenRequest, onClose: () => void = () => {}) {
+  await act(async () => {
+    root.render(<ChatRail onClose={onClose} openRequest={openRequest} />);
   });
   await flush();
 }
@@ -349,5 +366,101 @@ describe('new-conversation picker', () => {
 
     expect(dmPosts).toBe(1);
     expect(panelProps.current).toMatchObject({ topicId: 'new-dm-topic' });
+  });
+});
+
+describe('openRequest — external jump-to-room', () => {
+  it('CONTRACT: a request present at mount opens straight to that room (no list flash)', async () => {
+    routeFetch(defaultRoutes);
+    await mount(() => {}, { room: { kind: 'topic', topicId: 't1', title: 'Zoning Law' }, nonce: 1 });
+
+    expect(byTestId('chat-panel')).toHaveLength(1);
+    expect(panelProps.current).toMatchObject({ topicId: 't1' });
+    // No "Back to chat list" button implies we never rendered the list first.
+    expect(text()).not.toContain('joined any chat topics yet');
+  });
+
+  it('a request with room: null (present at mount) is a no-op — the list is the default anyway', async () => {
+    routeFetch(defaultRoutes);
+    await mount(() => {}, { room: null, nonce: 1 });
+
+    expect(byTestId('chat-panel')).toHaveLength(0);
+    expect(text()).toContain('joined any chat topics yet');
+  });
+
+  it('CONTRACT: a request applied WHILE ALREADY MOUNTED jumps from the list to that room', async () => {
+    routeFetch(defaultRoutes);
+    await mount();
+    expect(byTestId('chat-panel')).toHaveLength(0);
+
+    await rerenderWithRequest({ room: { kind: 'dm', topicId: 'd9', title: 'bob' }, nonce: 1 });
+
+    expect(byTestId('chat-panel')).toHaveLength(1);
+    expect(panelProps.current).toMatchObject({ topicId: 'd9' });
+  });
+
+  it('CONTRACT: a later request with room: null sends an already-open room back to the list', async () => {
+    routeFetch([
+      ...defaultRoutes.filter(([p]) => p !== '/api/topics'),
+      ['/api/topics', () => json({ topics: [{ id: 't1', title: 'Zoning Law' }] })],
+    ]);
+    await mount();
+    await act(async () => { byTestId('chat-rail-topic-row')[0].click(); });
+    expect(byTestId('chat-panel')).toHaveLength(1);
+
+    await rerenderWithRequest({ room: null, nonce: 1 });
+
+    expect(byTestId('chat-panel')).toHaveLength(0);
+    expect(text()).toContain('Zoning Law'); // back on the topic list row
+  });
+
+  it('CONTRACT: a request also closes the new-conversation picker if it was open', async () => {
+    routeFetch([
+      ['/api/dm/candidates', () => json({ candidates: [] })],
+      ...defaultRoutes,
+    ]);
+    await mount();
+    await act(async () => {
+      (container.querySelector('button[aria-label="New conversation"]') as HTMLButtonElement).click();
+    });
+    await flush();
+    expect(text()).toContain('No one to message yet');
+
+    await rerenderWithRequest({ room: { kind: 'topic', topicId: 't2', title: '다른 주제 🏛️' }, nonce: 1 });
+
+    expect(text()).not.toContain('No one to message yet');
+    expect(panelProps.current).toMatchObject({ topicId: 't2' });
+  });
+
+  it('REPEAT: a second request for the SAME room (new nonce) still re-applies rather than being ignored', async () => {
+    routeFetch(defaultRoutes);
+    await mount();
+    const room = { kind: 'topic' as const, topicId: 't1', title: 'Zoning Law' };
+
+    await rerenderWithRequest({ room, nonce: 1 });
+    expect(panelProps.current).toMatchObject({ topicId: 't1' });
+
+    // User backs out to the list client-side (not via a new external request)...
+    await act(async () => {
+      (container.querySelector('button[aria-label="Back to chat list"]') as HTMLButtonElement).click();
+    });
+    expect(byTestId('chat-panel')).toHaveLength(0);
+
+    // ...then the SAME entry point is clicked again — nonce advances, room is
+    // identical. Without nonce-based re-triggering this would be a no-op
+    // (React bails on an unchanged effect dependency) and the room would
+    // never reopen.
+    await rerenderWithRequest({ room, nonce: 2 });
+    expect(byTestId('chat-panel')).toHaveLength(1);
+    expect(panelProps.current).toMatchObject({ topicId: 't1' });
+  });
+
+  it('MOUNT-UNIQUE still applies to an externally-requested room: suppressed on its own standalone page', async () => {
+    pathnameMock.current = '/chat/t1';
+    routeFetch(defaultRoutes);
+    await mount(() => {}, { room: { kind: 'topic', topicId: 't1', title: 'Zoning Law' }, nonce: 1 });
+
+    expect(byTestId('chat-panel')).toHaveLength(0);
+    expect(text()).toContain('already viewing this conversation');
   });
 });

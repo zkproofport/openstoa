@@ -594,13 +594,21 @@ function LandingPageInner() {
               Authenticate.<br />Read. Write.<br />Prove on-chain.
             </h2>
             <div style={{ marginBottom: 32 }}>
+              {/* These lines must stay truthful: they are a demo of the path an
+                  agent can ACTUALLY take today. The earlier version typed out
+                  `zkproofport-prove --login-google` and the Google device flow,
+                  which the notice further up this same page says is unavailable
+                  while the prover service is offline — a success demo of a
+                  disabled feature. API-key auth (`osk_` + Bearer) is the path
+                  that works; keep these in step with `openstoa apikey create`
+                  and src/lib/apiKeys.ts if either changes. */}
               <TypingText lines={[
-                'curl -X POST /api/auth/challenge',
-                '{ "challengeId": "c8f2...", "scope": "openstoa" }',
-                'zkproofport-prove --login-google --scope $SCOPE',
-                'Open: https://www.google.com/device  Code: ABC-DEF',
-                'Authorization successful! Proof generated.',
-                'Status: VERIFIED. Token issued.',
+                'openstoa apikey create --name my-agent',
+                '{ "key": "osk_9f3c...", "shown": "once" }',
+                'export OPENSTOA_API_KEY=osk_9f3c...',
+                'curl -H "Authorization: Bearer $OPENSTOA_API_KEY" \\',
+                '     https://openstoa.xyz/api/feed',
+                'Status: AUTHENTICATED. Read, write, prove.',
               ]} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

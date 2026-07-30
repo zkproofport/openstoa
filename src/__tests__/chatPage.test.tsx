@@ -9,10 +9,14 @@
  *                  profile; a non-member still opens the page (ChatPanel
  *                  itself renders the "join to view" state — no page-level
  *                  gate duplicates that logic)
- *   contract     — never hands topicId to CommunityLayout (would double-mount
- *                  a live ChatPanel for the SAME topic — the very regression
- *                  this whole redesign must not reintroduce); ChatPanel is
- *                  mounted with hideHeader + framed + fullHeight
+ *   contract     — the page is BARE: it never renders `CommunityLayout` (so
+ *                  it never renders `ChatRail` either — nothing on this page
+ *                  can double-mount a second `ChatPanel` for the same topic,
+ *                  the very regression this whole redesign must not
+ *                  reintroduce); no site chrome (Header/sidebars) is mounted;
+ *                  a back-to-topic affordance and the mute toggle are still
+ *                  present; ChatPanel is mounted with hideHeader + framed +
+ *                  fullHeight
  *   empty        — a topic with memberCount 0/undefined still renders
  *   UTF-8        — Korean + emoji topic titles render in the header
  *   hostile      — a script-shaped title renders as text, never as an element
@@ -33,7 +37,6 @@ const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 const paramsMock = vi.hoisted(() => ({
   current: { topicId: '11111111-2222-4333-8444-555555555555' } as Record<string, string>,
 }));
-const layoutProps = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 const panelProps = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 
 vi.mock('next/navigation', () => ({
@@ -41,12 +44,10 @@ vi.mock('next/navigation', () => ({
   useParams: () => paramsMock.current,
 }));
 
-vi.mock('@/components/CommunityLayout', () => ({
-  default: (props: Record<string, unknown>) => {
-    layoutProps.current = props;
-    return React.createElement('div', { 'data-testid': 'layout' }, props.children as React.ReactNode);
-  },
-}));
+// This page is intentionally BARE (see `BareChatShell.tsx`) — no
+// `CommunityLayout` / `Header` mock here on purpose; the CONTRACT block below
+// asserts their absence directly (no `[data-testid="layout"]`, no header nav
+// markers) rather than relying on an unmocked import to fail loudly.
 
 vi.mock('@/components/ChatPanel', () => ({
   default: (props: Record<string, unknown>) => {
@@ -99,7 +100,6 @@ beforeEach(() => {
   routerMock.push.mockClear();
   routerMock.replace.mockClear();
   paramsMock.current = { topicId: TOPIC };
-  layoutProps.current = null;
   panelProps.current = null;
 });
 
@@ -143,12 +143,23 @@ describe('AUTHZ', () => {
 });
 
 describe('CONTRACT', () => {
-  it('never hands topicId to CommunityLayout (would double-mount a live ChatPanel)', async () => {
+  it('renders bare: no site chrome (Header nav / left or right sidebar) is mounted', async () => {
     routeFetch([[`/api/topics/${TOPIC}`, () => json(topic())]]);
     await render();
 
-    expect(layoutProps.current).not.toBeNull();
-    expect(layoutProps.current!.topicId).toBeUndefined();
+    // No CommunityLayout wrapper marker and no LeftSidebar-only affordances
+    // (a real Header renders a search input; a real LeftSidebar renders a
+    // "Search topics..." placeholder) ever leak onto this page.
+    expect(container.querySelector('[data-testid="layout"]')).toBeNull();
+    expect(container.querySelector('input[placeholder="Search topics..."]')).toBeNull();
+  });
+
+  it('keeps a back-to-topic affordance and the per-topic mute control', async () => {
+    routeFetch([[`/api/topics/${TOPIC}`, () => json(topic())]]);
+    await render();
+
+    expect(container.querySelector(`a[aria-label="Back to topic"][href="/topics/${TOPIC}"]`)).not.toBeNull();
+    expect(container.querySelector('[data-testid="mute-toggle"]')).not.toBeNull();
   });
 
   it('mounts the shared ChatPanel hidden-header, framed, full-height, as a member', async () => {

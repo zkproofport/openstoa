@@ -234,8 +234,16 @@ beforeEach(() => {
   FakeEventSource.instances = [];
   scrollCalls = 0;
   vi.clearAllMocks();
-  // jsdom has no layout engine; record the calls instead.
+  // jsdom has no layout engine; record the calls instead. `scrollTo` is what
+  // `ChatPanel`'s `scrollToBottom` actually calls on `scrollerRef` (see its
+  // doc comment there); `scrollIntoView` is kept polyfilled too in case any
+  // other code path still reaches for it — neither exists on jsdom's
+  // `Element` by default, so an unstubbed call throws `TypeError: ... is not
+  // a function` from inside a `useEffect`, which crashes the whole render.
   Element.prototype.scrollIntoView = function scrollIntoView() {
+    scrollCalls++;
+  };
+  Element.prototype.scrollTo = function scrollTo() {
     scrollCalls++;
   };
   vi.stubGlobal('EventSource', FakeEventSource as unknown as typeof EventSource);

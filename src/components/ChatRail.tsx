@@ -24,6 +24,16 @@
  * that room selected), this component must NOT also mount `ChatPanel` for it
  * — MLS drops each message's decrypt key after first use, so two live panels
  * on one topic permanently break one of them. See `isSameRoomAsPath`.
+ *
+ * `openRequest` (optional) is how discovery entry points elsewhere in the app
+ * — the left-nav "Chat" link, a topic page's "Open topic chat" — jump this
+ * rail straight to a room (or back to the list, when `room` is `null`)
+ * without owning any of this component's internal state themselves.
+ * `CommunityLayout` is still the sole owner of `railOpen`; this is purely a
+ * "once you're open, show me X" signal. `nonce` must change on every request
+ * — including a repeat of the same target — since without it a second click
+ * on an already-applied request would look like a no-op change and the
+ * effect below would never re-fire.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
@@ -94,14 +104,27 @@ interface ChatRailProps {
   /** Collapse the rail (does not clear the selected room — reopening lands
    *  back on the list, by design; see the module doc). */
   onClose: () => void;
+  /** External "jump to this room" request — see the module doc. */
+  openRequest?: { room: RailRoom | null; nonce: number } | null;
 }
 
-export default function ChatRail({ onClose }: ChatRailProps) {
+export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
   const pathname = usePathname();
 
-  const [room, setRoom] = useState<RailRoom | null>(null);
+  const [room, setRoom] = useState<RailRoom | null>(() => openRequest?.room ?? null);
   const [tab, setTab] = useState<ListTab>('topics');
   const [picking, setPicking] = useState(false);
+  // Tracks the last `openRequest.nonce` already applied so a request present
+  // at mount (consumed by the lazy `useState` initializer above) is not
+  // re-applied a second time by this effect on the very next render.
+  const appliedRequestNonce = useRef(openRequest?.nonce);
+
+  useEffect(() => {
+    if (!openRequest || openRequest.nonce === appliedRequestNonce.current) return;
+    appliedRequestNonce.current = openRequest.nonce;
+    setPicking(false);
+    setRoom(openRequest.room);
+  }, [openRequest]);
 
   const [topics, setTopics] = useState<RailTopic[] | null>(null);
   const [dms, setDms] = useState<DmChannel[] | null>(null);

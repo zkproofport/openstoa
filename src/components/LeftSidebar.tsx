@@ -44,6 +44,10 @@ interface LeftSidebarProps {
   activeTag?: string | null;
   viewMode?: 'all' | 'my';
   onViewChange?: (view: 'all' | 'my') => void;
+  /** Opens the chat rail (`ChatRail.tsx`, owned by `CommunityLayout`) landed
+   *  on the room list. Omitted entirely for guests — there is no chat for a
+   *  guest to open, so the entry is hidden rather than rendered disabled. */
+  onOpenChat?: () => void;
 }
 
 // ─── Fallback categories ─────────────────────────────────────────────────────
@@ -113,6 +117,7 @@ export default function LeftSidebar({
   activeTag,
   viewMode,
   onViewChange,
+  onOpenChat,
 }: LeftSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -325,6 +330,52 @@ export default function LeftSidebar({
           </span>
           <span>Start a Topic</span>
         </Link>
+      )}
+
+      {/* Chat -- direct entry point into the chat rail, landed on the room
+          list (a topic-specific jump also exists on the topic page's right
+          sidebar). Hidden for guests, same gating as the header's own chat
+          toggle -- there is no chat for a guest to open. */}
+      {onOpenChat && (
+        <button
+          type="button"
+          onClick={onOpenChat}
+          data-testid="left-nav-chat"
+          onMouseEnter={() => setHoveredItem('open-chat')}
+          onMouseLeave={() => setHoveredItem(null)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 10px',
+            borderRadius: 8,
+            border: 'none',
+            width: '100%',
+            textAlign: 'left' as const,
+            fontFamily: 'inherit',
+            fontSize: 14,
+            fontWeight: 500,
+            color: 'var(--foreground)',
+            background: hoveredItem === 'open-chat' ? 'var(--surface-hover)' : 'transparent',
+            transition: 'background 0.12s, color 0.12s',
+            marginBottom: 12,
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 20,
+            height: 20,
+            color: 'var(--muted)',
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            </svg>
+          </span>
+          <span>Chat</span>
+        </button>
       )}
 
       {/* Categories with popular topics */}

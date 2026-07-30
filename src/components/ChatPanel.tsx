@@ -441,7 +441,6 @@ export default function ChatPanel({
   // Own-message alignment needs the caller's id. Same source the rest of the
   // web app uses for "is this me" checks (see topics/[topicId]/members).
   const [myUserId, setMyUserId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -654,8 +653,24 @@ export default function ChatPanel({
     return () => { alive = false; };
   }, [isGuest]);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  /**
+   * Scroll the message list to the bottom.
+   *
+   * Scrolls `scrollerRef` DIRECTLY rather than calling `scrollIntoView` on the
+   * bottom sentinel. `scrollIntoView` walks up and scrolls EVERY scrollable
+   * ancestor, including the document — so once the panel became a normal flex
+   * child of the page (the chat rail) instead of a `position: fixed` layer,
+   * opening a room yanked the whole page down with it. Setting `scrollTop` on
+   * the panel's own scroller cannot move anything outside the panel.
+   *
+   * `smooth` only for messages arriving while the user is already at the
+   * bottom; entering a room jumps instantly, since animating a scroll the user
+   * never initiated is what reads as the page "running away".
+   */
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
   /**
@@ -732,8 +747,9 @@ export default function ChatPanel({
     lastBottomIdRef.current = bottomId;
     if (!bottomId) return;
     if (!initialScrolledRef.current || userNearBottomRef.current) {
+      const isFirstPaint = !initialScrolledRef.current;
       initialScrolledRef.current = true;
-      scrollToBottom();
+      scrollToBottom(!isFirstPaint);
     }
   }, [messages, scrollToBottom]);
 
@@ -1123,7 +1139,6 @@ export default function ChatPanel({
               );
             })
           )}
-          <div ref={messagesEndRef} />
         </div>
       </div>
 

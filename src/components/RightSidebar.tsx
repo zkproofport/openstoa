@@ -22,6 +22,10 @@ interface RightSidebarProps {
   topicTitle?: string;
   topicDescription?: string;
   topicMemberCount?: number;
+  /** Jumps the chat rail straight to THIS topic's room (as opposed to the
+   *  generic list the left-nav "Chat" entry lands on). Only ever passed
+   *  alongside `topicId`/`topicTitle` -- see `CommunityLayout.tsx`. */
+  onOpenChat?: () => void;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -67,6 +71,7 @@ export default function RightSidebar({
   topicTitle,
   topicDescription,
   topicMemberCount,
+  onOpenChat,
 }: RightSidebarProps) {
   const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
@@ -173,6 +178,31 @@ export default function RightSidebar({
               </span>
               <span>member{topicMemberCount !== 1 ? 's' : ''}</span>
             </div>
+          )}
+          {onOpenChat && (
+            <button
+              type="button"
+              onClick={onOpenChat}
+              data-testid="topic-open-chat"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                marginTop: 10,
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                transition: 'opacity 0.15s',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+            >
+              Open topic chat {'→'}
+            </button>
           )}
         </div>
       )}

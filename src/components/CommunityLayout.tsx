@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
 import ChatRail from '@/components/ChatRail';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
-import { readRailOpenPreference, writeRailOpenPreference } from '@/lib/chatRail';
+import { readRailOpenPreference, writeRailOpenPreference, type RailRoom } from '@/lib/chatRail';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -72,6 +72,11 @@ export default function CommunityLayout({
   // the server); the persisted preference is applied client-side right after,
   // same pattern RightSidebar used for its old "preferred expand style".
   const [railOpen, setRailOpen] = useState(false);
+  // A discovery entry point elsewhere on the page (left-nav "Chat", a topic
+  // page's "Open topic chat") can ask the rail to jump straight to a room —
+  // see `openRail` below and the `openRequest` doc in `ChatRail.tsx`.
+  const [railRequest, setRailRequest] = useState<{ room: RailRoom | null; nonce: number } | null>(null);
+  const railRequestNonce = useRef(0);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -94,6 +99,17 @@ export default function CommunityLayout({
   const closeRail = useCallback(() => {
     setRailOpen(false);
     writeRailOpenPreference(false);
+  }, []);
+
+  // Open (or ensure-open) the rail and jump it to `room` — `null` means the
+  // room list. Idempotent open: if the rail is already open on the desired
+  // room, `railOpen` staying `true` triggers no remount, but `railRequestNonce`
+  // still advances so `ChatRail`'s effect re-applies the target (see its doc).
+  const openRail = useCallback((room: RailRoom | null = null) => {
+    setRailOpen(true);
+    writeRailOpenPreference(true);
+    railRequestNonce.current += 1;
+    setRailRequest({ room, nonce: railRequestNonce.current });
   }, []);
 
   // Close mobile menu on route changes
@@ -232,6 +248,10 @@ export default function CommunityLayout({
             setMobileMenuOpen(false);
           }}
           activeTag={activeTag}
+          onOpenChat={!isGuest ? () => {
+            openRail(null);
+            setMobileMenuOpen(false);
+          } : undefined}
         />
       </div>
 
@@ -279,6 +299,7 @@ export default function CommunityLayout({
                   router.push(slug ? `/topics?tag=${encodeURIComponent(slug)}` : '/topics');
                 })}
                 activeTag={activeTag}
+                onOpenChat={!isGuest ? () => openRail(null) : undefined}
               />
             </div>
 
@@ -315,6 +336,9 @@ export default function CommunityLayout({
                 topicTitle={topicTitle}
                 topicDescription={topicDescription}
                 topicMemberCount={topicMemberCount}
+                onOpenChat={!isGuest && topicId && topicTitle
+                  ? () => openRail({ kind: 'topic', topicId, title: topicTitle })
+                  : undefined}
               />
             </div>
           </div>
@@ -341,7 +365,7 @@ export default function CommunityLayout({
               boxSizing: 'border-box',
             }}
           >
-            <ChatRail onClose={closeRail} />
+            <ChatRail onClose={closeRail} openRequest={railRequest} />
           </div>
         )}
       </div>
@@ -360,7 +384,7 @@ export default function CommunityLayout({
             overflow: 'hidden',
           }}
         >
-          <ChatRail onClose={closeRail} />
+          <ChatRail onClose={closeRail} openRequest={railRequest} />
         </div>
       )}
 

@@ -21,8 +21,11 @@ import { createRoot, type Root } from 'react-dom/client';
  *   race         — a double-clicked Message button issues exactly ONE POST
  *   contract     — Message POSTs /api/dm with {userId} and navigates to the
  *                  returned topicId; the conversation view mounts the SHARED
- *                  ChatPanel (single E2EE path), and never hands topicId to
- *                  CommunityLayout (which would open a second live panel)
+ *                  ChatPanel (single E2EE path); the conversation view is a
+ *                  BARE standalone page (see `BareChatShell.tsx`) — it never
+ *                  renders `CommunityLayout` at all (would mount a second
+ *                  `ChatRail`/`ChatPanel` for the same topic), unlike `/dm`
+ *                  (the list) and the members page, which still do
  *   integrity    — the list is monotonically ordered by lastActivityAt desc
  *   SI-1         — these pages request only /api/auth/session and /api/dm; no
  *                  message body or preview is ever fetched or rendered here
@@ -50,7 +53,9 @@ vi.mock('next/navigation', () => ({
 
 // CommunityLayout pulls the whole app shell (categories/tags/stats fetches and
 // its own ChatPanel). Stub it, but keep the props so the "never pass topicId"
-// regression guard can assert on them.
+// regression guard can assert on them. Used by the /dm list page and the
+// members page — NOT by the standalone /dm/[topicId] conversation view,
+// which is deliberately bare (see `BareChatShell.tsx`) and never imports it.
 vi.mock('@/components/CommunityLayout', () => ({
   default: (props: Record<string, unknown>) => {
     layoutProps.current = props;
@@ -329,12 +334,25 @@ describe('/dm/[topicId] — conversation', () => {
     expect(panelProps.current).toMatchObject({ topicId: DM_A, isGuest: false, isMember: true });
   });
 
-  it('CONTRACT: never hands topicId to CommunityLayout (would open a 2nd live panel)', async () => {
-    routeFetch([['/api/dm', () => json({ dms: [channel(DM_A, 'bob', null)] })]]);
+  it('CONTRACT: bare page — never renders CommunityLayout at all (would open a 2nd live panel)', async () => {
+    routeFetch([['/api/dm', () => json({ dms: [channel(DM_A, 'bob', '2026-01-01T00:00:00Z')] })]]);
 
     await render(<DmConversationPage />);
 
-    expect(layoutProps.current?.topicId).toBeUndefined();
+    // `layoutProps.current` was reset to null in `beforeEach`; if this page
+    // rendered CommunityLayout (even without a topicId) the mock above would
+    // have set it, since it stores the LAST props it was called with.
+    expect(layoutProps.current).toBeNull();
+    expect(container.querySelector('[data-testid="layout"]')).toBeNull();
+  });
+
+  it('CONTRACT: keeps a back-to-messages affordance and the per-topic mute control', async () => {
+    routeFetch([['/api/dm', () => json({ dms: [channel(DM_A, 'bob', '2026-01-01T00:00:00Z')] })]]);
+
+    await render(<DmConversationPage />);
+
+    expect(container.querySelector('a[aria-label="Back to messages"][href="/dm"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="mute-toggle"]')).not.toBeNull();
   });
 
   it('AUTHZ: a DM the caller is not a member of never mounts the panel', async () => {
