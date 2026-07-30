@@ -369,9 +369,18 @@
     },
     "visibilityLabel": "공개 범위",
     "visibility": {
-      "public": { "label": "공개", "desc": "누구나 찾아서 참여할 수 있습니다" },
-      "private": { "label": "비공개", "desc": "모두에게 보이지만 참여하려면 승인이 필요합니다" },
-      "secret": { "label": "시크릿", "desc": "숨겨져 있으며 초대 코드로만 참여 가능합니다" }
+      "public": {
+        "label": "공개",
+        "desc": "누구나 찾아서 참여할 수 있습니다"
+      },
+      "private": {
+        "label": "비공개",
+        "desc": "모두에게 보이지만 참여하려면 승인이 필요합니다"
+      },
+      "secret": {
+        "label": "시크릿",
+        "desc": "숨겨져 있으며 초대 코드로만 참여 가능합니다"
+      }
     },
     "comingSoon": "출시 예정",
     "proofRequirementLabel": "증명 요건",
@@ -754,5 +763,31 @@
     "historyLabel": "기록: {{value}}",
     "createdLabel": "생성일: {{value}}",
     "lastUsedLabel": "마지막 사용: {{value}}"
+  },
+  "feedPage": {
+    "guestBanner": "게스트로 둘러보는 중입니다. 로그인하면 토픽에 참여하고 글을 쓸 수 있습니다.",
+    "signIn": "로그인",
+    "title": "피드",
+    "filterCategory": "카테고리",
+    "filterTag": "태그",
+    "clearFilters": "필터 해제",
+    "sort": {
+      "hot": "인기",
+      "new": "최신",
+      "active": "활발",
+      "top": "베스트"
+    },
+    "error": {
+      "title": "피드를 불러오지 못했습니다",
+      "body": "서버에 연결하지 못했습니다. 아무 글도 없는 것과는 다릅니다.",
+      "retry": "다시 시도"
+    },
+    "empty": {
+      "firstTitle": "아직 글이 없습니다",
+      "firstBody": "첫 번째 이야기를 시작해 보세요.",
+      "firstCta": "토픽 둘러보기",
+      "filteredTitle": "이 필터에 맞는 글이 없습니다",
+      "filteredBody": "다른 카테고리나 태그를 선택해 보세요."
+    }
   }
 }

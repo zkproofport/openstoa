@@ -223,7 +223,9 @@ export default function PostActionBar({
               : recordError ??
                 (recordState.recordCount > 0 ? String(recordState.recordCount) : undefined)
           }
-          color="#8b5cf6"
+          // On-chain stays the quietest affordance in the bar — no brand
+          // color, just a step up from the idle tertiary so hover still reads.
+          color="var(--color-text-secondary)"
           active={recordState.recorded}
           onClick={handleRecord}
           compact={compact}
@@ -245,7 +247,7 @@ export default function PostActionBar({
           icon={<TrashIcon size={compact ? 14 : 18} />}
           label={showDeleteConfirm ? (deleting ? 'Deleting...' : 'Delete?') : undefined}
           active={showDeleteConfirm}
-          color="#ef4444"
+          color="var(--color-status-danger)"
           onClick={handleDelete}
           compact={compact}
         />
@@ -280,17 +282,18 @@ function ActionGlyph({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered
-          ? (active ? `${activeColor}15` : 'rgba(255,255,255,0.05)')
-          : 'none',
+        // `color` is now a token (`var(--...)`), so the old `${activeColor}15`
+        // alpha-suffix trick no longer produces valid CSS — the hover ground is
+        // a surface token instead.
+        background: hovered ? 'var(--color-bg-secondary)' : 'none',
         border: 'none',
-        color: active ? activeColor : (hovered ? activeColor : '#6b7280'),
+        color: active || hovered ? activeColor : 'var(--color-text-tertiary)',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
         gap: 5,
         padding: compact ? '5px 10px' : '6px 10px',
-        borderRadius: 9999,
+        borderRadius: 'var(--radius-pill)',
         fontSize: compact ? 12 : 14,
         fontWeight: 500,
         fontVariantNumeric: 'tabular-nums',

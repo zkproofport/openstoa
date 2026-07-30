@@ -6,8 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
 import PostCard, { PostCardPost } from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+type SortKey = 'hot' | 'new' | 'active' | 'top';
 
 interface FeedPost extends PostCardPost {
   topicId: string;
@@ -21,13 +24,14 @@ interface FeedPost extends PostCardPost {
 // ─── Inner Component ─────────────────────────────────────────────────────────
 
 function TopicsPageInner() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'hot' | 'new' | 'active' | 'top'>('hot');
+  const [sortBy, setSortBy] = useState<SortKey>('hot');
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -164,6 +168,19 @@ function TopicsPageInner() {
   }, [hasMore, loading, loadingMore, offset, sortBy, activeCategory, activeTag, activeQuery, loadFeed]);
 
   // ── Handlers ──
+  const clearFilters = useCallback(() => {
+    setActiveCategory(null);
+    setActiveTag(null);
+  }, []);
+
+  // Re-runs the same request the current filters describe. The error state had
+  // no recovery at all before — a failed fetch left the user on a dead screen.
+  const retry = useCallback(() => {
+    setOffset(0);
+    setHasMore(true);
+    loadFeed(sortBy, activeCategory, activeTag, activeQuery, 0, false);
+  }, [loadFeed, sortBy, activeCategory, activeTag, activeQuery]);
+
   function handleCategorySelect(slug: string | null) {
     setActiveCategory(slug);
     setActiveTag(null); // Reset tag when category changes
@@ -195,136 +212,100 @@ function TopicsPageInner() {
       {isGuest && (
         <div
           style={{
-            padding: '10px 16px',
-            background: 'rgba(120,140,255,0.06)',
-            border: '1px solid rgba(120,140,255,0.12)',
-            borderRadius: 8,
-            marginBottom: 20,
-            fontSize: 14,
-            color: '#888',
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'var(--color-brand-primary-muted)',
+            border: '1px solid var(--color-border-default)',
+            borderRadius: 'var(--radius-control)',
+            marginBottom: 'var(--space-5)',
+            fontSize: 'var(--text-body-sm)',
+            color: 'var(--color-text-secondary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: 8,
+            gap: 'var(--space-2)',
           }}
         >
-          <span>You're browsing as a guest. Sign in to join topics and post.</span>
+          <span>{t('feedPage.guestBanner')}</span>
           <Link
             href="/"
             style={{
-              color: 'var(--accent)',
+              color: 'var(--color-brand-primary)',
               textDecoration: 'none',
               fontWeight: 600,
-              fontSize: 13,
+              fontSize: 'var(--text-body-sm)',
               whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-mono)',
             }}
           >
-            Sign in
+            {t('feedPage.signIn')}
           </Link>
         </div>
       )}
 
       {/* Page heading */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 20,
-        }}
-      >
-        <div>
-          <h1
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <h1
+          style={{
+            fontSize: 'var(--text-heading-lg)',
+            fontWeight: 800,
+            letterSpacing: '-0.03em',
+            margin: 0,
+          }}
+        >
+          {t('feedPage.title')}
+        </h1>
+        {(activeCategory || activeTag) && (
+          <div
             style={{
-              fontSize: 28,
-              fontWeight: 800,
-              letterSpacing: '-0.04em',
-              margin: 0,
-              fontFamily: 'var(--font-serif)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              marginTop: 'var(--space-1)', flexWrap: 'wrap',
             }}
           >
-            Feed
-          </h1>
-          {(activeCategory || activeTag) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-              {activeCategory && (
-                <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                  Category: <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{activeCategory}</span>
-                </span>
-              )}
-              {activeTag && (
-                <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                  Tag: <span style={{ color: 'var(--accent)', fontWeight: 600 }}>#{activeTag}</span>
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setActiveCategory(null);
-                  setActiveTag(null);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--muted)',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  transition: 'color 0.12s',
-                  fontFamily: 'var(--font-mono)',
-                  letterSpacing: '0.02em',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--foreground)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--muted)'; }}
-              >
-                Clear filters
-              </button>
-            </div>
-          )}
-        </div>
+            {activeCategory && (
+              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)' }}>
+                {t('feedPage.filterCategory')}:{' '}
+                <span style={{ color: 'var(--color-brand-primary)', fontWeight: 600 }}>{activeCategory}</span>
+              </span>
+            )}
+            {activeTag && (
+              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)' }}>
+                {t('feedPage.filterTag')}:{' '}
+                <span style={{ color: 'var(--color-brand-primary)', fontWeight: 600 }}>#{activeTag}</span>
+              </span>
+            )}
+            <button type="button" onClick={clearFilters} className="os-chip">
+              {t('feedPage.clearFilters')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* R09: feed-home chip strip — transparent background (no brand tint)
           so the feed reads as the global cross-topic stream. Distinct from
           the topic page which wraps chips in a brand-tinted strip. */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-5)', flexWrap: 'wrap' }}>
         {(
           [
-            { key: 'hot', label: 'Hot', icon: (
+            { key: 'hot', label: t('feedPage.sort.hot'), icon: (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
             ) },
-            { key: 'new', label: 'New', icon: (
+            { key: 'new', label: t('feedPage.sort.new'), icon: (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             ) },
-            { key: 'active', label: 'Active', icon: (
+            { key: 'active', label: t('feedPage.sort.active'), icon: (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
             ) },
-            { key: 'top', label: 'Top', icon: (
+            { key: 'top', label: t('feedPage.sort.top'), icon: (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
             ) },
-          ] as const
+          ] as { key: SortKey; label: string; icon: React.ReactNode }[]
         ).map(({ key, label, icon }) => (
           <button
             key={key}
+            type="button"
             onClick={() => setSortBy(key)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              background: sortBy === key ? 'var(--accent)' : 'transparent',
-              color: sortBy === key ? '#fff' : 'var(--muted)',
-              border: `1px solid ${sortBy === key ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 20,
-              padding: '4px 12px',
-              fontSize: 13,
-              fontWeight: sortBy === key ? 600 : 400,
-              cursor: 'pointer',
-              letterSpacing: '0.02em',
-              transition: 'all 0.15s',
-              fontFamily: 'var(--font-mono)',
-            }}
+            className="os-chip"
+            aria-pressed={sortBy === key}
           >
             {icon}
             {label}
@@ -345,82 +326,91 @@ function TopicsPageInner() {
         </div>
       )}
 
-      {/* Error state */}
-      {error && (
+      {/* Error state. Distinct from "empty" ON PURPOSE: a failed request used
+          to render a bare red bar containing the raw exception message and no
+          way forward, which reads to a user as "there is nothing here". */}
+      {error && !loading && (
         <div
           style={{
-            padding: '16px 20px',
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.2)',
-            borderRadius: 10,
-            fontSize: 14,
-            color: '#ef4444',
-            fontFamily: 'var(--font-mono)',
+            textAlign: 'center',
+            padding: 'var(--space-7) var(--space-5)',
+            border: '1px solid var(--color-status-danger)',
+            borderRadius: 'var(--radius-card)',
+            background: 'var(--color-bg-secondary)',
           }}
+          role="alert"
         >
-          {error}
+          <p
+            style={{
+              fontSize: 'var(--text-body-lg)', fontWeight: 600,
+              color: 'var(--color-status-danger)', margin: '0 0 var(--space-2)',
+            }}
+          >
+            {t('feedPage.error.title')}
+          </p>
+          <p
+            style={{
+              fontSize: 'var(--text-body-sm)', color: 'var(--color-text-secondary)',
+              margin: '0 0 var(--space-5)',
+            }}
+          >
+            {t('feedPage.error.body')}
+          </p>
+          <button type="button" onClick={retry} className="os-button os-button-primary">
+            {t('feedPage.error.retry')}
+          </button>
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — two genuinely different situations, not one message with
+          a ternary: "your filters excluded everything" is recoverable here,
+          "nothing exists yet" points outward to discovery. */}
       {!loading && !error && posts.length === 0 && (
         <div
           style={{
             textAlign: 'center',
-            padding: '80px 20px',
-            border: '1px dashed var(--border)',
-            borderRadius: 16,
+            padding: 'var(--space-7) var(--space-5)',
+            border: '1px dashed var(--color-border-default)',
+            borderRadius: 'var(--radius-card)',
           }}
         >
           <p
             style={{
-              fontSize: 18,
-              fontWeight: 600,
-              letterSpacing: '-0.02em',
-              marginBottom: 8,
+              fontSize: 'var(--text-body-lg)', fontWeight: 600,
+              letterSpacing: '-0.02em', margin: '0 0 var(--space-2)',
             }}
           >
-            {activeCategory || activeTag ? 'No posts match these filters' : 'No posts yet'}
-          </p>
-          <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 24 }}>
             {activeCategory || activeTag
-              ? 'Try selecting a different category or tag.'
-              : 'Be the first to start a discussion.'}
+              ? t('feedPage.empty.filteredTitle')
+              : t('feedPage.empty.firstTitle')}
           </p>
-          {(activeCategory || activeTag) && (
-            <button
-              onClick={() => {
-                setActiveCategory(null);
-                setActiveTag(null);
-              }}
-              style={{
-                background: 'var(--accent)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                padding: '10px 24px',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              Clear filters
+          <p
+            style={{
+              fontSize: 'var(--text-body-sm)', color: 'var(--color-text-secondary)',
+              margin: '0 0 var(--space-5)',
+            }}
+          >
+            {activeCategory || activeTag
+              ? t('feedPage.empty.filteredBody')
+              : t('feedPage.empty.firstBody')}
+          </p>
+          {activeCategory || activeTag ? (
+            <button type="button" onClick={clearFilters} className="os-button os-button-primary">
+              {t('feedPage.clearFilters')}
             </button>
+          ) : (
+            <Link href="/topics/explore" className="os-button os-button-primary">
+              {t('feedPage.empty.firstCta')}
+            </Link>
           )}
         </div>
       )}
 
-      {/* Posts feed */}
+      {/* Posts feed. No container card and no hover fill: posts sit directly on
+          the page ground separated by rules, so the feed reads as one continuous
+          column rather than a box of boxes. */}
       {!loading && !error && posts.length > 0 && (
-        <div
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 12,
-            overflow: 'hidden',
-          }}
-        >
+        <div>
           {posts.map((post) => (
             <PostCard
               key={post.id}

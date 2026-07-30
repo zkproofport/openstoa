@@ -36,6 +36,25 @@ function setCachedSession(data: UserSession | null) {
   } catch {}
 }
 
+/**
+ * One header nav link. Extracted because the three links were three verbatim
+ * copies of the same 20-line inline style plus a pair of onMouseEnter/
+ * onMouseLeave handlers that hand-simulated `:hover` — which meant no keyboard
+ * focus state existed at all. Hover and focus now come from `.os-header-link`
+ * in globals.css.
+ *
+ * `os-label` carries the uppercase + letter-spacing idiom, and it is gated to
+ * `:lang(en)`: these labels render Korean ("탐색", "문서") under the ko locale,
+ * where uppercase is a no-op and tracking reads as broken kerning.
+ */
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="os-header-link header-nav-link os-label">
+      {children}
+    </Link>
+  );
+}
+
 export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen }: HeaderProps = {}) {
   const { t } = useTranslation();
   // Initial render MUST match SSR (no localStorage on the server).
@@ -74,25 +93,11 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
   }, []);
 
   return (
-    <header
-      style={{
-        position: 'sticky', top: 0, zIndex: 50, padding: '12px 0',
-        borderBottom: '1px solid rgba(120,140,255,0.08)',
-      }}
-      role="banner"
-    >
-      <div
-        style={{
-          position: 'absolute', inset: 0, zIndex: -1,
-          background: 'rgba(5,8,16,0.92)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-        }}
-      />
+    <header className="os-header" role="banner">
       <div
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          maxWidth: 1400, margin: '0 auto', padding: '0 20px',
+          width: '100%', maxWidth: 1400, margin: '0 auto', padding: '0 var(--space-5)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -101,22 +106,8 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
             <button
               onClick={onMenuToggle}
               aria-label={menuOpen ? t('header.closeMenu') : t('header.openMenu')}
-              className="header-hamburger"
-              style={{
-                display: 'none',
-                background: 'none',
-                border: 'none',
-                color: 'var(--foreground)',
-                cursor: 'pointer',
-                padding: 4,
-                borderRadius: 'var(--radius-control)',
-                transition: 'color 0.12s',
-                // NOT bumped to --touch-target-min: `HEADER_HEIGHT = 49` in
-                // CommunityLayout.tsx hardcodes this row's rendered height for
-                // sticky-sidebar offset math; growing this control to 44px
-                // would make the real header taller than that constant
-                // assumes. See migration report.
-              }}
+              className="header-hamburger os-header-btn"
+              style={{ display: 'none' }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 {menuOpen ? (
@@ -147,11 +138,11 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           <img src="/images/openstoa-logo-mark-transparent.png" alt="OpenStoa" width={24} height={24} style={{ objectFit: 'contain' }} />
           <span
             style={{
-              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 'var(--text-body)',
-              letterSpacing: '-0.03em', color: '#fff',
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 'var(--text-body-lg)',
+              letterSpacing: '-0.03em', color: 'var(--color-text-primary)',
             }}
           >
-            Open<span style={{ color: '#788cff' }}>Stoa</span>
+            Open<span style={{ color: 'var(--color-brand-primary)' }}>Stoa</span>
           </span>
         </Link>
         </div>
@@ -198,80 +189,9 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           </Link>
           */}
 
-          <Link
-            href="/topics/explore"
-            className="header-nav-link"
-            style={{
-              color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
-              fontFamily: 'var(--font-mono)', fontWeight: 500,
-              letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              transition: 'all 0.15s',
-              padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
-              border: '1px solid transparent',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.color = '#ccc';
-              (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.color = '#999';
-              (e.currentTarget as HTMLElement).style.background = 'transparent';
-              (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
-            }}
-          >
-            {t('header.explore')}
-          </Link>
-
-          <Link
-            href="/recorded"
-            className="header-nav-link"
-            style={{
-              color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
-              fontFamily: 'var(--font-mono)', fontWeight: 500,
-              letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              transition: 'all 0.15s',
-              padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
-              border: '1px solid transparent',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.color = '#ccc';
-              (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.color = '#999';
-              (e.currentTarget as HTMLElement).style.background = 'transparent';
-              (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
-            }}
-          >
-            {t('header.recorded')}
-          </Link>
-
-          <Link
-            href="/docs"
-            className="header-nav-link"
-            style={{
-              color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
-              fontFamily: 'var(--font-mono)', fontWeight: 500,
-              letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              transition: 'all 0.15s',
-              padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
-              border: '1px solid transparent',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.color = '#ccc';
-              (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.color = '#999';
-              (e.currentTarget as HTMLElement).style.background = 'transparent';
-              (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
-            }}
-          >
-            {t('header.docs')}
-          </Link>
+          <NavLink href="/topics/explore">{t('header.explore')}</NavLink>
+          <NavLink href="/recorded">{t('header.recorded')}</NavLink>
+          <NavLink href="/docs">{t('header.docs')}</NavLink>
 
           {/* FIX7: the "Messages" text link that used to live here full-page-
               navigated to `/dm`, duplicating this chat toggle button — two
@@ -297,23 +217,9 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               aria-pressed={chatOpen}
               aria-label={chatOpen ? t('chat.close') : t('header.openChat')}
               title={chatOpen ? t('chat.close') : t('header.openChat')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: chatOpen ? 'rgba(120,140,255,0.14)' : 'transparent',
-                color: chatOpen ? 'var(--accent)' : '#999',
-                border: `1px solid ${chatOpen ? 'rgba(120,140,255,0.3)' : 'transparent'}`,
-                borderRadius: 'var(--radius-control)',
-                padding: '6px 8px',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                // NOT bumped to --touch-target-min — see the hamburger button
-                // above: this row's height is load-bearing for
-                // CommunityLayout's hardcoded HEADER_HEIGHT.
-              }}
+              className="os-header-btn"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
               </svg>
             </button>
@@ -324,24 +230,23 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           <LocaleSwitcher />
 
           {!sessionChecked ? (
-            <span style={{ width: 70, height: 30 }} />
+            // Reserves the chip's footprint so the row does not reflow when the
+            // session resolves.
+            <span style={{ width: 88, height: 'var(--touch-target-min)' }} />
           ) : user ? (
             <Link
               href="/my"
+              className="os-header-btn"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-label)', color: '#ccc',
-                background: 'rgba(120,140,255,0.1)', border: '1px solid rgba(120,140,255,0.15)',
-                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
-                textDecoration: 'none', transition: 'all 0.15s',
-                letterSpacing: '0.02em',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.18)';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.3)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.1)';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--text-label)',
+                textDecoration: 'none',
+                maxWidth: 180,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'block',
+                lineHeight: 'var(--touch-target-min)',
               }}
             >
               {user.nickname ??
@@ -350,24 +255,9 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
                   : t('header.anonFallback'))}
             </Link>
           ) : (
-            <Link
-              href="/"
-              style={{
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-label)', color: 'var(--accent)',
-                textDecoration: 'none', transition: 'all 0.15s',
-                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
-                border: '1px solid rgba(120,140,255,0.25)',
-                letterSpacing: '0.04em', textTransform: 'uppercase' as const,
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.1)';
-                (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
-              }}
-            >
+            // The only brand-filled control in the header: signing in is the
+            // one action a guest is here to take.
+            <Link href="/" className="os-header-btn os-header-cta os-label">
               {t('header.signIn')}
             </Link>
           )}

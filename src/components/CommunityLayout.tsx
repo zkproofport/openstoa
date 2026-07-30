@@ -33,7 +33,18 @@ interface CommunityLayoutProps {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const HEADER_HEIGHT = 49; // sticky header height (padding 12*2 + content ~25)
+/**
+ * The header's height, as a CSS expression rather than a number.
+ *
+ * This was `const HEADER_HEIGHT = 49`, a measurement of what the header
+ * happened to render at. That made the header unable to grow: two of its
+ * controls carried comments explaining they could NOT be raised to the 44px
+ * touch-target minimum because doing so would silently invalidate every
+ * sticky `top:` and `max-height:` computed from this constant. Reading
+ * `--header-h` (globals.css) instead means the header owns its own height and
+ * these offsets follow it.
+ */
+const HEADER_H = 'var(--header-h)';
 const LEFT_WIDTH = 240;
 const GAP = 20;
 const MAX_WIDTH = 1400;
@@ -294,7 +305,7 @@ export default function CommunityLayout({
               display: 'flex',
               gap: GAP,
               alignItems: 'flex-start',
-              minHeight: `calc(100vh - ${HEADER_HEIGHT}px)`,
+              minHeight: `calc(100vh - ${HEADER_H})`,
             }}
           >
             {/* Left sidebar -- hidden below 768px (handled by CSS) */}
@@ -304,8 +315,8 @@ export default function CommunityLayout({
                 width: LEFT_WIDTH,
                 flexShrink: 0,
                 position: 'sticky',
-                top: HEADER_HEIGHT + 16,
-                maxHeight: `calc(100vh - ${HEADER_HEIGHT + 32}px)`,
+                top: `calc(${HEADER_H} + var(--space-4))`,
+                maxHeight: `calc(100vh - ${HEADER_H} - var(--space-6))`,
                 overflowY: 'auto',
                 paddingTop: 20,
                 paddingBottom: 20,
@@ -349,10 +360,10 @@ export default function CommunityLayout({
                 width: 300,
                 flexShrink: 0,
                 position: 'sticky',
-                top: HEADER_HEIGHT + 16,
+                top: `calc(${HEADER_H} + var(--space-4))`,
                 paddingTop: 20,
                 paddingBottom: 20,
-                maxHeight: `calc(100vh - ${HEADER_HEIGHT + 32}px)`,
+                maxHeight: `calc(100vh - ${HEADER_H} - var(--space-6))`,
                 overflowY: 'auto',
               }}
             >
@@ -382,8 +393,8 @@ export default function CommunityLayout({
               width: 'var(--rail-w)',
               flexShrink: 0,
               position: 'sticky',
-              top: HEADER_HEIGHT + 16,
-              height: `calc(100vh - ${HEADER_HEIGHT + 32}px)`,
+              top: `calc(${HEADER_H} + var(--space-4))`,
+              height: `calc(100vh - ${HEADER_H} - var(--space-6))`,
               paddingTop: 20,
               paddingBottom: 20,
               paddingRight: GAP,

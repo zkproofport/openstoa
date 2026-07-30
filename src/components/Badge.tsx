@@ -9,17 +9,45 @@ interface BadgeProps {
   country?: string;
 }
 
-const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
-  kyc: { icon: '✓', color: '#22c55e' },
-  country: { icon: '🌍', color: '#3b82f6' },
-  workspace: { icon: '📧', color: '#8b5cf6' },
-  oidc: { icon: '✓', color: '#6366f1' },
-  ai: { icon: '🤖', color: '#f59e0b' },
+/**
+ * Three tones, not five colors. Every proof badge asserts the same thing —
+ * "this claim was verified" — so they share one treatment instead of each
+ * type inventing its own hue (the old palette used four off-token colors
+ * that no theme defines, so light mode rendered them unreadably).
+ *
+ *   verified — a verified claim (KYC, country, workspace, OIDC)
+ *   onchain  — an on-chain record; the quietest chip on the surface
+ *   neutral  — descriptive, not a claim (AI author)
+ */
+type BadgeTone = 'verified' | 'onchain' | 'neutral';
+
+const BADGE_TONE: Record<string, BadgeTone> = {
+  kyc: 'verified',
+  country: 'verified',
+  workspace: 'verified',
+  oidc: 'verified',
+  onchain: 'onchain',
+  ai: 'neutral',
+};
+
+const TONE_STYLE: Record<BadgeTone, React.CSSProperties> = {
+  verified: {
+    color: 'var(--color-brand-accent)',
+    border: '1px solid var(--color-brand-accent)',
+  },
+  onchain: {
+    color: 'var(--color-text-tertiary)',
+    border: '1px solid var(--color-border-default)',
+  },
+  neutral: {
+    color: 'var(--color-text-secondary)',
+    border: '1px solid var(--color-border-default)',
+  },
 };
 
 export default function Badge({ type, label: labelProp, domain, country }: BadgeProps) {
   const { t } = useTranslation();
-  const config = BADGE_CONFIG[type] || { icon: '?', color: '#666' };
+  const tone = BADGE_TONE[type] ?? 'neutral';
   const label = labelProp
     ?? (type === 'kyc' ? t('badge.kyc')
     : type === 'country' ? (country || t('badge.country'))
@@ -29,22 +57,25 @@ export default function Badge({ type, label: labelProp, domain, country }: Badge
     : type);
 
   return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 3,
-      // 10px was below the 12px floor for compact uppercase-style labels;
-      // this badge can now render translated (Korean) fallback text too.
-      fontSize: 'var(--text-label)',
-      fontWeight: 600,
-      padding: '2px 6px',
-      borderRadius: 4,
-      background: `${config.color}15`,
-      border: `1px solid ${config.color}30`,
-      color: config.color,
-      letterSpacing: '0.02em',
-    }}>
-      {config.icon} {label}
+    <span
+      data-badge-type={type}
+      data-badge-tone={tone}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+        // 10px was below the 12px floor for compact uppercase-style labels;
+        // this badge can now render translated (Korean) fallback text too.
+        fontSize: 'var(--text-label)',
+        fontWeight: 600,
+        padding: '2px 6px',
+        borderRadius: 'var(--radius-control)',
+        background: 'transparent',
+        ...TONE_STYLE[tone],
+      }}
+    >
+      {tone === 'verified' && <span aria-hidden="true">✓</span>}
+      {label}
     </span>
   );
 }

@@ -96,13 +96,13 @@ function TagChipRow({ tags }: { tags: Array<{ name: string; slug: string }> }) {
         <span
           key={t.slug}
           style={{
-            background: 'rgba(59,130,246,0.08)',
-            color: 'var(--accent)',
-            border: '1px solid rgba(59,130,246,0.15)',
-            borderRadius: 4,
+            background: 'var(--color-brand-primary-muted)',
+            color: 'var(--color-brand-primary)',
+            border: '1px solid var(--color-border-default)',
+            borderRadius: 'var(--radius-control)',
             padding: '1px 7px',
-            fontSize: 11,
-            fontFamily: 'monospace',
+            fontSize: 'var(--text-label)',
+            fontFamily: 'var(--font-mono)',
             lineHeight: 1.6,
           }}
         >
@@ -250,10 +250,12 @@ export default function PostCard({
         display: 'inline-flex',
         alignItems: 'center',
         gap: 3,
-        color: '#22c55e',
-        background: 'rgba(34,197,94,0.10)',
-        border: '1px solid rgba(34,197,94,0.25)',
-        borderRadius: 4,
+        // Verified/joined = the accent role. There is no accent-muted step, so
+        // the chip is an outline rather than a tint — same treatment Badge uses.
+        color: 'var(--color-brand-accent)',
+        background: 'transparent',
+        border: '1px solid var(--color-brand-accent)',
+        borderRadius: 'var(--radius-control)',
         padding: '1px 6px',
         lineHeight: 1.2,
         verticalAlign: 'middle',
@@ -327,14 +329,14 @@ export default function PostCard({
     <article
       style={{
         padding: '16px 20px',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        borderBottom: '1px solid var(--color-border-default)',
         background: 'transparent',
         transition: 'background 0.12s',
         cursor: 'pointer',
         position: 'relative',
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.02)';
+        (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)';
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLElement).style.background = 'transparent';
@@ -402,15 +404,15 @@ export default function PostCard({
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 500, color: '#9ca3af' }}>{post.authorNickname}</span>
+                <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>{post.authorNickname}</span>
                 {post.isAI && <Badge type="ai" />}
                 {post.badges &&
                   post.badges.length > 0 &&
                   post.badges.map((b, i) => (
                     <Badge key={i} type={b.type} label={b.label} country={b.country} domain={b.domain} />
                   ))}
-                <span style={{ color: '#4b5563' }}>·</span>
-                <span style={{ color: '#6b7280', fontFamily: 'var(--font-mono)' }}>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>·</span>
+                <span style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
                   {relativeTime(post.createdAt)}
                 </span>
               </div>
@@ -424,7 +426,7 @@ export default function PostCard({
             fontWeight: 700,
             margin: '0 0 8px 0',
             letterSpacing: '-0.015em',
-            color: '#f3f4f6',
+            color: 'var(--color-text-primary)',
             lineHeight: 1.3,
           }}
         >
@@ -450,7 +452,9 @@ export default function PostCard({
                 left: 0,
                 right: 0,
                 height: 56,
-                background: 'linear-gradient(transparent, #0a0a0a)',
+                // Fades to the page ground, so it must follow the theme —
+                // a hardcoded near-black smeared a dark band over light mode.
+                background: 'linear-gradient(transparent, var(--color-bg-primary))',
                 pointerEvents: 'none',
               }}
             />
@@ -522,17 +526,18 @@ export default function PostCard({
             gap: 6,
             marginTop: 8,
             padding: '4px 10px',
-            background: 'rgba(139,92,246,0.08)',
-            border: '1px solid rgba(139,92,246,0.15)',
+            // On-chain is the quietest chip on the card: outline, no fill.
+            background: 'transparent',
+            border: '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-control)',
             fontSize: 'var(--text-label)',
-            color: '#a78bfa',
+            color: 'var(--color-text-tertiary)',
             width: 'fit-content',
           }}
         >
           <RecordIcon size={12} />
           <span>{t('postCard.recordedOnBase')}</span>
-          <span style={{ color: '#6b7280' }}>|</span>
+          <span style={{ color: 'var(--color-border-default)' }}>|</span>
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>
             {t('postCard.recordCount', { count: post.recordCount ?? 0, suffix: (post.recordCount ?? 0) !== 1 ? 's' : '' })}
           </span>

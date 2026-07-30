@@ -216,12 +216,11 @@ const headerLeftStyle: React.CSSProperties = {
   minWidth: 0,
 };
 
+// Pair this with `className="os-label"` at every usage site: the uppercase +
+// tracking idiom belongs to that class, which gates it to :lang(en). This
+// label translates ("실시간 채팅"), and tracking on Hangul reads as broken
+// kerning. Size/weight/family also come from the class.
 const headerTitleStyle: React.CSSProperties = {
-  fontSize: 'var(--text-label)',
-  fontWeight: 700,
-  fontFamily: 'var(--font-mono)',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
   color: 'var(--muted)',
 };
 
@@ -277,13 +276,11 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              // NOT bumped to the 12px floor: this is a single initial
-              // letter inside a fixed 18x18px presence dot — going to 12px
-              // would overflow the circle. Genuinely decorative, not running
-              // copy. See migration report.
-              fontSize: 9,
+              // A single initial inside a fixed 18x18px dot. Still held to the
+              // 12px floor — a 12px glyph is ~9px tall, so it fits.
+              fontSize: 'var(--text-label)',
               fontWeight: 700,
-              color: '#fff',
+              color: 'var(--color-text-inverted)',
               border: '1px solid var(--border)',
               flexShrink: 0,
             }}
@@ -400,15 +397,17 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
             // only — the composer `<input>` below stays at the 16px floor
             // (iOS Safari zooms the page on focus below that).
             fontSize: roomy ? 14 : 13,
-            color: own ? '#fff' : 'var(--foreground)',
-            background: own ? 'var(--accent)' : 'rgba(255,255,255,0.055)',
-            borderRadius: 14,
-            ...(own ? { borderBottomRightRadius: 4 } : { borderBottomLeftRadius: 4 }),
+            color: own ? 'var(--color-text-inverted)' : 'var(--foreground)',
+            background: own ? 'var(--accent)' : 'var(--color-bg-tertiary)',
+            borderRadius: 'var(--radius-card)',
+            ...(own
+              ? { borderBottomRightRadius: 'var(--radius-control)' }
+              : { borderBottomLeftRadius: 'var(--radius-control)' }),
             padding: roomy ? '8px 12px' : '6px 10px',
             wordBreak: 'break-word' as const,
             minWidth: 0,
           }}>
-            {renderLinkedText(msg.message, own ? 'rgba(255,255,255,0.95)' : 'var(--accent)')}
+            {renderLinkedText(msg.message, own ? 'var(--color-text-inverted)' : 'var(--accent)')}
           </span>
         )}
       </div>
@@ -1021,13 +1020,11 @@ export default function ChatPanel({
           }}>
             {title}
           </div>
-          <div style={{
-            // "Live Chat" is a fixed uppercase Latin label and the online
-            // count is numeric — the label floor (12px) applies; was 10px.
-            fontSize: 'var(--text-label)',
-            fontFamily: 'var(--font-mono)',
-            textTransform: 'uppercase' as const,
-            letterSpacing: '0.08em',
+          {/* `.os-label` carries the 12px floor, the mono face, and the
+              uppercase+tracking gated to :lang(en) — "Live Chat" translates,
+              so the idiom must not be hand-rolled here. */}
+          <div className="os-label" style={{
+            fontWeight: 400,
             color: 'var(--muted)',
             marginTop: 1,
           }}>
@@ -1038,7 +1035,7 @@ export default function ChatPanel({
         </div>
       ) : (
         <>
-          <span style={headerTitleStyle}>{t('chat.liveChat')}</span>
+          <span className="os-label" style={headerTitleStyle}>{t('chat.liveChat')}</span>
           {presence.count > 0 && <span style={onlineCountStyle}>{t('chat.onlineCount', { count: presence.count })}</span>}
         </>
       )}
@@ -1053,7 +1050,7 @@ export default function ChatPanel({
           <div style={headerStyle}>
             <div style={headerLeftStyle}>
               <span style={{ fontSize: 'var(--text-body-sm)' }}>💬</span>
-              <span style={headerTitleStyle}>{t('chat.liveChat')}</span>
+              <span className="os-label" style={headerTitleStyle}>{t('chat.liveChat')}</span>
             </div>
             {onClose && <button onClick={onClose} aria-label={t('chat.close')} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 'var(--text-body-lg)', cursor: 'pointer' }}>×</button>}
           </div>
@@ -1084,7 +1081,7 @@ export default function ChatPanel({
             width: 7,
             height: 7,
             borderRadius: '50%',
-            background: connected ? '#22c55e' : '#6b7280',
+            background: connected ? 'var(--color-status-success)' : 'var(--color-text-tertiary)',
             flexShrink: 0,
           }} title={connected ? t('chat.connected') : t('chat.reconnecting')} />
           {/* Per-topic notification mute (P-S). Renders nothing until known. */}
@@ -1207,9 +1204,9 @@ export default function ChatPanel({
           aria-label={t('chat.attachImage')}
           title={t('chat.attachImage')}
           style={{
-            background: 'rgba(120,140,255,0.08)',
+            background: 'var(--color-bg-secondary)',
             color: 'var(--muted)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-control)',
             padding: '6px 8px',
             cursor: connected && !uploading ? 'pointer' : 'not-allowed',
@@ -1251,7 +1248,7 @@ export default function ChatPanel({
           style={{
             flex: 1,
             background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-control)',
             padding: roomy ? '9px 12px' : '7px 10px',
             color: 'var(--foreground)',
@@ -1270,7 +1267,7 @@ export default function ChatPanel({
           disabled={!inputValue.trim() || !connected || sending}
           style={{
             background: 'var(--accent)',
-            color: '#fff',
+            color: 'var(--color-text-inverted)',
             border: 'none',
             borderRadius: 'var(--radius-control)',
             padding: roomy ? '9px 16px' : '7px 12px',

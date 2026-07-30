@@ -383,7 +383,10 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
           </>
         ) : (
           <>
-            <span style={{ fontSize: 'var(--text-caption)', fontWeight: 700, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>
+            {/* `.os-label` owns the uppercase+tracking idiom and gates it to
+                :lang(en) — this label translates to Korean ("채팅"), where
+                tracking reads as broken kerning. */}
+            <span className="os-label" style={{ color: 'var(--muted)' }}>
               {t('chat.title')}
             </span>
             <span style={{ flex: 1 }} />
@@ -487,6 +490,10 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
       role="tab"
       aria-selected={active}
       onClick={onClick}
+      // `.os-label` supplies size/weight/family and gates uppercase+tracking
+      // to :lang(en) — the tab labels translate ("토픽"), and Hangul must not
+      // get the Latin tracking treatment.
+      className="os-label"
       style={{
         flex: 1,
         background: 'none',
@@ -494,10 +501,6 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
         borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
         color: active ? 'var(--accent)' : 'var(--muted)',
         fontWeight: active ? 700 : 500,
-        fontSize: 'var(--text-label)',
-        fontFamily: 'var(--font-mono)',
-        textTransform: 'uppercase',
-        letterSpacing: '0.04em',
         padding: '9px 0',
         cursor: 'pointer',
         minHeight: 'var(--touch-target-min)',
@@ -608,7 +611,7 @@ function NewConversationPicker({
           style={{
             flex: 1,
             background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-control)',
             padding: '6px var(--space-3)',
             // var(--text-body) = 16px: below that, iOS Safari zooms the page
@@ -636,7 +639,7 @@ function NewConversationPicker({
               onClick={onRetry}
               style={{
                 background: 'none',
-                border: '1px solid rgba(255,255,255,0.12)',
+                border: '1px solid var(--color-border-strong)',
                 borderRadius: 'var(--radius-pill)',
                 padding: '6px var(--space-4)',
                 color: 'var(--foreground)',

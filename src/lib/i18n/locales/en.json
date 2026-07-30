@@ -369,9 +369,18 @@
     },
     "visibilityLabel": "Visibility",
     "visibility": {
-      "public": { "label": "Public", "desc": "Anyone can find and join" },
-      "private": { "label": "Private", "desc": "Visible to all, requires approval to join" },
-      "secret": { "label": "Secret", "desc": "Hidden, invite code only" }
+      "public": {
+        "label": "Public",
+        "desc": "Anyone can find and join"
+      },
+      "private": {
+        "label": "Private",
+        "desc": "Visible to all, requires approval to join"
+      },
+      "secret": {
+        "label": "Secret",
+        "desc": "Hidden, invite code only"
+      }
     },
     "comingSoon": "Coming Soon",
     "proofRequirementLabel": "Proof Requirement",
@@ -754,5 +763,31 @@
     "historyLabel": "History: {{value}}",
     "createdLabel": "Created: {{value}}",
     "lastUsedLabel": "Last used: {{value}}"
+  },
+  "feedPage": {
+    "guestBanner": "You're browsing as a guest. Sign in to join topics and post.",
+    "signIn": "Sign in",
+    "title": "Feed",
+    "filterCategory": "Category",
+    "filterTag": "Tag",
+    "clearFilters": "Clear filters",
+    "sort": {
+      "hot": "Hot",
+      "new": "New",
+      "active": "Active",
+      "top": "Top"
+    },
+    "error": {
+      "title": "Couldn't load the feed",
+      "body": "We couldn't reach the server. That's different from there being nothing here.",
+      "retry": "Try again"
+    },
+    "empty": {
+      "firstTitle": "No posts yet",
+      "firstBody": "Be the first to start a discussion.",
+      "firstCta": "Explore topics",
+      "filteredTitle": "No posts match these filters",
+      "filteredBody": "Try a different category or tag."
+    }
   }
 }

@@ -96,7 +96,7 @@ function sidebarItemStyle(active: boolean): React.CSSProperties {
     cursor: 'pointer',
     fontSize: 14,
     color: active ? 'var(--accent)' : 'var(--foreground)',
-    background: active ? 'rgba(120,140,255,0.1)' : 'transparent',
+    background: active ? 'var(--color-brand-primary-muted)' : 'transparent',
     transition: 'background 0.12s, color 0.12s',
     textDecoration: 'none',
     border: 'none',
@@ -250,7 +250,7 @@ export default function LeftSidebar({
               transition: 'border-color 0.15s',
               boxSizing: 'border-box',
             }}
-            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.3)'; }}
+            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; }}
             onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; }}
           />
         </div>
@@ -518,7 +518,7 @@ export default function LeftSidebar({
                       color: 'var(--muted)',
                       cursor: 'pointer',
                       padding: '0 2px',
-                      fontSize: 10,
+                      fontSize: 'var(--text-label)',
                       lineHeight: 1,
                       transition: 'transform 0.15s',
                       transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
@@ -550,11 +550,11 @@ export default function LeftSidebar({
                         borderRadius: 6,
                         textDecoration: 'none',
                         fontSize: 12,
-                        color: activeTopicId === topic.id ? 'var(--accent)' : '#9ca3af',
+                        color: activeTopicId === topic.id ? 'var(--accent)' : 'var(--color-text-secondary)',
                         background: hoveredItem === `cat-topic-${topic.id}`
                           ? 'var(--surface-hover)'
                           : activeTopicId === topic.id
-                          ? 'rgba(120,140,255,0.08)'
+                          ? 'var(--color-brand-primary-muted)'
                           : 'transparent',
                         transition: 'background 0.12s, color 0.12s',
                       }}
@@ -605,19 +605,19 @@ export default function LeftSidebar({
                     fontSize: 12,
                     padding: '3px 10px',
                     borderRadius: 9999,
-                    background: isActive
-                      ? 'rgba(120,140,255,0.18)'
-                      : hoveredTag === tag.id
-                      ? 'rgba(120,140,255,0.12)'
-                      : 'rgba(255,255,255,0.04)',
+                    // Active and hover share the brand tint; the border is what
+                    // separates them (there is one brand-muted step, not two).
+                    background: isActive || hoveredTag === tag.id
+                      ? 'var(--color-brand-primary-muted)'
+                      : 'var(--color-bg-tertiary)',
                     border: isActive
-                      ? '1px solid rgba(120,140,255,0.35)'
-                      : '1px solid rgba(255,255,255,0.08)',
+                      ? '1px solid var(--color-brand-primary)'
+                      : '1px solid var(--color-border-default)',
                     color: isActive
                       ? 'var(--accent)'
                       : hoveredTag === tag.id
                       ? 'var(--accent)'
-                      : '#9ca3af',
+                      : 'var(--color-text-secondary)',
                     cursor: 'pointer',
                     transition: 'all 0.12s',
                     fontFamily: 'inherit',
@@ -626,8 +626,8 @@ export default function LeftSidebar({
                   <span>#{tag.name}</span>
                   <span style={{
                     fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    color: isActive ? 'var(--accent)' : '#4b5563',
+                    fontSize: 'var(--text-label)',
+                    color: isActive ? 'var(--accent)' : 'var(--color-text-tertiary)',
                   }}>
                     {tag.postCount}
                   </span>
@@ -671,21 +671,19 @@ export default function LeftSidebar({
         </div>
       </div>
 
-      {/* On-Chain Records */}
-      <div style={{
-        ...sidebarCardStyle,
-        background: 'rgba(139,92,246,0.04)',
-        border: '1px solid rgba(139,92,246,0.12)',
-      }}>
+      {/* On-Chain Records — the quietest card in the rail. The violet it used
+          to be tinted with is in no palette, so it read as a highlight in dark
+          mode and vanished in light; on-chain is an outline, never a fill. */}
+      <div style={sidebarCardStyle}>
         <div className="os-label" style={{
           ...sectionHeadingStyle,
-          color: '#a78bfa',
+          color: 'var(--color-text-tertiary)',
         }}>
           {t('sidebar.onChainRecords.title')}
         </div>
         <p style={{
           fontSize: 13,
-          color: '#6b7280',
+          color: 'var(--color-text-secondary)',
           margin: '0 0 10px',
           lineHeight: 1.5,
         }}>
@@ -696,7 +694,9 @@ export default function LeftSidebar({
           style={{
             fontSize: 13,
             fontWeight: 600,
-            color: '#a78bfa',
+            // A link is an action, so it keeps the action color even though the
+            // card around it is deliberately quiet.
+            color: 'var(--color-brand-primary)',
             textDecoration: 'none',
             transition: 'opacity 0.15s',
           }}

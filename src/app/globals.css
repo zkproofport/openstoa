@@ -124,6 +124,13 @@
   /* ── Touch target */
   --touch-target-min: 44px;
 
+  /* Header height. A CSS variable, NOT a JS constant: CommunityLayout used to
+     hardcode `HEADER_HEIGHT = 49` for its sticky-column offset math, which
+     meant the header could never grow to fit a 44px tap target without
+     silently breaking every sticky `top:`/`max-height:` in that file. Both
+     sides now read this one value, so the coupling is declarative. */
+  --header-h: 56px;
+
   --font-sans: 'Inter', 'Noto Sans KR', 'Apple SD Gothic Neo', system-ui, -apple-system, sans-serif;
   --font-serif: 'Source Serif 4', 'Noto Serif KR', Georgia, serif;
   --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
@@ -241,6 +248,165 @@ html:lang(ko) {
 .os-label:lang(en) {
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* ============================================================================
+ * Control vocabulary — ONE button and ONE chip
+ *
+ * The app had grown three competing button idioms plus a `.os-pill` with no
+ * min-height at all (~22px tall, below the 44px touch minimum). These two are
+ * the whole contract: a pill button at tap size, and a smaller chip for
+ * filter/sort affordances that are not primary actions.
+ * ========================================================================== */
+.os-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-weight: 650;
+  font-size: var(--text-body-sm);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.os-button:hover {
+  border-color: var(--color-border-strong);
+}
+.os-button-primary {
+  background: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  color: var(--color-text-inverted);
+}
+.os-button-primary:hover {
+  background: var(--color-brand-primary-hover);
+  border-color: var(--color-brand-primary-hover);
+}
+
+/* Sort / filter chip. Deliberately QUIET when selected — a row of saturated
+   brand-filled chips above the feed shouts louder than the posts underneath,
+   which are the actual content. Selection reads as "raised", not "highlighted". */
+.os-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--text-body-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.os-chip:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+.os-chip[aria-pressed='true'] {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+  font-weight: 650;
+}
+
+.os-button:focus-visible,
+.os-chip:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+ * Header chrome
+ *
+ * These live here rather than inline because they are :hover / :focus-visible
+ * states, which inline styles cannot express — the previous implementation
+ * simulated them with onMouseEnter/onMouseLeave handlers that mutated
+ * element.style, which never fires for keyboard users and left no focus ring
+ * at all.
+ * ========================================================================== */
+.os-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  min-height: var(--header-h);
+  display: flex;
+  align-items: center;
+  background: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+/* A text link in the header nav. */
+.os-header-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.os-header-link:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+
+/* An icon/affordance button in the header nav. Square-ish, bordered, and
+   large enough to hit — the old one was a 6px-padded bare glyph. */
+.os-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.os-header-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+/* Pressed = the rail is open. Brand-tinted so the "chat is showing" state is
+   readable at a glance instead of a 4%-alpha wash. */
+.os-header-btn[aria-pressed='true'] {
+  color: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  background: var(--color-brand-primary-muted);
+}
+
+/* The one brand-filled control in the header. Signing in is the single action
+   a guest came here to take, so it is the only thing allowed to fill; every
+   other control stays outlined. */
+.os-header-cta {
+  background: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  color: var(--color-text-inverted);
+  text-decoration: none;
+}
+.os-header-cta:hover {
+  background: var(--color-brand-primary-hover);
+  border-color: var(--color-brand-primary-hover);
+  color: var(--color-text-inverted);
+}
+
+.os-header-link:focus-visible,
+.os-header-btn:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
 }
 
 ::selection {

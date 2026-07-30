@@ -213,7 +213,7 @@ export default function RightSidebar({
       <div style={sidebarCardStyle}>
         <div className="os-label" style={sectionHeadingStyle}>{t('rightSidebar.recentPosts')}</div>
         {recentPosts.length === 0 ? (
-          <p style={{ fontSize: 'var(--text-caption)', color: '#4b5563', margin: 0 }}>{t('rightSidebar.noRecentPosts')}</p>
+          <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: 0 }}>{t('rightSidebar.noRecentPosts')}</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {recentPosts.map((post) => (
@@ -274,7 +274,7 @@ export default function RightSidebar({
                 {post.content && (
                   <div style={{
                     fontSize: 'var(--text-caption)',
-                    color: '#6b7280',
+                    color: 'var(--color-text-secondary)',
                     lineHeight: 1.4,
                     overflow: 'hidden',
                     display: '-webkit-box',
@@ -292,7 +292,7 @@ export default function RightSidebar({
                 <div style={{
                   fontSize: 'var(--text-label)',
                   fontFamily: 'var(--font-mono)',
-                  color: '#4b5563',
+                  color: 'var(--color-text-tertiary)',
                 }}>
                   {relativeTime(post.createdAt)}
                 </div>
