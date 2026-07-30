@@ -183,6 +183,96 @@ describe('buildCiphertextPayload (shape + SI-1 + size cap)', () => {
   });
 });
 
+describe('buildCiphertextPayload — TAK preview fields (act/tv, design §13.6 A)', () => {
+  const ACT = 'dGFrLXNlYWxlZC1wcmV2aWV3'; // "tak-sealed-preview"
+
+  it('carries the TAK copy verbatim as act/tv when both fields are valid', () => {
+    const p = buildCiphertextPayload(input({ archiveCiphertextB64: ACT, takVersion: 7 }))!;
+    expect(p).not.toBeNull();
+    expect(p.data.act).toBe(ACT); // verbatim — the server holds no key for it
+    expect(p.data.tv).toBe(7);
+    expect(p.data.ct).toBe('c2VhbGVkLW9wYXF1ZS1ieXRlcw=='); // MLS ct unchanged
+    expect(p.data.epoch).toBe(3);
+    expect(Object.keys(p.data).sort()).toEqual(['act', 'ct', 'epoch', 'messageId', 'topicId', 'tv']);
+    // Still SI-1: nothing but opaque bytes + routing ids.
+    const flat = JSON.stringify(p).toLowerCase();
+    for (const forbidden of ['plaintext', 'sender', 'nickname', 'author', 'userid']) {
+      expect(flat.includes(forbidden)).toBe(false);
+    }
+  });
+
+  it('takVersion 0 (public archive root) is valid, not treated as missing', () => {
+    const p = buildCiphertextPayload(input({ archiveCiphertextB64: ACT, takVersion: 0 }))!;
+    expect(p.data.tv).toBe(0);
+    expect(p.data.act).toBe(ACT);
+  });
+
+  it('absent preview → payload without act/tv (unchanged Phase B shape)', () => {
+    const p = buildCiphertextPayload(input())!;
+    expect(p.data.act).toBeUndefined();
+    expect(p.data.tv).toBeUndefined();
+    expect(Object.keys(p.data).sort()).toEqual(['ct', 'epoch', 'messageId', 'topicId']);
+  });
+
+  it('hostile: a bad preview drops ONLY act/tv — never nulls the whole payload', () => {
+    const bad = [
+      { archiveCiphertextB64: '', takVersion: 1 },
+      { archiveCiphertextB64: undefined as never, takVersion: 1 },
+      { archiveCiphertextB64: 123 as never, takVersion: 1 },
+      { archiveCiphertextB64: ACT, takVersion: -1 },
+      { archiveCiphertextB64: ACT, takVersion: 1.5 },
+      { archiveCiphertextB64: ACT, takVersion: NaN },
+      { archiveCiphertextB64: ACT, takVersion: Number.MAX_VALUE },
+      { archiveCiphertextB64: ACT, takVersion: '2' as never },
+      { archiveCiphertextB64: ACT, takVersion: undefined },
+      { archiveCiphertextB64: ACT }, // takVersion omitted entirely
+    ];
+    for (const o of bad) {
+      const p = buildCiphertextPayload(input(o));
+      expect(p).not.toBeNull();
+      expect(p!.data.act).toBeUndefined();
+      expect(p!.data.tv).toBeUndefined();
+      expect(p!.data.ct).toBe('c2VhbGVkLW9wYXF1ZS1ieXRlcw=='); // the message still pushes
+    }
+  });
+
+  it('boundary: a payload exactly at the cap is kept; one byte over sheds act/tv', () => {
+    // Grow act until the payload is exactly PUSH_MAX_PAYLOAD_BYTES.
+    const fit = (() => {
+      let n = PUSH_MAX_PAYLOAD_BYTES - 300;
+      for (;;) {
+        const p = buildCiphertextPayload(input({ archiveCiphertextB64: 'A'.repeat(n), takVersion: 1 }))!;
+        const size = Buffer.byteLength(JSON.stringify(p), 'utf8');
+        if (size === PUSH_MAX_PAYLOAD_BYTES) return n;
+        if (size > PUSH_MAX_PAYLOAD_BYTES) throw new Error('overshot the cap while sizing');
+        n++;
+      }
+    })();
+    const atCap = buildCiphertextPayload(input({ archiveCiphertextB64: 'A'.repeat(fit), takVersion: 1 }))!;
+    expect(Buffer.byteLength(JSON.stringify(atCap), 'utf8')).toBe(PUSH_MAX_PAYLOAD_BYTES);
+    expect(atCap.data.act).toBeDefined();
+
+    // One byte over: act/tv are shed (they are the optional preview), and the
+    // resulting ct-only payload is still within budget.
+    const over = buildCiphertextPayload(input({ archiveCiphertextB64: 'A'.repeat(fit + 1), takVersion: 1 }))!;
+    expect(over).not.toBeNull();
+    expect(over.data.act).toBeUndefined();
+    expect(over.data.tv).toBeUndefined();
+    expect(Buffer.byteLength(JSON.stringify(over), 'utf8')).toBeLessThanOrEqual(PUSH_MAX_PAYLOAD_BYTES);
+  });
+
+  it('boundary: when even ct alone is over the cap it still returns null (dummy)', () => {
+    const p = buildCiphertextPayload(
+      input({
+        sealedCiphertextB64: 'A'.repeat(PUSH_MAX_PAYLOAD_BYTES + 100),
+        archiveCiphertextB64: 'B'.repeat(100),
+        takVersion: 1,
+      }),
+    );
+    expect(p).toBeNull();
+  });
+});
+
 describe('dispatchCiphertextForMessage (fan-out + fallback)', () => {
   it('SI-1 + contract: sends the opaque ciphertext to members only (excl. sender + non-member)', async () => {
     await upsertToken(db, SENDER, 'h-sender', 'tok-sender', 'ios');
@@ -204,6 +294,36 @@ describe('dispatchCiphertextForMessage (fan-out + fallback)', () => {
         expect(flat.includes(forbidden)).toBe(false);
       }
     }
+  });
+
+  it('the TAK preview reaches every recipient device (act/tv), sender still excluded', async () => {
+    await upsertToken(db, SENDER, 'h-sender', 'tok-sender', 'ios');
+    await upsertToken(db, MEMBER_B, 'h-b', 'tok-b', 'ios');
+    await upsertToken(db, MEMBER_C, 'h-c', 'tok-c', 'android');
+    const provider = new CapturingProvider();
+
+    await dispatchCiphertextForMessage(
+      db,
+      input({ archiveCiphertextB64: 'dGFrLXNlYWxlZC1wcmV2aWV3', takVersion: 4 }),
+      provider,
+    );
+
+    expect(provider.dummies).toHaveLength(0);
+    expect(provider.ciphertexts.map((c) => c.target.pushToken).sort()).toEqual(['tok-b', 'tok-c']);
+    for (const { payload } of provider.ciphertexts) {
+      expect(payload.data.act).toBe('dGFrLXNlYWxlZC1wcmV2aWV3');
+      expect(payload.data.tv).toBe(4);
+    }
+  });
+
+  it('a malformed TAK preview still dispatches the ciphertext push (no act/tv)', async () => {
+    await upsertToken(db, MEMBER_B, 'h-b', 'tok-b', 'ios');
+    const provider = new CapturingProvider();
+    await dispatchCiphertextForMessage(db, input({ archiveCiphertextB64: '', takVersion: -3 }), provider);
+    expect(provider.dummies).toHaveLength(0);
+    expect(provider.ciphertexts).toHaveLength(1);
+    expect(provider.ciphertexts[0].payload.data.act).toBeUndefined();
+    expect(provider.ciphertexts[0].payload.data.ct).toBe('c2VhbGVkLW9wYXF1ZS1ieXRlcw==');
   });
 
   it('size-cap: an over-budget ciphertext falls back to the content-free dummy', async () => {

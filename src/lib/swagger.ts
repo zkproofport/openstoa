@@ -51,6 +51,11 @@ const options: swaggerJsdoc.Options = {
         name: 'MyActivity',
         description: "Current user's activity — own posts, liked posts, bookmarks",
       },
+      {
+        name: 'Push',
+        description:
+          "Device push notification preferences — a per-account global on/off switch plus a per-topic mute. The global switch wins: while it is off, no topic notifies. These gate DEVICE pushes only (chat messages are still delivered in-app), and they are independent of the operating system's own notification permission, which only the device can grant.",
+      },
       { name: 'Tags', description: 'Tag search and listing' },
       { name: 'OG', description: 'Open Graph metadata proxy for link previews' },
       {

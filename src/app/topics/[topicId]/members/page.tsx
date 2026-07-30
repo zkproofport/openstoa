@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import Avatar from '@/components/Avatar';
 import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
+import UserCard from '@/components/UserCard';
 
 interface Member {
   userId: string;
@@ -74,6 +75,13 @@ export default function MembersPage() {
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestActionLoading, setRequestActionLoading] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
+  // userId whose DM is being started — drives the button's pending look.
+  const [dmLoading, setDmLoading] = useState<string | null>(null);
+  // The actual in-flight guard. It must be a ref, not the state above: React
+  // batches state updates inside an event handler, so two clicks landing in the
+  // same batch would both still observe `dmLoading === null` and fire two POSTs
+  // (idempotent server-side, but they race two navigations).
+  const dmInFlightRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -170,6 +178,37 @@ export default function MembersPage() {
       alert(err instanceof Error ? err.message : 'Failed');
     } finally {
       setRequestActionLoading(null);
+    }
+  }
+
+  /**
+   * Start (or reopen) a 1:1 DM with a member and land in it.
+   *
+   * `POST /api/dm` is idempotent on the canonical participant pair, so pressing
+   * this on a member you already message returns the SAME topicId instead of
+   * creating a second channel. The server also rejects a self-DM (400) and an
+   * unknown user (404); the button is not rendered for your own row, and any
+   * server rejection surfaces rather than navigating to a dead conversation.
+   */
+  async function handleStartDm(userId: string) {
+    if (dmInFlightRef.current) return;
+    dmInFlightRef.current = true;
+    setDmLoading(userId);
+    try {
+      const res = await fetch('/api/dm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? 'Failed to open conversation');
+      if (!d.topicId) throw new Error('Failed to open conversation');
+      router.push(`/dm/${d.topicId}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      dmInFlightRef.current = false;
+      setDmLoading(null);
     }
   }
 
@@ -455,7 +494,15 @@ export default function MembersPage() {
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#0d0d0d'; }}
             >
-              <Avatar src={member.profileImage} name={member.nickname} size={40} />
+              <UserCard
+                userId={member.userId}
+                nickname={member.nickname}
+                profileImage={member.profileImage}
+                badges={member.badges}
+                viewerUserId={sessionUserId}
+              >
+                <Avatar src={member.profileImage} name={member.nickname} size={40} />
+              </UserCard>
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -467,6 +514,33 @@ export default function MembersPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Message — starts (or reopens) a 1:1 DM with this member.
+                  Rendered only once the session is known and never on your own
+                  row: /api/dm rejects a self-DM with 400, so offering it would
+                  be a button whose only outcome is an error. */}
+              {sessionUserId && member.userId !== sessionUserId && (
+                <button
+                  onClick={() => handleStartDm(member.userId)}
+                  disabled={dmLoading !== null}
+                  aria-label={`Message ${member.nickname}`}
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 500,
+                    background: 'rgba(120,140,255,0.1)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(120,140,255,0.2)',
+                    borderRadius: 6,
+                    padding: '4px 10px',
+                    cursor: dmLoading !== null ? 'not-allowed' : 'pointer',
+                    opacity: dmLoading !== null ? 0.5 : 1,
+                    transition: 'opacity 0.12s',
+                    flexShrink: 0,
+                  }}
+                >
+                  {dmLoading === member.userId ? '...' : 'Message'}
+                </button>
+              )}
 
               {/* Role badge */}
               {member.role === 'owner' && (

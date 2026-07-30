@@ -6,6 +6,7 @@ import Feather from 'react-native-vector-icons/Feather';
 import { ChatListScreen } from '../../screens/chat/ChatListScreen';
 import { ChatRoomScreen } from '../../screens/chat/ChatRoomScreen';
 import { DmListScreen } from '../../screens/chat/DmListScreen';
+import { NewConversationScreen } from '../../screens/chat/NewConversationScreen';
 import { InAppBrowserScreen } from '../../screens/common/InAppBrowserScreen';
 import { useMiniAppStackScreenOptions } from '../shared';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -13,6 +14,7 @@ import { useThemeColors } from '../../theme/ThemeContext';
 export type ChatStackParamList = {
   ChatList: undefined;
   DmList: undefined;
+  NewConversation: undefined;
   ChatRoom: { topicId: string; topicTitle?: string };
   InAppBrowser: { url: string; title?: string };
 };
@@ -43,7 +45,12 @@ export function ChatStack() {
           ),
         })}
       />
-      <Stack.Screen name="DmList" component={DmListScreen} options={{ title: 'Direct Messages' }} />
+      <Stack.Screen name="DmList" component={DmListScreen} options={{ title: t('openstoa.dm.title') }} />
+      <Stack.Screen
+        name="NewConversation"
+        component={NewConversationScreen}
+        options={{ title: t('openstoa.dm.newConversation') }}
+      />
       <Stack.Screen
         name="ChatRoom"
         component={ChatRoomScreen}

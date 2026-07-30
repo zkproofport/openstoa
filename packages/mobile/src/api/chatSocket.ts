@@ -70,12 +70,20 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
             // ratchet advanced) → it surfaces as "[unable to decrypt]". The send
             // path must optimistically echo the local plaintext (same fix as
             // web ChatPanel) — finalize during simulator verification (P2-21).
-            toDisplayMessageMls(mls, topicId, raw).then((data) => {
-              if (cancelled) return;
-              setMessages((prev) =>
-                prev.some((m) => m.id === data.id) ? prev : [...prev, data],
-              );
-            });
+            // .catch is mandatory: an unhandled rejection here would drop the
+            // live row silently AND surface as an unhandled promise rejection.
+            // toDisplayMessageMls already degrades per row, so this only covers
+            // a future regression — it must never take the socket down.
+            toDisplayMessageMls(mls, topicId, raw)
+              .then((data) => {
+                if (cancelled) return;
+                setMessages((prev) =>
+                  prev.some((m) => m.id === data.id) ? prev : [...prev, data],
+                );
+              })
+              .catch(() => {
+                /* undecryptable live row — the history refetch shows it later */
+              });
           } catch (err) {
             // ignore malformed
           }

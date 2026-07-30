@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,8 @@ import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
+import { PeerProfileCard } from '../../components/PeerProfileCard';
+import type { PeerBadge, PeerProfileTarget } from '../../lib/peerProfile';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicMembers'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicMembers'>;
@@ -32,6 +34,9 @@ interface Member {
   nickname: string;
   role: Role;
   profileImage?: string | null;
+  // GET /api/topics/{topicId}/members already includes this, filtered to
+  // whatever the topic's proofType would show (see route.ts).
+  badges?: PeerBadge[];
 }
 
 interface MembersResponse {
@@ -63,6 +68,12 @@ function makeStyles(colors: ThemeColors) {
       minHeight: 56,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border.default,
+      gap: 12,
+    },
+    avatarName: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: 12,
     },
     avatar: {
@@ -123,11 +134,13 @@ export function TopicMembersScreen() {
   });
 
   const openDm = useCallback(
-    (member: Member) => {
+    (member: Pick<Member, 'userId' | 'nickname'>) => {
+      if (startDmMutation.isPending) return;
       startDmMutation.mutate(
         { userId: member.userId },
         {
           onSuccess: (res) => {
+            setProfileTarget(null);
             // Cross-tab jump into the Chat tab's shared ChatRoom.
             (navigation as unknown as { navigate: (name: string, params: unknown) => void }).navigate(
               'ChatTab',
@@ -138,6 +151,20 @@ export function TopicMembersScreen() {
       );
     },
     [startDmMutation, navigation],
+  );
+
+  // Peer profile card (avatar/name tap). null = closed, mirrors the
+  // ImageViewerModal `url` pattern used elsewhere in this app.
+  const [profileTarget, setProfileTarget] = useState<PeerProfileTarget | null>(null);
+  const openProfile = useCallback(
+    (member: Member) =>
+      setProfileTarget({
+        userId: member.userId,
+        nickname: member.nickname,
+        profileImage: member.profileImage,
+        badges: member.badges,
+      }),
+    [],
   );
 
   React.useLayoutEffect(() => {
@@ -320,15 +347,26 @@ export function TopicMembersScreen() {
           onLongPress={isPressable ? () => onMemberLongPress(item) : undefined}
           activeOpacity={isPressable ? 0.7 : 1}
         >
-          <View style={styles.avatar}>
-            <Feather name="user" size={18} color={colors.text.tertiary} />
-          </View>
-          <View style={styles.rowText}>
-            <Text style={styles.nickname} numberOfLines={1}>
-              {item.nickname}
-            </Text>
-            <Text style={styles.roleText}>{roleLabel}</Text>
-          </View>
+          {/* Avatar + name open the peer profile card. Kept as its own
+              touchable (not the whole row) so it doesn't collide with the
+              row's onLongPress admin menu or the message-icon shortcut. */}
+          <TouchableOpacity
+            style={styles.avatarName}
+            onPress={() => openProfile(item)}
+            activeOpacity={0.6}
+            accessibilityRole="button"
+            accessibilityLabel={t('openstoa.peerProfile.message', { nickname: item.nickname })}
+          >
+            <View style={styles.avatar}>
+              <Feather name="user" size={18} color={colors.text.tertiary} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.nickname} numberOfLines={1}>
+                {item.nickname}
+              </Text>
+              <Text style={styles.roleText}>{roleLabel}</Text>
+            </View>
+          </TouchableOpacity>
           {item.userId !== sessionUserId ? (
             <TouchableOpacity
               onPress={() => openDm(item)}
@@ -345,7 +383,7 @@ export function TopicMembersScreen() {
         </Container>
       );
     },
-    [isOwner, onMemberLongPress, t, styles, colors, sessionUserId, openDm],
+    [isOwner, onMemberLongPress, t, styles, colors, sessionUserId, openDm, openProfile],
   );
 
   if (membersQuery.isLoading) {
@@ -359,24 +397,33 @@ export function TopicMembersScreen() {
   const members = membersQuery.data?.members ?? [];
 
   return (
-    <FlatList
-      style={styles.list}
-      data={members}
-      keyExtractor={(m) => m.userId}
-      renderItem={renderItem}
-      refreshControl={
-        <RefreshControl
-          refreshing={membersQuery.isRefetching}
-          onRefresh={() => membersQuery.refetch()}
-          tintColor={colors.brand.primary}
-        />
-      }
-      ListEmptyComponent={
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>{t('openstoa.members.empty')}</Text>
-        </View>
-      }
-      contentContainerStyle={members.length === 0 ? styles.emptyContent : undefined}
-    />
+    <>
+      <FlatList
+        style={styles.list}
+        data={members}
+        keyExtractor={(m) => m.userId}
+        renderItem={renderItem}
+        refreshControl={
+          <RefreshControl
+            refreshing={membersQuery.isRefetching}
+            onRefresh={() => membersQuery.refetch()}
+            tintColor={colors.brand.primary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>{t('openstoa.members.empty')}</Text>
+          </View>
+        }
+        contentContainerStyle={members.length === 0 ? styles.emptyContent : undefined}
+      />
+      <PeerProfileCard
+        target={profileTarget}
+        viewerUserId={sessionUserId}
+        onClose={() => setProfileTarget(null)}
+        onMessage={(target) => openDm(target)}
+        messagePending={startDmMutation.isPending}
+      />
+    </>
   );
 }

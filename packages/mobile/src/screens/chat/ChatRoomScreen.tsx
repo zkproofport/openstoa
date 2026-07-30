@@ -47,11 +47,12 @@ function loadClipboard(): ClipboardModule | null {
 }
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
 import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls } from '../../crypto/mobileTransport';
+import { mirrorTakToSharedKeychain } from '../../crypto/sharedKeychainNative';
 import type { Visibility } from '../../crypto/takSession';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
@@ -61,9 +62,12 @@ import { formatRelativeTime } from '../../utils/relativeTime';
 import { OGPreviewCard } from '../../components/OGPreviewCard';
 import type { OGData } from '../../components/OGPreviewCard';
 import ImageViewerModal from '../../components/ImageViewerModal';
+import { PeerProfileCard } from '../../components/PeerProfileCard';
+import { TopicMuteButton } from '../../components/TopicMuteButton';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useAuthGuardedAction } from '../../auth';
+import type { PeerProfileTarget } from '../../lib/peerProfile';
 
 // ---------------------------------------------------------------------------
 // URL helpers
@@ -380,6 +384,7 @@ export function ChatRoomScreen() {
   const topicTitle: string = route.params?.topicTitle ?? t('openstoa.tabs.chat');
 
   const client = useOpenStoaClient();
+  const sessionUserId = useOpenStoaSession((s) => s.userId);
   const host = useHost();
   // Pass the host secure store so MLS state persists across restarts (same leaf
   // restored, no re-join). Singleton: first caller (here or chatSocket) wins.
@@ -406,6 +411,35 @@ export function ChatRoomScreen() {
   // in-app WebView, which renders the raw image at top + blank space
   // (the "white area" reported on staging).
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
+  // Peer profile card (author name tap on another member's message).
+  // null = closed, same controlled-by-state pattern as the image viewer.
+  const [profileTarget, setProfileTarget] = useState<PeerProfileTarget | null>(null);
+  const startDmMutation = useMutation({
+    mutationFn: ({ userId }: { userId: string }) =>
+      client.post<{ topicId: string }>('/api/dm', { userId }),
+    onError: (err: Error) => {
+      Alert.alert(t('openstoa.dm.actionFailed'), err.message);
+    },
+  });
+  const openDmFromProfile = useCallback(
+    (target: PeerProfileTarget) => {
+      if (startDmMutation.isPending) return;
+      startDmMutation.mutate(
+        { userId: target.userId },
+        {
+          onSuccess: (res) => {
+            setProfileTarget(null);
+            // Push a new ChatRoom instance rather than `navigate` — we're
+            // already on the 'ChatRoom' route, so `navigate` would just
+            // rewrite this screen's params instead of opening a fresh one,
+            // and the back button would no longer return to this room.
+            navigation.push('ChatRoom', { topicId: res.topicId, topicTitle: target.nickname });
+          },
+        },
+      );
+    },
+    [startDmMutation, navigation],
+  );
 
   // ── SSE realtime ──────────────────────────────────────────────────────────
   const { messages: liveMessages, presence, status, error } = useChatSocket(topicId);
@@ -535,11 +569,19 @@ export function ChatRoomScreen() {
         }
       } catch {}
       if (!cancelled) await provisionArchiveAccess();
+      // Mirror this topic's TAK into the shared Keychain (design §13.6 A) AFTER
+      // provisioning, so a device that only ever READS the topic still holds the
+      // key its notification extension needs — the send path alone would leave
+      // pure readers with no preview. Best-effort; iOS-only.
+      if (!cancelled) {
+        const ref = await tak.takForPush(topicId, visibilityRef.current);
+        if (ref) void mirrorTakToSharedKeychain(topicId, ref.takVersion, ref.takB64, host).catch(() => {});
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [client, tak, topicId, provisionArchiveAccess]);
+  }, [client, tak, topicId, provisionArchiveAccess, host]);
 
   // A new member joined (live SSE) → if we hold the public lease, push them the
   // archive root so they can back-fill (membership-change distribution, SI-6).
@@ -649,6 +691,8 @@ export function ChatRoomScreen() {
       title: topicTitle,
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* Per-topic push mute (P-S). Renders nothing until its state loads. */}
+          <TopicMuteButton topicId={topicId} />
           {presence ? (
             <View style={styles.presenceBadge}>
               <View style={styles.presenceDot} />
@@ -661,6 +705,7 @@ export function ChatRoomScreen() {
   }, [
     navigation,
     topicTitle,
+    topicId,
     presence,
     styles.presenceBadge,
     styles.presenceDot,
@@ -693,6 +738,20 @@ export function ChatRoomScreen() {
     [hasNextPage, isFetchingNextPage, fetchNextPage],
   );
 
+  // ── Push preview (design §13.6 strategy A) ────────────────────────────────
+  // Seal a TAK copy of the body and mirror that TAK into the shared iOS Keychain
+  // group, so the Notification Service Extension can decrypt the preview without
+  // touching the MLS ratchet (which would desync this device). Must ride along in
+  // the POST — push fan-out happens there, before archiveOnSend uploads anything.
+  // Entirely best-effort: any failure just sends without it.
+  const buildPushArchive = useCallback(async (text: string) => {
+    if (!topicId) return undefined;
+    const seal = await tak.sealForPush(topicId, text, visibilityRef.current).catch(() => null);
+    if (!seal) return undefined;
+    void mirrorTakToSharedKeychain(topicId, seal.takVersion, seal.takB64, host).catch(() => {});
+    return { ct: seal.ct, takVersion: seal.takVersion };
+  }, [tak, topicId, host]);
+
   // ── Send message ──────────────────────────────────────────────────────────
   const send = useAuthGuardedAction(async () => {
     const text = draft.trim();
@@ -701,9 +760,11 @@ export function ChatRoomScreen() {
     setDraft('');
     try {
       const sealed = await mls.seal(topicId, text);
+      const pushArchive = await buildPushArchive(text);
       const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
         ciphertext: sealed.ciphertext,
         epoch: sealed.epoch,
+        ...(pushArchive ? { pushArchive } : {}),
       });
       if (res?.message?.id) {
         setSentMessages((curr) =>
@@ -728,9 +789,11 @@ export function ChatRoomScreen() {
     try {
       const publicUrl = await client.uploadFile(localUri);
       const sealed = await mls.seal(topicId, publicUrl);
+      const pushArchive = await buildPushArchive(publicUrl);
       const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
         ciphertext: sealed.ciphertext,
         epoch: sealed.epoch,
+        ...(pushArchive ? { pushArchive } : {}),
       });
       if (res?.message?.id) {
         setSentMessages((curr) =>
@@ -850,6 +913,7 @@ export function ChatRoomScreen() {
               navigation={navigation}
               client={client}
               onImagePress={setImageViewerUrl}
+              onAuthorPress={setProfileTarget}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -925,6 +989,13 @@ export function ChatRoomScreen() {
       </View>
     </KeyboardAvoidingView>
     <ImageViewerModal url={imageViewerUrl} onClose={() => setImageViewerUrl(null)} />
+    <PeerProfileCard
+      target={profileTarget}
+      viewerUserId={sessionUserId}
+      onClose={() => setProfileTarget(null)}
+      onMessage={openDmFromProfile}
+      messagePending={startDmMutation.isPending}
+    />
     </>
   );
 }
@@ -942,9 +1013,10 @@ interface RowProps {
   navigation: NativeStackNavigationProp<ChatStackParamList>;
   client: ReturnType<typeof useOpenStoaClient>;
   onImagePress: (url: string) => void;
+  onAuthorPress: (target: PeerProfileTarget) => void;
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -986,6 +1058,7 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
       navigation={navigation}
       client={client}
       onImagePress={onImagePress}
+      onAuthorPress={onAuthorPress}
     />
   );
 }
@@ -1002,6 +1075,7 @@ interface MessageBodyProps {
   navigation: NativeStackNavigationProp<ChatStackParamList>;
   client: ReturnType<typeof useOpenStoaClient>;
   onImagePress: (url: string) => void;
+  onAuthorPress: (target: PeerProfileTarget) => void;
 }
 
 // Image URLs: explicit extension OR a known image host. `media.zkproofport.app`
@@ -1017,7 +1091,7 @@ function isImageUrl(url: string): boolean {
   return false;
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress }: MessageBodyProps) {
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress }: MessageBodyProps) {
   const content: string = item.message ?? '';
   const firstUrl = extractFirstUrl(content);
   const urlOnly = firstUrl !== null && isUrlOnly(content);
@@ -1135,12 +1209,30 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
 
   return (
     <View style={styles.messageRow}>
-      {/* Author name — other users only, first in group. AI members show a badge. */}
+      {/* Author name — other users only, first in group. AI members show a
+          badge. Tapping opens the peer profile card (design: avatar/name
+          tap → card, same as TopicMembersScreen). Grouped follow-up
+          messages don't repeat the name, so there's no tap target on them —
+          the reader can scroll up to the group header or use the member
+          list instead. */}
       {!isOwn && !sameAuthor ? (
-        <View style={styles.bubbleAuthorRow}>
+        <TouchableOpacity
+          style={styles.bubbleAuthorRow}
+          activeOpacity={0.6}
+          onPress={() =>
+            onAuthorPress({
+              userId: item.userId,
+              nickname: item.nickname,
+              profileImage: item.profileImage,
+              isAI: item.isAI,
+            })
+          }
+          accessibilityRole="button"
+          accessibilityLabel={item.nickname}
+        >
           <Text style={styles.bubbleAuthor}>{item.nickname}</Text>
           {item.isAI ? <Text style={styles.aiBadge}>AI</Text> : null}
-        </View>
+        </TouchableOpacity>
       ) : null}
 
       {/* Bubble row */}

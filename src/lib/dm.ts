@@ -20,3 +20,28 @@
 export function canonicalDmPair(a: string, b: string): string {
   return [a, b].sort().join('|');
 }
+
+/**
+ * One row of `GET /api/dm`. SI-1: routing metadata ONLY — the peer's identity
+ * and a last-activity timestamp. There is deliberately no message body, and no
+ * decrypted preview, because the server never holds one.
+ */
+export interface DmChannel {
+  topicId: string;
+  peer: { userId: string; nickname: string; profileImage: string | null };
+  lastActivityAt: string | null;
+}
+
+/**
+ * Most-recently-active first; channels that never saw activity last. The route
+ * already sorts this way — re-applying it in the client keeps the rendered
+ * order correct even if a caller (or a future cache layer) hands the list over
+ * unsorted. Pure and non-mutating so both sides can share it.
+ */
+export function sortDmChannels(dms: DmChannel[]): DmChannel[] {
+  return [...dms].sort((a, b) => {
+    const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+    const tb = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+    return tb - ta;
+  });
+}

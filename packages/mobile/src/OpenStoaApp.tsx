@@ -13,6 +13,8 @@ import { queryClient } from './api/queryClient';
 import { initSessionLifecycle, SignInLauncherProvider } from './auth';
 import type { SignInLauncher } from './auth';
 import { useDeveloperMode } from './hooks/useDeveloperMode';
+import { usePushRegistration } from './hooks/usePushRegistration';
+import { usePushTapRouting } from './hooks/usePushTapRouting';
 // Register OpenStoa translation bundles into the shared i18next instance.
 import './i18n';
 
@@ -57,6 +59,20 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   const developerMode = useDeveloperMode();
   const [phase, setPhase] = useState<Phase>('booting');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Phase 6 push (design §13): register this device the moment the session is
+  // authenticated, at the ROOT of the mini-app. This used to hang off
+  // ChatListScreen, so a user who never opened the chat list never registered
+  // and never received a push. Gated on the authenticated mode (guests have no
+  // session to bind a token to) and deduped per identity inside the hook, so it
+  // fires exactly once per authenticated session rather than per mount.
+  usePushRegistration(session.mode === 'authenticated');
+
+  // Tap routing (P-O gap 5). Subscribed unconditionally and from the root: a
+  // cold-start tap arrives while this component is still on the BootScreen, and
+  // gating it on the session would drop the very tap that launched the app. The
+  // topic is latched; `OpenStoaTabNavigator` and `ChatListScreen` consume it.
+  usePushTapRouting();
 
   // The host and mini-app share the SAME i18next default instance (resolved
   // via Metro module deduplication). Re-calling `i18n.changeLanguage(lang)`

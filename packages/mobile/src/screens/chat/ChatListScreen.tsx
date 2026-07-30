@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,12 +11,13 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
-import { usePushRegistration } from '../../hooks/usePushRegistration';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
+import { usePendingChatTopicId } from '../../hooks/usePushTapRouting';
+import { takePendingChatTopicId } from '../../hooks/pushTapRouting';
 import type { ChatMessage, Topic } from '@openstoa/api-types';
 
 interface ChatHistoryResponse {
@@ -175,9 +176,8 @@ export function ChatListScreen() {
   // but gate `enabled` so guests don't fire 401s in a loop.
   const { isGuest } = useRequireAuth();
 
-  // Phase 6 push: register this device for content-free chat notifications once
-  // the user is authenticated. No-op on hosts without push support.
-  usePushRegistration(!isGuest);
+  // NOTE: push registration used to live here. It now runs at the mini-app root
+  // (`OpenStoaApp`) so a user who never opens this screen still registers.
 
   // Without view=all, /api/topics returns only joined topics for authenticated
   // users (verified via openstoa/src/app/api/topics/route.ts).
@@ -188,6 +188,28 @@ export function ChatListScreen() {
   });
 
   const topics: Topic[] = Array.isArray(data) ? data : (data?.topics ?? []);
+
+  // Push tap routing, step 2 of 2 (design §13, P-O gap 5): open the room the
+  // notification came from. Done from HERE, not from the tab navigator, so the
+  // chat list stays underneath and the room has a working Back button.
+  //
+  // `useEffect`, not `useFocusEffect`: when the user is already inside another
+  // room this screen is mounted but NOT focused, and a focus-gated version
+  // would sit on the tap until they manually backed out.
+  const pendingChatTopicId = usePendingChatTopicId();
+  const topicsRef = React.useRef<Topic[]>(topics);
+  topicsRef.current = topics;
+  useEffect(() => {
+    // Guests have no rooms to open. The latch is dropped by usePushTapRouting
+    // once boot resolves to a guest, so nothing accumulates here.
+    if (isGuest || !pendingChatTopicId) return;
+    const topicId = takePendingChatTopicId();
+    if (!topicId) return;
+    // Title is a nicety for the header; the room screen falls back on its own
+    // when the topic list hasn't loaded yet (or the user isn't a member).
+    const topicTitle = topicsRef.current.find((topic) => topic.id === topicId)?.title;
+    navigation.navigate('ChatRoom', { topicId, topicTitle });
+  }, [pendingChatTopicId, isGuest, navigation]);
 
   // Fetch the latest chat message per topic in parallel. Cached for 30s so
   // pull-to-refresh on the topics list won't hammer chat history.

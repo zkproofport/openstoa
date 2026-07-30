@@ -382,6 +382,31 @@
       },
       "noMessagesYet": "아직 메시지가 없어요",
       "encryptedMessage": "🔒 암호화된 메시지"
+    },
+    "dm": {
+      "title": "다이렉트 메시지",
+      "newConversation": "새 대화",
+      "searchPlaceholder": "사람 검색…",
+      "actionFailed": "대화를 시작하지 못했어요",
+      "empty": {
+        "title": "아직 다이렉트 메시지가 없어요",
+        "body": "새 대화를 시작하거나 구성원의 프로필에서 메시지를 눌러보세요."
+      },
+      "error": {
+        "title": "메시지를 불러오지 못했어요"
+      },
+      "candidatesEmpty": {
+        "title": "아직 메시지를 보낼 수 있는 사람이 없어요",
+        "body": "함께 속한 토픽이 있는 사람만 메시지를 보낼 수 있어요. 토픽에 참여해보세요."
+      },
+      "candidatesError": {
+        "title": "사람 목록을 불러오지 못했어요"
+      },
+      "sharedTopic": "{{title}}에서 함께",
+      "sharedTopicsMore": "외 {{count}}개"
+    },
+    "peerProfile": {
+      "message": "{{nickname}}에게 메시지"
     }
   }
 }

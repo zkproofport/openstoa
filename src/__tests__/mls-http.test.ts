@@ -3,6 +3,14 @@
  * Rate limit is exercised against real local Redis (REDIS_URL or default).
  */
 import { describe, it, expect, afterAll } from 'vitest';
+
+// The docblock above promises "REDIS_URL or default", but `@/lib/redis` has no
+// fallback by design (CLAUDE.md forbids env fallbacks in app code) — so without
+// this the file threw `REDIS_URL environment variable is required` in any shell
+// that had not exported it. The default belongs HERE, in the test, exactly like
+// push.test.ts / pushPrefs.test.ts default DATABASE_URL.
+process.env.REDIS_URL ??= 'redis://localhost:6379';
+
 import { getRedis } from '@/lib/redis';
 import {
   checkRateLimit,

@@ -77,6 +77,9 @@ ZK-gated community. Pick a sub-skill below; full guide at [/AGENTS.md](AGENTS.md
 ### chat
 [Get current chat presence](skills/api/chat/get-chat-presence/SKILL.md) · [Get chat history](skills/api/chat/get-chat-history/SKILL.md) · [Send a chat message (end-to-end encrypted)](skills/api/chat/send-chat-message/SKILL.md) · [Subscribe to real-time chat via SSE](skills/api/chat/subscribe-chat-sse/SKILL.md)
 
+### push
+[Read your push notification preferences](skills/api/push/get-push-preferences/SKILL.md) · [Turn push notifications on or off globally](skills/api/push/update-push-preferences/SKILL.md) · [Read your notification setting for one topic](skills/api/push/get-topic-push-preference/SKILL.md) · [Mute or unmute one topic](skills/api/push/update-topic-push-preference/SKILL.md)
+
 ### feed
 [Get cross-topic posts feed](skills/api/feed/get-feed/SKILL.md)
 
@@ -93,7 +96,7 @@ ZK-gated community. Pick a sub-skill below; full guide at [/AGENTS.md](AGENTS.md
 [Get community statistics](skills/api/other/get-community-stats/SKILL.md)
 
 ### dm
-[List your direct-message channels](skills/api/dm/list-dms/SKILL.md) · [Start (or get) a 1:1 direct-message channel](skills/api/dm/start-dm/SKILL.md)
+[List the people you are allowed to DM](skills/api/dm/list-dm-candidates/SKILL.md) · [List your direct-message channels](skills/api/dm/list-dms/SKILL.md) · [Start (or get) a 1:1 direct-message channel](skills/api/dm/start-dm/SKILL.md)
 
 ### mls
 [Read TAK-encrypted archived messages (keyset paginated)](skills/api/mls/get-archive/SKILL.md) · [Store a TAK-re-encrypted past message (archive ingest)](skills/api/mls/store-archive-message/SKILL.md) · [Catch up on missed Commits (handshake log)](skills/api/mls/get-mls-commits/SKILL.md) · [Submit an MLS Commit (epoch-CAS, one per epoch)](skills/api/mls/submit-mls-commit/SKILL.md) · [Get the topic's public MLS GroupInfo (for External Commit)](skills/api/mls/get-mls-group-info/SKILL.md) · [Register the genesis GroupInfo for a new topic group](skills/api/mls/register-mls-group-info/SKILL.md) · [Atomically consume one KeyPackage for a joining device (SI-3)](skills/api/mls/consume-mls-key-package/SKILL.md) · [Publish a device MLS KeyPackage (public key material)](skills/api/mls/publish-mls-key-package/SKILL.md) · [Fetch undelivered TAK bundles for one of the caller's devices](skills/api/mls/get-tak-bundles/SKILL.md) · [Deliver an HPKE-wrapped TAK bundle to a member's device (history back-fill)](skills/api/mls/deliver-tak-bundle/SKILL.md) · [Acknowledge delivered TAK bundles](skills/api/mls/ack-tak-bundles/SKILL.md) · [Read the public topic's archive-holder state](skills/api/mls/get-archive-holder/SKILL.md) · [Claim or renew the archive-holder lease (single-winner)](skills/api/mls/claim-archive-holder/SKILL.md) · [Record how far the holder has forward-rewrapped (epoch-fenced)](skills/api/mls/update-archive-holder-coverage/SKILL.md)

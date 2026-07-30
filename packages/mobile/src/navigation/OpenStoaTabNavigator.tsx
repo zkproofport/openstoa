@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Text, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,8 @@ import { TopicsStack } from './stacks/TopicsStack';
 import { ChatStack } from './stacks/ChatStack';
 import { ProfileStack } from './stacks/ProfileStack';
 import { useThemeColors } from '../theme/ThemeContext';
+import { usePendingChatTopicId } from '../hooks/usePushTapRouting';
+import { getPendingChatTopicId } from '../hooks/pushTapRouting';
 
 export type OpenStoaTabParamList = {
   FeedTab: undefined;
@@ -52,6 +54,63 @@ export function OpenStoaTabNavigator() {
   const { t, i18n } = useTranslation();
   const { colors } = useThemeColors();
 
+  // Push tap routing, step 1 of 2 (design §13, P-O gap 5): bring the Chat tab
+  // into focus. Step 2 — pushing the actual room on top of the chat list — is
+  // ChatListScreen's job, which is what leaves the list underneath so Back
+  // works instead of stranding the user in a room with no way out.
+  //
+  // The navigation object we need belongs to THIS navigator, and this component
+  // renders it rather than living inside it, so `useNavigation()` here would
+  // hand us the HOST's navigation instead. `screenListeners` is invoked with the
+  // tab navigator's own navigation object every time the navigator emits an
+  // event — including the `state` event it emits on mount — so we capture it
+  // from there. Deliberately NOT the `focus` event: a nested navigator does not
+  // emit focus on its initial mount (`useFocusEvents` only does that when there
+  // is no parent navigator, and here the host's tab navigator is the parent), so
+  // on a cold start the tap would be stranded waiting for an event that already
+  // fired before this navigator existed.
+  const pendingChatTopicId = usePendingChatTopicId();
+  const tabNavigationRef = useRef<{ navigate: (name: string) => void } | null>(null);
+  // The topic we have already switched tabs for, so neither path below jumps
+  // twice for the same tap.
+  const jumpedForTopicRef = useRef<string | null>(null);
+
+  const jumpToChatTab = useCallback((topicId: string) => {
+    if (jumpedForTopicRef.current === topicId) return;
+    const navigation = tabNavigationRef.current;
+    if (!navigation) return;
+    jumpedForTopicRef.current = topicId;
+    try {
+      navigation.navigate('ChatTab');
+    } catch {
+      // A tap is never worth crashing a tab switch over. The topic stays
+      // latched; ChatListScreen still consumes it if the user goes there.
+    }
+  }, []);
+
+  const captureTabNavigation = useCallback(
+    (navigation: { navigate: (name: string) => void }) => {
+      tabNavigationRef.current = navigation;
+      // Second path in: the mount-time capture can land after this component's
+      // own effect has already run and found no navigation object (the emit
+      // happens inside the child navigator's effect, and child effects flush
+      // first — but relying on that ordering alone would make a cold-start tap
+      // depend on an implementation detail). Deferred a tick because we are
+      // inside another navigator's event dispatch.
+      const pending = getPendingChatTopicId();
+      if (!pending || jumpedForTopicRef.current === pending) return;
+      setTimeout(() => jumpToChatTab(pending), 0);
+    },
+    [jumpToChatTab],
+  );
+
+  // First path in: a tap that lands while this navigator is already mounted, and
+  // a cold-start tap latched before it existed (the effect also runs on mount).
+  useEffect(() => {
+    if (!pendingChatTopicId) return;
+    jumpToChatTab(pendingChatTopicId);
+  }, [pendingChatTopicId, jumpToChatTab]);
+
   const baseTabBarStyle = {
     backgroundColor: colors.background.primary,
     borderTopWidth: 1,
@@ -64,6 +123,10 @@ export function OpenStoaTabNavigator() {
   return (
     <Tab.Navigator
       key={i18n.language}
+      screenListeners={({ navigation }) => {
+        captureTabNavigation(navigation);
+        return {};
+      }}
       // screenOptions runs per-route on every focus change so we can
       // dynamically swap tabBarStyle when a full-screen modal route is
       // focused. Doing it from inside a screen via setOptions+cleanup

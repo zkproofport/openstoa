@@ -2,18 +2,26 @@ import React, { useCallback } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Feather from 'react-native-vector-icons/Feather';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
+import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
 import { formatRelativeTime } from '../../utils/relativeTime';
+import { initialFor } from '../../lib/peerProfile';
+
+type Nav = NativeStackNavigationProp<ChatStackParamList, 'DmList'>;
 
 // A DM channel as returned by GET /api/dm. SI-1: routing metadata only —
 // the server never exposes message content here (bodies are E2EE ciphertext,
@@ -80,17 +88,44 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.brand.primary,
     },
     retryLabel: { color: '#FFFFFF', fontWeight: '600' },
+    newConversationBtn: {
+      marginTop: 20,
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 24,
+      backgroundColor: colors.brand.primary,
+    },
+    newConversationLabel: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
   });
 }
 
 export function DmListScreen() {
+  const { t } = useTranslation();
   const client = useOpenStoaClient();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<Nav>();
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
   const { isGuest } = useRequireAuth();
+
+  // Entry point 2/2 for starting a DM (entry point 1 is a member's profile
+  // card / TopicMembersScreen's message icon). Kept as a header button so
+  // it's reachable even when the list is non-empty.
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => navigation.navigate('NewConversation')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('openstoa.dm.newConversation')}
+        >
+          <Feather name="edit" size={20} color={colors.text.primary} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, t, colors]);
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['dm-list'],
@@ -122,10 +157,10 @@ export function DmListScreen() {
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorTitle}>Couldn’t load messages</Text>
+        <Text style={styles.errorTitle}>{t('openstoa.dm.error.title')}</Text>
         <Text style={styles.errorBody}>{(error as Error).message}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
-          <Text style={styles.retryLabel}>Retry</Text>
+          <Text style={styles.retryLabel}>{t('openstoa.common.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -134,10 +169,15 @@ export function DmListScreen() {
   if (dms.length === 0) {
     return (
       <View style={styles.center}>
-        <Text style={styles.emptyTitle}>No direct messages</Text>
-        <Text style={styles.emptyBody}>
-          Open a member’s profile and tap Message to start a 1:1 conversation.
-        </Text>
+        <Text style={styles.emptyTitle}>{t('openstoa.dm.empty.title')}</Text>
+        <Text style={styles.emptyBody}>{t('openstoa.dm.empty.body')}</Text>
+        <TouchableOpacity
+          style={styles.newConversationBtn}
+          onPress={() => navigation.navigate('NewConversation')}
+          accessibilityRole="button"
+        >
+          <Text style={styles.newConversationLabel}>{t('openstoa.dm.newConversation')}</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -161,7 +201,7 @@ export function DmListScreen() {
           }
         >
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{item.peer.nickname.slice(0, 1).toUpperCase()}</Text>
+            <Text style={styles.avatarText}>{initialFor(item.peer.nickname)}</Text>
           </View>
           <View style={styles.rowContent}>
             <Text style={styles.peerName} numberOfLines={1}>

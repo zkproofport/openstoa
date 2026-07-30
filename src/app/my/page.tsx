@@ -89,6 +89,15 @@ export default function MyPage() {
   const [domainBadgeLoading, setDomainBadgeLoading] = useState(false);
   const [domainBadgeToggling, setDomainBadgeToggling] = useState(false);
 
+  // Push notification state (P-M global switch). `null` = not loaded yet;
+  // the server's permissive default (enabled, nothing muted) only lands once
+  // GET /api/push/preferences answers, so we never render a wrong "off".
+  const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
+  const [pushMutedCount, setPushMutedCount] = useState(0);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushSaving, setPushSaving] = useState(false);
+  const [pushFeedback, setPushFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageFeedback, setImageFeedback] = useState<string | null>(null);
@@ -165,6 +174,46 @@ export default function MyPage() {
       setNicknameFeedback({ ok: false, msg: 'Network error.' });
     } finally {
       setNicknameSaving(false);
+    }
+  }
+
+  // Load push preferences when the settings tab is opened. Failure leaves
+  // `pushEnabled` null so the section renders "couldn't load" instead of
+  // claiming notifications are off.
+  useEffect(() => {
+    if (activeTab !== 'settings') return;
+    setPushLoading(true);
+    fetch('/api/push/preferences')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed'))))
+      .then((data: { enabled: boolean; mutedTopicIds?: string[] }) => {
+        setPushEnabled(data.enabled !== false);
+        setPushMutedCount(data.mutedTopicIds?.length ?? 0);
+      })
+      .catch(() => setPushEnabled(null))
+      .finally(() => setPushLoading(false));
+  }, [activeTab]);
+
+  async function handleTogglePush(next: boolean) {
+    setPushSaving(true);
+    setPushFeedback(null);
+    try {
+      const res = await fetch('/api/push/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? 'Failed to update notifications.');
+      }
+      // Trust the server's echo, not the requested value.
+      const data = (await res.json()) as { enabled: boolean; mutedTopicIds?: string[] };
+      setPushEnabled(data.enabled);
+      setPushMutedCount(data.mutedTopicIds?.length ?? 0);
+    } catch (err) {
+      setPushFeedback({ ok: false, msg: err instanceof Error ? err.message : 'Network error.' });
+    } finally {
+      setPushSaving(false);
     }
   }
 
@@ -851,6 +900,93 @@ export default function MyPage() {
                     <p style={{ fontSize: 14, color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
                       No workspace verification found. Join a workspace-gated topic with a domain proof to unlock this feature.
                     </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Notifications section (P-M global switch) */}
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
+                  Notifications
+                </h3>
+                {pushLoading ? (
+                  <div style={{ fontSize: 14, color: '#6b7280' }}>Loading...</div>
+                ) : pushEnabled === null ? (
+                  <div style={{
+                    padding: '16px 20px',
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 10,
+                  }}>
+                    <p style={{ fontSize: 14, color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
+                      Couldn&apos;t load your notification settings. Reload the page to try again.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{
+                      padding: '12px 16px',
+                      background: 'rgba(255,255,255,0.02)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#e5e7eb' }}>
+                          Push notifications
+                        </span>
+                        <span style={{ display: 'block', fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                          {pushEnabled
+                            ? 'New chat messages notify your devices.'
+                            : 'All notifications are off — no topic will notify you.'}
+                        </span>
+                      </span>
+                      <button
+                        role="switch"
+                        aria-checked={pushEnabled}
+                        aria-label="Push notifications"
+                        onClick={() => handleTogglePush(!pushEnabled)}
+                        disabled={pushSaving}
+                        style={{
+                          width: 46,
+                          height: 26,
+                          flexShrink: 0,
+                          borderRadius: 13,
+                          border: '1px solid ' + (pushEnabled ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.12)'),
+                          background: pushEnabled ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.06)',
+                          cursor: pushSaving ? 'not-allowed' : 'pointer',
+                          opacity: pushSaving ? 0.5 : 1,
+                          padding: 0,
+                          position: 'relative',
+                          transition: 'background 0.12s, border-color 0.12s',
+                        }}
+                      >
+                        <span style={{
+                          position: 'absolute',
+                          top: 2,
+                          left: pushEnabled ? 22 : 2,
+                          width: 20,
+                          height: 20,
+                          borderRadius: '50%',
+                          background: pushEnabled ? '#3b82f6' : '#6b7280',
+                          transition: 'left 0.12s, background 0.12s',
+                        }} />
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 12, color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
+                      This is the account-wide switch and it wins over per-topic settings: while it is off,
+                      no topic notifies you even if it is not muted. Mute a single chat from its chat panel.
+                      {pushMutedCount > 0 && ` You currently have ${pushMutedCount} muted ${pushMutedCount === 1 ? 'topic' : 'topics'}.`}
+                      {' '}Your device or browser also needs notification permission at the OS level — turning this
+                      on here does not grant it.
+                    </p>
+                    {pushFeedback && (
+                      <div style={{ fontSize: 14, color: pushFeedback.ok ? '#4ade80' : '#f87171' }}>
+                        {pushFeedback.msg}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

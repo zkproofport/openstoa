@@ -382,6 +382,31 @@
       },
       "noMessagesYet": "No messages yet",
       "encryptedMessage": "🔒 Encrypted message"
+    },
+    "dm": {
+      "title": "Direct Messages",
+      "newConversation": "New conversation",
+      "searchPlaceholder": "Search people…",
+      "actionFailed": "Couldn't start conversation",
+      "empty": {
+        "title": "No direct messages",
+        "body": "Start a new conversation or open a member's profile and tap Message."
+      },
+      "error": {
+        "title": "Couldn't load messages"
+      },
+      "candidatesEmpty": {
+        "title": "No one to message yet",
+        "body": "Join a topic to find people you share it with."
+      },
+      "candidatesError": {
+        "title": "Couldn't load people"
+      },
+      "sharedTopic": "via {{title}}",
+      "sharedTopicsMore": "+{{count}} more"
+    },
+    "peerProfile": {
+      "message": "Message {{nickname}}"
     }
   }
 }
