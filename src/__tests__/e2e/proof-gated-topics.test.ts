@@ -167,7 +167,168 @@ let kycTopicId: string;
 let countryTopicId: string;
 let workspaceTopicId: string;
 
-describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
+// ═════════════════════════════════════════════════════════════════════
+// Part 1 — the cases that need NO proof and NO session.
+//
+// These were never blocked by the outage; they only looked blocked
+// because they shared a `beforeAll` with the proof-gated ones. Split out
+// so a permanent, accepted outage costs nine cases instead of the whole
+// file. Nothing here is weakened: same requests, same assertions.
+// ═════════════════════════════════════════════════════════════════════
+describe.sequential('Proof-gated topics — docs + proof-input validation (no prover required)', () => {
+  // ── PROOF GUIDE API ──────────────────────────────────────────────
+  it('proof guide: all types return correct circuit', async () => {
+    const expected: Record<string, string> = {
+      kyc: 'coinbase_attestation', country: 'coinbase_country_attestation',
+      google_workspace: 'oidc_domain_attestation', microsoft_365: 'oidc_domain_attestation',
+      workspace: 'oidc_domain_attestation',
+    };
+    for (const [type, circuit] of Object.entries(expected)) {
+      const res = await fetch(`${BASE}/api/docs/proof-guide/${type}`);
+      expect(res.status).toBe(200);
+      expect((await res.json()).circuit).toBe(circuit);
+    }
+  });
+
+  it('proof guide: invalid type → 400', async () => {
+    const res = await fetch(`${BASE}/api/docs/proof-guide/invalid`);
+    expect(res.status).toBe(400);
+  });
+
+  it('proof guide URLs use staging base', async () => {
+    const json = await (await fetch(`${BASE}/api/docs/proof-guide/kyc`)).json();
+    const codes = json.steps.agent.map((s: { code?: string }) => s.code || '').join('');
+    if (BASE.includes('stg-')) {
+      expect(codes).toContain('stg-community.zkproofport.app');
+    }
+  });
+
+  // ── DOCUMENTATION ────────────────────────────────────────────────
+  it('GET /AGENTS.md returns markdown', async () => {
+    const res = await fetch(`${BASE}/AGENTS.md`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('OpenStoa');
+    expect(text).toContain('Privacy');
+  });
+
+  it('GET /skill.md returns skill file', async () => {
+    const res = await fetch(`${BASE}/skill.md`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('name: openstoa');
+    // Stale-assertion fix: this used to look for an 'AUTO-GENERATED API
+    // REFERENCE' heading, which `scripts/generate-skill.ts` stopped emitting in
+    // 09f63e9 (2026-06-03) when skill.md became an index over a per-endpoint
+    // SKILL.md tree. The case never went red because the whole file was blocked
+    // by the prover outage. Assert the shape the generator produces TODAY: the
+    // frontmatter pointer to the machine-readable spec, plus at least one
+    // generated sub-skill link.
+    expect(text).toContain('openapi: /api/docs/openapi.json');
+    expect(text).toMatch(/\]\(skills\/[^)]+\/SKILL\.md\)/);
+  });
+
+  // ── LOGIN-INPUT VALIDATION (fabricated proof data, no prover) ─────
+  it('edge: non-existent / expired challengeId → 400', async () => {
+    // Use a well-formed but non-existent challengeId — Redis key won't be found.
+    // Server returns 400 (invalid/expired challenge).
+    const nonExistentChallengeId = 'nonexistent-challenge-id-' + Date.now().toString(36);
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeId: nonExistentChallengeId,
+        result: { proof: '0x' + 'ab'.repeat(32), publicInputs: '0x' + 'cd'.repeat(32) },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] 400 — non-existent challengeId correctly rejected`);
+  });
+
+  it('edge: invalid proof data with wrong scope → non-2xx', async () => {
+    const { challengeId } = await getScope();
+
+    // Send clearly invalid hex data — will fail at proof verification stage
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeId,
+        result: {
+          proof: '0x' + '00'.repeat(64),
+          publicInputs: '0x' + '00'.repeat(128), // wrong scope encoded in zeros
+        },
+      }),
+    });
+    expect(res.status).not.toBe(200);
+    expect(res.status).not.toBe(201);
+    console.log(`[E2E] Status ${res.status} — scope mismatch / invalid proof correctly rejected`);
+  });
+
+  it('edge: POST /api/auth/verify/ai with empty proof → 400', async () => {
+    const { challengeId } = await getScope();
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId, result: { proof: '', publicInputs: '' } }),
+    });
+    expect([400, 401]).toContain(res.status);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] ${res.status} — empty proof in verify/ai correctly rejected`);
+  });
+
+  it('edge: missing proofType rejected for login → 400', async () => {
+    const { challengeId } = await getScope();
+    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeId,
+        result: { proof: '0x1234', publicInputs: '0x5678', verification: { chainId: 8453, verifierAddress: '0x0000', rpcUrl: 'https://mainnet.base.org' } },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    console.log(`[E2E] ${res.status} — missing proofType correctly rejected: ${json.error}`);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════
+// Part 2 — SKIPPED, not failing.
+//
+// Every case below needs a ZK proof, and every proof comes from the
+// `zkproofport-prove` CLI, which needs BOTH of:
+//
+//   1. the ZKProofport prover (PROOFPORT_URL, e.g. stg-ai.zkproofport.app) —
+//      deliberately taken offline, its AWS EC2 instance is not running;
+//   2. the CLI's Google OAuth client for the OIDC device flow — DELETED.
+//      Google answers the device-code request with
+//      {"error":"deleted_client","error_description":"The OAuth client was
+//      deleted."}, so no login proof can be produced at all.
+//
+// Both are accepted, indefinite outages, not regressions in this repo:
+// agent authentication moved to API keys (`Authorization: Bearer osk_...`,
+// src/lib/apiKeys.ts). The replacement coverage lives in
+// src/__tests__/e2e/apikey-gated-topics.test.ts (plus api-keys.test.ts and
+// ai-permissions.test.ts). A permanent, known, accepted outage must read as
+// SKIPPED-with-reason, not as a red failure on every run — a wall of
+// unexplained 401s trains readers to ignore the suite.
+//
+// NOT DELETED ON PURPOSE. Every body below is byte-for-byte what it was,
+// including the `ExternalDependencyUnavailable` preflight, so restoring the
+// prover + a new OAuth client makes this file whole again by removing one
+// `.skip`.
+//
+// To restore: (a) start the proofport-ai EC2 instance and re-point DNS, then
+// (b) recreate the OAuth 2.0 client of type "TVs and Limited Input devices"
+// in the Google Cloud project and publish a zkproofport-prove release
+// carrying the new client id. Then drop the `.skip` here.
+// ═════════════════════════════════════════════════════════════════════
+describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OAuth client deleted (device flow answers deleted_client) + ZKProofport prover intentionally offline — no proof can be generated; agent auth is API-key based now, see apikey-gated-topics.test.ts]', () => {
 
   // ══════════════════════════════════════════════════
   // SETUP + LOGIN
@@ -514,55 +675,9 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     expect(text).not.toContain('"publicInputs"');
   });
 
-  // ══════════════════════════════════════════════════
-  // PROOF GUIDE API
-  // ══════════════════════════════════════════════════
-
-  it('proof guide: all types return correct circuit', async () => {
-    const expected: Record<string, string> = {
-      kyc: 'coinbase_attestation', country: 'coinbase_country_attestation',
-      google_workspace: 'oidc_domain_attestation', microsoft_365: 'oidc_domain_attestation',
-      workspace: 'oidc_domain_attestation',
-    };
-    for (const [type, circuit] of Object.entries(expected)) {
-      const res = await fetch(`${BASE}/api/docs/proof-guide/${type}`);
-      expect(res.status).toBe(200);
-      expect((await res.json()).circuit).toBe(circuit);
-    }
-  });
-
-  it('proof guide: invalid type → 400', async () => {
-    const res = await fetch(`${BASE}/api/docs/proof-guide/invalid`);
-    expect(res.status).toBe(400);
-  });
-
-  // ══════════════════════════════════════════════════
-  // DOCUMENTATION
-  // ══════════════════════════════════════════════════
-
-  it('GET /AGENTS.md returns markdown', async () => {
-    const res = await fetch(`${BASE}/AGENTS.md`);
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(text).toContain('OpenStoa');
-    expect(text).toContain('Privacy');
-  });
-
-  it('GET /skill.md returns skill file', async () => {
-    const res = await fetch(`${BASE}/skill.md`);
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(text).toContain('name: openstoa');
-    expect(text).toContain('AUTO-GENERATED API REFERENCE');
-  });
-
-  it('proof guide URLs use staging base', async () => {
-    const json = await (await fetch(`${BASE}/api/docs/proof-guide/kyc`)).json();
-    const codes = json.steps.agent.map((s: { code?: string }) => s.code || '').join('');
-    if (BASE.includes('stg-')) {
-      expect(codes).toContain('stg-community.zkproofport.app');
-    }
-  });
+  // NOTE: the proof-guide, /AGENTS.md and /skill.md cases that used to sit
+  // here need neither a proof nor a session, so they now live in Part 1 above
+  // and keep running. Only proof-dependent cases remain below.
 
   // ══════════════════════════════════════════════════
   // PROOF EDGE CASES
@@ -672,50 +787,9 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     console.log('[E2E] 403 — is_included=0 (exclude-mode proof) correctly rejected');
   }, 180_000);
 
-  // ── Test 7: Non-existent challengeId → 400 ────────────────────────────────
-
-  it('edge: non-existent / expired challengeId → 400', async () => {
-    // Use a well-formed but non-existent challengeId — Redis key won't be found.
-    // Server returns 400 (invalid/expired challenge).
-    const nonExistentChallengeId = 'nonexistent-challenge-id-' + Date.now().toString(36);
-    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        challengeId: nonExistentChallengeId,
-        result: { proof: '0x' + 'ab'.repeat(32), publicInputs: '0x' + 'cd'.repeat(32) },
-      }),
-    });
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toBeTruthy();
-    console.log(`[E2E] 400 — non-existent challengeId correctly rejected`);
-  });
-
-  // ── Test 8: Scope mismatch in proof → non-2xx ─────────────────────────────
-  // POST to verify/ai with a fake proof that has wrong scope in publicInputs.
-  // Since proof verification happens on-chain first, invalid proof data fails
-  // before scope check → 400 or 401 depending on failure point.
-
-  it('edge: invalid proof data with wrong scope → non-2xx', async () => {
-    const { challengeId } = await getScope();
-
-    // Send clearly invalid hex data — will fail at proof verification stage
-    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        challengeId,
-        result: {
-          proof: '0x' + '00'.repeat(64),
-          publicInputs: '0x' + '00'.repeat(128), // wrong scope encoded in zeros
-        },
-      }),
-    });
-    expect(res.status).not.toBe(200);
-    expect(res.status).not.toBe(201);
-    console.log(`[E2E] Status ${res.status} — scope mismatch / invalid proof correctly rejected`);
-  });
+  // NOTE: tests 7 and 8 (non-existent challengeId, invalid proof data with a
+  // wrong scope) fabricate their proof bytes, so they need no prover and now
+  // run in Part 1 above.
 
   // ── Test 9: Malformed proof data (empty string, invalid hex) → 400 ─────────
 
@@ -745,19 +819,6 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     console.log(`[E2E] ${res.status} — non-hex proof correctly rejected`);
   });
 
-  it('edge: POST /api/auth/verify/ai with empty proof → 400', async () => {
-    const { challengeId } = await getScope();
-    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ challengeId, result: { proof: '', publicInputs: '' } }),
-    });
-    expect([400, 401]).toContain(res.status);
-    const json = await res.json();
-    expect(json.error).toBeTruthy();
-    console.log(`[E2E] ${res.status} — empty proof in verify/ai correctly rejected`);
-  });
-
   it('edge: KYC proof rejected for login (proofType: kyc) → 400', { timeout: 60_000 }, async () => {
     const { challengeId, scope } = await getScope();
     console.log('[E2E] Generating KYC proof to test login rejection...');
@@ -773,21 +834,5 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
     const json = await res.json();
     expect(json.error).toContain('proofType');
     console.log(`[E2E] ${res.status} — KYC proof correctly rejected for login: ${json.error}`);
-  });
-
-  it('edge: missing proofType rejected for login → 400', async () => {
-    const { challengeId } = await getScope();
-    const res = await fetch(`${BASE}/api/auth/verify/ai`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        challengeId,
-        result: { proof: '0x1234', publicInputs: '0x5678', verification: { chainId: 8453, verifierAddress: '0x0000', rpcUrl: 'https://mainnet.base.org' } },
-      }),
-    });
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toBeTruthy();
-    console.log(`[E2E] ${res.status} — missing proofType correctly rejected: ${json.error}`);
   });
 });

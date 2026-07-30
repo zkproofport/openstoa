@@ -183,7 +183,31 @@ describe.sequential('Topic CRUD + Permission + Blind', () => {
     expect(json.error).toBeTruthy();
   });
 
-  it('13. Admin blinds topic -> 200', async () => {
+  // ── Cases 13/14: site-admin actions — SKIPPED, not failing ──────────
+  //
+  // Both need a session whose USER ROW has role='admin'. There is no way to
+  // mint one in this environment:
+  //   - `/api/topics/{id}/blind` looks the caller up in `users` and requires
+  //     `user.role === 'admin'` (src/app/api/topics/[topicId]/blind/route.ts:41).
+  //     It reads the DB row, not the session — so the credential type does not
+  //     matter, only the row does.
+  //   - An API key therefore CANNOT confer admin: `getApiKeySession`
+  //     (src/lib/session.ts) resolves a key to its owner's userId, so a key is
+  //     exactly as admin as its owner and no more. Issuing one from a
+  //     dev-login user leaves role='user'.
+  //   - `/api/auth/dev-login` only ever inserts a default-role user; it has no
+  //     role parameter (src/app/api/auth/dev-login/route.ts).
+  //   - Nothing else promotes a user: the repo has no admin-bootstrap route,
+  //     script or env allowlist (`role: 'admin'` is written nowhere outside
+  //     topic-level membership).
+  // The only remaining path was the proof-gated OIDC login + a manual
+  // `UPDATE users SET role='admin'` — and that login is gone with the deleted
+  // Google OAuth client and the offline prover (see proof-gated-topics.test.ts).
+  //
+  // Kept verbatim so they run again the moment an admin credential exists:
+  // either restore that login, or point E2E_STAGING_DB_URL at the database
+  // under test and promote a dev-login user directly.
+  it.skip('13. Admin blinds topic -> 200 [SKIPPED: no admin credential obtainable — blind needs users.role=admin, which only the deleted-OAuth proof login + a manual DB grant could produce; an API key inherits its owner\'s role and dev-login cannot set one]', async () => {
     const res = await adminPost(`/api/topics/${publicTopicId}/blind`);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -192,7 +216,7 @@ describe.sequential('Topic CRUD + Permission + Blind', () => {
     expect(json.blindedBy).toBe('admin');
   });
 
-  it('14. Blinded topic excluded from topic list', async () => {
+  it.skip('14. Blinded topic excluded from topic list [SKIPPED: depends on case 13 — without an admin credential the topic is never blinded, so the exclusion assertion would fail for a reason unrelated to list filtering]', async () => {
     // This case only means anything if case 13 could actually blind the topic;
     // without an admin credential the exclusion below fails for a reason that
     // has nothing to do with list filtering.
