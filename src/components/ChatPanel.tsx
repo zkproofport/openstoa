@@ -6,7 +6,14 @@ import Badge from '@/components/Badge';
 import LinkPreview from '@/components/LinkPreview';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
-import { getMlsSessionStore, getTakSessionStore } from '@/lib/mls/webTransport';
+import Link from 'next/link';
+import {
+  getMlsSessionStore,
+  getTakSessionStore,
+  getDeviceKeyState,
+  recoverDeviceWithPasskey,
+  type DeviceKeyState,
+} from '@/lib/mls/webTransport';
 import type { Visibility } from '@/lib/mls/takSession';
 import {
   DecryptOnce,
@@ -60,11 +67,15 @@ async function toDisplayMessage(
           const opened = raw.id
             ? await getMlsSessionStore().openCached(topicId, raw.id, raw.sealed)
             : await getMlsSessionStore().open(topicId, raw.sealed);
-          text = opened ?? '[unable to decrypt]';
+          text = opened ?? '';
         } catch {
-          text = '[unable to decrypt]';
+          text = '';
         }
       }
+      // Sealed body, no plaintext: the message is LOCKED for this device, not
+      // blank. Flagged so the renderer can say that honestly and back-fill can
+      // find these rows later.
+      if (text === '') return { ...(raw as ChatMessage), message: '', undecryptable: true };
     }
     return { ...(raw as ChatMessage), message: text };
   }
@@ -146,6 +157,17 @@ interface ChatMessage {
   type: 'message' | 'join' | 'leave';
   isAI?: boolean;
   createdAt: string;
+  /**
+   * This device holds no key for this message — it is sealed, not empty.
+   *
+   * A FLAG, not a sentinel string. This used to be `message === '[unable to
+   * decrypt]'`, which meant an internal marker was also the user-facing text,
+   * so a screen full of them read as a broken app. It also meant a real
+   * message whose plaintext happened to equal that string would be silently
+   * treated as a failure. Back-fill (TAK) flips this to false once the key
+   * arrives; the renderer shows a locked placeholder, never raw English.
+   */
+  undecryptable?: boolean;
 }
 
 interface ChatPanelProps {
@@ -302,6 +324,93 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
 
 // ─── Message row ──────────────────────────────────────────────────────────────
 
+/**
+ * Shown once above the list when this device cannot read part of the history.
+ *
+ * Why this exists: a brand-new device (a second browser, a reinstalled app)
+ * mints its OWN master_key, so the TAK keychain on the server — sealed under
+ * the account's real key — stays closed to it and every pre-join message is
+ * locked. Previously the only signal was a column of raw "[unable to decrypt]"
+ * bubbles: no cause, no remedy, and it reads as a broken product.
+ *
+ * The unlock cannot be automatic. `navigator.credentials.get()` required a user
+ * gesture in Safari through iOS 17.3, so recovery has to hang off a real tap —
+ * hence a button rather than a silent effect on mount.
+ */
+function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<DeviceKeyState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (lockedCount === 0) return;
+    let alive = true;
+    // Silent probe — reads local storage + one GET. Never prompts.
+    void getDeviceKeyState().then((s) => {
+      if (alive) setState(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lockedCount]);
+
+  if (lockedCount === 0 || state === null || state === 'ready') return null;
+
+  const unlock = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      // Runs inside the click, preserving the user activation Safari needs.
+      if (!(await recoverDeviceWithPasskey())) setFailed(true);
+      else window.location.reload(); // rebuilt key stores; re-read history under the recovered key
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recoverable = state === 'recoverable';
+  return (
+    <div
+      role="status"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-3)',
+        flexWrap: 'wrap',
+        margin: '0 0 var(--space-3)',
+        padding: 'var(--space-3)',
+        border: '1px solid var(--color-border-default)',
+        borderRadius: 'var(--radius-card)',
+        background: 'var(--color-bg-secondary)',
+        fontSize: 'var(--text-body-sm)',
+        color: 'var(--color-text-secondary)',
+      }}
+    >
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {failed
+          ? t('chat.lockedHistory.failed')
+          : recoverable
+            ? t('chat.lockedHistory.recoverable', { count: String(lockedCount) })
+            : t('chat.lockedHistory.noBackup', { count: String(lockedCount) })}
+      </span>
+      {recoverable ? (
+        <button type="button" className="os-button os-button-primary" onClick={unlock} disabled={busy}>
+          {busy ? t('chat.lockedHistory.unlocking') : t('chat.lockedHistory.unlock')}
+        </button>
+      ) : (
+        // No backup exists, so nothing can unlock the past — but setting
+        // recovery up now protects every message from here on.
+        <Link href="/my" className="os-button">
+          {t('chat.lockedHistory.setUp')}
+        </Link>
+      )}
+    </div>
+  );
+}
+
 function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: boolean; roomy?: boolean; own?: boolean }) {
   const { t } = useTranslation();
   // System rows are about the room, not about a person — centered on both
@@ -319,6 +428,35 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
         textAlign: 'center' as const,
       }}>
         {t(msg.type === 'join' ? 'chat.joinedRoom' : 'chat.leftRoom', { nickname: msg.nickname })}
+      </div>
+    );
+  }
+
+  // Locked, not broken. This device has no key for this message — almost always
+  // because it joined the group after the message was sent. Say that, in the
+  // user's language, instead of leaking the internal marker; the banner above
+  // the list carries the actual remedy so every locked row need not repeat it.
+  if (msg.undecryptable) {
+    return (
+      <div style={{ display: 'flex', justifyContent: own ? 'flex-end' : 'flex-start', padding: '2px 0' }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            maxWidth: '78%',
+            fontSize: roomy ? 14 : 13,
+            fontStyle: 'italic',
+            color: 'var(--color-text-tertiary)',
+            background: 'transparent',
+            border: '1px dashed var(--color-border-default)',
+            borderRadius: 'var(--radius-card)',
+            padding: roomy ? '8px 12px' : '6px 10px',
+          }}
+        >
+          <span aria-hidden="true">🔒</span>
+          {t('chat.lockedMessage')}
+        </span>
       </div>
     );
   }
@@ -538,7 +676,7 @@ export default function ChatPanel({
         raws.map((raw) => {
           const decrypt = () =>
             toDisplayMessage(topicId, raw, pendingSendsRef.current).catch(
-              () => ({ ...(raw as unknown as ChatMessage), message: '[unable to decrypt]' }),
+              () => ({ ...(raw as unknown as ChatMessage), message: '', undecryptable: true }),
             );
           return raw?.id ? decryptOnceRef.current.get(raw.id, decrypt) : decrypt();
         }),
@@ -864,7 +1002,9 @@ export default function ChatPanel({
           const byId = new Map(recovered.map((r) => [r.messageId, r.plaintext]));
           setMessages((prev) =>
             prev.map((m) =>
-              m.message === '[unable to decrypt]' && byId.has(m.id) ? { ...m, message: byId.get(m.id)! } : m,
+              m.undecryptable && byId.has(m.id)
+                ? { ...m, message: byId.get(m.id)!, undecryptable: false }
+                : m,
             ),
           );
         }
@@ -1142,6 +1282,9 @@ export default function ChatPanel({
               {loadingOlder ? t('chat.loading') : t('chat.loadEarlier')}
             </button>
           )}
+          <LockedHistoryNotice
+            lockedCount={messages.reduce((n, m) => (m.undecryptable ? n + 1 : n), 0)}
+          />
           {messages.length === 0 ? (
             <div style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
               {t('chat.noMessagesYet')}

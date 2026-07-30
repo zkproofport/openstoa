@@ -6,7 +6,9 @@
  * plaintext the FIRST time a message id is opened and `null` (the real
  * forward-secrecy behaviour — the per-message key is consumed) on every later
  * attempt. So any regression that decrypts a message twice does not merely look
- * wasteful here, it renders '[unable to decrypt]' and fails the assertion.
+ * wasteful here, it renders the locked placeholder and fails the assertion.
+ * The raw '[unable to decrypt]' sentinel is gone entirely — it is a boolean
+ * flag now (ChatMessage.undecryptable), never user-facing text.
  *
  * Edge-case matrix rows covered here:
  *   boundary    — reconnect with 0 / 1 / many missed messages
@@ -22,6 +24,7 @@
  *                 a new bottom message does
  *   authz       — guests / non-members issue no chat request at all
  */
+import enLocale from '@/lib/i18n/locales/en.json';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -68,6 +71,10 @@ const takStore = {
 vi.mock('@/lib/mls/webTransport', () => ({
   getMlsSessionStore: () => mlsStore,
   getTakSessionStore: () => takStore,
+  // 'ready' keeps the locked-history notice out of these tests: they are about
+  // the decrypt path itself, not the recovery affordance (see lockedHistory.test.tsx).
+  getDeviceKeyState: async () => 'ready',
+  recoverDeviceWithPasskey: async () => true,
 }));
 
 // Imported AFTER the mock so the component picks up the doubles.
@@ -349,7 +356,7 @@ describe('ChatPanel — SSE reconnect catch-up', () => {
     await flush();
 
     expect(decryptCalls.filter((id) => id === 'm2')).toHaveLength(1);
-    expect(bodyText()).not.toContain('[unable to decrypt]');
+    expect(bodyText()).not.toContain(enLocale.chat.lockedMessage);
     const rendered = bodyText().split('plain(ct-m2)').length - 1;
     expect(rendered).toBe(1);
   });
@@ -369,7 +376,7 @@ describe('ChatPanel — SSE reconnect catch-up', () => {
 
     expect(decryptCalls.filter((id) => id === 'm2')).toHaveLength(1);
     expect(bodyText().split('plain(ct-m2)').length - 1).toBe(1);
-    expect(bodyText()).not.toContain('[unable to decrypt]');
+    expect(bodyText()).not.toContain(enLocale.chat.lockedMessage);
   });
 
   it('a failing catch-up request is swallowed — chat keeps working and retries later', async () => {
@@ -493,7 +500,7 @@ describe('ChatPanel — history pagination', () => {
     await flush();
 
     expect(decryptCalls.filter((id) => id === 'm51')).toHaveLength(1);
-    expect(bodyText()).not.toContain('[unable to decrypt]');
+    expect(bodyText()).not.toContain(enLocale.chat.lockedMessage);
   });
 });
 
@@ -507,7 +514,7 @@ describe('ChatPanel — decrypt failures and own messages', () => {
 
     expect(bodyText()).toContain('plain(ct-m1)');
     expect(bodyText()).toContain('plain(ct-m3)');
-    expect(bodyText().split('[unable to decrypt]').length - 1).toBe(1);
+    expect(bodyText().split(enLocale.chat.lockedMessage).length - 1).toBe(1);
   });
 
   it('a decrypt that THROWS still degrades to one row instead of blanking the page', async () => {
@@ -517,7 +524,7 @@ describe('ChatPanel — decrypt failures and own messages', () => {
     });
     await mount();
 
-    expect(bodyText()).toContain('[unable to decrypt]');
+    expect(bodyText()).toContain(enLocale.chat.lockedMessage);
     // The sibling still rendered — Promise.all did not reject the whole page.
     expect(bodyText()).toMatch(/plain\(ct-m[12]\)/);
   });
@@ -554,7 +561,7 @@ describe('ChatPanel — decrypt failures and own messages', () => {
 
     expect(decryptCalls).not.toContain('own1');
     expect(bodyText().split('my own words').length - 1).toBe(1);
-    expect(bodyText()).not.toContain('[unable to decrypt]');
+    expect(bodyText()).not.toContain(enLocale.chat.lockedMessage);
   });
 
   it('a guest issues no chat request at all', async () => {

@@ -516,7 +516,16 @@
     "connected": "연결됨",
     "reconnecting": "재연결 중",
     "joinedRoom": "{{nickname}}님이 채팅방에 입장했습니다",
-    "leftRoom": "{{nickname}}님이 채팅방을 나갔습니다"
+    "leftRoom": "{{nickname}}님이 채팅방을 나갔습니다",
+    "lockedMessage": "암호화됨 — 이 기기에는 키가 없습니다",
+    "lockedHistory": {
+      "recoverable": "이전 메시지 {{count}}개가 이 기기에서 잠겨 있습니다. 패스키로 해제할 수 있습니다.",
+      "noBackup": "이전 메시지 {{count}}개가 이 기기에서 잠겨 있습니다. 이 기기가 생기기 전에 보낸 메시지이고 복구 키가 설정돼 있지 않아 여기서는 열 수 없습니다.",
+      "unlock": "히스토리 해제",
+      "unlocking": "해제 중…",
+      "setUp": "복구 설정하기",
+      "failed": "해제하지 못했습니다. 다시 시도하거나 설정에서 복구 코드를 사용하세요."
+    }
   },
   "chatRail": {
     "backAriaLabel": "채팅 목록으로 돌아가기",

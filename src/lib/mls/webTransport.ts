@@ -7,6 +7,7 @@
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
 import * as km from './keyManager';
+import { getPasskeyPrf } from '@/lib/passkeyPrf';
 
 function httpTransport(): MlsTransport {
   const base = (t: string) => `/api/topics/${t}/mls`;
@@ -200,6 +201,15 @@ function scheduleTakKeychainBackup(): void {
   _takBackupTimer = setTimeout(() => {
     void (async () => {
       try {
+        // Do NOT overwrite the account's backup from a device whose master_key
+        // is a throwaway. `POST /api/keys/tak-backup` upserts a single row per
+        // user, so a second device that minted its own key would replace a
+        // keychain sealed under the REAL key with one only it can open — and
+        // the user's recovery code would then restore a keychain that decrypts
+        // to nothing. Uploading is only safe once this device holds the
+        // account's key, i.e. after recovery or first-run induction.
+        if ((await getDeviceKeyState()) === 'recoverable') return;
+
         const keychain = await getTakSessionStore().exportKeychain();
         if (Object.keys(keychain).length === 0) return;
         await km.uploadTakKeychain(await masterKey(), keychain, async (ciphertext) => {
@@ -236,6 +246,59 @@ export function getTakSessionStore(): TakSessionStore {
 /** The device's master_key (loaded/created on first call). */
 export function getDeviceMasterKey(): Promise<Uint8Array> {
   return masterKey();
+}
+
+/**
+ * Why a brand-new browser cannot read history, and what can be done about it.
+ *
+ * A fresh device MINTS its own master_key (`loadOrCreateMasterKey`) — it does
+ * not adopt the account's. The TAK keychain on the server is sealed under the
+ * ORIGINAL master_key, so this device cannot open it and every pre-join message
+ * decrypts to nothing. That is the whole cause of a screen full of
+ * "[unable to decrypt]" on a second device.
+ *
+ *   'ready'        — this device already holds a master_key. Nothing to do.
+ *   'recoverable'  — no local key, but the account has a passkey wrap. One
+ *                    WebAuthn tap adopts the real key and unlocks history.
+ *   'no-backup'    — no local key and nothing to recover from. History from
+ *                    before this device existed is genuinely unreachable; the
+ *                    honest move is to say so and offer to set recovery up now.
+ *
+ * Deliberately cheap and SILENT: it only reads local storage and does a GET.
+ * It must never call `navigator.credentials.get()` — Safari required a user
+ * gesture for that through iOS 17.3, so the actual unlock has to hang off a
+ * real tap (see `recoverDeviceWithPasskey`).
+ */
+export type DeviceKeyState = 'ready' | 'recoverable' | 'no-backup';
+
+export async function getDeviceKeyState(): Promise<DeviceKeyState> {
+  if (await km.hasMasterKey(idbStore())) return 'ready';
+  try {
+    const backup = await keyBackupHttp().getBackup();
+    return backup.passkeys.length > 0 || backup.wrappedMaster ? 'recoverable' : 'no-backup';
+  } catch {
+    // Offline or the endpoint failed: claim nothing. Callers treat an unknown
+    // state as 'no-backup' for display but must not destroy anything on it.
+    return 'no-backup';
+  }
+}
+
+/**
+ * Adopt the account's real master_key on this device via passkey, then restore
+ * the TAK keychain. MUST be called from a user gesture (click/tap) — see above.
+ *
+ * Returns false when the account has no passkey wrap to recover from, so the
+ * caller can fall back to the recovery-code flow instead of showing a failure.
+ */
+export async function recoverDeviceWithPasskey(): Promise<boolean> {
+  const http = keyBackupHttp();
+  const backup = await http.getBackup();
+  if (backup.passkeys.length === 0) return false;
+  const { prfOutput } = await getPasskeyPrf();
+  const mk = await km.recoverWithPasskey(prfOutput, () => http.getBackup());
+  if (!mk) return false;
+  await recoverDevice(mk);
+  return true;
 }
 
 /** HTTP client for /api/keys/backup + /api/keys/tak-backup (cookie auth). */

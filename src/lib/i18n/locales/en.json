@@ -516,7 +516,16 @@
     "connected": "Connected",
     "reconnecting": "Reconnecting",
     "joinedRoom": "{{nickname}} entered the chat",
-    "leftRoom": "{{nickname}} left the chat"
+    "leftRoom": "{{nickname}} left the chat",
+    "lockedMessage": "Encrypted — this device has no key for it",
+    "lockedHistory": {
+      "recoverable": "{{count}} earlier messages are locked on this device. Unlock them with your passkey.",
+      "noBackup": "{{count}} earlier messages are locked on this device. They were sent before this device existed, and no recovery key is set up, so they cannot be opened here.",
+      "unlock": "Unlock history",
+      "unlocking": "Unlocking…",
+      "setUp": "Set up recovery",
+      "failed": "Could not unlock. Try again, or use your recovery code in Settings."
+    }
   },
   "chatRail": {
     "backAriaLabel": "Back to chat list",
