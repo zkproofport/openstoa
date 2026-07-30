@@ -5,10 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import { resizeImage } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export default function EditTopicPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useTranslation();
   const topicId = params.topicId as string;
 
   const [title, setTitle] = useState('');
@@ -31,18 +33,18 @@ export default function EditTopicPage() {
           return;
         }
         if (res.status === 403 || res.status === 404) {
-          setError('Topic not found or you do not have access.');
+          setError(t('editTopicPage.notFoundOrNoAccess'));
           setLoading(false);
           return;
         }
-        if (!res.ok) throw new Error('Failed to load topic');
+        if (!res.ok) throw new Error(t('editTopicPage.loadFailed'));
 
         const data = await res.json();
         const topic = data.topic;
 
         // Check ownership
         if (data.currentUserRole !== 'owner') {
-          setError('Only the topic owner can edit this topic.');
+          setError(t('editTopicPage.ownerOnly'));
           setLoading(false);
           return;
         }
@@ -54,12 +56,13 @@ export default function EditTopicPage() {
           setImagePreview(topic.image);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load topic');
+        setError(err instanceof Error ? err.message : t('editTopicPage.loadFailed'));
       } finally {
         setLoading(false);
       }
     }
     loadTopic();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId, router]);
 
   async function uploadTopicImage(file: File): Promise<string> {
@@ -69,7 +72,7 @@ export default function EditTopicPage() {
     form.append('purpose', 'topic');
 
     const res = await fetch('/api/upload', { method: 'POST', body: form });
-    if (!res.ok) throw new Error('Failed to upload image');
+    if (!res.ok) throw new Error(t('editTopicPage.uploadImageFailed'));
     const { publicUrl } = (await res.json()) as { publicUrl: string };
     return publicUrl;
   }
@@ -79,7 +82,7 @@ export default function EditTopicPage() {
     if (!file) return;
     if (!file.type.startsWith('image/')) return;
     if (file.size > 10 * 1024 * 1024) {
-      setError('Image must be under 10MB');
+      setError(t('editTopicPage.imageTooLarge'));
       return;
     }
     setImageFile(file);
@@ -101,7 +104,7 @@ export default function EditTopicPage() {
       try {
         imageUrl = await uploadTopicImage(imageFile);
       } catch {
-        setError('Failed to upload image');
+        setError(t('editTopicPage.uploadImageFailed'));
         setSubmitting(false);
         setImageUploading(false);
         return;
@@ -127,12 +130,12 @@ export default function EditTopicPage() {
 
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to update topic');
+        throw new Error(d.error ?? t('editTopicPage.updateFailed'));
       }
 
       router.push(`/topics/${topicId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
       setSubmitting(false);
     }
   }
@@ -141,7 +144,7 @@ export default function EditTopicPage() {
     return (
       <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
-          <div style={{ color: 'var(--muted)', fontSize: 14 }}>Loading...</div>
+          <div style={{ color: 'var(--muted)', fontSize: 'var(--text-body-sm)' }}>{t('common.loading')}</div>
         </div>
       </CommunityLayout>
     );
@@ -151,9 +154,9 @@ export default function EditTopicPage() {
     return (
       <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 14 }}>{error}</p>
-          <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 14 }}>
-            {'\u2190'} Back to topics
+          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)' }}>{error}</p>
+          <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+            {'\u2190'} {t('editTopicPage.backToTopics')}
           </Link>
         </div>
       </CommunityLayout>
@@ -162,22 +165,23 @@ export default function EditTopicPage() {
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px 1.5rem 80px' }}>
+      {/* 1.5rem = space-5; 40px/80px vertical rhythm has no exact scale match, kept literal. */}
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px var(--space-5) 80px' }}>
         <div style={{ marginBottom: 20 }}>
-          <Link href={`/topics/${topicId}`} style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
-            {'\u2190'} Back to topic
+          <Link href={`/topics/${topicId}`} style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 'var(--text-caption)' }}>
+            {'\u2190'} {t('editTopicPage.backToTopic')}
           </Link>
         </div>
 
         <h1
           style={{
-            fontSize: 32,
+            fontSize: 'var(--text-heading-lg)',
             fontWeight: 800,
             letterSpacing: '-0.04em',
             margin: '0 0 28px',
           }}
         >
-          Edit Topic
+          {t('editTopicPage.title')}
         </h1>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
@@ -185,27 +189,30 @@ export default function EditTopicPage() {
           <div>
             <label
               htmlFor="title"
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              Title <span style={{ color: '#ef4444' }}>*</span>
+              {t('editTopicPage.titleLabel')} <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <input
               id="title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Topic title"
+              placeholder={t('editTopicPage.titlePlaceholder')}
               maxLength={100}
               autoFocus
               style={{
                 width: '100%',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: '12px 14px',
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-3) 14px',
                 color: 'var(--foreground)',
-                fontSize: 15,
+                // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
+                fontSize: 'var(--text-body)',
                 outline: 'none',
+                minHeight: 'var(--touch-target-min)',
+                boxSizing: 'border-box',
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
@@ -216,25 +223,26 @@ export default function EditTopicPage() {
           <div>
             <label
               htmlFor="description"
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              Description{' '}
-              <span style={{ fontSize: 15, color: 'var(--muted)' }}>(optional)</span>
+              {t('editTopicPage.descriptionLabel')}{' '}
+              <span style={{ fontSize: 'var(--text-body)', color: 'var(--muted)' }}>{t('editTopicPage.optional')}</span>
             </label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this topic about?"
+              placeholder={t('editTopicPage.descriptionPlaceholder')}
               rows={3}
               style={{
                 width: '100%',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: '12px 14px',
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-3) 14px',
                 color: 'var(--foreground)',
-                fontSize: 14,
+                // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
+                fontSize: 'var(--text-body)',
                 outline: 'none',
                 resize: 'vertical',
                 lineHeight: 1.6,
@@ -248,17 +256,17 @@ export default function EditTopicPage() {
           {/* Topic Image */}
           <div>
             <label
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              Topic Image{' '}
-              <span style={{ fontSize: 15, color: 'var(--muted)' }}>(optional)</span>
+              {t('editTopicPage.topicImageLabel')}{' '}
+              <span style={{ fontSize: 'var(--text-body)', color: 'var(--muted)' }}>{t('editTopicPage.optional')}</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
               {imagePreview && !removeImage ? (
                 <div style={{ position: 'relative' }}>
                   <img
                     src={imagePreview}
-                    alt="Preview"
+                    alt={t('editTopicPage.previewAlt')}
                     style={{
                       width: 80,
                       height: 80,
@@ -274,6 +282,7 @@ export default function EditTopicPage() {
                       setImagePreview(null);
                       setRemoveImage(true);
                     }}
+                    aria-label={t('editTopicPage.removeImageAria')}
                     style={{
                       position: 'absolute',
                       top: -6,
@@ -284,7 +293,7 @@ export default function EditTopicPage() {
                       background: '#ef4444',
                       color: '#fff',
                       border: 'none',
-                      fontSize: 14,
+                      fontSize: 'var(--text-body-sm)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -320,20 +329,20 @@ export default function EditTopicPage() {
                   />
                 </label>
               )}
-              <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-                Recommended: square image, at least 200x200px.
+              <div style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', lineHeight: 1.6 }}>
+                {t('editTopicPage.imageHint.line1')}
                 <br />
-                Max 10MB. Will be resized to 400px.
+                {t('editTopicPage.imageHint.line2')}
               </div>
             </div>
           </div>
 
           {error && (
-            <p style={{ color: '#ef4444', fontSize: 14 }}>{error}</p>
+            <p style={{ color: '#ef4444', fontSize: 'var(--text-body-sm)' }}>{error}</p>
           )}
 
           {/* Submit */}
-          <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <button
               type="submit"
               disabled={!title.trim() || submitting}
@@ -342,15 +351,16 @@ export default function EditTopicPage() {
                 background: !title.trim() || submitting ? 'rgba(59,130,246,0.3)' : 'var(--accent)',
                 color: '#fff',
                 border: 'none',
-                borderRadius: 8,
-                padding: '12px 0',
-                fontSize: 15,
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-3) 0',
+                fontSize: 'var(--text-body)',
                 fontWeight: 700,
                 cursor: !title.trim() || submitting ? 'not-allowed' : 'pointer',
                 transition: 'background 0.15s',
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              {imageUploading ? 'Uploading image...' : submitting ? 'Saving...' : 'Save Changes'}
+              {imageUploading ? t('editTopicPage.uploadingImage') : submitting ? t('editTopicPage.saving') : t('editTopicPage.saveChanges')}
             </button>
             <Link
               href={`/topics/${topicId}`}
@@ -358,18 +368,19 @@ export default function EditTopicPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '12px 24px',
-                fontSize: 15,
+                padding: 'var(--space-3) var(--space-5)',
+                fontSize: 'var(--text-body)',
                 fontWeight: 600,
                 color: 'var(--muted)',
                 background: 'rgba(255,255,255,0.06)',
                 border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control)',
                 textDecoration: 'none',
                 transition: 'all 0.12s',
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </Link>
           </div>
         </form>

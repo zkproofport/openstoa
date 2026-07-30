@@ -7,6 +7,7 @@ import BareChatShell from '@/components/BareChatShell';
 import ChatPanel from '@/components/ChatPanel';
 import Spinner from '@/components/Spinner';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 /**
  * Standalone full-page topic chat -- the "open in new tab" target for a topic
@@ -28,6 +29,7 @@ interface TopicSummary {
 export default function TopicChatPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useTranslation();
   const topicId = params.topicId as string;
 
   const [topic, setTopic] = useState<TopicSummary | null>(null);
@@ -48,24 +50,25 @@ export default function TopicChatPage() {
           setNeedsNickname(true);
           return;
         }
-        if (!res.ok) throw new Error('Topic not found');
+        if (!res.ok) throw new Error(t('chatPage.notFound'));
         const data = await res.json();
         if (!alive) return;
-        const t = data?.topic ?? data;
+        const topicData = data?.topic ?? data;
         setTopic({
-          id: t.id,
-          title: t.title,
-          description: t.description ?? null,
-          memberCount: t.memberCount,
-          isMember: t.isMember ?? data.isMember,
+          id: topicData.id,
+          title: topicData.title,
+          description: topicData.description ?? null,
+          memberCount: topicData.memberCount,
+          isMember: topicData.isMember ?? data.isMember,
         });
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : 'Failed to load this topic');
+        if (alive) setError(err instanceof Error ? err.message : t('chatPage.loadError'));
       } finally {
         if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId, router]);
 
   /**
@@ -78,9 +81,9 @@ export default function TopicChatPage() {
    * `BareChatShell`'s own chrome; this is the separate case of "the room did
    * not load, here is somewhere real to go instead".
    */
-  function recoveryLink(label = 'Open topic page') {
+  function recoveryLink(label = t('chatPage.openTopicPage')) {
     return (
-      <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 14 }}>
+      <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
         {label}
       </Link>
     );
@@ -100,11 +103,11 @@ export default function TopicChatPage() {
     return (
       <BareChatShell>
         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 12px' }}>
-            Set a nickname before you can use chat.
+          <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)' }}>
+            {t('chatPage.needsNickname')}
           </p>
-          <Link href={`/profile?returnTo=%2Fchat%2F${encodeURIComponent(topicId)}`} style={{ color: 'var(--accent)', fontSize: 14 }}>
-            Go to profile
+          <Link href={`/profile?returnTo=%2Fchat%2F${encodeURIComponent(topicId)}`} style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+            {t('dmPage.goToProfile')}
           </Link>
         </div>
       </BareChatShell>
@@ -115,8 +118,8 @@ export default function TopicChatPage() {
     return (
       <BareChatShell>
         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 14, margin: '0 0 12px' }}>
-            {error ?? 'Topic not found'}
+          <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
+            {error ?? t('chatPage.notFound')}
           </p>
           {recoveryLink()}
         </div>
@@ -133,14 +136,14 @@ export default function TopicChatPage() {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        gap: 'var(--space-3)',
         padding: '14px 20px',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
-            fontSize: 16,
+            fontSize: 'var(--text-body)',
             fontWeight: 700,
             color: 'var(--foreground)',
             letterSpacing: '-0.01em',
@@ -150,15 +153,11 @@ export default function TopicChatPage() {
           }}>
             {topic.title}
           </div>
-          <div style={{
-            fontSize: 10,
-            fontFamily: 'var(--font-mono)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            color: 'var(--muted)',
-            marginTop: 1,
-          }}>
-            Live chat{topic.memberCount != null ? ` · ${topic.memberCount} member${topic.memberCount !== 1 ? 's' : ''}` : ''}
+          <div className="os-label" style={{ color: 'var(--muted)', marginTop: 1 }}>
+            {t('chat.liveChat')}
+            {topic.memberCount != null
+              ? ` · ${topic.memberCount} ${topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}`
+              : ''}
           </div>
         </div>
         <TopicMuteToggle topicId={topicId} enabled={topic.isMember === true} style={{ lineHeight: 1, flexShrink: 0 }} />

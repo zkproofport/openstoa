@@ -9,6 +9,7 @@ import Avatar from '@/components/Avatar';
 import ImageLightbox from '@/components/ImageLightbox';
 import AiAgentSettings from '@/components/AiAgentSettings';
 import { truncateId, resizeImage } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ function UserIcon() {
 
 export default function MyPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [session, setSession] = useState<UserSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
@@ -151,7 +153,7 @@ export default function MyPage() {
     if (!trimmed) return;
     const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
     if (!NICKNAME_RE.test(trimmed)) {
-      setNicknameFeedback({ ok: false, msg: '2-20 characters, letters/numbers/underscore only' });
+      setNicknameFeedback({ ok: false, msg: t('myPage.settings.nickname.validationHint') });
       return;
     }
     setNicknameSaving(true);
@@ -164,14 +166,14 @@ export default function MyPage() {
       });
       if (res.ok) {
         setSession((prev) => prev ? { ...prev, nickname: trimmed } : prev);
-        setNicknameFeedback({ ok: true, msg: 'Nickname updated.' });
+        setNicknameFeedback({ ok: true, msg: t('myPage.settings.nickname.updated') });
         setNicknameInput('');
       } else {
         const data = await res.json().catch(() => ({}));
-        setNicknameFeedback({ ok: false, msg: data?.error ?? 'Failed to update nickname.' });
+        setNicknameFeedback({ ok: false, msg: data?.error ?? t('myPage.settings.nickname.updateFailed') });
       }
     } catch {
-      setNicknameFeedback({ ok: false, msg: 'Network error.' });
+      setNicknameFeedback({ ok: false, msg: t('common.networkError') });
     } finally {
       setNicknameSaving(false);
     }
@@ -204,14 +206,14 @@ export default function MyPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error ?? 'Failed to update notifications.');
+        throw new Error(data?.error ?? t('myPage.settings.notifications.updateFailed'));
       }
       // Trust the server's echo, not the requested value.
       const data = (await res.json()) as { enabled: boolean; mutedTopicIds?: string[] };
       setPushEnabled(data.enabled);
       setPushMutedCount(data.mutedTopicIds?.length ?? 0);
     } catch (err) {
-      setPushFeedback({ ok: false, msg: err instanceof Error ? err.message : 'Network error.' });
+      setPushFeedback({ ok: false, msg: err instanceof Error ? err.message : t('common.networkError') });
     } finally {
       setPushSaving(false);
     }
@@ -264,7 +266,7 @@ export default function MyPage() {
     if (!file) return;
     if (!file.type.startsWith('image/')) return;
     if (file.size > 10 * 1024 * 1024) {
-      setImageFeedback('Image must be under 10MB');
+      setImageFeedback(t('profilePage.imageTooLarge'));
       return;
     }
     setImageUploading(true);
@@ -272,25 +274,25 @@ export default function MyPage() {
     try {
       if (profileImage) {
         const delRes = await fetch('/api/profile/image', { method: 'DELETE' });
-        if (!delRes.ok) throw new Error('Failed to remove old image');
+        if (!delRes.ok) throw new Error(t('myPage.settings.profileImage.removeOldFailed'));
       }
       const resized = await resizeImage(file, 200);
       const form = new FormData();
       form.append('file', new File([resized], 'avatar.webp', { type: 'image/webp' }));
       form.append('purpose', 'avatar');
       const res = await fetch('/api/upload', { method: 'POST', body: form });
-      if (!res.ok) throw new Error('Failed to upload image');
+      if (!res.ok) throw new Error(t('profilePage.uploadImageFailed'));
       const { publicUrl } = (await res.json()) as { publicUrl: string };
       const saveRes = await fetch('/api/profile/image', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: publicUrl }),
       });
-      if (!saveRes.ok) throw new Error('Failed to save profile image');
+      if (!saveRes.ok) throw new Error(t('profilePage.saveImageFailed'));
       setProfileImage(publicUrl);
       setImageFeedback(null);
     } catch (err) {
-      setImageFeedback(err instanceof Error ? err.message : 'Upload failed');
+      setImageFeedback(err instanceof Error ? err.message : t('profilePage.uploadFailed'));
     } finally {
       setImageUploading(false);
       e.target.value = '';
@@ -393,17 +395,17 @@ export default function MyPage() {
   const memberSince = ''; // userId is a nullifier, no createdAt from session — show nothing
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: 'posts', label: 'My Posts' },
-    { id: 'topics', label: 'My Topics' },
-    { id: 'bookmarks', label: 'Bookmarks' },
-    { id: 'settings', label: 'Settings' },
+    { id: 'posts', label: t('myPage.tabs.posts') },
+    { id: 'topics', label: t('myPage.tabs.topics') },
+    { id: 'bookmarks', label: t('myPage.tabs.bookmarks') },
+    { id: 'settings', label: t('myPage.tabs.settings') },
   ];
 
   const activePosts = activeTab === 'posts' ? myPosts : activeTab === 'bookmarks' ? bookmarks : [];
   const activeLoading = activeTab === 'posts' ? myPostsLoading : activeTab === 'bookmarks' ? bookmarksLoading : myTopicsLoading;
   const activeHasMore = activeTab === 'posts' ? myPostsHasMore : activeTab === 'bookmarks' ? bookmarksHasMore : false;
 
-  const emptyLabel = activeTab === 'posts' ? 'No posts yet.' : activeTab === 'topics' ? 'No topics joined yet.' : 'No bookmarks yet.';
+  const emptyLabel = activeTab === 'posts' ? t('myPage.empty.posts') : activeTab === 'topics' ? t('myPage.empty.topics') : t('myPage.empty.bookmarks');
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
@@ -413,10 +415,10 @@ export default function MyPage() {
 
         {/* Profile card */}
         <div style={{
-          padding: '24px',
+          padding: 'var(--space-5)',
           background: 'var(--surface, #0c0e18)',
           border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 14,
+          borderRadius: 'var(--radius-card)',
           marginBottom: 28,
           display: 'flex',
           alignItems: 'center',
@@ -433,38 +435,36 @@ export default function MyPage() {
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: 22,
+              fontSize: 'var(--text-heading-sm)',
               fontWeight: 800,
               letterSpacing: '-0.03em',
               color: '#e5e7eb',
-              marginBottom: 4,
+              marginBottom: 'var(--space-1)',
             }}>
               {displayName}
               {session.role === 'admin' && (
-                <span style={{
-                  marginLeft: 8,
-                  fontSize: 11,
-                  fontWeight: 700,
+                <span className="os-label" style={{
+                  marginLeft: 'var(--space-2)',
                   padding: '2px 8px',
-                  borderRadius: 4,
+                  borderRadius: 'var(--radius-control)',
                   background: 'rgba(234,179,8,0.15)',
                   border: '1px solid rgba(234,179,8,0.3)',
                   color: '#eab308',
                   verticalAlign: 'middle',
-                }}>Admin</span>
+                }}>{t('myPage.adminBadge')}</span>
               )}
             </div>
             <div style={{
               fontFamily: 'monospace',
-              fontSize: 15,
+              fontSize: 'var(--text-body)',
               color: '#4b5563',
               wordBreak: 'break-all',
             }}>
               {truncateId(session.userId)}
             </div>
             {memberSince && (
-              <div style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>
-                Member since {memberSince}
+              <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', marginTop: 'var(--space-1)' }}>
+                {t('myPage.memberSince', { date: memberSince })}
               </div>
             )}
           </div>
@@ -475,7 +475,7 @@ export default function MyPage() {
             flexShrink: 0,
           }}>
             <div style={{
-              fontSize: 22,
+              fontSize: 'var(--text-heading-sm)',
               fontWeight: 800,
               color: 'var(--accent)',
               letterSpacing: '-0.03em',
@@ -483,7 +483,7 @@ export default function MyPage() {
             }}>
               {myPosts.length}
             </div>
-            <div style={{ fontSize: 15, color: '#6b7280', marginTop: 1 }}>posts</div>
+            <div style={{ fontSize: 'var(--text-body)', color: '#6b7280', marginTop: 1 }}>{t('myPage.postsLabel')}</div>
           </div>
         </div>
 
@@ -506,13 +506,14 @@ export default function MyPage() {
                     ? '2px solid var(--accent)'
                     : '2px solid transparent',
                   color: activeTab === tab.id ? 'var(--foreground)' : 'var(--muted)',
-                  fontSize: 14,
+                  fontSize: 'var(--text-body-sm)',
                   fontWeight: activeTab === tab.id ? 700 : 400,
-                  padding: '10px 20px',
+                  padding: '10px var(--space-5)',
                   cursor: 'pointer',
                   marginBottom: -1,
                   transition: 'color 0.12s, border-color 0.12s',
                   letterSpacing: '-0.01em',
+                  minHeight: 'var(--touch-target-min)',
                 }}
               >
                 {tab.label}
@@ -522,18 +523,18 @@ export default function MyPage() {
 
           {/* My Topics tab */}
           {activeTab === 'topics' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {myTopicsLoading && <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>Loading...</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {myTopicsLoading && <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>{t('common.loading')}</div>}
               {!myTopicsLoading && myTopics.length === 0 && (
-                <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 14 }}>No topics joined yet.</div>
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 'var(--text-body-sm)' }}>{t('myPage.empty.topics')}</div>
               )}
               {myTopics.map(topic => (
                 <a key={topic.id} href={`/topics/${topic.id}`} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                  padding: 'var(--space-3) var(--space-4)',
                   background: 'var(--surface)',
                   border: '1px solid var(--border)',
-                  borderRadius: 10,
+                  borderRadius: 'var(--radius-card)',
                   textDecoration: 'none',
                   color: 'inherit',
                   transition: 'background 0.15s',
@@ -542,17 +543,19 @@ export default function MyPage() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface)')}
                 >
                   <div style={{
-                    width: 36, height: 36, borderRadius: 8,
+                    width: 36, height: 36, borderRadius: 'var(--radius-control)',
                     background: 'var(--accent)', color: '#fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 16, fontWeight: 700, flexShrink: 0,
+                    fontSize: 'var(--text-body)', fontWeight: 700, flexShrink: 0,
                   }}>
                     {topic.title.charAt(0).toUpperCase()}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>{topic.title}</div>
+                    <div style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--foreground)' }}>{topic.title}</div>
                     {topic.memberCount !== undefined && (
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{topic.memberCount} members</div>
+                      <div style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)' }}>
+                        {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
+                      </div>
                     )}
                   </div>
                 </a>
@@ -568,20 +571,24 @@ export default function MyPage() {
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
-                  padding: '10px 16px',
+                  gap: 'var(--space-2)',
+                  padding: '10px var(--space-4)',
                   background: 'rgba(139,92,246,0.08)',
                   border: '1px solid rgba(139,92,246,0.15)',
-                  borderRadius: 8,
-                  marginBottom: 16,
-                  fontSize: 14,
+                  borderRadius: 'var(--radius-control)',
+                  marginBottom: 'var(--space-4)',
+                  fontSize: 'var(--text-body-sm)',
                   color: '#a78bfa',
                 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>
-                  <span>My posts recorded <strong>{session.totalRecorded}</strong> time{session.totalRecorded !== 1 ? 's' : ''} on Base</span>
+                  <span>
+                    {session.totalRecorded === 1
+                      ? t('myPage.recordedStatOne', { count: session.totalRecorded })
+                      : t('myPage.recordedStatOther', { count: session.totalRecorded })}
+                  </span>
                 </div>
               )}
 
@@ -601,7 +608,7 @@ export default function MyPage() {
                     textAlign: 'center',
                     padding: '60px 20px',
                     color: '#6b7280',
-                    fontSize: 14,
+                    fontSize: 'var(--text-body-sm)',
                   }}>
                     {emptyLabel}
                   </div>
@@ -637,17 +644,17 @@ export default function MyPage() {
               border: '1px solid rgba(255,255,255,0.06)',
               borderTop: 'none',
               borderRadius: '0 0 14px 14px',
-              padding: '24px 20px',
+              padding: 'var(--space-5) var(--space-4)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 32,
+              gap: 'var(--space-6)',
             }}>
               {/* Profile Image section */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
-                  Profile Image
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('myPage.settings.profileImage.title')}
                 </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
                   <label
                     style={{
                       position: 'relative',
@@ -697,7 +704,7 @@ export default function MyPage() {
                             opacity: 0,
                             transition: 'opacity 0.15s',
                             color: '#fff',
-                            fontSize: 15,
+                            fontSize: 'var(--text-body)',
                             fontWeight: 600,
                             gap: 2,
                           }}
@@ -706,7 +713,7 @@ export default function MyPage() {
                             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                             <circle cx="12" cy="13" r="4" />
                           </svg>
-                          <span>Change</span>
+                          <span>{t('myPage.settings.profileImage.change')}</span>
                         </div>
                       </>
                     ) : (
@@ -718,7 +725,7 @@ export default function MyPage() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: 'var(--muted)',
-                        fontSize: 15,
+                        fontSize: 'var(--text-body)',
                         textAlign: 'center',
                         lineHeight: 1.3,
                       }}>
@@ -726,18 +733,18 @@ export default function MyPage() {
                           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                           <circle cx="12" cy="13" r="4" />
                         </svg>
-                        <span>{imageUploading ? '...' : 'Upload'}</span>
+                        <span>{imageUploading ? '...' : t('myPage.settings.profileImage.upload')}</span>
                       </div>
                     )}
                   </label>
-                  <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5 }}>
-                    {imageUploading ? 'Uploading...' : profileImage ? 'Hover to change photo' : 'Click to upload photo'}
+                  <div style={{ fontSize: 'var(--text-body-sm)', color: '#4b5563', lineHeight: 1.5 }}>
+                    {imageUploading ? t('myPage.settings.profileImage.uploading') : profileImage ? t('myPage.settings.profileImage.hoverToChange') : t('myPage.settings.profileImage.clickToUpload')}
                     <br />
-                    Auto-resized to 200x200 WebP
+                    {t('myPage.settings.profileImage.autoResized')}
                   </div>
                 </div>
                 {imageFeedback && (
-                  <div style={{ marginTop: 8, fontSize: 15, color: '#f87171' }}>
+                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body)', color: '#f87171' }}>
                     {imageFeedback}
                   </div>
                 )}
@@ -745,28 +752,30 @@ export default function MyPage() {
 
               {/* Nickname section */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
-                  Nickname
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('myPage.settings.nickname.title')}
                 </h3>
-                <div style={{ fontSize: 15, color: '#9ca3af', marginBottom: 10 }}>
-                  Current: <span style={{ color: '#e5e7eb', fontWeight: 600 }}>{displayName}</span>
+                <div style={{ fontSize: 'var(--text-body)', color: '#9ca3af', marginBottom: 10 }}>
+                  {t('myPage.settings.nickname.currentLabel')} <span style={{ color: '#e5e7eb', fontWeight: 600 }}>{displayName}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <input
                     type="text"
                     value={nicknameInput}
                     onChange={(e) => { setNicknameInput(e.target.value); setNicknameFeedback(null); }}
-                    placeholder="New nickname"
+                    placeholder={t('myPage.settings.nickname.placeholder')}
                     maxLength={30}
                     style={{
                       flex: 1,
                       background: 'var(--surface, #0c0e18)',
                       border: '1px solid rgba(255,255,255,0.12)',
-                      borderRadius: 8,
-                      padding: '9px 12px',
+                      borderRadius: 'var(--radius-control)',
+                      padding: '9px var(--space-3)',
                       color: '#e5e7eb',
-                      fontSize: 14,
+                      fontSize: 'var(--text-body-sm)',
                       outline: 'none',
+                      minHeight: 'var(--touch-target-min)',
+                      boxSizing: 'border-box',
                     }}
                   />
                   <button
@@ -776,20 +785,21 @@ export default function MyPage() {
                       background: 'var(--accent)',
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 8,
-                      padding: '9px 20px',
-                      fontSize: 14,
+                      borderRadius: 'var(--radius-control)',
+                      padding: '9px var(--space-5)',
+                      fontSize: 'var(--text-body-sm)',
                       fontWeight: 600,
                       cursor: !nicknameInput.trim() || nicknameSaving ? 'not-allowed' : 'pointer',
                       opacity: !nicknameInput.trim() || nicknameSaving ? 0.5 : 1,
                       transition: 'opacity 0.12s',
+                      minHeight: 'var(--touch-target-min)',
                     }}
                   >
-                    {nicknameSaving ? 'Saving...' : 'Save'}
+                    {nicknameSaving ? t('myPage.settings.nickname.saving') : t('common.save')}
                   </button>
                 </div>
                 {nicknameFeedback && (
-                  <div style={{ marginTop: 8, fontSize: 15, color: nicknameFeedback.ok ? '#4ade80' : '#f87171' }}>
+                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body)', color: nicknameFeedback.ok ? '#4ade80' : '#f87171' }}>
                     {nicknameFeedback.msg}
                   </div>
                 )}
@@ -797,32 +807,32 @@ export default function MyPage() {
 
               {/* Domain Badge section (multi-domain) */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
-                  Domain Badges
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('myPage.settings.domainBadges.title')}
                 </h3>
                 {domainBadgeLoading ? (
-                  <div style={{ fontSize: 14, color: '#6b7280' }}>Loading...</div>
+                  <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280' }}>{t('common.loading')}</div>
                 ) : (domainBadgeDomains.length > 0 || domainBadgeAvailable) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {/* Active domain badges */}
                     {domainBadgeDomains.map((d) => (
                       <div key={d} style={{
-                        padding: '12px 16px',
+                        padding: 'var(--space-3) var(--space-4)',
                         background: 'rgba(139,92,246,0.06)',
                         border: '1px solid rgba(139,92,246,0.3)',
-                        borderRadius: 10,
+                        borderRadius: 'var(--radius-card)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 12,
+                        gap: 'var(--space-3)',
                       }}>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 3,
-                          fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                          fontSize: 'var(--text-caption)', fontWeight: 600, padding: '2px 7px', borderRadius: 'var(--radius-control)',
                           background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#8b5cf6',
                         }}>
                           {'📧'} {d}
                         </span>
-                        <span style={{ flex: 1, fontSize: 13, color: '#6b7280' }}>visible to others</span>
+                        <span style={{ flex: 1, fontSize: 'var(--text-caption)', color: '#6b7280' }}>{t('myPage.settings.domainBadges.visibleToOthers')}</span>
                         <button
                           onClick={() => handleDomainBadgeRemove(d)}
                           disabled={domainBadgeToggling}
@@ -830,9 +840,9 @@ export default function MyPage() {
                             background: 'rgba(239,68,68,0.1)',
                             color: '#ef4444',
                             border: '1px solid rgba(239,68,68,0.25)',
-                            borderRadius: 6,
-                            padding: '4px 12px',
-                            fontSize: 13,
+                            borderRadius: 'var(--radius-control)',
+                            padding: '4px var(--space-3)',
+                            fontSize: 'var(--text-caption)',
                             fontWeight: 600,
                             cursor: domainBadgeToggling ? 'not-allowed' : 'pointer',
                             opacity: domainBadgeToggling ? 0.5 : 1,
@@ -840,7 +850,7 @@ export default function MyPage() {
                             flexShrink: 0,
                           }}
                         >
-                          Hide
+                          {t('myPage.settings.domainBadges.hide')}
                         </button>
                       </div>
                     ))}
@@ -848,20 +858,20 @@ export default function MyPage() {
                     {/* Add available domain (if not already opted in) */}
                     {domainBadgeAvailable && !domainBadgeDomains.includes(domainBadgeAvailable) && (
                       <div style={{
-                        padding: '12px 16px',
+                        padding: 'var(--space-3) var(--space-4)',
                         background: 'rgba(255,255,255,0.02)',
                         border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 10,
+                        borderRadius: 'var(--radius-card)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 12,
+                        gap: 'var(--space-3)',
                       }}>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: '#e5e7eb' }}>
+                          <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: '#e5e7eb' }}>
                             {domainBadgeAvailable}
                           </span>
-                          <span style={{ fontSize: 13, color: '#6b7280', marginLeft: 8 }}>
-                            verified — show as badge?
+                          <span style={{ fontSize: 'var(--text-caption)', color: '#6b7280', marginLeft: 'var(--space-2)' }}>
+                            {t('myPage.settings.domainBadges.verifiedPrompt')}
                           </span>
                         </span>
                         <button
@@ -871,9 +881,9 @@ export default function MyPage() {
                             background: 'rgba(139,92,246,0.15)',
                             color: '#8b5cf6',
                             border: '1px solid rgba(139,92,246,0.3)',
-                            borderRadius: 6,
-                            padding: '4px 12px',
-                            fontSize: 13,
+                            borderRadius: 'var(--radius-control)',
+                            padding: '4px var(--space-3)',
+                            fontSize: 'var(--text-caption)',
                             fontWeight: 600,
                             cursor: domainBadgeToggling ? 'not-allowed' : 'pointer',
                             opacity: domainBadgeToggling ? 0.5 : 1,
@@ -881,24 +891,24 @@ export default function MyPage() {
                             flexShrink: 0,
                           }}
                         >
-                          Show
+                          {t('myPage.settings.domainBadges.show')}
                         </button>
                       </div>
                     )}
 
-                    <p style={{ fontSize: 12, color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
-                      Domain badges are shown next to your name in posts, comments, and member lists. Verify more workspace domains to add additional badges.
+                    <p style={{ fontSize: 'var(--text-caption)', color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
+                      {t('myPage.settings.domainBadges.helpText')}
                     </p>
                   </div>
                 ) : (
                   <div style={{
-                    padding: '16px 20px',
+                    padding: 'var(--space-4) var(--space-5)',
                     background: 'rgba(255,255,255,0.02)',
                     border: '1px solid rgba(255,255,255,0.06)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                   }}>
-                    <p style={{ fontSize: 14, color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
-                      No workspace verification found. Join a workspace-gated topic with a domain proof to unlock this feature.
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
+                      {t('myPage.settings.domainBadges.noneFound')}
                     </p>
                   </div>
                 )}
@@ -906,47 +916,47 @@ export default function MyPage() {
 
               {/* Notifications section (P-M global switch) */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
-                  Notifications
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('myPage.settings.notifications.title')}
                 </h3>
                 {pushLoading ? (
-                  <div style={{ fontSize: 14, color: '#6b7280' }}>Loading...</div>
+                  <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280' }}>{t('common.loading')}</div>
                 ) : pushEnabled === null ? (
                   <div style={{
-                    padding: '16px 20px',
+                    padding: 'var(--space-4) var(--space-5)',
                     background: 'rgba(255,255,255,0.02)',
                     border: '1px solid rgba(255,255,255,0.06)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                   }}>
-                    <p style={{ fontSize: 14, color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
-                      Couldn&apos;t load your notification settings. Reload the page to try again.
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
+                      {t('myPage.settings.notifications.loadFailed')}
                     </p>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{
-                      padding: '12px 16px',
+                      padding: 'var(--space-3) var(--space-4)',
                       background: 'rgba(255,255,255,0.02)',
                       border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 10,
+                      borderRadius: 'var(--radius-card)',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 12,
+                      gap: 'var(--space-3)',
                     }}>
                       <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#e5e7eb' }}>
-                          Push notifications
+                        <span style={{ display: 'block', fontSize: 'var(--text-body-sm)', fontWeight: 600, color: '#e5e7eb' }}>
+                          {t('myPage.settings.notifications.pushLabel')}
                         </span>
-                        <span style={{ display: 'block', fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                        <span style={{ display: 'block', fontSize: 'var(--text-caption)', color: '#6b7280', marginTop: 2 }}>
                           {pushEnabled
-                            ? 'New chat messages notify your devices.'
-                            : 'All notifications are off — no topic will notify you.'}
+                            ? t('myPage.settings.notifications.pushOnHint')
+                            : t('myPage.settings.notifications.pushOffHint')}
                         </span>
                       </span>
                       <button
                         role="switch"
                         aria-checked={pushEnabled}
-                        aria-label="Push notifications"
+                        aria-label={t('myPage.settings.notifications.pushLabel')}
                         onClick={() => handleTogglePush(!pushEnabled)}
                         disabled={pushSaving}
                         style={{
@@ -975,15 +985,20 @@ export default function MyPage() {
                         }} />
                       </button>
                     </div>
-                    <p style={{ fontSize: 12, color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
-                      This is the account-wide switch and it wins over per-topic settings: while it is off,
-                      no topic notifies you even if it is not muted. Mute a single chat from its chat panel.
-                      {pushMutedCount > 0 && ` You currently have ${pushMutedCount} muted ${pushMutedCount === 1 ? 'topic' : 'topics'}.`}
-                      {' '}Your device or browser also needs notification permission at the OS level — turning this
-                      on here does not grant it.
+                    <p style={{ fontSize: 'var(--text-caption)', color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
+                      {t('myPage.settings.notifications.explainer')}
+                      {pushMutedCount > 0 && (
+                        <>
+                          {' '}
+                          {pushMutedCount === 1
+                            ? t('myPage.settings.notifications.mutedCountOne', { count: pushMutedCount })
+                            : t('myPage.settings.notifications.mutedCountOther', { count: pushMutedCount })}
+                        </>
+                      )}
+                      {' '}{t('myPage.settings.notifications.permissionNote')}
                     </p>
                     {pushFeedback && (
-                      <div style={{ fontSize: 14, color: pushFeedback.ok ? '#4ade80' : '#f87171' }}>
+                      <div style={{ fontSize: 'var(--text-body-sm)', color: pushFeedback.ok ? '#4ade80' : '#f87171' }}>
                         {pushFeedback.msg}
                       </div>
                     )}
@@ -993,67 +1008,68 @@ export default function MyPage() {
 
               {/* AI Agents / API keys section */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
-                  AI Agents
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('myPage.settings.aiAgents.title')}
                 </h3>
                 <AiAgentSettings />
               </div>
 
               {/* Account section */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>
-                  Account
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                  {t('myPage.settings.account.title')}
                 </h3>
                 <button
                   onClick={handleLogout}
                   disabled={loggingOut}
                   style={{
                     width: '100%',
-                    padding: '12px 20px',
+                    padding: '12px var(--space-5)',
                     background: 'rgba(255,255,255,0.04)',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     color: '#9ca3af',
-                    fontSize: 14,
+                    fontSize: 'var(--text-body-sm)',
                     fontWeight: 500,
                     cursor: 'pointer',
                     transition: 'all 0.12s',
+                    minHeight: 'var(--touch-target-min)',
                   }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = '#e5e7eb'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = '#9ca3af'; }}
                 >
-                  {loggingOut ? 'Logging out...' : 'Logout'}
+                  {loggingOut ? t('myPage.settings.account.loggingOut') : t('myPage.settings.account.logout')}
                 </button>
               </div>
 
               {/* Danger Zone */}
               <div style={{
-                padding: '20px 24px',
+                padding: 'var(--space-5) var(--space-5)',
                 background: 'rgba(239,68,68,0.04)',
                 border: '1px solid rgba(239,68,68,0.15)',
-                borderRadius: 12,
+                borderRadius: 'var(--radius-card)',
               }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#ef4444', margin: '0 0 8px' }}>
-                  Danger Zone
+                <h3 style={{ fontSize: 'var(--text-body-sm)', fontWeight: 700, color: '#ef4444', margin: '0 0 var(--space-2)' }}>
+                  {t('myPage.settings.dangerZone.title')}
                 </h3>
-                <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
-                  If you delete your account, your nickname will be changed to &apos;[Withdrawn User]&apos; and your posts and comments will remain. Please transfer topic ownership beforehand.
+                <p style={{ fontSize: 'var(--text-body)', color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
+                  {t('myPage.settings.dangerZone.deleteAccountIntro')}
                 </p>
 
                 {ownedTopicsError && (
                   <div style={{
                     marginBottom: 14,
-                    padding: '12px 14px',
+                    padding: 'var(--space-3) 14px',
                     background: 'rgba(239,68,68,0.08)',
                     border: '1px solid rgba(239,68,68,0.25)',
-                    borderRadius: 8,
+                    borderRadius: 'var(--radius-control)',
                   }}>
-                    <p style={{ fontSize: 15, color: '#ef4444', margin: '0 0 8px', fontWeight: 600 }}>
-                      Please transfer topic ownership first
+                    <p style={{ fontSize: 'var(--text-body)', color: '#ef4444', margin: '0 0 var(--space-2)', fontWeight: 600 }}>
+                      {t('myPage.settings.dangerZone.transferOwnershipFirst')}
                     </p>
-                    <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 15, color: '#f87171', lineHeight: 1.8 }}>
-                      {ownedTopicsError.map((t) => (
-                        <li key={t.id}>{t.title}</li>
+                    <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 'var(--text-body)', color: '#f87171', lineHeight: 1.8 }}>
+                      {ownedTopicsError.map((topic) => (
+                        <li key={topic.id}>{topic.title}</li>
                       ))}
                     </ul>
                   </div>
@@ -1064,20 +1080,24 @@ export default function MyPage() {
                     background: 'rgba(239,68,68,0.1)',
                     color: '#ef4444',
                     border: '1px solid rgba(239,68,68,0.3)',
-                    borderRadius: 8,
+                    borderRadius: 'var(--radius-control)',
                     padding: '8px 18px',
-                    fontSize: 15,
+                    fontSize: 'var(--text-body)',
                     fontWeight: 600,
                     cursor: 'pointer',
+                    minHeight: 'var(--touch-target-min)',
                   }}>
-                    Delete Account
+                    {t('myPage.settings.dangerZone.deleteAccount')}
                   </button>
                 ) : (
                   <div>
-                    <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 10px' }}>
-                      Type <strong>DELETE</strong> to confirm:
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: '#ef4444', margin: '0 0 10px' }}>
+                      {/* "DELETE" is a literal confirmation keyword the app compares
+                          against exactly (deleteConfirmText === 'DELETE') — kept
+                          untranslated in both locales on purpose. */}
+                      {t('myPage.settings.dangerZone.typeToConfirmPre')} <strong>DELETE</strong> {t('myPage.settings.dangerZone.typeToConfirmPost')}
                     </p>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                       <input
                         type="text"
                         value={deleteConfirmText}
@@ -1087,12 +1107,14 @@ export default function MyPage() {
                           flex: 1,
                           background: 'var(--surface, #0c0e18)',
                           border: '1px solid rgba(239,68,68,0.3)',
-                          borderRadius: 6,
-                          padding: '8px 12px',
+                          borderRadius: 'var(--radius-control)',
+                          padding: '8px var(--space-3)',
                           color: '#e5e7eb',
-                          fontSize: 15,
+                          fontSize: 'var(--text-body)',
                           outline: 'none',
                           fontFamily: 'monospace',
+                          minHeight: 'var(--touch-target-min)',
+                          boxSizing: 'border-box',
                         }}
                       />
                       <button
@@ -1118,15 +1140,16 @@ export default function MyPage() {
                           background: deleteConfirmText === 'DELETE' ? '#ef4444' : 'rgba(239,68,68,0.2)',
                           color: '#fff',
                           border: 'none',
-                          borderRadius: 6,
+                          borderRadius: 'var(--radius-control)',
                           padding: '8px 18px',
-                          fontSize: 15,
+                          fontSize: 'var(--text-body)',
                           fontWeight: 600,
                           cursor: deleteConfirmText === 'DELETE' ? 'pointer' : 'not-allowed',
                           opacity: deletingAccount ? 0.5 : 1,
+                          minHeight: 'var(--touch-target-min)',
                         }}
                       >
-                        {deletingAccount ? 'Deleting...' : 'Confirm'}
+                        {deletingAccount ? t('myPage.settings.dangerZone.deleting') : t('myPage.settings.dangerZone.confirm')}
                       </button>
                       <button
                         onClick={() => { setShowDeleteAccount(false); setDeleteConfirmText(''); setOwnedTopicsError(null); }}
@@ -1134,13 +1157,14 @@ export default function MyPage() {
                           background: 'rgba(255,255,255,0.06)',
                           color: '#6b7280',
                           border: 'none',
-                          borderRadius: 6,
+                          borderRadius: 'var(--radius-control)',
                           padding: '8px 14px',
-                          fontSize: 15,
+                          fontSize: 'var(--text-body)',
                           cursor: 'pointer',
+                          minHeight: 'var(--touch-target-min)',
                         }}
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>

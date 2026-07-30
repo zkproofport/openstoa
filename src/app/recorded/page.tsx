@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface Post {
   id: string;
@@ -27,6 +28,7 @@ interface Post {
 const PAGE_SIZE = 20;
 
 export default function RecordedPage() {
+  const { t } = useTranslation();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -82,18 +84,18 @@ export default function RecordedPage() {
 
   return (
     <CommunityLayout isGuest={!sessionUserId} sessionChecked={!loading}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 8px' }}>
-          Recorded Posts
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <h1 style={{ fontSize: 'var(--text-heading-lg)', fontWeight: 800, letterSpacing: '-0.04em', margin: '0 0 var(--space-2)' }}>
+          {t('recordedPage.title')}
         </h1>
-        <p style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 0 }}>
-          Posts recorded on Base by the community
+        <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', marginBottom: 0 }}>
+          {t('recordedPage.subtitle')}
         </p>
       </div>
 
       <div style={{
         border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: 14,
+        borderRadius: 'var(--radius-card)',
         overflow: 'hidden',
       }}>
         {loading ? (
@@ -102,8 +104,8 @@ export default function RecordedPage() {
           </div>
         ) : posts.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <p style={{ fontSize: 15, color: '#6b7280' }}>
-              No recorded posts yet. Be the first to record a post on-chain!
+            <p style={{ fontSize: 'var(--text-body)', color: '#6b7280' }}>
+              {t('recordedPage.empty')}
             </p>
           </div>
         ) : (

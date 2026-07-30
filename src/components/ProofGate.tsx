@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Spinner from '@/components/Spinner';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface ProofGateProps {
   /** Circuit to use */
@@ -49,11 +50,13 @@ export default function ProofGate({
   mode = 'login',
   onLogin,
   onProofData,
-  label = 'Scan with ZKProofport app to verify',
+  label,
   qrSize = 240,
   autoStart = true,
   onCancel,
 }: ProofGateProps) {
+  const { t } = useTranslation();
+  const effectiveLabel = label ?? t('proofGate.defaultLabel');
   const [state, setState] = useState<GateState>(autoStart ? 'loading' : 'idle');
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -102,7 +105,7 @@ export default function ProofGate({
 
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to create proof request');
+        throw new Error(d.error ?? t('proofGate.requestFailed'));
       }
 
       const data = await res.json();
@@ -168,7 +171,7 @@ export default function ProofGate({
         }
       }, 2000);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Unknown error');
+      setErrorMsg(err instanceof Error ? err.message : t('proofGate.unknownError'));
       setState('error');
     }
   }, [circuitType, scope, countryList, isIncluded, mode, qrSize, onLogin, onProofData, cleanup]);
@@ -195,12 +198,12 @@ export default function ProofGate({
             border: 'none',
             borderRadius: 8,
             padding: '10px 24px',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             fontWeight: 600,
             cursor: 'pointer',
           }}
         >
-          {label || 'Start Verification'}
+          {effectiveLabel || t('proofGate.startVerification')}
         </button>
       </div>
     );
@@ -216,7 +219,7 @@ export default function ProofGate({
             width: containerSize,
             height: containerSize,
             border: '1px solid var(--border)',
-            borderRadius: 16,
+            borderRadius: 'var(--radius-modal)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -224,7 +227,7 @@ export default function ProofGate({
         >
           <Spinner />
         </div>
-        <p style={{ color: 'var(--muted)', fontSize: 14, margin: 0 }}>Generating proof request...</p>
+        <p style={{ color: 'var(--muted)', fontSize: 'var(--text-body-sm)', margin: 0 }}>{t('proofGate.generatingRequest')}</p>
       </div>
     );
   }
@@ -233,7 +236,7 @@ export default function ProofGate({
   if (state === 'error') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '16px 0' }}>
-        <p style={{ color: '#ef4444', fontSize: 14, margin: 0, fontFamily: 'monospace' }}>
+        <p style={{ color: '#ef4444', fontSize: 'var(--text-body-sm)', margin: 0, fontFamily: 'monospace' }}>
           {errorMsg}
         </p>
         <button
@@ -245,11 +248,11 @@ export default function ProofGate({
             border: 'none',
             borderRadius: 8,
             padding: '8px 20px',
-            fontSize: 14,
+            fontSize: 'var(--text-body-sm)',
             cursor: 'pointer',
           }}
         >
-          Retry
+          {t('common.retry')}
         </button>
       </div>
     );
@@ -275,8 +278,8 @@ export default function ProofGate({
         >
           ✓
         </div>
-        <p style={{ fontSize: 14, fontWeight: 600, color: '#22c55e', margin: 0 }}>
-          Verification complete
+        <p style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: '#22c55e', margin: 0 }}>
+          {t('proofGate.verificationComplete')}
         </p>
       </div>
     );
@@ -297,7 +300,7 @@ export default function ProofGate({
                 border: 'none',
                 borderRadius: 10,
                 padding: '16px 40px',
-                fontSize: 16,
+                fontSize: 'var(--text-body)',
                 fontWeight: 600,
                 textDecoration: 'none',
                 textAlign: 'center',
@@ -306,7 +309,7 @@ export default function ProofGate({
                 letterSpacing: '-0.01em',
               }}
             >
-              Open in ZKProofport →
+              {t('proofGate.openInApp')}
             </a>
           )}
         </>
@@ -315,16 +318,16 @@ export default function ProofGate({
           {qrDataUrl && (
             <div
               style={{
-                padding: 16,
+                padding: 'var(--space-4)',
                 background: '#0a0a0a',
                 border: '1px solid var(--border)',
-                borderRadius: 16,
+                borderRadius: 'var(--radius-modal)',
                 position: 'relative',
               }}
             >
               <img
                 src={qrDataUrl}
-                alt="QR Code for ZKProofport verification"
+                alt={t('proofGate.qrAlt')}
                 width={qrSize}
                 height={qrSize}
                 style={{ display: 'block', borderRadius: 8 }}
@@ -333,7 +336,7 @@ export default function ProofGate({
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  borderRadius: 16,
+                  borderRadius: 'var(--radius-modal)',
                   boxShadow: '0 0 0 1px rgba(59,130,246,0.15) inset',
                   pointerEvents: 'none',
                 }}
@@ -344,8 +347,8 @@ export default function ProofGate({
       )}
 
       <div style={{ textAlign: 'center' }}>
-        <p style={{ fontSize: 14, color: 'var(--foreground)', fontWeight: 500, margin: 0 }}>
-          {label}
+        <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--foreground)', fontWeight: 500, margin: 0 }}>
+          {effectiveLabel}
         </p>
       </div>
 
@@ -353,19 +356,19 @@ export default function ProofGate({
         <a
           href={deepLink}
           style={{
-            fontSize: 12,
+            fontSize: 'var(--text-label)',
             color: 'var(--accent)',
             textDecoration: 'none',
             fontFamily: 'monospace',
           }}
         >
-          Open in ZKProofport app →
+          {t('proofGate.openInAppSecondary')}
         </a>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Spinner size={14} />
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Waiting for proof...</span>
+        <span style={{ fontSize: 'var(--text-label)', color: 'var(--muted)' }}>{t('proofGate.waitingForProof')}</span>
       </div>
 
       {onCancel && (
@@ -379,12 +382,12 @@ export default function ProofGate({
             background: 'none',
             border: 'none',
             color: 'var(--muted)',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             cursor: 'pointer',
             padding: 0,
           }}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
       )}
     </div>

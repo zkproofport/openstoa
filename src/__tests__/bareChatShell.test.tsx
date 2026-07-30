@@ -31,6 +31,7 @@ vi.mock('next/navigation', () => ({
 
 import BareChatShell from '@/components/BareChatShell';
 import { CHAT_WIDTH_KEY } from '@/lib/chatWidth';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -52,12 +53,17 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+// `BareChatShell` now reads copy through `useTranslation()` — see
+// src/lib/i18n/I18nProvider.tsx. Every render needs the provider in the
+// tree, same as the app root (src/app/layout.tsx).
 async function mount() {
   await act(async () => {
     root.render(
-      <BareChatShell>
-        <div data-testid="child">content</div>
-      </BareChatShell>,
+      <I18nProvider initialLocale="en">
+        <BareChatShell>
+          <div data-testid="child">content</div>
+        </BareChatShell>
+      </I18nProvider>,
     );
   });
 }

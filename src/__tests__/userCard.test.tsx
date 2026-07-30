@@ -34,6 +34,7 @@ vi.mock('@/lib/dmCandidatesCache', () => ({
 
 import UserCard from '@/components/UserCard';
 import { ChatRailContext } from '@/lib/chatRailContext';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -70,7 +71,10 @@ function notDmableNote(): HTMLElement | null {
 }
 
 /** Mounts UserCard inside a ChatRailContext.Provider so `startDm` takes the
- *  "land in the rail" path instead of the router.push fallback. */
+ *  "land in the rail" path instead of the router.push fallback.
+ *  `UserCard` now reads copy through `useTranslation()` — see
+ *  src/lib/i18n/I18nProvider.tsx — so every render needs the provider in the
+ *  tree, same as the app root (src/app/layout.tsx). */
 async function mountWithRail(
   openRail: (room: unknown) => void,
   props: Partial<React.ComponentProps<typeof UserCard>> = {},
@@ -78,11 +82,13 @@ async function mountWithRail(
   const merged = { userId: 'peer-1', nickname: 'bob', viewerUserId: 'viewer-1', ...props };
   await act(async () => {
     root.render(
-      <ChatRailContext.Provider value={{ openRail: openRail as never }}>
-        <UserCard {...merged}>
-          <span data-testid="avatar-slot">B</span>
-        </UserCard>
-      </ChatRailContext.Provider>,
+      <I18nProvider initialLocale="en">
+        <ChatRailContext.Provider value={{ openRail: openRail as never }}>
+          <UserCard {...merged}>
+            <span data-testid="avatar-slot">B</span>
+          </UserCard>
+        </ChatRailContext.Provider>
+      </I18nProvider>,
     );
   });
 }
@@ -109,9 +115,11 @@ async function mount(props: Partial<React.ComponentProps<typeof UserCard>> = {})
   const merged = { userId: 'peer-1', nickname: 'bob', viewerUserId: 'viewer-1', ...props };
   await act(async () => {
     root.render(
-      <UserCard {...merged}>
-        <span data-testid="avatar-slot">B</span>
-      </UserCard>,
+      <I18nProvider initialLocale="en">
+        <UserCard {...merged}>
+          <span data-testid="avatar-slot">B</span>
+        </UserCard>
+      </I18nProvider>,
     );
   });
 }
@@ -211,14 +219,18 @@ describe('boundary — self-resolving viewer session', () => {
 
     await act(async () => {
       root.render(
-        <UserCard userId="peer-1" nickname="bob">
-          <span>B</span>
-        </UserCard>,
+        <I18nProvider initialLocale="en">
+          <UserCard userId="peer-1" nickname="bob">
+            <span>B</span>
+          </UserCard>
+        </I18nProvider>,
       );
       rootB.render(
-        <UserCard userId="peer-2" nickname="carol">
-          <span>C</span>
-        </UserCard>,
+        <I18nProvider initialLocale="en">
+          <UserCard userId="peer-2" nickname="carol">
+            <span>C</span>
+          </UserCard>
+        </I18nProvider>,
       );
     });
 

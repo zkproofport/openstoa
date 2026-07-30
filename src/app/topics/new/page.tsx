@@ -6,9 +6,11 @@ import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import ProofGate from '@/components/ProofGate';
 import { resizeImage } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export default function NewTopicPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [proofType, setProofType] = useState<'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace'>('none');
@@ -62,7 +64,7 @@ export default function NewTopicPage() {
     form.append('purpose', 'topic');
 
     const res = await fetch('/api/upload', { method: 'POST', body: form });
-    if (!res.ok) throw new Error('Failed to upload image');
+    if (!res.ok) throw new Error(t('profilePage.uploadImageFailed'));
     const { publicUrl } = (await res.json()) as { publicUrl: string };
     return publicUrl;
   }
@@ -72,7 +74,7 @@ export default function NewTopicPage() {
     if (!file) return;
     if (!file.type.startsWith('image/')) return;
     if (file.size > 10 * 1024 * 1024) {
-      setError('Image must be under 10MB');
+      setError(t('profilePage.imageTooLarge'));
       return;
     }
     setImageFile(file);
@@ -105,7 +107,7 @@ export default function NewTopicPage() {
       try {
         imageUrl = await uploadTopicImage(imageFile);
       } catch {
-        setError('Failed to upload image');
+        setError(t('profilePage.uploadImageFailed'));
         setLoading(false);
         setImageUploading(false);
         return;
@@ -134,13 +136,13 @@ export default function NewTopicPage() {
 
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to create topic');
+        throw new Error(d.error ?? t('newTopicPage.createFailed'));
       }
 
       const data = await res.json();
       router.push(`/topics/${data.topic.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
       setLoading(false);
     }
   }
@@ -150,16 +152,16 @@ export default function NewTopicPage() {
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px 1.5rem 80px' }}>
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px var(--space-5) 80px' }}>
         <h1
           style={{
-            fontSize: 32,
+            fontSize: 'var(--text-heading-lg)',
             fontWeight: 800,
             letterSpacing: '-0.04em',
             margin: '0 0 28px',
           }}
         >
-          Create Topic
+          {t('newTopicPage.title')}
         </h1>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
@@ -167,27 +169,30 @@ export default function NewTopicPage() {
           <div>
             <label
               htmlFor="title"
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              Title <span style={{ color: '#ef4444' }}>*</span>
+              {t('newTopicPage.titleLabel')} <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <input
               id="title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. DeFi strategies for KYC-verified users"
+              placeholder={t('newTopicPage.titlePlaceholder')}
               maxLength={100}
               autoFocus
               style={{
                 width: '100%',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: '12px 14px',
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-3) 14px',
                 color: 'var(--foreground)',
-                fontSize: 15,
+                // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
+                fontSize: 'var(--text-body)',
                 outline: 'none',
+                minHeight: 'var(--touch-target-min)',
+                boxSizing: 'border-box',
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
@@ -196,13 +201,13 @@ export default function NewTopicPage() {
 
           {/* Category */}
           <div>
-            <label style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 10 }}>
-              Category <span style={{ color: '#ef4444' }}>*</span>
+            <label style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 10 }}>
+              {t('newTopicPage.categoryLabel')} <span style={{ color: '#ef4444' }}>*</span>
             </label>
             {categories.length === 0 ? (
-              <p style={{ fontSize: 14, color: 'var(--muted)' }}>Loading categories…</p>
+              <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)' }}>{t('newTopicPage.loadingCategories')}</p>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
                 {categories.map((cat) => {
                   const selected = categoryId === cat.id;
                   return (
@@ -217,19 +222,20 @@ export default function NewTopicPage() {
                         padding: '10px 14px',
                         background: selected ? 'rgba(120,140,255,0.08)' : 'var(--surface)',
                         border: `1px solid ${selected ? 'rgba(120,140,255,0.3)' : 'var(--border)'}`,
-                        borderRadius: 8,
+                        borderRadius: 'var(--radius-control)',
                         cursor: 'pointer',
                         transition: 'all 0.12s',
                         textAlign: 'left',
+                        minHeight: 'var(--touch-target-min)',
                       }}
                     >
                       {cat.icon && (
                         <span style={{ fontSize: 20, flexShrink: 0 }}>{cat.icon}</span>
                       )}
                       <div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>{cat.name}</div>
+                        <div style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--foreground)' }}>{cat.name}</div>
                         {cat.description && (
-                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{cat.description}</div>
+                          <div style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', marginTop: 2 }}>{cat.description}</div>
                         )}
                       </div>
                     </button>
@@ -243,25 +249,26 @@ export default function NewTopicPage() {
           <div>
             <label
               htmlFor="description"
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              Description{' '}
-              <span style={{ fontSize: 15, color: 'var(--muted)' }}>(optional)</span>
+              {t('editTopicPage.descriptionLabel')}{' '}
+              <span style={{ fontSize: 'var(--text-body)', color: 'var(--muted)' }}>{t('editTopicPage.optional')}</span>
             </label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this topic about?"
+              placeholder={t('editTopicPage.descriptionPlaceholder')}
               rows={3}
               style={{
                 width: '100%',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: '12px 14px',
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-3) 14px',
                 color: 'var(--foreground)',
-                fontSize: 14,
+                // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
+                fontSize: 'var(--text-body)',
                 outline: 'none',
                 resize: 'vertical',
                 lineHeight: 1.6,
@@ -275,17 +282,17 @@ export default function NewTopicPage() {
           {/* Topic Image */}
           <div>
             <label
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              Topic Image{' '}
-              <span style={{ fontSize: 15, color: 'var(--muted)' }}>(optional)</span>
+              {t('editTopicPage.topicImageLabel')}{' '}
+              <span style={{ fontSize: 'var(--text-body)', color: 'var(--muted)' }}>{t('editTopicPage.optional')}</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
               {imagePreview ? (
                 <div style={{ position: 'relative' }}>
                   <img
                     src={imagePreview}
-                    alt="Preview"
+                    alt={t('editTopicPage.previewAlt')}
                     style={{
                       width: 80,
                       height: 80,
@@ -300,6 +307,7 @@ export default function NewTopicPage() {
                       setImageFile(null);
                       setImagePreview(null);
                     }}
+                    aria-label={t('editTopicPage.removeImageAria')}
                     style={{
                       position: 'absolute',
                       top: -6,
@@ -310,7 +318,7 @@ export default function NewTopicPage() {
                       background: '#ef4444',
                       color: '#fff',
                       border: 'none',
-                      fontSize: 14,
+                      fontSize: 'var(--text-body-sm)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -333,7 +341,7 @@ export default function NewTopicPage() {
                     justifyContent: 'center',
                     cursor: 'pointer',
                     color: 'var(--muted)',
-                    fontSize: 14,
+                    fontSize: 'var(--text-body-sm)',
                     textAlign: 'center',
                     lineHeight: 1.3,
                     transition: 'border-color 0.15s',
@@ -352,16 +360,16 @@ export default function NewTopicPage() {
                     style={{ display: 'none' }}
                   />
                   <span>
-                    Add
+                    {t('newTopicPage.addImageLine1')}
                     <br />
-                    Image
+                    {t('newTopicPage.addImageLine2')}
                   </span>
                 </label>
               )}
-              <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5 }}>
-                Displayed as topic avatar.
+              <div style={{ fontSize: 'var(--text-body-sm)', color: '#4b5563', lineHeight: 1.5 }}>
+                {t('newTopicPage.imageHint.line1')}
                 <br />
-                Auto-resized to 400×400 WebP.
+                {t('newTopicPage.imageHint.line2')}
               </div>
             </div>
           </div>
@@ -369,15 +377,15 @@ export default function NewTopicPage() {
           {/* Visibility */}
           <div>
             <label
-              style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 10 }}
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 10 }}
             >
-              Visibility
+              {t('newTopicPage.visibilityLabel')}
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {([
-                { value: 'public' as const, label: 'Public', desc: 'Anyone can find and join', disabled: false },
-                { value: 'private' as const, label: 'Private', desc: 'Visible to all, requires approval to join', disabled: true },
-                { value: 'secret' as const, label: 'Secret', desc: 'Hidden, invite code only', disabled: true },
+                { value: 'public' as const, label: t('newTopicPage.visibility.public.label'), desc: t('newTopicPage.visibility.public.desc'), disabled: false },
+                { value: 'private' as const, label: t('newTopicPage.visibility.private.label'), desc: t('newTopicPage.visibility.private.desc'), disabled: true },
+                { value: 'secret' as const, label: t('newTopicPage.visibility.secret.label'), desc: t('newTopicPage.visibility.secret.desc'), disabled: true },
               ]).map((opt) => (
                 <label
                   key={opt.value}
@@ -388,10 +396,11 @@ export default function NewTopicPage() {
                     padding: '10px 14px',
                     background: visibility === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
                     border: `1px solid ${visibility === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
-                    borderRadius: 8,
+                    borderRadius: 'var(--radius-control)',
                     cursor: opt.disabled ? 'not-allowed' : 'pointer',
                     transition: 'all 0.12s',
                     opacity: opt.disabled ? 0.5 : 1,
+                    minHeight: 'var(--touch-target-min)',
                   }}
                 >
                   <input
@@ -404,26 +413,24 @@ export default function NewTopicPage() {
                     style={{ marginTop: 2, accentColor: 'var(--accent)' }}
                   />
                   <div>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>
+                    <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600 }}>
                       {opt.label}
                       {opt.value === 'private' && ' \uD83D\uDD12'}
                       {opt.value === 'secret' && ' \uD83D\uDC7B'}
                     </span>
                     {opt.disabled && (
-                      <span style={{
-                        fontSize: 11,
-                        fontWeight: 600,
+                      <span className="os-label" style={{
                         color: '#f59e0b',
                         background: 'rgba(245,158,11,0.1)',
                         border: '1px solid rgba(245,158,11,0.2)',
-                        borderRadius: 4,
+                        borderRadius: 'var(--radius-control)',
                         padding: '1px 6px',
-                        marginLeft: 8,
+                        marginLeft: 'var(--space-2)',
                       }}>
-                        Coming Soon
+                        {t('newTopicPage.comingSoon')}
                       </span>
                     )}
-                    <p style={{ fontSize: 14, color: 'var(--muted)', margin: '2px 0 0' }}>
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '2px 0 0' }}>
                       {opt.desc}
                     </p>
                   </div>
@@ -435,18 +442,18 @@ export default function NewTopicPage() {
           {/* Proof requirement */}
           <div
             style={{
-              padding: '16px 20px',
+              padding: '16px var(--space-5)',
               background: 'var(--surface, #0c0e18)',
               border: `1px solid ${proofType !== 'none' ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
-              borderRadius: 12,
+              borderRadius: 'var(--radius-card)',
               transition: 'border-color 0.15s',
             }}
           >
             <label
               htmlFor="proofType"
-              style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+              style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              Proof Requirement
+              {t('newTopicPage.proofRequirementLabel')}
             </label>
             <select
               id="proofType"
@@ -471,10 +478,10 @@ export default function NewTopicPage() {
                 width: '100%',
                 background: 'rgba(5,10,8,0.9)',
                 border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: '10px 12px',
+                borderRadius: 'var(--radius-control)',
+                padding: '10px var(--space-3)',
                 color: 'var(--foreground)',
-                fontSize: 14,
+                fontSize: 'var(--text-body-sm)',
                 outline: 'none',
                 cursor: 'pointer',
                 appearance: 'none',
@@ -482,20 +489,21 @@ export default function NewTopicPage() {
                 backgroundRepeat: 'no-repeat',
                 backgroundPosition: 'right 12px center',
                 paddingRight: 32,
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              <option value="none">No proof required</option>
-              <option value="kyc">Coinbase KYC verification</option>
-              <option value="country">Coinbase Country attestation</option>
-              <option value="affiliation">Affiliation proof (Organization)</option>
+              <option value="none">{t('newTopicPage.proofOptions.none')}</option>
+              <option value="kyc">{t('newTopicPage.proofOptions.kyc')}</option>
+              <option value="country">{t('newTopicPage.proofOptions.country')}</option>
+              <option value="affiliation">{t('newTopicPage.proofOptions.affiliation')}</option>
             </select>
 
             {proofType === 'country' && (
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* Include / Exclude toggle */}
                 <div>
-                  <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
-                    Country filter mode
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginBottom: 'var(--space-2)' }}>
+                    {t('newTopicPage.countryFilterMode')}
                   </p>
                   <div className="flex gap-2">
                     {(['include', 'exclude'] as const).map((mode) => (
@@ -507,15 +515,16 @@ export default function NewTopicPage() {
                           background: countryMode === mode ? 'var(--accent)' : 'var(--border)',
                           color: countryMode === mode ? '#fff' : 'var(--muted)',
                           border: 'none',
-                          borderRadius: 6,
-                          padding: '6px 16px',
-                          fontSize: 15,
+                          borderRadius: 'var(--radius-control)',
+                          padding: '6px var(--space-4)',
+                          fontSize: 'var(--text-body)',
                           cursor: 'pointer',
                           fontWeight: countryMode === mode ? 600 : 400,
                           transition: 'all 0.12s',
+                          minHeight: 'var(--touch-target-min)',
                         }}
                       >
-                        {mode === 'include' ? 'Allow only' : 'Block'}
+                        {mode === 'include' ? t('newTopicPage.allowOnly') : t('newTopicPage.block')}
                       </button>
                     ))}
                   </div>
@@ -524,9 +533,9 @@ export default function NewTopicPage() {
                 <div>
                   <label
                     htmlFor="countries"
-                    style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 6 }}
+                    style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', display: 'block', marginBottom: 6 }}
                   >
-                    ISO country codes (comma-separated)
+                    {t('newTopicPage.isoCountryCodesLabel')}
                   </label>
                   <input
                     id="countries"
@@ -546,13 +555,15 @@ export default function NewTopicPage() {
                       width: '100%',
                       background: '#0a0a0a',
                       border: '1px solid var(--border)',
-                      borderRadius: 6,
-                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-control)',
+                      padding: '10px var(--space-3)',
                       color: 'var(--foreground)',
-                      fontSize: 15,
+                      fontSize: 'var(--text-body)',
                       outline: 'none',
                       fontFamily: 'monospace',
                       letterSpacing: '0.04em',
+                      minHeight: 'var(--touch-target-min)',
+                      boxSizing: 'border-box',
                     }}
                   />
                   {countryCodes && (
@@ -565,7 +576,7 @@ export default function NewTopicPage() {
                           <span
                             key={i}
                             style={{
-                              fontSize: 15,
+                              fontSize: 'var(--text-body)',
                               fontFamily: 'monospace',
                               background:
                                 code.length === 2
@@ -590,7 +601,7 @@ export default function NewTopicPage() {
                     padding: '16px',
                     background: '#0a0a0a',
                     border: '1px solid var(--border)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     textAlign: 'center',
                   }}>
                     <ProofGate
@@ -602,7 +613,7 @@ export default function NewTopicPage() {
                       mode="proof"
                       autoStart={false}
                       qrSize={200}
-                      label="Scan with ZKProofport app to prove your country"
+                      label={t('newTopicPage.scan.country')}
                       onProofData={({ proof, publicInputs, circuit }) => {
                         setProofData({ proof, publicInputs, circuit });
                         setProofDone(true);
@@ -615,13 +626,13 @@ export default function NewTopicPage() {
                     padding: '12px 16px',
                     background: 'rgba(34,197,94,0.08)',
                     border: '1px solid rgba(34,197,94,0.25)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                   }}>
                     <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-                    <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>Country proof verified</span>
+                    <span style={{ fontSize: 'var(--text-body)', color: '#22c55e', fontWeight: 500 }}>{t('newTopicPage.verified.country')}</span>
                   </div>
                 )}
               </div>
@@ -634,7 +645,7 @@ export default function NewTopicPage() {
                     padding: '16px',
                     background: '#0a0a0a',
                     border: '1px solid var(--border)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     textAlign: 'center',
                   }}>
                     <ProofGate
@@ -644,7 +655,7 @@ export default function NewTopicPage() {
                       mode="proof"
                       autoStart={false}
                       qrSize={200}
-                      label="Scan with ZKProofport app to verify KYC"
+                      label={t('newTopicPage.scan.kyc')}
                       onProofData={({ proof, publicInputs, circuit }) => {
                         setProofData({ proof, publicInputs, circuit });
                         setProofDone(true);
@@ -657,13 +668,13 @@ export default function NewTopicPage() {
                     padding: '12px 16px',
                     background: 'rgba(34,197,94,0.08)',
                     border: '1px solid rgba(34,197,94,0.25)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                   }}>
                     <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-                    <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>KYC proof verified</span>
+                    <span style={{ fontSize: 'var(--text-body)', color: '#22c55e', fontWeight: 500 }}>{t('newTopicPage.verified.kyc')}</span>
                   </div>
                 )}
               </div>
@@ -673,14 +684,14 @@ export default function NewTopicPage() {
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* Provider selection (3 options) */}
                 <div>
-                  <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
-                    Accepted providers
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginBottom: 'var(--space-2)' }}>
+                    {t('newTopicPage.acceptedProviders')}
                   </p>
                   <div className="flex gap-3 flex-wrap">
                     {([
-                      { value: 'google_workspace' as const, label: 'Google Workspace' },
-                      { value: 'microsoft_365' as const, label: 'Microsoft 365' },
-                      { value: 'workspace' as const, label: 'Either (both)' },
+                      { value: 'google_workspace' as const, label: t('joinPage.providerGoogle') },
+                      { value: 'microsoft_365' as const, label: t('joinPage.providerMicrosoft') },
+                      { value: 'workspace' as const, label: t('newTopicPage.providerEither') },
                     ]).map((opt) => (
                       <label key={opt.value} style={{
                         display: 'flex',
@@ -689,10 +700,11 @@ export default function NewTopicPage() {
                         padding: '8px 14px',
                         background: proofType === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
                         border: `1px solid ${proofType === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
-                        borderRadius: 8,
+                        borderRadius: 'var(--radius-control)',
                         cursor: 'pointer',
                         transition: 'all 0.12s',
-                        fontSize: 14,
+                        fontSize: 'var(--text-body-sm)',
+                        minHeight: 'var(--touch-target-min)',
                       }}>
                         <input
                           type="radio"
@@ -710,27 +722,27 @@ export default function NewTopicPage() {
                       </label>
                     ))}
                   </div>
-                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                  <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '6px 0 0' }}>
                     {proofType === 'google_workspace'
-                      ? 'Only Google Workspace accounts accepted'
+                      ? t('newTopicPage.providerHint.googleOnly')
                       : proofType === 'microsoft_365'
-                      ? 'Only Microsoft 365 accounts accepted'
+                      ? t('newTopicPage.providerHint.microsoftOnly')
                       : proofType === 'workspace'
-                      ? 'Members can use either Google Workspace or Microsoft 365'
-                      : 'Select a provider to continue'}
+                      ? t('newTopicPage.providerHint.either')
+                      : t('newTopicPage.providerHint.selectToContinue')}
                   </p>
                 </div>
 
                 {/* When "Either" is selected, creator must choose which provider to verify with */}
                 {proofType === 'workspace' && (
                   <div>
-                    <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
-                      Verify your affiliation with:
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginBottom: 'var(--space-2)' }}>
+                      {t('newTopicPage.verifyAffiliationWith')}
                     </p>
                     <div className="flex gap-3">
                       {([
-                        { value: 'google' as const, label: 'Google Workspace' },
-                        { value: 'microsoft' as const, label: 'Microsoft 365' },
+                        { value: 'google' as const, label: t('joinPage.providerGoogle') },
+                        { value: 'microsoft' as const, label: t('joinPage.providerMicrosoft') },
                       ]).map((opt) => (
                         <label key={opt.value} style={{
                           display: 'flex',
@@ -739,10 +751,11 @@ export default function NewTopicPage() {
                           padding: '8px 14px',
                           background: creatorProvider === opt.value ? 'rgba(34,197,94,0.06)' : '#111',
                           border: `1px solid ${creatorProvider === opt.value ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
-                          borderRadius: 8,
+                          borderRadius: 'var(--radius-control)',
                           cursor: 'pointer',
                           transition: 'all 0.12s',
-                          fontSize: 14,
+                          fontSize: 'var(--text-body-sm)',
+                          minHeight: 'var(--touch-target-min)',
                         }}>
                           <input
                             type="radio"
@@ -767,10 +780,10 @@ export default function NewTopicPage() {
                 <div>
                   <label
                     htmlFor="requiredDomain"
-                    style={{ fontSize: 14, color: 'var(--muted)', display: 'block', marginBottom: 6 }}
+                    style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', display: 'block', marginBottom: 6 }}
                   >
-                    Domain restriction{' '}
-                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>(optional)</span>
+                    {t('newTopicPage.domainRestrictionLabel')}{' '}
+                    <span style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)' }}>{t('editTopicPage.optional')}</span>
                   </label>
                   <input
                     id="requiredDomain"
@@ -790,21 +803,23 @@ export default function NewTopicPage() {
                       width: '100%',
                       background: '#0a0a0a',
                       border: '1px solid var(--border)',
-                      borderRadius: 6,
-                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-control)',
+                      padding: '10px var(--space-3)',
                       color: 'var(--foreground)',
-                      fontSize: 14,
+                      fontSize: 'var(--text-body-sm)',
                       outline: 'none',
                       fontFamily: 'monospace',
                       letterSpacing: '0.04em',
+                      minHeight: 'var(--touch-target-min)',
+                      boxSizing: 'border-box',
                     }}
                     onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
                     onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
                   />
-                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                  <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '6px 0 0' }}>
                     {requiredDomain.trim()
-                      ? 'Only members with this email domain can join'
-                      : 'Leave empty to allow any organization domain'}
+                      ? t('newTopicPage.domainHint.restricted')
+                      : t('newTopicPage.domainHint.open')}
                   </p>
                 </div>
 
@@ -814,7 +829,7 @@ export default function NewTopicPage() {
                     padding: '16px',
                     background: '#0a0a0a',
                     border: '1px solid var(--border)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     textAlign: 'center',
                   }}>
                     {/* Show ProofGate only when provider is determined */}
@@ -828,19 +843,19 @@ export default function NewTopicPage() {
                         mode="proof"
                         autoStart={false}
                         qrSize={200}
-                        label={`Scan with ZKProofport app to verify your ${
-                          proofType === 'microsoft_365' ? 'Microsoft 365'
-                          : proofType === 'workspace' ? (creatorProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace')
-                          : 'Google Workspace'
-                        } affiliation`}
+                        label={t('newTopicPage.scan.workspace', {
+                          provider: proofType === 'microsoft_365' ? t('joinPage.providerMicrosoft')
+                            : proofType === 'workspace' ? (creatorProvider === 'microsoft' ? t('joinPage.providerMicrosoft') : t('joinPage.providerGoogle'))
+                            : t('joinPage.providerGoogle'),
+                        })}
                         onProofData={({ proof, publicInputs, circuit }) => {
                           setProofData({ proof, publicInputs, circuit });
                           setProofDone(true);
                         }}
                       />
                     ) : (
-                      <p style={{ fontSize: 14, color: 'var(--muted)', textAlign: 'center' }}>
-                        Select a provider above to start verification
+                      <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', textAlign: 'center' }}>
+                        {t('joinPage.selectProviderHint')}
                       </p>
                     )}
                   </div>
@@ -850,13 +865,13 @@ export default function NewTopicPage() {
                     padding: '12px 16px',
                     background: 'rgba(34,197,94,0.08)',
                     border: '1px solid rgba(34,197,94,0.25)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                   }}>
                     <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-                    <span style={{ fontSize: 15, color: '#22c55e', fontWeight: 500 }}>Organization proof verified</span>
+                    <span style={{ fontSize: 'var(--text-body)', color: '#22c55e', fontWeight: 500 }}>{t('newTopicPage.verified.organization')}</span>
                   </div>
                 )}
               </div>
@@ -865,18 +880,16 @@ export default function NewTopicPage() {
             {proofType !== 'none' && (
               <div style={{
                 marginTop: 16,
-                padding: '12px 16px',
+                padding: 'var(--space-3) var(--space-4)',
                 background: 'rgba(59,130,246,0.05)',
                 border: '1px solid rgba(59,130,246,0.15)',
-                borderRadius: 8,
-                fontSize: 13,
+                borderRadius: 'var(--radius-control)',
+                fontSize: 'var(--text-caption)',
                 color: 'var(--muted)',
                 lineHeight: 1.5,
               }}>
-                <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>Privacy:</span>{' '}
-                Proof verification is privacy-preserving. Only a hashed verification status is
-                cached for 30 days — no email, domain, or country is stored in the database.
-                Members who already verified within 30 days can join without re-proving.
+                <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{t('joinPage.privacyLabel')}</span>{' '}
+                {t('newTopicPage.privacyBody')}
               </div>
             )}
           </div>
@@ -884,14 +897,14 @@ export default function NewTopicPage() {
           {error && (
             <p
               style={{
-                fontSize: 15,
+                fontSize: 'var(--text-body)',
                 color: '#ef4444',
                 margin: 0,
                 fontFamily: 'monospace',
                 background: 'rgba(239,68,68,0.08)',
                 border: '1px solid rgba(239,68,68,0.2)',
-                borderRadius: 6,
-                padding: '8px 12px',
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-2) var(--space-3)',
               }}
             >
               {error}
@@ -904,16 +917,20 @@ export default function NewTopicPage() {
               style={{
                 flex: 1,
                 textAlign: 'center',
-                padding: '12px',
+                padding: 'var(--space-3)',
                 background: 'var(--border)',
                 color: 'var(--muted)',
                 textDecoration: 'none',
-                borderRadius: 8,
-                fontSize: 14,
+                borderRadius: 'var(--radius-control)',
+                fontSize: 'var(--text-body-sm)',
                 fontWeight: 500,
+                minHeight: 'var(--touch-target-min)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </Link>
             <button
               type="submit"
@@ -923,15 +940,16 @@ export default function NewTopicPage() {
                 background: canSubmit && !imageUploading ? 'var(--accent)' : 'var(--border)',
                 color: canSubmit && !imageUploading ? '#fff' : 'var(--muted)',
                 border: 'none',
-                borderRadius: 8,
-                padding: '12px',
-                fontSize: 14,
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-3)',
+                fontSize: 'var(--text-body-sm)',
                 fontWeight: 600,
                 cursor: canSubmit && !imageUploading ? 'pointer' : 'not-allowed',
                 transition: 'all 0.15s',
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              {imageUploading ? 'Uploading image...' : loading ? 'Creating...' : 'Create Topic'}
+              {imageUploading ? t('editTopicPage.uploadingImage') : loading ? t('newTopicPage.creating') : t('newTopicPage.createTopic')}
             </button>
           </div>
         </form>

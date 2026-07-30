@@ -17,13 +17,14 @@ import { getDeviceMasterKey, keyBackupHttp, recoverDevice } from '@/lib/mls/webT
 import * as km from '@/lib/mls/keyManager';
 import * as kb from '@/lib/mls/keyBackup';
 import { isPasskeySupported, registerPasskeyPrf, getPasskeyPrf } from '@/lib/passkeyPrf';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 const card: React.CSSProperties = {
   padding: '16px 18px',
   background: 'var(--surface, #0c0e18)',
   border: '1px solid var(--border)',
   borderRadius: 10,
-  marginBottom: 16,
+  marginBottom: 'var(--space-4)',
 };
 const btn: React.CSSProperties = {
   padding: '9px 14px',
@@ -31,12 +32,13 @@ const btn: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'var(--surface, #0c0e18)',
   color: 'var(--foreground)',
-  fontSize: 14,
+  fontSize: 'var(--text-body-sm)',
   cursor: 'pointer',
 };
-const label: React.CSSProperties = { fontSize: 13, color: 'var(--muted)', margin: 0 };
+const label: React.CSSProperties = { fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: 0 };
 
 export function AccountRecovery({ userId, displayName }: { userId: string; displayName: string }) {
+  const { t } = useTranslation();
   const http = keyBackupHttp();
   const [state, setState] = useState<km.KeyBackupState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,7 +79,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
       const mk = await getDeviceMasterKey();
       const code = await km.backupWithRecoveryCode(mk, http.postRecovery);
       setShownCode(code);
-      setMsg('Recovery code created. Store it now — it is shown only once.');
+      setMsg(t('accountRecovery.recoveryCodeCreated'));
       await refresh();
     });
 
@@ -86,7 +88,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
       const mk = await getDeviceMasterKey();
       const { credentialId, prfOutput } = await registerPasskeyPrf(userId, displayName);
       await km.backupWithPasskey(mk, credentialId, prfOutput, http.postPasskey);
-      setMsg('Passkey registered for recovery.');
+      setMsg(t('accountRecovery.passkeyRegistered'));
       await refresh();
     });
 
@@ -94,62 +96,61 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
     run(async () => {
       const code = recoverCode.trim();
       if (kb.recoveryCodeEntropyBits(code) < kb.RECOVERY_MIN_BITS) {
-        throw new Error('That does not look like a valid recovery code.');
+        throw new Error(t('accountRecovery.invalidRecoveryCode'));
       }
       const mk = await km.recoverWithRecoveryCode(code, http.getBackup);
-      if (!mk) throw new Error('Recovery failed — wrong code, or no recovery-code backup exists.');
+      if (!mk) throw new Error(t('accountRecovery.recoveryFailedCode'));
       await recoverDevice(mk);
       setRecoverCode('');
-      setMsg('Recovered. Your chat history will reload.');
+      setMsg(t('accountRecovery.recovered'));
     });
 
   const recoverWithPasskeyFlow = () =>
     run(async () => {
       const { prfOutput } = await getPasskeyPrf();
       const mk = await km.recoverWithPasskey(prfOutput, http.getBackup);
-      if (!mk) throw new Error('Recovery failed — this passkey has no backup on file.');
+      if (!mk) throw new Error(t('accountRecovery.recoveryFailedPasskey'));
       await recoverDevice(mk);
-      setMsg('Recovered with passkey. Your chat history will reload.');
+      setMsg(t('accountRecovery.recoveredWithPasskey'));
     });
 
   return (
-    <div style={{ marginTop: 32 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 4px' }}>
-        Chat recovery
+    <div style={{ marginTop: 'var(--space-6)' }}>
+      <h2 style={{ fontSize: 'var(--text-body-lg)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 4px' }}>
+        {t('accountRecovery.heading')}
       </h2>
-      <p style={{ ...label, marginBottom: 16 }}>
-        End-to-end encrypted chat keys live only on your devices. Set up recovery so you can restore
-        your history if you lose them. We never see your keys.
+      <p style={{ ...label, marginBottom: 'var(--space-4)' }}>
+        {t('accountRecovery.intro')}
       </p>
 
       {/* Status */}
       <div style={card}>
-        <p style={label}>Status</p>
+        <p style={label}>{t('accountRecovery.status')}</p>
         <p style={{ fontSize: 15, margin: '4px 0 0', color: hasBackup ? 'var(--foreground)' : '#f0a020' }}>
           {state == null
-            ? 'Checking…'
+            ? t('accountRecovery.statusChecking')
             : hasBackup
-              ? `Recovery is set up${state.passkeys.length ? ` · ${state.passkeys.length} passkey(s)` : ''}${state.wrappedMaster ? ' · recovery code' : ''}.`
-              : 'Not set up — you could permanently lose chat history if you lose your devices.'}
+              ? `${t('accountRecovery.statusSetUp')}${state.passkeys.length ? t('accountRecovery.statusPasskeyCount', { count: state.passkeys.length }) : ''}${state.wrappedMaster ? t('accountRecovery.statusRecoveryCode') : ''}.`
+              : t('accountRecovery.statusNotSetUp')}
         </p>
       </div>
 
       {/* Back up */}
       <div style={card}>
-        <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>Back up</p>
+        <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>{t('accountRecovery.backUp')}</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {isPasskeySupported() && (
             <button style={btn} disabled={busy} onClick={addPasskey}>
-              Register a passkey
+              {t('accountRecovery.registerPasskey')}
             </button>
           )}
           <button style={btn} disabled={busy} onClick={genRecoveryCode}>
-            Generate a recovery code
+            {t('accountRecovery.generateRecoveryCode')}
           </button>
         </div>
         {shownCode && (
           <div style={{ marginTop: 12 }}>
-            <p style={label}>Write this down and keep it safe. It is shown only once:</p>
+            <p style={label}>{t('accountRecovery.writeDownCode')}</p>
             <code
               style={{
                 display: 'block',
@@ -167,7 +168,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
               {shownCode}
             </code>
             <button style={{ ...btn, marginTop: 8 }} onClick={() => setShownCode(null)}>
-              I&apos;ve saved it
+              {t('accountRecovery.savedIt')}
             </button>
           </div>
         )}
@@ -175,18 +176,18 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
 
       {/* Recover */}
       <div style={card}>
-        <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>Recover on this device</p>
+        <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>{t('accountRecovery.recoverOnDevice')}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {isPasskeySupported() && (
             <button style={btn} disabled={busy} onClick={recoverWithPasskeyFlow}>
-              Recover with a passkey
+              {t('accountRecovery.recoverWithPasskey')}
             </button>
           )}
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               value={recoverCode}
               onChange={(e) => setRecoverCode(e.target.value)}
-              placeholder="Enter recovery code"
+              placeholder={t('accountRecovery.recoveryCodePlaceholder')}
               style={{
                 flex: 1,
                 padding: '9px 12px',
@@ -195,18 +196,19 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
                 background: 'var(--background, #05060a)',
                 color: 'var(--foreground)',
                 fontFamily: 'monospace',
-                fontSize: 14,
+                // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+                fontSize: 'var(--text-body)',
               }}
             />
             <button style={btn} disabled={busy || !recoverCode.trim()} onClick={recoverWithCode}>
-              Recover
+              {t('accountRecovery.recover')}
             </button>
           </div>
         </div>
       </div>
 
-      {msg && <p style={{ fontSize: 14, color: '#3ecf8e', margin: '4px 0 0' }}>{msg}</p>}
-      {err && <p style={{ fontSize: 14, color: '#f0506e', margin: '4px 0 0' }}>{err}</p>}
+      {msg && <p style={{ fontSize: 'var(--text-body-sm)', color: '#3ecf8e', margin: '4px 0 0' }}>{msg}</p>}
+      {err && <p style={{ fontSize: 'var(--text-body-sm)', color: '#f0506e', margin: '4px 0 0' }}>{err}</p>}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import ChatRail from '@/components/ChatRail';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { readRailOpenPreference, writeRailOpenPreference, type RailRoom } from '@/lib/chatRail';
 import { ChatRailContext } from '@/lib/chatRailContext';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ export default function CommunityLayout({
   topicDescription,
   topicMemberCount,
 }: CommunityLayoutProps) {
+  const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // Default closed on every mount (SSR-safe — localStorage does not exist on
   // the server); the persisted preference is applied client-side right after,
@@ -199,7 +201,7 @@ export default function CommunityLayout({
           transform: mobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.25s ease',
           overflowY: 'auto',
-          padding: '16px',
+          padding: 'var(--space-4)',
           paddingTop: 60,
         }}
         className="mobile-sidebar-drawer"
@@ -216,7 +218,7 @@ export default function CommunityLayout({
             cursor: 'pointer',
             padding: 4,
           }}
-          aria-label="Close sidebar"
+          aria-label={t('communityLayout.closeSidebar')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18" />

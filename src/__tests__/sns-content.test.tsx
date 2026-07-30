@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import SNSContent from '@/components/SNSContent';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 // Mock LinkPreview to avoid network calls
 vi.mock('@/components/LinkPreview', () => ({
@@ -12,7 +13,10 @@ vi.mock('@/components/LinkPreview', () => ({
 
 function render(html: string, props: Partial<Parameters<typeof SNSContent>[0]> = {}): string {
   return renderToStaticMarkup(
-    React.createElement(SNSContent, { html, ...props })
+    React.createElement(I18nProvider, {
+      initialLocale: 'en',
+      children: React.createElement(SNSContent, { html, ...props }),
+    }),
   );
 }
 

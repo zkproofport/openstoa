@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslation } from '@/lib/i18n/I18nProvider';
+
 interface BadgeProps {
   type: string;
   label?: string;
@@ -16,13 +18,14 @@ const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
 };
 
 export default function Badge({ type, label: labelProp, domain, country }: BadgeProps) {
+  const { t } = useTranslation();
   const config = BADGE_CONFIG[type] || { icon: '?', color: '#666' };
   const label = labelProp
-    ?? (type === 'kyc' ? 'KYC'
-    : type === 'country' ? (country || 'Country')
-    : type === 'workspace' ? (domain || 'Org Verified')
-    : type === 'oidc' ? 'OIDC Verified'
-    : type === 'ai' ? 'AI'
+    ?? (type === 'kyc' ? t('badge.kyc')
+    : type === 'country' ? (country || t('badge.country'))
+    : type === 'workspace' ? (domain || t('badge.workspace'))
+    : type === 'oidc' ? t('badge.oidc')
+    : type === 'ai' ? t('badge.ai')
     : type);
 
   return (
@@ -30,7 +33,9 @@ export default function Badge({ type, label: labelProp, domain, country }: Badge
       display: 'inline-flex',
       alignItems: 'center',
       gap: 3,
-      fontSize: 10,
+      // 10px was below the 12px floor for compact uppercase-style labels;
+      // this badge can now render translated (Korean) fallback text too.
+      fontSize: 'var(--text-label)',
       fontWeight: 600,
       padding: '2px 6px',
       borderRadius: 4,

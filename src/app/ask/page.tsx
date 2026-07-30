@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -202,6 +203,7 @@ function AiAvatar() {
 const CONTENT_WIDTH = 640;
 
 export default function AskPage() {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -328,14 +330,18 @@ export default function AskPage() {
   // DISABLED 2026-05-25: LLM API providers (OpenAI/Gemini/Anthropic) deprecated.
   // Original /ask UI is preserved below for future re-enable (remove the early return below).
   // See docs/migration/third-party-services.md §4-6.
+  // NOTE (tokens/i18n migration): everything below this early return is dead
+  // code while the feature is disabled -- it is intentionally left as-is
+  // (not token/i18n migrated) since it is unreachable and the effort is
+  // better spent on live surfaces. Migrate it alongside the re-enable work.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _suppressUnused = { isEmpty };
   if (true) {
     return (
-      <main style={{ height: '100vh', background: 'rgb(5,8,16)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#999', fontFamily: 'var(--font-sans)', textAlign: 'center', padding: 24 }}>
-        <h1 style={{ color: '#e8e8f0', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>OpenStoa AI</h1>
-        <p style={{ margin: 0, maxWidth: 360, lineHeight: 1.6 }}>This feature is currently unavailable.</p>
-        <Link href="/" style={{ color: '#788cff', fontSize: 12, textDecoration: 'none', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase', padding: '8px 16px', borderRadius: 6, border: '1px solid rgba(120,140,255,0.25)' }}>← Back to home</Link>
+      <main style={{ height: '100vh', background: 'rgb(5,8,16)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', color: '#999', fontFamily: 'var(--font-sans)', textAlign: 'center', padding: 'var(--space-5)' }}>
+        <h1 style={{ color: '#e8e8f0', fontSize: 'var(--text-heading-sm)', fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>{t('askPage.title')}</h1>
+        <p style={{ margin: 0, maxWidth: 360, lineHeight: 1.6 }}>{t('askPage.unavailable')}</p>
+        <Link href="/" className="os-label" style={{ color: '#788cff', textDecoration: 'none', padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-control)', border: '1px solid rgba(120,140,255,0.25)' }}>← {t('askPage.backToHome')}</Link>
       </main>
     );
   }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ const IconTrash = () => (
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function PollEditor({ value, onChange, onRemove }: PollEditorProps) {
+  const { t } = useTranslation();
   const options = value.options.length >= MIN_OPTIONS
     ? value.options
     : [...value.options, ...Array(MIN_OPTIONS - value.options.length).fill('')];
@@ -98,7 +100,7 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
     <div
       style={{
         border: '1px solid var(--border)',
-        borderRadius: 12,
+        borderRadius: 'var(--radius-card)',
         background: '#111',
         padding: '14px 16px',
       }}
@@ -108,23 +110,23 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        marginBottom: 'var(--space-3)',
       }}>
         <span style={{
-          fontSize: 12,
+          fontSize: 'var(--text-label)',
           fontWeight: 600,
           color: '#9ca3af',
           fontFamily: 'monospace',
           letterSpacing: '0.04em',
           textTransform: 'uppercase',
         }}>
-          Poll
+          {t('pollEditor.label')}
         </span>
         <button
           type="button"
           onClick={onRemove}
-          title="Remove poll"
-          aria-label="Remove poll"
+          title={t('pollEditor.removePoll')}
+          aria-label={t('pollEditor.removePoll')}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -132,9 +134,9 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
             background: 'transparent',
             border: '1px solid rgba(255,255,255,0.08)',
             color: '#9ca3af',
-            borderRadius: 6,
-            padding: '4px 8px',
-            fontSize: 12,
+            borderRadius: 'var(--radius-control)',
+            padding: 'var(--space-1) var(--space-2)',
+            fontSize: 'var(--text-label)',
             cursor: 'pointer',
             transition: 'color 0.12s, background 0.12s',
           }}
@@ -148,7 +150,7 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
           }}
         >
           <IconTrash />
-          Remove
+          {t('pollEditor.remove')}
         </button>
       </div>
 
@@ -157,15 +159,16 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
         type="text"
         value={value.question ?? ''}
         onChange={(e) => update({ question: e.target.value.slice(0, MAX_QUESTION_LEN) })}
-        placeholder="Ask a question (optional)"
+        placeholder={t('pollEditor.questionPlaceholder')}
         style={{
           width: '100%',
           background: '#0a0a0a',
           border: '1px solid rgba(255,255,255,0.1)',
           borderRadius: 8,
-          padding: '8px 12px',
+          padding: 'var(--space-2) var(--space-3)',
           color: 'var(--foreground)',
-          fontSize: 14,
+          // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+          fontSize: 'var(--text-body)',
           outline: 'none',
           marginBottom: 10,
           boxSizing: 'border-box',
@@ -183,16 +186,17 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
                 type="text"
                 value={opt}
                 onChange={(e) => updateOption(i, e.target.value)}
-                placeholder={`Option ${i + 1}`}
+                placeholder={t('pollEditor.optionPlaceholder', { index: i + 1 })}
                 maxLength={MAX_OPTION_LEN}
                 style={{
                   flex: 1,
                   background: '#0a0a0a',
                   border: `1px solid ${overflow ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`,
                   borderRadius: 7,
-                  padding: '8px 12px',
+                  padding: 'var(--space-2) var(--space-3)',
                   color: '#e5e7eb',
-                  fontSize: 13,
+                  // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+                  fontSize: 'var(--text-body)',
                   outline: 'none',
                   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                   boxSizing: 'border-box',
@@ -212,8 +216,8 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
                 type="button"
                 onClick={() => removeOption(i)}
                 disabled={options.length <= MIN_OPTIONS}
-                aria-label={`Remove option ${i + 1}`}
-                title="Remove option"
+                aria-label={t('pollEditor.removeOption', { index: i + 1 })}
+                title={t('pollEditor.remove')}
                 style={{
                   width: 26,
                   height: 26,
@@ -248,14 +252,14 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
             border: '1px solid rgba(59,130,246,0.25)',
             borderRadius: 7,
             padding: '6px 12px',
-            fontSize: 12,
+            fontSize: 'var(--text-label)',
             fontWeight: 600,
             cursor: 'pointer',
-            marginBottom: 12,
+            marginBottom: 'var(--space-3)',
             fontFamily: 'monospace',
           }}
         >
-          + Add option
+          {t('pollEditor.addOption')}
         </button>
       )}
 
@@ -283,14 +287,14 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
                   color: active ? '#fff' : '#9ca3af',
                   border: 'none',
                   padding: '6px 14px',
-                  fontSize: 12,
+                  fontSize: 'var(--text-label)',
                   fontWeight: 600,
                   cursor: 'pointer',
                   fontFamily: 'monospace',
                   transition: 'background 0.12s, color 0.12s',
                 }}
               >
-                {mode === 'single' ? 'Single' : 'Multi'}
+                {mode === 'single' ? t('pollEditor.single') : t('pollEditor.multi')}
               </button>
             );
           })}
@@ -301,30 +305,30 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
           display: 'inline-flex',
           alignItems: 'center',
           gap: 8,
-          fontSize: 12,
+          fontSize: 'var(--text-label)',
           color: '#9ca3af',
           fontFamily: 'monospace',
         }}>
-          Duration
+          {t('pollEditor.duration')}
           <select
             value={duration}
             onChange={(e) => setDuration(e.target.value as DurationOption)}
             style={{
               background: '#0a0a0a',
               border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 6,
+              borderRadius: 'var(--radius-control)',
               padding: '5px 8px',
               color: '#e5e7eb',
-              fontSize: 12,
+              fontSize: 'var(--text-label)',
               fontFamily: 'monospace',
               outline: 'none',
               cursor: 'pointer',
             }}
           >
-            <option value="off">Off</option>
-            <option value="1d">1 day</option>
-            <option value="3d">3 days</option>
-            <option value="7d">7 days</option>
+            <option value="off">{t('pollEditor.durationOff')}</option>
+            <option value="1d">{t('pollEditor.duration1d')}</option>
+            <option value="3d">{t('pollEditor.duration3d')}</option>
+            <option value="7d">{t('pollEditor.duration7d')}</option>
           </select>
         </label>
       </div>

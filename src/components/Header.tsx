@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import HeaderSearchBar from '@/components/HeaderSearchBar';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface UserSession {
   nickname?: string;
@@ -35,6 +36,7 @@ function setCachedSession(data: UserSession | null) {
 }
 
 export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen }: HeaderProps = {}) {
+  const { t } = useTranslation();
   // Initial render MUST match SSR (no localStorage on the server).
   // Reading `getCachedSession()` in the useState initializer caused React
   // #418: the server rendered the guest placeholder span while the client's
@@ -97,7 +99,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           {onMenuToggle && (
             <button
               onClick={onMenuToggle}
-              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-label={menuOpen ? t('header.closeMenu') : t('header.openMenu')}
               className="header-hamburger"
               style={{
                 display: 'none',
@@ -106,8 +108,13 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
                 color: 'var(--foreground)',
                 cursor: 'pointer',
                 padding: 4,
-                borderRadius: 6,
+                borderRadius: 'var(--radius-control)',
                 transition: 'color 0.12s',
+                // NOT bumped to --touch-target-min: `HEADER_HEIGHT = 49` in
+                // CommunityLayout.tsx hardcodes this row's rendered height for
+                // sticky-sidebar offset math; growing this control to 44px
+                // would make the real header taller than that constant
+                // assumes. See migration report.
               }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -133,13 +140,13 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               display: 'flex', alignItems: 'center', gap: 10,
               textDecoration: 'none', color: 'inherit',
             }}
-            aria-label="OpenStoa home"
+            aria-label={t('header.homeAriaLabel')}
           >
           {/* Logo mark */}
           <img src="/images/openstoa-logo-mark-transparent.png" alt="OpenStoa" width={24} height={24} style={{ objectFit: 'contain' }} />
           <span
             style={{
-              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 16,
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 'var(--text-body)',
               letterSpacing: '-0.03em', color: '#fff',
             }}
           >
@@ -194,11 +201,11 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
             href="/topics/explore"
             className="header-nav-link"
             style={{
-              color: '#999', fontSize: 12, textDecoration: 'none',
+              color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
               fontFamily: 'var(--font-mono)', fontWeight: 500,
               letterSpacing: '0.04em', textTransform: 'uppercase' as const,
               transition: 'all 0.15s',
-              padding: '6px 14px', borderRadius: 6,
+              padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
               border: '1px solid transparent',
             }}
             onMouseEnter={(e) => {
@@ -212,18 +219,18 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
             }}
           >
-            Explore
+            {t('header.explore')}
           </Link>
 
           <Link
             href="/recorded"
             className="header-nav-link"
             style={{
-              color: '#999', fontSize: 12, textDecoration: 'none',
+              color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
               fontFamily: 'var(--font-mono)', fontWeight: 500,
               letterSpacing: '0.04em', textTransform: 'uppercase' as const,
               transition: 'all 0.15s',
-              padding: '6px 14px', borderRadius: 6,
+              padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
               border: '1px solid transparent',
             }}
             onMouseEnter={(e) => {
@@ -237,18 +244,18 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
             }}
           >
-            Recorded
+            {t('header.recorded')}
           </Link>
 
           <Link
             href="/docs"
             className="header-nav-link"
             style={{
-              color: '#999', fontSize: 12, textDecoration: 'none',
+              color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
               fontFamily: 'var(--font-mono)', fontWeight: 500,
               letterSpacing: '0.04em', textTransform: 'uppercase' as const,
               transition: 'all 0.15s',
-              padding: '6px 14px', borderRadius: 6,
+              padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
               border: '1px solid transparent',
             }}
             onMouseEnter={(e) => {
@@ -262,7 +269,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
             }}
           >
-            Docs
+            {t('header.docs')}
           </Link>
 
           {user && (
@@ -270,11 +277,11 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               href="/dm"
               className="header-nav-link"
               style={{
-                color: '#999', fontSize: 12, textDecoration: 'none',
+                color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
                 fontFamily: 'var(--font-mono)', fontWeight: 500,
                 letterSpacing: '0.04em', textTransform: 'uppercase' as const,
                 transition: 'all 0.15s',
-                padding: '6px 14px', borderRadius: 6,
+                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
                 border: '1px solid transparent',
               }}
               onMouseEnter={(e) => {
@@ -288,7 +295,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
                 (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
               }}
             >
-              Messages
+              {t('header.messages')}
             </Link>
           )}
 
@@ -297,11 +304,11 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               href="/recovery"
               className="header-nav-link"
               style={{
-                color: '#999', fontSize: 12, textDecoration: 'none',
+                color: '#999', fontSize: 'var(--text-label)', textDecoration: 'none',
                 fontFamily: 'var(--font-mono)', fontWeight: 500,
                 letterSpacing: '0.04em', textTransform: 'uppercase' as const,
                 transition: 'all 0.15s',
-                padding: '6px 14px', borderRadius: 6,
+                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
                 border: '1px solid transparent',
               }}
               onMouseEnter={(e) => {
@@ -315,7 +322,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
                 (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
               }}
             >
-              Recovery
+              {t('header.recovery')}
             </Link>
           )}
 
@@ -328,8 +335,8 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               type="button"
               onClick={onChatToggle}
               aria-pressed={chatOpen}
-              aria-label={chatOpen ? 'Close chat' : 'Open chat'}
-              title={chatOpen ? 'Close chat' : 'Open chat'}
+              aria-label={chatOpen ? t('chat.close') : t('header.openChat')}
+              title={chatOpen ? t('chat.close') : t('header.openChat')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -337,10 +344,13 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
                 background: chatOpen ? 'rgba(120,140,255,0.14)' : 'transparent',
                 color: chatOpen ? 'var(--accent)' : '#999',
                 border: `1px solid ${chatOpen ? 'rgba(120,140,255,0.3)' : 'transparent'}`,
-                borderRadius: 6,
+                borderRadius: 'var(--radius-control)',
                 padding: '6px 8px',
                 cursor: 'pointer',
                 transition: 'all 0.15s',
+                // NOT bumped to --touch-target-min — see the hamburger button
+                // above: this row's height is load-bearing for
+                // CommunityLayout's hardcoded HEADER_HEIGHT.
               }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -355,9 +365,9 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
             <Link
               href="/my"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 12, color: '#ccc',
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-label)', color: '#ccc',
                 background: 'rgba(120,140,255,0.1)', border: '1px solid rgba(120,140,255,0.15)',
-                padding: '6px 14px', borderRadius: 6,
+                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
                 textDecoration: 'none', transition: 'all 0.15s',
                 letterSpacing: '0.02em',
               }}
@@ -373,15 +383,15 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               {user.nickname ??
                 (user.userId
                   ? `${user.userId.slice(0, 6)}…${user.userId.slice(-4)}`
-                  : 'anon')}
+                  : t('header.anonFallback'))}
             </Link>
           ) : (
             <Link
               href="/"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent)',
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-label)', color: 'var(--accent)',
                 textDecoration: 'none', transition: 'all 0.15s',
-                padding: '6px 14px', borderRadius: 6,
+                padding: '6px var(--space-4)', borderRadius: 'var(--radius-control)',
                 border: '1px solid rgba(120,140,255,0.25)',
                 letterSpacing: '0.04em', textTransform: 'uppercase' as const,
               }}
@@ -394,7 +404,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
                 (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
               }}
             >
-              Sign in
+              {t('header.signIn')}
             </Link>
           )}
         </nav>
@@ -412,7 +422,9 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           }
           .header-nav-link {
             padding: 4px 6px !important;
-            font-size: 10px !important;
+            /* Was 10px, below the 12px floor even for an uppercase Latin
+               label (--text-label is the floor, not a ceiling). */
+            font-size: var(--text-label) !important;
             border: none !important;
           }
           .header-search-wrap {
@@ -422,7 +434,8 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
         @media (max-width: 380px) {
           .header-nav-link {
             padding: 3px 4px !important;
-            font-size: 9px !important;
+            /* Was 9px, below the 12px floor. */
+            font-size: var(--text-label) !important;
             letter-spacing: 0.01em !important;
           }
         }

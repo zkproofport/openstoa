@@ -3,6 +3,13 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ApiKeyMetaSummary } from '@/components/AiAgentSettings';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
+
+function renderKey(node: React.ReactElement): string {
+  return renderToStaticMarkup(
+    React.createElement(I18nProvider, { initialLocale: 'en', children: node }),
+  );
+}
 
 /**
  * Render-level (SSR) coverage for the edge-case rows the KEY LIST owns, using
@@ -23,7 +30,7 @@ const base = {
 
 describe('ApiKeyMetaSummary — hostile name renders safely (no XSS)', () => {
   it('escapes an HTML/script-shaped key name instead of emitting live markup', () => {
-    const out = renderToStaticMarkup(
+    const out = renderKey(
       <ApiKeyMetaSummary k={{ ...base, name: '<script>alert(1)</script>', prefix: 'osk_1234abcd' }} />,
     );
     expect(out).not.toContain('<script>alert(1)</script>');
@@ -31,7 +38,7 @@ describe('ApiKeyMetaSummary — hostile name renders safely (no XSS)', () => {
   });
 
   it('renders UTF-8 (한글, emoji) names verbatim as text', () => {
-    const out = renderToStaticMarkup(
+    const out = renderKey(
       <ApiKeyMetaSummary k={{ ...base, name: '키_에이전트 🤖', prefix: 'osk_1234abcd' }} />,
     );
     expect(out).toContain('키_에이전트 🤖');
@@ -40,7 +47,7 @@ describe('ApiKeyMetaSummary — hostile name renders safely (no XSS)', () => {
 
 describe('ApiKeyMetaSummary — list surface is metadata only', () => {
   it('emits the short prefix but never a full osk_ secret', () => {
-    const out = renderToStaticMarkup(
+    const out = renderKey(
       <ApiKeyMetaSummary k={{ ...base, name: 'laptop', prefix: 'osk_1234abcd' }} />,
     );
     expect(out).toContain('osk_1234abcd');
@@ -49,7 +56,7 @@ describe('ApiKeyMetaSummary — list surface is metadata only', () => {
   });
 
   it('shows a Revoked badge when revokedAt is set', () => {
-    const out = renderToStaticMarkup(
+    const out = renderKey(
       <ApiKeyMetaSummary k={{ ...base, name: 'old', prefix: 'osk_deadbeef', revokedAt: new Date().toISOString() }} />,
     );
     expect(out).toContain('Revoked');

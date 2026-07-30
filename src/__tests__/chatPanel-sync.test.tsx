@@ -72,6 +72,7 @@ vi.mock('@/lib/mls/webTransport', () => ({
 
 // Imported AFTER the mock so the component picks up the doubles.
 const { default: ChatPanel } = await import('@/components/ChatPanel');
+const { I18nProvider } = await import('@/lib/i18n/I18nProvider');
 
 // ─── EventSource double ──────────────────────────────────────────────────────
 
@@ -191,10 +192,16 @@ async function flush(times = 6) {
   }
 }
 
+// `ChatPanel` (and the `TopicMuteToggle` it renders internally) now read
+// copy through `useTranslation()` — see src/lib/i18n/I18nProvider.tsx. Every
+// render needs the provider in the tree, same as the app root
+// (src/app/layout.tsx).
 async function mount(props: Partial<React.ComponentProps<typeof ChatPanel>> = {}) {
   await act(async () => {
     root.render(
-      <ChatPanel topicId={TOPIC} isGuest={false} isMember={true} {...props} />,
+      <I18nProvider initialLocale="en">
+        <ChatPanel topicId={TOPIC} isGuest={false} isMember={true} {...props} />
+      </I18nProvider>,
     );
   });
   await flush();

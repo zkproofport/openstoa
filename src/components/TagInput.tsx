@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface TagInputProps {
   tags: string[];
@@ -16,7 +17,9 @@ interface TagSuggestion {
   postCount: number;
 }
 
-export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'Add tags...', topicId }: TagInputProps) {
+export default function TagInput({ tags, onChange, maxTags = 5, placeholder, topicId }: TagInputProps) {
+  const { t } = useTranslation();
+  const effectivePlaceholder = placeholder ?? t('tagInput.placeholder');
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -101,7 +104,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
           display: 'flex',
           flexWrap: 'wrap',
           gap: 6,
-          padding: '8px 12px',
+          padding: 'var(--space-2) var(--space-3)',
           background: '#111',
           border: '1px solid var(--border)',
           borderRadius: 7,
@@ -123,7 +126,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
               border: '1px solid rgba(59,130,246,0.2)',
               borderRadius: 4,
               padding: '2px 8px',
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               fontFamily: 'monospace',
             }}
           >
@@ -137,7 +140,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
                 color: 'var(--muted)',
                 cursor: 'pointer',
                 padding: 0,
-                fontSize: 14,
+                fontSize: 'var(--text-body-sm)',
                 lineHeight: 1,
               }}
             >
@@ -153,7 +156,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
             onKeyDown={handleKeyDown}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            placeholder={tags.length === 0 ? placeholder : ''}
+            placeholder={tags.length === 0 ? effectivePlaceholder : ''}
             style={{
               flex: 1,
               minWidth: 80,
@@ -161,14 +164,15 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
               border: 'none',
               outline: 'none',
               color: 'var(--foreground)',
-              fontSize: 14,
+              // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+              fontSize: 'var(--text-body)',
               padding: 0,
             }}
           />
         )}
       </div>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontFamily: 'monospace' }}>
-        {tags.length}/{maxTags} tags · press Enter or comma to add
+        {t('tagInput.helper', { count: tags.length, max: maxTags })}
       </div>
 
       {/* Suggestions dropdown */}
@@ -193,7 +197,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
               key={s.slug}
               onMouseDown={() => addTag(s.name)}
               style={{
-                padding: '8px 12px',
+                padding: 'var(--space-2) var(--space-3)',
                 cursor: 'pointer',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -203,8 +207,8 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder = 'A
               }}
               onMouseEnter={() => setSelectedIndex(i)}
             >
-              <span style={{ fontSize: 13, fontFamily: 'monospace', color: 'var(--foreground)' }}>{s.name}</span>
-              <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' }}>{s.postCount} posts</span>
+              <span style={{ fontSize: 'var(--text-caption)', fontFamily: 'monospace', color: 'var(--foreground)' }}>{s.name}</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' }}>{t('tagInput.postCount', { count: s.postCount })}</span>
             </div>
           ))}
         </div>

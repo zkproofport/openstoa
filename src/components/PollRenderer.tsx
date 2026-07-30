@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Poll } from '@/lib/polls';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ function relativeFuture(iso: string): string {
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRendererProps) {
+  const { t } = useTranslation();
   const hasVoted = poll.userVotedOptionIds.length > 0;
   const isClosed = poll.isClosed;
   const showResults = hasVoted || isClosed;
@@ -63,7 +65,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       await onVote(ids);
       setSelected([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to vote');
+      setError(err instanceof Error ? err.message : t('poll.voteFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +79,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       await onUnvote();
       setSelected([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to unvote');
+      setError(err instanceof Error ? err.message : t('poll.unvoteFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -99,17 +101,17 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
     <div
       style={{
         border: '1px solid var(--border)',
-        borderRadius: 12,
+        borderRadius: 'var(--radius-card)',
         background: 'rgba(255,255,255,0.02)',
         padding: '14px 16px',
-        marginTop: 12,
-        marginBottom: 12,
+        marginTop: 'var(--space-3)',
+        marginBottom: 'var(--space-3)',
       }}
     >
       {/* Question */}
       {poll.question && (
         <div style={{
-          fontSize: 14,
+          fontSize: 'var(--text-body-sm)',
           fontWeight: 600,
           color: '#e5e7eb',
           marginBottom: 10,
@@ -134,7 +136,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                   position: 'relative',
                   border: `1px solid ${isUserPick ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
                   borderRadius: 8,
-                  padding: '8px 12px',
+                  padding: 'var(--space-2) var(--space-3)',
                   background: '#0a0a0a',
                   overflow: 'hidden',
                 }}
@@ -158,7 +160,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                   gap: 10,
                 }}>
                   <span style={{
-                    fontSize: 13,
+                    fontSize: 'var(--text-caption)',
                     color: '#e5e7eb',
                     fontWeight: isUserPick ? 600 : 500,
                     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -171,7 +173,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                     {opt.text}
                   </span>
                   <span style={{
-                    fontSize: 12,
+                    fontSize: 'var(--text-label)',
                     color: isUserPick ? 'var(--accent)' : '#9ca3af',
                     fontFamily: 'monospace',
                     fontVariantNumeric: 'tabular-nums',
@@ -202,7 +204,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 borderRadius: 8,
                 padding: '10px 12px',
                 color: '#e5e7eb',
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 textAlign: 'left',
                 fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -247,8 +249,8 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       {/* Error */}
       {error && (
         <div style={{
-          marginTop: 8,
-          fontSize: 12,
+          marginTop: 'var(--space-2)',
+          fontSize: 'var(--text-label)',
           color: '#ef4444',
           fontFamily: 'monospace',
         }}>
@@ -259,7 +261,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       {/* Footer: status + Vote / Unvote */}
       <div style={{
         marginTop: 10,
-        paddingTop: 8,
+        paddingTop: 'var(--space-2)',
         borderTop: '1px solid rgba(255,255,255,0.06)',
         display: 'flex',
         alignItems: 'center',
@@ -272,15 +274,15 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-            {poll.totalVotes} vote{poll.totalVotes !== 1 ? 's' : ''}
+            {t('poll.voteCount', { count: poll.totalVotes, suffix: poll.totalVotes !== 1 ? 's' : '' })}
           </span>
           <span style={{ color: '#4b5563' }}>·</span>
           <span>
             {isClosed
-              ? 'Poll closed'
+              ? t('poll.closed')
               : poll.closesAt
-                ? `Closes in ${relativeFuture(poll.closesAt)}`
-                : 'Open'}
+                ? t('poll.closesIn', { time: relativeFuture(poll.closesAt) })
+                : t('poll.open')}
           </span>
         </div>
 
@@ -295,16 +297,16 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 background: selected.length === 0 ? 'rgba(255,255,255,0.06)' : 'var(--accent)',
                 color: selected.length === 0 ? '#6b7280' : '#fff',
                 border: 'none',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-control)',
                 padding: '5px 14px',
-                fontSize: 12,
+                fontSize: 'var(--text-label)',
                 fontWeight: 600,
                 cursor: disabled || selected.length === 0 ? 'not-allowed' : 'pointer',
                 fontFamily: 'monospace',
                 transition: 'background 0.12s',
               }}
             >
-              {submitting ? 'Voting...' : 'Vote'}
+              {submitting ? t('poll.voting') : t('poll.vote')}
             </button>
           )}
 
@@ -318,14 +320,14 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 background: 'none',
                 border: 'none',
                 color: 'var(--accent)',
-                fontSize: 12,
+                fontSize: 'var(--text-label)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 padding: 0,
                 fontFamily: 'monospace',
                 textDecoration: 'underline',
               }}
             >
-              {submitting ? '...' : 'Unvote'}
+              {submitting ? '...' : t('poll.unvote')}
             </button>
           )}
         </div>

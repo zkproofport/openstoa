@@ -14,6 +14,7 @@ import ImageLightbox from '@/components/ImageLightbox';
 import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
 import PollRenderer from '@/components/PollRenderer';
 import MediaGallery from '@/components/post/MediaGallery';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
 export default function TopicPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useTranslation();
   const topicId = params.topicId as string;
 
   const [topic, setTopic] = useState<Topic | null>(null);
@@ -228,16 +230,16 @@ export default function TopicPage() {
         return;
       }
       if (res.status === 404) {
-        setError('Topic not found');
+        setError(t('topicPage.topicNotFound'));
         setLoading(false);
         return;
       }
-      if (!res.ok) throw new Error('Topic not found');
+      if (!res.ok) throw new Error(t('topicPage.topicNotFound'));
       const data = await res.json();
       setTopic(data.topic);
       if (data.currentUserRole) setCurrentUserRole(data.currentUserRole);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load topic');
+      setError(err instanceof Error ? err.message : t('topicPage.loadTopicFailed'));
     } finally {
       setLoading(false);
     }
@@ -367,9 +369,7 @@ export default function TopicPage() {
    *  fire-and-forget, the user-facing reset isn't blocked on the network. */
   function handleComposerReset() {
     if (!hasComposerContent()) return;
-    const ok = window.confirm(
-      '정말 초기화하시겠어요? 작성 중인 내용은 모두 사라져요. / Reset the composer? Everything you typed will be discarded.',
-    );
+    const ok = window.confirm(t('topicPage.composer.resetConfirm'));
     if (!ok) return;
 
     const initial = new Set(initialImagesRef.current);
@@ -406,7 +406,7 @@ export default function TopicPage() {
       if (postPoll) {
         const opts = postPoll.options.map((o) => o.trim()).filter((o) => o.length > 0 && o.length <= 80);
         if (opts.length < 2 || opts.length > 4) {
-          throw new Error('Poll needs 2 to 4 non-empty options (≤80 chars each)');
+          throw new Error(t('topicPage.composer.pollOptionsError'));
         }
         pollPayload = {
           options: opts,
@@ -429,7 +429,7 @@ export default function TopicPage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to post');
+        throw new Error(d.error ?? t('topicPage.composer.postFailed'));
       }
       setPostTitle('');
       setPostContent('');
@@ -441,7 +441,7 @@ export default function TopicPage() {
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
-      setPostError(err instanceof Error ? err.message : 'Unknown error');
+      setPostError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
     } finally {
       setSubmitting(false);
     }
@@ -462,23 +462,23 @@ export default function TopicPage() {
   if (isGuest && error === 'private') {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
-        <div style={{ marginBottom: 24 }}>
-          <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
-            {'\u2190'} Topics
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 'var(--text-caption)' }}>
+            {'\u2190'} {t('topicPage.topicsBreadcrumb')}
           </Link>
         </div>
         <div style={{
           textAlign: 'center',
           padding: '80px 20px',
           border: '1px dashed var(--border)',
-          borderRadius: 16,
+          borderRadius: 'var(--radius-modal)',
         }}>
-          <p style={{ fontSize: 32, marginBottom: 12 }}>{'\uD83D\uDD12'}</p>
-          <p style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 8 }}>
-            Private Topic
+          <p style={{ fontSize: 32, marginBottom: 'var(--space-3)' }}>{'\uD83D\uDD12'}</p>
+          <p style={{ fontSize: 'var(--text-body-lg)', fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 'var(--space-2)' }}>
+            {t('topicPage.privateTopic.title')}
           </p>
-          <p style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 24, lineHeight: 1.6 }}>
-            This is a private topic. Sign in and join to view posts.
+          <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', marginBottom: 'var(--space-5)', lineHeight: 1.6 }}>
+            {t('topicPage.privateTopic.body')}
           </p>
           <Link
             href="/"
@@ -486,13 +486,13 @@ export default function TopicPage() {
               background: 'var(--accent)',
               color: '#fff',
               textDecoration: 'none',
-              borderRadius: 8,
-              padding: '10px 24px',
-              fontSize: 14,
+              borderRadius: 'var(--radius-control)',
+              padding: '10px var(--space-5)',
+              fontSize: 'var(--text-body-sm)',
               fontWeight: 600,
             }}
           >
-            Sign in
+            {t('header.signIn')}
           </Link>
         </div>
       </CommunityLayout>
@@ -504,11 +504,11 @@ export default function TopicPage() {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
         <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 14 }}>
-            {error ?? 'Topic not found'}
+          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)' }}>
+            {error ?? t('topicPage.topicNotFound')}
           </p>
-          <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 14 }}>
-            {'\u2190'} Back to topics
+          <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+            {'\u2190'} {t('editTopicPage.backToTopics')}
           </Link>
         </div>
       </CommunityLayout>
@@ -531,9 +531,9 @@ export default function TopicPage() {
       )}
 
       {/* Breadcrumb */}
-      <div style={{ marginBottom: 20 }}>
-        <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 13 }}>
-          {'\u2190'} Topics
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: 'var(--text-caption)' }}>
+          {'\u2190'} {t('topicPage.topicsBreadcrumb')}
         </Link>
       </div>
 
@@ -544,29 +544,29 @@ export default function TopicPage() {
             padding: '10px 16px',
             background: 'rgba(120,140,255,0.06)',
             border: '1px solid rgba(120,140,255,0.12)',
-            borderRadius: 8,
-            marginBottom: 20,
-            fontSize: 14,
+            borderRadius: 'var(--radius-control)',
+            marginBottom: 'var(--space-5)',
+            fontSize: 'var(--text-body-sm)',
             color: '#888',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: 8,
+            gap: 'var(--space-2)',
           }}
         >
-          <span>Sign in to participate in discussions.</span>
+          <span>{t('topicPage.guestBanner')}</span>
           <Link
             href="/"
             style={{
               color: 'var(--accent)',
               textDecoration: 'none',
               fontWeight: 600,
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               whiteSpace: 'nowrap',
             }}
           >
-            Sign in
+            {t('header.signIn')}
           </Link>
         </div>
       )}
@@ -578,16 +578,16 @@ export default function TopicPage() {
             padding: '10px 16px',
             background: 'rgba(239,68,68,0.06)',
             border: '1px solid rgba(239,68,68,0.15)',
-            borderRadius: 8,
-            marginBottom: 16,
-            fontSize: 14,
+            borderRadius: 'var(--radius-control)',
+            marginBottom: 'var(--space-4)',
+            fontSize: 'var(--text-body-sm)',
             color: '#f87171',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 'var(--space-2)',
           }}
         >
-          <span>{topic.blindedBy === 'admin' ? 'This topic has been hidden by admin.' : 'This topic has been hidden.'}</span>
+          <span>{topic.blindedBy === 'admin' ? t('topicPage.blindedByAdmin') : t('topicPage.blindedGeneric')}</span>
         </div>
       )}
 
@@ -596,8 +596,8 @@ export default function TopicPage() {
         padding: '18px 22px',
         background: 'var(--surface, #0c0e18)',
         border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 14,
-        marginBottom: 20,
+        borderRadius: 'var(--radius-card)',
+        marginBottom: 'var(--space-5)',
         display: 'flex',
         alignItems: 'center',
         gap: 14,
@@ -609,13 +609,13 @@ export default function TopicPage() {
           onClick={topic.image ? () => handleImageClick(topic.image!) : undefined}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: '#e5e7eb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: 'var(--text-heading-sm)', fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: '#e5e7eb' }}>
               {topic.title}
             </h1>
             {topic.requiresCountryProof && (
               <span style={{
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 fontFamily: 'monospace',
                 background: 'rgba(59,130,246,0.12)',
                 color: 'var(--accent)',
@@ -623,42 +623,38 @@ export default function TopicPage() {
                 padding: '2px 7px',
                 borderRadius: 4,
               }}>
-                country gated
+                {t('joinPage.proofBadge.country')}
               </span>
             )}
             {!isGuest && topic.isMember && (
               <span
+                className="os-label"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 3,
-                  fontSize: 11,
-                  fontWeight: 700,
                   color: '#22c55e',
                   background: 'rgba(34,197,94,0.10)',
                   border: '1px solid rgba(34,197,94,0.25)',
                   borderRadius: 4,
                   padding: '1px 6px',
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
-                  fontFamily: 'var(--font-mono)',
                   lineHeight: 1.2,
                 }}
-                aria-label="Joined topic"
+                aria-label={t('topicPage.joinedTopicAriaLabel')}
               >
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
-                Joined
+                {t('postCard.joined')}
               </span>
             )}
           </div>
           {topic.description && (
-            <p style={{ fontSize: 14, color: '#6b7280', margin: '4px 0 0', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: '4px 0 0', lineHeight: 1.5 }}>
               {topic.description}
             </p>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: 6 }}>
             {!isGuest ? (
               <Link
                 href={`/topics/${topicId}/members`}
@@ -666,7 +662,7 @@ export default function TopicPage() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
-                  fontSize: 13,
+                  fontSize: 'var(--text-caption)',
                   color: '#6b7280',
                   fontFamily: 'monospace',
                   textDecoration: 'none',
@@ -675,17 +671,17 @@ export default function TopicPage() {
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
               >
-                {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
+                {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
               </Link>
             ) : (
               <span
                 style={{
-                  fontSize: 13,
+                  fontSize: 'var(--text-caption)',
                   color: '#6b7280',
                   fontFamily: 'monospace',
                 }}
               >
-                {topic.memberCount} member{topic.memberCount !== 1 ? 's' : ''}
+                {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
               </span>
             )}
             {!isGuest && currentUserRole === 'owner' && (
@@ -695,12 +691,12 @@ export default function TopicPage() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
-                  fontSize: 13,
+                  fontSize: 'var(--text-caption)',
                   fontWeight: 600,
                   color: '#9ca3af',
                   background: 'rgba(255,255,255,0.06)',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
+                  borderRadius: 'var(--radius-control)',
                   padding: '3px 10px',
                   textDecoration: 'none',
                   transition: 'all 0.12s',
@@ -720,7 +716,7 @@ export default function TopicPage() {
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
-                Edit
+                {t('topicPage.edit')}
               </Link>
             )}
             {!isGuest && (currentUserRole === 'owner' || currentUserRole === 'admin') && (
@@ -730,12 +726,12 @@ export default function TopicPage() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
-                  fontSize: 13,
+                  fontSize: 'var(--text-caption)',
                   fontWeight: 600,
                   color: '#9ca3af',
                   background: 'rgba(255,255,255,0.06)',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
+                  borderRadius: 'var(--radius-control)',
                   padding: '3px 10px',
                   textDecoration: 'none',
                   transition: 'all 0.12s',
@@ -755,7 +751,7 @@ export default function TopicPage() {
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
-                Manage
+                {t('topicPage.manage')}
               </Link>
             )}
           </div>
@@ -767,17 +763,18 @@ export default function TopicPage() {
               background: copied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
               color: copied ? '#22c55e' : '#6b7280',
               border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-              borderRadius: 7,
+              borderRadius: 'var(--radius-control)',
               padding: '7px 12px',
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               cursor: 'pointer',
               fontWeight: 500,
               whiteSpace: 'nowrap',
               transition: 'all 0.15s',
               flexShrink: 0,
+              minHeight: 'var(--touch-target-min)',
             }}
           >
-            {copied ? 'Copied!' : 'Invite'}
+            {copied ? t('membersPage.copied') : t('membersPage.invite')}
           </button>
         )}
         {!isGuest && !topic.isMember && (
@@ -787,16 +784,19 @@ export default function TopicPage() {
               background: 'var(--accent)',
               color: '#fff',
               border: 'none',
-              borderRadius: 7,
+              borderRadius: 'var(--radius-control)',
               padding: '7px 16px',
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               fontWeight: 600,
               whiteSpace: 'nowrap',
               textDecoration: 'none',
               flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              minHeight: 'var(--touch-target-min)',
             }}
           >
-            Join
+            {t('explorePage.join')}
           </Link>
         )}
       </div>
@@ -807,7 +807,7 @@ export default function TopicPage() {
         <div ref={tagSearchRef} style={{ position: 'relative', marginBottom: 10 }}>
           <input
             type="text"
-            placeholder="Search tags..."
+            placeholder={t('topicPage.searchTagsPlaceholder')}
             value={tagSearch}
             onChange={(e) => handleTagSearchChange(e.target.value)}
             onFocus={() => { if (tagSuggestions.length > 0) setShowTagSuggestions(true); }}
@@ -815,10 +815,10 @@ export default function TopicPage() {
               width: '100%',
               background: 'var(--surface, #0c0e18)',
               border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-control)',
               padding: '8px 14px',
               color: '#e5e7eb',
-              fontSize: 14,
+              fontSize: 'var(--text-body-sm)',
               outline: 'none',
               boxSizing: 'border-box',
               transition: 'border-color 0.12s',
@@ -833,7 +833,7 @@ export default function TopicPage() {
               marginTop: 4,
               background: 'var(--surface, #0c0e18)',
               border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-control)',
               overflow: 'hidden',
               zIndex: 20,
               boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
@@ -851,7 +851,7 @@ export default function TopicPage() {
                     border: 'none',
                     padding: '8px 14px',
                     color: '#e5e7eb',
-                    fontSize: 14,
+                    fontSize: 'var(--text-body-sm)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'background 0.1s',
@@ -860,7 +860,7 @@ export default function TopicPage() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
                 >
                   <span>#{tag.name}</span>
-                  <span style={{ fontSize: 13, color: '#6b7280', fontFamily: 'monospace' }}>{tag.postCount}</span>
+                  <span style={{ fontSize: 'var(--text-caption)', color: '#6b7280', fontFamily: 'monospace' }}>{tag.postCount}</span>
                 </button>
               ))}
             </div>
@@ -881,15 +881,15 @@ export default function TopicPage() {
                 background: activeTag === null ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
                 color: activeTag === null ? '#fff' : '#9ca3af',
                 border: activeTag === null ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 9999,
+                borderRadius: 'var(--radius-pill)',
                 padding: '4px 12px',
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 fontWeight: activeTag === null ? 600 : 400,
                 cursor: 'pointer',
                 transition: 'all 0.12s',
               }}
             >
-              All
+              {t('topicPage.allTags')}
             </button>
             {popularTags.slice(0, 8).map((tag) => (
               <button
@@ -901,9 +901,9 @@ export default function TopicPage() {
                   border: activeTag === tag.slug
                     ? '1px solid rgba(59,130,246,0.3)'
                     : '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 9999,
+                  borderRadius: 'var(--radius-pill)',
                   padding: '4px 12px',
-                  fontSize: 13,
+                  fontSize: 'var(--text-caption)',
                   fontWeight: activeTag === tag.slug ? 600 : 400,
                   cursor: 'pointer',
                   transition: 'all 0.12s',
@@ -930,7 +930,7 @@ export default function TopicPage() {
         padding: '8px 10px',
         background: 'rgba(59,130,246,0.03)',
         border: '1px solid rgba(59,130,246,0.08)',
-        borderRadius: 10,
+        borderRadius: 'var(--radius-card)',
       }}>
         <button
           onClick={() => handleSortChange('new')}
@@ -938,9 +938,9 @@ export default function TopicPage() {
             background: sortBy === 'new' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
             color: sortBy === 'new' ? '#fff' : '#9ca3af',
             border: sortBy === 'new' ? 'none' : '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 9999,
+            borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             display: 'inline-flex',
             alignItems: 'center',
             fontWeight: sortBy === 'new' ? 600 : 400,
@@ -949,7 +949,7 @@ export default function TopicPage() {
           }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          New
+          {t('topicPage.sort.new')}
         </button>
         <button
           onClick={() => handleSortChange('popular')}
@@ -957,9 +957,9 @@ export default function TopicPage() {
             background: sortBy === 'popular' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
             color: sortBy === 'popular' ? '#fff' : '#9ca3af',
             border: sortBy === 'popular' ? 'none' : '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 9999,
+            borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             display: 'inline-flex',
             alignItems: 'center',
             fontWeight: sortBy === 'popular' ? 600 : 400,
@@ -968,7 +968,7 @@ export default function TopicPage() {
           }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
-          Popular
+          {t('topicPage.sort.popular')}
         </button>
         <button
           onClick={() => handleSortChange('recorded')}
@@ -976,9 +976,9 @@ export default function TopicPage() {
             background: sortBy === 'recorded' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
             color: sortBy === 'recorded' ? '#fff' : '#9ca3af',
             border: sortBy === 'recorded' ? 'none' : '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 9999,
+            borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             display: 'inline-flex',
             alignItems: 'center',
             fontWeight: sortBy === 'recorded' ? 600 : 400,
@@ -987,7 +987,7 @@ export default function TopicPage() {
           }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M20 6L9 17l-5-5"/></svg>
-          Recorded
+          {t('topicPage.sort.recorded')}
         </button>
         <button
           onClick={() => handleSortChange('pinned')}
@@ -995,9 +995,9 @@ export default function TopicPage() {
             background: sortBy === 'pinned' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
             color: sortBy === 'pinned' ? '#fff' : '#9ca3af',
             border: sortBy === 'pinned' ? 'none' : '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 9999,
+            borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             display: 'inline-flex',
             alignItems: 'center',
             fontWeight: sortBy === 'pinned' ? 600 : 400,
@@ -1006,13 +1006,13 @@ export default function TopicPage() {
           }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M12 17v5"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
-          Pinned
+          {t('topicPage.sort.pinned')}
         </button>
         {/* Manual refresh — resets to page 0 and re-fetches with no-store */}
         <button
           onClick={() => { setOffset(0); loadPosts(0, true, activeTag, sortBy); }}
           disabled={postsLoading}
-          title="Refresh posts"
+          title={t('topicPage.refreshPosts')}
           style={{
             marginLeft: 'auto',
             display: 'flex',
@@ -1045,7 +1045,7 @@ export default function TopicPage() {
           <div style={{
             background: 'var(--surface, #0c0e18)',
             border: '1px solid rgba(59,130,246,0.3)',
-            borderRadius: 12,
+            borderRadius: 'var(--radius-card)',
             padding: '20px',
             marginBottom: 8,
           }}>
@@ -1064,18 +1064,18 @@ export default function TopicPage() {
                 gap: 12,
                 flexWrap: 'wrap',
               }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, letterSpacing: '-0.02em', color: '#e5e7eb' }}>
-                  New Post
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 700, margin: 0, letterSpacing: '-0.02em', color: '#e5e7eb' }}>
+                  {t('topicPage.composer.newPost')}
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div
                     role="tablist"
-                    aria-label="Composer mode"
+                    aria-label={t('topicPage.composer.modeAriaLabel')}
                     style={{
                       display: 'inline-flex',
                       background: 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 7,
+                      borderRadius: 'var(--radius-control)',
                       padding: 2,
                       gap: 2,
                     }}
@@ -1091,7 +1091,7 @@ export default function TopicPage() {
                         border: 'none',
                         borderRadius: 5,
                         padding: '5px 12px',
-                        fontSize: 12,
+                        fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
                         fontFamily: 'monospace',
@@ -1099,7 +1099,7 @@ export default function TopicPage() {
                         transition: 'all 0.12s',
                       }}
                     >
-                      Write
+                      {t('topicPage.composer.write')}
                     </button>
                     <button
                       type="button"
@@ -1112,7 +1112,7 @@ export default function TopicPage() {
                         border: 'none',
                         borderRadius: 5,
                         padding: '5px 12px',
-                        fontSize: 12,
+                        fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
                         fontFamily: 'monospace',
@@ -1120,14 +1120,14 @@ export default function TopicPage() {
                         transition: 'all 0.12s',
                       }}
                     >
-                      Preview
+                      {t('topicPage.composer.preview')}
                     </button>
                   </div>
                   <button
                     type="button"
                     onClick={handleComposerReset}
                     disabled={!hasComposerContent()}
-                    title="Reset / 초기화"
+                    title={t('topicPage.composer.reset')}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1135,9 +1135,9 @@ export default function TopicPage() {
                       background: 'transparent',
                       color: hasComposerContent() ? '#9ca3af' : '#4b5563',
                       border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 7,
+                      borderRadius: 'var(--radius-control)',
                       padding: '5px 10px',
-                      fontSize: 12,
+                      fontSize: 'var(--text-caption)',
                       fontWeight: 600,
                       cursor: hasComposerContent() ? 'pointer' : 'not-allowed',
                       fontFamily: 'monospace',
@@ -1149,7 +1149,7 @@ export default function TopicPage() {
                       <polyline points="1 4 1 10 7 10" />
                       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                     </svg>
-                    Reset
+                    {t('topicPage.composer.reset')}
                   </button>
                 </div>
               </div>
@@ -1160,23 +1160,25 @@ export default function TopicPage() {
                     type="text"
                     value={postTitle}
                     onChange={(e) => setPostTitle(e.target.value)}
-                    placeholder="Post title"
+                    placeholder={t('topicPage.composer.postTitlePlaceholder')}
                     autoFocus
                     style={{
                       width: '100%',
                       background: 'var(--surface, #0c0e18)',
                       border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 7,
+                      borderRadius: 'var(--radius-control)',
                       padding: '10px 14px',
                       color: '#e5e7eb',
-                      fontSize: 14,
+                      // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
+                      fontSize: 'var(--text-body)',
                       fontWeight: 600,
                       outline: 'none',
                       boxSizing: 'border-box',
+                      minHeight: 'var(--touch-target-min)',
                     }}
                   />
                   <SNSEditor
-                    placeholder="Write your post..."
+                    placeholder={t('topicPage.composer.writePostPlaceholder')}
                     onChange={(state) => {
                       setPostContent(state.content);
                       setPostImages(state.images);
@@ -1211,9 +1213,9 @@ export default function TopicPage() {
                         background: postPoll ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
                         color: postPoll ? 'var(--accent)' : '#9ca3af',
                         border: postPoll ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 7,
+                        borderRadius: 'var(--radius-control)',
                         padding: '6px 12px',
-                        fontSize: 12,
+                        fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
                         fontFamily: 'monospace',
@@ -1225,7 +1227,7 @@ export default function TopicPage() {
                         <rect x="2" y="6.75" width="9" height="2.5" rx="0.5" />
                         <rect x="2" y="10.5" width="6" height="2.5" rx="0.5" />
                       </svg>
-                      {postPoll ? 'Remove poll' : 'Add poll'}
+                      {postPoll ? t('pollEditor.removePoll') : t('topicPage.composer.addPoll')}
                     </button>
                   </div>
                   {postPoll && (
@@ -1245,7 +1247,7 @@ export default function TopicPage() {
                 <div
                   style={{
                     border: '1px solid var(--border)',
-                    borderRadius: 10,
+                    borderRadius: 'var(--radius-card)',
                     padding: '18px 20px',
                     background: '#0a0a0a',
                     display: 'flex',
@@ -1255,7 +1257,7 @@ export default function TopicPage() {
                 >
                   {postTitle.trim() ? (
                     <h2 style={{
-                      fontSize: 22,
+                      fontSize: 'var(--text-heading-sm)',
                       fontWeight: 800,
                       letterSpacing: '-0.03em',
                       margin: 0,
@@ -1265,8 +1267,8 @@ export default function TopicPage() {
                       {postTitle}
                     </h2>
                   ) : (
-                    <p style={{ fontSize: 13, color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
-                      Title is empty — add one before posting.
+                    <p style={{ fontSize: 'var(--text-caption)', color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
+                      {t('topicPage.composer.titleEmpty')}
                     </p>
                   )}
                   {postTags.length > 0 && (
@@ -1280,7 +1282,7 @@ export default function TopicPage() {
                             border: '1px solid rgba(59,130,246,0.15)',
                             borderRadius: 4,
                             padding: '2px 8px',
-                            fontSize: 12,
+                            fontSize: 'var(--text-caption)',
                             fontFamily: 'monospace',
                             lineHeight: 1.6,
                           }}
@@ -1307,8 +1309,8 @@ export default function TopicPage() {
                       <MediaGallery images={postImages} videos={postVideos} mode="detail" />
                     </>
                   ) : (
-                    <p style={{ fontSize: 13, color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
-                      Body is empty.
+                    <p style={{ fontSize: 'var(--text-caption)', color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
+                      {t('topicPage.composer.bodyEmpty')}
                     </p>
                   )}
                   {postPoll && postPoll.options.filter((o) => o.trim()).length >= 2 && (
@@ -1340,7 +1342,7 @@ export default function TopicPage() {
               )}
 
               {postError && (
-                <p style={{ fontSize: 14, color: '#ef4444', margin: '12px 0 0', fontFamily: 'monospace' }}>
+                <p style={{ fontSize: 'var(--text-body-sm)', color: '#ef4444', margin: '12px 0 0', fontFamily: 'monospace' }}>
                   {postError}
                 </p>
               )}
@@ -1361,13 +1363,14 @@ export default function TopicPage() {
                     background: 'rgba(255,255,255,0.06)',
                     color: '#6b7280',
                     border: 'none',
-                    borderRadius: 6,
+                    borderRadius: 'var(--radius-control)',
                     padding: '8px 16px',
-                    fontSize: 14,
+                    fontSize: 'var(--text-body-sm)',
                     cursor: 'pointer',
+                    minHeight: 'var(--touch-target-min)',
                   }}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -1376,15 +1379,16 @@ export default function TopicPage() {
                     background: 'var(--accent)',
                     color: '#fff',
                     border: 'none',
-                    borderRadius: 6,
+                    borderRadius: 'var(--radius-control)',
                     padding: '8px 20px',
-                    fontSize: 14,
+                    fontSize: 'var(--text-body-sm)',
                     fontWeight: 600,
                     cursor: 'pointer',
                     opacity: (!postTitle.trim() || isComposerEmpty() || submitting) ? 0.5 : 1,
+                    minHeight: 'var(--touch-target-min)',
                   }}
                 >
-                  {submitting ? 'Posting...' : 'Post'}
+                  {submitting ? t('topicPage.composer.posting') : t('topicPage.composer.post')}
                 </button>
               </div>
             </form>
@@ -1394,7 +1398,7 @@ export default function TopicPage() {
         {/* Feed border container */}
         <div style={{
           border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 14,
+          borderRadius: 'var(--radius-modal)',
           overflow: 'hidden',
         }}>
           {posts.length === 0 && !postsLoading ? (
@@ -1402,8 +1406,8 @@ export default function TopicPage() {
               textAlign: 'center',
               padding: '60px 20px',
             }}>
-              <p style={{ fontSize: 15, color: '#6b7280' }}>
-                {isGuest ? 'No posts yet.' : 'No posts yet. Be the first to write!'}
+              <p style={{ fontSize: 'var(--text-body)', color: '#6b7280' }}>
+                {isGuest ? t('topicPage.empty.guest') : t('topicPage.empty.member')}
               </p>
             </div>
           ) : (
@@ -1467,7 +1471,7 @@ export default function TopicPage() {
             e.currentTarget.style.transform = 'scale(1)';
             e.currentTarget.style.boxShadow = '0 4px 24px rgba(59,130,246,0.3)';
           }}
-          title="Write Post"
+          title={t('topicPage.composer.writePost')}
         >
           <PlusIcon />
         </button>

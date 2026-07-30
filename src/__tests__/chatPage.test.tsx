@@ -61,6 +61,7 @@ vi.mock('@/components/TopicMuteToggle', () => ({
 }));
 
 import TopicChatPage from '@/app/chat/[topicId]/page';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -82,9 +83,17 @@ function routeFetch(routes: Array<[string, (init?: RequestInit) => Response]>) {
   );
 }
 
+// `BareChatShell` (rendered for real by this bare page) now reads copy
+// through `useTranslation()` — see src/lib/i18n/I18nProvider.tsx. Every
+// render needs the provider in the tree, same as the app root
+// (src/app/layout.tsx).
 async function render() {
   await act(async () => {
-    root.render(React.createElement(TopicChatPage));
+    root.render(
+      <I18nProvider initialLocale="en">
+        <TopicChatPage />
+      </I18nProvider>,
+    );
   });
   await act(async () => { await Promise.resolve(); });
 }

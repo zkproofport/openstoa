@@ -9,6 +9,7 @@ import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import UserCard from '@/components/UserCard';
 import { useChatRail } from '@/lib/chatRailContext';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface Member {
   userId: string;
@@ -59,6 +60,7 @@ function TopicAvatar({ title, size = 40 }: { title: string; size?: number }) {
 export default function MembersPage() {
   const params = useParams();
   const router = useRouter();
+  const { t, locale } = useTranslation();
   const topicId = params.topicId as string;
 
   const [topic, setTopic] = useState<Topic | null>(null);
@@ -113,25 +115,25 @@ export default function MembersPage() {
       const res = await fetch(`/api/topics/${topicId}`);
       if (res.status === 401) { router.replace('/'); return; }
       if (res.status === 403) { router.replace(`/topics/${topicId}/join`); return; }
-      if (!res.ok) throw new Error('Topic not found');
+      if (!res.ok) throw new Error(t('membersPage.topicNotFound'));
       const data = await res.json();
       setTopic(data.topic);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load topic');
+      setError(err instanceof Error ? err.message : t('membersPage.loadTopicFailed'));
     }
   }
 
   async function loadMembers() {
     try {
       const res = await fetch(`/api/topics/${topicId}/members`);
-      if (!res.ok) throw new Error('Failed to load members');
+      if (!res.ok) throw new Error(t('membersPage.loadMembersFailed'));
       const data = await res.json();
       setMembers(data.members ?? []);
       if (data.currentUserRole) {
         setCurrentUserRole(data.currentUserRole);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load members');
+      setError(err instanceof Error ? err.message : t('membersPage.loadMembersFailed'));
     } finally {
       setLoading(false);
     }
@@ -157,11 +159,11 @@ export default function MembersPage() {
     setRequestsLoading(true);
     try {
       const res = await fetch(`/api/topics/${topicId}/requests`);
-      if (!res.ok) throw new Error('Failed to load requests');
+      if (!res.ok) throw new Error(t('membersPage.loadRequestsFailed'));
       const data = await res.json();
       setRequests(data.requests ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load requests');
+      setError(err instanceof Error ? err.message : t('membersPage.loadRequestsFailed'));
     } finally {
       setRequestsLoading(false);
     }
@@ -177,14 +179,14 @@ export default function MembersPage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to process request');
+        throw new Error(d.error ?? t('membersPage.processRequestFailed'));
       }
       await loadRequests();
       if (action === 'approve') {
         await loadMembers();
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
     } finally {
       setRequestActionLoading(null);
     }
@@ -215,8 +217,8 @@ export default function MembersPage() {
         body: JSON.stringify({ userId }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error ?? 'Failed to open conversation');
-      if (!d.topicId) throw new Error('Failed to open conversation');
+      if (!res.ok) throw new Error(d.error ?? t('membersPage.openConversationFailed'));
+      if (!d.topicId) throw new Error(t('membersPage.openConversationFailed'));
       if (chatRail) {
         chatRail.openRail({ kind: 'dm', topicId: d.topicId, title: nickname, profileImage: profileImage ?? null });
       } else {
@@ -226,7 +228,7 @@ export default function MembersPage() {
         router.push(`/dm/${d.topicId}`);
       }
     } catch (err) {
-      setDmError(err instanceof Error ? err.message : 'Failed to open conversation');
+      setDmError(err instanceof Error ? err.message : t('membersPage.openConversationFailed'));
     } finally {
       dmInFlightRef.current = false;
       setDmLoading(null);
@@ -243,11 +245,11 @@ export default function MembersPage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to update role');
+        throw new Error(d.error ?? t('membersPage.updateRoleFailed'));
       }
       await loadMembers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
     } finally {
       setActionLoading(null);
     }
@@ -268,11 +270,11 @@ export default function MembersPage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to kick member');
+        throw new Error(d.error ?? t('membersPage.kickFailed'));
       }
       await loadMembers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
     } finally {
       setActionLoading(null);
     }
@@ -293,11 +295,11 @@ export default function MembersPage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to transfer ownership');
+        throw new Error(d.error ?? t('membersPage.transferFailed'));
       }
       await loadMembers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
     } finally {
       setTransferLoading(false);
     }
@@ -320,11 +322,11 @@ export default function MembersPage() {
     return (
       <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 14 }}>
-            {error ?? 'Topic not found'}
+          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)' }}>
+            {error ?? t('membersPage.topicNotFound')}
           </p>
-          <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 14 }}>
-            Back to topics
+          <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+            {t('membersPage.backToTopics')}
           </Link>
         </div>
       </CommunityLayout>
@@ -333,14 +335,15 @@ export default function MembersPage() {
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
-      <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: 560, margin: '0 auto', padding: '36px 1.5rem 80px' }}>
+      {/* 1.5rem = space-5; 36px/80px vertical rhythm has no exact scale match, kept literal. */}
+      <div style={{ paddingTop: 36, paddingBottom: 80, maxWidth: 560, margin: '0 auto', padding: '36px var(--space-5) 80px' }}>
         {/* Topic info card */}
         <div style={{
-          padding: '16px 20px',
+          padding: '16px var(--space-5)',
           background: 'var(--surface, #0c0e18)',
           border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 12,
-          marginBottom: 24,
+          borderRadius: 'var(--radius-card)',
+          marginBottom: 'var(--space-5)',
           display: 'flex',
           alignItems: 'center',
           gap: 14,
@@ -348,7 +351,7 @@ export default function MembersPage() {
           <TopicAvatar title={topic.title} size={44} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{
-              fontSize: 22,
+              fontSize: 'var(--text-heading-sm)',
               fontWeight: 800,
               letterSpacing: '-0.03em',
               margin: 0,
@@ -356,8 +359,8 @@ export default function MembersPage() {
             }}>
               {topic.title}
             </h1>
-            <p style={{ fontSize: 14, color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
-              {members.length} member{members.length !== 1 ? 's' : ''}
+            <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
+              {members.length} {members.length === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
             </p>
           </div>
           {/* Invite button */}
@@ -372,17 +375,18 @@ export default function MembersPage() {
               background: inviteCopied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
               color: inviteCopied ? '#22c55e' : '#6b7280',
               border: `1px solid ${inviteCopied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-              borderRadius: 7,
+              borderRadius: 'var(--radius-control)',
               padding: '8px 14px',
-              fontSize: 15,
+              fontSize: 'var(--text-body-sm)',
               cursor: 'pointer',
               fontWeight: 500,
               whiteSpace: 'nowrap',
               transition: 'all 0.15s',
               flexShrink: 0,
+              minHeight: 'var(--touch-target-min)',
             }}
           >
-            {inviteCopied ? 'Copied!' : 'Invite'}
+            {inviteCopied ? t('membersPage.copied') : t('membersPage.invite')}
           </button>
         </div>
 
@@ -394,22 +398,22 @@ export default function MembersPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: 12,
+              gap: 'var(--space-3)',
               padding: '10px 14px',
-              marginBottom: 16,
+              marginBottom: 'var(--space-4)',
               background: 'rgba(239,68,68,0.08)',
               border: '1px solid rgba(239,68,68,0.2)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-control)',
               color: '#ef4444',
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
             }}
           >
             <span>{dmError}</span>
             <button
               type="button"
               onClick={() => setDmError(null)}
-              aria-label="Dismiss"
-              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}
+              aria-label={t('membersPage.dismiss')}
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 'var(--text-body)', lineHeight: 1, padding: 0 }}
             >
               ×
             </button>
@@ -426,24 +430,25 @@ export default function MembersPage() {
               marginBottom: 20,
             }}
           >
-            {(['members', 'requests'] as const).map((t) => (
+            {(['members', 'requests'] as const).map((tabId) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
+                key={tabId}
+                onClick={() => setTab(tabId)}
                 style={{
                   background: 'none',
                   border: 'none',
-                  borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
-                  color: tab === t ? 'var(--accent)' : 'var(--muted)',
+                  borderBottom: tab === tabId ? '2px solid var(--accent)' : '2px solid transparent',
+                  color: tab === tabId ? 'var(--accent)' : 'var(--muted)',
                   cursor: 'pointer',
-                  fontSize: 14,
-                  fontWeight: tab === t ? 600 : 400,
-                  padding: '8px 16px',
+                  fontSize: 'var(--text-body-sm)',
+                  fontWeight: tab === tabId ? 600 : 400,
+                  padding: '8px var(--space-4)',
                   marginBottom: -1,
                   transition: 'color 0.15s',
+                  minHeight: 'var(--touch-target-min)',
                 }}
               >
-                {t === 'members' ? 'Members' : `Requests${requests.length > 0 ? ` (${requests.length})` : ''}`}
+                {tabId === 'members' ? t('membersPage.tabs.members') : `${t('membersPage.tabs.requests')}${requests.length > 0 ? ` (${requests.length})` : ''}`}
               </button>
             ))}
           </div>
@@ -458,8 +463,8 @@ export default function MembersPage() {
               </div>
             )}
             {!requestsLoading && requests.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--muted)', fontSize: 14 }}>
-                No pending join requests
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--muted)', fontSize: 'var(--text-body-sm)' }}>
+                {t('membersPage.noPendingRequests')}
               </div>
             )}
             {!requestsLoading && requests.map((req) => (
@@ -468,20 +473,20 @@ export default function MembersPage() {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 12,
-                  padding: '12px 16px',
+                  gap: 'var(--space-3)',
+                  padding: 'var(--space-3) var(--space-4)',
                   background: 'var(--surface, #0c0e18)',
                   border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: 10,
+                  borderRadius: 'var(--radius-card)',
                 }}
               >
                 <Avatar src={req.profileImage} name={req.nickname} size={40} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }}>
+                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#e5e7eb' }}>
                     {req.nickname}
                   </span>
-                  <p style={{ fontSize: 15, color: '#6b7280', margin: '2px 0 0', fontFamily: 'monospace' }}>
-                    {new Date(req.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  <p style={{ fontSize: 'var(--text-caption)', color: '#6b7280', margin: '2px 0 0', fontFamily: 'monospace' }}>
+                    {new Date(req.createdAt).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -489,37 +494,39 @@ export default function MembersPage() {
                     onClick={() => handleRequestAction(req.id, 'approve')}
                     disabled={requestActionLoading === req.id}
                     style={{
-                      fontSize: 14,
+                      fontSize: 'var(--text-body-sm)',
                       fontWeight: 600,
                       background: 'rgba(34,197,94,0.12)',
                       color: '#22c55e',
                       border: '1px solid rgba(34,197,94,0.25)',
-                      borderRadius: 6,
+                      borderRadius: 'var(--radius-control)',
                       padding: '5px 14px',
                       cursor: requestActionLoading === req.id ? 'not-allowed' : 'pointer',
                       opacity: requestActionLoading === req.id ? 0.5 : 1,
                       transition: 'opacity 0.12s',
+                      minHeight: 'var(--touch-target-min)',
                     }}
                   >
-                    Approve
+                    {t('membersPage.approve')}
                   </button>
                   <button
                     onClick={() => handleRequestAction(req.id, 'reject')}
                     disabled={requestActionLoading === req.id}
                     style={{
-                      fontSize: 14,
+                      fontSize: 'var(--text-body-sm)',
                       fontWeight: 600,
                       background: 'rgba(239,68,68,0.1)',
                       color: '#ef4444',
                       border: '1px solid rgba(239,68,68,0.2)',
-                      borderRadius: 6,
+                      borderRadius: 'var(--radius-control)',
                       padding: '5px 14px',
                       cursor: requestActionLoading === req.id ? 'not-allowed' : 'pointer',
                       opacity: requestActionLoading === req.id ? 0.5 : 1,
                       transition: 'opacity 0.12s',
+                      minHeight: 'var(--touch-target-min)',
                     }}
                   >
-                    Reject
+                    {t('membersPage.reject')}
                   </button>
                 </div>
               </div>
@@ -535,11 +542,11 @@ export default function MembersPage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 12,
-                padding: '12px 16px',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-3) var(--space-4)',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 10,
+                borderRadius: 'var(--radius-card)',
                 transition: 'background 0.12s',
               }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; }}
@@ -557,7 +564,7 @@ export default function MembersPage() {
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: '#e5e7eb' }}>
+                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#e5e7eb' }}>
                     {member.nickname}
                   </span>
                   {member.badges && member.badges.length > 0 && member.badges.map((b, i) => (
@@ -574,52 +581,53 @@ export default function MembersPage() {
                 <button
                   onClick={() => handleStartDm(member.userId, member.nickname, member.profileImage)}
                   disabled={dmLoading !== null}
-                  aria-label={`DM ${member.nickname}`}
+                  aria-label={t('membersPage.dmAriaLabel', { nickname: member.nickname })}
                   style={{
-                    fontSize: 15,
+                    fontSize: 'var(--text-body-sm)',
                     fontWeight: 500,
                     background: 'rgba(120,140,255,0.1)',
                     color: 'var(--accent)',
                     border: '1px solid rgba(120,140,255,0.2)',
-                    borderRadius: 6,
+                    borderRadius: 'var(--radius-control)',
                     padding: '4px 10px',
                     cursor: dmLoading !== null ? 'not-allowed' : 'pointer',
                     opacity: dmLoading !== null ? 0.5 : 1,
                     transition: 'opacity 0.12s',
                     flexShrink: 0,
+                    minHeight: 'var(--touch-target-min)',
                   }}
                 >
-                  {dmLoading === member.userId ? '...' : 'DM'}
+                  {dmLoading === member.userId ? '...' : t('membersPage.dm')}
                 </button>
               )}
 
               {/* Role badge */}
               {member.role === 'owner' && (
                 <span style={{
-                  fontSize: 15,
+                  fontSize: 'var(--text-body-sm)',
                   fontWeight: 600,
                   background: 'rgba(234,179,8,0.15)',
                   color: '#eab308',
                   border: '1px solid rgba(234,179,8,0.3)',
                   padding: '2px 8px',
-                  borderRadius: 9999,
+                  borderRadius: 'var(--radius-pill)',
                   flexShrink: 0,
                 }}>
-                  Owner
+                  {t('membersPage.roleOwner')}
                 </span>
               )}
               {member.role === 'admin' && (
                 <span style={{
-                  fontSize: 15,
+                  fontSize: 'var(--text-body-sm)',
                   fontWeight: 600,
                   background: 'rgba(59,130,246,0.15)',
                   color: 'var(--accent)',
                   border: '1px solid rgba(59,130,246,0.3)',
                   padding: '2px 8px',
-                  borderRadius: 9999,
+                  borderRadius: 'var(--radius-pill)',
                   flexShrink: 0,
                 }}>
-                  Admin
+                  {t('membersPage.roleAdmin')}
                 </span>
               )}
 
@@ -630,19 +638,20 @@ export default function MembersPage() {
                     onClick={() => handleKick(member.userId)}
                     disabled={actionLoading === member.userId}
                     style={{
-                      fontSize: 15,
+                      fontSize: 'var(--text-body-sm)',
                       fontWeight: 500,
                       background: confirmKick === member.userId ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
                       color: '#ef4444',
                       border: `1px solid ${confirmKick === member.userId ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.15)'}`,
-                      borderRadius: 6,
+                      borderRadius: 'var(--radius-control)',
                       padding: '4px 10px',
                       cursor: 'pointer',
                       opacity: actionLoading === member.userId ? 0.5 : 1,
                       transition: 'all 0.12s',
+                      minHeight: 'var(--touch-target-min)',
                     }}
                   >
-                    {confirmKick === member.userId ? 'Confirm?' : 'Kick'}
+                    {confirmKick === member.userId ? t('membersPage.confirmQuestion') : t('membersPage.kick')}
                   </button>
                 </div>
               )}
@@ -655,75 +664,79 @@ export default function MembersPage() {
                       onClick={() => handleRoleChange(member.userId, 'admin')}
                       disabled={actionLoading === member.userId}
                       style={{
-                        fontSize: 15,
+                        fontSize: 'var(--text-body-sm)',
                         fontWeight: 500,
                         background: 'rgba(59,130,246,0.1)',
                         color: 'var(--accent)',
                         border: '1px solid rgba(59,130,246,0.2)',
-                        borderRadius: 6,
+                        borderRadius: 'var(--radius-control)',
                         padding: '4px 10px',
                         cursor: 'pointer',
                         opacity: actionLoading === member.userId ? 0.5 : 1,
                         transition: 'opacity 0.12s',
+                        minHeight: 'var(--touch-target-min)',
                       }}
                     >
-                      Make Admin
+                      {t('membersPage.makeAdmin')}
                     </button>
                   ) : (
                     <button
                       onClick={() => handleRoleChange(member.userId, 'member')}
                       disabled={actionLoading === member.userId}
                       style={{
-                        fontSize: 15,
+                        fontSize: 'var(--text-body-sm)',
                         fontWeight: 500,
                         background: 'rgba(255,255,255,0.05)',
                         color: '#9ca3af',
                         border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 6,
+                        borderRadius: 'var(--radius-control)',
                         padding: '4px 10px',
                         cursor: 'pointer',
                         opacity: actionLoading === member.userId ? 0.5 : 1,
                         transition: 'opacity 0.12s',
+                        minHeight: 'var(--touch-target-min)',
                       }}
                     >
-                      Remove Admin
+                      {t('membersPage.removeAdmin')}
                     </button>
                   )}
                   <button
                     onClick={() => handleTransferOwnership(member.userId)}
                     disabled={transferLoading}
                     style={{
-                      fontSize: 15,
+                      fontSize: 'var(--text-body-sm)',
                       fontWeight: 500,
                       background: confirmTransfer === member.userId ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.08)',
                       color: '#eab308',
                       border: `1px solid ${confirmTransfer === member.userId ? 'rgba(234,179,8,0.4)' : 'rgba(234,179,8,0.15)'}`,
-                      borderRadius: 6,
+                      borderRadius: 'var(--radius-control)',
                       padding: '4px 10px',
                       cursor: 'pointer',
                       opacity: transferLoading ? 0.5 : 1,
                       transition: 'all 0.12s',
+                      minHeight: 'var(--touch-target-min)',
                     }}
                   >
-                    {confirmTransfer === member.userId ? 'Confirm?' : 'Transfer'}
+                    {confirmTransfer === member.userId ? t('membersPage.confirmQuestion') : t('membersPage.transfer')}
                   </button>
                   <button
                     onClick={() => handleKick(member.userId)}
                     disabled={actionLoading === member.userId}
                     style={{
-                      fontSize: 15,
+                      fontSize: 'var(--text-body-sm)',
                       fontWeight: 500,
                       background: confirmKick === member.userId ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
                       color: '#ef4444',
                       border: `1px solid ${confirmKick === member.userId ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.15)'}`,
-                      borderRadius: 6,
+                      borderRadius: 'var(--radius-control)',
                       padding: '4px 10px',
                       cursor: 'pointer',
                       opacity: actionLoading === member.userId ? 0.5 : 1,
                       transition: 'all 0.12s',
+                      minHeight: 'var(--touch-target-min)',
                     }}
                   >
-                    {confirmKick === member.userId ? 'Confirm?' : 'Kick'}
+                    {confirmKick === member.userId ? t('membersPage.confirmQuestion') : t('membersPage.kick')}
                   </button>
                 </div>
               )}

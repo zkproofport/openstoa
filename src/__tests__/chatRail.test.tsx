@@ -78,6 +78,7 @@ vi.mock('@/components/TopicMuteToggle', () => ({
 
 import ChatRail from '@/components/ChatRail';
 import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -108,9 +109,13 @@ async function flush(times = 6) {
 
 type OpenRequest = { room: { kind: 'topic' | 'dm'; topicId: string; title: string } | null; nonce: number } | null;
 
+// `ChatRail` (and the `UserCard`/`TopicMuteToggle` it renders internally)
+// now read copy through `useTranslation()` — see src/lib/i18n/I18nProvider.tsx.
+// Every render needs the provider in the tree, same as the app root
+// (src/app/layout.tsx).
 async function mount(onClose: () => void = () => {}, openRequest: OpenRequest = null) {
   await act(async () => {
-    root.render(<ChatRail onClose={onClose} openRequest={openRequest} />);
+    root.render(<I18nProvider initialLocale="en"><ChatRail onClose={onClose} openRequest={openRequest} /></I18nProvider>);
   });
   await flush();
 }
@@ -120,7 +125,7 @@ async function mount(onClose: () => void = () => {}, openRequest: OpenRequest = 
  *  than the lazy-`useState` mount-time path. */
 async function rerenderWithRequest(openRequest: OpenRequest, onClose: () => void = () => {}) {
   await act(async () => {
-    root.render(<ChatRail onClose={onClose} openRequest={openRequest} />);
+    root.render(<I18nProvider initialLocale="en"><ChatRail onClose={onClose} openRequest={openRequest} /></I18nProvider>);
   });
   await flush();
 }

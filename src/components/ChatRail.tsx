@@ -48,6 +48,7 @@ import { relativeTime } from '@/lib/utils';
 import type { DmChannel } from '@/lib/dm';
 import { newTabHref, isSameRoomAsPath, type RailRoom } from '@/lib/chatRail';
 import { getDmCandidates, type DmCandidate } from '@/lib/dmCandidatesCache';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface RailTopic {
   id: string;
@@ -103,7 +104,7 @@ const rowStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 10,
   width: '100%',
-  padding: '10px 14px',
+  padding: '10px var(--space-4)',
   background: 'transparent',
   border: 'none',
   borderBottom: '1px solid var(--border)',
@@ -111,12 +112,13 @@ const rowStyle: React.CSSProperties = {
   textAlign: 'left',
   color: 'inherit',
   font: 'inherit',
+  minHeight: 'var(--touch-target-min)',
 };
 
 const emptyStateStyle: React.CSSProperties = {
-  padding: '32px 20px',
+  padding: '32px var(--space-5)',
   textAlign: 'center',
-  fontSize: 13,
+  fontSize: 'var(--text-caption)',
   color: 'var(--muted)',
   lineHeight: 1.6,
 };
@@ -130,6 +132,7 @@ interface ChatRailProps {
 }
 
 export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
+  const { t } = useTranslation();
   const pathname = usePathname();
   // Focus target for `openRequest` (below) — an external "open this DM/topic"
   // request (a member row's DM action, `UserCard`) should land the reader's
@@ -314,25 +317,27 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
         minHeight: 0,
         background: 'var(--surface)',
         border: '1px solid var(--border)',
-        borderRadius: 12,
+        borderRadius: 'var(--radius-card)',
         overflow: 'hidden',
         outline: 'none',
       }}
     >
-      {/* ── Header ── */}
+      {/* ── Header — a fixed-height chrome row (icon buttons kept at their
+          existing scale, not bumped to --touch-target-min, so this row does
+          not grow taller than the rest of the app's compact header bars). ── */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '10px 12px',
+          padding: '10px var(--space-3)',
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}
       >
         {room ? (
           <>
-            <button type="button" onClick={backToList} aria-label="Back to chat list" style={iconBtnStyle}>
+            <button type="button" onClick={backToList} aria-label={t('chatRail.backAriaLabel')} style={iconBtnStyle}>
               {BackIcon}
             </button>
             <Avatar src={room.profileImage} name={room.title} size={26} />
@@ -340,7 +345,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
               style={{
                 flex: 1,
                 minWidth: 0,
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 fontWeight: 700,
                 color: 'var(--foreground)',
                 overflow: 'hidden',
@@ -355,9 +360,9 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
               <button
                 type="button"
                 onClick={toggleMembers}
-                aria-label={showMembers ? 'Hide members' : 'Show members'}
+                aria-label={showMembers ? t('chatRail.hideMembers') : t('chatRail.showMembers')}
                 aria-pressed={showMembers}
-                title="Members"
+                title={t('chatRail.members')}
                 style={{ ...iconBtnStyle, color: showMembers ? 'var(--accent)' : iconBtnStyle.color }}
               >
                 {MembersIcon}
@@ -367,23 +372,23 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
               href={newTabHref(room)}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Open in new tab"
+              aria-label={t('chatRail.openInNewTab')}
               style={{ ...iconBtnStyle, textDecoration: 'none' }}
             >
               {NewTabIcon}
             </Link>
-            <button type="button" onClick={onClose} aria-label="Close chat" style={iconBtnStyle}>
+            <button type="button" onClick={onClose} aria-label={t('chat.close')} style={iconBtnStyle}>
               {CloseIcon}
             </button>
           </>
         ) : (
           <>
-            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>
-              Chat
+            <span style={{ fontSize: 'var(--text-caption)', fontWeight: 700, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>
+              {t('chat.title')}
             </span>
             <span style={{ flex: 1 }} />
             {!picking && (
-              <button type="button" onClick={openPicker} aria-label="New conversation" style={iconBtnStyle} title="New conversation">
+              <button type="button" onClick={openPicker} aria-label={t('chatRail.newConversation')} style={iconBtnStyle} title={t('chatRail.newConversation')}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="16" />
@@ -391,7 +396,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
                 </svg>
               </button>
             )}
-            <button type="button" onClick={onClose} aria-label="Close chat" style={iconBtnStyle}>
+            <button type="button" onClick={onClose} aria-label={t('chat.close')} style={iconBtnStyle}>
               {CloseIcon}
             </button>
           </>
@@ -402,9 +407,9 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
       {room ? (
         suppressPanel ? (
           <div style={emptyStateStyle}>
-            <p style={{ margin: '0 0 12px' }}>You&rsquo;re already viewing this conversation in the page behind this panel.</p>
-            <button type="button" onClick={backToList} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13 }}>
-              Back to list
+            <p style={{ margin: '0 0 12px' }}>{t('chatRail.suppressedNotice')}</p>
+            <button type="button" onClick={backToList} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--text-caption)' }}>
+              {t('chatRail.backToList')}
             </button>
           </div>
         ) : (
@@ -445,13 +450,13 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
         />
       ) : (
         <>
-          <div role="tablist" aria-label="Chat lists" style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <TabButton active={tab === 'topics'} onClick={() => setTab('topics')} label="Topics" />
-            <TabButton active={tab === 'dms'} onClick={() => setTab('dms')} label="Direct" />
+          <div role="tablist" aria-label={t('chatRail.tabsAriaLabel')} style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <TabButton active={tab === 'topics'} onClick={() => setTab('topics')} label={t('chatRail.tabs.topics')} />
+            <TabButton active={tab === 'dms'} onClick={() => setTab('dms')} label={t('chatRail.tabs.direct')} />
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {tab === 'topics' ? (
-              <TopicList topics={topics} onOpen={(t) => openRoom({ kind: 'topic', topicId: t.id, title: t.title })} />
+              <TopicList topics={topics} onOpen={(topic) => openRoom({ kind: 'topic', topicId: topic.id, title: topic.title })} />
             ) : (
               <DmList dms={dms} onOpen={(d) => openRoom({ kind: 'dm', topicId: d.topicId, title: d.peer.nickname, profileImage: d.peer.profileImage })} />
             )}
@@ -471,7 +476,7 @@ const iconBtnStyle: React.CSSProperties = {
   color: 'var(--muted)',
   cursor: 'pointer',
   padding: 5,
-  borderRadius: 6,
+  borderRadius: 'var(--radius-control)',
   flexShrink: 0,
 };
 
@@ -489,12 +494,13 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
         borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
         color: active ? 'var(--accent)' : 'var(--muted)',
         fontWeight: active ? 700 : 500,
-        fontSize: 12,
+        fontSize: 'var(--text-label)',
         fontFamily: 'var(--font-mono)',
         textTransform: 'uppercase',
         letterSpacing: '0.04em',
         padding: '9px 0',
         cursor: 'pointer',
+        minHeight: 'var(--touch-target-min)',
       }}
     >
       {label}
@@ -503,6 +509,7 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
 }
 
 function TopicList({ topics, onOpen }: { topics: RailTopic[] | null; onOpen: (t: RailTopic) => void }) {
+  const { t } = useTranslation();
   if (topics === null) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
@@ -513,20 +520,20 @@ function TopicList({ topics, onOpen }: { topics: RailTopic[] | null; onOpen: (t:
   if (topics.length === 0) {
     return (
       <div style={emptyStateStyle}>
-        <p style={{ margin: '0 0 8px' }}>You haven&rsquo;t joined any chat topics yet.</p>
+        <p style={{ margin: '0 0 8px' }}>{t('chatRail.topicsEmptyBody')}</p>
         <Link href="/topics/explore" style={{ color: 'var(--accent)' }}>
-          Explore topics
+          {t('chatRail.exploreTopics')}
         </Link>
       </div>
     );
   }
   return (
     <div>
-      {topics.map((t) => (
-        <button key={t.id} type="button" style={rowStyle} onClick={() => onOpen(t)} data-testid="chat-rail-topic-row">
-          <Avatar name={t.title} size={32} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {t.title}
+      {topics.map((topic) => (
+        <button key={topic.id} type="button" style={rowStyle} onClick={() => onOpen(topic)} data-testid="chat-rail-topic-row">
+          <Avatar name={topic.title} size={32} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--text-caption)', fontWeight: 600, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {topic.title}
           </span>
         </button>
       ))}
@@ -535,6 +542,7 @@ function TopicList({ topics, onOpen }: { topics: RailTopic[] | null; onOpen: (t:
 }
 
 function DmList({ dms, onOpen }: { dms: DmChannel[] | null; onOpen: (d: DmChannel) => void }) {
+  const { t } = useTranslation();
   if (dms === null) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
@@ -545,7 +553,7 @@ function DmList({ dms, onOpen }: { dms: DmChannel[] | null; onOpen: (d: DmChanne
   if (dms.length === 0) {
     return (
       <div style={emptyStateStyle}>
-        <p style={{ margin: 0 }}>No direct messages yet.</p>
+        <p style={{ margin: 0 }}>{t('chatRail.dmsEmpty')}</p>
       </div>
     );
   }
@@ -554,11 +562,11 @@ function DmList({ dms, onOpen }: { dms: DmChannel[] | null; onOpen: (d: DmChanne
       {dms.map((d) => (
         <button key={d.topicId} type="button" style={rowStyle} onClick={() => onOpen(d)} data-testid="chat-rail-dm-row">
           <Avatar src={d.peer.profileImage} name={d.peer.nickname} size={32} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--text-caption)', fontWeight: 600, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {d.peer.nickname}
           </span>
           {d.lastActivityAt && (
-            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--muted)', flexShrink: 0 }}>{relativeTime(d.lastActivityAt)}</span>
+            <span style={{ fontSize: 'var(--text-label)', fontFamily: 'var(--font-mono)', color: 'var(--muted)', flexShrink: 0 }}>{relativeTime(d.lastActivityAt)}</span>
           )}
         </button>
       ))}
@@ -575,8 +583,9 @@ const memberRowStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 10,
   width: '100%',
-  padding: '10px 14px',
+  padding: '10px var(--space-4)',
   borderBottom: '1px solid var(--border)',
+  minHeight: 'var(--touch-target-min)',
 };
 
 /**
@@ -597,6 +606,7 @@ function MembersList({
   onRetry: () => void;
   viewerUserId: string | null;
 }) {
+  const { t } = useTranslation();
   if (members === null && !failed) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
@@ -606,22 +616,23 @@ function MembersList({
   }
   if (failed) {
     return (
-      <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
-        <p style={{ margin: '0 0 12px 0' }}>Could not load the member list.</p>
+      <div style={{ padding: '28px var(--space-5)', textAlign: 'center', color: 'var(--muted)', fontSize: 'var(--text-caption)', lineHeight: 1.6 }}>
+        <p style={{ margin: '0 0 12px 0' }}>{t('chatRail.membersLoadError')}</p>
         <button
           type="button"
           onClick={onRetry}
           style={{
             background: 'none',
             border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 999,
-            padding: '6px 16px',
+            borderRadius: 'var(--radius-pill)',
+            padding: '6px var(--space-4)',
             color: 'var(--foreground)',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             cursor: 'pointer',
+            minHeight: 'var(--touch-target-min)',
           }}
         >
-          Try again
+          {t('chatRail.tryAgain')}
         </button>
       </div>
     );
@@ -629,7 +640,7 @@ function MembersList({
   if (!members || members.length === 0) {
     return (
       <div style={emptyStateStyle}>
-        <p style={{ margin: 0 }}>No members found.</p>
+        <p style={{ margin: 0 }}>{t('chatRail.noMembersFound')}</p>
       </div>
     );
   }
@@ -644,7 +655,7 @@ function MembersList({
             style={{
               flex: 1,
               minWidth: 0,
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               fontWeight: 600,
               color: 'var(--foreground)',
               overflow: 'hidden',
@@ -657,7 +668,7 @@ function MembersList({
           {m.role !== 'member' && (
             <span
               style={{
-                fontSize: 10,
+                fontSize: 'var(--text-label)',
                 fontFamily: 'var(--font-mono)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
@@ -665,7 +676,7 @@ function MembersList({
                 flexShrink: 0,
               }}
             >
-              {m.role}
+              {t(`chatRail.roles.${m.role}`)}
             </span>
           )}
         </div>
@@ -694,29 +705,33 @@ function NewConversationPicker({
   onPick: (c: DmCandidate) => void;
   startingUserId: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ padding: '8px var(--space-3)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
         <input
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search people…"
+          placeholder={t('dm.searchPlaceholder')}
           maxLength={200}
           autoFocus
           style={{
             flex: 1,
             background: 'transparent',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 8,
-            padding: '6px 10px',
-            fontSize: 13,
+            borderRadius: 'var(--radius-control)',
+            padding: '6px var(--space-3)',
+            // var(--text-body) = 16px: below that, iOS Safari zooms the page
+            // on focus. Was 13px.
+            fontSize: 'var(--text-body)',
             color: 'var(--foreground)',
             outline: 'none',
+            minHeight: 'var(--touch-target-min)',
           }}
         />
-        <button type="button" onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12 }}>
-          Cancel
+        <button type="button" onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 'var(--text-label)' }}>
+          {t('common.cancel')}
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -725,28 +740,29 @@ function NewConversationPicker({
             <Spinner />
           </div>
         ) : failed ? (
-          <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
-            <p style={{ margin: '0 0 12px 0' }}>Could not load the list of people you can message.</p>
+          <div style={{ padding: '28px var(--space-5)', textAlign: 'center', color: 'var(--muted)', fontSize: 'var(--text-caption)', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 12px 0' }}>{t('dm.candidatesLoadError')}</p>
             <button
               type="button"
               onClick={onRetry}
               style={{
                 background: 'none',
                 border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 999,
-                padding: '6px 16px',
+                borderRadius: 'var(--radius-pill)',
+                padding: '6px var(--space-4)',
                 color: 'var(--foreground)',
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 cursor: 'pointer',
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              Try again
+              {t('chatRail.tryAgain')}
             </button>
           </div>
         ) : candidates.length === 0 ? (
           <div style={emptyStateStyle}>
             <p style={{ margin: 0 }}>
-              No one to message yet — you need to share a topic with someone before you can start a conversation with them.
+              {t('dm.noCandidates')}
             </p>
           </div>
         ) : (
@@ -757,7 +773,7 @@ function NewConversationPicker({
                 <span
                   style={{
                     display: 'block',
-                    fontSize: 13,
+                    fontSize: 'var(--text-caption)',
                     fontWeight: 600,
                     color: 'var(--foreground)',
                     overflow: 'hidden',
@@ -768,8 +784,8 @@ function NewConversationPicker({
                   {c.nickname}
                 </span>
                 {c.sharedTopics.length > 0 && (
-                  <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    via {c.sharedTopics.map((s) => s.title).join(', ')}
+                  <span style={{ display: 'block', fontSize: 'var(--text-label)', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {t('dm.sharedTopicsVia', { topics: c.sharedTopics.map((s) => s.title).join(', ') })}
                   </span>
                 )}
               </span>
@@ -780,7 +796,7 @@ function NewConversationPicker({
                   ))}
                 </span>
               )}
-              {startingUserId === c.userId && <span style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>…</span>}
+              {startingUserId === c.userId && <span style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', flexShrink: 0 }}>…</span>}
             </button>
           ))
         )}

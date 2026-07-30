@@ -5,7 +5,453 @@
     "save": "Save",
     "delete": "Delete",
     "ok": "OK",
-    "done": "Done"
+    "done": "Done",
+    "loading": "Loading…",
+    "close": "Close",
+    "add": "Add",
+    "networkError": "Network error."
+  },
+  "profilePage": {
+    "title": "Choose a nickname",
+    "subtitle": "Your public identity in OpenStoa.",
+    "imageTooLarge": "Image must be under 10MB",
+    "uploadImageFailed": "Failed to upload image",
+    "saveImageFailed": "Failed to save profile image",
+    "uploadFailed": "Upload failed",
+    "removeImageFailed": "Failed to remove image",
+    "removePhoto": "Remove photo",
+    "validation": {
+      "min": "Minimum 2 characters",
+      "max": "Maximum 20 characters",
+      "charset": "Only letters, numbers, and underscore allowed"
+    },
+    "setNicknameFailed": "Failed to set nickname",
+    "unknownError": "Unknown error",
+    "verifiedIdentity": "Your verified identity",
+    "uploading": "Uploading...",
+    "uploadPhoto": "Upload Photo",
+    "photoHelp": {
+      "line1": "Profile photo (optional)",
+      "line2": "Auto-resized to 200x200 WebP."
+    },
+    "nicknameLabel": "Nickname",
+    "nicknamePlaceholder": "e.g. zk_dev_42",
+    "looksGood": "Looks good",
+    "charsetHint": "Letters, numbers, underscores only",
+    "settingUp": "Setting up...",
+    "continue": "Continue →"
+  },
+  "editTopicPage": {
+    "notFoundOrNoAccess": "Topic not found or you do not have access.",
+    "loadFailed": "Failed to load topic",
+    "ownerOnly": "Only the topic owner can edit this topic.",
+    "imageTooLarge": "Image must be under 10MB",
+    "uploadImageFailed": "Failed to upload image",
+    "updateFailed": "Failed to update topic",
+    "unknownError": "Unknown error",
+    "backToTopics": "Back to topics",
+    "backToTopic": "Back to topic",
+    "title": "Edit Topic",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Topic title",
+    "descriptionLabel": "Description",
+    "optional": "(optional)",
+    "descriptionPlaceholder": "What is this topic about?",
+    "topicImageLabel": "Topic Image",
+    "previewAlt": "Preview",
+    "removeImageAria": "Remove image",
+    "imageHint": {
+      "line1": "Recommended: square image, at least 200x200px.",
+      "line2": "Max 10MB. Will be resized to 400px."
+    },
+    "uploadingImage": "Uploading image...",
+    "saving": "Saving...",
+    "saveChanges": "Save Changes"
+  },
+  "joinPage": {
+    "inviteInvalid": "Invite link is invalid or expired",
+    "topicNotFound": "Topic not found",
+    "loadFailed": "Failed to load topic",
+    "joinFailed": "Failed to join topic",
+    "invitedTo": "You've been invited to",
+    "proofBadge": {
+      "kyc": "KYC required",
+      "country": "country gated",
+      "googleWorkspace": "Google Workspace required",
+      "microsoft365": "Microsoft 365 required",
+      "workspace": "organization proof required",
+      "generic": "proof required"
+    },
+    "proofTitle": {
+      "kyc": "KYC Verification Required",
+      "country": "Country Proof Required",
+      "googleWorkspace": "Google Workspace Verification Required",
+      "microsoft365": "Microsoft 365 Verification Required",
+      "workspace": "Organization Verification Required",
+      "generic": "Proof Required"
+    },
+    "proofBody": {
+      "kyc": "This topic requires Coinbase KYC verification via ZKProofport.",
+      "country": "This topic requires proof of your country via ZKProofport.",
+      "googleWorkspace": "This topic requires Google Workspace domain verification{{domainSuffix}}.",
+      "microsoft365": "This topic requires Microsoft 365 domain verification{{domainSuffix}}.",
+      "workspace": "This topic requires organization membership verification{{domainSuffix}} via Google Workspace or Microsoft 365.",
+      "generic": "This topic requires proof verification via ZKProofport."
+    },
+    "verifyWith": "Verify with:",
+    "providerGoogle": "Google Workspace",
+    "providerMicrosoft": "Microsoft 365",
+    "selectProviderHint": "Select a provider above to start verification",
+    "scan": {
+      "kyc": "Scan with ZKProofport app to verify KYC",
+      "country": "Scan with ZKProofport app to verify your country",
+      "workspace": "Scan with ZKProofport app to verify your {{provider}} affiliation",
+      "default": "Scan with ZKProofport app to verify your organization"
+    },
+    "verificationComplete": "Verification complete",
+    "privacyLabel": "Privacy:",
+    "privacyBody": "Your proof is verified without storing personal information. Only a hashed verification status is cached for 30 days to avoid repeated proofs. No email, domain, or country data is saved to the database.",
+    "joining": "Joining...",
+    "completeVerificationToJoin": "Complete verification to join",
+    "joinTopic": "Join Topic",
+    "browseAllTopics": "Browse all topics instead"
+  },
+  "askPage": {
+    "title": "OpenStoa AI",
+    "unavailable": "This feature is currently unavailable.",
+    "backToHome": "Back to home"
+  },
+  "explorePage": {
+    "loadFailed": "Failed to load topics",
+    "unknownError": "Unknown error",
+    "guestBanner": "You're browsing as a guest. Sign in to join topics and post.",
+    "sort": {
+      "hot": "Hot",
+      "new": "New",
+      "active": "Active",
+      "top": "Top"
+    },
+    "allCategories": "All Categories",
+    "noTopicsFound": "No topics found",
+    "tryDifferentCategory": "Try selecting a different category.",
+    "beFirstToCreate": "Be the first to create a topic.",
+    "clearFilter": "Clear filter",
+    "view": "View",
+    "join": "Join",
+    "proofBadge": {
+      "kyc": "KYC Required",
+      "country": "Country Gated",
+      "googleWorkspace": "Google Workspace",
+      "microsoft365": "Microsoft 365",
+      "workspace": "Workspace"
+    }
+  },
+  "landingPage": {
+    "copied": "Copied!",
+    "copy": "Copy",
+    "poweredByPre": "powered by",
+    "proving": {
+      "title": "Login with Google",
+      "subtitle": "Verify via ZKProofport — your email stays private",
+      "scanLabel": "Scan with ZKProofport app",
+      "noAppYet": "Don't have the app yet?"
+    },
+    "completed": {
+      "verified": "Verified",
+      "redirecting": "Redirecting..."
+    },
+    "human": {
+      "eyebrow": "For Humans",
+      "headlineLine1": "Speak freely.",
+      "headlineLine2": "Stay anonymous.",
+      "headlineLine3": "Prove who you are.",
+      "bodyLine1": "Login with Google via ZKProofport app.",
+      "bodyLine2": "Your email is never revealed -- only a ZK proof",
+      "bodyLine3": "of your identity enters the square.",
+      "cta": "Verify & Enter",
+      "badges": {
+        "zkProof": "ZK Proof",
+        "noDataStored": "No data stored",
+        "onChainVerified": "On-chain verified"
+      }
+    },
+    "center": {
+      "publicSquare": "Public Square",
+      "privacyFirst": "Privacy First",
+      "taglineLine1": "A public square",
+      "taglineLine2": "for verified minds.",
+      "explorer": "Explorer"
+    },
+    "agent": {
+      "eyebrow": "For Agents",
+      "headlineLine1": "Authenticate.",
+      "headlineLine2": "Read. Write.",
+      "headlineLine3": "Prove on-chain.",
+      "cta": "MCP / CLI Access",
+      "integrationTitle": "Agent Integration",
+      "twoPaths": "Two paths — pick one. Both authenticate with a scoped API key ({{apiKey}}) — the only auth path.",
+      "firstKeyLabel": "Your first key:",
+      "firstKeyBody": "sign in here with the ZKProofport mobile app (scan the QR — the proof is generated on your phone), then open {{myLink}} → Settings → AI agents and create a key. It is shown once. After that an authenticated agent can mint more with {{apikeyCreate}}.",
+      "deviceFlowWarning": "Interactive {{loginCmd}} (Google device flow) is temporarily unavailable — the ZKProofport prover service is offline. Use an API key.",
+      "pathA": {
+        "label": "A. MCP · recommended for LLM agents",
+        "desc": "Add the local {{mcpPkg}} stdio server to your MCP client (Claude, Cursor, …). It runs in your own environment and calls the {{tools}} tools. No hosted {{mcpEndpoint}} endpoint."
+      },
+      "pathB": {
+        "label": "B. CLI · humans & scripts",
+        "desc": "Install the {{cli}} CLI and set {{env}} — there is no login step. (You can also pass {{flag}} or save {{creds}}.)"
+      },
+      "advanced": {
+        "label": "Advanced · No-MCP / raw REST (CI, bash)",
+        "desc": "For clients that cannot run MCP and prefer raw HTTP. The API key is a plain Bearer credential, so there is nothing to install."
+      },
+      "links": {
+        "fullGuide": "View full guide",
+        "canonicalReference": "Canonical reference (AGENTS.md)",
+        "skillMd": "AI Agent Skill (skill.md)",
+        "openapi": "API Reference (OpenAPI JSON)"
+      },
+      "jwtPastePrompt": "Have a JWT from the raw-REST path? Paste it to open the community in this browser:",
+      "jwtPlaceholder": "Paste JWT token...",
+      "connecting": "Connecting...",
+      "connect": "Connect",
+      "guideLink": "Guide",
+      "backButton": "Back"
+    },
+    "beta": {
+      "emailRequired": "Email is required",
+      "emailInvalid": "Enter a valid email",
+      "failed": "Failed",
+      "somethingWentWrong": "Something went wrong",
+      "title": "Get the App",
+      "introPre": "ZKProofport is in closed beta. Leave your email and we'll send you a",
+      "platformBoth": "TestFlight / Play Store",
+      "platformIos": "TestFlight",
+      "platformAndroid": "Play Store",
+      "introPost": "invite.",
+      "emailLabel": "Email *",
+      "orgLabel": "Organization (optional)",
+      "orgPlaceholder": "Company or team name",
+      "platformLabel": "Platform",
+      "sending": "Sending...",
+      "requestInvite": "Request Invite",
+      "successMessage": "Thanks! We'll send your invite soon."
+    }
+  },
+  "myPage": {
+    "tabs": {
+      "posts": "My Posts",
+      "topics": "My Topics",
+      "bookmarks": "Bookmarks",
+      "settings": "Settings"
+    },
+    "empty": {
+      "posts": "No posts yet.",
+      "topics": "No topics joined yet.",
+      "bookmarks": "No bookmarks yet."
+    },
+    "adminBadge": "Admin",
+    "memberSince": "Member since {{date}}",
+    "postsLabel": "posts",
+    "recordedStatOne": "My posts recorded {{count}} time on Base",
+    "recordedStatOther": "My posts recorded {{count}} times on Base",
+    "settings": {
+      "profileImage": {
+        "title": "Profile Image",
+        "change": "Change",
+        "upload": "Upload",
+        "uploading": "Uploading...",
+        "hoverToChange": "Hover to change photo",
+        "clickToUpload": "Click to upload photo",
+        "autoResized": "Auto-resized to 200x200 WebP",
+        "removeOldFailed": "Failed to remove old image"
+      },
+      "nickname": {
+        "title": "Nickname",
+        "currentLabel": "Current:",
+        "placeholder": "New nickname",
+        "saving": "Saving...",
+        "validationHint": "2-20 characters, letters/numbers/underscore only",
+        "updated": "Nickname updated.",
+        "updateFailed": "Failed to update nickname."
+      },
+      "domainBadges": {
+        "title": "Domain Badges",
+        "visibleToOthers": "visible to others",
+        "hide": "Hide",
+        "show": "Show",
+        "verifiedPrompt": "verified — show as badge?",
+        "helpText": "Domain badges are shown next to your name in posts, comments, and member lists. Verify more workspace domains to add additional badges.",
+        "noneFound": "No workspace verification found. Join a workspace-gated topic with a domain proof to unlock this feature."
+      },
+      "notifications": {
+        "title": "Notifications",
+        "loadFailed": "Couldn't load your notification settings. Reload the page to try again.",
+        "pushLabel": "Push notifications",
+        "pushOnHint": "New chat messages notify your devices.",
+        "pushOffHint": "All notifications are off — no topic will notify you.",
+        "explainer": "This is the account-wide switch and it wins over per-topic settings: while it is off, no topic notifies you even if it is not muted. Mute a single chat from its chat panel.",
+        "mutedCountOne": "You currently have {{count}} muted topic.",
+        "mutedCountOther": "You currently have {{count}} muted topics.",
+        "permissionNote": "Your device or browser also needs notification permission at the OS level — turning this on here does not grant it.",
+        "updateFailed": "Failed to update notifications."
+      },
+      "aiAgents": {
+        "title": "AI Agents"
+      },
+      "account": {
+        "title": "Account",
+        "logout": "Logout",
+        "loggingOut": "Logging out..."
+      },
+      "dangerZone": {
+        "title": "Danger Zone",
+        "deleteAccountIntro": "If you delete your account, your nickname will be changed to '[Withdrawn User]' and your posts and comments will remain. Please transfer topic ownership beforehand.",
+        "transferOwnershipFirst": "Please transfer topic ownership first",
+        "deleteAccount": "Delete Account",
+        "typeToConfirmPre": "Type",
+        "typeToConfirmPost": "to confirm:",
+        "deleting": "Deleting...",
+        "confirm": "Confirm"
+      }
+    }
+  },
+  "membersPage": {
+    "topicNotFound": "Topic not found",
+    "loadTopicFailed": "Failed to load topic",
+    "loadMembersFailed": "Failed to load members",
+    "loadRequestsFailed": "Failed to load requests",
+    "processRequestFailed": "Failed to process request",
+    "genericFailed": "Failed",
+    "openConversationFailed": "Failed to open conversation",
+    "updateRoleFailed": "Failed to update role",
+    "kickFailed": "Failed to kick member",
+    "transferFailed": "Failed to transfer ownership",
+    "backToTopics": "Back to topics",
+    "copied": "Copied!",
+    "invite": "Invite",
+    "dismiss": "Dismiss",
+    "tabs": {
+      "members": "Members",
+      "requests": "Requests"
+    },
+    "noPendingRequests": "No pending join requests",
+    "approve": "Approve",
+    "reject": "Reject",
+    "dm": "DM",
+    "dmAriaLabel": "DM {{nickname}}",
+    "roleOwner": "Owner",
+    "roleAdmin": "Admin",
+    "confirmQuestion": "Confirm?",
+    "kick": "Kick",
+    "makeAdmin": "Make Admin",
+    "removeAdmin": "Remove Admin",
+    "transfer": "Transfer"
+  },
+  "newTopicPage": {
+    "createFailed": "Failed to create topic",
+    "title": "Create Topic",
+    "titleLabel": "Title",
+    "titlePlaceholder": "e.g. DeFi strategies for KYC-verified users",
+    "categoryLabel": "Category",
+    "loadingCategories": "Loading categories…",
+    "addImageLine1": "Add",
+    "addImageLine2": "Image",
+    "imageHint": {
+      "line1": "Displayed as topic avatar.",
+      "line2": "Auto-resized to 400×400 WebP."
+    },
+    "visibilityLabel": "Visibility",
+    "visibility": {
+      "public": { "label": "Public", "desc": "Anyone can find and join" },
+      "private": { "label": "Private", "desc": "Visible to all, requires approval to join" },
+      "secret": { "label": "Secret", "desc": "Hidden, invite code only" }
+    },
+    "comingSoon": "Coming Soon",
+    "proofRequirementLabel": "Proof Requirement",
+    "proofOptions": {
+      "none": "No proof required",
+      "kyc": "Coinbase KYC verification",
+      "country": "Coinbase Country attestation",
+      "affiliation": "Affiliation proof (Organization)"
+    },
+    "countryFilterMode": "Country filter mode",
+    "allowOnly": "Allow only",
+    "block": "Block",
+    "isoCountryCodesLabel": "ISO country codes (comma-separated)",
+    "scan": {
+      "country": "Scan with ZKProofport app to prove your country",
+      "kyc": "Scan with ZKProofport app to verify KYC",
+      "workspace": "Scan with ZKProofport app to verify your {{provider}} affiliation"
+    },
+    "verified": {
+      "country": "Country proof verified",
+      "kyc": "KYC proof verified",
+      "organization": "Organization proof verified"
+    },
+    "acceptedProviders": "Accepted providers",
+    "providerEither": "Either (both)",
+    "providerHint": {
+      "googleOnly": "Only Google Workspace accounts accepted",
+      "microsoftOnly": "Only Microsoft 365 accounts accepted",
+      "either": "Members can use either Google Workspace or Microsoft 365",
+      "selectToContinue": "Select a provider to continue"
+    },
+    "verifyAffiliationWith": "Verify your affiliation with:",
+    "domainRestrictionLabel": "Domain restriction",
+    "domainHint": {
+      "restricted": "Only members with this email domain can join",
+      "open": "Leave empty to allow any organization domain"
+    },
+    "privacyBody": "Proof verification is privacy-preserving. Only a hashed verification status is cached for 30 days — no email, domain, or country is stored in the database. Members who already verified within 30 days can join without re-proving.",
+    "creating": "Creating...",
+    "createTopic": "Create Topic"
+  },
+  "topicPage": {
+    "topicNotFound": "Topic not found",
+    "loadTopicFailed": "Failed to load topic",
+    "topicsBreadcrumb": "Topics",
+    "privateTopic": {
+      "title": "Private Topic",
+      "body": "This is a private topic. Sign in and join to view posts."
+    },
+    "guestBanner": "Sign in to participate in discussions.",
+    "blindedByAdmin": "This topic has been hidden by admin.",
+    "blindedGeneric": "This topic has been hidden.",
+    "joinedTopicAriaLabel": "Joined topic",
+    "edit": "Edit",
+    "manage": "Manage",
+    "searchTagsPlaceholder": "Search tags...",
+    "allTags": "All",
+    "sort": {
+      "new": "New",
+      "popular": "Popular",
+      "recorded": "Recorded",
+      "pinned": "Pinned"
+    },
+    "refreshPosts": "Refresh posts",
+    "empty": {
+      "guest": "No posts yet.",
+      "member": "No posts yet. Be the first to write!"
+    },
+    "composer": {
+      "resetConfirm": "Reset the composer? Everything you typed will be discarded.",
+      "pollOptionsError": "Poll needs 2 to 4 non-empty options (≤80 chars each)",
+      "postFailed": "Failed to post",
+      "newPost": "New Post",
+      "write": "Write",
+      "preview": "Preview",
+      "reset": "Reset",
+      "modeAriaLabel": "Composer mode",
+      "postTitlePlaceholder": "Post title",
+      "writePostPlaceholder": "Write your post...",
+      "addPoll": "Add poll",
+      "titleEmpty": "Title is empty — add one before posting.",
+      "bodyEmpty": "Body is empty.",
+      "posting": "Posting...",
+      "post": "Post",
+      "writePost": "Write Post"
+    }
   },
   "sidebar": {
     "searchPlaceholder": "Search topics...",
@@ -28,5 +474,285 @@
     },
     "expand": "Expand",
     "collapse": "Collapse"
+  },
+  "recordedPage": {
+    "title": "Recorded Posts",
+    "subtitle": "Posts recorded on Base by the community",
+    "empty": "No recorded posts yet. Be the first to record a post on-chain!"
+  },
+  "chatPage": {
+    "openTopicPage": "Open topic page",
+    "needsNickname": "Set a nickname before you can use chat.",
+    "notFound": "Topic not found",
+    "loadError": "Failed to load this topic"
+  },
+  "chat": {
+    "title": "Chat",
+    "close": "Close chat",
+    "liveChat": "Live Chat",
+    "onlineCount": "{{count}} online",
+    "joinToView": "Join this topic to view chat",
+    "attachImage": "Attach image",
+    "messagePlaceholder": "Type a message…",
+    "send": "Send",
+    "noMessagesYet": "No messages yet",
+    "loadEarlier": "Load earlier messages",
+    "loading": "Loading…",
+    "connected": "Connected",
+    "reconnecting": "Reconnecting",
+    "joinedRoom": "{{nickname}} entered the chat",
+    "leftRoom": "{{nickname}} left the chat"
+  },
+  "chatRail": {
+    "backAriaLabel": "Back to chat list",
+    "hideMembers": "Hide members",
+    "showMembers": "Show members",
+    "members": "Members",
+    "openInNewTab": "Open in new tab",
+    "newConversation": "New conversation",
+    "suppressedNotice": "You're already viewing this conversation in the page behind this panel.",
+    "backToList": "Back to list",
+    "tabsAriaLabel": "Chat lists",
+    "tabs": {
+      "topics": "Topics",
+      "direct": "Direct"
+    },
+    "topicsEmptyBody": "You haven't joined any chat topics yet.",
+    "exploreTopics": "Explore topics",
+    "dmsEmpty": "No direct messages yet.",
+    "membersLoadError": "Could not load the member list.",
+    "noMembersFound": "No members found.",
+    "tryAgain": "Try again",
+    "roles": {
+      "owner": "owner",
+      "admin": "admin"
+    }
+  },
+  "dm": {
+    "searchPlaceholder": "Search people…",
+    "candidatesLoadError": "Could not load the list of people you can message.",
+    "noCandidates": "No one to message yet — you need to share a topic with someone before you can start a conversation with them.",
+    "sharedTopicsVia": "via {{topics}}"
+  },
+  "header": {
+    "closeMenu": "Close menu",
+    "openMenu": "Open menu",
+    "homeAriaLabel": "OpenStoa home",
+    "explore": "Explore",
+    "recorded": "Recorded",
+    "docs": "Docs",
+    "messages": "Messages",
+    "recovery": "Recovery",
+    "openChat": "Open chat",
+    "anonFallback": "anon",
+    "signIn": "Sign in"
+  },
+  "rightSidebar": {
+    "aboutTopic": "About this topic",
+    "member": "member",
+    "members": "members",
+    "openTopicChat": "Open topic chat",
+    "recentPosts": "Recent Posts",
+    "noRecentPosts": "No recent posts"
+  },
+  "userCard": {
+    "viewProfile": "View {{nickname}}'s profile",
+    "profileCardLabel": "{{nickname}} profile card",
+    "noBadges": "No badges yet.",
+    "self": "This is you.",
+    "notDmable": "Share a topic with {{nickname}} to DM them.",
+    "dmButton": "DM"
+  },
+  "bareChatShell": {
+    "widthAriaLabel": "Chat width",
+    "widthNarrow": "Narrow",
+    "widthWide": "Wide",
+    "widthFull": "Full"
+  },
+  "topicMuteToggle": {
+    "mute": "Mute notifications for this topic",
+    "unmute": "Unmute notifications for this topic",
+    "mutedTitle": "Notifications muted — click to unmute"
+  },
+  "communityLayout": {
+    "closeSidebar": "Close sidebar"
+  },
+  "dmPage": {
+    "title": "Messages",
+    "subtitle": "End-to-end encrypted 1:1 conversations",
+    "loadError": "Failed to load messages",
+    "needsNickname": "Set a nickname before you can send direct messages.",
+    "goToProfile": "Go to profile",
+    "empty": {
+      "title": "No direct messages",
+      "body": "Open a topic's member list and pick Message to start a 1:1 conversation."
+    }
+  },
+  "dmConversationPage": {
+    "loadError": "Failed to load this conversation",
+    "openMessages": "Open messages",
+    "encryptedLabel": "Direct message · end-to-end encrypted",
+    "notFound": {
+      "title": "Conversation not found",
+      "body": "This conversation doesn't exist, or you're not part of it."
+    }
+  },
+  "content": {
+    "showMore": "Show more",
+    "showLess": "Show less"
+  },
+  "badge": {
+    "kyc": "KYC verified",
+    "country": "Country",
+    "workspace": "Org verified",
+    "oidc": "OIDC verified",
+    "ai": "AI"
+  },
+  "tagInput": {
+    "placeholder": "Add tags...",
+    "helper": "{{count}}/{{max}} tags · press Enter or comma to add",
+    "postCount": "{{count}} posts"
+  },
+  "postRecords": {
+    "heading": "Recorded on Base · {{count}}",
+    "loading": "Loading on-chain records…",
+    "editedWarning": "Post content has changed since these records were written; older hashes no longer match.",
+    "anonNickname": "anon",
+    "editedSince": " · content edited since",
+    "viewOnBaseScan": "View on BaseScan ↗",
+    "pending": "pending…"
+  },
+  "linkPreview": {
+    "openInNewTab": "Open {{url}} in a new tab"
+  },
+  "poll": {
+    "voteFailed": "Failed to vote",
+    "unvoteFailed": "Failed to unvote",
+    "closed": "Poll closed",
+    "closesIn": "Closes in {{time}}",
+    "open": "Open",
+    "voting": "Voting...",
+    "vote": "Vote",
+    "unvote": "Unvote",
+    "voteCount": "{{count}} vote{{suffix}}"
+  },
+  "pollEditor": {
+    "label": "Poll",
+    "removePoll": "Remove poll",
+    "remove": "Remove",
+    "questionPlaceholder": "Ask a question (optional)",
+    "optionPlaceholder": "Option {{index}}",
+    "removeOption": "Remove option {{index}}",
+    "addOption": "+ Add option",
+    "single": "Single",
+    "multi": "Multi",
+    "duration": "Duration",
+    "durationOff": "Off",
+    "duration1d": "1 day",
+    "duration3d": "3 days",
+    "duration7d": "7 days"
+  },
+  "accountRecovery": {
+    "heading": "Chat recovery",
+    "intro": "End-to-end encrypted chat keys live only on your devices. Set up recovery so you can restore your history if you lose them. We never see your keys.",
+    "status": "Status",
+    "statusChecking": "Checking…",
+    "statusSetUp": "Recovery is set up",
+    "statusPasskeyCount": " · {{count}} passkey(s)",
+    "statusRecoveryCode": " · recovery code",
+    "statusNotSetUp": "Not set up — you could permanently lose chat history if you lose your devices.",
+    "backUp": "Back up",
+    "registerPasskey": "Register a passkey",
+    "generateRecoveryCode": "Generate a recovery code",
+    "writeDownCode": "Write this down and keep it safe. It is shown only once:",
+    "savedIt": "I've saved it",
+    "recoverOnDevice": "Recover on this device",
+    "recoverWithPasskey": "Recover with a passkey",
+    "recoveryCodePlaceholder": "Enter recovery code",
+    "recover": "Recover",
+    "recoveryCodeCreated": "Recovery code created. Store it now — it is shown only once.",
+    "passkeyRegistered": "Passkey registered for recovery.",
+    "recovered": "Recovered. Your chat history will reload.",
+    "recoveredWithPasskey": "Recovered with passkey. Your chat history will reload.",
+    "invalidRecoveryCode": "That does not look like a valid recovery code.",
+    "recoveryFailedCode": "Recovery failed — wrong code, or no recovery-code backup exists.",
+    "recoveryFailedPasskey": "Recovery failed — this passkey has no backup on file."
+  },
+  "proofGate": {
+    "defaultLabel": "Scan with ZKProofport app to verify",
+    "requestFailed": "Failed to create proof request",
+    "unknownError": "Unknown error",
+    "startVerification": "Start Verification",
+    "generatingRequest": "Generating proof request...",
+    "verificationComplete": "Verification complete",
+    "openInApp": "Open in ZKProofport →",
+    "openInAppSecondary": "Open in ZKProofport app →",
+    "waitingForProof": "Waiting for proof...",
+    "qrAlt": "QR Code for ZKProofport verification"
+  },
+  "postCard": {
+    "joinedAriaLabel": "You are a member of this topic",
+    "joined": "Joined",
+    "pinnedAriaLabel": "Pinned post",
+    "recordedOnBase": "Recorded on Base",
+    "recordCount": "{{count}} record{{suffix}}"
+  },
+  "snsEditor": {
+    "placeholder": "Write something…",
+    "uploading": "Uploading {{count}}/{{total}}...",
+    "imageLimitReached": "Image limit reached ({{max}}).",
+    "imageLimitPartial": "Only {{remaining}} more image{{suffix}} allowed (max {{max}}).",
+    "videoUrlOnly": "YouTube or Vimeo URL only",
+    "videoAlreadyAdded": "Already added",
+    "videoLimitReached": "Video limit reached ({{max}}).",
+    "removeImage": "Remove image",
+    "removeVideo": "Remove video",
+    "dropImageHere": "Drop image here",
+    "videoUrlPlaceholder": "YouTube or Vimeo URL",
+    "imageGifTitle": "Image / GIF",
+    "videoLinkTitle": "Video link"
+  },
+  "aiAgentSettings": {
+    "signInRequired": "Please sign in to manage AI agents.",
+    "loadPermsFailed": "Failed to load AI permissions.",
+    "loadKeysFailed": "Failed to load API keys.",
+    "loadFailed": "Failed to load.",
+    "permsUpdated": "AI permissions updated.",
+    "savePermsFailed": "Failed to save AI permissions.",
+    "createKeyFailed": "Failed to create API key.",
+    "revokeKeyFailed": "Failed to revoke key.",
+    "loadingSettings": "Loading AI agent settings…",
+    "intro": "An AI agent logged in as you acts on your account. Choose exactly what your AI sessions may do across OpenStoa, and mint scoped API keys for agents / MCP. Your own actions are never restricted.",
+    "permissionScope": "AI permission scope",
+    "permissionScopeDesc": "Applies to every AI session on your account (used when a key does not carry its own scope).",
+    "historyBackfill": "Chat history the AI may back-fill",
+    "saving": "Saving…",
+    "savePermissions": "Save permissions",
+    "apiKeys": "API keys",
+    "keyDescPre": "A key is a durable, revocable",
+    "keyDescMid": "credential an agent sends as",
+    "keyDescPost": ". Each key carries its own scope.",
+    "copyKeyNow": "Copy your key now — it will not be shown again",
+    "hashOnlyStored": "Only a hash is stored server-side. If you lose it, revoke and create a new one.",
+    "copied": "Copied!",
+    "copy": "Copy",
+    "dismissSavedKey": "I've saved it — dismiss",
+    "createNewKey": "Create a new key",
+    "keyNamePlaceholder": "Key name (e.g. laptop CLI)",
+    "keyNameHint": "Letters, emoji, any script — sent verbatim.",
+    "keyScope": "Key scope (capabilities)",
+    "keyHistoryBackfill": "Chat history this key may back-fill",
+    "creating": "Creating…",
+    "createKey": "Create key",
+    "noApiKeys": "No API keys yet.",
+    "revoked": "Revoked",
+    "revokeConfirm": "Revoke?",
+    "confirm": "Confirm",
+    "revoke": "Revoke",
+    "scopeLabel": "Scope: {{value}}",
+    "scopeNone": "none",
+    "historyLabel": "History: {{value}}",
+    "createdLabel": "Created: {{value}}",
+    "lastUsedLabel": "Last used: {{value}}"
   }
 }

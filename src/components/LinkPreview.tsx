@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface OGData {
   title: string | null;
@@ -16,6 +17,7 @@ interface LinkPreviewProps {
 }
 
 export default function LinkPreview({ url }: LinkPreviewProps) {
+  const { t } = useTranslation();
   const [data, setData] = useState<OGData | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -116,7 +118,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      aria-label={`Open ${url} in a new tab`}
+      aria-label={t('linkPreview.openInNewTab', { url })}
       style={{
         display: 'block',
         marginTop: 10,
@@ -185,7 +187,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
 
         {/* Title */}
         <div style={{
-          fontSize: 13,
+          fontSize: 'var(--text-caption)',
           fontWeight: 600,
           color: '#e5e7eb',
           lineHeight: 1.4,
@@ -201,7 +203,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
         {/* Description */}
         {data.description && (
           <div style={{
-            fontSize: 12,
+            fontSize: 'var(--text-label)',
             color: '#6b7280',
             lineHeight: 1.5,
             display: '-webkit-box',

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
 import Spinner from '@/components/Spinner';
 import TopicAvatar from '@/components/TopicAvatar';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -31,13 +32,13 @@ interface Topic {
 
 // ─── Proof badge helper ──────────────────────────────────────────────────────
 
-function proofBadgeLabel(proofType: string): string | null {
+function proofBadgeLabel(proofType: string, t: (key: string) => string): string | null {
   switch (proofType) {
-    case 'kyc': return 'KYC Required';
-    case 'country': return 'Country Gated';
-    case 'google_workspace': return 'Google Workspace';
-    case 'microsoft_365': return 'Microsoft 365';
-    case 'workspace': return 'Workspace';
+    case 'kyc': return t('explorePage.proofBadge.kyc');
+    case 'country': return t('explorePage.proofBadge.country');
+    case 'google_workspace': return t('explorePage.proofBadge.googleWorkspace');
+    case 'microsoft_365': return t('explorePage.proofBadge.microsoft365');
+    case 'workspace': return t('explorePage.proofBadge.workspace');
     default: return null;
   }
 }
@@ -47,6 +48,7 @@ function proofBadgeLabel(proofType: string): string | null {
 function ExplorePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
 
   const [topics, setTopics] = useState<Topic[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -106,14 +108,15 @@ function ExplorePageInner() {
         url += `&category=${encodeURIComponent(category)}`;
       }
       const res = await fetch(url);
-      if (!res.ok) throw new Error('Failed to load topics');
+      if (!res.ok) throw new Error(t('explorePage.loadFailed'));
       const data = await res.json();
       setTopics(data.topics ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : t('explorePage.unknownError'));
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -155,30 +158,30 @@ function ExplorePageInner() {
             padding: '10px 16px',
             background: 'rgba(120,140,255,0.06)',
             border: '1px solid rgba(120,140,255,0.12)',
-            borderRadius: 8,
+            borderRadius: 'var(--radius-control)',
             marginBottom: 20,
-            fontSize: 14,
+            fontSize: 'var(--text-body-sm)',
             color: '#888',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: 8,
+            gap: 'var(--space-2)',
           }}
         >
-          <span>You're browsing as a guest. Sign in to join topics and post.</span>
+          <span>{t('explorePage.guestBanner')}</span>
           <Link
             href="/"
             style={{
               color: 'var(--accent)',
               textDecoration: 'none',
               fontWeight: 600,
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               whiteSpace: 'nowrap',
               fontFamily: 'var(--font-mono)',
             }}
           >
-            Sign in
+            {t('header.signIn')}
           </Link>
         </div>
       )}
@@ -194,14 +197,14 @@ function ExplorePageInner() {
       >
         <h1
           style={{
-            fontSize: 28,
+            fontSize: 'var(--text-heading-lg)',
             fontWeight: 800,
             letterSpacing: '-0.04em',
             margin: 0,
             fontFamily: 'var(--font-serif)',
           }}
         >
-          Explore Topics
+          {t('sidebar.exploreTopics')}
         </h1>
       </div>
 
@@ -210,7 +213,7 @@ function ExplorePageInner() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 12,
+          gap: 'var(--space-3)',
           marginBottom: 20,
           flexWrap: 'wrap',
         }}
@@ -218,10 +221,10 @@ function ExplorePageInner() {
         <div style={{ display: 'flex', gap: 6 }}>
           {(
             [
-              { key: 'hot', label: 'Hot' },
-              { key: 'new', label: 'New' },
-              { key: 'active', label: 'Active' },
-              { key: 'top', label: 'Top' },
+              { key: 'hot', label: t('explorePage.sort.hot') },
+              { key: 'new', label: t('explorePage.sort.new') },
+              { key: 'active', label: t('explorePage.sort.active') },
+              { key: 'top', label: t('explorePage.sort.top') },
             ] as const
           ).map(({ key, label }) => (
             <button
@@ -231,9 +234,9 @@ function ExplorePageInner() {
                 background: sortBy === key ? 'var(--accent)' : 'transparent',
                 color: sortBy === key ? '#fff' : 'var(--muted)',
                 border: `1px solid ${sortBy === key ? 'var(--accent)' : 'var(--border)'}`,
-                borderRadius: 20,
+                borderRadius: 'var(--radius-pill)',
                 padding: '4px 14px',
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 fontWeight: sortBy === key ? 600 : 400,
                 cursor: 'pointer',
                 letterSpacing: '0.02em',
@@ -255,15 +258,15 @@ function ExplorePageInner() {
               background: 'var(--surface)',
               color: 'var(--foreground)',
               border: '1px solid var(--border)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-control)',
               padding: '5px 10px',
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               fontFamily: 'var(--font-mono)',
               cursor: 'pointer',
               outline: 'none',
             }}
           >
-            <option value="">All Categories</option>
+            <option value="">{t('explorePage.allCategories')}</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.slug}>
                 {cat.icon} {cat.name}
@@ -284,11 +287,11 @@ function ExplorePageInner() {
       {error && (
         <div
           style={{
-            padding: '16px 20px',
+            padding: 'var(--space-4) 20px',
             background: 'rgba(239,68,68,0.08)',
             border: '1px solid rgba(239,68,68,0.2)',
-            borderRadius: 10,
-            fontSize: 14,
+            borderRadius: 'var(--radius-card)',
+            fontSize: 'var(--text-body-sm)',
             color: '#ef4444',
             fontFamily: 'var(--font-mono)',
           }}
@@ -304,14 +307,14 @@ function ExplorePageInner() {
             textAlign: 'center',
             padding: '80px 20px',
             border: '1px dashed var(--border)',
-            borderRadius: 16,
+            borderRadius: 'var(--radius-modal)',
           }}
         >
-          <p style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 8 }}>
-            No topics found
+          <p style={{ fontSize: 'var(--text-body-lg)', fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 'var(--space-2)' }}>
+            {t('explorePage.noTopicsFound')}
           </p>
-          <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 24 }}>
-            {categoryFilter ? 'Try selecting a different category.' : 'Be the first to create a topic.'}
+          <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginBottom: 'var(--space-5)' }}>
+            {categoryFilter ? t('explorePage.tryDifferentCategory') : t('explorePage.beFirstToCreate')}
           </p>
           {categoryFilter && (
             <button
@@ -320,15 +323,15 @@ function ExplorePageInner() {
                 background: 'var(--accent)',
                 color: '#fff',
                 border: 'none',
-                borderRadius: 8,
-                padding: '10px 24px',
-                fontSize: 14,
+                borderRadius: 'var(--radius-control)',
+                padding: '10px var(--space-5)',
+                fontSize: 'var(--text-body-sm)',
                 fontWeight: 600,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
               }}
             >
-              Clear filter
+              {t('explorePage.clearFilter')}
             </button>
           )}
         </div>
@@ -344,18 +347,18 @@ function ExplorePageInner() {
           }}
         >
           {topics.map((topic) => {
-            const badge = proofBadgeLabel(topic.proofType);
+            const badge = proofBadgeLabel(topic.proofType, t);
             return (
               <div
                 key={topic.id}
                 style={{
                   background: 'var(--surface)',
                   border: '1px solid var(--border)',
-                  borderRadius: 12,
-                  padding: 16,
+                  borderRadius: 'var(--radius-card)',
+                  padding: 'var(--space-4)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 12,
+                  gap: 'var(--space-3)',
                   transition: 'border-color 0.15s',
                 }}
                 onMouseEnter={(e) => {
@@ -373,7 +376,7 @@ function ExplorePageInner() {
                       <Link
                         href={`/topics/${topic.id}`}
                         style={{
-                          fontSize: 15,
+                          fontSize: 'var(--text-body)',
                           fontWeight: 600,
                           color: 'var(--foreground)',
                           textDecoration: 'none',
@@ -388,37 +391,36 @@ function ExplorePageInner() {
                       </Link>
                       {topic.isMember && (
                         // Success-tint Joined pill — mirrors PostCard joinedPill.
+                        // Uses `.os-label` for the size/weight/uppercase-lang
+                        // contract (was a bare 9px literal, below the 12px
+                        // uppercase-label floor).
                         <span
+                          className="os-label"
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 3,
-                            fontSize: 9,
-                            fontWeight: 700,
                             color: '#22c55e',
                             background: 'rgba(34,197,94,0.10)',
                             border: '1px solid rgba(34,197,94,0.25)',
-                            borderRadius: 4,
+                            borderRadius: 'var(--radius-control)',
                             padding: '1px 6px',
-                            letterSpacing: '0.04em',
-                            textTransform: 'uppercase',
-                            fontFamily: 'var(--font-mono)',
                             lineHeight: 1.2,
                             flexShrink: 0,
                           }}
-                          aria-label="You are a member of this topic"
+                          aria-label={t('postCard.joinedAriaLabel')}
                         >
                           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
-                          Joined
+                          {t('postCard.joined')}
                         </span>
                       )}
                     </div>
                     {topic.category && (
                       <span
                         style={{
-                          fontSize: 11,
+                          fontSize: 'var(--text-caption)',
                           color: 'var(--muted)',
                           fontFamily: 'var(--font-mono)',
                           letterSpacing: '0.02em',
@@ -434,7 +436,7 @@ function ExplorePageInner() {
                 {topic.description && (
                   <p
                     style={{
-                      fontSize: 13,
+                      fontSize: 'var(--text-caption)',
                       color: '#9ca3af',
                       margin: 0,
                       lineHeight: 1.5,
@@ -453,27 +455,27 @@ function ExplorePageInner() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
+                    gap: 'var(--space-2)',
                     flexWrap: 'wrap',
                     marginTop: 'auto',
                   }}
                 >
                   <span
                     style={{
-                      fontSize: 12,
+                      fontSize: 'var(--text-caption)',
                       color: 'var(--muted)',
                       fontFamily: 'var(--font-mono)',
                     }}
                   >
-                    {topic.memberCount} {topic.memberCount === 1 ? 'member' : 'members'}
+                    {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
                   </span>
 
                   {badge && (
                     <span
                       style={{
-                        fontSize: 11,
+                        fontSize: 'var(--text-caption)',
                         padding: '2px 8px',
-                        borderRadius: 9999,
+                        borderRadius: 'var(--radius-pill)',
                         background: 'rgba(120,140,255,0.1)',
                         border: '1px solid rgba(120,140,255,0.2)',
                         color: 'var(--accent)',
@@ -494,42 +496,45 @@ function ExplorePageInner() {
                     <Link
                       href={`/topics/${topic.id}`}
                       style={{
-                        display: 'inline-block',
-                        padding: '6px 16px',
-                        fontSize: 13,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '6px var(--space-4)',
+                        fontSize: 'var(--text-caption)',
                         fontWeight: 500,
                         color: 'var(--muted)',
                         background: 'transparent',
                         border: '1px solid var(--border)',
-                        borderRadius: 8,
+                        borderRadius: 'var(--radius-control)',
                         textDecoration: 'none',
                         fontFamily: 'var(--font-mono)',
                         transition: 'all 0.15s',
                         letterSpacing: '0.02em',
+                        minHeight: 'var(--touch-target-min)',
                       }}
                     >
-                      View
+                      {t('explorePage.view')}
                     </Link>
                   ) : (
                     <button
                       onClick={() => handleJoin(topic.id)}
                       disabled={joiningTopicId === topic.id}
                       style={{
-                        padding: '6px 16px',
-                        fontSize: 13,
+                        padding: '6px var(--space-4)',
+                        fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         color: '#fff',
                         background: 'var(--accent)',
                         border: 'none',
-                        borderRadius: 8,
+                        borderRadius: 'var(--radius-control)',
                         cursor: joiningTopicId === topic.id ? 'wait' : 'pointer',
                         fontFamily: 'var(--font-mono)',
                         transition: 'all 0.15s',
                         letterSpacing: '0.02em',
                         opacity: joiningTopicId === topic.id ? 0.7 : 1,
+                        minHeight: 'var(--touch-target-min)',
                       }}
                     >
-                      {joiningTopicId === topic.id ? 'Joining...' : 'Join'}
+                      {joiningTopicId === topic.id ? t('joinPage.joining') : t('explorePage.join')}
                     </button>
                   )}
                 </div>

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import Spinner from '@/components/Spinner';
 import ProofGate from '@/components/ProofGate';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface TopicInfo {
   id: string;
@@ -23,6 +24,7 @@ export default function JoinPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { t } = useTranslation();
   const topicId = params.topicId as string;
   const inviteCode = searchParams.get('invite') ?? '';
 
@@ -51,12 +53,12 @@ export default function JoinPage() {
       let info: TopicInfo;
       if (inviteCode) {
         const res = await fetch(`/api/topics/join/${inviteCode}`);
-        if (!res.ok) throw new Error('Invite link is invalid or expired');
+        if (!res.ok) throw new Error(t('joinPage.inviteInvalid'));
         const data = await res.json();
         info = { ...data.topic, isMember: data.isMember, memberCount: data.topic.memberCount ?? 0 };
       } else {
         const res = await fetch(`/api/topics/${topicId}`);
-        if (!res.ok) throw new Error('Topic not found');
+        if (!res.ok) throw new Error(t('joinPage.topicNotFound'));
         const data = await res.json();
         info = data.topic;
       }
@@ -70,7 +72,7 @@ export default function JoinPage() {
       const pt = info.proofType || (info.requiresCountryProof ? 'country' : 'none');
       setEffectiveProofType(pt);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load topic');
+      setError(err instanceof Error ? err.message : t('joinPage.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -95,11 +97,11 @@ export default function JoinPage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to join topic');
+        throw new Error(d.error ?? t('joinPage.joinFailed'));
       }
       router.push(`/topics/${topicInfo.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
       setJoining(false);
     }
   }
@@ -121,7 +123,7 @@ export default function JoinPage() {
     return (
       <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '60px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 14, marginBottom: 16 }}>
+          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)', marginBottom: 'var(--space-4)' }}>
             {error}
           </p>
         </div>
@@ -129,8 +131,18 @@ export default function JoinPage() {
     );
   }
 
+  const proofBadgeKey =
+    effectiveProofType === 'kyc' ? 'kyc' :
+    effectiveProofType === 'country' ? 'country' :
+    effectiveProofType === 'google_workspace' ? 'googleWorkspace' :
+    effectiveProofType === 'microsoft_365' ? 'microsoft365' :
+    effectiveProofType === 'workspace' ? 'workspace' :
+    'generic';
+  const domainSuffix = topicInfo?.requiredDomain ? ` (${topicInfo.requiredDomain})` : '';
+
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
+      {/* 73px = standalone Header height convention (see recovery/page.tsx); 1.5rem = space-5. */}
       <div
         style={{
           minHeight: 'calc(100vh - 73px)',
@@ -138,7 +150,7 @@ export default function JoinPage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '40px 1.5rem',
+          padding: '40px var(--space-5)',
         }}
       >
         <div style={{ width: '100%', maxWidth: 460 }}>
@@ -146,38 +158,38 @@ export default function JoinPage() {
           {topicInfo && (
             <div
               style={{
-                padding: '24px',
+                padding: 'var(--space-5)',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
-                borderRadius: 14,
+                borderRadius: 'var(--radius-card)',
                 marginBottom: 28,
               }}
             >
-              <p style={{ fontSize: 15, color: 'var(--muted)', fontFamily: 'monospace', margin: '0 0 8px' }}>
-                You&apos;ve been invited to
+              <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', fontFamily: 'monospace', margin: '0 0 var(--space-2)' }}>
+                {t('joinPage.invitedTo')}
               </p>
-              <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', margin: '0 0 8px' }}>
+              <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', margin: '0 0 var(--space-2)' }}>
                 {topicInfo.title}
               </h1>
               {topicInfo.description && (
-                <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)', lineHeight: 1.6 }}>
                   {topicInfo.description}
                 </p>
               )}
               <div className="flex items-center gap-3 flex-wrap">
                 <span
                   style={{
-                    fontSize: 14,
+                    fontSize: 'var(--text-body-sm)',
                     fontFamily: 'monospace',
                     color: 'var(--muted)',
                   }}
                 >
-                  {topicInfo.memberCount} member{topicInfo.memberCount !== 1 ? 's' : ''}
+                  {topicInfo.memberCount} {topicInfo.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
                 </span>
                 {effectiveProofType !== 'none' && (
                   <span
                     style={{
-                      fontSize: 15,
+                      fontSize: 'var(--text-body)',
                       fontFamily: 'monospace',
                       background: 'rgba(59,130,246,0.12)',
                       color: 'var(--accent)',
@@ -186,12 +198,7 @@ export default function JoinPage() {
                       borderRadius: 4,
                     }}
                   >
-                    {effectiveProofType === 'kyc' ? 'KYC required' :
-                     effectiveProofType === 'country' ? 'country gated' :
-                     effectiveProofType === 'google_workspace' ? 'Google Workspace required' :
-                     effectiveProofType === 'microsoft_365' ? 'Microsoft 365 required' :
-                     effectiveProofType === 'workspace' ? 'organization proof required' :
-                     'proof required'}
+                    {t(`joinPage.proofBadge.${proofBadgeKey}`)}
                   </span>
                 )}
               </div>
@@ -202,58 +209,50 @@ export default function JoinPage() {
           {needsProof && !proofDone && topicInfo && (
             <div
               style={{
-                padding: '24px',
+                padding: 'var(--space-5)',
                 background: 'var(--surface, #0c0e18)',
                 border: '1px solid var(--border)',
-                borderRadius: 14,
+                borderRadius: 'var(--radius-card)',
                 marginBottom: 20,
                 textAlign: 'center',
               }}
             >
-              <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-                {effectiveProofType === 'kyc' ? 'KYC Verification Required' :
-                 effectiveProofType === 'country' ? 'Country Proof Required' :
-                 effectiveProofType === 'google_workspace' ? 'Google Workspace Verification Required' :
-                 effectiveProofType === 'microsoft_365' ? 'Microsoft 365 Verification Required' :
-                 effectiveProofType === 'workspace' ? 'Organization Verification Required' :
-                 'Proof Required'}
+              <p style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, marginBottom: 6 }}>
+                {t(`joinPage.proofTitle.${proofBadgeKey}`)}
               </p>
-              <p style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.5 }}>
-                {effectiveProofType === 'kyc'
-                  ? 'This topic requires Coinbase KYC verification via ZKProofport.'
-                  : effectiveProofType === 'country'
-                  ? 'This topic requires proof of your country via ZKProofport.'
-                  : effectiveProofType === 'google_workspace'
-                  ? `This topic requires Google Workspace domain verification${topicInfo.requiredDomain ? ` (${topicInfo.requiredDomain})` : ''}.`
+              <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', marginBottom: 20, lineHeight: 1.5 }}>
+                {effectiveProofType === 'google_workspace'
+                  ? t('joinPage.proofBody.googleWorkspace', { domainSuffix })
                   : effectiveProofType === 'microsoft_365'
-                  ? `This topic requires Microsoft 365 domain verification${topicInfo.requiredDomain ? ` (${topicInfo.requiredDomain})` : ''}.`
+                  ? t('joinPage.proofBody.microsoft365', { domainSuffix })
                   : effectiveProofType === 'workspace'
-                  ? `This topic requires organization membership verification${topicInfo.requiredDomain ? ` (${topicInfo.requiredDomain})` : ''} via Google Workspace or Microsoft 365.`
-                  : 'This topic requires proof verification via ZKProofport.'}
+                  ? t('joinPage.proofBody.workspace', { domainSuffix })
+                  : t(`joinPage.proofBody.${proofBadgeKey}`)}
               </p>
 
               {/* Provider chooser for workspace (either) topics */}
               {effectiveProofType === 'workspace' && (
-                <div style={{ marginBottom: 16 }}>
-                  <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
-                    Verify with:
+                <div style={{ marginBottom: 'var(--space-4)' }}>
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginBottom: 'var(--space-2)' }}>
+                    {t('joinPage.verifyWith')}
                   </p>
-                  <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
                     {([
-                      { value: 'google' as const, label: 'Google Workspace' },
-                      { value: 'microsoft' as const, label: 'Microsoft 365' },
+                      { value: 'google' as const, label: t('joinPage.providerGoogle') },
+                      { value: 'microsoft' as const, label: t('joinPage.providerMicrosoft') },
                     ]).map((opt) => (
                       <label key={opt.value} style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
+                        gap: 'var(--space-2)',
                         padding: '8px 14px',
                         background: joinProvider === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
                         border: `1px solid ${joinProvider === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
-                        borderRadius: 8,
+                        borderRadius: 'var(--radius-control)',
                         cursor: 'pointer',
                         transition: 'all 0.12s',
-                        fontSize: 14,
+                        fontSize: 'var(--text-body-sm)',
+                        minHeight: 'var(--touch-target-min)',
                       }}>
                         <input
                           type="radio"
@@ -300,10 +299,10 @@ export default function JoinPage() {
                   autoStart={false}
                   qrSize={224}
                   label={
-                    effectiveProofType === 'kyc' ? 'Scan with ZKProofport app to verify KYC' :
-                    effectiveProofType === 'country' ? 'Scan with ZKProofport app to verify your country' :
-                    effectiveProofType === 'workspace' ? `Scan with ZKProofport app to verify your ${joinProvider === 'microsoft' ? 'Microsoft 365' : 'Google Workspace'} affiliation` :
-                    'Scan with ZKProofport app to verify your organization'
+                    effectiveProofType === 'kyc' ? t('joinPage.scan.kyc') :
+                    effectiveProofType === 'country' ? t('joinPage.scan.country') :
+                    effectiveProofType === 'workspace' ? t('joinPage.scan.workspace', { provider: joinProvider === 'microsoft' ? t('joinPage.providerMicrosoft') : t('joinPage.providerGoogle') }) :
+                    t('joinPage.scan.default')
                   }
                   onProofData={({ proof, publicInputs }) => {
                     setProofData({ proof, publicInputs });
@@ -312,8 +311,8 @@ export default function JoinPage() {
                 />
               )}
               {effectiveProofType === 'workspace' && !joinProvider && (
-                <p style={{ fontSize: 14, color: 'var(--muted)', textAlign: 'center', margin: '16px 0 0' }}>
-                  Select a provider above to start verification
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', textAlign: 'center', margin: '16px 0 0' }}>
+                  {t('joinPage.selectProviderHint')}
                 </p>
               )}
             </div>
@@ -325,16 +324,16 @@ export default function JoinPage() {
                 padding: '14px 18px',
                 background: 'rgba(34,197,94,0.08)',
                 border: '1px solid rgba(34,197,94,0.25)',
-                borderRadius: 10,
+                borderRadius: 'var(--radius-card)',
                 marginBottom: 20,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
+                gap: 'var(--space-2)',
               }}
             >
               <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-              <span style={{ fontSize: 14, color: '#22c55e', fontWeight: 500 }}>
-                Verification complete
+              <span style={{ fontSize: 'var(--text-body-sm)', color: '#22c55e', fontWeight: 500 }}>
+                {t('joinPage.verificationComplete')}
               </span>
             </div>
           )}
@@ -343,34 +342,32 @@ export default function JoinPage() {
           {needsProof && (
             <div
               style={{
-                padding: '12px 16px',
+                padding: 'var(--space-3) var(--space-4)',
                 background: 'rgba(59,130,246,0.05)',
                 border: '1px solid rgba(59,130,246,0.15)',
-                borderRadius: 8,
-                marginBottom: 16,
-                fontSize: 13,
+                borderRadius: 'var(--radius-control)',
+                marginBottom: 'var(--space-4)',
+                fontSize: 'var(--text-caption)',
                 color: 'var(--muted)',
                 lineHeight: 1.5,
               }}
             >
-              <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>Privacy:</span>{' '}
-              Your proof is verified without storing personal information. Only a hashed
-              verification status is cached for 30 days to avoid repeated proofs. No email,
-              domain, or country data is saved to the database.
+              <span style={{ fontWeight: 600, color: 'var(--foreground)' }}>{t('joinPage.privacyLabel')}</span>{' '}
+              {t('joinPage.privacyBody')}
             </div>
           )}
 
           {error && (
             <p
               style={{
-                fontSize: 15,
+                fontSize: 'var(--text-body)',
                 color: '#ef4444',
                 fontFamily: 'monospace',
                 background: 'rgba(239,68,68,0.08)',
                 border: '1px solid rgba(239,68,68,0.2)',
-                borderRadius: 6,
-                padding: '8px 12px',
-                marginBottom: 16,
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-2) var(--space-3)',
+                marginBottom: 'var(--space-4)',
               }}
             >
               {error}
@@ -385,21 +382,22 @@ export default function JoinPage() {
               background: canJoin ? 'var(--accent)' : 'var(--border)',
               color: canJoin ? '#fff' : 'var(--muted)',
               border: 'none',
-              borderRadius: 10,
+              borderRadius: 'var(--radius-card)',
               padding: '14px',
-              fontSize: 15,
+              fontSize: 'var(--text-body)',
               fontWeight: 600,
               cursor: canJoin ? 'pointer' : 'not-allowed',
               transition: 'all 0.15s',
               letterSpacing: '-0.01em',
+              minHeight: 'var(--touch-target-min)',
             }}
           >
-            {joining ? 'Joining...' : needsProof && !proofDone ? 'Complete verification to join' : 'Join Topic'}
+            {joining ? t('joinPage.joining') : needsProof && !proofDone ? t('joinPage.completeVerificationToJoin') : t('joinPage.joinTopic')}
           </button>
 
-          <div style={{ textAlign: 'center', marginTop: 16 }}>
-            <Link href="/topics" style={{ fontSize: 15, color: 'var(--muted)', textDecoration: 'none' }}>
-              Browse all topics instead
+          <div style={{ textAlign: 'center', marginTop: 'var(--space-4)' }}>
+            <Link href="/topics" style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', textDecoration: 'none' }}>
+              {t('joinPage.browseAllTopics')}
             </Link>
           </div>
         </div>

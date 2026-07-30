@@ -37,6 +37,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 import {
   chatWidthPx,
   readChatWidthPreference,
@@ -44,10 +45,12 @@ import {
   type ChatWidthMode,
 } from '@/lib/chatWidth';
 
-const WIDTH_OPTIONS: { mode: ChatWidthMode; label: string }[] = [
-  { mode: 'narrow', label: 'Narrow' },
-  { mode: 'wide', label: 'Wide' },
-  { mode: 'full', label: 'Full' },
+// Label keys, resolved at render time (not module scope) since t() needs the
+// active locale from I18nProvider.
+const WIDTH_OPTIONS: { mode: ChatWidthMode; labelKey: string }[] = [
+  { mode: 'narrow', labelKey: 'bareChatShell.widthNarrow' },
+  { mode: 'wide', labelKey: 'bareChatShell.widthWide' },
+  { mode: 'full', labelKey: 'bareChatShell.widthFull' },
 ];
 
 const CloseIcon = (
@@ -59,6 +62,7 @@ const CloseIcon = (
 
 export default function BareChatShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const { t } = useTranslation();
   // SSR-safe default ('full', matching the read helper's own fallback) --
   // localStorage does not exist on the server. The persisted preference is
   // applied client-side right after, same pattern `CommunityLayout` uses for
@@ -107,13 +111,13 @@ export default function BareChatShell({ children }: { children: React.ReactNode 
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 8,
-          padding: '6px 10px',
+          gap: 'var(--space-2)',
+          padding: '6px var(--space-3)',
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}
       >
-        <div role="group" aria-label="Chat width" style={{ display: 'flex', gap: 2 }}>
+        <div role="group" aria-label={t('bareChatShell.widthAriaLabel')} style={{ display: 'flex', gap: 2 }}>
           {WIDTH_OPTIONS.map((opt) => (
             <button
               key={opt.mode}
@@ -124,23 +128,25 @@ export default function BareChatShell({ children }: { children: React.ReactNode 
                 background: width === opt.mode ? 'rgba(120,140,255,0.14)' : 'transparent',
                 color: width === opt.mode ? 'var(--accent)' : 'var(--muted)',
                 border: 'none',
-                borderRadius: 6,
-                padding: '4px 10px',
-                fontSize: 11,
+                borderRadius: 'var(--radius-control)',
+                padding: '4px var(--space-3)',
+                // 11px is below the uppercase-label floor (--text-label,
+                // 12px) — bumped up rather than left at a sub-floor literal.
+                fontSize: 'var(--text-label)',
                 fontFamily: 'var(--font-mono)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
                 cursor: 'pointer',
               }}
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </button>
           ))}
         </div>
         <button
           type="button"
           onClick={handleClose}
-          aria-label="Close"
+          aria-label={t('common.close')}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -150,7 +156,7 @@ export default function BareChatShell({ children }: { children: React.ReactNode 
             color: 'var(--muted)',
             cursor: 'pointer',
             padding: 5,
-            borderRadius: 6,
+            borderRadius: 'var(--radius-control)',
           }}
         >
           {CloseIcon}

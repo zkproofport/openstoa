@@ -80,6 +80,7 @@ vi.mock('@/components/TopicMuteToggle', () => ({
 import DmListPage from '@/app/dm/page';
 import DmConversationPage from '@/app/dm/[topicId]/page';
 import MembersPage from '@/app/topics/[topicId]/members/page';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 // ── harness ──────────────────────────────────────────────────────────────────
 
@@ -102,9 +103,13 @@ function routeFetch(routes: Array<[string, (init?: RequestInit) => Response]>) {
   return fn;
 }
 
+// `BareChatShell` (DmConversationPage) and `UserCard` (MembersPage) — both
+// rendered for real by this suite — now read copy through `useTranslation()`.
+// See src/lib/i18n/I18nProvider.tsx. Every render needs the provider in the
+// tree, same as the app root (src/app/layout.tsx).
 async function render(ui: React.ReactElement) {
   await act(async () => {
-    root.render(ui);
+    root.render(<I18nProvider initialLocale="en">{ui}</I18nProvider>);
   });
 }
 

@@ -9,6 +9,7 @@ import Avatar from '@/components/Avatar';
 import Spinner from '@/components/Spinner';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import type { DmChannel } from '@/lib/dm';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 /**
  * A single DM conversation, as a standalone full page -- the "open in new
@@ -34,6 +35,7 @@ import type { DmChannel } from '@/lib/dm';
 export default function DmConversationPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useTranslation();
   const topicId = params.topicId as string;
 
   const [channel, setChannel] = useState<DmChannel | null>(null);
@@ -49,18 +51,19 @@ export default function DmConversationPage() {
         if (!alive) return;
         if (res.status === 401) { router.replace('/'); return; }
         if (res.status === 403) { setNeedsNickname(true); return; }
-        if (!res.ok) throw new Error('Failed to load this conversation');
+        if (!res.ok) throw new Error(t('dmConversationPage.loadError'));
         const data = await res.json();
         if (!alive) return;
         const found = (data.dms ?? []).find((d: DmChannel) => d.topicId === topicId) ?? null;
         setChannel(found);
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : 'Failed to load this conversation');
+        if (alive) setError(err instanceof Error ? err.message : t('dmConversationPage.loadError'));
       } finally {
         if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId, router]);
 
   /**
@@ -71,9 +74,9 @@ export default function DmConversationPage() {
    * "the conversation did not load, here is somewhere real to go".
    * Mirrors `recoveryLink` in `src/app/chat/[topicId]/page.tsx`.
    */
-  function recoveryLink(label = 'Open messages') {
+  function recoveryLink(label = t('dmConversationPage.openMessages')) {
     return (
-      <Link href="/dm" style={{ color: 'var(--accent)', fontSize: 14 }}>
+      <Link href="/dm" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
         {label}
       </Link>
     );
@@ -93,11 +96,11 @@ export default function DmConversationPage() {
     return (
       <BareChatShell>
         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 12px' }}>
-            Set a nickname before you can send direct messages.
+          <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)' }}>
+            {t('dmPage.needsNickname')}
           </p>
-          <Link href={`/profile?returnTo=%2Fdm%2F${encodeURIComponent(topicId)}`} style={{ color: 'var(--accent)', fontSize: 14 }}>
-            Go to profile
+          <Link href={`/profile?returnTo=%2Fdm%2F${encodeURIComponent(topicId)}`} style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+            {t('dmPage.goToProfile')}
           </Link>
         </div>
       </BareChatShell>
@@ -108,7 +111,7 @@ export default function DmConversationPage() {
     return (
       <BareChatShell>
         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 14, margin: '0 0 12px' }}>
+          <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
             {error}
           </p>
           {recoveryLink()}
@@ -123,11 +126,11 @@ export default function DmConversationPage() {
     return (
       <BareChatShell>
         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 8px' }}>
-            Conversation not found
+          <p style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--foreground)', margin: '0 0 var(--space-2)' }}>
+            {t('dmConversationPage.notFound.title')}
           </p>
-          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.6 }}>
-            This conversation doesn&rsquo;t exist, or you&rsquo;re not part of it.
+          <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '0 0 var(--space-3)', lineHeight: 1.6 }}>
+            {t('dmConversationPage.notFound.body')}
           </p>
           {recoveryLink()}
         </div>
@@ -147,7 +150,7 @@ export default function DmConversationPage() {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        gap: 'var(--space-3)',
         padding: '14px 20px',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
@@ -155,7 +158,7 @@ export default function DmConversationPage() {
         <Avatar src={channel.peer.profileImage} name={channel.peer.nickname} size={36} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
-            fontSize: 16,
+            fontSize: 'var(--text-body)',
             fontWeight: 700,
             color: 'var(--foreground)',
             letterSpacing: '-0.01em',
@@ -165,15 +168,8 @@ export default function DmConversationPage() {
           }}>
             {channel.peer.nickname}
           </div>
-          <div style={{
-            fontSize: 10,
-            fontFamily: 'var(--font-mono)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            color: 'var(--muted)',
-            marginTop: 1,
-          }}>
-            Direct message &middot; end-to-end encrypted
+          <div className="os-label" style={{ color: 'var(--muted)', marginTop: 1 }}>
+            {t('dmConversationPage.encryptedLabel')}
           </div>
         </div>
         {/* The panel below hides its own header, so the per-topic mute (P-S)

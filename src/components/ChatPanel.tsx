@@ -5,6 +5,7 @@ import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
 import LinkPreview from '@/components/LinkPreview';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { getMlsSessionStore, getTakSessionStore } from '@/lib/mls/webTransport';
 import type { Visibility } from '@/lib/mls/takSession';
 import {
@@ -173,8 +174,8 @@ interface ChatPanelProps {
 const panelStyle: React.CSSProperties = {
   background: 'var(--surface)',
   border: '1px solid var(--border)',
-  borderRadius: 12,
-  marginBottom: 12,
+  borderRadius: 'var(--radius-card)',
+  marginBottom: 'var(--space-3)',
   overflow: 'hidden',
 };
 
@@ -195,15 +196,15 @@ const panelFramedFullHeightStyle: React.CSSProperties = {
   ...panelFullHeightStyle,
   background: 'var(--surface)',
   border: '1px solid var(--border)',
-  borderRadius: 12,
+  borderRadius: 'var(--radius-card)',
 };
 
 const headerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  gap: 8,
-  padding: '10px 14px',
+  gap: 'var(--space-2)',
+  padding: '10px var(--space-4)',
   borderBottom: '1px solid var(--border)',
   flexShrink: 0,
 };
@@ -216,7 +217,7 @@ const headerLeftStyle: React.CSSProperties = {
 };
 
 const headerTitleStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: 'var(--text-label)',
   fontWeight: 700,
   fontFamily: 'var(--font-mono)',
   textTransform: 'uppercase' as const,
@@ -224,8 +225,11 @@ const headerTitleStyle: React.CSSProperties = {
   color: 'var(--muted)',
 };
 
+// Latin/numeric-only ("N online"), so the label floor (--text-label) applies
+// rather than the Korean-prose floor — bumped up from the original 11px
+// (below even that floor).
 const onlineCountStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: 'var(--text-label)',
   fontFamily: 'var(--font-mono)',
   color: 'var(--muted)',
   marginLeft: 4,
@@ -234,7 +238,7 @@ const onlineCountStyle: React.CSSProperties = {
 const messagesContainerStyle: React.CSSProperties = {
   maxHeight: 400,
   overflowY: 'auto' as const,
-  padding: '10px 14px',
+  padding: '10px var(--space-4)',
   display: 'flex',
   flexDirection: 'column' as const,
   gap: 6,
@@ -273,6 +277,10 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              // NOT bumped to the 12px floor: this is a single initial
+              // letter inside a fixed 18x18px presence dot — going to 12px
+              // would overflow the circle. Genuinely decorative, not running
+              // copy. See migration report.
               fontSize: 9,
               fontWeight: 700,
               color: '#fff',
@@ -285,7 +293,9 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
         )
       )}
       {users.length > max && (
-        <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 2 }}>
+        // Numeric-only overflow count, not inside a fixed-size circle — safe
+        // to bump to the label floor (was 10px).
+        <span style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', marginLeft: 2 }}>
           +{users.length - max}
         </span>
       )}
@@ -296,19 +306,22 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
 // ─── Message row ──────────────────────────────────────────────────────────────
 
 function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: boolean; roomy?: boolean; own?: boolean }) {
+  const { t } = useTranslation();
   // System rows are about the room, not about a person — centered on both
   // surfaces so they never read as somebody's message.
   if (msg.type === 'join' || msg.type === 'leave') {
     return (
       <div style={{
-        fontSize: roomy ? 12 : 11,
+        // Was 11/12px — both below (or right at) the floor for a row whose
+        // nickname segment can be Korean; bumped to the caption step (13px).
+        fontSize: 'var(--text-caption)',
         color: 'var(--muted)',
         fontStyle: 'italic',
         padding: '2px 0',
         lineHeight: 1.4,
         textAlign: 'center' as const,
       }}>
-        {msg.nickname} {msg.type === 'join' ? 'entered the chat' : 'left the chat'}
+        {t(msg.type === 'join' ? 'chat.joinedRoom' : 'chat.leftRoom', { nickname: msg.nickname })}
       </div>
     );
   }
@@ -326,7 +339,9 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
   // surface, with the tail corner squared off on the speaker's side.
   const timestamp = !grouped && (
     <span style={{
-      fontSize: 10,
+      // Latin/numeric-only relative time — the label floor (12px), not the
+      // Korean-prose floor, applies. Was 10px (below even that).
+      fontSize: 'var(--text-label)',
       fontFamily: 'var(--font-mono)',
       color: 'var(--muted)',
       flexShrink: 0,
@@ -345,10 +360,13 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
       marginTop: grouped ? -2 : 0,
       maxWidth: '100%',
     }}>
-      {/* Author — other people only, first message of a group (mobile parity). */}
+      {/* Author — other people only, first message of a group (mobile parity).
+          Was 12/13px; a nickname can be short Korean text, so bumped to the
+          caption step (13px) in both densities rather than dipping to the
+          12px label floor (reserved for uppercase Latin). */}
       {!own && !grouped && (
         <span style={{
-          fontSize: roomy ? 13 : 12,
+          fontSize: 'var(--text-caption)',
           fontWeight: 700,
           color: 'var(--accent)',
           display: 'inline-flex',
@@ -375,7 +393,12 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
         {timestamp}
         {!hideMessageText && (
           <span style={{
-            fontSize: roomy ? 14 : 13,
+            // This is the message body itself — genuine Korean/long-form
+            // prose can land here, so it gets the real body-copy floor
+            // (16px) in BOTH densities, not just `roomy`. Was 13/14px; bubbles
+            // grow slightly as a result — a deliberate floor-driven change,
+            // not a like-for-like token swap (see migration report).
+            fontSize: 'var(--text-body)',
             color: own ? '#fff' : 'var(--foreground)',
             background: own ? 'var(--accent)' : 'rgba(255,255,255,0.055)',
             borderRadius: 14,
@@ -403,7 +426,7 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
             style={{
               maxWidth: '100%',
               maxHeight: roomy ? 380 : 240,
-              borderRadius: 12,
+              borderRadius: 'var(--radius-card)',
               border: '1px solid var(--border)',
               display: 'block',
             }}
@@ -432,6 +455,7 @@ export default function ChatPanel({
   framed,
   title,
 }: ChatPanelProps) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
@@ -980,11 +1004,13 @@ export default function ChatPanel({
   // Topic pages pass the topic name; everything else keeps the generic label.
   const headerLabel = (
     <div style={headerLeftStyle}>
-      <span style={{ fontSize: roomy ? 16 : 14, flexShrink: 0 }}>💬</span>
+      <span style={{ fontSize: roomy ? 'var(--text-body)' : 'var(--text-body-sm)', flexShrink: 0 }}>💬</span>
       {title ? (
         <div style={{ minWidth: 0 }}>
+          {/* Topic title — was 13/15px (below/at the floor); a topic title
+              can be Korean, so both densities now use the same 14px step. */}
           <div style={{
-            fontSize: roomy ? 15 : 13,
+            fontSize: 'var(--text-body-sm)',
             fontWeight: 700,
             color: 'var(--foreground)',
             letterSpacing: '-0.01em',
@@ -995,20 +1021,24 @@ export default function ChatPanel({
             {title}
           </div>
           <div style={{
-            fontSize: 10,
+            // "Live Chat" is a fixed uppercase Latin label and the online
+            // count is numeric — the label floor (12px) applies; was 10px.
+            fontSize: 'var(--text-label)',
             fontFamily: 'var(--font-mono)',
             textTransform: 'uppercase' as const,
             letterSpacing: '0.08em',
             color: 'var(--muted)',
             marginTop: 1,
           }}>
-            Live Chat{presence.count > 0 ? ` · ${presence.count} online` : ''}
+            {presence.count > 0
+              ? `${t('chat.liveChat')} · ${t('chat.onlineCount', { count: presence.count })}`
+              : t('chat.liveChat')}
           </div>
         </div>
       ) : (
         <>
-          <span style={headerTitleStyle}>Live Chat</span>
-          {presence.count > 0 && <span style={onlineCountStyle}>{presence.count} online</span>}
+          <span style={headerTitleStyle}>{t('chat.liveChat')}</span>
+          {presence.count > 0 && <span style={onlineCountStyle}>{t('chat.onlineCount', { count: presence.count })}</span>}
         </>
       )}
     </div>
@@ -1021,20 +1051,20 @@ export default function ChatPanel({
         {!hideHeader && (
           <div style={headerStyle}>
             <div style={headerLeftStyle}>
-              <span style={{ fontSize: 14 }}>💬</span>
-              <span style={headerTitleStyle}>Live Chat</span>
+              <span style={{ fontSize: 'var(--text-body-sm)' }}>💬</span>
+              <span style={headerTitleStyle}>{t('chat.liveChat')}</span>
             </div>
-            {onClose && <button onClick={onClose} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
+            {onClose && <button onClick={onClose} aria-label={t('chat.close')} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 'var(--text-body-lg)', cursor: 'pointer' }}>×</button>}
           </div>
         )}
         <div style={{
-          padding: '20px 14px',
+          padding: '20px var(--space-4)',
           textAlign: 'center',
-          fontSize: 13,
+          fontSize: 'var(--text-caption)',
           color: 'var(--muted)',
           lineHeight: 1.5,
         }}>
-          Join this topic to view chat
+          {t('chat.joinToView')}
         </div>
       </div>
     );
@@ -1055,10 +1085,10 @@ export default function ChatPanel({
             borderRadius: '50%',
             background: connected ? '#22c55e' : '#6b7280',
             flexShrink: 0,
-          }} title={connected ? 'Connected' : 'Reconnecting'} />
+          }} title={connected ? t('chat.connected') : t('chat.reconnecting')} />
           {/* Per-topic notification mute (P-S). Renders nothing until known. */}
           <TopicMuteToggle topicId={topicId} enabled={!isGuest && isMember} style={{ lineHeight: 1, flexShrink: 0 }} />
-          {onClose && <button onClick={onClose} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
+          {onClose && <button onClick={onClose} aria-label={t('chat.close')} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 'var(--text-body-lg)', cursor: 'pointer' }}>×</button>}
         </div>
       </div>
       )}
@@ -1072,7 +1102,7 @@ export default function ChatPanel({
         maxHeight: 'none',
         flex: 1,
         minHeight: 0,
-        padding: roomy ? '16px 20px' : '10px 14px',
+        padding: roomy ? '16px 20px' : '10px var(--space-4)',
         overflowY: 'auto' as const,
       } : messagesContainerStyle}>
         <div style={{
@@ -1098,22 +1128,25 @@ export default function ChatPanel({
                 alignSelf: 'center',
                 background: 'transparent',
                 border: '1px solid var(--border)',
-                borderRadius: 999,
+                borderRadius: 'var(--radius-pill)',
                 color: 'var(--muted)',
                 cursor: loadingOlder ? 'default' : 'pointer',
-                fontSize: 11,
+                // Uppercase-adjacent mono meta control, not running copy —
+                // the label floor (12px) applies. Was 11px.
+                fontSize: 'var(--text-label)',
                 fontFamily: 'var(--font-mono)',
-                padding: '3px 12px',
+                padding: '3px var(--space-3)',
                 marginBottom: 4,
                 opacity: loadingOlder ? 0.5 : 1,
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              {loadingOlder ? 'Loading…' : 'Load earlier messages'}
+              {loadingOlder ? t('chat.loading') : t('chat.loadEarlier')}
             </button>
           )}
           {messages.length === 0 ? (
-            <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
-              No messages yet
+            <div style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
+              {t('chat.noMessagesYet')}
             </div>
           ) : (
             messages.map((msg, i) => {
@@ -1170,13 +1203,13 @@ export default function ChatPanel({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={!connected || uploading}
-          aria-label="Attach image"
-          title="Attach image"
+          aria-label={t('chat.attachImage')}
+          title={t('chat.attachImage')}
           style={{
             background: 'rgba(120,140,255,0.08)',
             color: 'var(--muted)',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 8,
+            borderRadius: 'var(--radius-control)',
             padding: '6px 8px',
             cursor: connected && !uploading ? 'pointer' : 'not-allowed',
             display: 'flex',
@@ -1187,7 +1220,7 @@ export default function ChatPanel({
           }}
         >
           {uploading ? (
-            <span style={{ fontSize: 12 }}>…</span>
+            <span style={{ fontSize: 'var(--text-label)' }}>…</span>
           ) : (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -1211,20 +1244,24 @@ export default function ChatPanel({
               void sendImage(file);
             }
           }}
-          placeholder="Type a message..."
+          placeholder={t('chat.messagePlaceholder')}
           maxLength={1000}
           disabled={!connected}
           style={{
             flex: 1,
             background: 'transparent',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 8,
+            borderRadius: 'var(--radius-control)',
             padding: roomy ? '9px 12px' : '7px 10px',
             color: 'var(--foreground)',
-            fontSize: roomy ? 14 : 13,
+            // var(--text-body) = 16px: below that, iOS Safari zooms the page
+            // on focus. Was 13/14px in both densities — a text input must
+            // never dip below this floor, so both roomy and compact now match.
+            fontSize: 'var(--text-body)',
             outline: 'none',
             boxSizing: 'border-box',
             opacity: connected ? 1 : 0.5,
+            minHeight: 'var(--touch-target-min)',
           }}
         />
         <button
@@ -1234,17 +1271,18 @@ export default function ChatPanel({
             background: 'var(--accent)',
             color: '#fff',
             border: 'none',
-            borderRadius: 8,
+            borderRadius: 'var(--radius-control)',
             padding: roomy ? '9px 16px' : '7px 12px',
-            fontSize: roomy ? 14 : 13,
+            fontSize: 'var(--text-body-sm)',
             fontWeight: 600,
             cursor: 'pointer',
             flexShrink: 0,
             opacity: (!inputValue.trim() || !connected || sending) ? 0.4 : 1,
             transition: 'opacity 0.12s',
+            minHeight: 'var(--touch-target-min)',
           }}
         >
-          {sending ? '...' : 'Send'}
+          {sending ? '...' : t('chat.send')}
         </button>
         </div>
       </div>

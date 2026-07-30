@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 /**
  * Per-topic mute bell (P-S) — the shared web control used by both the ChatPanel
@@ -32,9 +33,12 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as unknown as Response;
 }
 
+// `TopicMuteToggle` now reads copy through `useTranslation()` — see
+// src/lib/i18n/I18nProvider.tsx. Every render needs the provider in the
+// tree, same as the app root (src/app/layout.tsx).
 async function render(ui: React.ReactElement) {
   await act(async () => {
-    root.render(ui);
+    root.render(<I18nProvider initialLocale="en">{ui}</I18nProvider>);
   });
 }
 

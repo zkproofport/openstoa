@@ -80,6 +80,40 @@ export function interpolate(template: string, params?: Record<string, string | n
 }
 
 /**
+ * Split a `{{name}}` template into its literal text runs and its slot names,
+ * so a caller can substitute non-string content (an inline `<code>`, a link)
+ * without fragmenting the sentence into per-language pieces.
+ *
+ * Why this exists: the landing page used to hold one sentence as five keys
+ * (`descPre`, `descMid1`, `descMid2`, `descMid3`, `descPost`) interleaved with
+ * four inline `<span>`s. That shape silently assumes ENGLISH WORD ORDER —
+ * Korean puts the verb last, so `descPre` had no Korean text at all and shipped
+ * as an empty string, which the locale-parity test correctly rejected. A single
+ * template per language lets each order the slots however its grammar needs.
+ *
+ * Returns an alternating list: text, slot, text, slot, … Unknown slot names are
+ * returned as slots too — the caller decides whether a missing substitution is
+ * an error or should render the raw `{{name}}`.
+ */
+export type TemplatePart =
+  | { kind: 'text'; value: string }
+  | { kind: 'slot'; name: string };
+
+export function splitTemplate(template: string): TemplatePart[] {
+  const parts: TemplatePart[] = [];
+  const re = /\{\{(\w+)\}\}/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(template)) !== null) {
+    if (m.index > last) parts.push({ kind: 'text', value: template.slice(last, m.index) });
+    parts.push({ kind: 'slot', name: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < template.length) parts.push({ kind: 'text', value: template.slice(last) });
+  return parts;
+}
+
+/**
  * Resolves `key` against `locale`'s dictionary, falling back to
  * DEFAULT_LOCALE's dictionary if missing there too, and finally to the raw
  * key path if missing everywhere. Never throws — a missing key is a visible-

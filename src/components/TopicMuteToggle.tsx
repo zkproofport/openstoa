@@ -15,6 +15,7 @@
  * never disagree with the server for longer than one round trip.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 const BellIcon = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -42,6 +43,7 @@ export interface TopicMuteToggleProps {
 }
 
 export default function TopicMuteToggle({ topicId, enabled, style }: TopicMuteToggleProps) {
+  const { t } = useTranslation();
   const [muted, setMuted] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -92,20 +94,26 @@ export default function TopicMuteToggle({ topicId, enabled, style }: TopicMuteTo
       onClick={toggle}
       disabled={busy}
       aria-pressed={muted}
-      aria-label={muted ? 'Unmute notifications for this topic' : 'Mute notifications for this topic'}
-      title={muted ? 'Notifications muted — click to unmute' : 'Mute notifications for this topic'}
+      aria-label={muted ? t('topicMuteToggle.unmute') : t('topicMuteToggle.mute')}
+      title={muted ? t('topicMuteToggle.mutedTitle') : t('topicMuteToggle.mute')}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         border: 'none',
-        padding: '4px 6px',
-        borderRadius: 5,
+        padding: 'var(--space-1) var(--space-2)',
+        borderRadius: 'var(--radius-control)',
         background: muted ? 'rgba(239, 68, 68, 0.14)' : 'transparent',
         color: muted ? '#ef4444' : 'var(--muted)',
         cursor: busy ? 'not-allowed' : 'pointer',
         opacity: busy ? 0.5 : 1,
         transition: 'background 0.12s, color 0.12s',
+        // NOT bumped to --touch-target-min (44px): this control is always
+        // embedded inline in a compact chat header row (ChatPanel/ChatRail,
+        // ~30px tall) alongside other small icon buttons that keep the same
+        // scale. Growing just this one to 44px would visibly enlarge the
+        // header bar and misalign it against its siblings — a layout
+        // regression, not a like-for-like token swap. See migration report.
         ...style,
       }}
     >

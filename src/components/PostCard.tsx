@@ -15,6 +15,7 @@ import MediaGallery from '@/components/post/MediaGallery';
 import { collectPostMedia, stripVideoUrls } from '@/lib/postMedia';
 import type { ReactionSummary } from '@/hooks/usePostMutations';
 import type { Poll } from '@/lib/polls';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ export default function PostCard({
   onRecord: _onRecord,
   expandable = true,
 }: PostCardProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   // I04: overflow detection — true when body content exceeds 200px height.
   const [bodyOverflows, setBodyOverflows] = useState(false);
@@ -240,29 +242,28 @@ export default function PostCard({
   // title since there's no breadcrumb row to attach to.
   const joinedPill = post.isJoinedTopic ? (
     <span
+      // 9px was below the 12px floor for compact labels. .os-label supplies
+      // the size/weight/font (and :lang(en)-gated uppercase+tracking) so
+      // Korean renders of "Joined" don't get spurious uppercase transform.
+      className="os-label"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: 3,
-        fontSize: 9,
-        fontWeight: 700,
         color: '#22c55e',
         background: 'rgba(34,197,94,0.10)',
         border: '1px solid rgba(34,197,94,0.25)',
         borderRadius: 4,
         padding: '1px 6px',
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        fontFamily: 'var(--font-mono)',
         lineHeight: 1.2,
         verticalAlign: 'middle',
       }}
-      aria-label="You are a member of this topic"
+      aria-label={t('postCard.joinedAriaLabel')}
     >
       <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="20 6 9 17 4 12" />
       </svg>
-      Joined
+      {t('postCard.joined')}
     </span>
   ) : null;
 
@@ -280,7 +281,7 @@ export default function PostCard({
         verticalAlign: '-0.12em',
         marginRight: '0.32em',
       }}
-      aria-label="Pinned post"
+      aria-label={t('postCard.pinnedAriaLabel')}
     >
       <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
     </svg>
@@ -301,7 +302,7 @@ export default function PostCard({
           href={`/topics/${post.topicId}`}
           onClick={(e) => e.stopPropagation()}
           style={{
-            fontSize: 12,
+            fontSize: 'var(--text-label)',
             fontWeight: 600,
             fontFamily: 'var(--font-mono)',
             color: 'var(--accent)',
@@ -356,7 +357,7 @@ export default function PostCard({
           <Link
             href={`/topics/${post.topicId}`}
             style={{
-              fontSize: 12,
+              fontSize: 'var(--text-label)',
               fontWeight: 600,
               fontFamily: 'var(--font-mono)',
               color: 'var(--accent)',
@@ -419,7 +420,7 @@ export default function PostCard({
 
         <h3
           style={{
-            fontSize: 18,
+            fontSize: 'var(--text-body-lg)',
             fontWeight: 700,
             margin: '0 0 8px 0',
             letterSpacing: '-0.015em',
@@ -478,7 +479,7 @@ export default function PostCard({
               background: 'none',
               border: 'none',
               color: 'var(--accent)',
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               fontWeight: 500,
               cursor: 'pointer',
               padding: '2px 0',
@@ -487,7 +488,7 @@ export default function PostCard({
               display: 'block',
             }}
           >
-            {expanded ? 'Show less' : 'Show more'}
+            {expanded ? t('content.showLess') : t('content.showMore')}
           </button>
         )}
 
@@ -523,17 +524,17 @@ export default function PostCard({
             padding: '4px 10px',
             background: 'rgba(139,92,246,0.08)',
             border: '1px solid rgba(139,92,246,0.15)',
-            borderRadius: 6,
-            fontSize: 12,
+            borderRadius: 'var(--radius-control)',
+            fontSize: 'var(--text-label)',
             color: '#a78bfa',
             width: 'fit-content',
           }}
         >
           <RecordIcon size={12} />
-          <span>Recorded on Base</span>
+          <span>{t('postCard.recordedOnBase')}</span>
           <span style={{ color: '#6b7280' }}>|</span>
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-            {post.recordCount} record{(post.recordCount ?? 0) !== 1 ? 's' : ''}
+            {t('postCard.recordCount', { count: post.recordCount ?? 0, suffix: (post.recordCount ?? 0) !== 1 ? 's' : '' })}
           </span>
         </div>
       )}

@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import LinkPreview from './LinkPreview';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ function renderTextWithLinks(text: string): React.ReactNode {
           key={i}
           role="link"
           tabIndex={0}
+          className="os-break-all"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -115,7 +117,6 @@ function renderTextWithLinks(text: string): React.ReactNode {
             textDecoration: 'underline',
             textUnderlineOffset: 2,
             textDecorationColor: 'rgba(59,130,246,0.4)',
-            wordBreak: 'break-all',
             cursor: 'pointer',
           }}
         >
@@ -161,7 +162,7 @@ function autoLinkUrls(html: string): string {
     // delegates click on .sns-url-link to window.open for the same UX.
     return part.replace(URL_REGEX, (url) => {
       const safe = url.replace(/"/g, '&quot;');
-      return `<span class="sns-url-link" data-href="${safe}" role="link" tabindex="0" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(59,130,246,0.4);word-break:break-all;cursor:pointer;">${url}</span>`;
+      return `<span class="sns-url-link os-break-all" data-href="${safe}" role="link" tabindex="0" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(59,130,246,0.4);cursor:pointer;">${url}</span>`;
     });
   }).join('');
 }
@@ -455,6 +456,7 @@ export default function SNSContent({
   stripInlineImages = false,
   inlineOgOnTruncate = false,
 }: SNSContentProps) {
+  const { t } = useTranslation();
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
@@ -694,7 +696,9 @@ export default function SNSContent({
 
   return (
     <div style={{
-      fontSize: 15,
+      // Post body is the primary long-form prose surface (Korean or
+      // English) — bumped from 15 to the 16px prose/input floor.
+      fontSize: 'var(--text-body)',
       lineHeight: 1.8,
       color: 'var(--foreground)',
       wordBreak: 'break-word',
@@ -859,7 +863,7 @@ export default function SNSContent({
             background: 'none',
             border: 'none',
             color: 'var(--accent)',
-            fontSize: 13,
+            fontSize: 'var(--text-caption)',
             fontWeight: 500,
             cursor: 'pointer',
             padding: '2px 0',
@@ -867,7 +871,7 @@ export default function SNSContent({
             letterSpacing: '-0.01em',
           }}
         >
-          Show more
+          {t('content.showMore')}
         </button>
       )}
 

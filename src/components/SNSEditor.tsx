@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState, useEffect } from 'react';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ const IconClose = () => (
 // ─── Upload Indicator ───────────────────────────────────────────────────────
 
 function UploadIndicator({ count, total }: { count: number; total: number }) {
+  const { t } = useTranslation();
   if (total === 0) return null;
   return (
     <div style={{
@@ -78,9 +80,9 @@ function UploadIndicator({ count, total }: { count: number; total: number }) {
       background: 'rgba(17,17,17,0.95)',
       border: '1px solid rgba(59,130,246,0.4)',
       color: '#93c5fd',
-      fontSize: 12,
+      fontSize: 'var(--text-label)',
       padding: '6px 12px',
-      borderRadius: 6,
+      borderRadius: 'var(--radius-control)',
       display: 'flex',
       alignItems: 'center',
       gap: 6,
@@ -90,7 +92,7 @@ function UploadIndicator({ count, total }: { count: number; total: number }) {
       <svg width="12" height="12" viewBox="0 0 12 12" style={{ animation: 'spin 0.8s linear infinite' }}>
         <circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="20 12"/>
       </svg>
-      Uploading {count}/{total}...
+      {t('snsEditor.uploading', { count, total })}
     </div>
   );
 }
@@ -99,12 +101,14 @@ function UploadIndicator({ count, total }: { count: number; total: number }) {
 
 export default function SNSEditor({
   onChange,
-  placeholder = 'Write something…',
+  placeholder,
   minHeight = 180,
   maxImages = 10,
   maxVideos = 3,
   initialState,
 }: SNSEditorProps) {
+  const { t } = useTranslation();
+  const effectivePlaceholder = placeholder ?? t('snsEditor.placeholder');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -196,7 +200,7 @@ export default function SNSEditor({
     // outcome isn't silent.
     const remainingSlots = Math.max(0, maxImages - images.length);
     if (remainingSlots === 0) {
-      const msg = `Image limit reached (${maxImages}).`;
+      const msg = t('snsEditor.imageLimitReached', { max: maxImages });
       setLimitError(msg);
       try { window.alert(msg); } catch {}
       setTimeout(() => setLimitError(null), 3000);
@@ -204,7 +208,11 @@ export default function SNSEditor({
     }
     const trimmed = imageFiles.slice(0, remainingSlots);
     if (trimmed.length < imageFiles.length) {
-      const msg = `Only ${remainingSlots} more image${remainingSlots === 1 ? '' : 's'} allowed (max ${maxImages}).`;
+      const msg = t('snsEditor.imageLimitPartial', {
+        remaining: remainingSlots,
+        max: maxImages,
+        suffix: remainingSlots === 1 ? '' : 's',
+      });
       setLimitError(msg);
       try { window.alert(msg); } catch {}
       setTimeout(() => setLimitError(null), 3000);
@@ -257,15 +265,15 @@ export default function SNSEditor({
     const url = videoUrlDraft.trim();
     if (!url) return;
     if (!isVideoUrl(url)) {
-      setVideoError('YouTube or Vimeo URL only');
+      setVideoError(t('snsEditor.videoUrlOnly'));
       return;
     }
     if (videos.includes(url)) {
-      setVideoError('Already added');
+      setVideoError(t('snsEditor.videoAlreadyAdded'));
       return;
     }
     if (videos.length >= maxVideos) {
-      const msg = `Video limit reached (${maxVideos}).`;
+      const msg = t('snsEditor.videoLimitReached', { max: maxVideos });
       setVideoError(msg);
       try { window.alert(msg); } catch {}
       return;
@@ -311,7 +319,7 @@ export default function SNSEditor({
       style={{
         position: 'relative',
         border: `1px solid ${isDragging ? 'var(--accent)' : 'var(--border)'}`,
-        borderRadius: 12,
+        borderRadius: 'var(--radius-card)',
         overflow: 'hidden',
         background: '#111',
         transition: 'border-color 0.15s',
@@ -324,7 +332,7 @@ export default function SNSEditor({
         value={content}
         onChange={(e) => handleContentChange(e.target.value)}
         onPaste={handlePaste}
-        placeholder={placeholder}
+        placeholder={effectivePlaceholder}
         rows={1}
         style={{
           width: '100%',
@@ -334,7 +342,8 @@ export default function SNSEditor({
           border: 'none',
           outline: 'none',
           color: 'var(--foreground)',
-          fontSize: 15,
+          // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+          fontSize: 'var(--text-body)',
           lineHeight: 1.85,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
           padding: '16px 18px 12px',
@@ -374,7 +383,7 @@ export default function SNSEditor({
               />
               <button
                 type="button"
-                aria-label="Remove image"
+                aria-label={t('snsEditor.removeImage')}
                 onClick={() => updateImages(images.filter((_, idx) => idx !== i))}
                 style={{
                   position: 'absolute',
@@ -419,7 +428,7 @@ export default function SNSEditor({
                 background: '#0a0a0a',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 8,
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
               }}
             >
               <span style={{ color: '#9ca3af', flex: 1, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -427,7 +436,7 @@ export default function SNSEditor({
               </span>
               <button
                 type="button"
-                aria-label="Remove video"
+                aria-label={t('snsEditor.removeVideo')}
                 onClick={() => updateVideos(videos.filter((_, idx) => idx !== i))}
                 style={{
                   width: 22,
@@ -464,7 +473,7 @@ export default function SNSEditor({
           borderRadius: 10,
           zIndex: 10,
         }}>
-          <span style={{ color: 'var(--accent)', fontSize: 14, fontWeight: 500 }}>Drop image here</span>
+          <span style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)', fontWeight: 500 }}>{t('snsEditor.dropImageHere')}</span>
         </div>
       )}
 
@@ -477,15 +486,16 @@ export default function SNSEditor({
               type="url"
               value={videoUrlDraft}
               onChange={(e) => { setVideoUrlDraft(e.target.value); setVideoError(''); }}
-              placeholder="YouTube or Vimeo URL"
+              placeholder={t('snsEditor.videoUrlPlaceholder')}
               style={{
                 flex: 1,
                 background: '#0a0a0a',
                 border: `1px solid ${videoError ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`,
                 borderRadius: 7,
                 color: '#e5e7eb',
-                fontSize: 13,
-                padding: '8px 12px',
+                // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+                fontSize: 'var(--text-body)',
+                padding: 'var(--space-2) var(--space-3)',
                 outline: 'none',
                 fontFamily: 'inherit',
                 transition: 'border-color 0.12s',
@@ -504,14 +514,14 @@ export default function SNSEditor({
                 border: 'none',
                 color: '#fff',
                 borderRadius: 7,
-                padding: '8px 14px',
-                fontSize: 13,
+                padding: 'var(--space-2) 14px',
+                fontSize: 'var(--text-caption)',
                 fontWeight: 600,
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
             >
-              Add
+              {t('common.add')}
             </button>
             <button
               type="button"
@@ -521,13 +531,13 @@ export default function SNSEditor({
                 border: '1px solid rgba(255,255,255,0.1)',
                 color: '#6b7280',
                 borderRadius: 7,
-                padding: '8px 12px',
-                fontSize: 13,
+                padding: 'var(--space-2) var(--space-3)',
+                fontSize: 'var(--text-caption)',
                 cursor: 'pointer',
                 flexShrink: 0,
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
           {videoError && (
@@ -563,14 +573,14 @@ export default function SNSEditor({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          title="Image / GIF"
+          title={t('snsEditor.imageGifTitle')}
           style={{
             background: 'transparent',
             border: 'none',
             color: '#9ca3af',
             cursor: 'pointer',
             padding: '6px 8px',
-            borderRadius: 6,
+            borderRadius: 'var(--radius-control)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -584,14 +594,14 @@ export default function SNSEditor({
         <button
           type="button"
           onClick={() => setShowVideoInput(v => !v)}
-          title="Video link"
+          title={t('snsEditor.videoLinkTitle')}
           style={{
             background: showVideoInput ? 'rgba(59,130,246,0.18)' : 'transparent',
             border: 'none',
             color: showVideoInput ? '#60a5fa' : '#9ca3af',
             cursor: 'pointer',
             padding: '6px 8px',
-            borderRadius: 6,
+            borderRadius: 'var(--radius-control)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

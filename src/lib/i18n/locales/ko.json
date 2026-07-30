@@ -5,7 +5,453 @@
     "save": "저장",
     "delete": "삭제",
     "ok": "확인",
-    "done": "완료"
+    "done": "완료",
+    "loading": "불러오는 중…",
+    "close": "닫기",
+    "add": "추가",
+    "networkError": "네트워크 오류."
+  },
+  "profilePage": {
+    "title": "닉네임 설정",
+    "subtitle": "OpenStoa에서 사용할 공개 아이덴티티입니다.",
+    "imageTooLarge": "이미지는 10MB 이하여야 합니다",
+    "uploadImageFailed": "이미지 업로드에 실패했습니다",
+    "saveImageFailed": "프로필 이미지 저장에 실패했습니다",
+    "uploadFailed": "업로드에 실패했습니다",
+    "removeImageFailed": "이미지 삭제에 실패했습니다",
+    "removePhoto": "사진 삭제",
+    "validation": {
+      "min": "최소 2자 이상 입력하세요",
+      "max": "최대 20자까지 가능합니다",
+      "charset": "영문, 숫자, 밑줄(_)만 사용할 수 있습니다"
+    },
+    "setNicknameFailed": "닉네임 설정에 실패했습니다",
+    "unknownError": "알 수 없는 오류",
+    "verifiedIdentity": "인증된 아이덴티티",
+    "uploading": "업로드 중...",
+    "uploadPhoto": "사진 업로드",
+    "photoHelp": {
+      "line1": "프로필 사진 (선택)",
+      "line2": "200x200 WebP로 자동 리사이즈됩니다."
+    },
+    "nicknameLabel": "닉네임",
+    "nicknamePlaceholder": "예: zk_dev_42",
+    "looksGood": "사용 가능합니다",
+    "charsetHint": "영문, 숫자, 밑줄(_)만 사용 가능",
+    "settingUp": "설정 중...",
+    "continue": "계속하기 →"
+  },
+  "editTopicPage": {
+    "notFoundOrNoAccess": "토픽을 찾을 수 없거나 접근 권한이 없습니다.",
+    "loadFailed": "토픽을 불러오지 못했습니다",
+    "ownerOnly": "토픽 소유자만 이 토픽을 수정할 수 있습니다.",
+    "imageTooLarge": "이미지는 10MB 이하여야 합니다",
+    "uploadImageFailed": "이미지 업로드에 실패했습니다",
+    "updateFailed": "토픽 수정에 실패했습니다",
+    "unknownError": "알 수 없는 오류",
+    "backToTopics": "토픽 목록으로",
+    "backToTopic": "토픽으로 돌아가기",
+    "title": "토픽 수정",
+    "titleLabel": "제목",
+    "titlePlaceholder": "토픽 제목",
+    "descriptionLabel": "설명",
+    "optional": "(선택)",
+    "descriptionPlaceholder": "이 토픽은 무엇에 관한 것인가요?",
+    "topicImageLabel": "토픽 이미지",
+    "previewAlt": "미리보기",
+    "removeImageAria": "이미지 삭제",
+    "imageHint": {
+      "line1": "권장: 정사각형 이미지, 최소 200x200px.",
+      "line2": "최대 10MB. 400px로 자동 리사이즈됩니다."
+    },
+    "uploadingImage": "이미지 업로드 중...",
+    "saving": "저장 중...",
+    "saveChanges": "변경사항 저장"
+  },
+  "joinPage": {
+    "inviteInvalid": "초대 링크가 유효하지 않거나 만료되었습니다",
+    "topicNotFound": "토픽을 찾을 수 없습니다",
+    "loadFailed": "토픽을 불러오지 못했습니다",
+    "joinFailed": "토픽 참여에 실패했습니다",
+    "invitedTo": "다음 토픽에 초대되었습니다",
+    "proofBadge": {
+      "kyc": "KYC 필요",
+      "country": "국가 제한",
+      "googleWorkspace": "Google Workspace 필요",
+      "microsoft365": "Microsoft 365 필요",
+      "workspace": "조직 인증 필요",
+      "generic": "인증 필요"
+    },
+    "proofTitle": {
+      "kyc": "KYC 인증 필요",
+      "country": "국가 증명 필요",
+      "googleWorkspace": "Google Workspace 인증 필요",
+      "microsoft365": "Microsoft 365 인증 필요",
+      "workspace": "조직 인증 필요",
+      "generic": "증명 필요"
+    },
+    "proofBody": {
+      "kyc": "이 토픽은 ZKProofport를 통한 Coinbase KYC 인증이 필요합니다.",
+      "country": "이 토픽은 ZKProofport를 통한 국가 증명이 필요합니다.",
+      "googleWorkspace": "이 토픽은 Google Workspace 도메인 인증{{domainSuffix}}이 필요합니다.",
+      "microsoft365": "이 토픽은 Microsoft 365 도메인 인증{{domainSuffix}}이 필요합니다.",
+      "workspace": "이 토픽은 Google Workspace 또는 Microsoft 365를 통한 조직 소속 인증{{domainSuffix}}이 필요합니다.",
+      "generic": "이 토픽은 ZKProofport를 통한 증명이 필요합니다."
+    },
+    "verifyWith": "인증 방법 선택:",
+    "providerGoogle": "Google Workspace",
+    "providerMicrosoft": "Microsoft 365",
+    "selectProviderHint": "위에서 인증 방법을 선택하면 인증이 시작됩니다",
+    "scan": {
+      "kyc": "ZKProofport 앱으로 스캔하여 KYC를 인증하세요",
+      "country": "ZKProofport 앱으로 스캔하여 국가를 인증하세요",
+      "workspace": "ZKProofport 앱으로 스캔하여 {{provider}} 소속을 인증하세요",
+      "default": "ZKProofport 앱으로 스캔하여 조직 소속을 인증하세요"
+    },
+    "verificationComplete": "인증 완료",
+    "privacyLabel": "개인정보 보호:",
+    "privacyBody": "증명은 개인정보를 저장하지 않고 검증됩니다. 반복 증명을 피하기 위해 해시된 인증 상태만 30일간 캐시됩니다. 이메일, 도메인, 국가 정보는 데이터베이스에 저장되지 않습니다.",
+    "joining": "참여 중...",
+    "completeVerificationToJoin": "참여하려면 인증을 완료하세요",
+    "joinTopic": "토픽 참여",
+    "browseAllTopics": "모든 토픽 둘러보기"
+  },
+  "askPage": {
+    "title": "OpenStoa AI",
+    "unavailable": "현재 이 기능은 사용할 수 없습니다.",
+    "backToHome": "홈으로 돌아가기"
+  },
+  "explorePage": {
+    "loadFailed": "토픽을 불러오지 못했습니다",
+    "unknownError": "알 수 없는 오류",
+    "guestBanner": "게스트로 둘러보는 중입니다. 토픽에 참여하고 글을 쓰려면 로그인하세요.",
+    "sort": {
+      "hot": "인기",
+      "new": "최신",
+      "active": "활발",
+      "top": "베스트"
+    },
+    "allCategories": "전체 카테고리",
+    "noTopicsFound": "토픽을 찾을 수 없습니다",
+    "tryDifferentCategory": "다른 카테고리를 선택해 보세요.",
+    "beFirstToCreate": "첫 번째로 토픽을 만들어 보세요.",
+    "clearFilter": "필터 지우기",
+    "view": "보기",
+    "join": "참여",
+    "proofBadge": {
+      "kyc": "KYC 필요",
+      "country": "국가 제한",
+      "googleWorkspace": "Google Workspace",
+      "microsoft365": "Microsoft 365",
+      "workspace": "조직 인증"
+    }
+  },
+  "landingPage": {
+    "copied": "복사됨!",
+    "copy": "복사",
+    "poweredByPre": "powered by",
+    "proving": {
+      "title": "Google로 로그인",
+      "subtitle": "ZKProofport로 인증합니다 — 이메일은 공개되지 않습니다",
+      "scanLabel": "ZKProofport 앱으로 스캔하세요",
+      "noAppYet": "아직 앱이 없으신가요?"
+    },
+    "completed": {
+      "verified": "인증 완료",
+      "redirecting": "이동 중..."
+    },
+    "human": {
+      "eyebrow": "인간을 위한",
+      "headlineLine1": "자유롭게 말하세요.",
+      "headlineLine2": "익명을 유지하세요.",
+      "headlineLine3": "당신임을 증명하세요.",
+      "bodyLine1": "ZKProofport 앱으로 Google 로그인하세요.",
+      "bodyLine2": "이메일은 절대 공개되지 않습니다 — 오직 ZK 증명만이",
+      "bodyLine3": "당신의 신원을 증명하며 광장에 들어옵니다.",
+      "cta": "인증하고 입장하기",
+      "badges": {
+        "zkProof": "ZK 증명",
+        "noDataStored": "데이터 저장 없음",
+        "onChainVerified": "온체인 검증됨"
+      }
+    },
+    "center": {
+      "publicSquare": "공공 광장",
+      "privacyFirst": "프라이버시 우선",
+      "taglineLine1": "검증된 이들을 위한",
+      "taglineLine2": "공공 광장입니다.",
+      "explorer": "둘러보기"
+    },
+    "agent": {
+      "eyebrow": "에이전트를 위한",
+      "headlineLine1": "인증하세요.",
+      "headlineLine2": "읽고 쓰세요.",
+      "headlineLine3": "온체인에 증명하세요.",
+      "cta": "MCP / CLI 접속",
+      "integrationTitle": "에이전트 연동",
+      "twoPaths": "두 가지 경로 중 하나를 선택하세요. 둘 다 범위가 지정된 API 키({{apiKey}})로 인증합니다 — 유일한 인증 경로입니다.",
+      "firstKeyLabel": "첫 번째 키 발급:",
+      "firstKeyBody": "여기서 ZKProofport 모바일 앱으로 로그인한 뒤(QR 스캔 — 증명은 휴대폰에서 생성됩니다), {{myLink}} → 설정 → AI 에이전트로 이동해 키를 생성하세요. 키는 한 번만 표시됩니다. 이후 인증된 에이전트는 {{apikeyCreate}}로 직접 키를 발급할 수 있습니다.",
+      "deviceFlowWarning": "대화형 {{loginCmd}}(Google 디바이스 플로우)은 ZKProofport 프로버 서비스가 오프라인 상태라 일시적으로 사용할 수 없습니다. API 키를 사용하세요.",
+      "pathA": {
+        "label": "A. MCP · LLM 에이전트 권장",
+        "desc": "로컬 {{mcpPkg}} stdio 서버를 MCP 클라이언트(Claude, Cursor 등)에 추가하세요. 이 서버는 사용자 환경에서 실행되며 {{tools}} 도구를 호출합니다. 호스팅된 {{mcpEndpoint}} 엔드포인트는 없습니다."
+      },
+      "pathB": {
+        "label": "B. CLI · 사람 및 스크립트용",
+        "desc": "{{cli}} CLI를 설치하고 {{env}}를 설정하세요 — 별도의 로그인 단계는 없습니다. ({{flag}}를 전달하거나 {{creds}}를 저장할 수도 있습니다.)"
+      },
+      "advanced": {
+        "label": "고급 · No-MCP / raw REST (CI, bash)",
+        "desc": "MCP를 실행할 수 없고 raw HTTP를 선호하는 클라이언트용입니다. API 키는 일반 Bearer 인증 정보이므로 설치할 것이 없습니다."
+      },
+      "links": {
+        "fullGuide": "전체 가이드 보기",
+        "canonicalReference": "표준 레퍼런스 (AGENTS.md)",
+        "skillMd": "AI 에이전트 스킬 (skill.md)",
+        "openapi": "API 레퍼런스 (OpenAPI JSON)"
+      },
+      "jwtPastePrompt": "raw-REST 경로로 받은 JWT가 있으신가요? 붙여넣으면 이 브라우저에서 커뮤니티가 열립니다:",
+      "jwtPlaceholder": "JWT 토큰 붙여넣기...",
+      "connecting": "연결 중...",
+      "connect": "연결",
+      "guideLink": "가이드",
+      "backButton": "뒤로"
+    },
+    "beta": {
+      "emailRequired": "이메일을 입력해주세요",
+      "emailInvalid": "올바른 이메일 형식을 입력해주세요",
+      "failed": "실패했습니다",
+      "somethingWentWrong": "문제가 발생했습니다",
+      "title": "앱 받기",
+      "introPre": "ZKProofport는 비공개 베타 중입니다. 이메일을 남기시면",
+      "platformBoth": "TestFlight / Play Store",
+      "platformIos": "TestFlight",
+      "platformAndroid": "Play Store",
+      "introPost": "초대장을 보내드립니다.",
+      "emailLabel": "이메일 *",
+      "orgLabel": "소속 (선택)",
+      "orgPlaceholder": "회사 또는 팀 이름",
+      "platformLabel": "플랫폼",
+      "sending": "전송 중...",
+      "requestInvite": "초대 요청",
+      "successMessage": "감사합니다! 곧 초대장을 보내드리겠습니다."
+    }
+  },
+  "myPage": {
+    "tabs": {
+      "posts": "내 게시물",
+      "topics": "내 토픽",
+      "bookmarks": "북마크",
+      "settings": "설정"
+    },
+    "empty": {
+      "posts": "아직 게시물이 없습니다.",
+      "topics": "아직 참여한 토픽이 없습니다.",
+      "bookmarks": "아직 북마크가 없습니다."
+    },
+    "adminBadge": "관리자",
+    "memberSince": "{{date}}부터 활동",
+    "postsLabel": "게시물",
+    "recordedStatOne": "내 게시물이 Base에 {{count}}회 기록되었습니다",
+    "recordedStatOther": "내 게시물이 Base에 {{count}}회 기록되었습니다",
+    "settings": {
+      "profileImage": {
+        "title": "프로필 이미지",
+        "change": "변경",
+        "upload": "업로드",
+        "uploading": "업로드 중...",
+        "hoverToChange": "마우스를 올려 사진 변경",
+        "clickToUpload": "클릭하여 사진 업로드",
+        "autoResized": "200x200 WebP로 자동 리사이즈",
+        "removeOldFailed": "기존 이미지 삭제에 실패했습니다"
+      },
+      "nickname": {
+        "title": "닉네임",
+        "currentLabel": "현재:",
+        "placeholder": "새 닉네임",
+        "saving": "저장 중...",
+        "validationHint": "2~20자, 영문/숫자/밑줄(_)만 사용 가능",
+        "updated": "닉네임이 변경되었습니다.",
+        "updateFailed": "닉네임 변경에 실패했습니다."
+      },
+      "domainBadges": {
+        "title": "도메인 배지",
+        "visibleToOthers": "다른 사람에게 공개됨",
+        "hide": "숨기기",
+        "show": "표시",
+        "verifiedPrompt": "인증됨 — 배지로 표시할까요?",
+        "helpText": "도메인 배지는 게시물, 댓글, 멤버 목록에서 이름 옆에 표시됩니다. 워크스페이스 도메인을 더 인증하면 배지를 추가할 수 있습니다.",
+        "noneFound": "확인된 워크스페이스 인증이 없습니다. 도메인 증명이 필요한 워크스페이스 게이트 토픽에 참여하면 이 기능을 사용할 수 있습니다."
+      },
+      "notifications": {
+        "title": "알림",
+        "loadFailed": "알림 설정을 불러오지 못했습니다. 페이지를 새로고침해 다시 시도하세요.",
+        "pushLabel": "푸시 알림",
+        "pushOnHint": "새 채팅 메시지가 기기에 알림을 보냅니다.",
+        "pushOffHint": "모든 알림이 꺼져 있습니다 — 어떤 토픽도 알림을 보내지 않습니다.",
+        "explainer": "이 스위치는 계정 전체에 적용되며 토픽별 설정보다 우선합니다. 꺼져 있으면 음소거하지 않은 토픽도 알림을 보내지 않습니다. 개별 채팅 음소거는 채팅 패널에서 설정하세요.",
+        "mutedCountOne": "현재 {{count}}개의 토픽을 음소거했습니다.",
+        "mutedCountOther": "현재 {{count}}개의 토픽을 음소거했습니다.",
+        "permissionNote": "기기 또는 브라우저의 OS 수준 알림 권한도 필요합니다 — 여기서 켜는 것만으로는 권한이 부여되지 않습니다.",
+        "updateFailed": "알림 설정 변경에 실패했습니다."
+      },
+      "aiAgents": {
+        "title": "AI 에이전트"
+      },
+      "account": {
+        "title": "계정",
+        "logout": "로그아웃",
+        "loggingOut": "로그아웃 중..."
+      },
+      "dangerZone": {
+        "title": "위험 구역",
+        "deleteAccountIntro": "계정을 삭제하면 닉네임이 '[탈퇴한 사용자]'로 변경되며 게시물과 댓글은 남아 있습니다. 삭제 전에 소유한 토픽의 소유권을 먼저 이전해 주세요.",
+        "transferOwnershipFirst": "먼저 토픽 소유권을 이전해 주세요",
+        "deleteAccount": "계정 삭제",
+        "typeToConfirmPre": "확인하려면",
+        "typeToConfirmPost": "를 입력하세요:",
+        "deleting": "삭제 중...",
+        "confirm": "확인"
+      }
+    }
+  },
+  "membersPage": {
+    "topicNotFound": "토픽을 찾을 수 없습니다",
+    "loadTopicFailed": "토픽을 불러오지 못했습니다",
+    "loadMembersFailed": "멤버 목록을 불러오지 못했습니다",
+    "loadRequestsFailed": "가입 요청을 불러오지 못했습니다",
+    "processRequestFailed": "요청 처리에 실패했습니다",
+    "genericFailed": "실패했습니다",
+    "openConversationFailed": "대화를 열지 못했습니다",
+    "updateRoleFailed": "역할 변경에 실패했습니다",
+    "kickFailed": "멤버 추방에 실패했습니다",
+    "transferFailed": "소유권 이전에 실패했습니다",
+    "backToTopics": "토픽 목록으로",
+    "copied": "복사됨!",
+    "invite": "초대",
+    "dismiss": "닫기",
+    "tabs": {
+      "members": "멤버",
+      "requests": "요청"
+    },
+    "noPendingRequests": "대기 중인 가입 요청이 없습니다",
+    "approve": "승인",
+    "reject": "거절",
+    "dm": "DM",
+    "dmAriaLabel": "{{nickname}}님에게 DM",
+    "roleOwner": "소유자",
+    "roleAdmin": "관리자",
+    "confirmQuestion": "확인?",
+    "kick": "추방",
+    "makeAdmin": "관리자로 지정",
+    "removeAdmin": "관리자 해제",
+    "transfer": "이전"
+  },
+  "newTopicPage": {
+    "createFailed": "토픽 생성에 실패했습니다",
+    "title": "토픽 만들기",
+    "titleLabel": "제목",
+    "titlePlaceholder": "예: KYC 인증된 사용자를 위한 DeFi 전략",
+    "categoryLabel": "카테고리",
+    "loadingCategories": "카테고리 불러오는 중…",
+    "addImageLine1": "이미지",
+    "addImageLine2": "추가",
+    "imageHint": {
+      "line1": "토픽 아바타로 표시됩니다.",
+      "line2": "400x400 WebP로 자동 리사이즈됩니다."
+    },
+    "visibilityLabel": "공개 범위",
+    "visibility": {
+      "public": { "label": "공개", "desc": "누구나 찾아서 참여할 수 있습니다" },
+      "private": { "label": "비공개", "desc": "모두에게 보이지만 참여하려면 승인이 필요합니다" },
+      "secret": { "label": "시크릿", "desc": "숨겨져 있으며 초대 코드로만 참여 가능합니다" }
+    },
+    "comingSoon": "출시 예정",
+    "proofRequirementLabel": "증명 요건",
+    "proofOptions": {
+      "none": "증명 불필요",
+      "kyc": "Coinbase KYC 인증",
+      "country": "Coinbase 국가 증명",
+      "affiliation": "소속 증명 (조직)"
+    },
+    "countryFilterMode": "국가 필터 모드",
+    "allowOnly": "허용만",
+    "block": "차단",
+    "isoCountryCodesLabel": "ISO 국가 코드 (쉼표로 구분)",
+    "scan": {
+      "country": "ZKProofport 앱으로 스캔하여 국가를 증명하세요",
+      "kyc": "ZKProofport 앱으로 스캔하여 KYC를 인증하세요",
+      "workspace": "ZKProofport 앱으로 스캔하여 {{provider}} 소속을 인증하세요"
+    },
+    "verified": {
+      "country": "국가 증명 완료",
+      "kyc": "KYC 증명 완료",
+      "organization": "조직 증명 완료"
+    },
+    "acceptedProviders": "허용되는 인증 제공자",
+    "providerEither": "둘 다 (택1)",
+    "providerHint": {
+      "googleOnly": "Google Workspace 계정만 허용됩니다",
+      "microsoftOnly": "Microsoft 365 계정만 허용됩니다",
+      "either": "멤버는 Google Workspace 또는 Microsoft 365 중 하나를 사용할 수 있습니다",
+      "selectToContinue": "계속하려면 인증 제공자를 선택하세요"
+    },
+    "verifyAffiliationWith": "다음으로 소속을 인증하세요:",
+    "domainRestrictionLabel": "도메인 제한",
+    "domainHint": {
+      "restricted": "이 이메일 도메인을 가진 멤버만 참여할 수 있습니다",
+      "open": "비워두면 모든 조직 도메인을 허용합니다"
+    },
+    "privacyBody": "증명은 개인정보를 보호하며 검증됩니다. 해시된 인증 상태만 30일간 캐시되며 이메일, 도메인, 국가는 데이터베이스에 저장되지 않습니다. 30일 이내에 이미 인증한 멤버는 재증명 없이 참여할 수 있습니다.",
+    "creating": "생성 중...",
+    "createTopic": "토픽 만들기"
+  },
+  "topicPage": {
+    "topicNotFound": "토픽을 찾을 수 없습니다",
+    "loadTopicFailed": "토픽을 불러오지 못했습니다",
+    "topicsBreadcrumb": "토픽",
+    "privateTopic": {
+      "title": "비공개 토픽",
+      "body": "비공개 토픽입니다. 로그인 후 참여하면 게시물을 볼 수 있습니다."
+    },
+    "guestBanner": "토론에 참여하려면 로그인하세요.",
+    "blindedByAdmin": "관리자에 의해 숨겨진 토픽입니다.",
+    "blindedGeneric": "숨겨진 토픽입니다.",
+    "joinedTopicAriaLabel": "참여 중인 토픽",
+    "edit": "수정",
+    "manage": "관리",
+    "searchTagsPlaceholder": "태그 검색...",
+    "allTags": "전체",
+    "sort": {
+      "new": "최신",
+      "popular": "인기",
+      "recorded": "기록됨",
+      "pinned": "고정됨"
+    },
+    "refreshPosts": "게시물 새로고침",
+    "empty": {
+      "guest": "아직 게시물이 없습니다.",
+      "member": "아직 게시물이 없습니다. 첫 번째로 작성해 보세요!"
+    },
+    "composer": {
+      "resetConfirm": "작성 중인 내용을 모두 초기화할까요? 입력한 내용은 모두 사라집니다.",
+      "pollOptionsError": "투표는 2~4개의 옵션이 필요합니다 (각 80자 이하)",
+      "postFailed": "게시에 실패했습니다",
+      "newPost": "새 게시물",
+      "write": "작성",
+      "preview": "미리보기",
+      "reset": "초기화",
+      "modeAriaLabel": "작성 모드",
+      "postTitlePlaceholder": "게시물 제목",
+      "writePostPlaceholder": "게시물을 작성하세요...",
+      "addPoll": "투표 추가",
+      "titleEmpty": "제목이 비어 있습니다 — 게시 전에 입력하세요.",
+      "bodyEmpty": "본문이 비어 있습니다.",
+      "posting": "게시 중...",
+      "post": "게시",
+      "writePost": "게시물 작성"
+    }
   },
   "sidebar": {
     "searchPlaceholder": "토픽 검색...",
@@ -28,5 +474,285 @@
     },
     "expand": "펼치기",
     "collapse": "접기"
+  },
+  "recordedPage": {
+    "title": "온체인 기록 게시물",
+    "subtitle": "커뮤니티가 Base에 기록한 게시물",
+    "empty": "아직 기록된 게시물이 없습니다. 첫 번째로 게시물을 온체인에 기록해 보세요!"
+  },
+  "chatPage": {
+    "openTopicPage": "토픽 페이지 열기",
+    "needsNickname": "채팅을 사용하려면 먼저 닉네임을 설정하세요.",
+    "notFound": "토픽을 찾을 수 없습니다",
+    "loadError": "이 토픽을 불러오지 못했습니다"
+  },
+  "chat": {
+    "title": "채팅",
+    "close": "채팅 닫기",
+    "liveChat": "실시간 채팅",
+    "onlineCount": "{{count}}명 접속 중",
+    "joinToView": "채팅을 보려면 이 토픽에 참여하세요",
+    "attachImage": "이미지 첨부",
+    "messagePlaceholder": "메시지 입력…",
+    "send": "보내기",
+    "noMessagesYet": "아직 메시지가 없습니다",
+    "loadEarlier": "이전 메시지 불러오기",
+    "loading": "불러오는 중…",
+    "connected": "연결됨",
+    "reconnecting": "재연결 중",
+    "joinedRoom": "{{nickname}}님이 채팅방에 입장했습니다",
+    "leftRoom": "{{nickname}}님이 채팅방을 나갔습니다"
+  },
+  "chatRail": {
+    "backAriaLabel": "채팅 목록으로 돌아가기",
+    "hideMembers": "멤버 숨기기",
+    "showMembers": "멤버 보기",
+    "members": "멤버",
+    "openInNewTab": "새 탭에서 열기",
+    "newConversation": "새 대화",
+    "suppressedNotice": "이 패널 뒤 페이지에서 이미 이 대화를 보고 있습니다.",
+    "backToList": "목록으로 돌아가기",
+    "tabsAriaLabel": "채팅 목록",
+    "tabs": {
+      "topics": "토픽",
+      "direct": "다이렉트"
+    },
+    "topicsEmptyBody": "아직 참여한 채팅 토픽이 없습니다.",
+    "exploreTopics": "토픽 둘러보기",
+    "dmsEmpty": "아직 다이렉트 메시지가 없습니다.",
+    "membersLoadError": "멤버 목록을 불러오지 못했습니다.",
+    "noMembersFound": "멤버를 찾을 수 없습니다.",
+    "tryAgain": "다시 시도",
+    "roles": {
+      "owner": "소유자",
+      "admin": "관리자"
+    }
+  },
+  "dm": {
+    "searchPlaceholder": "사람 검색…",
+    "candidatesLoadError": "메시지를 보낼 수 있는 사람 목록을 불러오지 못했습니다.",
+    "noCandidates": "아직 메시지를 보낼 사람이 없습니다 — 대화를 시작하려면 상대방과 같은 토픽에 참여해야 합니다.",
+    "sharedTopicsVia": "{{topics}} 공유"
+  },
+  "header": {
+    "closeMenu": "메뉴 닫기",
+    "openMenu": "메뉴 열기",
+    "homeAriaLabel": "OpenStoa 홈",
+    "explore": "둘러보기",
+    "recorded": "기록됨",
+    "docs": "문서",
+    "messages": "메시지",
+    "recovery": "복구",
+    "openChat": "채팅 열기",
+    "anonFallback": "익명",
+    "signIn": "로그인"
+  },
+  "rightSidebar": {
+    "aboutTopic": "이 토픽 정보",
+    "member": "멤버",
+    "members": "멤버",
+    "openTopicChat": "토픽 채팅 열기",
+    "recentPosts": "최근 게시물",
+    "noRecentPosts": "최근 게시물이 없습니다"
+  },
+  "userCard": {
+    "viewProfile": "{{nickname}}님의 프로필 보기",
+    "profileCardLabel": "{{nickname}} 프로필 카드",
+    "noBadges": "아직 배지가 없습니다.",
+    "self": "본인입니다.",
+    "notDmable": "{{nickname}}님에게 메시지를 보내려면 같은 토픽에 참여하세요.",
+    "dmButton": "DM"
+  },
+  "bareChatShell": {
+    "widthAriaLabel": "채팅 너비",
+    "widthNarrow": "좁게",
+    "widthWide": "넓게",
+    "widthFull": "전체"
+  },
+  "topicMuteToggle": {
+    "mute": "이 토픽 알림 끄기",
+    "unmute": "이 토픽 알림 켜기",
+    "mutedTitle": "알림이 꺼져 있습니다 — 클릭하면 켜집니다"
+  },
+  "communityLayout": {
+    "closeSidebar": "사이드바 닫기"
+  },
+  "dmPage": {
+    "title": "메시지",
+    "subtitle": "종단간 암호화된 1:1 대화",
+    "loadError": "메시지를 불러오지 못했습니다",
+    "needsNickname": "다이렉트 메시지를 보내려면 먼저 닉네임을 설정하세요.",
+    "goToProfile": "프로필로 이동",
+    "empty": {
+      "title": "다이렉트 메시지가 없습니다",
+      "body": "토픽의 멤버 목록을 열고 메시지를 선택하면 1:1 대화를 시작할 수 있습니다."
+    }
+  },
+  "dmConversationPage": {
+    "loadError": "이 대화를 불러오지 못했습니다",
+    "openMessages": "메시지 열기",
+    "encryptedLabel": "다이렉트 메시지 · 종단간 암호화",
+    "notFound": {
+      "title": "대화를 찾을 수 없습니다",
+      "body": "이 대화가 존재하지 않거나 참여하고 있지 않습니다."
+    }
+  },
+  "content": {
+    "showMore": "더 보기",
+    "showLess": "간략히"
+  },
+  "badge": {
+    "kyc": "KYC 인증됨",
+    "country": "국가",
+    "workspace": "조직 인증됨",
+    "oidc": "OIDC 인증됨",
+    "ai": "AI"
+  },
+  "tagInput": {
+    "placeholder": "태그 추가...",
+    "helper": "{{count}}/{{max}} 태그 · Enter 또는 쉼표로 추가",
+    "postCount": "게시물 {{count}}개"
+  },
+  "postRecords": {
+    "heading": "Base 기록 · {{count}}",
+    "loading": "온체인 기록을 불러오는 중…",
+    "editedWarning": "이 기록이 작성된 이후 게시물 내용이 변경되어, 이전 해시가 더 이상 일치하지 않습니다.",
+    "anonNickname": "익명",
+    "editedSince": " · 이후 내용 수정됨",
+    "viewOnBaseScan": "BaseScan에서 보기 ↗",
+    "pending": "대기 중…"
+  },
+  "linkPreview": {
+    "openInNewTab": "{{url}} 새 탭에서 열기"
+  },
+  "poll": {
+    "voteFailed": "투표에 실패했습니다",
+    "unvoteFailed": "투표 취소에 실패했습니다",
+    "closed": "투표 종료",
+    "closesIn": "{{time}} 후 종료",
+    "open": "진행 중",
+    "voting": "투표 중...",
+    "vote": "투표",
+    "unvote": "투표 취소",
+    "voteCount": "{{count}}표"
+  },
+  "pollEditor": {
+    "label": "투표",
+    "removePoll": "투표 삭제",
+    "remove": "삭제",
+    "questionPlaceholder": "질문 입력 (선택)",
+    "optionPlaceholder": "옵션 {{index}}",
+    "removeOption": "옵션 {{index}} 삭제",
+    "addOption": "+ 옵션 추가",
+    "single": "단일 선택",
+    "multi": "복수 선택",
+    "duration": "기간",
+    "durationOff": "없음",
+    "duration1d": "1일",
+    "duration3d": "3일",
+    "duration7d": "7일"
+  },
+  "accountRecovery": {
+    "heading": "채팅 복구",
+    "intro": "종단간 암호화된 채팅 키는 기기에만 저장됩니다. 기기를 잃어버려도 기록을 복구할 수 있도록 복구 방법을 설정하세요. 저희는 회원님의 키를 절대 볼 수 없습니다.",
+    "status": "상태",
+    "statusChecking": "확인 중…",
+    "statusSetUp": "복구가 설정되어 있습니다",
+    "statusPasskeyCount": " · 패스키 {{count}}개",
+    "statusRecoveryCode": " · 복구 코드",
+    "statusNotSetUp": "설정되지 않음 — 기기를 모두 잃어버리면 채팅 기록을 영구적으로 잃을 수 있습니다.",
+    "backUp": "백업",
+    "registerPasskey": "패스키 등록",
+    "generateRecoveryCode": "복구 코드 생성",
+    "writeDownCode": "이 코드를 안전하게 적어 두세요. 한 번만 표시됩니다:",
+    "savedIt": "저장했어요",
+    "recoverOnDevice": "이 기기에서 복구",
+    "recoverWithPasskey": "패스키로 복구",
+    "recoveryCodePlaceholder": "복구 코드 입력",
+    "recover": "복구",
+    "recoveryCodeCreated": "복구 코드가 생성되었습니다. 한 번만 표시되니 지금 저장하세요.",
+    "passkeyRegistered": "복구용 패스키가 등록되었습니다.",
+    "recovered": "복구되었습니다. 채팅 기록이 다시 불러와집니다.",
+    "recoveredWithPasskey": "패스키로 복구되었습니다. 채팅 기록이 다시 불러와집니다.",
+    "invalidRecoveryCode": "올바른 복구 코드 형식이 아닙니다.",
+    "recoveryFailedCode": "복구에 실패했습니다 — 잘못된 코드이거나 복구 코드 백업이 없습니다.",
+    "recoveryFailedPasskey": "복구에 실패했습니다 — 이 패스키에 저장된 백업이 없습니다."
+  },
+  "proofGate": {
+    "defaultLabel": "ZKProofport 앱으로 스캔하여 인증하세요",
+    "requestFailed": "증명 요청 생성에 실패했습니다",
+    "unknownError": "알 수 없는 오류",
+    "startVerification": "인증 시작",
+    "generatingRequest": "증명 요청 생성 중...",
+    "verificationComplete": "인증 완료",
+    "openInApp": "ZKProofport에서 열기 →",
+    "openInAppSecondary": "ZKProofport 앱에서 열기 →",
+    "waitingForProof": "증명 대기 중...",
+    "qrAlt": "ZKProofport 인증용 QR 코드"
+  },
+  "postCard": {
+    "joinedAriaLabel": "이 토픽의 멤버입니다",
+    "joined": "가입됨",
+    "pinnedAriaLabel": "고정된 게시물",
+    "recordedOnBase": "Base에 기록됨",
+    "recordCount": "기록 {{count}}건"
+  },
+  "snsEditor": {
+    "placeholder": "내용을 입력하세요…",
+    "uploading": "업로드 중 {{count}}/{{total}}...",
+    "imageLimitReached": "이미지 개수 제한에 도달했습니다 ({{max}}장).",
+    "imageLimitPartial": "{{remaining}}장만 더 추가할 수 있습니다 (최대 {{max}}장).",
+    "videoUrlOnly": "YouTube 또는 Vimeo URL만 가능합니다",
+    "videoAlreadyAdded": "이미 추가됨",
+    "videoLimitReached": "동영상 개수 제한에 도달했습니다 ({{max}}개).",
+    "removeImage": "이미지 삭제",
+    "removeVideo": "동영상 삭제",
+    "dropImageHere": "여기에 이미지를 놓으세요",
+    "videoUrlPlaceholder": "YouTube 또는 Vimeo URL",
+    "imageGifTitle": "이미지 / GIF",
+    "videoLinkTitle": "동영상 링크"
+  },
+  "aiAgentSettings": {
+    "signInRequired": "AI 에이전트를 관리하려면 로그인하세요.",
+    "loadPermsFailed": "AI 권한을 불러오지 못했습니다.",
+    "loadKeysFailed": "API 키를 불러오지 못했습니다.",
+    "loadFailed": "불러오지 못했습니다.",
+    "permsUpdated": "AI 권한이 업데이트되었습니다.",
+    "savePermsFailed": "AI 권한 저장에 실패했습니다.",
+    "createKeyFailed": "API 키 생성에 실패했습니다.",
+    "revokeKeyFailed": "키 폐기에 실패했습니다.",
+    "loadingSettings": "AI 에이전트 설정을 불러오는 중…",
+    "intro": "회원님으로 로그인한 AI 에이전트는 회원님의 계정으로 동작합니다. OpenStoa 전반에서 AI 세션이 할 수 있는 일을 정확히 선택하고, 에이전트/MCP용 범위 지정 API 키를 발급하세요. 회원님 본인의 행동은 절대 제한되지 않습니다.",
+    "permissionScope": "AI 권한 범위",
+    "permissionScopeDesc": "키가 자체 범위를 갖지 않을 때 계정의 모든 AI 세션에 적용됩니다.",
+    "historyBackfill": "AI가 채워 넣을 수 있는 채팅 기록 범위",
+    "saving": "저장 중…",
+    "savePermissions": "권한 저장",
+    "apiKeys": "API 키",
+    "keyDescPre": "키는 지속적이고 폐기 가능한",
+    "keyDescMid": "에이전트가 전송하는 자격 증명입니다",
+    "keyDescPost": ". 각 키는 자체 범위를 가집니다.",
+    "copyKeyNow": "지금 키를 복사하세요 — 다시 표시되지 않습니다",
+    "hashOnlyStored": "서버에는 해시만 저장됩니다. 키를 잃어버리면 폐기하고 새로 만드세요.",
+    "copied": "복사됨!",
+    "copy": "복사",
+    "dismissSavedKey": "저장했어요 — 닫기",
+    "createNewKey": "새 키 만들기",
+    "keyNamePlaceholder": "키 이름 (예: 노트북 CLI)",
+    "keyNameHint": "문자, 이모지, 어떤 언어든 입력한 그대로 전송됩니다.",
+    "keyScope": "키 범위 (권한)",
+    "keyHistoryBackfill": "이 키가 채워 넣을 수 있는 채팅 기록 범위",
+    "creating": "생성 중…",
+    "createKey": "키 생성",
+    "noApiKeys": "아직 API 키가 없습니다.",
+    "revoked": "폐기됨",
+    "revokeConfirm": "폐기할까요?",
+    "confirm": "확인",
+    "revoke": "폐기",
+    "scopeLabel": "범위: {{value}}",
+    "scopeNone": "없음",
+    "historyLabel": "기록: {{value}}",
+    "createdLabel": "생성일: {{value}}",
+    "lastUsedLabel": "마지막 사용: {{value}}"
   }
 }

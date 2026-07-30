@@ -30,6 +30,7 @@ import Avatar from './Avatar';
 import Badge from './Badge';
 import { isDmCandidate } from '@/lib/dmCandidatesCache';
 import { useChatRail } from '@/lib/chatRailContext';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export interface UserCardBadge {
   type: string;
@@ -90,6 +91,7 @@ export default function UserCard({
   viewerUserId,
   children,
 }: UserCardProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [canDm, setCanDm] = useState(false);
   // Distinguishes "still checking DM eligibility" from "checked, not
@@ -217,7 +219,7 @@ export default function UserCard({
         }}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`View ${nickname}'s profile`}
+        aria-label={t('userCard.viewProfile', { nickname })}
         style={{ display: 'inline-flex', cursor: 'pointer' }}
       >
         {children}
@@ -225,7 +227,7 @@ export default function UserCard({
       {open && (
         <div
           role="dialog"
-          aria-label={`${nickname} profile card`}
+          aria-label={t('userCard.profileCardLabel', { nickname })}
           data-testid="user-card-popover"
           style={{
             position: 'absolute',
@@ -237,16 +239,16 @@ export default function UserCard({
             maxWidth: '80vw',
             background: 'var(--surface)',
             border: '1px solid var(--border)',
-            borderRadius: 12,
-            padding: 14,
+            borderRadius: 'var(--radius-card)',
+            padding: 'var(--space-4)',
             boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: badges?.length ? 8 : 12, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: badges?.length ? 'var(--space-2)' : 'var(--space-3)', minWidth: 0 }}>
             <Avatar src={profileImage} name={nickname} size={40} />
             <span
               style={{
-                fontSize: 14,
+                fontSize: 'var(--text-body-sm)',
                 fontWeight: 700,
                 color: 'var(--foreground)',
                 overflow: 'hidden',
@@ -259,23 +261,23 @@ export default function UserCard({
             </span>
           </div>
           {badges != null && badges.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 'var(--space-3)' }}>
               {badges.map((b, i) => (
                 <Badge key={i} type={b.type} label={b.label} domain={b.domain ?? undefined} country={b.country ?? undefined} />
               ))}
             </div>
           ) : (
-            <p data-testid="user-card-no-badges" style={noteStyle}>No badges yet.</p>
+            <p data-testid="user-card-no-badges" style={noteStyle}>{t('userCard.noBadges')}</p>
           )}
           {/* Self and no-shared-topic are two different reasons the DM button
               is absent — say which one, rather than leaving a blank space
               that reads as broken. Self takes no dependency on the (still
               possibly in-flight) DM-candidacy check; not-DM-able waits for
               `dmChecked` so it never flashes on before the check has run. */}
-          {isSelf && <p data-testid="user-card-self-note" style={noteStyle}>This is you.</p>}
+          {isSelf && <p data-testid="user-card-self-note" style={noteStyle}>{t('userCard.self')}</p>}
           {!isSelf && resolvedViewer != null && dmChecked && !canDm && (
             <p data-testid="user-card-not-dmable" style={noteStyle}>
-              Share a topic with {nickname} to DM them.
+              {t('userCard.notDmable', { nickname })}
             </p>
           )}
           {!isSelf && resolvedViewer != null && canDm && (
@@ -289,15 +291,16 @@ export default function UserCard({
                 background: 'var(--accent)',
                 color: '#fff',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control)',
                 padding: '7px 0',
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 fontWeight: 600,
                 cursor: starting ? 'default' : 'pointer',
                 opacity: starting ? 0.6 : 1,
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              {starting ? '...' : 'DM'}
+              {starting ? '...' : t('userCard.dmButton')}
             </button>
           )}
         </div>

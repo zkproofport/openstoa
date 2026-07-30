@@ -8,6 +8,7 @@ import Avatar from '@/components/Avatar';
 import Spinner from '@/components/Spinner';
 import { relativeTime } from '@/lib/utils';
 import { sortDmChannels, type DmChannel } from '@/lib/dm';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 /**
  * Direct messages list — the web counterpart of the mobile DmListScreen
@@ -23,17 +24,18 @@ import { sortDmChannels, type DmChannel } from '@/lib/dm';
 const rowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 12,
-  padding: '12px 16px',
+  gap: 'var(--space-3)',
+  padding: 'var(--space-3) var(--space-4)',
   background: 'var(--surface)',
   border: '1px solid var(--border)',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-card)',
   textDecoration: 'none',
   transition: 'background 0.12s',
 };
 
 export default function DmListPage() {
   const router = useRouter();
+  const { t } = useTranslation();
 
   const [dms, setDms] = useState<DmChannel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,15 +61,15 @@ export default function DmListPage() {
       const res = await fetch('/api/dm');
       if (res.status === 401) { router.replace('/'); return; }
       if (res.status === 403) { setNeedsNickname(true); return; }
-      if (!res.ok) throw new Error('Failed to load messages');
+      if (!res.ok) throw new Error(t('dmPage.loadError'));
       const data = await res.json();
       setDms(sortDmChannels(data.dms ?? []));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load messages');
+      setError(err instanceof Error ? err.message : t('dmPage.loadError'));
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, t]);
 
   useEffect(() => {
     loadDms();
@@ -75,18 +77,20 @@ export default function DmListPage() {
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '36px 1.5rem 80px' }}>
+      {/* maxWidth/36px/80px are page-shell layout constants with no matching
+          space-scale step; kept literal to avoid shifting the column width. */}
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: '36px var(--space-5) 80px' }}>
         <h1 style={{
-          fontSize: 22,
+          fontSize: 'var(--text-heading-sm)',
           fontWeight: 800,
           letterSpacing: '-0.03em',
-          margin: '0 0 4px',
+          margin: '0 0 var(--space-1)',
           color: 'var(--foreground)',
         }}>
-          Messages
+          {t('dmPage.title')}
         </h1>
-        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 24px', fontFamily: 'var(--font-mono)' }}>
-          End-to-end encrypted 1:1 conversations
+        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '0 0 var(--space-5)', fontFamily: 'var(--font-mono)' }}>
+          {t('dmPage.subtitle')}
         </p>
 
         {loading && (
@@ -97,18 +101,18 @@ export default function DmListPage() {
 
         {!loading && needsNickname && (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 12px' }}>
-              Set a nickname before you can send direct messages.
+            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)' }}>
+              {t('dmPage.needsNickname')}
             </p>
-            <Link href="/profile?returnTo=%2Fdm" style={{ color: 'var(--accent)', fontSize: 14 }}>
-              Go to profile
+            <Link href="/profile?returnTo=%2Fdm" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+              {t('dmPage.goToProfile')}
             </Link>
           </div>
         )}
 
         {!loading && error && (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 14, margin: '0 0 12px' }}>
+            <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
               {error}
             </p>
             <button
@@ -117,25 +121,26 @@ export default function DmListPage() {
                 background: 'rgba(120,140,255,0.1)',
                 color: 'var(--accent)',
                 border: '1px solid rgba(120,140,255,0.2)',
-                borderRadius: 6,
-                padding: '6px 16px',
-                fontSize: 14,
+                borderRadius: 'var(--radius-control)',
+                padding: '6px var(--space-4)',
+                fontSize: 'var(--text-body-sm)',
                 fontWeight: 500,
                 cursor: 'pointer',
+                minHeight: 'var(--touch-target-min)',
               }}
             >
-              Retry
+              {t('common.retry')}
             </button>
           </div>
         )}
 
         {!loading && !error && !needsNickname && dms.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', margin: '0 0 8px' }}>
-              No direct messages
+            <p style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--foreground)', margin: '0 0 var(--space-2)' }}>
+              {t('dmPage.empty.title')}
             </p>
-            <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0, lineHeight: 1.6 }}>
-              Open a topic&rsquo;s member list and pick Message to start a 1:1 conversation.
+            <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: 0, lineHeight: 1.6 }}>
+              {t('dmPage.empty.body')}
             </p>
           </div>
         )}
@@ -155,7 +160,7 @@ export default function DmListPage() {
                 <span style={{
                   flex: 1,
                   minWidth: 0,
-                  fontSize: 15,
+                  fontSize: 'var(--text-body)',
                   fontWeight: 600,
                   color: 'var(--foreground)',
                   // Layout-only truncation: a very long nickname must not push
@@ -168,7 +173,7 @@ export default function DmListPage() {
                 </span>
                 {dm.lastActivityAt && (
                   <span style={{
-                    fontSize: 11,
+                    fontSize: 'var(--text-caption)',
                     fontFamily: 'var(--font-mono)',
                     color: 'var(--muted)',
                     flexShrink: 0,

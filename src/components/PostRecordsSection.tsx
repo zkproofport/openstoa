@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { RecordIcon } from '@/components/icons';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface RecordRow {
   id: string;
@@ -34,6 +35,7 @@ interface Props {
  * pushes the comments section off the page.
  */
 export function PostRecordsSection({ postId, recordCount }: Props) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [data, setData] = useState<RecordsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,7 +61,7 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
   if (recordCount === 0) return null;
 
   return (
-    <section style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
+    <section style={{ padding: 'var(--space-3) var(--space-4)', borderTop: '1px solid var(--border)' }}>
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -73,7 +75,7 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
           background: 'transparent',
           border: 'none',
           color: 'var(--muted)',
-          fontSize: 13,
+          fontSize: 'var(--text-caption)',
           fontWeight: 700,
           letterSpacing: 0.5,
           textTransform: 'uppercase',
@@ -82,16 +84,16 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
       >
         <RecordIcon size={14} />
         <span style={{ flex: 1, textAlign: 'left' }}>
-          Recorded on Base · {recordCount}
+          {t('postRecords.heading', { count: recordCount })}
         </span>
-        <span aria-hidden style={{ fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
+        <span aria-hidden style={{ fontSize: 'var(--text-body-sm)' }}>{expanded ? '▾' : '▸'}</span>
       </button>
 
       {expanded && (
         <div style={{ marginTop: 6 }}>
           {loading && !data && (
-            <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>
-              Loading on-chain records…
+            <div style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', padding: 'var(--space-2) 0' }}>
+              {t('postRecords.loading')}
             </div>
           )}
           {data?.postEdited && (
@@ -102,8 +104,7 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
                 marginBottom: 6,
               }}
             >
-              Post content has changed since these records were written; older
-              hashes no longer match.
+              {t('postRecords.editedWarning')}
             </div>
           )}
           {data?.records.map((r) => (
@@ -113,13 +114,13 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '8px 0',
+                padding: 'var(--space-2) 0',
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 13,
+                    fontSize: 'var(--text-caption)',
                     fontWeight: 600,
                     color: 'var(--foreground)',
                     overflow: 'hidden',
@@ -127,11 +128,11 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {r.recorderNickname ?? 'anon'}
+                  {r.recorderNickname ?? t('postRecords.anonNickname')}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
                   {new Date(r.createdAt).toLocaleString()}
-                  {!r.contentHashMatch && ' · content edited since'}
+                  {!r.contentHashMatch && t('postRecords.editedSince')}
                 </div>
               </div>
               {r.txExplorerUrl ? (
@@ -144,15 +145,15 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
                     fontWeight: 600,
                     color: 'var(--accent)',
                     textDecoration: 'none',
-                    padding: '4px 8px',
-                    borderRadius: 6,
+                    padding: 'var(--space-1) var(--space-2)',
+                    borderRadius: 'var(--radius-control)',
                     background: 'rgba(120,140,255,0.1)',
                   }}
                 >
-                  View on BaseScan ↗
+                  {t('postRecords.viewOnBaseScan')}
                 </a>
               ) : (
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>pending…</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>{t('postRecords.pending')}</span>
               )}
             </div>
           ))}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { relativeTime } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,17 +34,16 @@ interface RightSidebarProps {
 const sidebarCardStyle: React.CSSProperties = {
   background: 'var(--surface)',
   border: '1px solid var(--border)',
-  borderRadius: 12,
-  padding: 16,
-  marginBottom: 12,
+  borderRadius: 'var(--radius-card)',
+  padding: 'var(--space-4)',
+  marginBottom: 'var(--space-3)',
 };
 
+// Font-size/weight/family + the language-conditional uppercase+tracking come
+// from the `.os-label` utility class (globals.css), same idiom as
+// `LeftSidebar.tsx` — apply that class alongside this style object at each
+// usage site below.
 const sectionHeadingStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 700,
-  fontFamily: 'var(--font-mono)',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
   color: 'var(--muted)',
   marginBottom: 10,
 };
@@ -73,6 +73,7 @@ export default function RightSidebar({
   topicMemberCount,
   onOpenChat,
 }: RightSidebarProps) {
+  const { t } = useTranslation();
   const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
 
@@ -141,9 +142,9 @@ export default function RightSidebar({
       {/* Topic-specific info (when on a topic page). */}
       {topicId && topicTitle && (
         <div style={sidebarCardStyle}>
-          <div style={sectionHeadingStyle}>About this topic</div>
+          <div className="os-label" style={sectionHeadingStyle}>{t('rightSidebar.aboutTopic')}</div>
           <div style={{
-            fontSize: 15,
+            fontSize: 'var(--text-body-lg)',
             fontWeight: 700,
             color: 'var(--foreground)',
             marginBottom: 6,
@@ -153,9 +154,9 @@ export default function RightSidebar({
           </div>
           {topicDescription && (
             <p style={{
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               color: 'var(--muted)',
-              margin: '0 0 10px',
+              margin: '0 0 var(--space-2)',
               lineHeight: 1.5,
             }}>
               {topicDescription}
@@ -166,7 +167,7 @@ export default function RightSidebar({
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               color: 'var(--muted)',
             }}>
               <span style={{
@@ -176,7 +177,7 @@ export default function RightSidebar({
               }}>
                 {topicMemberCount}
               </span>
-              <span>member{topicMemberCount !== 1 ? 's' : ''}</span>
+              <span>{topicMemberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}</span>
             </div>
           )}
           {onOpenChat && (
@@ -188,20 +189,21 @@ export default function RightSidebar({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 4,
-                marginTop: 10,
+                marginTop: 'var(--space-2)',
                 background: 'none',
                 border: 'none',
                 padding: 0,
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 fontWeight: 600,
                 color: 'var(--accent)',
                 cursor: 'pointer',
                 transition: 'opacity 0.15s',
+                minHeight: 'var(--touch-target-min)',
               }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
             >
-              Open topic chat {'→'}
+              {t('rightSidebar.openTopicChat')} {'→'}
             </button>
           )}
         </div>
@@ -209,9 +211,9 @@ export default function RightSidebar({
 
       {/* Recent Posts */}
       <div style={sidebarCardStyle}>
-        <div style={sectionHeadingStyle}>Recent Posts</div>
+        <div className="os-label" style={sectionHeadingStyle}>{t('rightSidebar.recentPosts')}</div>
         {recentPosts.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#4b5563', margin: 0 }}>No recent posts</p>
+          <p style={{ fontSize: 'var(--text-caption)', color: '#4b5563', margin: 0 }}>{t('rightSidebar.noRecentPosts')}</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {recentPosts.map((post) => (
@@ -223,15 +225,18 @@ export default function RightSidebar({
                 style={{
                   display: 'block',
                   textDecoration: 'none',
-                  padding: '10px 10px',
+                  padding: 'var(--space-3) var(--space-3)',
                   borderRadius: 8,
                   background: hoveredPost === post.id ? 'var(--surface-hover)' : 'transparent',
                   transition: 'background 0.12s',
                 }}
               >
-                {/* Topic name */}
+                {/* Topic name — bumped 11px -> 13px (--text-caption): below the
+                    12px floor and not an uppercase Latin label, and this is a
+                    user-authored (possibly Korean) topic title, not a fixed
+                    decorative string. */}
                 <div style={{
-                  fontSize: 11,
+                  fontSize: 'var(--text-caption)',
                   fontFamily: 'var(--font-mono)',
                   color: 'var(--accent)',
                   fontWeight: 600,
@@ -246,7 +251,7 @@ export default function RightSidebar({
 
                 {/* Post title */}
                 <div style={{
-                  fontSize: 13,
+                  fontSize: 'var(--text-caption)',
                   fontWeight: 600,
                   color: 'var(--foreground)',
                   lineHeight: 1.4,
@@ -258,10 +263,17 @@ export default function RightSidebar({
                   {post.title}
                 </div>
 
-                {/* Content preview */}
+                {/* Content preview — kept at --text-caption (13px), NOT bumped
+                    to the 16px Korean-prose floor: this is a 2-line clamped
+                    excerpt inside a compact sidebar card, sized to sit below
+                    the post title (also 13px) in the visual hierarchy. Going
+                    to 16px would make the excerpt read larger than its own
+                    title — a real layout regression, not a like-for-like
+                    token swap. Still bumped up from the original 12px (below
+                    the floor) to the same 13px as its siblings. */}
                 {post.content && (
                   <div style={{
-                    fontSize: 12,
+                    fontSize: 'var(--text-caption)',
                     color: '#6b7280',
                     lineHeight: 1.4,
                     overflow: 'hidden',
@@ -274,9 +286,11 @@ export default function RightSidebar({
                   </div>
                 )}
 
-                {/* Time */}
+                {/* Time — relative-time string is Latin/numeric only (e.g.
+                    "2h ago"), so the 12px label floor (not the Korean-prose
+                    floor) applies. */}
                 <div style={{
-                  fontSize: 11,
+                  fontSize: 'var(--text-label)',
                   fontFamily: 'var(--font-mono)',
                   color: '#4b5563',
                 }}>

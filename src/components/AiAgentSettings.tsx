@@ -9,6 +9,7 @@ import {
   orderedCmd,
   validateApiKeyName,
 } from '@/lib/apiKeyForm';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // Shapes returned by the (unchanged) profile routes.
 interface AiPermissions {
@@ -28,19 +29,19 @@ interface ApiKeyMeta {
   revokedAt: string | null;
 }
 
+// Font-size/weight/family + the language-conditional uppercase+tracking come
+// from the `.os-label` utility class (globals.css) — apply that class
+// alongside this style object at each usage site (mirrors LeftSidebar's
+// sectionHeadingStyle pattern).
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 15,
-  fontWeight: 600,
   color: '#6b7280',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
   margin: '0 0 12px',
 };
 const subCardStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.02)',
   border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: 10,
-  padding: 16,
+  padding: 'var(--space-4)',
 };
 const inputStyle: React.CSSProperties = {
   flex: 1,
@@ -49,7 +50,8 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 8,
   padding: '9px 12px',
   color: '#e5e7eb',
-  fontSize: 14,
+  // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+  fontSize: 'var(--text-body)',
   outline: 'none',
 };
 const primaryBtn = (enabled: boolean): React.CSSProperties => ({
@@ -58,7 +60,7 @@ const primaryBtn = (enabled: boolean): React.CSSProperties => ({
   border: 'none',
   borderRadius: 8,
   padding: '9px 20px',
-  fontSize: 14,
+  fontSize: 'var(--text-body-sm)',
   fontWeight: 600,
   cursor: enabled ? 'pointer' : 'not-allowed',
   opacity: enabled ? 1 : 0.5,
@@ -112,7 +114,7 @@ function CapabilityGrid({
               style={{ width: 16, height: 16, accentColor: 'var(--accent)', flexShrink: 0 }}
             />
             <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 14, color: '#e5e7eb', display: 'block' }}>{cmdLabel(cmd)}</span>
+              <span style={{ fontSize: 'var(--text-body-sm)', color: '#e5e7eb', display: 'block' }}>{cmdLabel(cmd)}</span>
               <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>{cmd}</span>
             </span>
           </label>
@@ -130,14 +132,15 @@ function CapabilityGrid({
  * ever emitted — never a full `osk_` secret.
  */
 export function ApiKeyMetaSummary({ k }: { k: ApiKeyMeta }) {
+  const { t } = useTranslation();
   const revoked = !!k.revokedAt;
   return (
     <>
-      <span style={{ fontSize: 14, fontWeight: 600, color: '#e5e7eb' }}>{k.name}</span>
-      <code style={{ fontSize: 12, color: '#6b7280', fontFamily: 'monospace' }}>{k.prefix}…</code>
+      <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: '#e5e7eb' }}>{k.name}</span>
+      <code style={{ fontSize: 'var(--text-label)', color: '#6b7280', fontFamily: 'monospace' }}>{k.prefix}…</code>
       {revoked && (
         <span style={{ fontSize: 11, fontWeight: 600, color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, padding: '1px 6px' }}>
-          Revoked
+          {t('aiAgentSettings.revoked')}
         </span>
       )}
     </>
@@ -158,7 +161,7 @@ function HistoryScopeChips({ value, onChange }: { value: string; onChange: (v: s
             style={{
               padding: '7px 14px',
               borderRadius: 8,
-              fontSize: 13,
+              fontSize: 'var(--text-caption)',
               fontWeight: active ? 600 : 400,
               cursor: 'pointer',
               background: active ? 'var(--accent)' : 'rgba(255,255,255,0.03)',
@@ -176,6 +179,7 @@ function HistoryScopeChips({ value, onChange }: { value: string; onChange: (v: s
 }
 
 export default function AiAgentSettings() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [allowedCmd, setAllowedCmd] = useState<string[]>([]);
@@ -209,10 +213,10 @@ export default function AiAgentSettings() {
         fetch('/api/profile/api-keys'),
       ]);
       if (permRes.status === 401 || keysRes.status === 401) {
-        throw new Error('Please sign in to manage AI agents.');
+        throw new Error(t('aiAgentSettings.signInRequired'));
       }
-      if (!permRes.ok) throw new Error('Failed to load AI permissions.');
-      if (!keysRes.ok) throw new Error('Failed to load API keys.');
+      if (!permRes.ok) throw new Error(t('aiAgentSettings.loadPermsFailed'));
+      if (!keysRes.ok) throw new Error(t('aiAgentSettings.loadKeysFailed'));
       const perm = (await permRes.json()) as AiPermissions;
       const keyList = (await keysRes.json()) as { apiKeys: ApiKeyMeta[]; allowedCmd?: string[] };
       setAllowedCmd(perm.allowedCmd ?? keyList.allowedCmd ?? []);
@@ -220,11 +224,11 @@ export default function AiAgentSettings() {
       setPermsHistory(perm.historyGrant || 'none');
       setKeys(keyList.apiKeys ?? []);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Failed to load.');
+      setLoadError(e instanceof Error ? e.message : t('aiAgentSettings.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadAll();
@@ -260,11 +264,11 @@ export default function AiAgentSettings() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to save AI permissions.');
+        throw new Error(d.error ?? t('aiAgentSettings.savePermsFailed'));
       }
-      setPermsFeedback({ ok: true, msg: 'AI permissions updated.' });
+      setPermsFeedback({ ok: true, msg: t('aiAgentSettings.permsUpdated') });
     } catch (e) {
-      setPermsFeedback({ ok: false, msg: e instanceof Error ? e.message : 'Network error.' });
+      setPermsFeedback({ ok: false, msg: e instanceof Error ? e.message : t('common.networkError') });
     } finally {
       setPermsSaving(false);
     }
@@ -294,7 +298,7 @@ export default function AiAgentSettings() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to create API key.');
+        throw new Error(d.error ?? t('aiAgentSettings.createKeyFailed'));
       }
       const data = (await res.json()) as { rawKey: string; key: ApiKeyMeta };
       // Show the raw key exactly once; the list only ever carries metadata.
@@ -304,7 +308,7 @@ export default function AiAgentSettings() {
       setNewCmd(new Set());
       setNewHistory('none');
     } catch (e) {
-      setCreateError(e instanceof Error ? e.message : 'Network error.');
+      setCreateError(e instanceof Error ? e.message : t('common.networkError'));
     } finally {
       setCreating(false);
     }
@@ -317,27 +321,27 @@ export default function AiAgentSettings() {
       const res = await fetch(`/api/profile/api-keys/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to revoke key.');
+        throw new Error(d.error ?? t('aiAgentSettings.revokeKeyFailed'));
       }
       // Reflect revocation locally (metadata only).
       setKeys((prev) => prev.map((k) => (k.id === id ? { ...k, revokedAt: new Date().toISOString() } : k)));
       setConfirmingRevoke(null);
     } catch (e) {
-      setRevokeError(e instanceof Error ? e.message : 'Network error.');
+      setRevokeError(e instanceof Error ? e.message : t('common.networkError'));
     } finally {
       setRevokingId(null);
     }
   }
 
   if (loading) {
-    return <div style={{ fontSize: 14, color: '#6b7280', padding: '8px 0' }}>Loading AI agent settings…</div>;
+    return <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', padding: '8px 0' }}>{t('aiAgentSettings.loadingSettings')}</div>;
   }
   if (loadError) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 14, color: '#f87171' }}>{loadError}</div>
+        <div style={{ fontSize: 'var(--text-body-sm)', color: '#f87171' }}>{loadError}</div>
         <button type="button" onClick={() => void loadAll()} style={{ ...primaryBtn(true), alignSelf: 'flex-start' }}>
-          Retry
+          {t('common.retry')}
         </button>
       </div>
     );
@@ -345,29 +349,28 @@ export default function AiAgentSettings() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <p style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.6, margin: 0 }}>
-        An AI agent logged in as you acts on your account. Choose exactly what your AI sessions may do across OpenStoa,
-        and mint scoped API keys for agents / MCP. Your own actions are never restricted.
+      <p style={{ fontSize: 'var(--text-caption)', color: '#9ca3af', lineHeight: 1.6, margin: 0 }}>
+        {t('aiAgentSettings.intro')}
       </p>
 
       {/* ── AI permission scope (profile-wide) ─────────────────────────────── */}
       <div>
-        <h3 style={sectionTitleStyle}>AI permission scope</h3>
-        <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
-          Applies to every AI session on your account (used when a key does not carry its own scope).
+        <h3 className="os-label" style={sectionTitleStyle}>{t('aiAgentSettings.permissionScope')}</h3>
+        <p style={{ fontSize: 'var(--text-label)', color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
+          {t('aiAgentSettings.permissionScopeDesc')}
         </p>
         <div style={subCardStyle}>
           <CapabilityGrid allowedCmd={allowedCmd} selected={permsCmd} onToggle={togglePermsCmd} idPrefix="perm" />
           <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 8px' }}>Chat history the AI may back-fill</p>
+            <p style={{ fontSize: 'var(--text-caption)', color: '#9ca3af', margin: '0 0 8px' }}>{t('aiAgentSettings.historyBackfill')}</p>
             <HistoryScopeChips value={permsHistory} onChange={(v) => { setPermsHistory(v); setPermsFeedback(null); }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
             <button type="button" onClick={savePerms} disabled={permsSaving} style={primaryBtn(!permsSaving)}>
-              {permsSaving ? 'Saving…' : 'Save permissions'}
+              {permsSaving ? t('aiAgentSettings.saving') : t('aiAgentSettings.savePermissions')}
             </button>
             {permsFeedback && (
-              <span style={{ fontSize: 13, color: permsFeedback.ok ? '#4ade80' : '#f87171' }}>{permsFeedback.msg}</span>
+              <span style={{ fontSize: 'var(--text-caption)', color: permsFeedback.ok ? '#4ade80' : '#f87171' }}>{permsFeedback.msg}</span>
             )}
           </div>
         </div>
@@ -375,10 +378,10 @@ export default function AiAgentSettings() {
 
       {/* ── Create API key ─────────────────────────────────────────────────── */}
       <div>
-        <h3 style={sectionTitleStyle}>API keys</h3>
-        <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
-          A key is a durable, revocable <span style={{ fontFamily: 'monospace' }}>osk_…</span> credential an agent sends
-          as <span style={{ fontFamily: 'monospace' }}>OPENSTOA_API_KEY</span>. Each key carries its own scope.
+        <h3 className="os-label" style={sectionTitleStyle}>{t('aiAgentSettings.apiKeys')}</h3>
+        <p style={{ fontSize: 'var(--text-label)', color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
+          {t('aiAgentSettings.keyDescPre')} <span style={{ fontFamily: 'monospace' }}>osk_…</span> {t('aiAgentSettings.keyDescMid')}{' '}
+          <span style={{ fontFamily: 'monospace' }}>OPENSTOA_API_KEY</span>{t('aiAgentSettings.keyDescPost')}
         </p>
 
         {/* Raw key — shown exactly once */}
@@ -391,22 +394,22 @@ export default function AiAgentSettings() {
               marginBottom: 16,
             }}
           >
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#34d399', margin: '0 0 6px' }}>
-              Copy your key now — it will not be shown again
+            <p style={{ fontSize: 'var(--text-caption)', fontWeight: 700, color: '#34d399', margin: '0 0 6px' }}>
+              {t('aiAgentSettings.copyKeyNow')}
             </p>
-            <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 10px', lineHeight: 1.5 }}>
-              Only a hash is stored server-side. If you lose it, revoke and create a new one.
+            <p style={{ fontSize: 'var(--text-label)', color: '#9ca3af', margin: '0 0 10px', lineHeight: 1.5 }}>
+              {t('aiAgentSettings.hashOnlyStored')}
             </p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <code
                 style={{
                   flex: 1,
                   fontFamily: 'monospace',
-                  fontSize: 13,
+                  fontSize: 'var(--text-caption)',
                   color: '#e5e7eb',
                   background: 'rgba(0,0,0,0.4)',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 6,
+                  borderRadius: 'var(--radius-control)',
                   padding: '10px 12px',
                   wordBreak: 'break-all',
                 }}
@@ -422,7 +425,7 @@ export default function AiAgentSettings() {
                 }}
                 style={{ ...primaryBtn(true), flexShrink: 0 }}
               >
-                {copied ? 'Copied!' : 'Copy'}
+                {copied ? t('aiAgentSettings.copied') : t('aiAgentSettings.copy')}
               </button>
             </div>
             <button
@@ -433,56 +436,56 @@ export default function AiAgentSettings() {
                 background: 'none',
                 border: 'none',
                 color: '#6b7280',
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 cursor: 'pointer',
                 padding: 0,
               }}
             >
-              I&apos;ve saved it — dismiss
+              {t('aiAgentSettings.dismissSavedKey')}
             </button>
           </div>
         )}
 
         {/* Create form */}
         <div style={subCardStyle}>
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb', margin: '0 0 10px' }}>Create a new key</p>
+          <p style={{ fontSize: 'var(--text-caption)', fontWeight: 600, color: '#e5e7eb', margin: '0 0 10px' }}>{t('aiAgentSettings.createNewKey')}</p>
           <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
             <input
               type="text"
               value={newName}
               onChange={(e) => { setNewName(e.target.value); setCreateError(null); }}
-              placeholder="Key name (e.g. laptop CLI)"
+              placeholder={t('aiAgentSettings.keyNamePlaceholder')}
               maxLength={MAX_API_KEY_NAME_LEN}
               style={{ ...inputStyle, borderColor: nameError ? '#ef4444' : 'rgba(255,255,255,0.12)' }}
             />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-label)', marginBottom: 12 }}>
             <span style={{ color: nameError ? '#f87171' : '#6b7280' }}>
-              {nameError ?? 'Letters, emoji, any script — sent verbatim.'}
+              {nameError ?? t('aiAgentSettings.keyNameHint')}
             </span>
             <span style={{ color: '#6b7280' }}>{newName.length}/{MAX_API_KEY_NAME_LEN}</span>
           </div>
 
-          <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 6px' }}>Key scope (capabilities)</p>
+          <p style={{ fontSize: 'var(--text-caption)', color: '#9ca3af', margin: '0 0 6px' }}>{t('aiAgentSettings.keyScope')}</p>
           <CapabilityGrid allowedCmd={allowedCmd} selected={newCmd} onToggle={toggleNewCmd} idPrefix="new" />
 
           <div style={{ marginTop: 14 }}>
-            <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 8px' }}>Chat history this key may back-fill</p>
+            <p style={{ fontSize: 'var(--text-caption)', color: '#9ca3af', margin: '0 0 8px' }}>{t('aiAgentSettings.keyHistoryBackfill')}</p>
             <HistoryScopeChips value={newHistory} onChange={setNewHistory} />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
             <button type="button" onClick={createKey} disabled={!canCreate} style={primaryBtn(canCreate)}>
-              {creating ? 'Creating…' : 'Create key'}
+              {creating ? t('aiAgentSettings.creating') : t('aiAgentSettings.createKey')}
             </button>
-            {createError && <span style={{ fontSize: 13, color: '#f87171' }}>{createError}</span>}
+            {createError && <span style={{ fontSize: 'var(--text-caption)', color: '#f87171' }}>{createError}</span>}
           </div>
         </div>
 
         {/* Existing keys — metadata only */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
           {keys.length === 0 ? (
-            <div style={{ fontSize: 14, color: '#6b7280', padding: '4px 0' }}>No API keys yet.</div>
+            <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', padding: '4px 0' }}>{t('aiAgentSettings.noApiKeys')}</div>
           ) : (
             keys.map((k) => {
               const revoked = !!k.revokedAt;
@@ -494,45 +497,45 @@ export default function AiAgentSettings() {
                     {!revoked && (
                       confirmingRevoke === k.id ? (
                         <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-                          <span style={{ fontSize: 12, color: '#f87171' }}>Revoke?</span>
+                          <span style={{ fontSize: 'var(--text-label)', color: '#f87171' }}>{t('aiAgentSettings.revokeConfirm')}</span>
                           <button
                             type="button"
                             onClick={() => revokeKey(k.id)}
                             disabled={revokingId === k.id}
-                            style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: revokingId === k.id ? 0.5 : 1 }}
+                            style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 'var(--radius-control)', padding: '4px 12px', fontSize: 'var(--text-caption)', fontWeight: 600, cursor: 'pointer', opacity: revokingId === k.id ? 0.5 : 1 }}
                           >
-                            {revokingId === k.id ? '…' : 'Confirm'}
+                            {revokingId === k.id ? '…' : t('aiAgentSettings.confirm')}
                           </button>
                           <button
                             type="button"
                             onClick={() => { setConfirmingRevoke(null); setRevokeError(null); }}
-                            style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 13, cursor: 'pointer' }}
+                            style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280', border: 'none', borderRadius: 'var(--radius-control)', padding: '4px 10px', fontSize: 'var(--text-caption)', cursor: 'pointer' }}
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                         </span>
                       ) : (
                         <button
                           type="button"
                           onClick={() => { setConfirmingRevoke(k.id); setRevokeError(null); }}
-                          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6, padding: '4px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-control)', padding: '4px 12px', fontSize: 'var(--text-caption)', fontWeight: 600, cursor: 'pointer' }}
                         >
-                          Revoke
+                          {t('aiAgentSettings.revoke')}
                         </button>
                       )
                     )}
                   </div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                    <span>Scope: {k.cmd.length === 0 ? 'none' : k.cmd.map(cmdLabel).join(', ')}</span>
-                    <span>History: {scopeLabel(k.historyGrant)}</span>
-                    <span>Created: {fmtDate(k.createdAt)}</span>
-                    <span>Last used: {fmtDate(k.lastUsedAt)}</span>
+                  <div style={{ fontSize: 'var(--text-label)', color: '#6b7280', marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    <span>{t('aiAgentSettings.scopeLabel', { value: k.cmd.length === 0 ? t('aiAgentSettings.scopeNone') : k.cmd.map(cmdLabel).join(', ') })}</span>
+                    <span>{t('aiAgentSettings.historyLabel', { value: scopeLabel(k.historyGrant) })}</span>
+                    <span>{t('aiAgentSettings.createdLabel', { value: fmtDate(k.createdAt) })}</span>
+                    <span>{t('aiAgentSettings.lastUsedLabel', { value: fmtDate(k.lastUsedAt) })}</span>
                   </div>
                 </div>
               );
             })
           )}
-          {revokeError && <div style={{ fontSize: 12, color: '#f87171' }}>{revokeError}</div>}
+          {revokeError && <div style={{ fontSize: 'var(--text-label)', color: '#f87171' }}>{revokeError}</div>}
         </div>
       </div>
     </div>
