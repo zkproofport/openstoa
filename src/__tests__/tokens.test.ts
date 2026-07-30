@@ -160,7 +160,7 @@ describe('spacing / radius / breakpoint / touch-target tokens', () => {
   it('breakpoint cut points match the pre-existing DESKTOP_CHAT_QUERY (must not drift)', () => {
     expect(DESKTOP_CHAT_QUERY).toBe('(min-width: 1024px)');
     expect(BREAKPOINTS.desktopMin).toBe(1024);
-    expect(css).toContain('--bp-mobile-max: 640px;');
+    expect(css).toContain('--bp-mobile-max: 767px;');
     expect(css).toContain('--bp-tablet-max: 1023px;');
   });
 

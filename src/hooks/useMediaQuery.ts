@@ -17,6 +17,18 @@ import { useSyncExternalStore } from 'react';
 export const DESKTOP_CHAT_QUERY = '(min-width: 1024px)';
 
 /**
+ * The breakpoint below which the app switches to its "phone" chrome: the
+ * left nav collapses into `CommunityLayout`'s off-canvas drawer, `Header`
+ * swaps in the hamburger button, and `BottomTabBar` mounts. Mirrors the
+ * `@media (max-width: 767px)` / `(min-width: 768px)` cut already hardcoded
+ * in `CommunityLayout.tsx` and `Header.tsx`'s own `<style>` blocks — this
+ * constant exists so a JS-side consumer (`BottomTabBar`, which needs to
+ * decide whether to mount at all rather than just hide via CSS) reads the
+ * same number instead of a second hardcoded literal drifting from the CSS.
+ */
+export const MOBILE_QUERY = '(max-width: 767px)';
+
+/**
  * Live match state for a CSS media query.
  *
  * `useSyncExternalStore` is used so the server render and the hydration render

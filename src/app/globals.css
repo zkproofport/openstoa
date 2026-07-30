@@ -117,7 +117,7 @@
      `src/styles/tokens.ts` (BREAKPOINTS / MEDIA_QUERIES). The pre-existing
      literal `@media` rules in CommunityLayout.tsx / Header.tsx /
      SNSContent.tsx / page.tsx are NOT migrated in this pass — see report. */
-  --bp-mobile-max: 640px;
+  --bp-mobile-max: 767px;
   --bp-tablet-max: 1023px;
   /* desktop = min-width: 1024px, matches DESKTOP_CHAT_QUERY in useMediaQuery.ts */
 
@@ -130,6 +130,24 @@
      silently breaking every sticky `top:`/`max-height:` in that file. Both
      sides now read this one value, so the coupling is declarative. */
   --header-h: 56px;
+
+  /* `BottomTabBar.tsx`'s own height (phone widths only, below MOBILE_QUERY
+     in useMediaQuery.ts). A variable for the same reason as `--header-h`:
+     the bar reserves its own space via a trailing in-flow spacer it renders
+     alongside itself, so that spacer and the bar's actual CSS height must
+     never drift apart. `env(safe-area-inset-bottom)` (the iPhone home
+     indicator) is added on top of this by both, not baked into it. */
+  --tabbar-h: 56px;
+
+  /* Reading measure for the centre content column (`CommunityLayout.tsx`).
+     Caps prose line length as an explicit contract, independent of the
+     ambient row width — previously the column had no max-width of its own
+     and was only ever narrow because MAX_WIDTH (the row's own cap) minus
+     both sidebars happened to land under this figure; a future change to
+     either sidebar's width or visibility rule would have silently widened
+     it past comfortable reading. Matches the pre-existing 'wide' chat-width
+     cap in `src/lib/chatWidth.ts` (same 860px, same reasoning). */
+  --read-max: 860px;
 
   --font-sans: 'Inter', 'Noto Sans KR', 'Apple SD Gothic Neo', system-ui, -apple-system, sans-serif;
   --font-serif: 'Source Serif 4', 'Noto Serif KR', Georgia, serif;
@@ -322,6 +340,36 @@ html:lang(ko) {
 .os-chip:focus-visible {
   outline: 2px solid var(--color-brand-primary);
   outline-offset: 2px;
+}
+
+/* Left-nav row focus ring (`LeftSidebar.tsx`) — the row's own active/hover
+   state machine stays inline (per-row conditional colors), but
+   `:focus-visible` cannot be expressed inline, so it lives here. Applies to
+   every interactive row: `<Link>`, `<button>`, and the category row's
+   `role="button"` `<div>`. Inset offset (not the `.os-button` pattern's
+   positive offset) so the ring is not clipped by the sidebar's own
+   `overflow-y: auto` at the row nearest the scroll edge. */
+.os-nav-row:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: -2px;
+}
+
+/* Collapsible left-nav group summary (`<details class="grp">` in the design
+   prototype) — hides the native disclosure marker so the component's own
+   chevron glyph (rotated via inline style, matching the existing per-category
+   expand chevron) is the only one shown. Three rules because no single one
+   is honored by every engine: Chromium's `<summary>` is a `display:
+   list-item` with a `::marker`, Safari/older Chromium expose
+   `::-webkit-details-marker`, and `list-style: none` covers the list-item
+   rendering itself. */
+.os-nav-summary {
+  list-style: none;
+}
+.os-nav-summary::-webkit-details-marker {
+  display: none;
+}
+.os-nav-summary::marker {
+  content: '';
 }
 
 /* ============================================================================

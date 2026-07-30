@@ -81,6 +81,8 @@ describe('LeftSidebar — English (default locale)', () => {
     await renderSidebar('en');
     const t = text();
     expect(t).toContain('Start a Topic');
+    expect(t).toContain('Browse');
+    expect(t).toContain('Conversations');
     expect(t).toContain('Chat');
     expect(t).toContain('All');
     expect(t).toContain('My Topics');
@@ -89,9 +91,10 @@ describe('LeftSidebar — English (default locale)', () => {
     expect(t).toContain('Community');
     expect(t).toContain('Topics');
     expect(t).toContain('Members');
+    // On-Chain Records is now a plain nav row inside the "Browse" group
+    // (matching the left-nav redesign) rather than a standalone descriptive
+    // card — only its title copy renders, not the old body/CTA sentences.
     expect(t).toContain('On-Chain Records');
-    expect(t).toContain('Posts recorded on Base are permanently preserved on-chain.');
-    expect(t).toContain('View recorded posts');
     // No raw dotted key path should ever leak into rendered output.
     expect(t).not.toMatch(/sidebar\.[a-zA-Z.]+/);
   });
@@ -117,6 +120,8 @@ describe('LeftSidebar — Korean', () => {
     await renderSidebar('ko');
     const t = text();
     expect(t).toContain('토픽 만들기'); // Start a Topic
+    expect(t).toContain('둘러보기'); // Browse
+    expect(t).toContain('대화'); // Conversations
     expect(t).toContain('채팅'); // Chat
     expect(t).toContain('전체'); // All
     expect(t).toContain('내 토픽'); // My Topics
@@ -124,8 +129,6 @@ describe('LeftSidebar — Korean', () => {
     expect(t).toContain('카테고리'); // Categories
     expect(t).toContain('커뮤니티'); // Community
     expect(t).toContain('온체인 기록'); // On-Chain Records
-    expect(t).toContain('Base에 기록된 게시물은 영구적으로 온체인에 보존됩니다.');
-    expect(t).toContain('기록된 게시물 보기'); // View recorded posts
     expect(t).not.toMatch(/sidebar\.[a-zA-Z.]+/);
     // Nothing should silently stay in English on the Korean surface.
     expect(t).not.toContain('Start a Topic');

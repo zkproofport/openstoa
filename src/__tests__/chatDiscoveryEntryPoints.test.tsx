@@ -50,6 +50,10 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/useMediaQuery', () => ({
   useMediaQuery: () => true,
   DESKTOP_CHAT_QUERY: '(min-width: 1024px)',
+  // BottomTabBar (mounted unconditionally by CommunityLayout) imports this
+  // named export; a mock factory that omits it throws on import, not just
+  // on use, because vitest validates against the real module's exports.
+  MOBILE_QUERY: '(max-width: 767px)',
 }));
 
 vi.mock('@/components/Header', () => ({

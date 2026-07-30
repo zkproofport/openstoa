@@ -86,11 +86,20 @@ export const RADIUS = {
 } as const;
 
 // ── Breakpoints — named, 2 cut points define 3 ranges.
-// Chosen to match the pre-existing, load-bearing `DESKTOP_CHAT_QUERY` in
-// `src/hooks/useMediaQuery.ts` (`min-width: 1024px`) rather than inventing a
-// new number — that query gates ChatPanel mounting and must not drift.
+// Both numbers match queries that are already load-bearing in the app rather
+// than being invented here:
+//   mobileMax  767 — the phone cut. `MOBILE_QUERY` in `src/hooks/useMediaQuery.ts`,
+//                    the off-canvas drawer in `CommunityLayout.tsx`, the header
+//                    collapse in `Header.tsx`, and `BottomTabBar` all use it.
+//                    It was 640 here while every one of those used 767, so
+//                    anything built on this constant would have left 641-767px
+//                    with no navigation at all — the drawer hidden and the tab
+//                    bar not yet shown. `SNSContent.tsx` has its own 640px cut,
+//                    but that is one component reflowing its own content, not
+//                    the app's phone breakpoint.
+//   desktopMin 1024 — `DESKTOP_CHAT_QUERY`, which gates ChatPanel mounting.
 export const BREAKPOINTS = {
-  mobileMax: 640,
+  mobileMax: 767,
   tabletMax: 1023,
   desktopMin: 1024,
 } as const;

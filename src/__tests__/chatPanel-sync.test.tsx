@@ -545,8 +545,11 @@ describe('ChatPanel — decrypt failures and own messages', () => {
       setter.call(input, 'my own words');
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    const send = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent === 'Send',
+    // The send control is an icon button — its name lives in `aria-label`, so
+    // the composer's width no longer depends on the locale's word for "send"
+    // (see chatE2eeBanner.test.tsx).
+    const send = container.querySelector(
+      `button[aria-label="${enLocale.chat.send}"]`,
     ) as HTMLButtonElement;
     await act(async () => {
       send.click();

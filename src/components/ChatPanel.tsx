@@ -256,6 +256,49 @@ const onlineCountStyle: React.CSSProperties = {
   marginLeft: 4,
 };
 
+// Persistent E2EE strip, directly under whichever header the host supplies
+// (the panel's own, or the rail's / the standalone page's when `hideHeader`).
+// Korean prose, so it sits at the caption step — `--text-label` is reserved
+// for uppercase Latin.
+const e2eeStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  flexWrap: 'wrap',
+  padding: 'var(--space-2) var(--space-4)',
+  fontSize: 'var(--text-caption)',
+  lineHeight: 1.4,
+  color: 'var(--color-brand-accent)',
+  background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)',
+  borderBottom: '1px solid var(--border)',
+  flexShrink: 0,
+};
+
+const connStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 5,
+  marginLeft: 'auto',
+  color: 'var(--color-text-tertiary)',
+  whiteSpace: 'nowrap',
+};
+
+// Composer controls — round, at the touch minimum, so attach and send read as
+// one family and neither depends on how long the word "Send" is in the active
+// locale.
+const composerIconButtonStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 'var(--touch-target-min)',
+  height: 'var(--touch-target-min)',
+  minWidth: 'var(--touch-target-min)',
+  minHeight: 'var(--touch-target-min)',
+  borderRadius: 'var(--radius-pill)',
+  padding: 0,
+  flexShrink: 0,
+};
+
 const messagesContainerStyle: React.CSSProperties = {
   maxHeight: 400,
   overflowY: 'auto' as const,
@@ -316,6 +359,57 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
         // to bump to the label floor (was 10px).
         <span style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', marginLeft: 2 }}>
           +{users.length - max}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── E2EE banner ──────────────────────────────────────────────────────────────
+
+/**
+ * States the product's central claim on the surface where it applies.
+ *
+ * Before this, nothing in the web chat UI said messages are end-to-end
+ * encrypted — the word "encrypt" appeared only in implementation comments, so
+ * the one property that distinguishes this chat from every other one was
+ * invisible to the person using it.
+ *
+ * The connection state rides on the right (`connected` omitted → not shown, as
+ * on the guest/non-member panel, where there is no stream to be connected to).
+ * It replaces a bare 7px dot whose only label was a `title` attribute:
+ * invisible to a screen reader, and ambiguous to everyone else.
+ *
+ * `aria-live` WITHOUT `role="status"` is deliberate: `LockedHistoryNotice`
+ * above is the panel's one `role="status"` element and `lockedHistory.test.tsx`
+ * asserts on that selector being absent when no history is locked. A bare
+ * `aria-live="polite"` container is announced identically by assistive tech.
+ */
+function E2eeBanner({ connected }: { connected?: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div style={e2eeStyle} data-testid="chat-e2ee-banner">
+      <span aria-hidden="true">🔒</span>
+      <span style={{ minWidth: 0 }}>{t('chat.e2ee')}</span>
+      {connected !== undefined && (
+        <span
+          style={connStyle}
+          aria-live="polite"
+          aria-atomic="true"
+          aria-label={t('chat.connectionStatusLabel')}
+          data-testid="chat-connection-state"
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 'var(--radius-pill)',
+              background: connected ? 'var(--color-status-success)' : 'var(--color-text-tertiary)',
+              flexShrink: 0,
+            }}
+          />
+          {connected ? t('chat.connected') : t('chat.reconnecting')}
         </span>
       )}
     </div>
@@ -1195,6 +1289,9 @@ export default function ChatPanel({
             {onClose && <button onClick={onClose} aria-label={t('chat.close')} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 'var(--text-body-lg)', cursor: 'pointer' }}>×</button>}
           </div>
         )}
+        {/* No `connected` here: there is no stream for a non-member, but the
+            encryption claim is exactly what they are deciding to join. */}
+        <E2eeBanner />
         <div style={{
           padding: '20px var(--space-4)',
           textAlign: 'center',
@@ -1217,19 +1314,19 @@ export default function ChatPanel({
         {headerLabel}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {presence.users.length > 0 && <PresenceDots users={presence.users} max={roomy ? 8 : 4} />}
-          <div style={{
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            background: connected ? 'var(--color-status-success)' : 'var(--color-text-tertiary)',
-            flexShrink: 0,
-          }} title={connected ? t('chat.connected') : t('chat.reconnecting')} />
+          {/* The connection state lives in the E2EE strip below, where it has a
+              visible word next to the dot and is announced. It used to be a
+              bare 7px dot here whose only label was `title`. */}
           {/* Per-topic notification mute (P-S). Renders nothing until known. */}
           <TopicMuteToggle topicId={topicId} enabled={!isGuest && isMember} style={{ lineHeight: 1, flexShrink: 0 }} />
           {onClose && <button onClick={onClose} aria-label={t('chat.close')} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 'var(--text-body-lg)', cursor: 'pointer' }}>×</button>}
         </div>
       </div>
       )}
+
+      {/* Persistent under whichever header is above it — the panel's own, or
+          the rail's / the standalone page's when `hideHeader` is set. */}
+      <E2eeBanner connected={connected} />
 
       {/* Messages — the only scroller once the panel fills its parent. */}
       <div
@@ -1347,23 +1444,18 @@ export default function ChatPanel({
           aria-label={t('chat.attachImage')}
           title={t('chat.attachImage')}
           style={{
+            ...composerIconButtonStyle,
             background: 'var(--color-bg-secondary)',
             color: 'var(--muted)',
             border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-control)',
-            padding: '6px 8px',
             cursor: connected && !uploading ? 'pointer' : 'not-allowed',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
             opacity: connected && !uploading ? 1 : 0.5,
-            flexShrink: 0,
           }}
         >
           {uploading ? (
             <span style={{ fontSize: 'var(--text-label)' }}>…</span>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
               <polyline points="21 15 16 10 5 21" />
@@ -1392,8 +1484,11 @@ export default function ChatPanel({
             flex: 1,
             background: 'transparent',
             border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-control)',
-            padding: roomy ? '9px 12px' : '7px 10px',
+            // Pill, not a 6px rounded rectangle — the composer is the one
+            // control the reader touches most, and the rounded-rect version
+            // read as a form field dropped into a chat.
+            borderRadius: 'var(--radius-pill)',
+            padding: roomy ? '9px var(--space-4)' : '7px var(--space-3)',
             color: 'var(--foreground)',
             // var(--text-body) = 16px: below that, iOS Safari zooms the page
             // on focus. Was 13/14px in both densities — a text input must
@@ -1405,25 +1500,33 @@ export default function ChatPanel({
             minHeight: 'var(--touch-target-min)',
           }}
         />
+        {/* Icon button, not a text button: "Send"/"보내기"/"Enviar" each take a
+            different width, so a labelled button made the composer's geometry
+            depend on the locale. The accessible name still says Send. */}
         <button
           onClick={handleSend}
           disabled={!inputValue.trim() || !connected || sending}
+          aria-label={t('chat.send')}
+          title={t('chat.send')}
+          aria-busy={sending}
           style={{
+            ...composerIconButtonStyle,
             background: 'var(--accent)',
             color: 'var(--color-text-inverted)',
             border: 'none',
-            borderRadius: 'var(--radius-control)',
-            padding: roomy ? '9px 16px' : '7px 12px',
-            fontSize: 'var(--text-body-sm)',
-            fontWeight: 600,
-            cursor: 'pointer',
-            flexShrink: 0,
+            cursor: (!inputValue.trim() || !connected || sending) ? 'not-allowed' : 'pointer',
             opacity: (!inputValue.trim() || !connected || sending) ? 0.4 : 1,
             transition: 'opacity 0.12s',
-            minHeight: 'var(--touch-target-min)',
           }}
         >
-          {sending ? '...' : t('chat.send')}
+          {sending ? (
+            <span style={{ fontSize: 'var(--text-body-sm)' }} aria-hidden="true">…</span>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
+          )}
         </button>
         </div>
       </div>

@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
 import ChatRail from '@/components/ChatRail';
+import BottomTabBar from '@/components/BottomTabBar';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { readRailOpenPreference, writeRailOpenPreference, type RailRoom } from '@/lib/chatRail';
 import { getChatRailApi, publishChatRailApi } from '@/lib/chatRailStore';
@@ -339,16 +340,28 @@ export default function CommunityLayout({
               />
             </div>
 
-            {/* Center content */}
+            {/* Center content — capped at the reading measure (`--read-max`,
+                globals.css) and centred within the remaining flex space.
+                Previously this column carried no max-width of its own and
+                was only ever narrow in practice because MAX_WIDTH (the row's
+                own cap, above) minus both sidebars happened to land under a
+                comfortable line length — correct today, but silently breaks
+                the moment either sidebar's width or visibility rule changes.
+                `--rail-w` and the sticky `top: var(--header-h)` offsets on
+                the sidebar/rail columns are untouched by this. */}
             <div
               style={{
                 flex: 1,
                 minWidth: 0,
+                display: 'flex',
+                justifyContent: 'center',
                 paddingTop: 20,
                 paddingBottom: 80,
               }}
             >
-              {children}
+              <div style={{ width: '100%', maxWidth: 'var(--read-max)', minWidth: 0 }}>
+                {children}
+              </div>
             </div>
 
             {/* Right sidebar -- hidden below 1024px (handled by CSS). Purely
@@ -423,6 +436,12 @@ export default function CommunityLayout({
           <ChatRail onClose={closeRail} openRequest={railRequest} />
         </div>
       )}
+
+      {/* Phone-width primary nav — see BottomTabBar.tsx for the full route/
+          hidden-state rationale. `hidden` mirrors `mobileRailOpen` above: the
+          full-screen chat sheet already owns the bottom of the screen for
+          its own composer, so the two are mutually exclusive by construction. */}
+      <BottomTabBar isGuest={isGuest} hidden={mobileRailOpen} />
 
       {/* ── Responsive CSS ── */}
       <style>{`

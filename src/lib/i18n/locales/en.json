@@ -472,6 +472,8 @@
     "searchPlaceholder": "Search topics...",
     "startTopic": "Start a Topic",
     "chat": "Chat",
+    "browse": "Browse",
+    "conversations": "Conversations",
     "categories": "Categories",
     "all": "All",
     "myTopics": "My Topics",
@@ -489,6 +491,13 @@
     },
     "expand": "Expand",
     "collapse": "Collapse"
+  },
+  "tabbar": {
+    "navLabel": "Primary",
+    "feed": "Feed",
+    "topics": "Topics",
+    "chat": "Chat",
+    "profile": "Profile"
   },
   "recordedPage": {
     "title": "Recorded Posts",
@@ -515,6 +524,9 @@
     "loading": "Loading…",
     "connected": "Connected",
     "reconnecting": "Reconnecting",
+    "e2ee": "End-to-end encrypted — the server cannot read this",
+    "connectionStatusLabel": "Connection status",
+    "encryptedPreview": "Encrypted message",
     "joinedRoom": "{{nickname}} entered the chat",
     "leftRoom": "{{nickname}} left the chat",
     "lockedMessage": "Encrypted — this device has no key for it",
@@ -547,6 +559,7 @@
     "membersLoadError": "Could not load the member list.",
     "noMembersFound": "No members found.",
     "tryAgain": "Try again",
+    "unreadCount": "{{count}} unread messages",
     "roles": {
       "owner": "owner",
       "admin": "admin"

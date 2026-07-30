@@ -5,6 +5,15 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import TopicAvatar from '@/components/TopicAvatar';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import {
+  DEFAULT_LEFT_NAV_GROUP_STATE,
+  formatNavBadgeCount,
+  formatNavCount,
+  readLeftNavGroupState,
+  writeLeftNavGroupState,
+  type LeftNavGroupId,
+  type LeftNavGroupState,
+} from '@/lib/leftNav';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,19 +58,26 @@ interface LeftSidebarProps {
    *  on the room list. Omitted entirely for guests — there is no chat for a
    *  guest to open, so the entry is hidden rather than rendered disabled. */
   onOpenChat?: () => void;
+  /** Unread message count across all rooms, shown as a solid-brand badge on
+   *  the Chat row (capped at "99+"). `undefined`/0 renders no badge — there
+   *  is no live unread-count source wired into the app yet (no caller
+   *  currently passes this), so the prop exists as a ready capability: it
+   *  is unit-tested directly, and a future unread-tracking feature can wire
+   *  it up here without touching this component's rendering contract. */
+  unreadChatCount?: number;
 }
 
 // ─── Fallback categories ─────────────────────────────────────────────────────
 
 const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'base-layer2', name: 'Base & Layer 2', slug: 'base-layer2', icon: '\uD83D\uDD35', sortOrder: 1 },
-  { id: 'defi-trading', name: 'DeFi & Trading', slug: 'defi-trading', icon: '\uD83D\uDCC8', sortOrder: 2 },
-  { id: 'nft-gaming', name: 'NFT & Gaming', slug: 'nft-gaming', icon: '\uD83C\uDFAE', sortOrder: 3 },
-  { id: 'privacy-zk', name: 'Privacy & ZK', slug: 'privacy-zk', icon: '\uD83D\uDD10', sortOrder: 4 },
-  { id: 'development', name: 'Development', slug: 'development', icon: '\uD83D\uDCBB', sortOrder: 5 },
-  { id: 'governance', name: 'Governance', slug: 'governance', icon: '\uD83C\uDFDB\uFE0F', sortOrder: 6 },
-  { id: 'free-talk', name: 'Free Talk', slug: 'free-talk', icon: '\uD83D\uDCAC', sortOrder: 7 },
-  { id: 'announcements', name: 'Announcements', slug: 'announcements', icon: '\uD83D\uDCE2', sortOrder: 8 },
+  { id: 'base-layer2', name: 'Base & Layer 2', slug: 'base-layer2', icon: '🔵', sortOrder: 1 },
+  { id: 'defi-trading', name: 'DeFi & Trading', slug: 'defi-trading', icon: '📈', sortOrder: 2 },
+  { id: 'nft-gaming', name: 'NFT & Gaming', slug: 'nft-gaming', icon: '🎮', sortOrder: 3 },
+  { id: 'privacy-zk', name: 'Privacy & ZK', slug: 'privacy-zk', icon: '🔐', sortOrder: 4 },
+  { id: 'development', name: 'Development', slug: 'development', icon: '💻', sortOrder: 5 },
+  { id: 'governance', name: 'Governance', slug: 'governance', icon: '🏛️', sortOrder: 6 },
+  { id: 'free-talk', name: 'Free Talk', slug: 'free-talk', icon: '💬', sortOrder: 7 },
+  { id: 'announcements', name: 'Announcements', slug: 'announcements', icon: '📢', sortOrder: 8 },
 ];
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -86,15 +102,24 @@ const sectionHeadingStyle: React.CSSProperties = {
   padding: '0 var(--space-1)',
 };
 
-function sidebarItemStyle(active: boolean): React.CSSProperties {
+/**
+ * Shared row treatment for every top-level nav item — the design prototype's
+ * `.ni`: a real touch target (44px, not the previous ~34px), token radius,
+ * and an explicit active state (brand-muted background + brand text/icon)
+ * that ALWAYS pairs with a real `aria-current="page"` attribute at the call
+ * site below (previously this was color-only — nothing exposed "this is the
+ * current view" to assistive tech at all).
+ */
+function navRowStyle(active: boolean): React.CSSProperties {
   return {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    padding: '7px 10px',
-    borderRadius: 8,
+    gap: 'var(--space-3)',
+    minHeight: 'var(--touch-target-min)',
+    padding: '0 var(--space-3)',
+    borderRadius: 'var(--radius-control)',
     cursor: 'pointer',
-    fontSize: 14,
+    fontSize: 'var(--text-body-sm)',
     color: active ? 'var(--accent)' : 'var(--foreground)',
     background: active ? 'var(--color-brand-primary-muted)' : 'transparent',
     transition: 'background 0.12s, color 0.12s',
@@ -103,9 +128,122 @@ function sidebarItemStyle(active: boolean): React.CSSProperties {
     width: '100%',
     textAlign: 'left' as const,
     fontFamily: 'inherit',
-    fontWeight: active ? 600 : 400,
+    fontWeight: active ? 650 : 400,
     lineHeight: 1.4,
   };
+}
+
+/** Icon column — fixed width so labels align, but the width is a small icon
+ *  glyph's box, never a text container (long Korean labels still get the
+ *  full remaining width via the label span's own `flex: 1, minWidth: 0`). */
+function navIconStyle(active: boolean): React.CSSProperties {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 20,
+    flexShrink: 0,
+    fontSize: 15,
+    color: active ? 'var(--accent)' : 'var(--muted)',
+  };
+}
+
+/** Label span — `flex: 1, minWidth: 0` + ellipsis so a long Korean label
+ *  (Korean routinely renders longer than the English source string) never
+ *  pushes a trailing count/badge out of the row or wraps the row taller. */
+const navLabelStyle: React.CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap' as const,
+  flex: 1,
+  minWidth: 0,
+};
+
+/** Right-aligned monospace count (design prototype's `.n`) — rendered even
+ *  at 0 (see `formatNavCount`); the caller renders nothing at all when it
+ *  has no count data for a row, which is a visibly different state. */
+const navCountStyle: React.CSSProperties = {
+  marginLeft: 'auto',
+  flexShrink: 0,
+  fontSize: 'var(--text-label)',
+  fontFamily: 'var(--font-mono)',
+  color: 'var(--color-text-tertiary)',
+};
+
+/** Solid-brand unread badge (design prototype's `.badge`) — only rendered
+ *  for a count > 0 (see `formatNavBadgeCount`), capped at "99+". */
+const navBadgeStyle: React.CSSProperties = {
+  marginLeft: 'auto',
+  flexShrink: 0,
+  background: 'var(--color-brand-primary)',
+  color: 'var(--color-text-inverted)',
+  borderRadius: 'var(--radius-pill)',
+  fontSize: 'var(--text-label)',
+  fontFamily: 'var(--font-mono)',
+  lineHeight: 1.7,
+  padding: '0 7px',
+};
+
+const chevronStyle = (expanded: boolean): React.CSSProperties => ({
+  transition: 'transform 0.15s',
+  transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+  flexShrink: 0,
+});
+
+const Chevron = ({ expanded }: { expanded: boolean }) => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={chevronStyle(expanded)}>
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+/**
+ * A collapsible left-nav section (design prototype's `<details class="grp">`).
+ * `open` is fully controlled by the parent — the summary's click handler
+ * calls `preventDefault()` and drives the toggle through React state instead
+ * of relying on the browser's native details/summary toggle, so behavior
+ * does not depend on a specific engine's implementation of that toggle and
+ * stays perfectly in sync with the persisted state in `leftNav.ts`. Keyboard
+ * activation still works: `<summary>` has built-in Enter/Space activation
+ * behavior per the HTML spec, which fires a `click` — this handler catches
+ * that the same as a pointer click.
+ */
+function NavGroup({
+  id,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  id: LeftNavGroupId;
+  label: string;
+  open: boolean;
+  onToggle: (id: LeftNavGroupId) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={open} style={{ marginBottom: 'var(--space-5)' }}>
+      <summary
+        className="os-label os-nav-summary os-nav-row"
+        onClick={(e) => {
+          e.preventDefault();
+          onToggle(id);
+        }}
+        style={{
+          ...sectionHeadingStyle,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          minHeight: 'var(--touch-target-min)',
+          borderRadius: 'var(--radius-control)',
+        }}
+      >
+        <span>{label}</span>
+        <Chevron expanded={open} />
+      </summary>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</div>
+    </details>
+  );
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -120,6 +258,7 @@ export default function LeftSidebar({
   viewMode,
   onViewChange,
   onOpenChat,
+  unreadChatCount,
 }: LeftSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -132,6 +271,23 @@ export default function LeftSidebar({
   const [hoveredTag, setHoveredTag] = useState<string | null>(null);
   const [topicSearch, setTopicSearch] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  // SSR-safe default (all groups open, matching the pre-existing
+  // always-expanded layout) — the persisted preference is applied
+  // client-side right after, same pattern `CommunityLayout` uses for
+  // `railOpen` (localStorage does not exist during server render).
+  const [groupState, setGroupState] = useState<LeftNavGroupState>(DEFAULT_LEFT_NAV_GROUP_STATE);
+
+  useEffect(() => {
+    setGroupState(readLeftNavGroupState());
+  }, []);
+
+  function toggleGroup(id: LeftNavGroupId) {
+    setGroupState((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      writeLeftNavGroupState(next);
+      return next;
+    });
+  }
 
   // Fetch categories from API, fall back to defaults
   useEffect(() => {
@@ -217,6 +373,14 @@ export default function LeftSidebar({
       return next;
     });
   }
+
+  const startTopicActive = pathname === '/topics/new';
+  const allActive = viewMode !== 'my' && !activeCategory && !activeTopicId;
+  const myTopicsActive = viewMode === 'my';
+  const exploreActive = pathname === '/topics/explore';
+  const recordedActive = pathname === '/recorded';
+  const exploreCount = formatNavCount(stats.totalTopics);
+  const chatBadge = formatNavBadgeCount(unreadChatCount);
 
   return (
     <nav style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -304,89 +468,27 @@ export default function LeftSidebar({
       {sessionChecked && (
         <Link
           href={isGuest ? '/?returnTo=%2Ftopics%2Fnew' : '/topics/new'}
+          className="os-nav-row"
+          aria-current={startTopicActive ? 'page' : undefined}
           onMouseEnter={() => setHoveredItem('start-topic')}
           onMouseLeave={() => setHoveredItem(null)}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '8px 10px',
-            borderRadius: 8,
-            textDecoration: 'none',
-            fontSize: 14,
-            fontWeight: 500,
-            color: 'var(--foreground)',
-            background: hoveredItem === 'start-topic' ? 'var(--surface-hover)' : 'transparent',
-            transition: 'background 0.12s, color 0.12s',
+            ...navRowStyle(startTopicActive),
             marginBottom: 12,
+            ...(hoveredItem === 'start-topic' && !startTopicActive ? { background: 'var(--surface-hover)' } : {}),
           }}
         >
-          <span style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 20,
-            height: 20,
-            fontSize: 16,
-            color: 'var(--muted)',
-          }}>
-            +
-          </span>
-          <span>{t('sidebar.startTopic')}</span>
+          <span style={navIconStyle(startTopicActive)}>+</span>
+          <span style={navLabelStyle}>{t('sidebar.startTopic')}</span>
         </Link>
       )}
 
-      {/* Chat -- direct entry point into the chat rail, landed on the room
-          list (a topic-specific jump also exists on the topic page's right
-          sidebar). Hidden for guests, same gating as the header's own chat
-          toggle -- there is no chat for a guest to open. */}
-      {onOpenChat && (
+      {/* Browse — All / Explore / My topics / On-chain records */}
+      <NavGroup id="browse" label={t('sidebar.browse')} open={groupState.browse} onToggle={toggleGroup}>
         <button
           type="button"
-          onClick={onOpenChat}
-          data-testid="left-nav-chat"
-          onMouseEnter={() => setHoveredItem('open-chat')}
-          onMouseLeave={() => setHoveredItem(null)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '8px 10px',
-            borderRadius: 8,
-            border: 'none',
-            width: '100%',
-            textAlign: 'left' as const,
-            fontFamily: 'inherit',
-            fontSize: 14,
-            fontWeight: 500,
-            color: 'var(--foreground)',
-            background: hoveredItem === 'open-chat' ? 'var(--surface-hover)' : 'transparent',
-            transition: 'background 0.12s, color 0.12s',
-            marginBottom: 12,
-            cursor: 'pointer',
-          }}
-        >
-          <span style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 20,
-            height: 20,
-            color: 'var(--muted)',
-          }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-            </svg>
-          </span>
-          <span>{t('sidebar.chat')}</span>
-        </button>
-      )}
-
-      {/* Categories with popular topics */}
-      <div style={sidebarCardStyle}>
-        <div className="os-label" style={sectionHeadingStyle}>{t('sidebar.categories')}</div>
-        {/* All / Home item */}
-        <button
+          className="os-nav-row"
+          aria-current={allActive ? 'page' : undefined}
           onClick={() => {
             if (onViewChange) {
               onViewChange('all');
@@ -399,21 +501,38 @@ export default function LeftSidebar({
           onMouseEnter={() => setHoveredItem('all')}
           onMouseLeave={() => setHoveredItem(null)}
           style={{
-            ...sidebarItemStyle(viewMode !== 'my' && !activeCategory && !activeTopicId),
-            ...(hoveredItem === 'all' && !(viewMode !== 'my' && !activeCategory && !activeTopicId)
-              ? { background: 'var(--surface-hover)' }
-              : {}),
+            ...navRowStyle(allActive),
+            ...(hoveredItem === 'all' && !allActive ? { background: 'var(--surface-hover)' } : {}),
           }}
         >
-          <span style={{ fontSize: 15, width: 20, textAlign: 'center' as const }}>
-            {'\u2302'}
-          </span>
-          <span>{t('sidebar.all')}</span>
+          <span style={navIconStyle(allActive)}>{'⌂'}</span>
+          <span style={navLabelStyle}>{t('sidebar.all')}</span>
         </button>
 
-        {/* My Topics — only visible when logged in */}
+        <Link
+          href="/topics/explore"
+          className="os-nav-row"
+          aria-current={exploreActive ? 'page' : undefined}
+          onMouseEnter={() => setHoveredItem('explore-topics')}
+          onMouseLeave={() => setHoveredItem(null)}
+          style={{
+            ...navRowStyle(exploreActive),
+            ...(hoveredItem === 'explore-topics' && !exploreActive ? { background: 'var(--surface-hover)' } : {}),
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ width: 20, flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <span style={navLabelStyle}>{t('sidebar.exploreTopics')}</span>
+          {exploreCount !== null && <span className="mono" style={navCountStyle}>{exploreCount}</span>}
+        </Link>
+
         {!isGuest && (
           <button
+            type="button"
+            className="os-nav-row"
+            aria-current={myTopicsActive ? 'page' : undefined}
             onClick={() => {
               if (onViewChange) {
                 onViewChange('my');
@@ -424,35 +543,61 @@ export default function LeftSidebar({
             onMouseEnter={() => setHoveredItem('my-topics')}
             onMouseLeave={() => setHoveredItem(null)}
             style={{
-              ...sidebarItemStyle(viewMode === 'my'),
-              ...(hoveredItem === 'my-topics' && viewMode !== 'my' ? { background: 'var(--surface-hover)' } : {}),
+              ...navRowStyle(myTopicsActive),
+              ...(hoveredItem === 'my-topics' && !myTopicsActive ? { background: 'var(--surface-hover)' } : {}),
             }}
           >
-            <span style={{ fontSize: 15, width: 20, textAlign: 'center' as const }}>⭐</span>
-            <span>{t('sidebar.myTopics')}</span>
+            <span style={navIconStyle(myTopicsActive)}>⭐</span>
+            <span style={navLabelStyle}>{t('sidebar.myTopics')}</span>
           </button>
         )}
 
-        {/* Explore Topics */}
         <Link
-          href="/topics/explore"
-          onMouseEnter={() => setHoveredItem('explore-topics')}
+          href="/recorded"
+          className="os-nav-row"
+          aria-current={recordedActive ? 'page' : undefined}
+          onMouseEnter={() => setHoveredItem('on-chain-records')}
           onMouseLeave={() => setHoveredItem(null)}
           style={{
-            ...sidebarItemStyle(pathname === '/topics/explore'),
-            ...(hoveredItem === 'explore-topics' && pathname !== '/topics/explore'
-              ? { background: 'var(--surface-hover)' }
-              : {}),
-            textDecoration: 'none',
+            ...navRowStyle(recordedActive),
+            ...(hoveredItem === 'on-chain-records' && !recordedActive ? { background: 'var(--surface-hover)' } : {}),
           }}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ width: 20, textAlign: 'center' as const, flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <span>{t('sidebar.exploreTopics')}</span>
+          <span style={navIconStyle(recordedActive)}>⛓</span>
+          <span style={navLabelStyle}>{t('sidebar.onChainRecords.title')}</span>
         </Link>
+      </NavGroup>
 
+      {/* Conversations — Chat. Only rendered at all when there is a chat for
+          the current user to open (never for guests) — a group whose sole
+          row is hidden would render an empty, pointless disclosure. */}
+      {onOpenChat && (
+        <NavGroup id="conversations" label={t('sidebar.conversations')} open={groupState.conversations} onToggle={toggleGroup}>
+          <button
+            type="button"
+            onClick={onOpenChat}
+            data-testid="left-nav-chat"
+            className="os-nav-row"
+            onMouseEnter={() => setHoveredItem('open-chat')}
+            onMouseLeave={() => setHoveredItem(null)}
+            style={{
+              ...navRowStyle(false),
+              ...(hoveredItem === 'open-chat' ? { background: 'var(--surface-hover)' } : {}),
+            }}
+          >
+            <span style={navIconStyle(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+            </span>
+            <span style={navLabelStyle}>{t('sidebar.chat')}</span>
+            {chatBadge !== null && <span style={navBadgeStyle}>{chatBadge}</span>}
+          </button>
+        </NavGroup>
+      )}
+
+      {/* Categories with popular topics */}
+      <NavGroup id="categories" label={t('sidebar.categories')} open={groupState.categories} onToggle={toggleGroup}>
         {categories.map((cat) => {
           const isActive = activeCategory === cat.slug;
           const catTopics = (topicsByCategory[cat.slug] ?? []).slice(0, 3);
@@ -477,6 +622,8 @@ export default function LeftSidebar({
               <div
                 role="button"
                 tabIndex={0}
+                className="os-nav-row"
+                aria-current={isActive ? 'page' : undefined}
                 onClick={selectCategory}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -487,26 +634,17 @@ export default function LeftSidebar({
                 onMouseEnter={() => setHoveredItem(cat.id)}
                 onMouseLeave={() => setHoveredItem(null)}
                 style={{
-                  ...sidebarItemStyle(isActive),
+                  ...navRowStyle(isActive),
                   ...(hoveredItem === cat.id && !isActive
                     ? { background: 'var(--surface-hover)' }
                     : {}),
                 }}
               >
-                <span style={{ fontSize: 15, width: 20, textAlign: 'center' as const }}>
-                  {cat.icon}
-                </span>
-                <span style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap' as const,
-                  flex: 1,
-                  minWidth: 0,
-                }}>
-                  {cat.name}
-                </span>
+                <span style={navIconStyle(isActive)}>{cat.icon}</span>
+                <span style={navLabelStyle}>{cat.name}</span>
                 {catTopics.length > 0 && (
                   <button
+                    className="os-nav-row"
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
@@ -520,15 +658,11 @@ export default function LeftSidebar({
                       padding: '0 2px',
                       fontSize: 'var(--text-label)',
                       lineHeight: 1,
-                      transition: 'transform 0.15s',
-                      transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                       flexShrink: 0,
                     }}
                     aria-label={isExpanded ? t('sidebar.collapse') : t('sidebar.expand')}
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
+                    <Chevron expanded={isExpanded} />
                   </button>
                 )}
               </div>
@@ -540,6 +674,8 @@ export default function LeftSidebar({
                     <Link
                       key={topic.id}
                       href={`/topics/${topic.id}`}
+                      className="os-nav-row"
+                      aria-current={activeTopicId === topic.id ? 'page' : undefined}
                       onMouseEnter={() => setHoveredItem(`cat-topic-${topic.id}`)}
                       onMouseLeave={() => setHoveredItem(null)}
                       style={{
@@ -576,7 +712,7 @@ export default function LeftSidebar({
             </div>
           );
         })}
-      </div>
+      </NavGroup>
 
       {/* Popular Tags */}
       {tags.length > 0 && (
@@ -669,42 +805,6 @@ export default function LeftSidebar({
             </div>
           ))}
         </div>
-      </div>
-
-      {/* On-Chain Records — the quietest card in the rail. The violet it used
-          to be tinted with is in no palette, so it read as a highlight in dark
-          mode and vanished in light; on-chain is an outline, never a fill. */}
-      <div style={sidebarCardStyle}>
-        <div className="os-label" style={{
-          ...sectionHeadingStyle,
-          color: 'var(--color-text-tertiary)',
-        }}>
-          {t('sidebar.onChainRecords.title')}
-        </div>
-        <p style={{
-          fontSize: 13,
-          color: 'var(--color-text-secondary)',
-          margin: '0 0 10px',
-          lineHeight: 1.5,
-        }}>
-          {t('sidebar.onChainRecords.body')}
-        </p>
-        <Link
-          href="/recorded"
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            // A link is an action, so it keeps the action color even though the
-            // card around it is deliberately quiet.
-            color: 'var(--color-brand-primary)',
-            textDecoration: 'none',
-            transition: 'opacity 0.15s',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-        >
-          {t('sidebar.onChainRecords.cta')} {'\u2192'}
-        </Link>
       </div>
 
     </nav>
