@@ -1,18 +1,41 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
 import LinkPreview from '@/components/LinkPreview';
+import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { getMlsSessionStore, getTakSessionStore } from '@/lib/mls/webTransport';
 import type { Visibility } from '@/lib/mls/takSession';
+import {
+  DecryptOnce,
+  fetchCatchup,
+  mergeChronological,
+  newestCreatedAt,
+  sinceCursor,
+  CATCHUP_PAGE_LIMIT,
+  HISTORY_PAGE_LIMIT,
+} from '@/lib/chatSync';
+
+// The panel is a client component but Next still renders it once on the server,
+// where useLayoutEffect warns. The scroll-anchor restore must run before paint
+// (a useEffect would show one frame at the wrong offset), so pick per platform.
+const useBrowserLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 // Server rows for user messages carry an encrypted `sealed` body, not plaintext.
 // Decrypt for local display so MessageRow keeps rendering `msg.message` as text.
 // System rows (join/leave) carry plaintext `message` and pass through unchanged.
+interface RawChatMessage {
+  id?: string;
+  type?: string;
+  sealed?: { ciphertext: string; epoch: number } | null;
+  message?: string;
+  createdAt?: string;
+}
+
 async function toDisplayMessage(
   topicId: string,
-  raw: { id?: string; type?: string; sealed?: { ciphertext: string; epoch: number } | null; message?: string },
+  raw: RawChatMessage,
   // Plaintext of messages THIS panel just sent, keyed by sealed ciphertext.
   // Consulted before any MLS work — see `pendingSendsRef`.
   pendingSends?: Map<string, string>,
@@ -124,24 +147,11 @@ interface ChatMessage {
   createdAt: string;
 }
 
-/**
- * How the live chat is presented.
- *  - `docked`  — the default column inside the right sidebar (unchanged).
- *  - `sidebar` — a wider full-height column pinned to the right edge; the page
- *                stays visible and interactive beside it.
- *  - `modal`   — the centered near-fullscreen overlay.
- * Only the presentation changes: the same panel instance is reparented between
- * the three hosts, so the socket, decrypted history and draft all survive.
- */
-export type ChatMode = 'docked' | 'sidebar' | 'modal';
-
 interface ChatPanelProps {
-  /** Current presentation. Defaults to `docked`. */
-  mode?: ChatMode;
-  /** When set, the two expand controls appear in the header. Picking the
-   *  active mode again returns to `docked`. Placed inline so the controls
-   *  never overlap the PresenceDots avatars. */
-  onModeChange?: (mode: ChatMode) => void;
+  /** Roomier type scale + spacing — used by the chat rail (a wide column) and
+   *  the full-screen mobile sheet / standalone `/chat/[id]` and `/dm/[id]`
+   *  pages, where the docked panel's compact scale would look cramped. */
+  roomy?: boolean;
   topicId: string;
   isGuest: boolean;
   isMember: boolean;
@@ -229,96 +239,6 @@ const messagesContainerStyle: React.CSSProperties = {
   flexDirection: 'column' as const,
   gap: 6,
 };
-
-const iconButtonStyle: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  color: 'var(--muted)',
-  cursor: 'pointer',
-  padding: 3,
-  borderRadius: 4,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  lineHeight: 1,
-  flexShrink: 0,
-};
-
-// Segmented pair: "expand to sidebar" | "open in modal". Reads as one control
-// so the two options are obviously alternatives, not unrelated actions.
-const modeGroupStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 2,
-  padding: 2,
-  borderRadius: 7,
-  border: '1px solid var(--border)',
-  background: 'rgba(255,255,255,0.03)',
-  flexShrink: 0,
-};
-
-// ─── Expand-mode controls ─────────────────────────────────────────────────────
-
-/**
- * One segment of the expand choice. `active` marks the mode the chat is
- * currently in — pressing it again returns to the docked panel, which is why
- * it is a toggle (`aria-pressed`) rather than a plain action button.
- */
-function ModeButton({
-  active,
-  label,
-  mode,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  label: string;
-  /** Target presentation — also the focus handle (`[data-chat-mode]`). */
-  mode: Exclude<ChatMode, 'docked'>;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="chat-mode-btn"
-      data-chat-mode={mode}
-      aria-label={label}
-      aria-pressed={active}
-      title={label}
-      style={{
-        ...iconButtonStyle,
-        padding: '4px 6px',
-        borderRadius: 5,
-        background: active ? 'rgba(120, 140, 255, 0.18)' : 'transparent',
-        color: active ? 'var(--accent)' : 'var(--muted)',
-        transition: 'background 0.12s, color 0.12s',
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** Right-hand column pinned to the edge of the page. */
-const SidebarIcon = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <line x1="14" y1="3" x2="14" y2="21" />
-    <rect x="14" y="3" width="7" height="18" fill="currentColor" stroke="none" opacity="0.32" />
-  </svg>
-);
-
-/** Centered overlay — the four outward arrows already used for maximize. */
-const ModalIcon = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <polyline points="15 3 21 3 21 9" />
-    <polyline points="9 21 3 21 3 15" />
-    <line x1="21" y1="3" x2="14" y2="10" />
-    <line x1="3" y1="21" x2="10" y2="14" />
-  </svg>
-);
 
 // ─── Avatar dots component ────────────────────────────────────────────────────
 
@@ -508,15 +428,10 @@ export default function ChatPanel({
   fullHeight,
   hideHeader,
   onClose,
-  mode = 'docked',
-  onModeChange,
+  roomy = false,
   framed,
   title,
 }: ChatPanelProps) {
-  // Both expanded presentations get the roomier type scale; only the modal
-  // needs a reading measure (a 1160px dialog would otherwise run text edge to
-  // edge, while the sidebar column is already a comfortable width).
-  const roomy = mode !== 'docked';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
@@ -527,11 +442,46 @@ export default function ChatPanel({
   // web app uses for "is this me" checks (see topics/[topicId]/members).
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+
+  // ── History paging (`?before=`) ────────────────────────────────────────────
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  // Ref mirrors of the two flags above: the scroll handler fires many times per
+  // frame and must not act on a state value React has not committed yet.
+  const hasMoreHistoryRef = useRef(false);
+  const loadingOlderRef = useRef(false);
+  /** id of the oldest row on screen — the `?before=` cursor. */
+  const oldestIdRef = useRef<string | null>(null);
+
+  // ── Reconnect catch-up (`?since=`) ─────────────────────────────────────────
+  /** createdAt of the newest row we have ingested — the `?since=` cursor. */
+  const lastSeenIsoRef = useRef<string | null>(null);
+  /** False until the SSE stream has opened once; the FIRST open has nothing to
+   *  catch up on (the history fetch covers it), every later one does. */
+  const hasConnectedRef = useRef(false);
+  const catchupRunningRef = useRef(false);
+
+  // ── Scroll bookkeeping ─────────────────────────────────────────────────────
+  /** Distance from the bottom captured just before older messages prepend. */
+  const pendingScrollAnchorRef = useRef<number | null>(null);
+  const userNearBottomRef = useRef(true);
+  const initialScrolledRef = useRef(false);
+  const lastBottomIdRef = useRef<string | null>(null);
+
+  /**
+   * One decrypt per message id, forever — the panel's central correctness
+   * guard. History, `?before=` pages, `?since=` catch-up and the SSE stream all
+   * funnel through `ingest`, so a message delivered by two of them at once
+   * awaits ONE decrypt instead of racing MLS, whose per-message key is consumed
+   * on first use (the loser of that race renders `[unable to decrypt]` forever).
+   */
+  const decryptOnceRef = useRef(new DecryptOnce<ChatMessage>());
   // Topic visibility drives the TAK tier (public root vs scoped per-epoch).
   // Resolved once per topic in the history effect; defaults to public.
   const visibilityRef = useRef<Visibility>('public');
@@ -550,6 +500,55 @@ export default function ChatPanel({
     while (m.size > 200) m.delete(m.keys().next().value as string);
   }, []);
 
+  /**
+   * Turn raw server rows into display rows, decrypting each id at most once.
+   *
+   * Every delivery path calls this — there is deliberately no other route from
+   * a wire row to the message list. A row whose decrypt throws outright (a
+   * broken key store, not just an undecryptable body) degrades to a single
+   * `[unable to decrypt]` row: `Promise.all` would otherwise reject and blank
+   * the entire page it was part of.
+   */
+  const ingest = useCallback(
+    (raws: RawChatMessage[]): Promise<ChatMessage[]> =>
+      Promise.all(
+        raws.map((raw) => {
+          const decrypt = () =>
+            toDisplayMessage(topicId, raw, pendingSendsRef.current).catch(
+              () => ({ ...(raw as unknown as ChatMessage), message: '[unable to decrypt]' }),
+            );
+          return raw?.id ? decryptOnceRef.current.get(raw.id, decrypt) : decrypt();
+        }),
+      ),
+    [topicId],
+  );
+
+  /**
+   * Merge decrypted rows into the list and advance the `?since=` cursor.
+   * Safe to call with rows that are already on screen (dedupe by id) and with
+   * rows older than everything on screen (the merge sorts chronologically), so
+   * catch-up, live and history paging share one path.
+   */
+  const applyIncoming = useCallback((incoming: ChatMessage[]) => {
+    if (incoming.length === 0) return;
+    setMessages((prev) => mergeChronological(prev, incoming));
+    const newest = newestCreatedAt(incoming);
+    // Older pages must never rewind the catch-up cursor.
+    if (newest && (!lastSeenIsoRef.current || new Date(newest) > new Date(lastSeenIsoRef.current))) {
+      lastSeenIsoRef.current = newest;
+    }
+  }, []);
+
+  // Seal the push-preview copy (design §13.6 strategy A) so the recipient's iOS
+  // NSE has something it can decrypt without consuming an MLS ratchet key. Sent
+  // INSIDE the POST because push fan-out happens there — the separate
+  // archiveOnSend upload only lands after the response. Best-effort: any failure
+  // just omits the field and the recipient gets the content-free push.
+  const buildPushArchive = useCallback(async (text: string) => {
+    const seal = await getTakSessionStore().sealForPush(topicId, text, visibilityRef.current).catch(() => null);
+    return seal ? { ct: seal.ct, takVersion: seal.takVersion } : undefined;
+  }, [topicId]);
+
   // Uploads via /api/upload and posts the returned URL as a chat message.
   // The message body is the bare URL — MessageRow's isImageUrl detection
   // renders it inline, matching the mobile chat UX.
@@ -566,19 +565,22 @@ export default function ChatPanel({
       if (!publicUrl) throw new Error('no url');
       const sealed = await getMlsSessionStore().seal(topicId, publicUrl);
       rememberOwnPlaintext(sealed.ciphertext, publicUrl);
+      const pushArchive = await buildPushArchive(publicUrl);
       const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch }),
+        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
       });
       // Optimistic local echo (sender can't decrypt its own MLS message).
       if (res.ok) {
         try {
           const { message: payload } = await res.json();
           if (payload?.id) {
-            setMessages((prev) =>
-              prev.some((m) => m.id === payload.id) ? prev : [...prev, { ...payload, message: publicUrl }],
-            );
+            const own: ChatMessage = { ...payload, message: publicUrl };
+            // Pre-seed the decrypt memo so the SSE echo of our own message never
+            // reaches MLS at all (a sender cannot open its own message).
+            decryptOnceRef.current.set(payload.id, own);
+            applyIncoming([own]);
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, publicUrl);
             // Re-encrypt for the archive so later members can read it (Phase 3).
@@ -592,7 +594,7 @@ export default function ChatPanel({
     } finally {
       setUploading(false);
     }
-  }, [topicId]);
+  }, [topicId, buildPushArchive, rememberOwnPlaintext]);
 
   async function handleSend() {
     const text = inputValue.trim();
@@ -601,10 +603,11 @@ export default function ChatPanel({
     try {
       const sealed = await getMlsSessionStore().seal(topicId, text);
       rememberOwnPlaintext(sealed.ciphertext, text);
+      const pushArchive = await buildPushArchive(text);
       const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch }),
+        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
       });
       if (res.ok) {
         // Optimistic local echo: an MLS sender cannot decrypt its own sealed
@@ -613,9 +616,11 @@ export default function ChatPanel({
         try {
           const { message: payload } = await res.json();
           if (payload?.id) {
-            setMessages((prev) =>
-              prev.some((m) => m.id === payload.id) ? prev : [...prev, { ...payload, message: text }],
-            );
+            const own: ChatMessage = { ...payload, message: text };
+            // Pre-seed the decrypt memo so the SSE echo of our own message never
+            // reaches MLS at all (a sender cannot open its own message).
+            decryptOnceRef.current.set(payload.id, own);
+            applyIncoming([own]);
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, text);
             // Re-encrypt for the archive so later members can read it (Phase 3).
@@ -653,8 +658,83 @@ export default function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  /**
+   * Load one page of older history (`?before=<oldest id>`).
+   *
+   * Cursor is a message id, not an offset, so messages arriving while the page
+   * is in flight cannot shift the window and cause a skip or a duplicate. The
+   * in-flight guard is a ref, not the `loadingOlder` state: the scroll handler
+   * can fire again before React commits.
+   */
+  const loadOlder = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMoreHistoryRef.current) return;
+    const cursor = oldestIdRef.current;
+    if (!cursor) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    // Anchor on the distance from the BOTTOM: prepending grows scrollHeight, so
+    // restoring this distance keeps the row the user is reading under the cursor.
+    const el = scrollerRef.current;
+    pendingScrollAnchorRef.current = el ? el.scrollHeight - el.scrollTop : null;
+    try {
+      const res = await fetch(
+        `/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}&before=${encodeURIComponent(cursor)}`,
+      );
+      if (!res.ok) throw new Error(`history ${res.status}`);
+      const data = await res.json();
+      const raws: RawChatMessage[] = Array.isArray(data?.messages) ? data.messages : [];
+      // A short page means we reached the beginning of the topic — stop asking.
+      const more = raws.length >= HISTORY_PAGE_LIMIT;
+      const decrypted = await ingest(raws);
+      if (!mountedRef.current) return;
+      if (decrypted.length === 0) pendingScrollAnchorRef.current = null;
+      applyIncoming(decrypted);
+      hasMoreHistoryRef.current = more;
+      setHasMoreHistory(more);
+    } catch {
+      // Transient failure: keep `hasMoreHistory` so the user can retry.
+      pendingScrollAnchorRef.current = null;
+    } finally {
+      loadingOlderRef.current = false;
+      if (mountedRef.current) setLoadingOlder(false);
+    }
+  }, [topicId, ingest, applyIncoming]);
+
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      // "Near bottom" decides whether an incoming message may steal the scroll
+      // position from someone reading history further up.
+      userNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (el.scrollTop < 80) void loadOlder();
+    },
+    [loadOlder],
+  );
+
+  // Restore the scroll position BEFORE paint whenever a page of older messages
+  // was just prepended. Runs ahead of the auto-scroll effect below (layout
+  // effects flush first), so the two never fight.
+  useBrowserLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    if (anchor == null) return;
+    pendingScrollAnchorRef.current = null;
+    const el = scrollerRef.current;
+    if (el) el.scrollTop = Math.max(0, el.scrollHeight - anchor);
+  }, [messages]);
+
+  // Auto-scroll only when the BOTTOM of the list moved (a new message), never
+  // when older history prepended — and only if the user was already at the
+  // bottom, so reading history is not interrupted by someone else typing.
   useEffect(() => {
-    scrollToBottom();
+    oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
+    const bottomId = messages.length > 0 ? messages[messages.length - 1].id : null;
+    if (bottomId === lastBottomIdRef.current) return;
+    lastBottomIdRef.current = bottomId;
+    if (!bottomId) return;
+    if (!initialScrolledRef.current || userNearBottomRef.current) {
+      initialScrolledRef.current = true;
+      scrollToBottom();
+    }
   }, [messages, scrollToBottom]);
 
   // Provision archive access for later members, by tier. public: claim the
@@ -688,6 +768,24 @@ export default function ChatPanel({
 
     mountedRef.current = true;
 
+    // Switching topics must not carry ANY of the previous room across: its
+    // messages, its decrypt memo (ids are unique per message, but a stale memo
+    // just wastes memory), its catch-up cursor, or its paging cursor.
+    setMessages([]);
+    setHasMoreHistory(false);
+    hasMoreHistoryRef.current = false;
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
+    decryptOnceRef.current = new DecryptOnce<ChatMessage>();
+    lastSeenIsoRef.current = null;
+    oldestIdRef.current = null;
+    lastBottomIdRef.current = null;
+    hasConnectedRef.current = false;
+    catchupRunningRef.current = false;
+    pendingScrollAnchorRef.current = null;
+    initialScrolledRef.current = false;
+    userNearBottomRef.current = true;
+
     // Fetch history, then TAK back-fill pre-join messages (Phase 3).
     (async () => {
       // Resolve the topic's visibility once → selects the TAK tier. Best-effort:
@@ -702,17 +800,20 @@ export default function ChatPanel({
         }
       } catch {}
 
-      const data = await fetch(`/api/topics/${topicId}/chat?limit=50`)
+      const data = await fetch(`/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}`)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
-      if (!mountedRef.current || !data?.messages) return;
-      const decrypted = await Promise.all(
-        data.messages.map((m: Parameters<typeof toDisplayMessage>[1]) =>
-          toDisplayMessage(topicId, m, pendingSendsRef.current),
-        ),
-      );
+      if (!mountedRef.current || !Array.isArray(data?.messages)) return;
+      const raws = data.messages as RawChatMessage[];
+      // A full first page means older messages exist behind it; a short one
+      // means this topic's entire history already fits on screen.
+      const more = raws.length >= HISTORY_PAGE_LIMIT;
+      const decrypted = await ingest(raws);
       if (!mountedRef.current) return;
-      setMessages(decrypted.reverse());
+      // Server returns newest-first here; the merge sorts, so no reverse needed.
+      applyIncoming(decrypted);
+      hasMoreHistoryRef.current = more;
+      setHasMoreHistory(more);
 
       // Back-fill: fetch TAK bundles + archive, decrypt history MLS forward
       // secrecy locked out, and fill in any '[unable to decrypt]' rows. Entirely
@@ -736,6 +837,46 @@ export default function ChatPanel({
       void provisionArchiveAccess();
     })();
 
+    /**
+     * Pull everything that arrived while the stream was down.
+     *
+     * The SSE subscription only delivers events that happen after it is live,
+     * so every message written during a drop is invisible until a reload —
+     * which is exactly what this closes. Idempotent by construction: rows the
+     * stream also delivers are deduped by id and decrypted once (`ingest`), so
+     * running catch-up and receiving the same message live is harmless.
+     */
+    async function runCatchup() {
+      const anchor = lastSeenIsoRef.current;
+      // No anchor = we have never seen a message, so there is no delta to sync
+      // against; the initial history fetch is the complete picture.
+      if (!anchor || catchupRunningRef.current) return;
+      catchupRunningRef.current = true;
+      try {
+        const raws = await fetchCatchup<RawChatMessage & { id: string; createdAt: string }>({
+          sinceIso: sinceCursor(anchor),
+          fetchPage: async (since, limit) => {
+            const r = await fetch(
+              `/api/topics/${topicId}/chat?limit=${limit}&since=${encodeURIComponent(since)}`,
+            );
+            if (!r.ok) throw new Error(`catchup ${r.status}`);
+            const d = await r.json();
+            return Array.isArray(d?.messages) ? d.messages : [];
+          },
+          limit: CATCHUP_PAGE_LIMIT,
+        });
+        if (!mountedRef.current || raws.length === 0) return;
+        const decrypted = await ingest(raws);
+        if (!mountedRef.current) return;
+        applyIncoming(decrypted);
+      } catch {
+        // Best-effort: the next reconnect retries from the same cursor, and the
+        // cursor only advances on messages we actually ingested.
+      } finally {
+        catchupRunningRef.current = false;
+      }
+    }
+
     function connect() {
       if (!mountedRef.current) return;
 
@@ -757,13 +898,12 @@ export default function ChatPanel({
           // A new member joined → if we hold the public archive lease, push them
           // the root so they can back-fill history (SI-6, membership change).
           if (raw?.type === 'join') void provisionArchiveAccess();
-          // Decrypt the sealed body before display (async; dedupe on arrival).
-          toDisplayMessage(topicId, raw, pendingSendsRef.current).then((msg) => {
+          // Decrypt the sealed body before display. Goes through the same
+          // one-decrypt-per-id funnel as catch-up, so a message delivered by
+          // both paths is opened once and rendered once.
+          void ingest([raw]).then((msgs) => {
             if (!mountedRef.current) return;
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === msg.id)) return prev;
-              return [...prev, msg];
-            });
+            applyIncoming(msgs);
           });
         } catch {}
       });
@@ -782,7 +922,14 @@ export default function ChatPanel({
       };
 
       es.onopen = () => {
-        if (mountedRef.current) setConnected(true);
+        if (!mountedRef.current) return;
+        setConnected(true);
+        // The first open is the initial subscription — history already covers
+        // it. Every later open follows a drop, and only then can messages have
+        // been missed.
+        const reopened = hasConnectedRef.current;
+        hasConnectedRef.current = true;
+        if (reopened) void runCatchup();
       };
     }
 
@@ -799,7 +946,7 @@ export default function ChatPanel({
         esRef.current = null;
       }
     };
-  }, [topicId, isGuest, isMember, provisionArchiveAccess]);
+  }, [topicId, isGuest, isMember, provisionArchiveAccess, ingest, applyIncoming]);
 
   // Root chrome: card by default, flex column when it has to fill its parent.
   const rootStyle = fullHeight
@@ -808,15 +955,11 @@ export default function ChatPanel({
       : panelFullHeightStyle
     : panelStyle;
 
-  // Maximized view keeps a comfortable reading measure — lines should not run
-  // the full width of a 1100px dialog.
-  // Longhand margins on purpose: the message list also sets `marginTop: auto`
-  // to sit short conversations on the composer, and React patches a changed
-  // `margin` shorthand *after* the untouched longhand on re-render, which would
-  // reset that to 0 and float the messages to the top of the dialog.
-  const measureStyle: React.CSSProperties = mode === 'modal'
-    ? { width: '100%', maxWidth: 860, marginLeft: 'auto', marginRight: 'auto' }
-    : { width: '100%' };
+  // Every current host (the chat rail's narrow column, the full-screen mobile
+  // sheet, and the standalone /chat/[id] and /dm/[id] pages) already caps its
+  // own reading width where that matters, so the panel itself no longer needs
+  // a mode-specific measure.
+  const measureStyle: React.CSSProperties = { width: '100%' };
 
   // Topic pages pass the topic name; everything else keeps the generic label.
   const headerLabel = (
@@ -897,35 +1040,18 @@ export default function ChatPanel({
             background: connected ? '#22c55e' : '#6b7280',
             flexShrink: 0,
           }} title={connected ? 'Connected' : 'Reconnecting'} />
-          {/* Two-way expand choice. Each button toggles: pressing the active
-              mode docks the panel again (Esc does the same). */}
-          {onModeChange && (
-            <div style={modeGroupStyle} role="group" aria-label="Chat layout">
-              <ModeButton
-                mode="sidebar"
-                active={mode === 'sidebar'}
-                label={mode === 'sidebar' ? 'Dock chat panel (Esc)' : 'Expand to sidebar'}
-                onClick={() => onModeChange(mode === 'sidebar' ? 'docked' : 'sidebar')}
-              >
-                {SidebarIcon}
-              </ModeButton>
-              <ModeButton
-                mode="modal"
-                active={mode === 'modal'}
-                label={mode === 'modal' ? 'Dock chat panel (Esc)' : 'Open in modal'}
-                onClick={() => onModeChange(mode === 'modal' ? 'docked' : 'modal')}
-              >
-                {ModalIcon}
-              </ModeButton>
-            </div>
-          )}
+          {/* Per-topic notification mute (P-S). Renders nothing until known. */}
+          <TopicMuteToggle topicId={topicId} enabled={!isGuest && isMember} style={{ lineHeight: 1, flexShrink: 0 }} />
           {onClose && <button onClick={onClose} aria-label="Close chat" style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer' }}>×</button>}
         </div>
       </div>
       )}
 
       {/* Messages — the only scroller once the panel fills its parent. */}
-      <div style={fullHeight ? {
+      <div
+        ref={scrollerRef}
+        onScroll={handleScroll}
+        style={fullHeight ? {
         ...messagesContainerStyle,
         maxHeight: 'none',
         flex: 1,
@@ -943,6 +1069,32 @@ export default function ChatPanel({
           // long list still scrolls from the very first message.
           ...(fullHeight ? { marginTop: 'auto' } : null),
         }}>
+          {/* Older history. Scrolling to the top loads the next page too; the
+              button exists so a short panel (a non-fullHeight host barely
+              scrolls) and keyboard users are not stuck at 50 messages. It
+              disappears once the beginning of the topic is reached. */}
+          {hasMoreHistory && (
+            <button
+              type="button"
+              onClick={() => void loadOlder()}
+              disabled={loadingOlder}
+              style={{
+                alignSelf: 'center',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 999,
+                color: 'var(--muted)',
+                cursor: loadingOlder ? 'default' : 'pointer',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                padding: '3px 12px',
+                marginBottom: 4,
+                opacity: loadingOlder ? 0.5 : 1,
+              }}
+            >
+              {loadingOlder ? 'Loading…' : 'Load earlier messages'}
+            </button>
+          )}
           {messages.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
               No messages yet

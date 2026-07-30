@@ -12,6 +12,12 @@ interface UserSession {
 interface HeaderProps {
   onMenuToggle?: () => void;
   menuOpen?: boolean;
+  /** Toggles the chat rail (`ChatRail.tsx`, owned by `CommunityLayout`).
+   *  Omitted on pages that render `Header` standalone (recovery/docs/profile),
+   *  which have no rail to toggle — the button only renders when both this
+   *  AND a resolved signed-in session are present (see render below). */
+  onChatToggle?: () => void;
+  chatOpen?: boolean;
 }
 
 function getCachedSession(): UserSession | null {
@@ -28,7 +34,7 @@ function setCachedSession(data: UserSession | null) {
   } catch {}
 }
 
-export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
+export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen }: HeaderProps = {}) {
   // Initial render MUST match SSR (no localStorage on the server).
   // Reading `getCachedSession()` in the useState initializer caused React
   // #418: the server rendered the guest placeholder span while the client's
@@ -261,6 +267,33 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
 
           {user && (
             <Link
+              href="/dm"
+              className="header-nav-link"
+              style={{
+                color: '#999', fontSize: 12, textDecoration: 'none',
+                fontFamily: 'var(--font-mono)', fontWeight: 500,
+                letterSpacing: '0.04em', textTransform: 'uppercase' as const,
+                transition: 'all 0.15s',
+                padding: '6px 14px', borderRadius: 6,
+                border: '1px solid transparent',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.color = '#ccc';
+                (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.08)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.color = '#999';
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
+                (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
+              }}
+            >
+              Messages
+            </Link>
+          )}
+
+          {user && (
+            <Link
               href="/recovery"
               className="header-nav-link"
               style={{
@@ -284,6 +317,36 @@ export default function Header({ onMenuToggle, menuOpen }: HeaderProps = {}) {
             >
               Recovery
             </Link>
+          )}
+
+          {/* Chat rail toggle — gated the same way as the other signed-in-only
+              links above (Messages/Recovery). `onChatToggle` is only passed by
+              `CommunityLayout`, so standalone Header usages (recovery/docs/
+              profile pages) never render a button with nothing to toggle. */}
+          {user && onChatToggle && (
+            <button
+              type="button"
+              onClick={onChatToggle}
+              aria-pressed={chatOpen}
+              aria-label={chatOpen ? 'Close chat' : 'Open chat'}
+              title={chatOpen ? 'Close chat' : 'Open chat'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: chatOpen ? 'rgba(120,140,255,0.14)' : 'transparent',
+                color: chatOpen ? 'var(--accent)' : '#999',
+                border: `1px solid ${chatOpen ? 'rgba(120,140,255,0.3)' : 'transparent'}`,
+                borderRadius: 6,
+                padding: '6px 8px',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+            </button>
           )}
 
           {!sessionChecked ? (

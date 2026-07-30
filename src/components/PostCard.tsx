@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import SNSContent from '@/components/SNSContent';
 import Avatar from '@/components/Avatar';
+import UserCard from '@/components/UserCard';
 import { relativeTime } from '@/lib/utils';
 import { PinIcon, RecordIcon } from '@/components/icons';
 import Badge from '@/components/Badge';
@@ -376,12 +377,28 @@ export default function PostCard({
       >
         {showAuthor && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
-            <Avatar
-              src={post.authorProfileImage}
-              name={post.authorNickname ?? ''}
-              size={24}
-              style={{ marginTop: 1 }}
-            />
+            {resolvedAuthorId ? (
+              <UserCard
+                userId={resolvedAuthorId}
+                nickname={post.authorNickname ?? ''}
+                profileImage={post.authorProfileImage}
+                badges={post.badges}
+              >
+                <Avatar
+                  src={post.authorProfileImage}
+                  name={post.authorNickname ?? ''}
+                  size={24}
+                  style={{ marginTop: 1 }}
+                />
+              </UserCard>
+            ) : (
+              <Avatar
+                src={post.authorProfileImage}
+                name={post.authorNickname ?? ''}
+                size={24}
+                style={{ marginTop: 1 }}
+              />
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 500, color: '#9ca3af' }}>{post.authorNickname}</span>

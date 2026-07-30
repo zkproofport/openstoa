@@ -31,6 +31,29 @@ function decodeBase64Strict(s: unknown): Buffer | null {
   return buf;
 }
 
+/** The optional TAK-sealed preview copy a sender may attach for push (design §13.6). */
+interface PushArchiveInput {
+  ct: string;
+  takVersion: number;
+}
+
+/**
+ * Validate the OPTIONAL `pushArchive` field. It is a preview optimisation, not
+ * message data: anything malformed returns null and the message is stored and
+ * dispatched exactly as if the field had been absent (NEVER a 400 — a client
+ * with a broken archive layer must still be able to chat). The bytes are opaque
+ * to the server (it holds no TAK) and are never persisted here; the archive row
+ * itself is still written by the separate POST /archive call.
+ */
+function parsePushArchive(v: unknown): PushArchiveInput | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const { ct, takVersion } = v as Record<string, unknown>;
+  const bytes = decodeBase64Strict(ct);
+  if (!bytes || bytes.length === 0 || bytes.length > MAX_CIPHERTEXT_BYTES) return null;
+  if (typeof takVersion !== 'number' || !Number.isSafeInteger(takVersion) || takVersion < 0) return null;
+  return { ct: ct as string, takVersion };
+}
+
 /**
  * @openapi
  * /api/topics/{topicId}/chat:
@@ -293,6 +316,37 @@ export async function GET(
  *                 type: integer
  *                 nullable: true
  *                 description: Topic Archive Key version, once archiving exists. Omit before archiving.
+ *               pushArchive:
+ *                 type: object
+ *                 nullable: true
+ *                 description: |
+ *                   **Optional, push-preview only.** A second copy of this same body sealed under the
+ *                   topic's **Topic Archive Key (TAK)** instead of the MLS group key, so a recipient's
+ *                   iOS Notification Service Extension can show the real message on the lockscreen.
+ *                   It exists because opening the live MLS `ciphertext` would consume a forward-secret
+ *                   ratchet key and desync that device's group state, while the TAK is a stable
+ *                   symmetric key and consumes nothing.
+ *
+ *                   Send it in this request (not afterwards): push fan-out happens inside this call, so
+ *                   the copy uploaded by `POST /api/topics/{topicId}/archive` does not exist yet.
+ *                   The server treats these bytes as opaque, never stores them, and never decrypts them.
+ *
+ *                   **Agents that do not implement MLS/TAK should simply omit this field** — chat works
+ *                   identically without it; recipients then get a content-free "New message" push.
+ *                   A malformed value is ignored (never a 400).
+ *                 properties:
+ *                   ct:
+ *                     type: string
+ *                     format: byte
+ *                     description: |
+ *                       base64 of `nonce ‖ AEAD(HKDF(TAK, "openstoa-archive/v1:push-preview"), body)`,
+ *                       max 4096 decoded bytes (same cap as `ciphertext`). Bigger values are ignored.
+ *                   takVersion:
+ *                     type: integer
+ *                     minimum: 0
+ *                     description: |
+ *                       TAK version `ct` was sealed under — `0` for a public topic (the shared archive
+ *                       root key), otherwise the current MLS epoch for private/secret topics.
  *     responses:
  *       201:
  *         description: Message sent
@@ -349,7 +403,7 @@ export async function POST(
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    const { ciphertext, epoch, takVersion } = body as Record<string, unknown>;
+    const { ciphertext, epoch, takVersion, pushArchive } = body as Record<string, unknown>;
 
     // SI-1: the server must never accept a plaintext chat body. User messages
     // are end-to-end encrypted and arrive only as sealed `ciphertext`.
@@ -435,22 +489,37 @@ export async function POST(
     //     ciphertext already stored above, so an on-device NSE / FCM handler can
     //     preview on the lockscreen; over the size budget it self-falls-back to
     //     the content-free dummy. Either way no plaintext ever leaves the server.
-    const pushProvider = getPushProvider();
-    const pushDispatch =
-      getPushMode() === 'ciphertext'
-        ? dispatchCiphertextForMessage(
-            db,
-            {
-              topicId,
-              senderUserId: session.userId,
-              messageId: inserted.id,
-              sealedCiphertextB64: payload.sealed.ciphertext,
-              epoch: payload.sealed.epoch,
-            },
-            pushProvider,
-          )
-        : dispatchDummyForMessage(db, topicId, session.userId, pushProvider);
-    pushDispatch.catch((err) => logger.warn(ROUTE, 'push dispatch failed', { topicId, err: String(err) }));
+    // §13.6 strategy A: when the sender attached a TAK-sealed copy it rides along
+    // as `act`/`tv` — the only body an iOS NSE can safely open (decrypting the MLS
+    // `ct` would consume a ratchet key and desync that device). Ignored when
+    // absent/malformed; the dispatch itself is unchanged.
+    // The try/catch covers the SYNCHRONOUS part (provider resolution, payload
+    // assembly); .catch() covers the async fan-out. Both must be swallowed — the
+    // message is already stored and published, so nothing about push may turn a
+    // successful send into a 500.
+    try {
+      const preview = parsePushArchive(pushArchive);
+      const pushProvider = getPushProvider();
+      const pushDispatch =
+        getPushMode() === 'ciphertext'
+          ? dispatchCiphertextForMessage(
+              db,
+              {
+                topicId,
+                senderUserId: session.userId,
+                messageId: inserted.id,
+                sealedCiphertextB64: payload.sealed.ciphertext,
+                epoch: payload.sealed.epoch,
+                archiveCiphertextB64: preview?.ct,
+                takVersion: preview?.takVersion,
+              },
+              pushProvider,
+            )
+          : dispatchDummyForMessage(db, topicId, session.userId, pushProvider);
+      pushDispatch.catch((err) => logger.warn(ROUTE, 'push dispatch failed', { topicId, err: String(err) }));
+    } catch (err) {
+      logger.warn(ROUTE, 'push dispatch setup failed', { topicId, err: String(err) });
+    }
 
     // NOTE: The inline @ask AI command was intentionally removed. AI inside
     // topic chat will return later as a first-class participant (a real
