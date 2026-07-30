@@ -5,7 +5,8 @@
 // for every R2 image without needing a Cloudflare purge call.
 const VERSION = 'v20260609a';
 
-const R2_HOSTS = [
+/** Every host this deployment family serves R2 objects from (staging + production). */
+export const R2_HOSTS = [
   'stg-cdn.zkproofport.app',
   'media.zkproofport.app',
   'cdn.zkproofport.app',

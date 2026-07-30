@@ -20,6 +20,22 @@ import { Client, QueryResultRow } from 'pg';
  */
 
 const DB_URL = process.env.E2E_STAGING_DB_URL;
+const BASE_URL = process.env.E2E_BASE_URL ?? '(E2E_BASE_URL unset)';
+
+/**
+ * Callers only ever look up ids they created over HTTP against `E2E_BASE_URL`
+ * seconds earlier, so a missing row does not mean "no row" — it means this
+ * connection is pointed at a different database than the one under test.
+ * Saying so beats letting the caller dereference `null`.
+ */
+function assertSameDatabase<T>(row: T | null, what: string, id: string): T {
+  if (row) return row;
+  throw new Error(
+    `DB/HTTP mismatch: ${what} ${id} was created over HTTP at ${BASE_URL} but is not visible through ` +
+      `E2E_STAGING_DB_URL. Point E2E_STAGING_DB_URL at the database ${BASE_URL} actually writes to ` +
+      `(./scripts/db-proxy.sh <env> proxy), or unset it to skip the direct-DB assertions.`,
+  );
+}
 
 let cached: Client | null = null;
 
@@ -64,20 +80,22 @@ export interface TopicRow {
   last_activity_at: Date | string | null;
 }
 
-export function getPostRow(postId: string): Promise<PostRow | null> {
-  return selectOne<PostRow>(
+export async function getPostRow(postId: string): Promise<PostRow> {
+  const row = await selectOne<PostRow>(
     `SELECT id, score, last_activity_at, upvote_count, comment_count, topic_id
      FROM posts WHERE id = $1`,
     [postId],
   );
+  return assertSameDatabase(row, 'post', postId);
 }
 
-export function getTopicRow(topicId: string): Promise<TopicRow | null> {
-  return selectOne<TopicRow>(
+export async function getTopicRow(topicId: string): Promise<TopicRow> {
+  const row = await selectOne<TopicRow>(
     `SELECT id, score, last_activity_at
      FROM topics WHERE id = $1`,
     [topicId],
   );
+  return assertSameDatabase(row, 'topic', topicId);
 }
 
 /**

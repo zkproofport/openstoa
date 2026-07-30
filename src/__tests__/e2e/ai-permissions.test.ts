@@ -89,6 +89,10 @@ describe.sequential('AI capability = API-key scope only (E2E, real container)', 
   let bareAi: { token: string; userId: string }; // isAI JWT with NO key — must be denied everywhere
   let human: { token: string; userId: string };
   let topicId: string;
+  // A topic `owner` is deliberately NOT a member of. `POST /api/topics` enrols
+  // the creator in `topic_members`, so a key belonging to `owner` can only ever
+  // observe 409 on `topicId` — the join gate has to be proven somewhere else.
+  let joinTargetId: string;
 
   beforeAll(async () => {
     const health = await fetch(`${BASE}/api/health`).catch(() => null);
@@ -107,6 +111,14 @@ describe.sequential('AI capability = API-key scope only (E2E, real container)', 
     });
     expect(res.status).toBe(201);
     topicId = (await res.json()).topic.id;
+
+    const joinTarget = await fetch(`${BASE}/api/topics`, {
+      method: 'POST',
+      headers: bearer(human.token),
+      body: JSON.stringify({ title: `E2E key join target ${Date.now()}`, description: 'join gate', visibility: 'public', categoryId }),
+    });
+    expect(joinTarget.status).toBe(201);
+    joinTargetId = (await joinTarget.json()).topic.id;
   });
 
   // ── the retired endpoint ──────────────────────────────────────────────
@@ -163,11 +175,14 @@ describe.sequential('AI capability = API-key scope only (E2E, real container)', 
 
   // ── isAI gate: each capability independently unlocks its route, via a KEY ──
   it('topic/join: a key with NO capability → 403; granting topic/join at creation → 201', async () => {
+    // `joinTargetId`, not `topicId`: the gate is only observable on a topic the
+    // key's owner has never joined. 409 here would mean the fixture leaked, not
+    // that the gate opened, so it stays out of the accepted set.
     const empty = await createKey(owner.token, `k_join_empty_${Date.now()}`, []);
-    expect((await joinTopic(empty.rawKey, topicId)).status).toBe(403);
+    expect((await joinTopic(empty.rawKey, joinTargetId)).status).toBe(403);
 
     const scoped = await createKey(owner.token, `k_join_${Date.now()}`, ['/openstoa/topic/join']);
-    const ok = await joinTopic(scoped.rawKey, topicId);
+    const ok = await joinTopic(scoped.rawKey, joinTargetId);
     expect([200, 201]).toContain(ok.status);
   });
 

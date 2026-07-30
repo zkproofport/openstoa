@@ -11,6 +11,7 @@ import {
   getSecondUserToken,
   adminPost,
   adminGet,
+  requireAdminToken,
 } from './helpers';
 
 let categoryId: string;
@@ -192,6 +193,11 @@ describe.sequential('Topic CRUD + Permission + Blind', () => {
   });
 
   it('14. Blinded topic excluded from topic list', async () => {
+    // This case only means anything if case 13 could actually blind the topic;
+    // without an admin credential the exclusion below fails for a reason that
+    // has nothing to do with list filtering.
+    requireAdminToken();
+
     const listRes = await publicGet('/api/topics?view=all');
     expect(listRes.status).toBe(200);
     const listJson = await listRes.json();

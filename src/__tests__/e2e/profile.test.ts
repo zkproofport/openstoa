@@ -7,6 +7,7 @@ import {
   publicPatch,
   getBaseUrl,
   getAuthToken,
+  requireObjectStorage,
 } from './helpers';
 
 // Profile-specific helper: PUT /api/profile/nickname (not PATCH)
@@ -227,7 +228,10 @@ describe.sequential('Profile API', () => {
   let firstAvatar: string;
   let secondAvatar: string;
 
+  // Gated per-case rather than per-file: only 5/6/6b need object storage, and
+  // the rest of this suite must keep running where it is unconfigured.
   it('5. Set profile image URL -> 200, returns imageUrl', async () => {
+    await requireObjectStorage();
     firstAvatar = await uploadTinyAvatar(`profile-avatar-${Date.now()}`);
     const res = await authPutImage(firstAvatar);
     expect(res.status).toBe(200);
@@ -237,6 +241,8 @@ describe.sequential('Profile API', () => {
   });
 
   it('6. Get profile image -> 200, returns previously set URL', async () => {
+    // Reads what case 5 stored, so it inherits case 5's precondition.
+    await requireObjectStorage();
     const res = await fetch(`${getBaseUrl()}/api/profile/image`, {
       headers: { Authorization: `Bearer ${getAuthToken()}` },
     });
@@ -246,6 +252,7 @@ describe.sequential('Profile API', () => {
   });
 
   it('6b. Update profile image to new URL -> 200', async () => {
+    await requireObjectStorage();
     secondAvatar = await uploadTinyAvatar(`profile-avatar-v2-${Date.now()}`);
     const res = await authPutImage(secondAvatar);
     expect(res.status).toBe(200);

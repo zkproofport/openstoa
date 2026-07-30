@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { R2_HOSTS } from '@/lib/imageCacheBuster';
 
 const BASE_URL = process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app';
 
@@ -177,16 +178,82 @@ export async function publicDelete(path: string): Promise<Response> {
 
 let adminTokenCache: string | null = null;
 
-/** Get admin token from proof-gated login cache (.e2e-token-cache-a.json) */
+/** Mirrors CACHE_TTL in proof-gated-topics.test.ts (24h JWT, 1h margin). */
+const ADMIN_CACHE_TTL_MS = 23 * 60 * 60 * 1000;
+
+interface ProofTokenCache {
+  token?: string;
+  userId?: string;
+  createdAt?: number;
+  baseUrl?: string;
+}
+
+/**
+ * Admin token from the proof-gated login cache (.e2e-token-cache-a.json).
+ *
+ * The cache is validated, not merely parsed: an expired token or one minted
+ * against a different deployment is rejected by the server as a bare 401,
+ * which reads like "the blind route is broken on this environment" instead of
+ * "this run has no admin credential". Fail with the real reason instead.
+ */
 function getAdminToken(): string {
   if (adminTokenCache) return adminTokenCache;
+
   const cacheFile = resolve(__dirname, '../../../.e2e-token-cache-a.json');
+  const how =
+    'Admin actions need a proof-gated login: run src/__tests__/e2e/proof-gated-topics.test.ts against ' +
+    `${BASE_URL} to mint a fresh token (Google OIDC device flow), and make sure that user has ` +
+    "role='admin' in that deployment's database.";
+
   if (!existsSync(cacheFile)) {
-    throw new Error('Admin token not available — run proof-gated-topics.test.ts first to create .e2e-token-cache-a.json');
+    throw new Error(`Admin token not available: ${cacheFile} does not exist. ${how}`);
   }
-  const cached = JSON.parse(readFileSync(cacheFile, 'utf-8'));
+
+  let cached: ProofTokenCache;
+  try {
+    cached = JSON.parse(readFileSync(cacheFile, 'utf-8'));
+  } catch (e) {
+    throw new Error(
+      `Admin token not available: ${cacheFile} is not valid JSON (${e instanceof Error ? e.message : String(e)}). ${how}`,
+    );
+  }
+
+  if (!cached.token || typeof cached.createdAt !== 'number') {
+    throw new Error(`Admin token not available: ${cacheFile} is missing token/createdAt. ${how}`);
+  }
+
+  const ageHours = (Date.now() - cached.createdAt) / 3_600_000;
+  if (ageHours * 3_600_000 >= ADMIN_CACHE_TTL_MS) {
+    throw new Error(
+      `Admin token not available: ${cacheFile} was minted ${ageHours.toFixed(1)}h ago and the session ` +
+        `JWT only lives 24h — sending it would surface as a misleading 401. ${how}`,
+    );
+  }
+
+  if (!cached.baseUrl) {
+    throw new Error(
+      `Admin token not available: ${cacheFile} does not record which deployment it was minted against, ` +
+        `so it cannot be trusted for ${BASE_URL} (a token from another environment fails as a bare 401). ${how}`,
+    );
+  }
+  if (cached.baseUrl !== BASE_URL) {
+    throw new Error(
+      `Admin token not available: ${cacheFile} was minted against ${cached.baseUrl}, but this run targets ` +
+        `${BASE_URL}. Sessions are not portable between deployments. ${how}`,
+    );
+  }
+
   adminTokenCache = cached.token;
-  return adminTokenCache!;
+  return adminTokenCache;
+}
+
+/**
+ * Assert an admin credential exists before a test depends on one, so a missing
+ * or stale credential is reported as itself rather than as whatever the
+ * un-performed admin action would have changed.
+ */
+export function requireAdminToken(): void {
+  getAdminToken();
 }
 
 /** Make an authenticated POST request as admin */
@@ -216,6 +283,136 @@ export async function publicPatch(path: string, body?: unknown): Promise<Respons
     body: body ? JSON.stringify(body) : undefined,
   });
 }
+
+// ── CDN helpers ───────────────────────────────────────────────────────
+//
+// The media host is NOT a constant: the server builds every public URL from
+// its own `R2_PUBLIC_URL` (see `src/lib/r2.ts`), which differs per deployment
+// (`stg-cdn.` on staging, `media.` on production) and is absent entirely on a
+// plain local container. Hardcoding one of them makes the test assert on the
+// author's environment instead of the one under test, so the origin is
+// discovered from the app itself and then checked against the app's own R2
+// host list — "some URL" can still never pass.
+
+const CDN_PROBE_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+
+class ObjectStorageUnavailable extends Error {
+  constructor(baseUrl: string, serverMessage: string) {
+    super(
+      `EXTERNAL DEPENDENCY UNAVAILABLE — object storage (Cloudflare R2) for ${baseUrl}\n` +
+        `  why:     POST /api/upload answered 500 and the deployment reported: "${serverMessage}"\n` +
+        `           getR2Config() in src/lib/r2.ts refuses to run without credentials rather than\n` +
+        `           falling back to a default, so this is missing configuration, not a broken upload\n` +
+        `           path. It names all five vars whenever ANY of them is unset, so the route cannot\n` +
+        `           say which one is actually absent.\n` +
+        `  restore: set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME and\n` +
+        `           R2_PUBLIC_URL on the target deployment, or run these cases against one where\n` +
+        `           object storage is already configured.\n` +
+        `  scope:   every upload-backed case is BLOCKED, not failing. Nothing is mocked, and an\n` +
+        `           upload that fails for any OTHER reason is still reported as a real failure.`,
+    );
+    this.name = 'ObjectStorageUnavailable';
+  }
+}
+
+/**
+ * True only for the exact condition "this deployment has no R2 credentials".
+ *
+ * Deliberately narrow: it matches the literal `getR2Config()` throws in
+ * src/lib/r2.ts, surfaced by the route's catch-all as a 500. A 500 from a
+ * genuine upload fault (bad bucket, expired key, S3 error, timeout) does NOT
+ * match and must keep failing loudly — excusing those would let a broken
+ * upload path masquerade as an unconfigured environment.
+ */
+function errorMessageOf(bodyText: string): string {
+  try {
+    const parsed = JSON.parse(bodyText) as { error?: unknown };
+    if (typeof parsed.error === 'string') return parsed.error;
+  } catch {
+    // Non-JSON body — use the raw text.
+  }
+  return bodyText;
+}
+
+function isMissingR2Credentials(status: number, bodyText: string): boolean {
+  if (status !== 500) return false;
+  const message = errorMessageOf(bodyText);
+  return (
+    message.includes('R2_ACCOUNT_ID') &&
+    message.includes('R2_PUBLIC_URL') &&
+    message.includes('environment variables are required')
+  );
+}
+
+type StorageProbe = { ok: true; origin: string } | { ok: false; serverMessage: string };
+
+/** One probe per run, shared by every caller (upload gate and CDN assertions). */
+let storageProbe: Promise<StorageProbe> | null = null;
+
+async function probeObjectStorage(): Promise<StorageProbe> {
+  const override = process.env.E2E_CDN_ORIGIN;
+  if (override) return { ok: true, origin: new URL(override).origin };
+
+  const form = new FormData();
+  const bytes = new Uint8Array(Buffer.from(CDN_PROBE_PNG, 'base64'));
+  form.append('file', new Blob([bytes], { type: 'image/png' }), `cdn-probe-${Date.now()}.png`);
+  form.append('purpose', 'post');
+
+  const res = await fetch(`${BASE_URL}/api/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getAuthToken()}` },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    if (isMissingR2Credentials(res.status, text)) {
+      return { ok: false, serverMessage: errorMessageOf(text) };
+    }
+    // Not the unconfigured case — a real upload failure, reported as one.
+    throw new Error(
+      `POST /api/upload failed with ${res.status} against ${BASE_URL}: ${text}\n` +
+        `This is NOT the missing-credential case — the response does not carry getR2Config()'s ` +
+        `"…environment variables are required" message — so it is a genuine upload failure and is ` +
+        `NOT excused by the object-storage guard.`,
+    );
+  }
+
+  const { publicUrl } = (await res.json()) as { publicUrl: string };
+  if (!R2_HOSTS.includes(new URL(publicUrl).hostname)) {
+    throw new Error(
+      `POST /api/upload returned ${publicUrl}, whose host is not one of the app's known R2 hosts ` +
+        `(${R2_HOSTS.join(', ')}) — either R2_PUBLIC_URL is misconfigured or R2_HOSTS in ` +
+        `src/lib/imageCacheBuster.ts is missing this host (which would also break cache busting).`,
+    );
+  }
+  return { ok: true, origin: new URL(publicUrl).origin };
+}
+
+/**
+ * Assert this environment can store objects at all, before a case depends on
+ * it. Blocks on the missing-credential condition only; every other upload
+ * fault still surfaces as a real failure.
+ */
+export async function requireObjectStorage(): Promise<string> {
+  const result = await (storageProbe ??= probeObjectStorage());
+  if (!result.ok) throw new ObjectStorageUnavailable(BASE_URL, result.serverMessage);
+  return result.origin;
+}
+
+/** The origin `POST /api/upload` serves media from in THIS environment. */
+export async function getCdnOrigin(): Promise<string> {
+  return requireObjectStorage();
+}
+
+/** Every `<img src="...">` value in an HTML fragment, in document order. */
+export function imgSrcs(html: string): string[] {
+  return [...html.matchAll(/<img[^>]+src="([^"]*)"/g)].map((m) => m[1]);
+}
+
+/** Known R2 media hosts, re-exported so tests assert against the app's own list. */
+export { R2_HOSTS };
 
 // ── Cleanup helpers (used by tests' afterAll) ─────────────────────────
 

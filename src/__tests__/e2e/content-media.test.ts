@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, publicGet } from './helpers';
+import { authGet, authPost, publicGet, getCdnOrigin, imgSrcs } from './helpers';
 
 let topicId: string;
 let categoryId: string;
@@ -101,7 +101,12 @@ describe.sequential('Content & Media handling', () => {
 
   // Test 4b: Verify base64 → CDN URL conversion via GET post detail
   it('GET post detail after base64 image post shows CDN URL (not data URI)', async () => {
-    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+    // Resolved first: the server leaves the data URI untouched when an upload
+    // fails, so without this the case fails as an unexplained content diff on
+    // any environment where object storage is not configured.
+    const cdnOrigin = await getCdnOrigin();
+
+    const tinyPng ='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
     const contentWithBase64 = `<p>CDN conversion test:</p><img src="data:image/png;base64,${tinyPng}" alt="cdn-check">`;
 
     const createRes = await authPost(`/api/topics/${topicId}/posts`, {
@@ -118,9 +123,14 @@ describe.sequential('Content & Media handling', () => {
     const detailJson = await detailRes.json();
     const returnedContent: string = detailJson.post.content;
 
-    // base64 data URI must be replaced with CDN URL
+    // base64 data URI must be replaced with a real object on THIS
+    // environment's CDN (staging and production serve different hosts).
     expect(returnedContent).not.toContain('data:image');
-    expect(returnedContent).toContain('https://media.zkproofport.app/');
+    const srcs = imgSrcs(returnedContent);
+    expect(srcs).toHaveLength(1);
+    const uploaded = new URL(srcs[0]);
+    expect(uploaded.origin).toBe(cdnOrigin);
+    expect(uploaded.pathname.length).toBeGreaterThan(1);
     expectNoMedia(detailJson.post);
   });
 

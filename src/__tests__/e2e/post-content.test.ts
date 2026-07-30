@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authPatch, publicGet, getBaseUrl, getAuthToken } from './helpers';
+import { authGet, authPost, authPatch, publicGet, getBaseUrl, getAuthToken, getCdnOrigin, imgSrcs, R2_HOSTS } from './helpers';
 
 // 1x1 red PNG buffer — small enough to inline.
 function tinyPngBuffer(): Buffer {
@@ -207,6 +207,11 @@ describe.sequential('Post rich content E2E', () => {
   // ── TC7: Base64 image auto-upload to R2 CDN ──────────────────────────────
 
   it('TC7: base64 image replaced with R2 CDN URL', async () => {
+    // Resolved first: `uploadBase64Images` swallows upload errors and leaves the
+    // data URI in place, so on an environment without object storage this case
+    // would otherwise fail as an unexplained content diff.
+    const cdnOrigin = await getCdnOrigin();
+
     const tinyPngBase64 =
       'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAE0lEQVQYV2P8z8Dwn4EIwMgwFACk1QkJFbp+DwAAAABJRU5ErkJggg==';
     const content = `<p>Embedded image:</p><img src="data:image/png;base64,${tinyPngBase64}" alt="tiny">`;
@@ -228,10 +233,14 @@ describe.sequential('Post rich content E2E', () => {
 
     // base64 data URI must NOT remain
     expect(returned).not.toContain('data:image/png;base64,');
-    // CDN URL must be present
-    expect(returned).toContain('https://media.zkproofport.app/');
-    // img tag still exists
-    expect(returned).toContain('<img');
+    // …and what replaced it must be a real object on THIS environment's CDN,
+    // still inside the <img> tag — not merely "some URL somewhere".
+    const srcs = imgSrcs(returned);
+    expect(srcs).toHaveLength(1);
+    const uploaded = new URL(srcs[0]);
+    expect(uploaded.origin).toBe(cdnOrigin);
+    expect(uploaded.pathname.length).toBeGreaterThan(1);
+    expect((await fetch(uploaded.href)).status).toBe(200);
   });
 
   // ── TC8: Mixed content — text + YouTube + external image + bold ──────────
@@ -343,6 +352,10 @@ describe.sequential('Post rich content E2E', () => {
   // ── TC12: Upload multipart flow ───────────────────────────────────────────
 
   it('TC12: POST /api/upload (multipart) returns publicUrl on the CDN', async () => {
+    // Names the environment gate (object storage configured?) before the status
+    // assertion below reports it as a bare 500.
+    const cdnOrigin = await getCdnOrigin();
+
     const form = new FormData();
     const bytes = new Uint8Array(tinyPngBuffer());
     form.append('file', new Blob([bytes], { type: 'image/png' }), `test-rich-content-${TS}.png`);
@@ -355,7 +368,13 @@ describe.sequential('Post rich content E2E', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(typeof json.publicUrl).toBe('string');
-    expect(json.publicUrl).toContain('media.zkproofport.app');
+    const url = new URL(json.publicUrl);
+    // On the CDN, not served back off the app origin, and on a host the app
+    // itself recognises as R2 (so cache busting applies to it too).
+    expect(url.protocol).toBe('https:');
+    expect(R2_HOSTS).toContain(url.hostname);
+    expect(url.origin).not.toBe(new URL(getBaseUrl()).origin);
+    expect(url.origin).toBe(cdnOrigin);
     // The returned URL should be fetchable.
     const cdn = await fetch(json.publicUrl);
     expect(cdn.status).toBe(200);

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { publicGet, getBaseUrl } from './helpers';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -12,19 +12,78 @@ const CACHE_B = resolve(CACHE_DIR, '.e2e-token-cache-b.json');
 const CACHE_TTL = 23 * 60 * 60 * 1000; // 23 hours (JWT is 24h, leave 1h margin)
 
 // ─── Token cache ─────────────────────────────────────────────────────
-interface TokenCache { token: string; userId: string; createdAt: number; }
+interface TokenCache { token: string; userId: string; createdAt: number; baseUrl?: string; }
 
 function loadCache(path: string): TokenCache | null {
   if (!existsSync(path)) return null;
   try {
     const c: TokenCache = JSON.parse(readFileSync(path, 'utf-8'));
+    // Sessions are not portable across deployments; an untagged cache predates
+    // that check and cannot be attributed to any environment.
+    if (c.baseUrl !== BASE) return null;
     if (Date.now() - c.createdAt < CACHE_TTL) return c;
   } catch {}
   return null;
 }
 
 function saveCache(path: string, token: string, userId: string) {
-  writeFileSync(path, JSON.stringify({ token, userId, createdAt: Date.now() }));
+  writeFileSync(path, JSON.stringify({ token, userId, createdAt: Date.now(), baseUrl: BASE }));
+}
+
+// ─── External dependencies ───────────────────────────────────────────
+//
+// Every case in this file needs a proof, and every proof comes from the
+// `zkproofport-prove` CLI, which depends on two services this repo does not
+// control: the ZKProofport prover at PROOFPORT_URL, and the identity provider's
+// device-code endpoint (Google / Microsoft) for the OIDC circuits. When either
+// is down, all 40 cases fail — but they fail as a wall of unrelated-looking
+// diffs (401s from missing tokens, bare `Command failed:` from execSync) that
+// name neither dependency. These helpers collapse that into one sentence.
+
+class ExternalDependencyUnavailable extends Error {
+  constructor(dependency: string, why: string, restore: string) {
+    super(
+      `EXTERNAL DEPENDENCY UNAVAILABLE — ${dependency}\n` +
+        `  why:     ${why}\n` +
+        `  restore: ${restore}\n` +
+        `  scope:   no proof can be generated while this is down, so every case in this file is ` +
+        `BLOCKED, not failing. Nothing here is mocked; there is no in-repo fix.`,
+    );
+    this.name = 'ExternalDependencyUnavailable';
+  }
+}
+
+/** Network-level reachability of the prover. Any HTTP status counts as "up". */
+async function preflightProver(): Promise<void> {
+  const url = process.env.PROOFPORT_URL;
+  if (!url) throw new Error('PROOFPORT_URL is required in .env.test — the prove CLI has no prover to talk to.');
+  try {
+    await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  } catch (e) {
+    throw new ExternalDependencyUnavailable(
+      `ZKProofport prover at ${url}`,
+      `not reachable over the network (${e instanceof Error ? e.message : String(e)})`,
+      'proofport-ai runs on its own AWS EC2 instance; bring that instance back up (a stopped or ' +
+        'terminated instance takes this hostname with it) and re-point the DNS record, then re-run.',
+    );
+  }
+}
+
+/** Re-throws prove-CLI failures whose cause is a dead external dependency. */
+function classifyProveFailure(err: unknown): never {
+  const e = err as { message?: string; stderr?: Buffer | string; stdout?: Buffer | string };
+  const text = [e?.message, e?.stderr?.toString(), e?.stdout?.toString()].filter(Boolean).join('\n');
+
+  if (text.includes('deleted_client')) {
+    throw new ExternalDependencyUnavailable(
+      "the zkproofport-prove CLI's Google OAuth client",
+      'Google answers the device-code request with {"error":"deleted_client","error_description":' +
+        '"The OAuth client was deleted."} — the OAuth client id shipped in the CLI no longer exists',
+      'recreate the OAuth 2.0 client of type "TVs and Limited Input devices" in the Google Cloud ' +
+        'project, then publish a zkproofport-prove release carrying the new client id.',
+    );
+  }
+  throw err instanceof Error ? err : new Error(String(err));
 }
 
 // ─── Proof helpers ───────────────────────────────────────────────────
@@ -35,15 +94,30 @@ function getProveEnv(): NodeJS.ProcessEnv {
 }
 
 async function runProveOidc(args: string, scope: string, accountEmail?: string): Promise<Record<string, unknown>> {
-  return runProveWithAutoDeviceFlow(args, scope, getProveEnv(), accountEmail);
+  try {
+    return await runProveWithAutoDeviceFlow(args, scope, getProveEnv(), accountEmail);
+  } catch (e) {
+    classifyProveFailure(e);
+  }
 }
 
 function runProveCoinbase(args: string, scope: string): Record<string, unknown> {
-  const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent 2>/dev/null`;
+  // stderr is kept (no `2>/dev/null`) so a failure carries the reason the CLI
+  // printed instead of an opaque `Command failed:`.
+  const cmd = `npx zkproofport-prove ${args} --scope ${scope} --silent`;
   console.log(`[E2E] Coinbase: ${cmd}`);
-  const result = execSync(cmd, { env: getProveEnv(), timeout: 180_000, encoding: 'utf-8' }) as string;
-  console.log('[E2E] Coinbase proof completed');
-  return JSON.parse(result.trim());
+  try {
+    const result = execSync(cmd, {
+      env: getProveEnv(),
+      timeout: 180_000,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }) as string;
+    console.log('[E2E] Coinbase proof completed');
+    return JSON.parse(result.trim());
+  } catch (e) {
+    classifyProveFailure(e);
+  }
 }
 
 async function getScope(): Promise<{ challengeId: string; scope: string }> {
@@ -99,6 +173,17 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   // SETUP + LOGIN
   // ══════════════════════════════════════════════════
 
+  // Both logins are hoisted into the hook on purpose. Every case below needs a
+  // token, so losing the prover or the OAuth client is a suite-level blocker;
+  // leaving the logins as ordinary cases turned one outage into 28 red
+  // assertions that never named the outage.
+  beforeAll(async () => {
+    await preflightProver();
+    userAToken = await loginOrCache(CACHE_A, 'User A', process.env.E2E_GOOGLE_USER_A);
+    console.log('[E2E] >>> User B must be a DIFFERENT Google account! <<<');
+    userBToken = await loginOrCache(CACHE_B, 'User B', process.env.E2E_GOOGLE_USER_B);
+  }, 660_000);
+
   it('setup: fetch categories', async () => {
     const res = await publicGet('/api/categories');
     expect(res.status).toBe(200);
@@ -108,14 +193,11 @@ describe.sequential('Proof-gated topics — MCP CLI E2E', () => {
   });
 
   it('User A: login via Google OIDC', async () => {
-    userAToken = await loginOrCache(CACHE_A, 'User A', process.env.E2E_GOOGLE_USER_A);
     const res = await fetchAuth('/api/auth/session', userAToken);
     expect(res.status).toBe(200);
   }, 300_000);
 
   it('User B: login via Google OIDC (DIFFERENT ACCOUNT)', async () => {
-    console.log('[E2E] >>> Use a DIFFERENT Google account for User B! <<<');
-    userBToken = await loginOrCache(CACHE_B, 'User B', process.env.E2E_GOOGLE_USER_B);
     expect(userBToken).not.toBe(userAToken);
     // Verify different users
     const resA = await (await fetchAuth('/api/auth/session', userAToken)).json();

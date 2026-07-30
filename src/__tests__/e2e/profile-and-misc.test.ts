@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authPut, authDelete, publicGet, publicPost, getBaseUrl, getAuthToken } from './helpers';
+import { authGet, authPost, authPut, authDelete, publicGet, publicPost, getBaseUrl, getAuthToken, requireObjectStorage } from './helpers';
 
 /**
  * Upload a tiny PNG to R2 and return its public URL. `/api/profile/image`
@@ -42,7 +42,9 @@ describe('Profile endpoints', () => {
     expect(json.nickname).toBe(nickname);
   });
 
+  // Gated per-case: the rest of this suite does not touch object storage.
   it('PUT /api/profile/image sets profile image URL', async () => {
+    await requireObjectStorage();
     const avatarUrl = await uploadAvatar();
     const res = await authPut('/api/profile/image', { imageUrl: avatarUrl });
     expect(res.status).toBe(200);
@@ -119,6 +121,7 @@ describe('Tags endpoint', () => {
 
 describe('Upload endpoint', () => {
   it('POST /api/upload (multipart) returns publicUrl on the CDN', async () => {
+    await requireObjectStorage();
     // The endpoint switched from a presigned-URL handshake to direct
     // multipart upload — the JSON-body shape (`filename`, `contentType`,
     // `size`) is no longer accepted.

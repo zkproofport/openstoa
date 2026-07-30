@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken } from './helpers';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken, requireObjectStorage } from './helpers';
+
+// Every case in this file uploads. Without object storage they each fail on
+// their own 500, which reads like the upload route is broken rather than like
+// the environment has no credentials — so the condition is reported once here.
+beforeAll(async () => {
+  await requireObjectStorage();
+});
 
 let categoryId: string;
 let topicId: string;

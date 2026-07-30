@@ -57,12 +57,24 @@ import {
 } from '@/lib/push';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:3200';
+
+/** The only hosts for which the local default DB_URL below can possibly be right. */
+function isLocalBase(url: string): boolean {
+  try {
+    const h = new URL(url).hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+  } catch {
+    return false;
+  }
+}
+
 // The container's own database. Same instance, same rows — this is how the
-// dispatch layer observes what the HTTP layer just wrote.
-const DB_URL =
-  process.env.E2E_DB_URL ??
-  process.env.DATABASE_URL ??
-  'postgresql://proofport:proofport@localhost:5432/openstoa';
+// dispatch layer observes what the HTTP layer just wrote. That invariant is
+// ENFORCED in beforeAll (env guard + a live round-trip check), not assumed:
+// pointing SQL at a different database than `BASE` makes every dispatch-layer
+// assertion read an unrelated (usually empty) table.
+const EXPLICIT_DB_URL = process.env.E2E_DB_URL ?? process.env.DATABASE_URL;
+const DB_URL = EXPLICIT_DB_URL ?? 'postgresql://proofport:proofport@localhost:5432/openstoa';
 
 const PREFS = '/api/push/preferences';
 const topicPush = (id: string) => `/api/topics/${id}/push`;
@@ -168,12 +180,42 @@ beforeAll(async () => {
   const health = await fetch(`${BASE}/api/health`).catch(() => null);
   if (!health || !health.ok) throw new Error(`container not reachable at ${BASE} — start it first`);
 
+  // Guard 1 (static): a non-local BASE with no explicit DB URL would fall back
+  // to the local default and quietly test two different databases.
+  if (!isLocalBase(BASE) && !EXPLICIT_DB_URL) {
+    throw new Error(
+      `push-prefs E2E cannot run against ${BASE}: this file provisions fixtures over HTTP and then ` +
+        `verifies push dispatch with SQL, so both halves must address the SAME database, and no ` +
+        `E2E_DB_URL / DATABASE_URL was provided — the local default ${DB_URL} would be used and every ` +
+        `dispatch assertion would read an unrelated database.\n` +
+        `Fix: open a proxy to the target database (./scripts/db-proxy.sh <env> proxy) and set ` +
+        `E2E_DB_URL=postgresql://USER:PASS@localhost:15432/openstoa, or run this file against a local ` +
+        `container with \`npm run test:e2e:local\`.`,
+    );
+  }
+
   pool = new Pool({ connectionString: DB_URL, max: 6 });
   db = drizzle(pool, { schema });
   // Fail loudly rather than silently skipping the dispatch layer.
   await db.execute(sql`SELECT 1`);
 
   owner = await devLogin('owner');
+
+  // Guard 2 (dynamic): prove the two halves really are the same database. An
+  // explicitly-set-but-wrong E2E_DB_URL / DATABASE_URL passes guard 1; only a
+  // live round trip — row created over HTTP, read back over SQL — catches it.
+  const seen = await db.query.users.findFirst({
+    where: eq(schema.users.id, owner.userId),
+    columns: { id: true },
+  });
+  if (!seen) {
+    throw new Error(
+      `DB/HTTP mismatch: user ${owner.userId} was just created over HTTP at ${BASE}, but it is not ` +
+        `visible through DB_URL=${DB_URL}. These point at different databases, so the dispatch-layer ` +
+        `assertions below would read empty tables and pass vacuously. Point E2E_DB_URL at the database ` +
+        `${BASE} actually writes to.`,
+    );
+  }
   const cats = await (await fetch(`${BASE}/api/categories`)).json();
   const categoryId = cats.categories[0].id;
 
@@ -186,6 +228,10 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  // beforeAll can bail before the pool exists (env guard); cleaning up nothing
+  // must not add a second, unrelated failure on top of that one.
+  if (!pool) return;
+
   // Best-effort: drop the preference rows this file created, then the topics.
   for (const u of [owner, memberB, memberC, outsider].filter(Boolean)) {
     await db.delete(schema.pushTopicMutes).where(eq(schema.pushTopicMutes.userId, u.userId));
