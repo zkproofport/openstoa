@@ -156,12 +156,12 @@ function ExplorePageInner() {
         <div
           style={{
             padding: '10px 16px',
-            background: 'rgba(120,140,255,0.06)',
-            border: '1px solid rgba(120,140,255,0.12)',
+            background: 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)',
             borderRadius: 'var(--radius-control)',
             marginBottom: 20,
             fontSize: 'var(--text-body-sm)',
-            color: '#888',
+            color: 'var(--color-text-secondary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -232,7 +232,7 @@ function ExplorePageInner() {
               onClick={() => setSortBy(key)}
               style={{
                 background: sortBy === key ? 'var(--accent)' : 'transparent',
-                color: sortBy === key ? '#fff' : 'var(--muted)',
+                color: sortBy === key ? 'var(--color-text-inverted)' : 'var(--muted)',
                 border: `1px solid ${sortBy === key ? 'var(--accent)' : 'var(--border)'}`,
                 borderRadius: 'var(--radius-pill)',
                 padding: '4px 14px',
@@ -288,11 +288,11 @@ function ExplorePageInner() {
         <div
           style={{
             padding: 'var(--space-4) 20px',
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.2)',
+            background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
             borderRadius: 'var(--radius-card)',
             fontSize: 'var(--text-body-sm)',
-            color: '#ef4444',
+            color: 'var(--color-status-danger)',
             fontFamily: 'var(--font-mono)',
           }}
         >
@@ -321,7 +321,7 @@ function ExplorePageInner() {
               onClick={() => setCategoryFilter(null)}
               style={{
                 background: 'var(--accent)',
-                color: '#fff',
+                color: 'var(--color-text-inverted)',
                 border: 'none',
                 borderRadius: 'var(--radius-control)',
                 padding: '10px var(--space-5)',
@@ -362,7 +362,7 @@ function ExplorePageInner() {
                   transition: 'border-color 0.15s',
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.3)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
@@ -400,9 +400,9 @@ function ExplorePageInner() {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 3,
-                            color: '#22c55e',
-                            background: 'rgba(34,197,94,0.10)',
-                            border: '1px solid rgba(34,197,94,0.25)',
+                            color: 'var(--color-brand-accent)',
+                            background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)',
+                            border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                             borderRadius: 'var(--radius-control)',
                             padding: '1px 6px',
                             lineHeight: 1.2,
@@ -437,7 +437,7 @@ function ExplorePageInner() {
                   <p
                     style={{
                       fontSize: 'var(--text-caption)',
-                      color: '#9ca3af',
+                      color: 'var(--color-text-secondary)',
                       margin: 0,
                       lineHeight: 1.5,
                       overflow: 'hidden',
@@ -476,8 +476,8 @@ function ExplorePageInner() {
                         fontSize: 'var(--text-caption)',
                         padding: '2px 8px',
                         borderRadius: 'var(--radius-pill)',
-                        background: 'rgba(120,140,255,0.1)',
-                        border: '1px solid rgba(120,140,255,0.2)',
+                        background: 'var(--color-brand-primary-muted)',
+                        border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
                         color: 'var(--accent)',
                         fontFamily: 'var(--font-mono)',
                         fontWeight: 500,
@@ -522,7 +522,7 @@ function ExplorePageInner() {
                         padding: '6px var(--space-4)',
                         fontSize: 'var(--text-caption)',
                         fontWeight: 600,
-                        color: '#fff',
+                        color: 'var(--color-text-inverted)',
                         background: 'var(--accent)',
                         border: 'none',
                         borderRadius: 'var(--radius-control)',

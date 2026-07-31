@@ -83,7 +83,25 @@ export default async function RootLayout({
   const locale = await getServerLocale();
 
   return (
-    <html lang={locale}>
+    // `suppressHydrationWarning`: the inline script below mutates this very
+    // element's data-theme before React hydrates, so server and client markup
+    // legitimately differ by that one attribute.
+    <html lang={locale} suppressHydrationWarning>
+      {/* Runs BEFORE first paint, synchronously, so the saved theme is applied
+          with no flash of the wrong one. It cannot be a React effect: an effect
+          runs after paint, which is exactly when the flash happens. Kept tiny
+          and dependency-free for the same reason — it blocks rendering.
+          Mirrors THEME_STORAGE_KEY / DEFAULT_THEME in `src/lib/theme.ts`. */}
+      <script
+        id="theme-init"
+        dangerouslySetInnerHTML={{
+          __html:
+            "(function(){try{var t=localStorage.getItem('openstoa.theme');" +
+            "document.documentElement.setAttribute('data-theme'," +
+            "t==='light'||t==='dark'?t:'dark');}catch(e){" +
+            "document.documentElement.setAttribute('data-theme','dark');}})();",
+        }}
+      />
       {GA_ID && (
         <>
           <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />

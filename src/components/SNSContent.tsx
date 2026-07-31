@@ -116,7 +116,7 @@ function renderTextWithLinks(text: string): React.ReactNode {
             color: 'var(--accent)',
             textDecoration: 'underline',
             textUnderlineOffset: 2,
-            textDecorationColor: 'rgba(59,130,246,0.4)',
+            textDecorationColor: 'color-mix(in srgb, var(--color-brand-primary) 40%, transparent)',
             cursor: 'pointer',
           }}
         >
@@ -162,7 +162,7 @@ function autoLinkUrls(html: string): string {
     // delegates click on .sns-url-link to window.open for the same UX.
     return part.replace(URL_REGEX, (url) => {
       const safe = url.replace(/"/g, '&quot;');
-      return `<span class="sns-url-link os-break-all" data-href="${safe}" role="link" tabindex="0" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(59,130,246,0.4);cursor:pointer;">${url}</span>`;
+      return `<span class="sns-url-link os-break-all" data-href="${safe}" role="link" tabindex="0" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-color:color-mix(in srgb, var(--color-brand-primary) 40%, transparent);cursor:pointer;">${url}</span>`;
     });
   }).join('');
 }
@@ -360,8 +360,8 @@ function GifImages({ urls }: { urls: string[] }) {
             maxHeight: 320,
             objectFit: 'contain',
             borderRadius: 10,
-            border: '1px solid rgba(255,255,255,0.06)',
-            background: '#0a0a0a',
+            border: '1px solid var(--color-border-default)',
+            background: 'var(--color-bg-primary)',
             display: 'block',
           }}
         />
@@ -387,8 +387,8 @@ function MediaImages({ urls }: { urls: string[] }) {
             maxHeight: 480,
             objectFit: 'contain',
             borderRadius: 10,
-            border: '1px solid rgba(255,255,255,0.06)',
-            background: '#0a0a0a',
+            border: '1px solid var(--color-border-default)',
+            background: 'var(--color-bg-primary)',
             display: 'block',
           }}
         />
@@ -418,8 +418,8 @@ function VideoEmbeds({ embeds }: { embeds: VideoEmbed[] }) {
               paddingBottom: '56.25%',
               borderRadius: 10,
               overflow: 'hidden',
-              background: '#0a0a0a',
-              border: '1px solid rgba(255,255,255,0.06)',
+              background: 'var(--color-bg-primary)',
+              border: '1px solid var(--color-border-default)',
             }}
           >
             <iframe
@@ -788,7 +788,7 @@ export default function SNSContent({
               left: 0,
               right: 0,
               height: 60,
-              background: 'linear-gradient(transparent, #0a0a0a)',
+              background: 'linear-gradient(transparent, var(--color-bg-primary))',
               pointerEvents: 'none',
             }} />
           )}

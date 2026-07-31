@@ -418,8 +418,8 @@ export default function MyPage() {
         {/* Profile card */}
         <div style={{
           padding: 'var(--space-5)',
-          background: 'var(--surface, #0c0e18)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--color-bg-secondary)',
+          border: '1px solid var(--color-border-default)',
           borderRadius: 'var(--radius-card)',
           marginBottom: 28,
           display: 'flex',
@@ -440,7 +440,7 @@ export default function MyPage() {
               fontSize: 'var(--text-heading-sm)',
               fontWeight: 800,
               letterSpacing: '-0.03em',
-              color: '#e5e7eb',
+              color: 'var(--color-text-primary)',
               marginBottom: 'var(--space-1)',
             }}>
               {displayName}
@@ -449,23 +449,23 @@ export default function MyPage() {
                   marginLeft: 'var(--space-2)',
                   padding: '2px 8px',
                   borderRadius: 'var(--radius-control)',
-                  background: 'rgba(234,179,8,0.15)',
-                  border: '1px solid rgba(234,179,8,0.3)',
-                  color: '#eab308',
+                  background: 'color-mix(in srgb, var(--color-status-warning) 15%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-status-warning) 30%, transparent)',
+                  color: 'var(--color-status-warning)',
                   verticalAlign: 'middle',
                 }}>{t('myPage.adminBadge')}</span>
               )}
             </div>
             <div style={{
-              fontFamily: 'monospace',
+              fontFamily: 'var(--font-mono)',
               fontSize: 'var(--text-body)',
-              color: '#4b5563',
+              color: 'var(--color-text-tertiary)',
               wordBreak: 'break-all',
             }}>
               {truncateId(session.userId)}
             </div>
             {memberSince && (
-              <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', marginTop: 'var(--space-1)' }}>
+              <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', marginTop: 'var(--space-1)' }}>
                 {t('myPage.memberSince', { date: memberSince })}
               </div>
             )}
@@ -485,7 +485,7 @@ export default function MyPage() {
             }}>
               {myPosts.length}
             </div>
-            <div style={{ fontSize: 'var(--text-body)', color: '#6b7280', marginTop: 1 }}>{t('myPage.postsLabel')}</div>
+            <div style={{ fontSize: 'var(--text-body)', color: 'var(--color-text-tertiary)', marginTop: 1 }}>{t('myPage.postsLabel')}</div>
           </div>
         </div>
 
@@ -494,7 +494,7 @@ export default function MyPage() {
           {/* Tab bar */}
           <div style={{
             display: 'flex',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: '1px solid var(--color-border-default)',
             marginBottom: 0,
           }}>
             {tabs.map((tab) => (
@@ -541,12 +541,12 @@ export default function MyPage() {
                   color: 'inherit',
                   transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover, rgba(255,255,255,0.04))')}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface)')}
                 >
                   <div style={{
                     width: 36, height: 36, borderRadius: 'var(--radius-control)',
-                    background: 'var(--accent)', color: '#fff',
+                    background: 'var(--accent)', color: 'var(--color-text-inverted)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 'var(--text-body)', fontWeight: 700, flexShrink: 0,
                   }}>
@@ -575,12 +575,12 @@ export default function MyPage() {
                   alignItems: 'center',
                   gap: 'var(--space-2)',
                   padding: '10px var(--space-4)',
-                  background: 'rgba(139,92,246,0.08)',
-                  border: '1px solid rgba(139,92,246,0.15)',
+                  background: 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)',
                   borderRadius: 'var(--radius-control)',
                   marginBottom: 'var(--space-4)',
                   fontSize: 'var(--text-body-sm)',
-                  color: '#a78bfa',
+                  color: 'var(--color-brand-primary)',
                 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -595,7 +595,7 @@ export default function MyPage() {
               )}
 
               <div style={{
-                border: '1px solid rgba(255,255,255,0.06)',
+                border: '1px solid var(--color-border-default)',
                 borderTop: 'none',
                 borderRadius: '0 0 14px 14px',
                 overflow: 'hidden',
@@ -609,7 +609,7 @@ export default function MyPage() {
                   <div style={{
                     textAlign: 'center',
                     padding: '60px 20px',
-                    color: '#6b7280',
+                    color: 'var(--color-text-tertiary)',
                     fontSize: 'var(--text-body-sm)',
                   }}>
                     {emptyLabel}
@@ -643,7 +643,7 @@ export default function MyPage() {
           {/* Settings tab content */}
           {activeTab === 'settings' && (
             <div style={{
-              border: '1px solid rgba(255,255,255,0.06)',
+              border: '1px solid var(--color-border-default)',
               borderTop: 'none',
               borderRadius: '0 0 14px 14px',
               padding: 'var(--space-5) var(--space-4)',
@@ -654,7 +654,7 @@ export default function MyPage() {
               {/* Language section (FIX6) — same `LocaleSwitcher` the header
                   renders, so the two never drift out of sync. */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('common.language')}
                 </h3>
                 <LocaleSwitcher />
@@ -662,7 +662,7 @@ export default function MyPage() {
 
               {/* Profile Image section */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('myPage.settings.profileImage.title')}
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
@@ -676,17 +676,17 @@ export default function MyPage() {
                       flexShrink: 0,
                       display: 'block',
                       overflow: 'hidden',
-                      border: profileImage ? 'none' : '2px dashed rgba(255,255,255,0.15)',
+                      border: profileImage ? 'none' : '2px dashed var(--color-bg-tertiary)',
                       transition: 'border-color 0.15s',
                       opacity: imageUploading ? 0.5 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      if (!profileImage) (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.4)';
+                      if (!profileImage) (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
                       const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement | null;
                       if (overlay) overlay.style.opacity = '1';
                     }}
                     onMouseLeave={(e) => {
-                      if (!profileImage) (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
+                      if (!profileImage) (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
                       const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement | null;
                       if (overlay) overlay.style.opacity = '0';
                     }}
@@ -748,14 +748,14 @@ export default function MyPage() {
                       </div>
                     )}
                   </label>
-                  <div style={{ fontSize: 'var(--text-body-sm)', color: '#4b5563', lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', lineHeight: 1.5 }}>
                     {imageUploading ? t('myPage.settings.profileImage.uploading') : profileImage ? t('myPage.settings.profileImage.hoverToChange') : t('myPage.settings.profileImage.clickToUpload')}
                     <br />
                     {t('myPage.settings.profileImage.autoResized')}
                   </div>
                 </div>
                 {imageFeedback && (
-                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body)', color: '#f87171' }}>
+                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body)', color: 'var(--color-status-danger)' }}>
                     {imageFeedback}
                   </div>
                 )}
@@ -763,11 +763,11 @@ export default function MyPage() {
 
               {/* Nickname section */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('myPage.settings.nickname.title')}
                 </h3>
-                <div style={{ fontSize: 'var(--text-body)', color: '#9ca3af', marginBottom: 10 }}>
-                  {t('myPage.settings.nickname.currentLabel')} <span style={{ color: '#e5e7eb', fontWeight: 600 }}>{displayName}</span>
+                <div style={{ fontSize: 'var(--text-body)', color: 'var(--color-text-secondary)', marginBottom: 10 }}>
+                  {t('myPage.settings.nickname.currentLabel')} <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{displayName}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <input
@@ -778,11 +778,11 @@ export default function MyPage() {
                     maxLength={30}
                     style={{
                       flex: 1,
-                      background: 'var(--surface, #0c0e18)',
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border-default)',
                       borderRadius: 'var(--radius-control)',
                       padding: '9px var(--space-3)',
-                      color: '#e5e7eb',
+                      color: 'var(--color-text-primary)',
                       fontSize: 'var(--text-body-sm)',
                       outline: 'none',
                       minHeight: 'var(--touch-target-min)',
@@ -794,7 +794,7 @@ export default function MyPage() {
                     disabled={!nicknameInput.trim() || nicknameSaving}
                     style={{
                       background: 'var(--accent)',
-                      color: '#fff',
+                      color: 'var(--color-text-inverted)',
                       border: 'none',
                       borderRadius: 'var(--radius-control)',
                       padding: '9px var(--space-5)',
@@ -810,7 +810,7 @@ export default function MyPage() {
                   </button>
                 </div>
                 {nicknameFeedback && (
-                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body)', color: nicknameFeedback.ok ? '#4ade80' : '#f87171' }}>
+                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body)', color: nicknameFeedback.ok ? 'var(--color-brand-accent)' : 'var(--color-status-danger)' }}>
                     {nicknameFeedback.msg}
                   </div>
                 )}
@@ -818,19 +818,19 @@ export default function MyPage() {
 
               {/* Domain Badge section (multi-domain) */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('myPage.settings.domainBadges.title')}
                 </h3>
                 {domainBadgeLoading ? (
-                  <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280' }}>{t('common.loading')}</div>
+                  <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)' }}>{t('common.loading')}</div>
                 ) : (domainBadgeDomains.length > 0 || domainBadgeAvailable) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {/* Active domain badges */}
                     {domainBadgeDomains.map((d) => (
                       <div key={d} style={{
                         padding: 'var(--space-3) var(--space-4)',
-                        background: 'rgba(139,92,246,0.06)',
-                        border: '1px solid rgba(139,92,246,0.3)',
+                        background: 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)',
+                        border: '1px solid var(--color-brand-primary)',
                         borderRadius: 'var(--radius-card)',
                         display: 'flex',
                         alignItems: 'center',
@@ -839,18 +839,18 @@ export default function MyPage() {
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 3,
                           fontSize: 'var(--text-caption)', fontWeight: 600, padding: '2px 7px', borderRadius: 'var(--radius-control)',
-                          background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#8b5cf6',
+                          background: 'var(--color-brand-primary-muted)', border: '1px solid var(--color-brand-primary)', color: 'var(--color-brand-primary)',
                         }}>
                           {'📧'} {d}
                         </span>
-                        <span style={{ flex: 1, fontSize: 'var(--text-caption)', color: '#6b7280' }}>{t('myPage.settings.domainBadges.visibleToOthers')}</span>
+                        <span style={{ flex: 1, fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)' }}>{t('myPage.settings.domainBadges.visibleToOthers')}</span>
                         <button
                           onClick={() => handleDomainBadgeRemove(d)}
                           disabled={domainBadgeToggling}
                           style={{
-                            background: 'rgba(239,68,68,0.1)',
-                            color: '#ef4444',
-                            border: '1px solid rgba(239,68,68,0.25)',
+                            background: 'color-mix(in srgb, var(--color-status-danger) 10%, transparent)',
+                            color: 'var(--color-status-danger)',
+                            border: '1px solid color-mix(in srgb, var(--color-status-danger) 25%, transparent)',
                             borderRadius: 'var(--radius-control)',
                             padding: '4px var(--space-3)',
                             fontSize: 'var(--text-caption)',
@@ -870,18 +870,18 @@ export default function MyPage() {
                     {domainBadgeAvailable && !domainBadgeDomains.includes(domainBadgeAvailable) && (
                       <div style={{
                         padding: 'var(--space-3) var(--space-4)',
-                        background: 'rgba(255,255,255,0.02)',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: 'var(--color-bg-secondary)',
+                        border: '1px solid var(--color-border-default)',
                         borderRadius: 'var(--radius-card)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 'var(--space-3)',
                       }}>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: '#e5e7eb' }}>
+                          <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
                             {domainBadgeAvailable}
                           </span>
-                          <span style={{ fontSize: 'var(--text-caption)', color: '#6b7280', marginLeft: 'var(--space-2)' }}>
+                          <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', marginLeft: 'var(--space-2)' }}>
                             {t('myPage.settings.domainBadges.verifiedPrompt')}
                           </span>
                         </span>
@@ -889,9 +889,9 @@ export default function MyPage() {
                           onClick={handleDomainBadgeAdd}
                           disabled={domainBadgeToggling}
                           style={{
-                            background: 'rgba(139,92,246,0.15)',
-                            color: '#8b5cf6',
-                            border: '1px solid rgba(139,92,246,0.3)',
+                            background: 'var(--color-brand-primary-muted)',
+                            color: 'var(--color-brand-primary)',
+                            border: '1px solid var(--color-brand-primary)',
                             borderRadius: 'var(--radius-control)',
                             padding: '4px var(--space-3)',
                             fontSize: 'var(--text-caption)',
@@ -907,18 +907,18 @@ export default function MyPage() {
                       </div>
                     )}
 
-                    <p style={{ fontSize: 'var(--text-caption)', color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
+                    <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
                       {t('myPage.settings.domainBadges.helpText')}
                     </p>
                   </div>
                 ) : (
                   <div style={{
                     padding: 'var(--space-4) var(--space-5)',
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'var(--color-bg-secondary)',
+                    border: '1px solid var(--color-border-default)',
                     borderRadius: 'var(--radius-card)',
                   }}>
-                    <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', margin: 0, lineHeight: 1.5 }}>
                       {t('myPage.settings.domainBadges.noneFound')}
                     </p>
                   </div>
@@ -927,19 +927,19 @@ export default function MyPage() {
 
               {/* Notifications section (P-M global switch) */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('myPage.settings.notifications.title')}
                 </h3>
                 {pushLoading ? (
-                  <div style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280' }}>{t('common.loading')}</div>
+                  <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)' }}>{t('common.loading')}</div>
                 ) : pushEnabled === null ? (
                   <div style={{
                     padding: 'var(--space-4) var(--space-5)',
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'var(--color-bg-secondary)',
+                    border: '1px solid var(--color-border-default)',
                     borderRadius: 'var(--radius-card)',
                   }}>
-                    <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', margin: 0, lineHeight: 1.5 }}>
                       {t('myPage.settings.notifications.loadFailed')}
                     </p>
                   </div>
@@ -947,18 +947,18 @@ export default function MyPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{
                       padding: 'var(--space-3) var(--space-4)',
-                      background: 'rgba(255,255,255,0.02)',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border-default)',
                       borderRadius: 'var(--radius-card)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 'var(--space-3)',
                     }}>
                       <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 'var(--text-body-sm)', fontWeight: 600, color: '#e5e7eb' }}>
+                        <span style={{ display: 'block', fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
                           {t('myPage.settings.notifications.pushLabel')}
                         </span>
-                        <span style={{ display: 'block', fontSize: 'var(--text-caption)', color: '#6b7280', marginTop: 2 }}>
+                        <span style={{ display: 'block', fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', marginTop: 2 }}>
                           {pushEnabled
                             ? t('myPage.settings.notifications.pushOnHint')
                             : t('myPage.settings.notifications.pushOffHint')}
@@ -975,8 +975,8 @@ export default function MyPage() {
                           height: 26,
                           flexShrink: 0,
                           borderRadius: 13,
-                          border: '1px solid ' + (pushEnabled ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.12)'),
-                          background: pushEnabled ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.06)',
+                          border: '1px solid ' + (pushEnabled ? 'color-mix(in srgb, var(--color-brand-primary) 50%, transparent)' : 'var(--color-bg-tertiary)'),
+                          background: pushEnabled ? 'color-mix(in srgb, var(--color-brand-primary) 35%, transparent)' : 'var(--color-bg-tertiary)',
                           cursor: pushSaving ? 'not-allowed' : 'pointer',
                           opacity: pushSaving ? 0.5 : 1,
                           padding: 0,
@@ -991,12 +991,12 @@ export default function MyPage() {
                           width: 20,
                           height: 20,
                           borderRadius: '50%',
-                          background: pushEnabled ? '#3b82f6' : '#6b7280',
+                          background: pushEnabled ? 'var(--color-brand-primary)' : 'var(--color-text-tertiary)',
                           transition: 'left 0.12s, background 0.12s',
                         }} />
                       </button>
                     </div>
-                    <p style={{ fontSize: 'var(--text-caption)', color: '#4b5563', margin: '4px 0 0', lineHeight: 1.5 }}>
+                    <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
                       {t('myPage.settings.notifications.explainer')}
                       {pushMutedCount > 0 && (
                         <>
@@ -1009,7 +1009,7 @@ export default function MyPage() {
                       {' '}{t('myPage.settings.notifications.permissionNote')}
                     </p>
                     {pushFeedback && (
-                      <div style={{ fontSize: 'var(--text-body-sm)', color: pushFeedback.ok ? '#4ade80' : '#f87171' }}>
+                      <div style={{ fontSize: 'var(--text-body-sm)', color: pushFeedback.ok ? 'var(--color-brand-accent)' : 'var(--color-status-danger)' }}>
                         {pushFeedback.msg}
                       </div>
                     )}
@@ -1019,7 +1019,7 @@ export default function MyPage() {
 
               {/* AI Agents / API keys section */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('myPage.settings.aiAgents.title')}
                 </h3>
                 <AiAgentSettings />
@@ -1033,7 +1033,7 @@ export default function MyPage() {
                   direct URL; this is just where a signed-in user now
                   DISCOVERS it, replacing the old top-level header link. */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('myPage.settings.recovery.title')}
                 </h3>
                 <div style={{
@@ -1042,20 +1042,20 @@ export default function MyPage() {
                   justifyContent: 'space-between',
                   gap: 'var(--space-4)',
                   padding: 'var(--space-4) var(--space-5)',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border-default)',
                   borderRadius: 'var(--radius-card)',
                 }}>
-                  <p style={{ fontSize: 'var(--text-body-sm)', color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
                     {t('myPage.settings.recovery.body')}
                   </p>
                   <Link
                     href="/recovery"
                     style={{
                       flexShrink: 0,
-                      background: 'rgba(120,140,255,0.1)',
+                      background: 'var(--color-brand-primary-muted)',
                       color: 'var(--accent)',
-                      border: '1px solid rgba(120,140,255,0.2)',
+                      border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
                       borderRadius: 'var(--radius-control)',
                       padding: '8px var(--space-4)',
                       fontSize: 'var(--text-body-sm)',
@@ -1074,7 +1074,7 @@ export default function MyPage() {
 
               {/* Account section */}
               <div>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 var(--space-4)' }}>
                   {t('myPage.settings.account.title')}
                 </h3>
                 <button
@@ -1083,18 +1083,18 @@ export default function MyPage() {
                   style={{
                     width: '100%',
                     padding: '12px var(--space-5)',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--color-bg-secondary)',
+                    border: '1px solid var(--color-border-default)',
                     borderRadius: 'var(--radius-card)',
-                    color: '#9ca3af',
+                    color: 'var(--color-text-secondary)',
                     fontSize: 'var(--text-body-sm)',
                     fontWeight: 500,
                     cursor: 'pointer',
                     transition: 'all 0.12s',
                     minHeight: 'var(--touch-target-min)',
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = '#e5e7eb'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = '#9ca3af'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-tertiary)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
                 >
                   {loggingOut ? t('myPage.settings.account.loggingOut') : t('myPage.settings.account.logout')}
                 </button>
@@ -1103,14 +1103,14 @@ export default function MyPage() {
               {/* Danger Zone */}
               <div style={{
                 padding: 'var(--space-5) var(--space-5)',
-                background: 'rgba(239,68,68,0.04)',
-                border: '1px solid rgba(239,68,68,0.15)',
+                background: 'color-mix(in srgb, var(--color-status-danger) 4%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-status-danger) 15%, transparent)',
                 borderRadius: 'var(--radius-card)',
               }}>
-                <h3 style={{ fontSize: 'var(--text-body-sm)', fontWeight: 700, color: '#ef4444', margin: '0 0 var(--space-2)' }}>
+                <h3 style={{ fontSize: 'var(--text-body-sm)', fontWeight: 700, color: 'var(--color-status-danger)', margin: '0 0 var(--space-2)' }}>
                   {t('myPage.settings.dangerZone.title')}
                 </h3>
-                <p style={{ fontSize: 'var(--text-body)', color: '#6b7280', margin: '0 0 14px', lineHeight: 1.5 }}>
+                <p style={{ fontSize: 'var(--text-body)', color: 'var(--color-text-tertiary)', margin: '0 0 14px', lineHeight: 1.5 }}>
                   {t('myPage.settings.dangerZone.deleteAccountIntro')}
                 </p>
 
@@ -1118,14 +1118,14 @@ export default function MyPage() {
                   <div style={{
                     marginBottom: 14,
                     padding: 'var(--space-3) 14px',
-                    background: 'rgba(239,68,68,0.08)',
-                    border: '1px solid rgba(239,68,68,0.25)',
+                    background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-status-danger) 25%, transparent)',
                     borderRadius: 'var(--radius-control)',
                   }}>
-                    <p style={{ fontSize: 'var(--text-body)', color: '#ef4444', margin: '0 0 var(--space-2)', fontWeight: 600 }}>
+                    <p style={{ fontSize: 'var(--text-body)', color: 'var(--color-status-danger)', margin: '0 0 var(--space-2)', fontWeight: 600 }}>
                       {t('myPage.settings.dangerZone.transferOwnershipFirst')}
                     </p>
-                    <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 'var(--text-body)', color: '#f87171', lineHeight: 1.8 }}>
+                    <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 'var(--text-body)', color: 'var(--color-status-danger)', lineHeight: 1.8 }}>
                       {ownedTopicsError.map((topic) => (
                         <li key={topic.id}>{topic.title}</li>
                       ))}
@@ -1135,9 +1135,9 @@ export default function MyPage() {
 
                 {!showDeleteAccount ? (
                   <button onClick={() => { setShowDeleteAccount(true); setOwnedTopicsError(null); }} style={{
-                    background: 'rgba(239,68,68,0.1)',
-                    color: '#ef4444',
-                    border: '1px solid rgba(239,68,68,0.3)',
+                    background: 'color-mix(in srgb, var(--color-status-danger) 10%, transparent)',
+                    color: 'var(--color-status-danger)',
+                    border: '1px solid color-mix(in srgb, var(--color-status-danger) 30%, transparent)',
                     borderRadius: 'var(--radius-control)',
                     padding: '8px 18px',
                     fontSize: 'var(--text-body)',
@@ -1149,7 +1149,7 @@ export default function MyPage() {
                   </button>
                 ) : (
                   <div>
-                    <p style={{ fontSize: 'var(--text-body-sm)', color: '#ef4444', margin: '0 0 10px' }}>
+                    <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: '0 0 10px' }}>
                       {/* "DELETE" is a literal confirmation keyword the app compares
                           against exactly (deleteConfirmText === 'DELETE') — kept
                           untranslated in both locales on purpose. */}
@@ -1163,14 +1163,14 @@ export default function MyPage() {
                         placeholder="DELETE"
                         style={{
                           flex: 1,
-                          background: 'var(--surface, #0c0e18)',
-                          border: '1px solid rgba(239,68,68,0.3)',
+                          background: 'var(--color-bg-secondary)',
+                          border: '1px solid color-mix(in srgb, var(--color-status-danger) 30%, transparent)',
                           borderRadius: 'var(--radius-control)',
                           padding: '8px var(--space-3)',
-                          color: '#e5e7eb',
+                          color: 'var(--color-text-primary)',
                           fontSize: 'var(--text-body)',
                           outline: 'none',
-                          fontFamily: 'monospace',
+                          fontFamily: 'var(--font-mono)',
                           minHeight: 'var(--touch-target-min)',
                           boxSizing: 'border-box',
                         }}
@@ -1195,8 +1195,8 @@ export default function MyPage() {
                         }}
                         disabled={deleteConfirmText !== 'DELETE' || deletingAccount}
                         style={{
-                          background: deleteConfirmText === 'DELETE' ? '#ef4444' : 'rgba(239,68,68,0.2)',
-                          color: '#fff',
+                          background: deleteConfirmText === 'DELETE' ? 'var(--color-status-danger)' : 'color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
+                          color: 'var(--color-text-inverted)',
                           border: 'none',
                           borderRadius: 'var(--radius-control)',
                           padding: '8px 18px',
@@ -1212,8 +1212,8 @@ export default function MyPage() {
                       <button
                         onClick={() => { setShowDeleteAccount(false); setDeleteConfirmText(''); setOwnedTopicsError(null); }}
                         style={{
-                          background: 'rgba(255,255,255,0.06)',
-                          color: '#6b7280',
+                          background: 'var(--color-bg-tertiary)',
+                          color: 'var(--color-text-tertiary)',
                           border: 'none',
                           borderRadius: 'var(--radius-control)',
                           padding: '8px 14px',

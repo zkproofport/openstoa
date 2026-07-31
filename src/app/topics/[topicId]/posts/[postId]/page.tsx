@@ -462,7 +462,7 @@ export default function PostPage() {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
         <div style={{ padding: '60px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 14, marginBottom: 16 }}>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 14, marginBottom: 16 }}>
             {error ?? 'Post not found'}
           </p>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 14 }}>
@@ -507,12 +507,12 @@ export default function PostPage() {
           <div
             style={{
               padding: '10px 16px',
-              background: 'rgba(120,140,255,0.06)',
-              border: '1px solid rgba(120,140,255,0.12)',
+              background: 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)',
               borderRadius: 8,
               marginBottom: 20,
               fontSize: 14,
-              color: '#888',
+              color: 'var(--color-text-secondary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -540,7 +540,7 @@ export default function PostPage() {
         <article
           style={{
             padding: '28px 32px',
-            background: 'var(--surface, #0c0e18)',
+            background: 'var(--color-bg-secondary)',
             border: '1px solid var(--border)',
             borderRadius: 14,
             marginBottom: 32,
@@ -568,9 +568,9 @@ export default function PostPage() {
                     // Border removed to match the mobile kebab — the button
                     // is a borderless glyph so it reads as a hit target
                     // without competing with the surrounding card border.
-                    background: menuOpen ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    background: menuOpen ? 'var(--color-bg-tertiary)' : 'transparent',
                     border: 'none',
-                    color: '#9ca3af',
+                    color: 'var(--color-text-secondary)',
                     cursor: 'pointer',
                     padding: '4px 8px',
                     borderRadius: 6,
@@ -587,7 +587,7 @@ export default function PostPage() {
                       position: 'absolute',
                       top: 'calc(100% + 4px)',
                       right: 0,
-                      background: 'var(--surface, #0c0e18)',
+                      background: 'var(--color-bg-secondary)',
                       border: '1px solid var(--border)',
                       borderRadius: 8,
                       padding: 4,
@@ -607,7 +607,7 @@ export default function PostPage() {
                           textAlign: 'left',
                           background: 'none',
                           border: 'none',
-                          color: '#e5e7eb',
+                          color: 'var(--color-text-primary)',
                           cursor: pinning ? 'not-allowed' : 'pointer',
                           padding: '8px 12px',
                           borderRadius: 6,
@@ -631,7 +631,7 @@ export default function PostPage() {
                             textAlign: 'left',
                             background: 'none',
                             border: 'none',
-                            color: recorded ? '#4b5563' : '#e5e7eb',
+                            color: recorded ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
                             cursor: recorded ? 'not-allowed' : 'pointer',
                             padding: '8px 12px',
                             borderRadius: 6,
@@ -651,7 +651,7 @@ export default function PostPage() {
                             textAlign: 'left',
                             background: 'none',
                             border: 'none',
-                            color: '#ef4444',
+                            color: 'var(--color-status-danger)',
                             cursor: postDeleting ? 'not-allowed' : 'pointer',
                             padding: '8px 12px',
                             borderRadius: 6,
@@ -678,11 +678,11 @@ export default function PostPage() {
                 placeholder="Post title"
                 style={{
                   width: '100%',
-                  background: 'var(--surface, #0c0e18)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border-default)',
                   borderRadius: 7,
                   padding: '10px 14px',
-                  color: '#e5e7eb',
+                  color: 'var(--color-text-primary)',
                   fontSize: 16,
                   fontWeight: 600,
                   outline: 'none',
@@ -714,7 +714,7 @@ export default function PostPage() {
                     onRemove={editPollHadVotes ? () => { /* locked — votes exist */ } : () => setEditPoll(null)}
                   />
                   {editPollHadVotes && (
-                    <p style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace', margin: 0 }}>
+                    <p style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'var(--font-mono)', margin: 0 }}>
                       Poll options are frozen — votes already exist. Question and closing time can still be updated.
                     </p>
                   )}
@@ -726,22 +726,22 @@ export default function PostPage() {
                   onClick={() => setEditPoll({ question: '', options: ['', ''], multipleChoice: false, closesAt: null })}
                   style={{
                     alignSelf: 'flex-start',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#9ca3af',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'var(--color-bg-secondary)',
+                    color: 'var(--color-text-secondary)',
+                    border: '1px solid var(--color-border-default)',
                     borderRadius: 7,
                     padding: '6px 12px',
                     fontSize: 12,
                     fontWeight: 600,
                     cursor: 'pointer',
-                    fontFamily: 'monospace',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 >
                   Add poll
                 </button>
               )}
               {editError && (
-                <p style={{ fontSize: 13, color: '#ef4444', margin: 0, fontFamily: 'monospace' }}>{editError}</p>
+                <p style={{ fontSize: 13, color: 'var(--color-status-danger)', margin: 0, fontFamily: 'var(--font-mono)' }}>{editError}</p>
               )}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button
@@ -750,7 +750,7 @@ export default function PostPage() {
                   disabled={editSaving}
                   style={{
                     background: 'transparent',
-                    color: '#9ca3af',
+                    color: 'var(--color-text-secondary)',
                     border: '1px solid var(--border)',
                     borderRadius: 7,
                     padding: '9px 18px',
@@ -765,7 +765,7 @@ export default function PostPage() {
                   disabled={editSaving || !editTitle.trim()}
                   style={{
                     background: 'var(--accent)',
-                    color: '#fff',
+                    color: 'var(--color-text-inverted)',
                     border: 'none',
                     borderRadius: 7,
                     padding: '9px 22px',
@@ -818,9 +818,9 @@ export default function PostPage() {
                     gap: 4,
                     fontSize: 10,
                     fontWeight: 700,
-                    color: '#22c55e',
-                    background: 'rgba(34,197,94,0.10)',
-                    border: '1px solid rgba(34,197,94,0.25)',
+                    color: 'var(--color-brand-accent)',
+                    background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                     borderRadius: 4,
                     padding: '2px 7px',
                     letterSpacing: '0.04em',
@@ -907,13 +907,13 @@ export default function PostPage() {
                 <span
                   key={tag.slug}
                   style={{
-                    background: 'rgba(59,130,246,0.08)',
+                    background: 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
                     color: 'var(--accent)',
-                    border: '1px solid rgba(59,130,246,0.15)',
+                    border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)',
                     borderRadius: 4,
                     padding: '2px 8px',
                     fontSize: 12,
-                    fontFamily: 'monospace',
+                    fontFamily: 'var(--font-mono)',
                     lineHeight: 1.6,
                   }}
                 >
@@ -1027,15 +1027,15 @@ export default function PostPage() {
                   key={comment.id}
                   style={{
                     padding: comment.isDeleted ? '12px 16px' : '16px 20px',
-                    background: comment.isDeleted ? 'rgba(255,255,255,0.02)' : 'var(--surface, #0c0e18)',
-                    border: comment.isDeleted ? '1px solid rgba(255,255,255,0.04)' : '1px solid var(--border)',
+                    background: comment.isDeleted ? 'var(--color-bg-secondary)' : 'var(--color-bg-secondary)',
+                    border: comment.isDeleted ? '1px solid var(--color-border-default)' : '1px solid var(--border)',
                     borderRadius: comment.isDeleted ? 8 : 10,
                   }}
                 >
                   {comment.isDeleted ? (
                     <p style={{
                       margin: 0,
-                      color: '#6b7280',
+                      color: 'var(--color-text-tertiary)',
                       fontStyle: 'italic',
                       fontSize: 14,
                     }}>
@@ -1122,7 +1122,7 @@ export default function PostPage() {
             <div
               style={{
                 padding: '20px',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 12,
                 textAlign: 'center',
@@ -1148,7 +1148,7 @@ export default function PostPage() {
               onSubmit={handleCommentSubmit}
               style={{
                 padding: '20px',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 12,
               }}
@@ -1167,7 +1167,7 @@ export default function PostPage() {
                 rows={4}
                 style={{
                   width: '100%',
-                  background: 'var(--surface, #0c0e18)',
+                  background: 'var(--color-bg-secondary)',
                   border: '1px solid var(--border)',
                   borderRadius: 8,
                   padding: '12px 14px',
@@ -1179,11 +1179,11 @@ export default function PostPage() {
                   fontFamily: 'inherit',
                   marginBottom: 8,
                 }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+                onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-brand-primary)')}
                 onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
               />
               {commentError && (
-                <p style={{ fontSize: 14, color: '#ef4444', margin: '0 0 8px', fontFamily: 'var(--font-mono)' }}>
+                <p style={{ fontSize: 14, color: 'var(--color-status-danger)', margin: '0 0 8px', fontFamily: 'var(--font-mono)' }}>
                   {commentError}
                 </p>
               )}
@@ -1193,7 +1193,7 @@ export default function PostPage() {
                   disabled={!commentContent.trim() || submitting}
                   style={{
                     background: commentContent.trim() ? 'var(--accent)' : 'var(--border)',
-                    color: commentContent.trim() ? '#fff' : 'var(--muted)',
+                    color: commentContent.trim() ? 'var(--color-text-inverted)' : 'var(--muted)',
                     border: 'none',
                     borderRadius: 7,
                     padding: '9px 22px',

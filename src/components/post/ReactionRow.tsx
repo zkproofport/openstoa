@@ -88,8 +88,8 @@ export default function ReactionRow({
           onClick={(e) => pick(r.emoji, e)}
           disabled={!interactive || disabled || pending}
           style={{
-            background: r.userReacted ? 'rgba(120,140,255,0.15)' : 'rgba(255,255,255,0.05)',
-            border: r.userReacted ? '1px solid rgba(120,140,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
+            background: r.userReacted ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-secondary)',
+            border: r.userReacted ? '1px solid var(--color-brand-primary)' : '1px solid var(--color-border-default)',
             borderRadius: 9999,
             padding: interactive ? '4px 12px' : '2px 8px',
             fontSize: interactive ? 14 : 12,
@@ -97,7 +97,7 @@ export default function ReactionRow({
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            color: r.userReacted ? 'var(--accent)' : '#9ca3af',
+            color: r.userReacted ? 'var(--accent)' : 'var(--color-text-secondary)',
             transition: 'all 0.12s',
           }}
         >
@@ -118,13 +118,13 @@ export default function ReactionRow({
             }}
             aria-label="Add reaction"
             style={{
-              background: showPicker ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: showPicker ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border-default)',
               borderRadius: 9999,
               padding: '4px 12px',
               fontSize: 14,
               cursor: 'pointer',
-              color: '#6b7280',
+              color: 'var(--color-text-tertiary)',
               transition: 'all 0.12s',
             }}
           >
@@ -137,8 +137,8 @@ export default function ReactionRow({
                 bottom: '100%',
                 left: 0,
                 marginBottom: 6,
-                background: 'var(--surface, #1a1a2e)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'var(--color-bg-secondary)',
+                border: '1px solid var(--color-border-default)',
                 borderRadius: 10,
                 padding: '6px 8px',
                 display: 'flex',
@@ -162,7 +162,7 @@ export default function ReactionRow({
                     transition: 'background 0.1s',
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)';
+                    (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-tertiary)';
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLElement).style.background = 'none';

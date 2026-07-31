@@ -166,10 +166,10 @@ export default function MentionInput({
         placeholder={placeholder}
         style={{
           width: '100%',
-          background: '#1a1a1a',
-          border: '1px solid #333',
+          background: 'var(--color-bg-secondary)',
+          border: '1px solid var(--color-border-default)',
           borderRadius: '6px',
-          color: '#fff',
+          color: 'var(--color-text-primary)',
           padding: '10px 12px',
           fontSize: '14px',
           lineHeight: '1.5',
@@ -187,8 +187,8 @@ export default function MentionInput({
             top: dropdownTop,
             left: dropdownLeft,
             zIndex: 1000,
-            background: '#111',
-            border: '1px solid #333',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-border-default)',
             borderRadius: '6px',
             margin: 0,
             padding: '4px 0',
@@ -209,13 +209,13 @@ export default function MentionInput({
               style={{
                 padding: '7px 14px',
                 cursor: 'pointer',
-                color: '#fff',
+                color: 'var(--color-text-primary)',
                 fontSize: '13px',
-                background: i === activeIndex ? 'rgba(59,130,246,0.2)' : 'transparent',
+                background: i === activeIndex ? 'var(--color-brand-primary-muted)' : 'transparent',
                 transition: 'background 0.1s',
               }}
             >
-              <span style={{ color: 'var(--accent, #3b82f6)', fontWeight: 600 }}>@</span>
+              <span style={{ color: 'var(--color-brand-primary)', fontWeight: 600 }}>@</span>
               {s.nickname}
             </li>
           ))}

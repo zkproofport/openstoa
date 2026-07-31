@@ -87,7 +87,12 @@ describe('globals.css theme cascade — structural contract', () => {
     // in backticked prose and would otherwise match first.
     const mediaStart = css.indexOf('@media (prefers-color-scheme: light) {');
     expect(mediaStart).toBeGreaterThan(-1);
-    const block = extractBlock(css.slice(mediaStart), ':root {');
+    // `:root:not([data-theme])`, not a bare `:root`: the OS preference must not
+    // be able to override the user's explicit choice, so this block is scoped
+    // to the pre-choice state only. The theme itself comes from `data-theme`
+    // (see theme.test.tsx) — this block still has to carry the full light
+    // palette for the moments before the pre-paint script stamps it.
+    const block = extractBlock(css.slice(mediaStart), ':root:not([data-theme]) {');
     const vars = colorVarsIn(block);
     for (const name of REQUIRED_COLOR_VARS) {
       expect(vars, name).toHaveProperty(name);

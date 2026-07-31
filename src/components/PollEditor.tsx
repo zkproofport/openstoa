@@ -101,7 +101,7 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
       style={{
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-card)',
-        background: '#111',
+        background: 'var(--color-bg-secondary)',
         padding: '14px 16px',
       }}
     >
@@ -115,8 +115,8 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
         <span style={{
           fontSize: 'var(--text-label)',
           fontWeight: 600,
-          color: '#9ca3af',
-          fontFamily: 'monospace',
+          color: 'var(--color-text-secondary)',
+          fontFamily: 'var(--font-mono)',
           letterSpacing: '0.04em',
           textTransform: 'uppercase',
         }}>
@@ -132,8 +132,8 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
             alignItems: 'center',
             gap: 4,
             background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: '#9ca3af',
+            border: '1px solid var(--color-border-default)',
+            color: 'var(--color-text-secondary)',
             borderRadius: 'var(--radius-control)',
             padding: 'var(--space-1) var(--space-2)',
             fontSize: 'var(--text-label)',
@@ -141,12 +141,12 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
             transition: 'color 0.12s, background 0.12s',
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.08)';
-            (e.currentTarget as HTMLElement).style.color = '#f87171';
+            (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)';
+            (e.currentTarget as HTMLElement).style.color = 'var(--color-status-danger)';
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = 'transparent';
-            (e.currentTarget as HTMLElement).style.color = '#9ca3af';
+            (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)';
           }}
         >
           <IconTrash />
@@ -162,8 +162,8 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
         placeholder={t('pollEditor.questionPlaceholder')}
         style={{
           width: '100%',
-          background: '#0a0a0a',
-          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'var(--color-bg-primary)',
+          border: '1px solid var(--color-border-default)',
           borderRadius: 8,
           padding: 'var(--space-2) var(--space-3)',
           color: 'var(--foreground)',
@@ -190,11 +190,11 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
                 maxLength={MAX_OPTION_LEN}
                 style={{
                   flex: 1,
-                  background: '#0a0a0a',
-                  border: `1px solid ${overflow ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                  background: 'var(--color-bg-primary)',
+                  border: `1px solid ${overflow ? 'color-mix(in srgb, var(--color-status-danger) 40%, transparent)' : 'var(--color-bg-tertiary)'}`,
                   borderRadius: 7,
                   padding: 'var(--space-2) var(--space-3)',
-                  color: '#e5e7eb',
+                  color: 'var(--color-text-primary)',
                   // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
                   fontSize: 'var(--text-body)',
                   outline: 'none',
@@ -204,8 +204,8 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
               />
               <span style={{
                 fontSize: 11,
-                color: '#4b5563',
-                fontFamily: 'monospace',
+                color: 'var(--color-text-tertiary)',
+                fontFamily: 'var(--font-mono)',
                 fontVariantNumeric: 'tabular-nums',
                 minWidth: 32,
                 textAlign: 'right',
@@ -222,9 +222,9 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
                   width: 26,
                   height: 26,
                   borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: options.length <= MIN_OPTIONS ? '#3f3f46' : '#9ca3af',
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border-default)',
+                  color: options.length <= MIN_OPTIONS ? 'var(--color-border-strong)' : 'var(--color-text-secondary)',
                   cursor: options.length <= MIN_OPTIONS ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -247,16 +247,16 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
           type="button"
           onClick={addOption}
           style={{
-            background: 'rgba(59,130,246,0.1)',
+            background: 'var(--color-brand-primary-muted)',
             color: 'var(--accent)',
-            border: '1px solid rgba(59,130,246,0.25)',
+            border: '1px solid var(--color-brand-primary)',
             borderRadius: 7,
             padding: '6px 12px',
             fontSize: 'var(--text-label)',
             fontWeight: 600,
             cursor: 'pointer',
             marginBottom: 'var(--space-3)',
-            fontFamily: 'monospace',
+            fontFamily: 'var(--font-mono)',
           }}
         >
           {t('pollEditor.addOption')}
@@ -271,10 +271,10 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
         gap: 12,
         flexWrap: 'wrap',
         paddingTop: 10,
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        borderTop: '1px solid var(--color-border-default)',
       }}>
         {/* Single / Multi toggle */}
-        <div style={{ display: 'inline-flex', borderRadius: 7, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ display: 'inline-flex', borderRadius: 7, overflow: 'hidden', border: '1px solid var(--color-border-default)' }}>
           {(['single', 'multi'] as const).map((mode) => {
             const active = (mode === 'multi') === value.multipleChoice;
             return (
@@ -284,13 +284,13 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
                 onClick={() => update({ multipleChoice: mode === 'multi' })}
                 style={{
                   background: active ? 'var(--accent)' : 'transparent',
-                  color: active ? '#fff' : '#9ca3af',
+                  color: active ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
                   border: 'none',
                   padding: '6px 14px',
                   fontSize: 'var(--text-label)',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  fontFamily: 'monospace',
+                  fontFamily: 'var(--font-mono)',
                   transition: 'background 0.12s, color 0.12s',
                 }}
               >
@@ -306,21 +306,21 @@ export default function PollEditor({ value, onChange, onRemove }: PollEditorProp
           alignItems: 'center',
           gap: 8,
           fontSize: 'var(--text-label)',
-          color: '#9ca3af',
-          fontFamily: 'monospace',
+          color: 'var(--color-text-secondary)',
+          fontFamily: 'var(--font-mono)',
         }}>
           {t('pollEditor.duration')}
           <select
             value={duration}
             onChange={(e) => setDuration(e.target.value as DurationOption)}
             style={{
-              background: '#0a0a0a',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--color-bg-primary)',
+              border: '1px solid var(--color-border-default)',
               borderRadius: 'var(--radius-control)',
               padding: '5px 8px',
-              color: '#e5e7eb',
+              color: 'var(--color-text-primary)',
               fontSize: 'var(--text-label)',
-              fontFamily: 'monospace',
+              fontFamily: 'var(--font-mono)',
               outline: 'none',
               cursor: 'pointer',
             }}

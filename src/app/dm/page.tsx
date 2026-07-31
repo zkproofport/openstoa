@@ -112,15 +112,15 @@ export default function DmListPage() {
 
         {!loading && error && (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
+            <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
               {error}
             </p>
             <button
               onClick={() => loadDms()}
               style={{
-                background: 'rgba(120,140,255,0.1)',
+                background: 'var(--color-brand-primary-muted)',
                 color: 'var(--accent)',
-                border: '1px solid rgba(120,140,255,0.2)',
+                border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
                 borderRadius: 'var(--radius-control)',
                 padding: '6px var(--space-4)',
                 fontSize: 'var(--text-body-sm)',

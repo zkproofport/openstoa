@@ -91,7 +91,7 @@ export default function BookmarkButton({
         padding,
         borderRadius: 9999,
         fontSize: size === 'sm' ? 12 : 14,
-        color: state ? 'var(--accent)' : '#6b7280',
+        color: state ? 'var(--accent)' : 'var(--color-text-tertiary)',
         transition: 'color 0.12s, background 0.12s',
       }}
     >

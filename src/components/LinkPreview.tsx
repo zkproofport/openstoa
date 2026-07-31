@@ -60,8 +60,8 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
       <div style={{
         marginTop: 10,
         borderRadius: 10,
-        border: '1px solid rgba(255,255,255,0.06)',
-        background: '#0d0d0d',
+        border: '1px solid var(--color-border-default)',
+        background: 'var(--color-bg-primary)',
         padding: '12px 14px',
         display: 'flex',
         alignItems: 'center',
@@ -70,9 +70,9 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
       }}>
         {/* Skeleton */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ height: 12, width: '60%', background: 'rgba(255,255,255,0.06)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
-          <div style={{ height: 10, width: '85%', background: 'rgba(255,255,255,0.04)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite 0.2s' }} />
-          <div style={{ height: 10, width: '40%', background: 'rgba(255,255,255,0.04)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite 0.4s' }} />
+          <div style={{ height: 12, width: '60%', background: 'var(--color-bg-tertiary)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+          <div style={{ height: 10, width: '85%', background: 'var(--color-bg-secondary)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite 0.2s' }} />
+          <div style={{ height: 10, width: '40%', background: 'var(--color-bg-secondary)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite 0.4s' }} />
         </div>
         <style>{`
           @keyframes skeletonPulse {
@@ -123,8 +123,8 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
         display: 'block',
         marginTop: 10,
         borderRadius: 10,
-        border: `1px solid ${hovered ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'}`,
-        background: hovered ? '#111' : '#0d0d0d',
+        border: `1px solid ${hovered ? 'var(--color-bg-tertiary)' : 'var(--color-bg-tertiary)'}`,
+        background: hovered ? 'var(--color-bg-secondary)' : 'var(--color-bg-primary)',
         overflow: 'hidden',
         textDecoration: 'none',
         color: 'inherit',
@@ -138,7 +138,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
           width: '100%',
           height: 160,
           overflow: 'hidden',
-          background: '#0a0a0a',
+          background: 'var(--color-bg-primary)',
           position: 'relative',
         }}>
           <img
@@ -176,8 +176,8 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
           )}
           <span style={{
             fontSize: 11,
-            color: '#6b7280',
-            fontFamily: 'monospace',
+            color: 'var(--color-text-tertiary)',
+            fontFamily: 'var(--font-mono)',
             textTransform: 'lowercase',
             letterSpacing: '0.01em',
           }}>
@@ -189,7 +189,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
         <div style={{
           fontSize: 'var(--text-caption)',
           fontWeight: 600,
-          color: '#e5e7eb',
+          color: 'var(--color-text-primary)',
           lineHeight: 1.4,
           marginBottom: data.description ? 3 : 0,
           display: '-webkit-box',
@@ -204,7 +204,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
         {data.description && (
           <div style={{
             fontSize: 'var(--text-label)',
-            color: '#6b7280',
+            color: 'var(--color-text-tertiary)',
             lineHeight: 1.5,
             display: '-webkit-box',
             WebkitLineClamp: 2,

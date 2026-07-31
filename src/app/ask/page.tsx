@@ -38,8 +38,8 @@ function renderInline(text: string): string {
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
     .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
     .replace(/_([^_\n]+?)_/g, '<em>$1</em>')
-    .replace(/`([^`\n]+?)`/g, '<code style="background:rgba(120,140,255,0.12);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:0.88em;color:#a8b8ff">$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#788cff;text-decoration:underline;text-underline-offset:2px">$1</a>');
+    .replace(/`([^`\n]+?)`/g, '<code style="background:var(--color-brand-primary-muted);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:0.88em;color:var(--color-brand-primary)">$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--color-brand-primary);text-decoration:underline;text-underline-offset:2px">$1</a>');
 }
 
 function renderMarkdown(raw: string): string {
@@ -67,11 +67,11 @@ function renderMarkdown(raw: string): string {
         codeLines = [];
       } else {
         inCode = false;
-        const langLabel = codeLang ? `<span style="color:#555;font-size:11px;font-family:var(--font-mono)">${escapeHtml(codeLang)}</span>` : '';
+        const langLabel = codeLang ? `<span style="color:var(--color-text-tertiary);font-size:11px;font-family:var(--font-mono)">${escapeHtml(codeLang)}</span>` : '';
         const codeId = `code-${Date.now()}-${i}`;
-        const copyBtn = `<button onclick="(function(b){var t=document.getElementById('${codeId}');if(t){navigator.clipboard.writeText(t.textContent||'');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},2000)}})(this)" style="font-size:11px;font-family:var(--font-mono);color:#666;background:none;border:1px solid rgba(120,140,255,0.15);border-radius:4px;padding:2px 8px;cursor:pointer;transition:color 0.15s">Copy</button>`;
+        const copyBtn = `<button onclick="(function(b){var t=document.getElementById('${codeId}');if(t){navigator.clipboard.writeText(t.textContent||'');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},2000)}})(this)" style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary);background:none;border:1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent);border-radius:4px;padding:2px 8px;cursor:pointer;transition:color 0.15s">Copy</button>`;
         output.push(
-          `<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(120,140,255,0.12);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:12px;color:#c8d0ff;white-space:pre-wrap;overflow-wrap:break-word;line-height:1.55;padding:8px 12px 12px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
+          `<div style="background:var(--color-bg-primary);border:1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:12px;color:var(--color-brand-primary);white-space:pre-wrap;overflow-wrap:break-word;line-height:1.55;padding:8px 12px 12px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
         );
         codeLang = '';
         codeLines = [];
@@ -87,20 +87,20 @@ function renderMarkdown(raw: string): string {
       const level = headingMatch[1].length;
       const text = renderInline(escapeHtml(headingMatch[2]));
       const sizes = ['18px', '16px', '14px'];
-      output.push(`<div style="font-size:${sizes[level - 1]};font-weight:700;color:#e8e8f0;margin:16px 0 6px;letter-spacing:-0.01em">${text}</div>`);
+      output.push(`<div style="font-size:${sizes[level - 1]};font-weight:700;color:var(--color-text-primary);margin:16px 0 6px;letter-spacing:-0.01em">${text}</div>`);
       continue;
     }
 
     if (/^---+$/.test(line.trim())) {
       flushList();
-      output.push('<hr style="border:none;border-top:1px solid rgba(120,140,255,0.1);margin:12px 0" />');
+      output.push('<hr style="border:none;border-top:1px solid color-mix(in srgb, var(--color-brand-primary) 10%, transparent);margin:12px 0" />');
       continue;
     }
 
     const listMatch = line.match(/^[\-\*]\s+(.+)/);
     if (listMatch) {
       if (!inList) { output.push('<ul style="margin:6px 0;padding-left:20px;list-style:none">'); inList = true; }
-      output.push(`<li style="margin:3px 0;display:flex;gap:8px;align-items:baseline"><span style="color:rgba(120,140,255,0.5);flex-shrink:0">•</span><span>${renderInline(escapeHtml(listMatch[1]))}</span></li>`);
+      output.push(`<li style="margin:3px 0;display:flex;gap:8px;align-items:baseline"><span style="color:color-mix(in srgb, var(--color-brand-primary) 50%, transparent);flex-shrink:0">•</span><span>${renderInline(escapeHtml(listMatch[1]))}</span></li>`);
       continue;
     }
 
@@ -130,7 +130,7 @@ function TypingIndicator() {
         <span
           key={i}
           style={{
-            width: 6, height: 6, borderRadius: '50%', background: '#788cff',
+            width: 6, height: 6, borderRadius: '50%', background: 'var(--color-brand-primary)',
             display: 'inline-block',
             animation: `typing-bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
           }}
@@ -150,13 +150,13 @@ function CopyButton({ text }: { text: string }) {
       style={{
         background: 'none', border: 'none', cursor: 'pointer',
         padding: '4px 6px', borderRadius: 5,
-        color: copied ? '#788cff' : '#444',
+        color: copied ? 'var(--color-brand-primary)' : 'var(--color-border-strong)',
         fontSize: 11, fontFamily: 'var(--font-mono)',
         display: 'flex', alignItems: 'center', gap: 4,
         transition: 'color 0.15s',
       }}
-      onMouseEnter={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = '#777'; }}
-      onMouseLeave={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = '#444'; }}
+      onMouseEnter={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; }}
+      onMouseLeave={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = 'var(--color-border-strong)'; }}
     >
       {copied ? (
         <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Copied!</>
@@ -172,9 +172,9 @@ function AssistantBubble({ children }: { children: React.ReactNode }) {
     <div style={{
       width: '100%', padding: '14px 18px',
       borderRadius: '4px 18px 18px 18px',
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.06)',
-      color: '#c8c8d8', fontSize: 14,
+      background: 'var(--color-bg-secondary)',
+      border: '1px solid var(--color-border-default)',
+      color: 'var(--color-text-secondary)', fontSize: 14,
       fontFamily: 'var(--font-sans)', lineHeight: 1.65,
       wordBreak: 'break-word',
     }}>
@@ -187,11 +187,11 @@ function AiAvatar() {
   return (
     <div style={{
       width: 28, height: 28, borderRadius: '50%',
-      background: 'rgba(120,140,255,0.15)', border: '1px solid rgba(120,140,255,0.3)',
+      background: 'var(--color-brand-primary-muted)', border: '1px solid var(--color-brand-primary)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       flexShrink: 0, marginTop: 2,
     }}>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
     </div>
@@ -338,41 +338,41 @@ export default function AskPage() {
   const _suppressUnused = { isEmpty };
   if (true) {
     return (
-      <main style={{ height: '100vh', background: 'rgb(5,8,16)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', color: '#999', fontFamily: 'var(--font-sans)', textAlign: 'center', padding: 'var(--space-5)' }}>
-        <h1 style={{ color: '#e8e8f0', fontSize: 'var(--text-heading-sm)', fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>{t('askPage.title')}</h1>
+      <main style={{ height: '100vh', background: 'var(--color-bg-primary)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-sans)', textAlign: 'center', padding: 'var(--space-5)' }}>
+        <h1 style={{ color: 'var(--color-text-primary)', fontSize: 'var(--text-heading-sm)', fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>{t('askPage.title')}</h1>
         <p style={{ margin: 0, maxWidth: 360, lineHeight: 1.6 }}>{t('askPage.unavailable')}</p>
-        <Link href="/" className="os-label" style={{ color: '#788cff', textDecoration: 'none', padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-control)', border: '1px solid rgba(120,140,255,0.25)' }}>← {t('askPage.backToHome')}</Link>
+        <Link href="/" className="os-label" style={{ color: 'var(--color-brand-primary)', textDecoration: 'none', padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-control)', border: '1px solid var(--color-brand-primary)' }}>← {t('askPage.backToHome')}</Link>
       </main>
     );
   }
 
   return (
-    <div style={{ height: '100vh', background: 'rgb(5,8,16)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ height: '100vh', background: 'var(--color-bg-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* ── Header ── */}
       <header style={{
-        flexShrink: 0, borderBottom: '1px solid rgba(120,140,255,0.08)',
-        background: 'rgba(5,8,16,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+        flexShrink: 0, borderBottom: '1px solid color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
+        background: 'color-mix(in srgb, var(--color-bg-primary) 92%, transparent)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: CONTENT_WIDTH, margin: '0 auto', padding: '12px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Link href="/topics" style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#666', textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-mono)', transition: 'color 0.15s' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#999'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#666'; }}
+            <Link href="/topics" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-tertiary)', textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-mono)', transition: 'color 0.15s' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
               Topics
             </Link>
-            <span style={{ color: 'rgba(120,140,255,0.2)', fontSize: 16 }}>/</span>
+            <span style={{ color: 'var(--color-brand-primary-muted)', fontSize: 16 }}>/</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <AiAvatar />
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 14, color: '#e8e8f0', letterSpacing: '-0.01em' }}>OpenStoa AI</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>OpenStoa AI</span>
             </div>
           </div>
           {messages.length > 0 && (
             <button onClick={() => { setMessages([]); setError(null); setFollowUps([]); }}
-              style={{ background: 'none', border: '1px solid rgba(120,140,255,0.15)', borderRadius: 6, color: '#555', fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer', padding: '5px 10px', letterSpacing: '0.04em', transition: 'all 0.15s' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#999'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.3)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#555'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)'; }}
+              style={{ background: 'none', border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)', borderRadius: 6, color: 'var(--color-text-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer', padding: '5px 10px', letterSpacing: '0.04em', transition: 'all 0.15s' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; (e.currentTarget as HTMLElement).style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 15%, transparent)'; }}
             >New chat</button>
           )}
         </div>
@@ -385,19 +385,19 @@ export default function AskPage() {
           {/* Empty state */}
           {isEmpty && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 100, paddingBottom: 40 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(120,140,255,0.12)', border: '1px solid rgba(120,140,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#788cff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--color-brand-primary-muted)', border: '1px solid var(--color-brand-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
               </div>
-              <h1 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 22, color: '#e8e8f0', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Ask OpenStoa AI</h1>
-              <p style={{ color: '#555', fontSize: 14, fontFamily: 'var(--font-sans)', margin: '0 0 40px', textAlign: 'center', lineHeight: 1.6 }}>
+              <h1 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 22, color: 'var(--color-text-primary)', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Ask OpenStoa AI</h1>
+              <p style={{ color: 'var(--color-text-tertiary)', fontSize: 14, fontFamily: 'var(--font-sans)', margin: '0 0 40px', textAlign: 'center', lineHeight: 1.6 }}>
                 Ask anything about OpenStoa — proofs, authentication, topics, and more.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%', maxWidth: 520 }} className="suggested-grid">
                 {SUGGESTED_QUESTIONS.map((q) => (
                   <button key={q} onClick={() => sendMessage(q)}
-                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(120,140,255,0.12)', borderRadius: 10, padding: '14px 16px', color: '#888', fontSize: 13, fontFamily: 'var(--font-sans)', textAlign: 'left', cursor: 'pointer', lineHeight: 1.5, transition: 'all 0.15s' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.07)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)'; (e.currentTarget as HTMLElement).style.color = '#bbb'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.12)'; (e.currentTarget as HTMLElement).style.color = '#888'; }}
+                    style={{ background: 'var(--color-bg-secondary)', border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)', borderRadius: 10, padding: '14px 16px', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-sans)', textAlign: 'left', cursor: 'pointer', lineHeight: 1.5, transition: 'all 0.15s' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-brand-primary) 7%, transparent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)'; (e.currentTarget as HTMLElement).style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 12%, transparent)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
                   >{q}</button>
                 ))}
               </div>
@@ -413,15 +413,15 @@ export default function AskPage() {
                     <AssistantBubble>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                         <AiAvatar />
-                        <span style={{ fontSize: 11, color: '#555', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
+                        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
                       </div>
                       <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--color-border-default)' }}>
                         <CopyButton text={msg.content} />
                       </div>
                     </AssistantBubble>
                   ) : (
-                    <div style={{ maxWidth: '85%', padding: '10px 16px', borderRadius: '18px 18px 4px 18px', background: 'rgba(120,140,255,0.18)', border: '1px solid rgba(120,140,255,0.3)', color: '#d0d4ff', fontSize: 14, fontFamily: 'var(--font-sans)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    <div style={{ maxWidth: '85%', padding: '10px 16px', borderRadius: '18px 18px 4px 18px', background: 'var(--color-brand-primary-muted)', border: '1px solid var(--color-brand-primary)', color: 'var(--color-brand-primary)', fontSize: 14, fontFamily: 'var(--font-sans)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                       {msg.content}
                     </div>
                   )}
@@ -434,7 +434,7 @@ export default function AskPage() {
                   <AssistantBubble>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                       <AiAvatar />
-                      <span style={{ fontSize: 11, color: '#555', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
                     </div>
                     <div dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
                   </AssistantBubble>
@@ -455,7 +455,7 @@ export default function AskPage() {
 
               {/* Error */}
               {error && (
-                <div style={{ padding: '12px 16px', background: 'rgba(255,80,80,0.06)', border: '1px solid rgba(255,80,80,0.2)', borderRadius: 8, color: '#ff6b6b', fontSize: 13, fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
+                <div style={{ padding: '12px 16px', background: 'color-mix(in srgb, var(--color-status-danger) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)', borderRadius: 8, color: 'var(--color-status-danger)', fontSize: 13, fontFamily: 'var(--font-sans)', marginBottom: 16 }}>
                   {error}
                 </div>
               )}
@@ -463,13 +463,13 @@ export default function AskPage() {
               {/* Follow-up suggestions */}
               {!loading && followUps.length > 0 && (
                 <div style={{ marginBottom: 16, paddingLeft: 38 }}>
-                  <div style={{ fontSize: 11, color: '#444', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', marginBottom: 8 }}>SUGGESTED</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', marginBottom: 8 }}>SUGGESTED</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {followUps.map((q) => (
                       <button key={q} onClick={() => sendMessage(q)}
-                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(120,140,255,0.12)', borderRadius: 20, padding: '6px 14px', color: '#666', fontSize: 12, fontFamily: 'var(--font-sans)', cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.07)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)'; (e.currentTarget as HTMLElement).style.color = '#aaa'; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.12)'; (e.currentTarget as HTMLElement).style.color = '#666'; }}
+                        style={{ background: 'var(--color-bg-secondary)', border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)', borderRadius: 20, padding: '6px 14px', color: 'var(--color-text-tertiary)', fontSize: 12, fontFamily: 'var(--font-sans)', cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-brand-primary) 7%, transparent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)'; (e.currentTarget as HTMLElement).style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 12%, transparent)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; }}
                       >{q}</button>
                     ))}
                   </div>
@@ -483,12 +483,12 @@ export default function AskPage() {
       </div>
 
       {/* ── Input area (natural flex bottom — NOT fixed/sticky) ── */}
-      <div style={{ flexShrink: 0, borderTop: '1px solid rgba(120,140,255,0.06)', background: 'rgba(5,8,16,0.95)' }}>
+      <div style={{ flexShrink: 0, borderTop: '1px solid color-mix(in srgb, var(--color-brand-primary) 6%, transparent)', background: 'var(--color-bg-primary)' }}>
         <div style={{ maxWidth: CONTENT_WIDTH, margin: '0 auto', padding: '8px 20px 10px' }}>
           <div
-            style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(120,140,255,0.15)', borderRadius: 10, padding: '8px 10px 8px 16px', transition: 'border-color 0.15s' }}
-            onFocusCapture={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.35)'; }}
-            onBlurCapture={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.15)'; }}
+            style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--color-bg-secondary)', border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)', borderRadius: 10, padding: '8px 10px 8px 16px', transition: 'border-color 0.15s' }}
+            onFocusCapture={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; }}
+            onBlurCapture={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 15%, transparent)'; }}
           >
             <textarea
               ref={textareaRef}
@@ -498,18 +498,18 @@ export default function AskPage() {
               placeholder="Ask anything about OpenStoa…"
               rows={1}
               maxLength={2000}
-              style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: '#e8e8f0', fontSize: 14, fontFamily: 'var(--font-sans)', resize: 'none', lineHeight: 1.55, padding: 0, minHeight: 22, maxHeight: 120, overflow: 'auto' }}
+              style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--color-text-primary)', fontSize: 14, fontFamily: 'var(--font-sans)', resize: 'none', lineHeight: 1.55, padding: 0, minHeight: 22, maxHeight: 120, overflow: 'auto' }}
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || loading}
-              style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: input.trim() && !loading ? '#788cff' : 'rgba(120,140,255,0.12)', color: input.trim() && !loading ? '#fff' : '#444', cursor: input.trim() && !loading ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}
+              style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: input.trim() && !loading ? 'var(--color-brand-primary)' : 'var(--color-brand-primary-muted)', color: input.trim() && !loading ? 'var(--color-text-inverted)' : 'var(--color-border-strong)', cursor: input.trim() && !loading ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}
               aria-label="Send message"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
             </button>
           </div>
-          <p style={{ textAlign: 'center', color: '#333', fontSize: 11, fontFamily: 'var(--font-mono)', margin: '4px 0 0', letterSpacing: '0.02em' }}>
+          <p style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)', margin: '4px 0 0', letterSpacing: '0.02em' }}>
             Enter to send · Shift+Enter for new line
           </p>
         </div>

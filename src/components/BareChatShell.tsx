@@ -125,7 +125,7 @@ export default function BareChatShell({ children }: { children: React.ReactNode 
               onClick={() => chooseWidth(opt.mode)}
               aria-pressed={width === opt.mode}
               style={{
-                background: width === opt.mode ? 'rgba(120,140,255,0.14)' : 'transparent',
+                background: width === opt.mode ? 'var(--color-brand-primary-muted)' : 'transparent',
                 color: width === opt.mode ? 'var(--accent)' : 'var(--muted)',
                 border: 'none',
                 borderRadius: 'var(--radius-control)',

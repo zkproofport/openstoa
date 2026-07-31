@@ -102,8 +102,8 @@ export default function VotePill({
         gap: 6,
         padding,
         borderRadius: 16,
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--color-bg-secondary)',
+        border: '1px solid var(--color-border-default)',
       }}
     >
       <button
@@ -118,7 +118,7 @@ export default function VotePill({
           padding: 2,
           display: 'flex',
           alignItems: 'center',
-          color: state.userVoted === 1 ? '#22c55e' : 'var(--muted)',
+          color: state.userVoted === 1 ? 'var(--color-brand-accent)' : 'var(--muted)',
         }}
       >
         <ArrowUpIcon size={iconSize} filled={state.userVoted === 1} />
@@ -133,9 +133,9 @@ export default function VotePill({
           fontVariantNumeric: 'tabular-nums',
           color:
             state.userVoted === 1
-              ? '#22c55e'
+              ? 'var(--color-brand-accent)'
               : state.userVoted === -1
-              ? '#3b82f6'
+              ? 'var(--color-brand-primary)'
               : 'var(--muted)',
         }}
       >
@@ -153,7 +153,7 @@ export default function VotePill({
           padding: 2,
           display: 'flex',
           alignItems: 'center',
-          color: state.userVoted === -1 ? '#3b82f6' : 'var(--muted)',
+          color: state.userVoted === -1 ? 'var(--color-brand-primary)' : 'var(--muted)',
         }}
       >
         <ArrowDownIcon size={iconSize} filled={state.userVoted === -1} />

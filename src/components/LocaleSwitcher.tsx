@@ -28,9 +28,9 @@ export default function LocaleSwitcher({ style }: { style?: React.CSSProperties 
           onClick={() => setLocale(code)}
           aria-pressed={locale === code}
           style={{
-            background: locale === code ? 'rgba(120,140,255,0.14)' : 'transparent',
-            color: locale === code ? 'var(--accent)' : '#999',
-            border: `1px solid ${locale === code ? 'rgba(120,140,255,0.3)' : 'transparent'}`,
+            background: locale === code ? 'var(--color-brand-primary-muted)' : 'transparent',
+            color: locale === code ? 'var(--accent)' : 'var(--color-text-tertiary)',
+            border: `1px solid ${locale === code ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'transparent'}`,
             borderRadius: 'var(--radius-control)',
             padding: '4px 8px',
             fontSize: 'var(--text-label)',

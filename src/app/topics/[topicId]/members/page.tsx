@@ -35,7 +35,7 @@ interface Topic {
   visibility?: string;
 }
 
-const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#22c55e', '#06b6d4', '#eab308'];
+const AVATAR_COLORS = ['var(--color-brand-primary)', 'var(--color-brand-primary)', 'var(--color-brand-primary)', 'var(--color-status-warning)', 'var(--color-brand-accent)', 'var(--color-brand-primary)', 'var(--color-status-warning)'];
 
 function TopicAvatar({ title, size = 40 }: { title: string; size?: number }) {
   const colorIndex = title.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
@@ -50,7 +50,7 @@ function TopicAvatar({ title, size = 40 }: { title: string; size?: number }) {
       justifyContent: 'center',
       fontSize: size * 0.45,
       fontWeight: 700,
-      color: '#fff',
+      color: 'var(--color-text-inverted)',
       flexShrink: 0,
     }}>
       {title.slice(0, 1).toUpperCase()}
@@ -327,7 +327,7 @@ export default function MembersPage() {
     return (
       <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)' }}>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)' }}>
             {error ?? t('membersPage.topicNotFound')}
           </p>
           <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
@@ -345,8 +345,8 @@ export default function MembersPage() {
         {/* Topic info card */}
         <div style={{
           padding: '16px var(--space-5)',
-          background: 'var(--surface, #0c0e18)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--color-bg-secondary)',
+          border: '1px solid var(--color-border-default)',
           borderRadius: 'var(--radius-card)',
           marginBottom: 'var(--space-5)',
           display: 'flex',
@@ -360,11 +360,11 @@ export default function MembersPage() {
               fontWeight: 800,
               letterSpacing: '-0.03em',
               margin: 0,
-              color: '#e5e7eb',
+              color: 'var(--color-text-primary)',
             }}>
               {topic.title}
             </h1>
-            <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
+            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', margin: '4px 0 0', fontFamily: 'var(--font-mono)' }}>
               {members.length} {members.length === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
             </p>
           </div>
@@ -377,9 +377,9 @@ export default function MembersPage() {
               setTimeout(() => setInviteCopied(false), 2000);
             }}
             style={{
-              background: inviteCopied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
-              color: inviteCopied ? '#22c55e' : '#6b7280',
-              border: `1px solid ${inviteCopied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+              background: inviteCopied ? 'color-mix(in srgb, var(--color-brand-accent) 12%, transparent)' : 'var(--color-bg-tertiary)',
+              color: inviteCopied ? 'var(--color-brand-accent)' : 'var(--color-text-tertiary)',
+              border: `1px solid ${inviteCopied ? 'color-mix(in srgb, var(--color-brand-accent) 30%, transparent)' : 'var(--color-bg-tertiary)'}`,
               borderRadius: 'var(--radius-control)',
               padding: '8px 14px',
               fontSize: 'var(--text-body-sm)',
@@ -406,10 +406,10 @@ export default function MembersPage() {
               gap: 'var(--space-3)',
               padding: '10px 14px',
               marginBottom: 'var(--space-4)',
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.2)',
+              background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
               borderRadius: 'var(--radius-control)',
-              color: '#ef4444',
+              color: 'var(--color-status-danger)',
               fontSize: 'var(--text-caption)',
             }}
           >
@@ -418,7 +418,7 @@ export default function MembersPage() {
               type="button"
               onClick={() => setDmError(null)}
               aria-label={t('membersPage.dismiss')}
-              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 'var(--text-body)', lineHeight: 1, padding: 0 }}
+              style={{ background: 'none', border: 'none', color: 'var(--color-status-danger)', cursor: 'pointer', fontSize: 'var(--text-body)', lineHeight: 1, padding: 0 }}
             >
               ×
             </button>
@@ -480,17 +480,17 @@ export default function MembersPage() {
                   alignItems: 'center',
                   gap: 'var(--space-3)',
                   padding: 'var(--space-3) var(--space-4)',
-                  background: 'var(--surface, #0c0e18)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border-default)',
                   borderRadius: 'var(--radius-card)',
                 }}
               >
                 <Avatar src={req.profileImage} name={req.nickname} size={40} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#e5e7eb' }}>
+                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
                     {req.nickname}
                   </span>
-                  <p style={{ fontSize: 'var(--text-caption)', color: '#6b7280', margin: '2px 0 0', fontFamily: 'monospace' }}>
+                  <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
                     {new Date(req.createdAt).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
                   </p>
                 </div>
@@ -501,9 +501,9 @@ export default function MembersPage() {
                     style={{
                       fontSize: 'var(--text-body-sm)',
                       fontWeight: 600,
-                      background: 'rgba(34,197,94,0.12)',
-                      color: '#22c55e',
-                      border: '1px solid rgba(34,197,94,0.25)',
+                      background: 'color-mix(in srgb, var(--color-brand-accent) 12%, transparent)',
+                      color: 'var(--color-brand-accent)',
+                      border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                       borderRadius: 'var(--radius-control)',
                       padding: '5px 14px',
                       cursor: requestActionLoading === req.id ? 'not-allowed' : 'pointer',
@@ -520,9 +520,9 @@ export default function MembersPage() {
                     style={{
                       fontSize: 'var(--text-body-sm)',
                       fontWeight: 600,
-                      background: 'rgba(239,68,68,0.1)',
-                      color: '#ef4444',
-                      border: '1px solid rgba(239,68,68,0.2)',
+                      background: 'color-mix(in srgb, var(--color-status-danger) 10%, transparent)',
+                      color: 'var(--color-status-danger)',
+                      border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
                       borderRadius: 'var(--radius-control)',
                       padding: '5px 14px',
                       cursor: requestActionLoading === req.id ? 'not-allowed' : 'pointer',
@@ -549,13 +549,13 @@ export default function MembersPage() {
                 alignItems: 'center',
                 gap: 'var(--space-3)',
                 padding: 'var(--space-3) var(--space-4)',
-                background: 'var(--surface, #0c0e18)',
-                border: '1px solid rgba(255,255,255,0.06)',
+                background: 'var(--color-bg-secondary)',
+                border: '1px solid var(--color-border-default)',
                 borderRadius: 'var(--radius-card)',
                 transition: 'background 0.12s',
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#0d0d0d'; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-primary)'; }}
             >
               <UserCard
                 userId={member.userId}
@@ -569,7 +569,7 @@ export default function MembersPage() {
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#e5e7eb' }}>
+                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
                     {member.nickname}
                   </span>
                   {member.badges && member.badges.length > 0 && member.badges.map((b, i) => (
@@ -590,9 +590,9 @@ export default function MembersPage() {
                   style={{
                     fontSize: 'var(--text-body-sm)',
                     fontWeight: 500,
-                    background: 'rgba(120,140,255,0.1)',
+                    background: 'var(--color-brand-primary-muted)',
                     color: 'var(--accent)',
-                    border: '1px solid rgba(120,140,255,0.2)',
+                    border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
                     borderRadius: 'var(--radius-control)',
                     padding: '4px 10px',
                     cursor: dmLoading !== null ? 'not-allowed' : 'pointer',
@@ -611,9 +611,9 @@ export default function MembersPage() {
                 <span style={{
                   fontSize: 'var(--text-body-sm)',
                   fontWeight: 600,
-                  background: 'rgba(234,179,8,0.15)',
-                  color: '#eab308',
-                  border: '1px solid rgba(234,179,8,0.3)',
+                  background: 'color-mix(in srgb, var(--color-status-warning) 15%, transparent)',
+                  color: 'var(--color-status-warning)',
+                  border: '1px solid color-mix(in srgb, var(--color-status-warning) 30%, transparent)',
                   padding: '2px 8px',
                   borderRadius: 'var(--radius-pill)',
                   flexShrink: 0,
@@ -625,9 +625,9 @@ export default function MembersPage() {
                 <span style={{
                   fontSize: 'var(--text-body-sm)',
                   fontWeight: 600,
-                  background: 'rgba(59,130,246,0.15)',
+                  background: 'var(--color-brand-primary-muted)',
                   color: 'var(--accent)',
-                  border: '1px solid rgba(59,130,246,0.3)',
+                  border: '1px solid var(--color-brand-primary)',
                   padding: '2px 8px',
                   borderRadius: 'var(--radius-pill)',
                   flexShrink: 0,
@@ -645,9 +645,9 @@ export default function MembersPage() {
                     style={{
                       fontSize: 'var(--text-body-sm)',
                       fontWeight: 500,
-                      background: confirmKick === member.userId ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
-                      color: '#ef4444',
-                      border: `1px solid ${confirmKick === member.userId ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.15)'}`,
+                      background: confirmKick === member.userId ? 'color-mix(in srgb, var(--color-status-danger) 15%, transparent)' : 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+                      color: 'var(--color-status-danger)',
+                      border: `1px solid ${confirmKick === member.userId ? 'color-mix(in srgb, var(--color-status-danger) 40%, transparent)' : 'color-mix(in srgb, var(--color-status-danger) 15%, transparent)'}`,
                       borderRadius: 'var(--radius-control)',
                       padding: '4px 10px',
                       cursor: 'pointer',
@@ -671,9 +671,9 @@ export default function MembersPage() {
                       style={{
                         fontSize: 'var(--text-body-sm)',
                         fontWeight: 500,
-                        background: 'rgba(59,130,246,0.1)',
+                        background: 'var(--color-brand-primary-muted)',
                         color: 'var(--accent)',
-                        border: '1px solid rgba(59,130,246,0.2)',
+                        border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
                         borderRadius: 'var(--radius-control)',
                         padding: '4px 10px',
                         cursor: 'pointer',
@@ -691,9 +691,9 @@ export default function MembersPage() {
                       style={{
                         fontSize: 'var(--text-body-sm)',
                         fontWeight: 500,
-                        background: 'rgba(255,255,255,0.05)',
-                        color: '#9ca3af',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: 'var(--color-bg-secondary)',
+                        color: 'var(--color-text-secondary)',
+                        border: '1px solid var(--color-border-default)',
                         borderRadius: 'var(--radius-control)',
                         padding: '4px 10px',
                         cursor: 'pointer',
@@ -711,9 +711,9 @@ export default function MembersPage() {
                     style={{
                       fontSize: 'var(--text-body-sm)',
                       fontWeight: 500,
-                      background: confirmTransfer === member.userId ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.08)',
-                      color: '#eab308',
-                      border: `1px solid ${confirmTransfer === member.userId ? 'rgba(234,179,8,0.4)' : 'rgba(234,179,8,0.15)'}`,
+                      background: confirmTransfer === member.userId ? 'color-mix(in srgb, var(--color-status-warning) 20%, transparent)' : 'color-mix(in srgb, var(--color-status-warning) 8%, transparent)',
+                      color: 'var(--color-status-warning)',
+                      border: `1px solid ${confirmTransfer === member.userId ? 'color-mix(in srgb, var(--color-status-warning) 40%, transparent)' : 'color-mix(in srgb, var(--color-status-warning) 15%, transparent)'}`,
                       borderRadius: 'var(--radius-control)',
                       padding: '4px 10px',
                       cursor: 'pointer',
@@ -730,9 +730,9 @@ export default function MembersPage() {
                     style={{
                       fontSize: 'var(--text-body-sm)',
                       fontWeight: 500,
-                      background: confirmKick === member.userId ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
-                      color: '#ef4444',
-                      border: `1px solid ${confirmKick === member.userId ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.15)'}`,
+                      background: confirmKick === member.userId ? 'color-mix(in srgb, var(--color-status-danger) 15%, transparent)' : 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+                      color: 'var(--color-status-danger)',
+                      border: `1px solid ${confirmKick === member.userId ? 'color-mix(in srgb, var(--color-status-danger) 40%, transparent)' : 'color-mix(in srgb, var(--color-status-danger) 15%, transparent)'}`,
                       borderRadius: 'var(--radius-control)',
                       padding: '4px 10px',
                       cursor: 'pointer',

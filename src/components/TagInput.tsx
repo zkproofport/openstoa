@@ -105,7 +105,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder, top
           flexWrap: 'wrap',
           gap: 6,
           padding: 'var(--space-2) var(--space-3)',
-          background: '#111',
+          background: 'var(--color-bg-secondary)',
           border: '1px solid var(--border)',
           borderRadius: 7,
           minHeight: 42,
@@ -121,13 +121,13 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder, top
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
-              background: 'rgba(59,130,246,0.12)',
+              background: 'var(--color-brand-primary-muted)',
               color: 'var(--accent)',
-              border: '1px solid rgba(59,130,246,0.2)',
+              border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
               borderRadius: 4,
               padding: '2px 8px',
               fontSize: 'var(--text-caption)',
-              fontFamily: 'monospace',
+              fontFamily: 'var(--font-mono)',
             }}
           >
             {tag}
@@ -171,7 +171,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder, top
           />
         )}
       </div>
-      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontFamily: 'monospace' }}>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
         {t('tagInput.helper', { count: tags.length, max: maxTags })}
       </div>
 
@@ -183,7 +183,7 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder, top
             top: '100%',
             left: 0,
             right: 0,
-            background: '#0d0d0d',
+            background: 'var(--color-bg-primary)',
             border: '1px solid var(--border)',
             borderRadius: 8,
             marginTop: 4,
@@ -202,13 +202,13 @@ export default function TagInput({ tags, onChange, maxTags = 5, placeholder, top
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: i === selectedIndex ? 'rgba(59,130,246,0.1)' : 'transparent',
+                background: i === selectedIndex ? 'var(--color-brand-primary-muted)' : 'transparent',
                 transition: 'background 0.1s',
               }}
               onMouseEnter={() => setSelectedIndex(i)}
             >
-              <span style={{ fontSize: 'var(--text-caption)', fontFamily: 'monospace', color: 'var(--foreground)' }}>{s.name}</span>
-              <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' }}>{t('tagInput.postCount', { count: s.postCount })}</span>
+              <span style={{ fontSize: 'var(--text-caption)', fontFamily: 'var(--font-mono)', color: 'var(--foreground)' }}>{s.name}</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{t('tagInput.postCount', { count: s.postCount })}</span>
             </div>
           ))}
         </div>

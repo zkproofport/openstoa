@@ -713,31 +713,31 @@ function LandingPageInner() {
         <div onClick={(e) => { if (e.target === e.currentTarget) closeBetaModal(); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 400, background: '#0c0e18', border: '1px solid rgba(120,140,255,0.2)', borderRadius: 'var(--radius-modal)', overflow: 'hidden' }}>
+            style={{ width: '100%', maxWidth: 400, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-modal)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
-              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: '#f0f0f8', margin: 0 }}>{t('landingPage.beta.title')}</h3>
-              <button onClick={closeBetaModal} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1 }}>×</button>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{t('landingPage.beta.title')}</h3>
+              <button onClick={closeBetaModal} style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1 }}>×</button>
             </div>
             <div style={{ padding: '16px 24px 24px' }}>
-              <p style={{ fontSize: 14, color: '#999', lineHeight: 1.6, margin: '0 0 20px' }}>
+              <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: '0 0 20px' }}>
                 {t('landingPage.beta.introPre')} {betaPlatform === 'Both' ? t('landingPage.beta.platformBoth') : betaPlatform === 'iOS' ? t('landingPage.beta.platformIos') : t('landingPage.beta.platformAndroid')} {t('landingPage.beta.introPost')}
               </p>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#888', marginBottom: 6 }}>{t('landingPage.beta.emailLabel')}</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.emailLabel')}</label>
                 <input type="email" value={betaEmail} onChange={(e) => setBetaEmail(e.target.value)} placeholder="you@example.com"
-                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-control)', color: '#fff', outline: 'none', boxSizing: 'border-box', minHeight: 'var(--touch-target-min)' }} />
+                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'var(--color-bg-primary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-control)', color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', minHeight: 'var(--touch-target-min)' }} />
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#888', marginBottom: 6 }}>{t('landingPage.beta.orgLabel')}</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.orgLabel')}</label>
                 <input type="text" value={betaOrg} onChange={(e) => setBetaOrg(e.target.value)} placeholder={t('landingPage.beta.orgPlaceholder')}
-                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-control)', color: '#fff', outline: 'none', boxSizing: 'border-box', minHeight: 'var(--touch-target-min)' }} />
+                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'var(--color-bg-primary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-control)', color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', minHeight: 'var(--touch-target-min)' }} />
               </div>
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#888', marginBottom: 6 }}>{t('landingPage.beta.platformLabel')}</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.platformLabel')}</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['iOS', 'Android', 'Both'].map((plat) => (
                     <button key={plat} onClick={() => setBetaPlatform(plat)}
-                      style={{ flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 500, background: betaPlatform === plat ? 'rgba(120,140,255,0.12)' : 'rgba(0,0,0,0.3)', border: `1px solid ${betaPlatform === plat ? '#788cff' : 'rgba(255,255,255,0.1)'}`, borderRadius: 'var(--radius-control)', color: betaPlatform === plat ? '#788cff' : '#888', cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
+                      style={{ flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 500, background: betaPlatform === plat ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-primary)', border: `1px solid ${betaPlatform === plat ? 'var(--color-brand-primary)' : 'var(--color-border-default)'}`, borderRadius: 'var(--radius-control)', color: betaPlatform === plat ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)', cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
                       {plat}
                     </button>
                   ))}
@@ -745,17 +745,17 @@ function LandingPageInner() {
               </div>
               {!betaSuccess && (
                 <button onClick={submitBetaRequest} disabled={betaSubmitting}
-                  style={{ width: '100%', padding: 12, fontSize: 15, fontWeight: 600, background: '#788cff', color: '#0c0e18', border: 'none', borderRadius: 'var(--radius-control)', cursor: betaSubmitting ? 'not-allowed' : 'pointer', opacity: betaSubmitting ? 0.5 : 1, minHeight: 'var(--touch-target-min)' }}>
+                  style={{ width: '100%', padding: 12, fontSize: 15, fontWeight: 600, background: 'var(--color-brand-primary)', color: 'var(--color-text-inverted)', border: 'none', borderRadius: 'var(--radius-control)', cursor: betaSubmitting ? 'not-allowed' : 'pointer', opacity: betaSubmitting ? 0.5 : 1, minHeight: 'var(--touch-target-min)' }}>
                   {betaSubmitting ? t('landingPage.beta.sending') : t('landingPage.beta.requestInvite')}
                 </button>
               )}
               {betaSuccess && (
-                <div style={{ marginTop: 8, padding: 12, background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 'var(--radius-control)', color: '#34d399', fontSize: 14, textAlign: 'center' }}>
+                <div style={{ marginTop: 8, padding: 12, background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-brand-accent) 20%, transparent)', borderRadius: 'var(--radius-control)', color: 'var(--color-brand-accent)', fontSize: 14, textAlign: 'center' }}>
                   {t('landingPage.beta.successMessage')}
                 </div>
               )}
               {betaError && (
-                <div style={{ marginTop: 8, padding: 12, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 'var(--radius-control)', color: '#f87171', fontSize: 14, textAlign: 'center' }}>
+                <div style={{ marginTop: 8, padding: 12, background: 'color-mix(in srgb, var(--color-status-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)', borderRadius: 'var(--radius-control)', color: 'var(--color-status-danger)', fontSize: 14, textAlign: 'center' }}>
                   {betaError}
                 </div>
               )}

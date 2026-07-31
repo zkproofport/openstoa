@@ -94,7 +94,7 @@ export default function RecordedPage() {
       </div>
 
       <div style={{
-        border: '1px solid rgba(255,255,255,0.06)',
+        border: '1px solid var(--color-border-default)',
         borderRadius: 'var(--radius-card)',
         overflow: 'hidden',
       }}>
@@ -104,7 +104,7 @@ export default function RecordedPage() {
           </div>
         ) : posts.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <p style={{ fontSize: 'var(--text-body)', color: '#6b7280' }}>
+            <p style={{ fontSize: 'var(--text-body)', color: 'var(--color-text-tertiary)' }}>
               {t('recordedPage.empty')}
             </p>
           </div>

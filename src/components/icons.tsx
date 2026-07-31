@@ -1,5 +1,7 @@
 export function ArrowUpIcon({ filled, size = 16 }: { filled?: boolean; size?: number }) {
-  const stroke = filled ? '#22c55e' : 'currentColor';
+  // Upvoted: the semantic success/affirmative token, not a raw green — it has
+  // to stay legible on both grounds.
+  const stroke = filled ? 'var(--color-status-success)' : 'currentColor';
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? stroke : 'none'} stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 19V5" />
@@ -9,7 +11,8 @@ export function ArrowUpIcon({ filled, size = 16 }: { filled?: boolean; size?: nu
 }
 
 export function ArrowDownIcon({ filled, size = 16 }: { filled?: boolean; size?: number }) {
-  const stroke = filled ? '#3b82f6' : 'currentColor';
+  // Downvoted: the brand action color, mirroring the upvote's use of a token.
+  const stroke = filled ? 'var(--color-brand-primary)' : 'currentColor';
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? stroke : 'none'} stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 5v14" />
@@ -21,7 +24,7 @@ export function ArrowDownIcon({ filled, size = 16 }: { filled?: boolean; size?: 
 export function HeartIcon({ filled, size = 18 }: { filled?: boolean; size?: number }) {
   if (filled) {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="#ef4444" stroke="none">
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="var(--color-status-danger)" stroke="none">
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
       </svg>
     );
@@ -148,6 +151,25 @@ export function LogInIcon({ size = 20 }: { size?: number }) {
       <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
       <polyline points="10 17 15 12 10 7" />
       <line x1="15" y1="12" x2="3" y2="12" />
+    </svg>
+  );
+}
+
+// Theme toggle glyphs. Each names the theme it switches TO — the sun is shown
+// while dark is active, because pressing it brings the light one.
+export function SunIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </svg>
+  );
+}
+
+export function MoonIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
     </svg>
   );
 }

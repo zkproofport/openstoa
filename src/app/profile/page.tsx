@@ -174,13 +174,13 @@ function ProfilePageInner() {
             <div
               style={{
                 padding: '10px 14px',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-control)',
                 marginBottom: 'var(--space-5)',
               }}
             >
-              <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', margin: 0, fontFamily: 'monospace' }}>
+              <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', margin: 0, fontFamily: 'var(--font-mono)' }}>
                 {t('profilePage.verifiedIdentity')}
               </p>
               <p
@@ -188,7 +188,7 @@ function ProfilePageInner() {
                   fontSize: 'var(--text-body)',
                   color: 'var(--foreground)',
                   margin: 'var(--space-1) 0 0',
-                  fontFamily: 'monospace',
+                  fontFamily: 'var(--font-mono)',
                   wordBreak: 'break-all',
                 }}
               >
@@ -215,8 +215,8 @@ function ProfilePageInner() {
                       width: 22,
                       height: 22,
                       borderRadius: '50%',
-                      background: '#ef4444',
-                      color: '#fff',
+                      background: 'var(--color-status-danger)',
+                      color: 'var(--color-text-inverted)',
                       border: 'none',
                       fontSize: 'var(--text-body-sm)',
                       cursor: 'pointer',
@@ -236,7 +236,7 @@ function ProfilePageInner() {
                     width: 80,
                     height: 80,
                     borderRadius: '50%',
-                    border: '2px dashed rgba(255,255,255,0.15)',
+                    border: '2px dashed var(--color-bg-tertiary)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -250,8 +250,8 @@ function ProfilePageInner() {
                     flexShrink: 0,
                     opacity: imageUploading ? 0.5 : 1,
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.4)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)'; }}
                 >
                   <input
                     type="file"
@@ -267,7 +267,7 @@ function ProfilePageInner() {
                   <span>{imageUploading ? t('profilePage.uploading') : t('profilePage.uploadPhoto')}</span>
                 </label>
               )}
-              <div style={{ fontSize: 'var(--text-body-sm)', color: '#4b5563', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', lineHeight: 1.5 }}>
                 {t('profilePage.photoHelp.line1')}
                 <br />
                 {t('profilePage.photoHelp.line2')}
@@ -291,8 +291,8 @@ function ProfilePageInner() {
                 autoFocus
                 style={{
                   width: '100%',
-                  background: 'var(--surface, #0c0e18)',
-                  border: `1px solid ${validationError ? '#ef4444' : isValid && nickname ? '#22c55e' : 'var(--border)'}`,
+                  background: 'var(--color-bg-secondary)',
+                  border: `1px solid ${validationError ? 'var(--color-status-danger)' : isValid && nickname ? 'var(--color-brand-accent)' : 'var(--border)'}`,
                   borderRadius: 'var(--radius-control)',
                   padding: 'var(--space-3) 14px',
                   color: 'var(--foreground)',
@@ -313,9 +313,9 @@ function ProfilePageInner() {
                 }}
               >
                 {validationError ? (
-                  <p style={{ fontSize: 'var(--text-body-sm)', color: '#ef4444', margin: 0 }}>{validationError}</p>
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: 0 }}>{validationError}</p>
                 ) : isValid && nickname ? (
-                  <p style={{ fontSize: 'var(--text-body-sm)', color: '#22c55e', margin: 0 }}>{t('profilePage.looksGood')}</p>
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-brand-accent)', margin: 0 }}>{t('profilePage.looksGood')}</p>
                 ) : (
                   <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: 0 }}>
                     {t('profilePage.charsetHint')}
@@ -331,11 +331,11 @@ function ProfilePageInner() {
               <p
                 style={{
                   fontSize: 'var(--text-body)',
-                  color: '#ef4444',
+                  color: 'var(--color-status-danger)',
                   margin: 0,
-                  fontFamily: 'monospace',
-                  background: 'rgba(239,68,68,0.08)',
-                  border: '1px solid rgba(239,68,68,0.2)',
+                  fontFamily: 'var(--font-mono)',
+                  background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
                   borderRadius: 'var(--radius-control)',
                   padding: 'var(--space-2) var(--space-3)',
                 }}
@@ -349,7 +349,7 @@ function ProfilePageInner() {
               disabled={!isValid || loading}
               style={{
                 background: isValid ? 'var(--accent)' : 'var(--border)',
-                color: isValid ? '#fff' : 'var(--muted)',
+                color: isValid ? 'var(--color-text-inverted)' : 'var(--muted)',
                 border: 'none',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-3)',

@@ -168,7 +168,7 @@ export default function TopicChatPage() {
     return (
       <BareChatShell>
         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
             {error ?? t('chatPage.notFound')}
           </p>
           {recoveryLink()}

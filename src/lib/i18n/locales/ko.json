@@ -10,7 +10,9 @@
     "loading": "불러오는 중…",
     "close": "닫기",
     "add": "추가",
-    "networkError": "네트워크 오류."
+    "networkError": "네트워크 오류.",
+    "themeToLight": "밝은 테마로 전환",
+    "themeToDark": "어두운 테마로 전환"
   },
   "profilePage": {
     "title": "닉네임 설정",

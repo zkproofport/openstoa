@@ -69,8 +69,8 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
             marginTop: 8,
             borderRadius: 10,
             overflow: 'hidden',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-border-default)',
             aspectRatio: '16 / 9',
             cursor: imgs.length > 0 ? 'zoom-in' : 'default',
           }}
@@ -95,7 +95,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#6b7280',
+                color: 'var(--color-text-tertiary)',
                 fontSize: 13,
               }}
             >
@@ -192,8 +192,8 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
             position: 'relative',
             borderRadius: 10,
             overflow: 'hidden',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-border-default)',
             aspectRatio: '16 / 10',
           }}
         >
@@ -345,7 +345,7 @@ function arrowStyle(side: 'left' | 'right'): React.CSSProperties {
     width: 32,
     height: 32,
     borderRadius: '50%',
-    border: '1px solid rgba(255,255,255,0.15)',
+    border: '1px solid var(--color-border-default)',
     background: 'rgba(0,0,0,0.5)',
     color: '#fff',
     cursor: 'pointer',

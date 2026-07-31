@@ -293,7 +293,7 @@ export default function UserCard({
               style={{
                 width: '100%',
                 background: 'var(--accent)',
-                color: '#fff',
+                color: 'var(--color-text-inverted)',
                 border: 'none',
                 borderRadius: 'var(--radius-control)',
                 padding: '7px 0',

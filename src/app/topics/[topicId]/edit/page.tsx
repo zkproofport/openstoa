@@ -154,7 +154,7 @@ export default function EditTopicPage() {
     return (
       <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)' }}>{error}</p>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)' }}>{error}</p>
           <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
             {'\u2190'} {t('editTopicPage.backToTopics')}
           </Link>
@@ -191,7 +191,7 @@ export default function EditTopicPage() {
               htmlFor="title"
               style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              {t('editTopicPage.titleLabel')} <span style={{ color: '#ef4444' }}>*</span>
+              {t('editTopicPage.titleLabel')} <span style={{ color: 'var(--color-status-danger)' }}>*</span>
             </label>
             <input
               id="title"
@@ -203,7 +203,7 @@ export default function EditTopicPage() {
               autoFocus
               style={{
                 width: '100%',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-3) 14px',
@@ -214,7 +214,7 @@ export default function EditTopicPage() {
                 minHeight: 'var(--touch-target-min)',
                 boxSizing: 'border-box',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-brand-primary)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
           </div>
@@ -236,7 +236,7 @@ export default function EditTopicPage() {
               rows={3}
               style={{
                 width: '100%',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-3) 14px',
@@ -248,7 +248,7 @@ export default function EditTopicPage() {
                 lineHeight: 1.6,
                 fontFamily: 'inherit',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-brand-primary)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
           </div>
@@ -272,7 +272,7 @@ export default function EditTopicPage() {
                       height: 80,
                       borderRadius: '50%',
                       objectFit: 'cover',
-                      border: '2px solid rgba(255,255,255,0.1)',
+                      border: '2px solid var(--color-border-default)',
                     }}
                   />
                   <button
@@ -290,8 +290,8 @@ export default function EditTopicPage() {
                       width: 22,
                       height: 22,
                       borderRadius: '50%',
-                      background: '#ef4444',
-                      color: '#fff',
+                      background: 'var(--color-status-danger)',
+                      color: 'var(--color-text-inverted)',
                       border: 'none',
                       fontSize: 'var(--text-body-sm)',
                       cursor: 'pointer',
@@ -310,13 +310,13 @@ export default function EditTopicPage() {
                     width: 80,
                     height: 80,
                     borderRadius: '50%',
-                    border: '2px dashed rgba(255,255,255,0.15)',
+                    border: '2px dashed var(--color-bg-tertiary)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
                     fontSize: 28,
-                    color: 'rgba(255,255,255,0.2)',
+                    color: 'var(--color-text-tertiary)',
                     transition: 'border-color 0.12s',
                   }}
                 >
@@ -338,7 +338,7 @@ export default function EditTopicPage() {
           </div>
 
           {error && (
-            <p style={{ color: '#ef4444', fontSize: 'var(--text-body-sm)' }}>{error}</p>
+            <p style={{ color: 'var(--color-status-danger)', fontSize: 'var(--text-body-sm)' }}>{error}</p>
           )}
 
           {/* Submit */}
@@ -348,8 +348,8 @@ export default function EditTopicPage() {
               disabled={!title.trim() || submitting}
               style={{
                 flex: 1,
-                background: !title.trim() || submitting ? 'rgba(59,130,246,0.3)' : 'var(--accent)',
-                color: '#fff',
+                background: !title.trim() || submitting ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'var(--accent)',
+                color: 'var(--color-text-inverted)',
                 border: 'none',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-3) 0',
@@ -372,8 +372,8 @@ export default function EditTopicPage() {
                 fontSize: 'var(--text-body)',
                 fontWeight: 600,
                 color: 'var(--muted)',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'var(--color-bg-tertiary)',
+                border: '1px solid var(--color-border-default)',
                 borderRadius: 'var(--radius-control)',
                 textDecoration: 'none',
                 transition: 'all 0.12s',

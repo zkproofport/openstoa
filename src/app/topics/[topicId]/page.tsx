@@ -484,7 +484,7 @@ export default function TopicPage() {
             href="/"
             style={{
               background: 'var(--accent)',
-              color: '#fff',
+              color: 'var(--color-text-inverted)',
               textDecoration: 'none',
               borderRadius: 'var(--radius-control)',
               padding: '10px var(--space-5)',
@@ -504,7 +504,7 @@ export default function TopicPage() {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
         <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)' }}>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)' }}>
             {error ?? t('topicPage.topicNotFound')}
           </p>
           <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
@@ -542,12 +542,12 @@ export default function TopicPage() {
         <div
           style={{
             padding: '10px 16px',
-            background: 'rgba(120,140,255,0.06)',
-            border: '1px solid rgba(120,140,255,0.12)',
+            background: 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)',
             borderRadius: 'var(--radius-control)',
             marginBottom: 'var(--space-5)',
             fontSize: 'var(--text-body-sm)',
-            color: '#888',
+            color: 'var(--color-text-secondary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -576,12 +576,12 @@ export default function TopicPage() {
         <div
           style={{
             padding: '10px 16px',
-            background: 'rgba(239,68,68,0.06)',
-            border: '1px solid rgba(239,68,68,0.15)',
+            background: 'color-mix(in srgb, var(--color-status-danger) 6%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--color-status-danger) 15%, transparent)',
             borderRadius: 'var(--radius-control)',
             marginBottom: 'var(--space-4)',
             fontSize: 'var(--text-body-sm)',
-            color: '#f87171',
+            color: 'var(--color-status-danger)',
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--space-2)',
@@ -594,8 +594,8 @@ export default function TopicPage() {
       {/* Topic header */}
       <div style={{
         padding: '18px 22px',
-        background: 'var(--surface, #0c0e18)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--color-bg-secondary)',
+        border: '1px solid var(--color-border-default)',
         borderRadius: 'var(--radius-card)',
         marginBottom: 'var(--space-5)',
         display: 'flex',
@@ -610,16 +610,16 @@ export default function TopicPage() {
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: 'var(--text-heading-sm)', fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: '#e5e7eb' }}>
+            <h1 style={{ fontSize: 'var(--text-heading-sm)', fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: 'var(--color-text-primary)' }}>
               {topic.title}
             </h1>
             {topic.requiresCountryProof && (
               <span style={{
                 fontSize: 'var(--text-caption)',
-                fontFamily: 'monospace',
-                background: 'rgba(59,130,246,0.12)',
+                fontFamily: 'var(--font-mono)',
+                background: 'var(--color-brand-primary-muted)',
                 color: 'var(--accent)',
-                border: '1px solid rgba(59,130,246,0.2)',
+                border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
                 padding: '2px 7px',
                 borderRadius: 4,
               }}>
@@ -633,9 +633,9 @@ export default function TopicPage() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 3,
-                  color: '#22c55e',
-                  background: 'rgba(34,197,94,0.10)',
-                  border: '1px solid rgba(34,197,94,0.25)',
+                  color: 'var(--color-brand-accent)',
+                  background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                   borderRadius: 4,
                   padding: '1px 6px',
                   lineHeight: 1.2,
@@ -650,7 +650,7 @@ export default function TopicPage() {
             )}
           </div>
           {topic.description && (
-            <p style={{ fontSize: 'var(--text-body-sm)', color: '#6b7280', margin: '4px 0 0', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
               {topic.description}
             </p>
           )}
@@ -663,13 +663,13 @@ export default function TopicPage() {
                   alignItems: 'center',
                   gap: 4,
                   fontSize: 'var(--text-caption)',
-                  color: '#6b7280',
-                  fontFamily: 'monospace',
+                  color: 'var(--color-text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
                   textDecoration: 'none',
                   transition: 'color 0.12s',
                 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; }}
               >
                 {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
               </Link>
@@ -677,8 +677,8 @@ export default function TopicPage() {
               <span
                 style={{
                   fontSize: 'var(--text-caption)',
-                  color: '#6b7280',
-                  fontFamily: 'monospace',
+                  color: 'var(--color-text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
                 }}
               >
                 {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
@@ -693,9 +693,9 @@ export default function TopicPage() {
                   gap: 4,
                   fontSize: 'var(--text-caption)',
                   fontWeight: 600,
-                  color: '#9ca3af',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--color-text-secondary)',
+                  background: 'var(--color-bg-tertiary)',
+                  border: '1px solid var(--color-border-default)',
                   borderRadius: 'var(--radius-control)',
                   padding: '3px 10px',
                   textDecoration: 'none',
@@ -703,13 +703,13 @@ export default function TopicPage() {
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.3)';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.08)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
+                  (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = '#9ca3af';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
+                  (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-tertiary)';
                 }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -728,9 +728,9 @@ export default function TopicPage() {
                   gap: 4,
                   fontSize: 'var(--text-caption)',
                   fontWeight: 600,
-                  color: '#9ca3af',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--color-text-secondary)',
+                  background: 'var(--color-bg-tertiary)',
+                  border: '1px solid var(--color-border-default)',
                   borderRadius: 'var(--radius-control)',
                   padding: '3px 10px',
                   textDecoration: 'none',
@@ -738,13 +738,13 @@ export default function TopicPage() {
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.3)';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.08)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
+                  (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = '#9ca3af';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
+                  (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-tertiary)';
                 }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -760,9 +760,9 @@ export default function TopicPage() {
           <button
             onClick={handleCopyInvite}
             style={{
-              background: copied ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)',
-              color: copied ? '#22c55e' : '#6b7280',
-              border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+              background: copied ? 'color-mix(in srgb, var(--color-brand-accent) 12%, transparent)' : 'var(--color-bg-tertiary)',
+              color: copied ? 'var(--color-brand-accent)' : 'var(--color-text-tertiary)',
+              border: `1px solid ${copied ? 'color-mix(in srgb, var(--color-brand-accent) 30%, transparent)' : 'var(--color-bg-tertiary)'}`,
               borderRadius: 'var(--radius-control)',
               padding: '7px 12px',
               fontSize: 'var(--text-caption)',
@@ -782,7 +782,7 @@ export default function TopicPage() {
             href={`/topics/${topicId}/join`}
             style={{
               background: 'var(--accent)',
-              color: '#fff',
+              color: 'var(--color-text-inverted)',
               border: 'none',
               borderRadius: 'var(--radius-control)',
               padding: '7px 16px',
@@ -813,11 +813,11 @@ export default function TopicPage() {
             onFocus={() => { if (tagSuggestions.length > 0) setShowTagSuggestions(true); }}
             style={{
               width: '100%',
-              background: 'var(--surface, #0c0e18)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border-default)',
               borderRadius: 'var(--radius-control)',
               padding: '8px 14px',
-              color: '#e5e7eb',
+              color: 'var(--color-text-primary)',
               fontSize: 'var(--text-body-sm)',
               outline: 'none',
               boxSizing: 'border-box',
@@ -831,8 +831,8 @@ export default function TopicPage() {
               left: 0,
               right: 0,
               marginTop: 4,
-              background: 'var(--surface, #0c0e18)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border-default)',
               borderRadius: 'var(--radius-control)',
               overflow: 'hidden',
               zIndex: 20,
@@ -850,17 +850,17 @@ export default function TopicPage() {
                     background: 'none',
                     border: 'none',
                     padding: '8px 14px',
-                    color: '#e5e7eb',
+                    color: 'var(--color-text-primary)',
                     fontSize: 'var(--text-body-sm)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'background 0.1s',
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-tertiary)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
                 >
                   <span>#{tag.name}</span>
-                  <span style={{ fontSize: 'var(--text-caption)', color: '#6b7280', fontFamily: 'monospace' }}>{tag.postCount}</span>
+                  <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{tag.postCount}</span>
                 </button>
               ))}
             </div>
@@ -878,9 +878,9 @@ export default function TopicPage() {
             <button
               onClick={() => handleTagSelect(null)}
               style={{
-                background: activeTag === null ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-                color: activeTag === null ? '#fff' : '#9ca3af',
-                border: activeTag === null ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                background: activeTag === null ? 'var(--accent)' : 'var(--color-bg-secondary)',
+                color: activeTag === null ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
+                border: activeTag === null ? 'none' : '1px solid var(--color-border-default)',
                 borderRadius: 'var(--radius-pill)',
                 padding: '4px 12px',
                 fontSize: 'var(--text-caption)',
@@ -896,11 +896,11 @@ export default function TopicPage() {
                 key={tag.id}
                 onClick={() => handleTagSelect(tag.slug)}
                 style={{
-                  background: activeTag === tag.slug ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
-                  color: activeTag === tag.slug ? 'var(--accent)' : '#9ca3af',
+                  background: activeTag === tag.slug ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-secondary)',
+                  color: activeTag === tag.slug ? 'var(--accent)' : 'var(--color-text-secondary)',
                   border: activeTag === tag.slug
-                    ? '1px solid rgba(59,130,246,0.3)'
-                    : '1px solid rgba(255,255,255,0.08)',
+                    ? '1px solid var(--color-brand-primary)'
+                    : '1px solid var(--color-border-default)',
                   borderRadius: 'var(--radius-pill)',
                   padding: '4px 12px',
                   fontSize: 'var(--text-caption)',
@@ -928,16 +928,16 @@ export default function TopicPage() {
         alignItems: 'center',
         gap: 6,
         padding: '8px 10px',
-        background: 'rgba(59,130,246,0.03)',
-        border: '1px solid rgba(59,130,246,0.08)',
+        background: 'color-mix(in srgb, var(--color-brand-primary) 3%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
         borderRadius: 'var(--radius-card)',
       }}>
         <button
           onClick={() => handleSortChange('new')}
           style={{
-            background: sortBy === 'new' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-            color: sortBy === 'new' ? '#fff' : '#9ca3af',
-            border: sortBy === 'new' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+            background: sortBy === 'new' ? 'var(--accent)' : 'var(--color-bg-secondary)',
+            color: sortBy === 'new' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
+            border: sortBy === 'new' ? 'none' : '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
             fontSize: 'var(--text-caption)',
@@ -954,9 +954,9 @@ export default function TopicPage() {
         <button
           onClick={() => handleSortChange('popular')}
           style={{
-            background: sortBy === 'popular' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-            color: sortBy === 'popular' ? '#fff' : '#9ca3af',
-            border: sortBy === 'popular' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+            background: sortBy === 'popular' ? 'var(--accent)' : 'var(--color-bg-secondary)',
+            color: sortBy === 'popular' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
+            border: sortBy === 'popular' ? 'none' : '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
             fontSize: 'var(--text-caption)',
@@ -973,9 +973,9 @@ export default function TopicPage() {
         <button
           onClick={() => handleSortChange('recorded')}
           style={{
-            background: sortBy === 'recorded' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-            color: sortBy === 'recorded' ? '#fff' : '#9ca3af',
-            border: sortBy === 'recorded' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+            background: sortBy === 'recorded' ? 'var(--accent)' : 'var(--color-bg-secondary)',
+            color: sortBy === 'recorded' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
+            border: sortBy === 'recorded' ? 'none' : '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
             fontSize: 'var(--text-caption)',
@@ -992,9 +992,9 @@ export default function TopicPage() {
         <button
           onClick={() => handleSortChange('pinned')}
           style={{
-            background: sortBy === 'pinned' ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-            color: sortBy === 'pinned' ? '#fff' : '#9ca3af',
-            border: sortBy === 'pinned' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+            background: sortBy === 'pinned' ? 'var(--accent)' : 'var(--color-bg-secondary)',
+            color: sortBy === 'pinned' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
+            border: sortBy === 'pinned' ? 'none' : '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-pill)',
             padding: '4px 14px',
             fontSize: 'var(--text-caption)',
@@ -1020,11 +1020,11 @@ export default function TopicPage() {
             justifyContent: 'center',
             width: 30,
             height: 30,
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-border-default)',
             borderRadius: '50%',
             cursor: postsLoading ? 'default' : 'pointer',
-            color: '#9ca3af',
+            color: 'var(--color-text-secondary)',
             padding: 0,
             transition: 'all 0.12s',
             flexShrink: 0,
@@ -1032,7 +1032,7 @@ export default function TopicPage() {
           onMouseEnter={(e) => {
             if (!postsLoading) (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
           }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#9ca3af'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
         >
           <RefreshIcon spinning={postsLoading} />
         </button>
@@ -1043,8 +1043,8 @@ export default function TopicPage() {
         {/* Composer (expanded) -- hidden for guests */}
         {sessionChecked && !isGuest && topic?.isMember && composing && (
           <div style={{
-            background: 'var(--surface, #0c0e18)',
-            border: '1px solid rgba(59,130,246,0.3)',
+            background: 'var(--color-bg-secondary)',
+            border: '1px solid var(--color-brand-primary)',
             borderRadius: 'var(--radius-card)',
             padding: '20px',
             marginBottom: 8,
@@ -1064,7 +1064,7 @@ export default function TopicPage() {
                 gap: 12,
                 flexWrap: 'wrap',
               }}>
-                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 700, margin: 0, letterSpacing: '-0.02em', color: '#e5e7eb' }}>
+                <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 700, margin: 0, letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>
                   {t('topicPage.composer.newPost')}
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1073,8 +1073,8 @@ export default function TopicPage() {
                     aria-label={t('topicPage.composer.modeAriaLabel')}
                     style={{
                       display: 'inline-flex',
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border-default)',
                       borderRadius: 'var(--radius-control)',
                       padding: 2,
                       gap: 2,
@@ -1086,15 +1086,15 @@ export default function TopicPage() {
                       aria-selected={composeMode === 'write'}
                       onClick={() => setComposeMode('write')}
                       style={{
-                        background: composeMode === 'write' ? 'rgba(59,130,246,0.18)' : 'transparent',
-                        color: composeMode === 'write' ? 'var(--accent)' : '#9ca3af',
+                        background: composeMode === 'write' ? 'var(--color-brand-primary-muted)' : 'transparent',
+                        color: composeMode === 'write' ? 'var(--accent)' : 'var(--color-text-secondary)',
                         border: 'none',
                         borderRadius: 5,
                         padding: '5px 12px',
                         fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
-                        fontFamily: 'monospace',
+                        fontFamily: 'var(--font-mono)',
                         letterSpacing: '0.02em',
                         transition: 'all 0.12s',
                       }}
@@ -1107,15 +1107,15 @@ export default function TopicPage() {
                       aria-selected={composeMode === 'preview'}
                       onClick={() => setComposeMode('preview')}
                       style={{
-                        background: composeMode === 'preview' ? 'rgba(59,130,246,0.18)' : 'transparent',
-                        color: composeMode === 'preview' ? 'var(--accent)' : '#9ca3af',
+                        background: composeMode === 'preview' ? 'var(--color-brand-primary-muted)' : 'transparent',
+                        color: composeMode === 'preview' ? 'var(--accent)' : 'var(--color-text-secondary)',
                         border: 'none',
                         borderRadius: 5,
                         padding: '5px 12px',
                         fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
-                        fontFamily: 'monospace',
+                        fontFamily: 'var(--font-mono)',
                         letterSpacing: '0.02em',
                         transition: 'all 0.12s',
                       }}
@@ -1133,14 +1133,14 @@ export default function TopicPage() {
                       alignItems: 'center',
                       gap: 5,
                       background: 'transparent',
-                      color: hasComposerContent() ? '#9ca3af' : '#4b5563',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      color: hasComposerContent() ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)',
+                      border: '1px solid var(--color-border-default)',
                       borderRadius: 'var(--radius-control)',
                       padding: '5px 10px',
                       fontSize: 'var(--text-caption)',
                       fontWeight: 600,
                       cursor: hasComposerContent() ? 'pointer' : 'not-allowed',
-                      fontFamily: 'monospace',
+                      fontFamily: 'var(--font-mono)',
                       letterSpacing: '0.02em',
                       transition: 'all 0.12s',
                     }}
@@ -1164,11 +1164,11 @@ export default function TopicPage() {
                     autoFocus
                     style={{
                       width: '100%',
-                      background: 'var(--surface, #0c0e18)',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'var(--color-bg-secondary)',
+                      border: '1px solid var(--color-border-default)',
                       borderRadius: 'var(--radius-control)',
                       padding: '10px 14px',
-                      color: '#e5e7eb',
+                      color: 'var(--color-text-primary)',
                       // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
                       fontSize: 'var(--text-body)',
                       fontWeight: 600,
@@ -1210,15 +1210,15 @@ export default function TopicPage() {
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 6,
-                        background: postPoll ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
-                        color: postPoll ? 'var(--accent)' : '#9ca3af',
-                        border: postPoll ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                        background: postPoll ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-secondary)',
+                        color: postPoll ? 'var(--accent)' : 'var(--color-text-secondary)',
+                        border: postPoll ? '1px solid var(--color-brand-primary)' : '1px solid var(--color-border-default)',
                         borderRadius: 'var(--radius-control)',
                         padding: '6px 12px',
                         fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
-                        fontFamily: 'monospace',
+                        fontFamily: 'var(--font-mono)',
                         transition: 'all 0.12s',
                       }}
                     >
@@ -1249,7 +1249,7 @@ export default function TopicPage() {
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-card)',
                     padding: '18px 20px',
-                    background: '#0a0a0a',
+                    background: 'var(--color-bg-primary)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 12,
@@ -1262,12 +1262,12 @@ export default function TopicPage() {
                       letterSpacing: '-0.03em',
                       margin: 0,
                       lineHeight: 1.3,
-                      color: '#e5e7eb',
+                      color: 'var(--color-text-primary)',
                     }}>
                       {postTitle}
                     </h2>
                   ) : (
-                    <p style={{ fontSize: 'var(--text-caption)', color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
+                    <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: 0, fontFamily: 'var(--font-mono)' }}>
                       {t('topicPage.composer.titleEmpty')}
                     </p>
                   )}
@@ -1277,13 +1277,13 @@ export default function TopicPage() {
                         <span
                           key={tag}
                           style={{
-                            background: 'rgba(59,130,246,0.08)',
+                            background: 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
                             color: 'var(--accent)',
-                            border: '1px solid rgba(59,130,246,0.15)',
+                            border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)',
                             borderRadius: 4,
                             padding: '2px 8px',
                             fontSize: 'var(--text-caption)',
-                            fontFamily: 'monospace',
+                            fontFamily: 'var(--font-mono)',
                             lineHeight: 1.6,
                           }}
                         >
@@ -1309,7 +1309,7 @@ export default function TopicPage() {
                       <MediaGallery images={postImages} videos={postVideos} mode="detail" />
                     </>
                   ) : (
-                    <p style={{ fontSize: 'var(--text-caption)', color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
+                    <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: 0, fontFamily: 'var(--font-mono)' }}>
                       {t('topicPage.composer.bodyEmpty')}
                     </p>
                   )}
@@ -1342,7 +1342,7 @@ export default function TopicPage() {
               )}
 
               {postError && (
-                <p style={{ fontSize: 'var(--text-body-sm)', color: '#ef4444', margin: '12px 0 0', fontFamily: 'monospace' }}>
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: '12px 0 0', fontFamily: 'var(--font-mono)' }}>
                   {postError}
                 </p>
               )}
@@ -1360,8 +1360,8 @@ export default function TopicPage() {
                     setComposeMode('write');
                   }}
                   style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    color: '#6b7280',
+                    background: 'var(--color-bg-tertiary)',
+                    color: 'var(--color-text-tertiary)',
                     border: 'none',
                     borderRadius: 'var(--radius-control)',
                     padding: '8px 16px',
@@ -1377,7 +1377,7 @@ export default function TopicPage() {
                   disabled={!postTitle.trim() || isComposerEmpty() || submitting}
                   style={{
                     background: 'var(--accent)',
-                    color: '#fff',
+                    color: 'var(--color-text-inverted)',
                     border: 'none',
                     borderRadius: 'var(--radius-control)',
                     padding: '8px 20px',
@@ -1397,7 +1397,7 @@ export default function TopicPage() {
 
         {/* Feed border container */}
         <div style={{
-          border: '1px solid rgba(255,255,255,0.06)',
+          border: '1px solid var(--color-border-default)',
           borderRadius: 'var(--radius-modal)',
           overflow: 'hidden',
         }}>
@@ -1406,7 +1406,7 @@ export default function TopicPage() {
               textAlign: 'center',
               padding: '60px 20px',
             }}>
-              <p style={{ fontSize: 'var(--text-body)', color: '#6b7280' }}>
+              <p style={{ fontSize: 'var(--text-body)', color: 'var(--color-text-tertiary)' }}>
                 {isGuest ? t('topicPage.empty.guest') : t('topicPage.empty.member')}
               </p>
             </div>
@@ -1453,23 +1453,23 @@ export default function TopicPage() {
             height: 56,
             borderRadius: '50%',
             background: 'var(--accent)',
-            color: '#fff',
+            color: 'var(--color-text-inverted)',
             border: 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 24px rgba(59,130,246,0.3)',
+            boxShadow: '0 4px 24px color-mix(in srgb, var(--color-brand-primary) 30%, transparent)',
             transition: 'transform 0.15s, box-shadow 0.15s',
             zIndex: 50,
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = 'scale(1.08)';
-            e.currentTarget.style.boxShadow = '0 6px 32px rgba(59,130,246,0.4)';
+            e.currentTarget.style.boxShadow = '0 6px 32px color-mix(in srgb, var(--color-brand-primary) 40%, transparent)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.boxShadow = '0 4px 24px rgba(59,130,246,0.3)';
+            e.currentTarget.style.boxShadow = '0 4px 24px color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
           }}
           title={t('topicPage.composer.writePost')}
         >

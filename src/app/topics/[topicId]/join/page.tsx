@@ -123,7 +123,7 @@ export default function JoinPage() {
     return (
       <CommunityLayout isGuest={false} sessionChecked={true}>
         <div style={{ padding: '60px 0', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', fontFamily: 'monospace', fontSize: 'var(--text-body-sm)', marginBottom: 'var(--space-4)' }}>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', marginBottom: 'var(--space-4)' }}>
             {error}
           </p>
         </div>
@@ -159,13 +159,13 @@ export default function JoinPage() {
             <div
               style={{
                 padding: 'var(--space-5)',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-card)',
                 marginBottom: 28,
               }}
             >
-              <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', fontFamily: 'monospace', margin: '0 0 var(--space-2)' }}>
+              <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', fontFamily: 'var(--font-mono)', margin: '0 0 var(--space-2)' }}>
                 {t('joinPage.invitedTo')}
               </p>
               <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', margin: '0 0 var(--space-2)' }}>
@@ -180,7 +180,7 @@ export default function JoinPage() {
                 <span
                   style={{
                     fontSize: 'var(--text-body-sm)',
-                    fontFamily: 'monospace',
+                    fontFamily: 'var(--font-mono)',
                     color: 'var(--muted)',
                   }}
                 >
@@ -190,10 +190,10 @@ export default function JoinPage() {
                   <span
                     style={{
                       fontSize: 'var(--text-body)',
-                      fontFamily: 'monospace',
-                      background: 'rgba(59,130,246,0.12)',
+                      fontFamily: 'var(--font-mono)',
+                      background: 'var(--color-brand-primary-muted)',
                       color: 'var(--accent)',
-                      border: '1px solid rgba(59,130,246,0.2)',
+                      border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
                       padding: '2px 7px',
                       borderRadius: 4,
                     }}
@@ -210,7 +210,7 @@ export default function JoinPage() {
             <div
               style={{
                 padding: 'var(--space-5)',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-card)',
                 marginBottom: 20,
@@ -246,8 +246,8 @@ export default function JoinPage() {
                         alignItems: 'center',
                         gap: 'var(--space-2)',
                         padding: '8px 14px',
-                        background: joinProvider === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
-                        border: `1px solid ${joinProvider === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                        background: joinProvider === opt.value ? 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)' : 'var(--color-bg-secondary)',
+                        border: `1px solid ${joinProvider === opt.value ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'var(--border)'}`,
                         borderRadius: 'var(--radius-control)',
                         cursor: 'pointer',
                         transition: 'all 0.12s',
@@ -322,8 +322,8 @@ export default function JoinPage() {
             <div
               style={{
                 padding: '14px 18px',
-                background: 'rgba(34,197,94,0.08)',
-                border: '1px solid rgba(34,197,94,0.25)',
+                background: 'color-mix(in srgb, var(--color-brand-accent) 8%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                 borderRadius: 'var(--radius-card)',
                 marginBottom: 20,
                 display: 'flex',
@@ -331,8 +331,8 @@ export default function JoinPage() {
                 gap: 'var(--space-2)',
               }}
             >
-              <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-              <span style={{ fontSize: 'var(--text-body-sm)', color: '#22c55e', fontWeight: 500 }}>
+              <span style={{ color: 'var(--color-brand-accent)', fontSize: 18 }}>✓</span>
+              <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-brand-accent)', fontWeight: 500 }}>
                 {t('joinPage.verificationComplete')}
               </span>
             </div>
@@ -343,8 +343,8 @@ export default function JoinPage() {
             <div
               style={{
                 padding: 'var(--space-3) var(--space-4)',
-                background: 'rgba(59,130,246,0.05)',
-                border: '1px solid rgba(59,130,246,0.15)',
+                background: 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)',
                 borderRadius: 'var(--radius-control)',
                 marginBottom: 'var(--space-4)',
                 fontSize: 'var(--text-caption)',
@@ -361,10 +361,10 @@ export default function JoinPage() {
             <p
               style={{
                 fontSize: 'var(--text-body)',
-                color: '#ef4444',
-                fontFamily: 'monospace',
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.2)',
+                color: 'var(--color-status-danger)',
+                fontFamily: 'var(--font-mono)',
+                background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-2) var(--space-3)',
                 marginBottom: 'var(--space-4)',
@@ -380,7 +380,7 @@ export default function JoinPage() {
             style={{
               width: '100%',
               background: canJoin ? 'var(--accent)' : 'var(--border)',
-              color: canJoin ? '#fff' : 'var(--muted)',
+              color: canJoin ? 'var(--color-text-inverted)' : 'var(--muted)',
               border: 'none',
               borderRadius: 'var(--radius-card)',
               padding: '14px',

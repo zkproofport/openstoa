@@ -102,7 +102,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       style={{
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-card)',
-        background: 'rgba(255,255,255,0.02)',
+        background: 'var(--color-bg-secondary)',
         padding: '14px 16px',
         marginTop: 'var(--space-3)',
         marginBottom: 'var(--space-3)',
@@ -113,7 +113,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
         <div style={{
           fontSize: 'var(--text-body-sm)',
           fontWeight: 600,
-          color: '#e5e7eb',
+          color: 'var(--color-text-primary)',
           marginBottom: 10,
           lineHeight: 1.4,
         }}>
@@ -134,10 +134,10 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 key={opt.id}
                 style={{
                   position: 'relative',
-                  border: `1px solid ${isUserPick ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  border: `1px solid ${isUserPick ? 'color-mix(in srgb, var(--color-brand-primary) 40%, transparent)' : 'var(--color-bg-tertiary)'}`,
                   borderRadius: 8,
                   padding: 'var(--space-2) var(--space-3)',
-                  background: '#0a0a0a',
+                  background: 'var(--color-bg-primary)',
                   overflow: 'hidden',
                 }}
               >
@@ -148,7 +148,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                     position: 'absolute',
                     inset: 0,
                     width: `${pct}%`,
-                    background: isUserPick ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.05)',
+                    background: isUserPick ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-secondary)',
                     transition: 'width 0.3s ease-out',
                   }}
                 />
@@ -161,7 +161,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 }}>
                   <span style={{
                     fontSize: 'var(--text-caption)',
-                    color: '#e5e7eb',
+                    color: 'var(--color-text-primary)',
                     fontWeight: isUserPick ? 600 : 500,
                     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                     overflow: 'hidden',
@@ -174,8 +174,8 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                   </span>
                   <span style={{
                     fontSize: 'var(--text-label)',
-                    color: isUserPick ? 'var(--accent)' : '#9ca3af',
-                    fontFamily: 'monospace',
+                    color: isUserPick ? 'var(--accent)' : 'var(--color-text-secondary)',
+                    fontFamily: 'var(--font-mono)',
                     fontVariantNumeric: 'tabular-nums',
                     fontWeight: 600,
                     flexShrink: 0,
@@ -199,11 +199,11 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 alignItems: 'center',
                 gap: 10,
                 width: '100%',
-                background: isSelected ? 'rgba(59,130,246,0.12)' : '#0a0a0a',
-                border: `1px solid ${isSelected ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                background: isSelected ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-primary)',
+                border: `1px solid ${isSelected ? 'color-mix(in srgb, var(--color-brand-primary) 40%, transparent)' : 'var(--color-bg-tertiary)'}`,
                 borderRadius: 8,
                 padding: '10px 12px',
-                color: '#e5e7eb',
+                color: 'var(--color-text-primary)',
                 fontSize: 'var(--text-caption)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 textAlign: 'left',
@@ -219,7 +219,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                   width: 16,
                   height: 16,
                   borderRadius: poll.multipleChoice ? 4 : '50%',
-                  border: `1.5px solid ${isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.3)'}`,
+                  border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--color-border-strong)'}`,
                   background: isSelected ? 'var(--accent)' : 'transparent',
                   flexShrink: 0,
                   display: 'inline-flex',
@@ -228,7 +228,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 }}
               >
                 {isSelected && (
-                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="var(--color-text-inverted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="2,6 5,9 10,3" />
                   </svg>
                 )}
@@ -251,8 +251,8 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
         <div style={{
           marginTop: 'var(--space-2)',
           fontSize: 'var(--text-label)',
-          color: '#ef4444',
-          fontFamily: 'monospace',
+          color: 'var(--color-status-danger)',
+          fontFamily: 'var(--font-mono)',
         }}>
           {error}
         </div>
@@ -262,21 +262,21 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       <div style={{
         marginTop: 10,
         paddingTop: 'var(--space-2)',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        borderTop: '1px solid var(--color-border-default)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 8,
         flexWrap: 'wrap',
         fontSize: 12,
-        color: '#9ca3af',
-        fontFamily: 'monospace',
+        color: 'var(--color-text-secondary)',
+        fontFamily: 'var(--font-mono)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>
             {t('poll.voteCount', { count: poll.totalVotes, suffix: poll.totalVotes !== 1 ? 's' : '' })}
           </span>
-          <span style={{ color: '#4b5563' }}>·</span>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>·</span>
           <span>
             {isClosed
               ? t('poll.closed')
@@ -294,15 +294,15 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
               onClick={() => submitVote(selected)}
               disabled={disabled || selected.length === 0}
               style={{
-                background: selected.length === 0 ? 'rgba(255,255,255,0.06)' : 'var(--accent)',
-                color: selected.length === 0 ? '#6b7280' : '#fff',
+                background: selected.length === 0 ? 'var(--color-bg-tertiary)' : 'var(--accent)',
+                color: selected.length === 0 ? 'var(--color-text-tertiary)' : 'var(--color-text-inverted)',
                 border: 'none',
                 borderRadius: 'var(--radius-control)',
                 padding: '5px 14px',
                 fontSize: 'var(--text-label)',
                 fontWeight: 600,
                 cursor: disabled || selected.length === 0 ? 'not-allowed' : 'pointer',
-                fontFamily: 'monospace',
+                fontFamily: 'var(--font-mono)',
                 transition: 'background 0.12s',
               }}
             >
@@ -323,7 +323,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
                 fontSize: 'var(--text-label)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 padding: 0,
-                fontFamily: 'monospace',
+                fontFamily: 'var(--font-mono)',
                 textDecoration: 'underline',
               }}
             >

@@ -81,7 +81,10 @@ describe('<html lang> follows the active locale', () => {
 
   it('layout.tsx resolves the locale server-side and binds it to <html lang>', () => {
     expect(layout).toContain('const locale = await getServerLocale();');
-    expect(layout).toContain('<html lang={locale}>');
+    // Matches any additional attributes (the theme work added
+    // `suppressHydrationWarning`). What this test guards is that `lang` is
+    // bound to the resolved locale — not the exact shape of the tag.
+    expect(layout).toMatch(/<html lang=\{locale\}[^>]*>/);
   });
 
   it('layout.tsx no longer force-locks the dark class (real theme switching needs this removed)', () => {

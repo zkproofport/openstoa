@@ -68,7 +68,7 @@ export default function TopicMembersList({
           onClick={onRetry}
           style={{
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.12)',
+            border: '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-pill)',
             padding: '6px var(--space-4)',
             color: 'var(--foreground)',

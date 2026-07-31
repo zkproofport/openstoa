@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import HeaderSearchBar from '@/components/HeaderSearchBar';
 import LocaleSwitcher from '@/components/LocaleSwitcher';
+import ThemeToggle from '@/components/ThemeToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface UserSession {
@@ -227,6 +228,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
 
           {/* FIX6: language is not an auth-gated preference — visible for
               guests and signed-in users alike, unlike every link above it. */}
+          <ThemeToggle />
           <LocaleSwitcher />
 
           {!sessionChecked ? (

@@ -100,7 +100,7 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
             <div
               style={{
                 fontSize: 11,
-                color: 'var(--warning, #d97706)',
+                color: 'var(--color-status-warning)',
                 marginBottom: 6,
               }}
             >
@@ -147,7 +147,7 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
                     textDecoration: 'none',
                     padding: 'var(--space-1) var(--space-2)',
                     borderRadius: 'var(--radius-control)',
-                    background: 'rgba(120,140,255,0.1)',
+                    background: 'var(--color-brand-primary-muted)',
                   }}
                 >
                   {t('postRecords.viewOnBaseScan')}

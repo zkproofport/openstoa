@@ -26,8 +26,8 @@
  *                (which gates it to :lang(en)), never hand-rolled inline
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, readdirSync } from 'fs';
+import { join, relative, sep } from 'path';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
@@ -37,7 +37,14 @@ import Badge from '@/components/Badge';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import type { Locale } from '@/lib/i18n';
 
-/** The files this sweep owns. */
+/**
+ * Files that got the FULL sweep: color AND typography.
+ *
+ * These seven were the first pass. The typography rules below (12px floor,
+ * `.os-label` for the uppercase idiom) are asserted only for this list
+ * because only these files were actually reworked for type — see
+ * COLOR_SWEPT_FILES for the wider color-only guarantee.
+ */
 const SWEPT_FILES = [
   'src/components/LeftSidebar.tsx',
   'src/components/PostCard.tsx',
@@ -49,58 +56,236 @@ const SWEPT_FILES = [
 ] as const;
 
 /**
- * Values deliberately kept, each with the reason. EMPTY BY DESIGN — the sweep
- * left no hardcoded color, bare `monospace`, or sub-floor font size behind in
- * these seven files. Add an entry here (never a bare exemption in the regex)
- * if a future change genuinely needs one, e.g.:
- *   { file: 'X.tsx', value: '#abcdef', reason: '...' }
+ * Every file the COLOR sweep owns — the seven above plus the rest of
+ * `src/app/**` and `src/components/**`.
+ *
+ * The first pass covered only those seven, and this guard only watched those
+ * seven, so the other ~40 files were never checked: in light mode the topic
+ * title (`#e5e7eb`) and the whole Docs body (`#ededed`) rendered near-white
+ * on white. `no-unwatched-file` at the bottom of this file is what makes
+ * "every file is watched" a fact rather than a claim — it walks the tree and
+ * fails if any .tsx is absent from all three lists.
  */
-const ALLOWLIST: Array<{ file: string; value: string; reason: string }> = [];
+const COLOR_SWEPT_FILES = [
+  ...SWEPT_FILES,
+  // Theme-toggle work: the header now reads tokens, the icons' semantic
+  // colors are tokens, and layout/ThemeToggle carry no colors at all.
+  'src/app/layout.tsx',
+  'src/components/Header.tsx',
+  'src/components/ThemeToggle.tsx',
+  'src/components/icons.tsx',
+  'src/app/ask/page.tsx',
+  'src/app/chat/[topicId]/page.tsx',
+  'src/app/dm/[topicId]/page.tsx',
+  'src/app/dm/page.tsx',
+  'src/app/docs/page.tsx',
+  'src/app/my/page.tsx',
+  'src/app/profile/page.tsx',
+  'src/app/recorded/page.tsx',
+  'src/app/recovery/page.tsx',
+  'src/app/api-reference/page.tsx',
+  'src/app/topics/[topicId]/edit/page.tsx',
+  'src/app/topics/[topicId]/join/page.tsx',
+  'src/app/topics/[topicId]/members/page.tsx',
+  'src/app/topics/[topicId]/page.tsx',
+  'src/app/topics/[topicId]/posts/[postId]/page.tsx',
+  'src/app/topics/explore/page.tsx',
+  'src/app/topics/new/page.tsx',
+  'src/app/topics/page.tsx',
+  'src/components/AccountRecovery.tsx',
+  'src/components/AiAgentSettings.tsx',
+  'src/components/Avatar.tsx',
+  'src/components/BareChatShell.tsx',
+  'src/components/BottomTabBar.tsx',
+  'src/components/CommunityLayout.tsx',
+  'src/components/HeaderSearchBar.tsx',
+  'src/components/ImageLightbox.tsx',
+  'src/components/LinkPreview.tsx',
+  'src/components/LocaleSwitcher.tsx',
+  'src/components/MentionInput.tsx',
+  'src/components/PollEditor.tsx',
+  'src/components/PollRenderer.tsx',
+  'src/components/PostRecordsSection.tsx',
+  'src/components/ProofGate.tsx',
+  'src/components/SNSContent.tsx',
+  'src/components/SNSEditor.tsx',
+  'src/components/Spinner.tsx',
+  'src/components/TagInput.tsx',
+  'src/components/TopicAvatar.tsx',
+  'src/components/TopicMembersList.tsx',
+  'src/components/TopicMuteToggle.tsx',
+  'src/components/UserCard.tsx',
+  'src/components/post/BookmarkButton.tsx',
+  'src/components/post/MediaGallery.tsx',
+  'src/components/post/ReactionRow.tsx',
+  'src/components/post/VotePill.tsx',
+] as const;
+
+/**
+ * Named exclusions. A file here is NOT unwatched — it is watched by a human
+ * decision recorded on this line, and `no-unwatched-file` still requires it
+ * to appear in exactly one list.
+ */
+const EXCLUDED_FILES: Array<{ file: string; reason: string }> = [
+  {
+    file: 'src/app/page.tsx',
+    reason:
+      'Landing: a bespoke permanently-dark split-screen composition (--human-*/--agent-*/--center-glow, documented as out-of-system in globals.css) plus a particle canvas that needs raw rgba() for ctx.fillStyle. Its one ordinary surface, the beta-signup modal, IS tokenized.',
+  },
+];
+
+/**
+ * Literals deliberately kept, one line of reasoning each. `isAllowed` matches
+ * on file + value, so a value repeated within one file needs a single entry.
+ *
+ * Two things earn a place here and nothing else does:
+ *  1. MEDIA CHROME — a black scrim laid over the user's own photo or video,
+ *     and the white glyphs on top of it. That scrim is not a page ground; it
+ *     must stay black in light mode too, or the controls lose their contrast
+ *     against the underlying image.
+ *  2. DROP SHADOWS — `rgba(0,0,0,α)` in a boxShadow. A shadow is cast light,
+ *     black in both themes; there is no shadow token to map it onto.
+ */
+const ALLOWLIST: Array<{ file: string; value: string; reason: string }> = [
+  // ── 1. Media chrome ──
+  { file: 'src/components/Header.tsx', value: '#788cff', reason: 'Inside the AI-Ask link commented out on 2026-05-25 (LLM providers deprecated) — dead markup kept verbatim so re-enabling is one uncomment, never rendered.' },
+  { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.25)', reason: 'Same disabled AI-Ask block.' },
+  { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.1)', reason: 'Same disabled AI-Ask block.' },
+  { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.5)', reason: 'Same disabled AI-Ask block.' },
+  { file: 'src/components/ImageLightbox.tsx', value: 'rgba(0,0,0,0.9)', reason: 'Full-screen lightbox scrim — black over the photo in both themes.' },
+  { file: 'src/components/ImageLightbox.tsx', value: 'rgba(0,0,0,0.6)', reason: 'Lightbox panel shadow over the scrim.' },
+  { file: 'src/components/ImageLightbox.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Prev/next arrow pill, sits on the photo.' },
+  { file: 'src/components/ImageLightbox.tsx', value: 'rgba(255,255,255,0.35)', reason: 'Inactive dot indicator on the photo.' },
+  { file: 'src/components/ImageLightbox.tsx', value: 'rgba(255,255,255,0.7)', reason: 'Caption text on the black scrim.' },
+  { file: 'src/components/ImageLightbox.tsx', value: '#fff', reason: 'Close button, counter and active dot on the black scrim.' },
+  { file: 'src/components/post/MediaGallery.tsx', value: 'rgba(0,0,0,0.65)', reason: 'Play button + media counter, sit on the thumbnail.' },
+  { file: 'src/components/post/MediaGallery.tsx', value: 'rgba(0,0,0,0.45)', reason: 'Carousel arrow pill on the image.' },
+  { file: 'src/components/post/MediaGallery.tsx', value: 'rgba(0,0,0,0.5)', reason: 'Video overlay control ground.' },
+  { file: 'src/components/post/MediaGallery.tsx', value: 'rgba(255,255,255,0.4)', reason: 'Inactive dot indicator on the image.' },
+  { file: 'src/components/post/MediaGallery.tsx', value: '#fff', reason: 'Play glyph, counter and active dot on the media scrim.' },
+  { file: 'src/components/post/MediaGallery.tsx', value: '#000', reason: '<video> letterbox ground — black in both themes.' },
+  { file: 'src/app/my/page.tsx', value: 'rgba(0,0,0,0.55)', reason: 'Avatar hover scrim over the profile photo.' },
+  { file: 'src/app/my/page.tsx', value: '#fff', reason: '"Change photo" label on that avatar scrim.' },
+  { file: 'src/components/SNSEditor.tsx', value: 'rgba(0,0,0,0.7)', reason: 'Attachment delete button, sits on the thumbnail.' },
+  { file: 'src/components/SNSEditor.tsx', value: '#fff', reason: 'The × glyph on that thumbnail button.' },
+  { file: 'src/components/CommunityLayout.tsx', value: 'rgba(0,0,0,0.6)', reason: 'Mobile drawer backdrop — dims the page in both themes.' },
+  { file: 'src/components/AiAgentSettings.tsx', value: 'rgba(0,0,0,0.4)', reason: 'API-key reveal panel — deliberately near-black so a shoulder-surfed key stays low-contrast.' },
+
+  // ── 2. Drop shadows ──
+  { file: 'src/app/topics/[topicId]/page.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Tag-suggestion dropdown shadow.' },
+  { file: 'src/app/topics/[topicId]/posts/[postId]/page.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Comment overflow-menu drop shadow.' },
+  { file: 'src/components/TagInput.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Tag autocomplete shadow.' },
+  { file: 'src/components/MentionInput.tsx', value: 'rgba(0,0,0,0.5)', reason: 'Mention autocomplete shadow.' },
+  { file: 'src/components/post/ReactionRow.tsx', value: 'rgba(0,0,0,0.5)', reason: 'Emoji picker popover drop shadow.' },
+  { file: 'src/components/UserCard.tsx', value: 'rgba(0,0,0,0.45)', reason: 'User hover-card drop shadow.' },
+
+  // ── 3. One-offs ──
+  {
+    file: 'src/components/Avatar.tsx',
+    value: 'AVATAR_PALETTE',
+    reason:
+      'Categorical identity palette: 8 hues that must stay mutually distinguishable so two users never collide. Collapsing them onto the 3 semantic tokens merged 8 hues into 3 — a behavior change, not a recolor. White initials read on every hue in both themes.',
+  },
+  {
+    file: 'src/components/TopicAvatar.tsx',
+    value: 'AVATAR_COLORS',
+    reason: 'Same categorical identity palette as Avatar.tsx.',
+  },
+  {
+    file: 'src/components/SNSContent.tsx',
+    value: '#418',
+    reason: 'Not a color — "React error #418" in three comments. The hex scan matches any 3-char run.',
+  },
+];
 
 function isAllowed(file: string, value: string): boolean {
   return ALLOWLIST.some((a) => a.file === file && a.value === value);
 }
 
+/** Files whose allowlisted literals are identified by name, not by value. */
+const PALETTE_FILES: Record<string, RegExp> = {
+  'src/components/Avatar.tsx': /^\s*'#[0-9a-f]{6}',\s*\/\/|color: '#fff'/,
+  'src/components/TopicAvatar.tsx': /AVATAR_COLORS =|color: '#fff'/,
+  'src/components/SNSContent.tsx': /React (error )?#418|#418 hydration/,
+};
+
 function source(file: string): string {
   return readFileSync(join(process.cwd(), file), 'utf-8');
 }
 
+/**
+ * Strip the lines an allowlist entry covers by name rather than by value, so
+ * the scans below see a file with those lines removed.
+ */
+/**
+ * Prose can't be a color. A `//` line or a `*` JSDoc continuation is commentary,
+ * and scanning it produces false positives that say nothing about what renders —
+ * `Header.tsx` explains a React hydration bug by its error number, `#418`, which
+ * the hex matcher happily read as a color.
+ *
+ * Deliberately line-based and conservative: it drops a line only when the line
+ * IS a comment. A trailing comment after code keeps its whole line in scope, so
+ * a real color can never hide behind one.
+ */
+function stripCommentLines(src: string): string {
+  return src
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+    })
+    .join('\n');
+}
+
+function scannableSource(file: string): string {
+  const pattern = PALETTE_FILES[file];
+  const src = stripCommentLines(source(file));
+  if (!pattern) return src;
+  return src
+    .split('\n')
+    .filter((line) => !pattern.test(line))
+    .join('\n');
+}
+
 describe('token sweep — no hardcoded overlay colors', () => {
-  it.each(SWEPT_FILES)('%s has no rgba(255,255,255,…) white overlay', (file) => {
+  it.each(COLOR_SWEPT_FILES)('%s has no rgba(255,255,255,…) white overlay', (file) => {
     // A white overlay is invisible on the light ground — the exact defect
     // this sweep exists to remove.
-    const hits = source(file).match(/rgba\(\s*255\s*,\s*255\s*,\s*255\s*,/g) ?? [];
-    expect(hits.filter((h) => !isAllowed(file, h))).toEqual([]);
+    const hits = scannableSource(file).match(/rgba\(\s*255\s*,\s*255\s*,\s*255\s*,[^)]*\)/g) ?? [];
+    expect(hits.filter((h) => !isAllowed(file, h.replace(/\s+/g, '')))).toEqual([]);
   });
 
-  it.each(SWEPT_FILES)('%s has no rgba(120,140,255,…) off-palette blue', (file) => {
+  it.each(COLOR_SWEPT_FILES)('%s has no rgba(120,140,255,…) off-palette blue', (file) => {
     // Not the brand indigo (--color-brand-primary) in either theme.
-    const hits = source(file).match(/rgba\(\s*120\s*,\s*140\s*,\s*255\s*,/g) ?? [];
-    expect(hits.filter((h) => !isAllowed(file, h))).toEqual([]);
+    const hits = scannableSource(file).match(/rgba\(\s*120\s*,\s*140\s*,\s*255\s*,[^)]*\)/g) ?? [];
+    expect(hits.filter((h) => !isAllowed(file, h.replace(/\s+/g, '')))).toEqual([]);
   });
 
-  it.each(SWEPT_FILES)('%s has no rgba() literal at all', (file) => {
+  it.each(COLOR_SWEPT_FILES)('%s has no rgba() literal at all', (file) => {
     // Every rgba() in these files was an alpha overlay on an assumed-dark
-    // ground. There is no legitimate remaining use, so the rule is absolute
-    // rather than a color-by-color denylist that the next one slips past.
-    const hits = source(file).match(/rgba\([^)]*\)/g) ?? [];
-    expect(hits.filter((h) => !isAllowed(file, h))).toEqual([]);
+    // ground. There is no legitimate remaining use beyond the media scrims
+    // and drop shadows named in ALLOWLIST, so the rule is absolute rather
+    // than a color-by-color denylist that the next one slips past.
+    // `color-mix(… , transparent)` is the sanctioned replacement for an
+    // alpha tint of a token and is not an rgba() literal.
+    const hits = scannableSource(file).match(/rgba\([^)]*\)/g) ?? [];
+    expect(hits.filter((h) => !isAllowed(file, h.replace(/\s+/g, '')))).toEqual([]);
   });
 
-  it.each(SWEPT_FILES)('%s has no raw hex color literal', (file) => {
+  it.each(COLOR_SWEPT_FILES)('%s has no raw hex color literal', (file) => {
     // 3/4/6/8-digit hex. `#{tag.name}` and other JSX text cannot match: the
     // char class is hex-only and the length is pinned by the word boundary.
-    const hits = source(file).match(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? [];
+    const hits = scannableSource(file).match(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? [];
+    expect(hits.filter((h) => !isAllowed(file, h))).toEqual([]);
+  });
+
+  it.each(COLOR_SWEPT_FILES)('%s uses var(--font-mono), never the bare `monospace` keyword', (file) => {
+    const hits = scannableSource(file).match(/fontFamily:\s*'monospace'/g) ?? [];
     expect(hits.filter((h) => !isAllowed(file, h))).toEqual([]);
   });
 });
 
 describe('token sweep — typography', () => {
-  it.each(SWEPT_FILES)('%s uses var(--font-mono), never the bare `monospace` keyword', (file) => {
-    const hits = source(file).match(/fontFamily:\s*'monospace'/g) ?? [];
-    expect(hits.filter((h) => !isAllowed(file, h))).toEqual([]);
-  });
-
   it.each(SWEPT_FILES)('%s has no numeric fontSize below the 12px floor', (file) => {
     // Boundary: 11 fails, 12 passes. Sizes >= 12 that are still numeric
     // literals (e.g. the chat bubble's deliberate 14/13) are left alone —
@@ -134,6 +319,73 @@ describe('token sweep — typography', () => {
   it('globals.css still gates the uppercase idiom to :lang(en) (the class the sweep now relies on)', () => {
     const css = source('src/app/globals.css');
     expect(css).toMatch(/\.os-label:lang\(en\)\s*{[^}]*text-transform:\s*uppercase;/s);
+  });
+});
+
+// ─── Coverage — the rule that makes the lists above self-maintaining ─────────
+
+/** Every .tsx under a directory, as repo-relative POSIX paths. */
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(join(process.cwd(), dir), { withFileTypes: true })) {
+    const child = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) out.push(...walk(child));
+    else if (entry.name.endsWith('.tsx')) out.push(child);
+  }
+  return out;
+}
+
+describe('token sweep — no file is unwatched', () => {
+  // The original sweep guarded seven files by name, so the ~40 that were
+  // never in the list drifted until light mode broke. Enumerating the tree
+  // instead of trusting a hand-written list is the only version of this
+  // guard that a new file cannot silently slip past.
+  it('every .tsx under src/app and src/components is in exactly one list', () => {
+    const known = new Map<string, number>();
+    for (const f of COLOR_SWEPT_FILES) known.set(f, (known.get(f) ?? 0) + 1);
+    for (const { file } of EXCLUDED_FILES) known.set(file, (known.get(file) ?? 0) + 1);
+
+    const onDisk = [...walk('src/app'), ...walk('src/components')].sort();
+
+    // Unlisted: a file exists but no list mentions it. This is the failure
+    // the light-mode bug was — fix it by sweeping the file and adding it to
+    // COLOR_SWEPT_FILES, or by adding it to EXCLUDED_FILES with a reason.
+    expect(onDisk.filter((f) => !known.has(f))).toEqual([]);
+
+    // Listed twice, or listed but deleted/renamed — both make the guard lie
+    // about what it covers.
+    expect([...known].filter(([, n]) => n > 1).map(([f]) => f)).toEqual([]);
+    expect([...known.keys()].filter((f) => !onDisk.includes(f)).sort()).toEqual([]);
+  });
+
+  it('every exclusion and allowlist entry carries a non-trivial reason', () => {
+    // An allowlist whose entries say "needed" is just a denylist with extra
+    // steps — the reason is the whole point of the mechanism.
+    for (const { file, reason } of EXCLUDED_FILES) {
+      expect(reason.length, `${file} exclusion reason`).toBeGreaterThan(30);
+    }
+    for (const { file, value, reason } of ALLOWLIST) {
+      expect(reason.length, `${file} ${value} reason`).toBeGreaterThan(20);
+    }
+  });
+
+  it('no allowlist entry is stale — each value still appears in its file', () => {
+    // A kept literal that has since been removed should drop off the list,
+    // otherwise the allowlist slowly becomes a blanket exemption.
+    for (const { file, value } of ALLOWLIST) {
+      const needle = value.startsWith('rgba(') ? value.replace(/\s+/g, '') : value;
+      const haystack = source(file).replace(/rgba\(\s*/g, 'rgba(').replace(/\s*,\s*/g, ',');
+      expect(haystack.includes(needle) || source(file).includes(value), `${file} no longer contains ${value}`).toBe(true);
+    }
+  });
+
+  it('the light palette is real, so a white-on-white regression is a real defect', () => {
+    // The premise of every assertion above: light mode ships. If this block
+    // ever disappears, the rules here become theoretical.
+    const css = source('src/app/globals.css');
+    expect(css).toMatch(/@media \(prefers-color-scheme: light\)/);
+    expect(css).toMatch(/--color-bg-primary:\s*#ffffff/i);
+    expect(css).toMatch(/--color-text-primary:\s*#0e0e10/i);
   });
 });
 

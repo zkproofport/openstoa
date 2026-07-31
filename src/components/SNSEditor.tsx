@@ -77,9 +77,9 @@ function UploadIndicator({ count, total }: { count: number; total: number }) {
       position: 'absolute',
       bottom: 60,
       right: 12,
-      background: 'rgba(17,17,17,0.95)',
-      border: '1px solid rgba(59,130,246,0.4)',
-      color: '#93c5fd',
+      background: 'color-mix(in srgb, var(--color-bg-secondary) 95%, transparent)',
+      border: '1px solid var(--color-brand-primary)',
+      color: 'var(--color-brand-primary)',
       fontSize: 'var(--text-label)',
       padding: '6px 12px',
       borderRadius: 'var(--radius-control)',
@@ -321,9 +321,9 @@ export default function SNSEditor({
         border: `1px solid ${isDragging ? 'var(--accent)' : 'var(--border)'}`,
         borderRadius: 'var(--radius-card)',
         overflow: 'hidden',
-        background: '#111',
+        background: 'var(--color-bg-secondary)',
         transition: 'border-color 0.15s',
-        ...(isDragging ? { boxShadow: '0 0 0 3px rgba(59,130,246,0.15)' } : {}),
+        ...(isDragging ? { boxShadow: '0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 15%, transparent)' } : {}),
       }}
     >
       {/* Plain textarea */}
@@ -372,8 +372,8 @@ export default function SNSEditor({
                 height: 96,
                 borderRadius: 8,
                 overflow: 'hidden',
-                background: '#0a0a0a',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--color-bg-primary)',
+                border: '1px solid var(--color-border-default)',
               }}
             >
               <img
@@ -393,7 +393,7 @@ export default function SNSEditor({
                   height: 20,
                   borderRadius: '50%',
                   background: 'rgba(0,0,0,0.7)',
-                  border: '1px solid rgba(255,255,255,0.15)',
+                  border: '1px solid var(--color-border-default)',
                   color: '#fff',
                   cursor: 'pointer',
                   display: 'flex',
@@ -425,13 +425,13 @@ export default function SNSEditor({
                 alignItems: 'center',
                 gap: 8,
                 padding: '6px 10px',
-                background: '#0a0a0a',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--color-bg-primary)',
+                border: '1px solid var(--color-border-default)',
                 borderRadius: 8,
                 fontSize: 'var(--text-caption)',
               }}
             >
-              <span style={{ color: '#9ca3af', flex: 1, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--color-text-secondary)', flex: 1, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {describeVideo(url)}
               </span>
               <button
@@ -442,9 +442,9 @@ export default function SNSEditor({
                   width: 22,
                   height: 22,
                   borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  color: '#9ca3af',
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border-default)',
+                  color: 'var(--color-text-secondary)',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -464,12 +464,12 @@ export default function SNSEditor({
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(59,130,246,0.08)',
+          background: 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           pointerEvents: 'none',
-          border: '2px dashed rgba(59,130,246,0.4)',
+          border: '2px dashed color-mix(in srgb, var(--color-brand-primary) 40%, transparent)',
           borderRadius: 10,
           zIndex: 10,
         }}>
@@ -489,10 +489,10 @@ export default function SNSEditor({
               placeholder={t('snsEditor.videoUrlPlaceholder')}
               style={{
                 flex: 1,
-                background: '#0a0a0a',
-                border: `1px solid ${videoError ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                background: 'var(--color-bg-primary)',
+                border: `1px solid ${videoError ? 'color-mix(in srgb, var(--color-status-danger) 40%, transparent)' : 'var(--color-bg-tertiary)'}`,
                 borderRadius: 7,
-                color: '#e5e7eb',
+                color: 'var(--color-text-primary)',
                 // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
                 fontSize: 'var(--text-body)',
                 padding: 'var(--space-2) var(--space-3)',
@@ -512,7 +512,7 @@ export default function SNSEditor({
               style={{
                 background: 'var(--accent)',
                 border: 'none',
-                color: '#fff',
+                color: 'var(--color-text-inverted)',
                 borderRadius: 7,
                 padding: 'var(--space-2) 14px',
                 fontSize: 'var(--text-caption)',
@@ -528,8 +528,8 @@ export default function SNSEditor({
               onClick={() => { setShowVideoInput(false); setVideoUrlDraft(''); setVideoError(''); }}
               style={{
                 background: 'transparent',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: '#6b7280',
+                border: '1px solid var(--color-border-default)',
+                color: 'var(--color-text-tertiary)',
                 borderRadius: 7,
                 padding: 'var(--space-2) var(--space-3)',
                 fontSize: 'var(--text-caption)',
@@ -541,7 +541,7 @@ export default function SNSEditor({
             </button>
           </div>
           {videoError && (
-            <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4, fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 11, color: 'var(--color-status-danger)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
               {videoError}
             </div>
           )}
@@ -552,8 +552,8 @@ export default function SNSEditor({
         <div style={{
           padding: '6px 18px 8px',
           fontSize: 11,
-          color: '#ef4444',
-          fontFamily: 'monospace',
+          color: 'var(--color-status-danger)',
+          fontFamily: 'var(--font-mono)',
         }}>
           {limitError}
         </div>
@@ -568,7 +568,7 @@ export default function SNSEditor({
         gap: 2,
         padding: '6px 12px',
         borderTop: '1px solid var(--border)',
-        background: '#0d0d0d',
+        background: 'var(--color-bg-primary)',
       }}>
         <button
           type="button"
@@ -577,7 +577,7 @@ export default function SNSEditor({
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#9ca3af',
+            color: 'var(--color-text-secondary)',
             cursor: 'pointer',
             padding: '6px 8px',
             borderRadius: 'var(--radius-control)',
@@ -586,8 +586,8 @@ export default function SNSEditor({
             justifyContent: 'center',
             transition: 'background 0.1s, color 0.1s',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#d1d5db'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-tertiary)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
         >
           <IconImage />
         </button>
@@ -596,9 +596,9 @@ export default function SNSEditor({
           onClick={() => setShowVideoInput(v => !v)}
           title={t('snsEditor.videoLinkTitle')}
           style={{
-            background: showVideoInput ? 'rgba(59,130,246,0.18)' : 'transparent',
+            background: showVideoInput ? 'var(--color-brand-primary-muted)' : 'transparent',
             border: 'none',
-            color: showVideoInput ? '#60a5fa' : '#9ca3af',
+            color: showVideoInput ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)',
             cursor: 'pointer',
             padding: '6px 8px',
             borderRadius: 'var(--radius-control)',
@@ -607,8 +607,8 @@ export default function SNSEditor({
             justifyContent: 'center',
             transition: 'background 0.1s, color 0.1s',
           }}
-          onMouseEnter={(e) => { if (!showVideoInput) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#d1d5db'; }}}
-          onMouseLeave={(e) => { if (!showVideoInput) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}}
+          onMouseEnter={(e) => { if (!showVideoInput) { e.currentTarget.style.background = 'var(--color-bg-tertiary)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}}
+          onMouseLeave={(e) => { if (!showVideoInput) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}}
         >
           <IconVideo />
         </button>
@@ -617,10 +617,10 @@ export default function SNSEditor({
 
         <span style={{
           fontSize: 11,
-          color: charCount > 4800 ? '#ef4444' : '#4b5563',
+          color: charCount > 4800 ? 'var(--color-status-danger)' : 'var(--color-text-tertiary)',
           paddingRight: 4,
           fontVariantNumeric: 'tabular-nums',
-          fontFamily: 'monospace',
+          fontFamily: 'var(--font-mono)',
         }}>
           {charCount.toLocaleString()}
         </span>

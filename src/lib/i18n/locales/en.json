@@ -10,7 +10,9 @@
     "loading": "Loading…",
     "close": "Close",
     "add": "Add",
-    "networkError": "Network error."
+    "networkError": "Network error.",
+    "themeToLight": "Switch to light theme",
+    "themeToDark": "Switch to dark theme"
   },
   "profilePage": {
     "title": "Choose a nickname",

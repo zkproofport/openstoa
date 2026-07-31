@@ -9,15 +9,17 @@
  * mobile are one product and must resolve to the same grounds. TS mirror for
  * JS-side use (canvas/SVG, matchMedia): `src/styles/tokens.ts`.
  *
- * Theme resolution order (highest wins):
- *   1. `:root[data-theme="light"|"dark"]` — explicit override, set by a future
- *      theme toggle (stamps the attribute on <html>). Wins over EVERYTHING
- *      below via CSS specificity (attribute selector), regardless of source
- *      order or OS preference.
- *   2. `@media (prefers-color-scheme: light)` — OS preference, when no
- *      override is set.
- *   3. base `:root` — dark, the fallback when neither of the above applies
- *      (OS prefers dark, or preference unknown/unsupported).
+ * Theme resolution:
+ *   `:root[data-theme="light"|"dark"]` — THE theme. `ThemeScript` (layout.tsx)
+ *   stamps it on <html> before first paint from the user's saved choice.
+ *
+ * The OS preference deliberately does NOT drive this. The mobile mini-app takes
+ * its mode from the host app (`ThemeContext.tsx` -> `host.getTheme()`), never
+ * from the device, and web and mobile are one product — a site that flips with
+ * macOS while the app it embeds into does not is two behaviours, not one. The
+ * `prefers-color-scheme` block below is scoped to `:root:not([data-theme])` so
+ * it only ever applies before the script runs, and the base `:root` (dark)
+ * remains the fallback.
  *
  * NOTE: the three color blocks below intentionally repeat every value in
  * full (no `light-dark()`) — that CSS Color 5 function has weak old-Safari
@@ -155,7 +157,10 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  /* Applies ONLY when the app has not chosen yet (no data-theme on <html>).
+     `ThemeScript` in layout.tsx stamps that attribute before first paint, so in
+     practice this block is a pre-hydration courtesy, not the theme source. */
+  :root:not([data-theme]) {
     color-scheme: light;
     --color-bg-primary: #ffffff;
     --color-bg-secondary: #f5f5f7;
@@ -459,7 +464,7 @@ html:lang(ko) {
 
 ::selection {
   background: var(--accent);
-  color: #fff;
+  color: var(--color-text-inverted);
 }
 
 ::-webkit-scrollbar {
@@ -508,7 +513,7 @@ html:lang(ko) {
 
 .os-btn {
   background: var(--accent);
-  color: #fff;
+  color: var(--color-text-inverted);
   border: none;
   border-radius: var(--radius-control);
   padding: 10px var(--space-5);
@@ -613,7 +618,7 @@ html:lang(ko) {
 
 .os-pill.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--color-text-inverted);
   border-color: var(--accent);
   font-weight: 600;
 }

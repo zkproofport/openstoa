@@ -118,8 +118,8 @@ export default function ProofGate({
         const url = await sdk.generateQRCode(data.deepLink, {
           width: qrSize,
           margin: 2,
-          darkColor: '#ededed',
-          lightColor: '#0a0a0a',
+          darkColor: 'var(--color-text-primary)',
+          lightColor: 'var(--color-bg-primary)',
         });
         setQrDataUrl(url);
       } catch {
@@ -128,7 +128,7 @@ export default function ProofGate({
         const url = await QRCode.toDataURL(data.deepLink, {
           width: qrSize,
           margin: 2,
-          color: { dark: '#ededed', light: '#0a0a0a' },
+          color: { dark: 'var(--color-text-primary)', light: 'var(--color-bg-primary)' },
         });
         setQrDataUrl(url);
       }
@@ -194,7 +194,7 @@ export default function ProofGate({
           onClick={startFlow}
           style={{
             background: 'var(--accent)',
-            color: '#fff',
+            color: 'var(--color-text-inverted)',
             border: 'none',
             borderRadius: 8,
             padding: '10px 24px',
@@ -236,7 +236,7 @@ export default function ProofGate({
   if (state === 'error') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '16px 0' }}>
-        <p style={{ color: '#ef4444', fontSize: 'var(--text-body-sm)', margin: 0, fontFamily: 'monospace' }}>
+        <p style={{ color: 'var(--color-status-danger)', fontSize: 'var(--text-body-sm)', margin: 0, fontFamily: 'var(--font-mono)' }}>
           {errorMsg}
         </p>
         <button
@@ -244,7 +244,7 @@ export default function ProofGate({
           onClick={startFlow}
           style={{
             background: 'var(--accent)',
-            color: '#fff',
+            color: 'var(--color-text-inverted)',
             border: 'none',
             borderRadius: 8,
             padding: '8px 20px',
@@ -266,19 +266,19 @@ export default function ProofGate({
           style={{
             width: 56,
             height: 56,
-            background: 'rgba(34,197,94,0.15)',
-            border: '1px solid rgba(34,197,94,0.3)',
+            background: 'color-mix(in srgb, var(--color-brand-accent) 15%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--color-brand-accent) 30%, transparent)',
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 24,
-            color: '#22c55e',
+            color: 'var(--color-brand-accent)',
           }}
         >
           ✓
         </div>
-        <p style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: '#22c55e', margin: 0 }}>
+        <p style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--color-brand-accent)', margin: 0 }}>
           {t('proofGate.verificationComplete')}
         </p>
       </div>
@@ -296,7 +296,7 @@ export default function ProofGate({
               style={{
                 display: 'block',
                 background: 'var(--accent)',
-                color: '#fff',
+                color: 'var(--color-text-inverted)',
                 border: 'none',
                 borderRadius: 10,
                 padding: '16px 40px',
@@ -319,7 +319,7 @@ export default function ProofGate({
             <div
               style={{
                 padding: 'var(--space-4)',
-                background: '#0a0a0a',
+                background: 'var(--color-bg-primary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-modal)',
                 position: 'relative',
@@ -337,7 +337,7 @@ export default function ProofGate({
                   position: 'absolute',
                   inset: 0,
                   borderRadius: 'var(--radius-modal)',
-                  boxShadow: '0 0 0 1px rgba(59,130,246,0.15) inset',
+                  boxShadow: '0 0 0 1px color-mix(in srgb, var(--color-brand-primary) 15%, transparent) inset',
                   pointerEvents: 'none',
                 }}
               />
@@ -359,7 +359,7 @@ export default function ProofGate({
             fontSize: 'var(--text-label)',
             color: 'var(--accent)',
             textDecoration: 'none',
-            fontFamily: 'monospace',
+            fontFamily: 'var(--font-mono)',
           }}
         >
           {t('proofGate.openInAppSecondary')}

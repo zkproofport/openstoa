@@ -171,7 +171,7 @@ export default function NewTopicPage() {
               htmlFor="title"
               style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
             >
-              {t('newTopicPage.titleLabel')} <span style={{ color: '#ef4444' }}>*</span>
+              {t('newTopicPage.titleLabel')} <span style={{ color: 'var(--color-status-danger)' }}>*</span>
             </label>
             <input
               id="title"
@@ -183,7 +183,7 @@ export default function NewTopicPage() {
               autoFocus
               style={{
                 width: '100%',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-3) 14px',
@@ -194,7 +194,7 @@ export default function NewTopicPage() {
                 minHeight: 'var(--touch-target-min)',
                 boxSizing: 'border-box',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-brand-primary)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
           </div>
@@ -202,7 +202,7 @@ export default function NewTopicPage() {
           {/* Category */}
           <div>
             <label style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 10 }}>
-              {t('newTopicPage.categoryLabel')} <span style={{ color: '#ef4444' }}>*</span>
+              {t('newTopicPage.categoryLabel')} <span style={{ color: 'var(--color-status-danger)' }}>*</span>
             </label>
             {categories.length === 0 ? (
               <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)' }}>{t('newTopicPage.loadingCategories')}</p>
@@ -220,8 +220,8 @@ export default function NewTopicPage() {
                         alignItems: 'center',
                         gap: 10,
                         padding: '10px 14px',
-                        background: selected ? 'rgba(120,140,255,0.08)' : 'var(--surface)',
-                        border: `1px solid ${selected ? 'rgba(120,140,255,0.3)' : 'var(--border)'}`,
+                        background: selected ? 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)' : 'var(--surface)',
+                        border: `1px solid ${selected ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'var(--border)'}`,
                         borderRadius: 'var(--radius-control)',
                         cursor: 'pointer',
                         transition: 'all 0.12s',
@@ -262,7 +262,7 @@ export default function NewTopicPage() {
               rows={3}
               style={{
                 width: '100%',
-                background: 'var(--surface, #0c0e18)',
+                background: 'var(--color-bg-secondary)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-3) 14px',
@@ -274,7 +274,7 @@ export default function NewTopicPage() {
                 lineHeight: 1.6,
                 fontFamily: 'inherit',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-brand-primary)')}
               onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
           </div>
@@ -298,7 +298,7 @@ export default function NewTopicPage() {
                       height: 80,
                       borderRadius: '50%',
                       objectFit: 'cover',
-                      border: '2px solid rgba(255,255,255,0.1)',
+                      border: '2px solid var(--color-border-default)',
                     }}
                   />
                   <button
@@ -315,8 +315,8 @@ export default function NewTopicPage() {
                       width: 22,
                       height: 22,
                       borderRadius: '50%',
-                      background: '#ef4444',
-                      color: '#fff',
+                      background: 'var(--color-status-danger)',
+                      color: 'var(--color-text-inverted)',
                       border: 'none',
                       fontSize: 'var(--text-body-sm)',
                       cursor: 'pointer',
@@ -335,7 +335,7 @@ export default function NewTopicPage() {
                     width: 80,
                     height: 80,
                     borderRadius: '50%',
-                    border: '2px dashed rgba(255,255,255,0.15)',
+                    border: '2px dashed var(--color-bg-tertiary)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -347,10 +347,10 @@ export default function NewTopicPage() {
                     transition: 'border-color 0.15s',
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(59,130,246,0.4)';
+                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
+                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
                   }}
                 >
                   <input
@@ -366,7 +366,7 @@ export default function NewTopicPage() {
                   </span>
                 </label>
               )}
-              <div style={{ fontSize: 'var(--text-body-sm)', color: '#4b5563', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', lineHeight: 1.5 }}>
                 {t('newTopicPage.imageHint.line1')}
                 <br />
                 {t('newTopicPage.imageHint.line2')}
@@ -394,8 +394,8 @@ export default function NewTopicPage() {
                     alignItems: 'flex-start',
                     gap: 10,
                     padding: '10px 14px',
-                    background: visibility === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
-                    border: `1px solid ${visibility === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                    background: visibility === opt.value ? 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)' : 'var(--color-bg-secondary)',
+                    border: `1px solid ${visibility === opt.value ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'var(--border)'}`,
                     borderRadius: 'var(--radius-control)',
                     cursor: opt.disabled ? 'not-allowed' : 'pointer',
                     transition: 'all 0.12s',
@@ -420,9 +420,9 @@ export default function NewTopicPage() {
                     </span>
                     {opt.disabled && (
                       <span className="os-label" style={{
-                        color: '#f59e0b',
-                        background: 'rgba(245,158,11,0.1)',
-                        border: '1px solid rgba(245,158,11,0.2)',
+                        color: 'var(--color-status-warning)',
+                        background: 'color-mix(in srgb, var(--color-status-warning) 10%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--color-status-warning) 20%, transparent)',
                         borderRadius: 'var(--radius-control)',
                         padding: '1px 6px',
                         marginLeft: 'var(--space-2)',
@@ -443,8 +443,8 @@ export default function NewTopicPage() {
           <div
             style={{
               padding: '16px var(--space-5)',
-              background: 'var(--surface, #0c0e18)',
-              border: `1px solid ${proofType !== 'none' ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+              background: 'var(--color-bg-secondary)',
+              border: `1px solid ${proofType !== 'none' ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'var(--border)'}`,
               borderRadius: 'var(--radius-card)',
               transition: 'border-color 0.15s',
             }}
@@ -476,7 +476,7 @@ export default function NewTopicPage() {
               }}
               style={{
                 width: '100%',
-                background: 'rgba(5,10,8,0.9)',
+                background: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-control)',
                 padding: '10px var(--space-3)',
@@ -513,7 +513,7 @@ export default function NewTopicPage() {
                         onClick={() => setCountryMode(mode)}
                         style={{
                           background: countryMode === mode ? 'var(--accent)' : 'var(--border)',
-                          color: countryMode === mode ? '#fff' : 'var(--muted)',
+                          color: countryMode === mode ? 'var(--color-text-inverted)' : 'var(--muted)',
                           border: 'none',
                           borderRadius: 'var(--radius-control)',
                           padding: '6px var(--space-4)',
@@ -553,14 +553,14 @@ export default function NewTopicPage() {
                     placeholder="US, KR, JP, DE"
                     style={{
                       width: '100%',
-                      background: '#0a0a0a',
+                      background: 'var(--color-bg-primary)',
                       border: '1px solid var(--border)',
                       borderRadius: 'var(--radius-control)',
                       padding: '10px var(--space-3)',
                       color: 'var(--foreground)',
                       fontSize: 'var(--text-body)',
                       outline: 'none',
-                      fontFamily: 'monospace',
+                      fontFamily: 'var(--font-mono)',
                       letterSpacing: '0.04em',
                       minHeight: 'var(--touch-target-min)',
                       boxSizing: 'border-box',
@@ -577,13 +577,13 @@ export default function NewTopicPage() {
                             key={i}
                             style={{
                               fontSize: 'var(--text-body)',
-                              fontFamily: 'monospace',
+                              fontFamily: 'var(--font-mono)',
                               background:
                                 code.length === 2
-                                  ? 'rgba(34,197,94,0.1)'
-                                  : 'rgba(239,68,68,0.1)',
-                              color: code.length === 2 ? '#22c55e' : '#ef4444',
-                              border: `1px solid ${code.length === 2 ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                                  ? 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)'
+                                  : 'color-mix(in srgb, var(--color-status-danger) 10%, transparent)',
+                              color: code.length === 2 ? 'var(--color-brand-accent)' : 'var(--color-status-danger)',
+                              border: `1px solid ${code.length === 2 ? 'color-mix(in srgb, var(--color-brand-accent) 20%, transparent)' : 'color-mix(in srgb, var(--color-status-danger) 20%, transparent)'}`,
                               padding: '2px 6px',
                               borderRadius: 4,
                             }}
@@ -599,7 +599,7 @@ export default function NewTopicPage() {
                 {!proofDone && (
                   <div style={{
                     padding: '16px',
-                    background: '#0a0a0a',
+                    background: 'var(--color-bg-primary)',
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-card)',
                     textAlign: 'center',
@@ -624,15 +624,15 @@ export default function NewTopicPage() {
                 {proofDone && (
                   <div style={{
                     padding: '12px 16px',
-                    background: 'rgba(34,197,94,0.08)',
-                    border: '1px solid rgba(34,197,94,0.25)',
+                    background: 'color-mix(in srgb, var(--color-brand-accent) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                     borderRadius: 'var(--radius-card)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                   }}>
-                    <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-                    <span style={{ fontSize: 'var(--text-body)', color: '#22c55e', fontWeight: 500 }}>{t('newTopicPage.verified.country')}</span>
+                    <span style={{ color: 'var(--color-brand-accent)', fontSize: 18 }}>✓</span>
+                    <span style={{ fontSize: 'var(--text-body)', color: 'var(--color-brand-accent)', fontWeight: 500 }}>{t('newTopicPage.verified.country')}</span>
                   </div>
                 )}
               </div>
@@ -643,7 +643,7 @@ export default function NewTopicPage() {
                 {!proofDone && (
                   <div style={{
                     padding: '16px',
-                    background: '#0a0a0a',
+                    background: 'var(--color-bg-primary)',
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-card)',
                     textAlign: 'center',
@@ -666,15 +666,15 @@ export default function NewTopicPage() {
                 {proofDone && (
                   <div style={{
                     padding: '12px 16px',
-                    background: 'rgba(34,197,94,0.08)',
-                    border: '1px solid rgba(34,197,94,0.25)',
+                    background: 'color-mix(in srgb, var(--color-brand-accent) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                     borderRadius: 'var(--radius-card)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                   }}>
-                    <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-                    <span style={{ fontSize: 'var(--text-body)', color: '#22c55e', fontWeight: 500 }}>{t('newTopicPage.verified.kyc')}</span>
+                    <span style={{ color: 'var(--color-brand-accent)', fontSize: 18 }}>✓</span>
+                    <span style={{ fontSize: 'var(--text-body)', color: 'var(--color-brand-accent)', fontWeight: 500 }}>{t('newTopicPage.verified.kyc')}</span>
                   </div>
                 )}
               </div>
@@ -698,8 +698,8 @@ export default function NewTopicPage() {
                         alignItems: 'center',
                         gap: 8,
                         padding: '8px 14px',
-                        background: proofType === opt.value ? 'rgba(59,130,246,0.06)' : '#111',
-                        border: `1px solid ${proofType === opt.value ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+                        background: proofType === opt.value ? 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)' : 'var(--color-bg-secondary)',
+                        border: `1px solid ${proofType === opt.value ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'var(--border)'}`,
                         borderRadius: 'var(--radius-control)',
                         cursor: 'pointer',
                         transition: 'all 0.12s',
@@ -749,8 +749,8 @@ export default function NewTopicPage() {
                           alignItems: 'center',
                           gap: 8,
                           padding: '8px 14px',
-                          background: creatorProvider === opt.value ? 'rgba(34,197,94,0.06)' : '#111',
-                          border: `1px solid ${creatorProvider === opt.value ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
+                          background: creatorProvider === opt.value ? 'color-mix(in srgb, var(--color-brand-accent) 6%, transparent)' : 'var(--color-bg-secondary)',
+                          border: `1px solid ${creatorProvider === opt.value ? 'color-mix(in srgb, var(--color-brand-accent) 30%, transparent)' : 'var(--border)'}`,
                           borderRadius: 'var(--radius-control)',
                           cursor: 'pointer',
                           transition: 'all 0.12s',
@@ -767,7 +767,7 @@ export default function NewTopicPage() {
                               setProofDone(false);
                               setProofGateKey((k) => k + 1);
                             }}
-                            style={{ accentColor: '#22c55e' }}
+                            style={{ accentColor: 'var(--color-brand-accent)' }}
                           />
                           {opt.label}
                         </label>
@@ -801,19 +801,19 @@ export default function NewTopicPage() {
                     placeholder="company.com"
                     style={{
                       width: '100%',
-                      background: '#0a0a0a',
+                      background: 'var(--color-bg-primary)',
                       border: '1px solid var(--border)',
                       borderRadius: 'var(--radius-control)',
                       padding: '10px var(--space-3)',
                       color: 'var(--foreground)',
                       fontSize: 'var(--text-body-sm)',
                       outline: 'none',
-                      fontFamily: 'monospace',
+                      fontFamily: 'var(--font-mono)',
                       letterSpacing: '0.04em',
                       minHeight: 'var(--touch-target-min)',
                       boxSizing: 'border-box',
                     }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)')}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-brand-primary)')}
                     onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
                   />
                   <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '6px 0 0' }}>
@@ -827,7 +827,7 @@ export default function NewTopicPage() {
                 {!proofDone && (
                   <div style={{
                     padding: '16px',
-                    background: '#0a0a0a',
+                    background: 'var(--color-bg-primary)',
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-card)',
                     textAlign: 'center',
@@ -863,15 +863,15 @@ export default function NewTopicPage() {
                 {proofDone && (
                   <div style={{
                     padding: '12px 16px',
-                    background: 'rgba(34,197,94,0.08)',
-                    border: '1px solid rgba(34,197,94,0.25)',
+                    background: 'color-mix(in srgb, var(--color-brand-accent) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
                     borderRadius: 'var(--radius-card)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                   }}>
-                    <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>
-                    <span style={{ fontSize: 'var(--text-body)', color: '#22c55e', fontWeight: 500 }}>{t('newTopicPage.verified.organization')}</span>
+                    <span style={{ color: 'var(--color-brand-accent)', fontSize: 18 }}>✓</span>
+                    <span style={{ fontSize: 'var(--text-body)', color: 'var(--color-brand-accent)', fontWeight: 500 }}>{t('newTopicPage.verified.organization')}</span>
                   </div>
                 )}
               </div>
@@ -881,8 +881,8 @@ export default function NewTopicPage() {
               <div style={{
                 marginTop: 16,
                 padding: 'var(--space-3) var(--space-4)',
-                background: 'rgba(59,130,246,0.05)',
-                border: '1px solid rgba(59,130,246,0.15)',
+                background: 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)',
                 borderRadius: 'var(--radius-control)',
                 fontSize: 'var(--text-caption)',
                 color: 'var(--muted)',
@@ -898,11 +898,11 @@ export default function NewTopicPage() {
             <p
               style={{
                 fontSize: 'var(--text-body)',
-                color: '#ef4444',
+                color: 'var(--color-status-danger)',
                 margin: 0,
-                fontFamily: 'monospace',
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.2)',
+                fontFamily: 'var(--font-mono)',
+                background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-2) var(--space-3)',
               }}
@@ -938,7 +938,7 @@ export default function NewTopicPage() {
               style={{
                 flex: 2,
                 background: canSubmit && !imageUploading ? 'var(--accent)' : 'var(--border)',
-                color: canSubmit && !imageUploading ? '#fff' : 'var(--muted)',
+                color: canSubmit && !imageUploading ? 'var(--color-text-inverted)' : 'var(--muted)',
                 border: 'none',
                 borderRadius: 'var(--radius-control)',
                 padding: 'var(--space-3)',

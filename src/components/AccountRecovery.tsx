@@ -21,7 +21,7 @@ import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 const card: React.CSSProperties = {
   padding: '16px 18px',
-  background: 'var(--surface, #0c0e18)',
+  background: 'var(--color-bg-secondary)',
   border: '1px solid var(--border)',
   borderRadius: 10,
   marginBottom: 'var(--space-4)',
@@ -30,7 +30,7 @@ const btn: React.CSSProperties = {
   padding: '9px 14px',
   borderRadius: 8,
   border: '1px solid var(--border)',
-  background: 'var(--surface, #0c0e18)',
+  background: 'var(--color-bg-secondary)',
   color: 'var(--foreground)',
   fontSize: 'var(--text-body-sm)',
   cursor: 'pointer',
@@ -126,7 +126,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
       {/* Status */}
       <div style={card}>
         <p style={label}>{t('accountRecovery.status')}</p>
-        <p style={{ fontSize: 15, margin: '4px 0 0', color: hasBackup ? 'var(--foreground)' : '#f0a020' }}>
+        <p style={{ fontSize: 15, margin: '4px 0 0', color: hasBackup ? 'var(--foreground)' : 'var(--color-status-warning)' }}>
           {state == null
             ? t('accountRecovery.statusChecking')
             : hasBackup
@@ -156,10 +156,10 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
                 display: 'block',
                 marginTop: 6,
                 padding: '10px 12px',
-                background: 'var(--background, #05060a)',
+                background: 'var(--color-bg-primary)',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
-                fontFamily: 'monospace',
+                fontFamily: 'var(--font-mono)',
                 fontSize: 15,
                 letterSpacing: '0.06em',
                 wordBreak: 'break-all',
@@ -193,9 +193,9 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
                 padding: '9px 12px',
                 borderRadius: 8,
                 border: '1px solid var(--border)',
-                background: 'var(--background, #05060a)',
+                background: 'var(--color-bg-primary)',
                 color: 'var(--foreground)',
-                fontFamily: 'monospace',
+                fontFamily: 'var(--font-mono)',
                 // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
                 fontSize: 'var(--text-body)',
               }}
@@ -207,8 +207,8 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
         </div>
       </div>
 
-      {msg && <p style={{ fontSize: 'var(--text-body-sm)', color: '#3ecf8e', margin: '4px 0 0' }}>{msg}</p>}
-      {err && <p style={{ fontSize: 'var(--text-body-sm)', color: '#f0506e', margin: '4px 0 0' }}>{err}</p>}
+      {msg && <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-brand-accent)', margin: '4px 0 0' }}>{msg}</p>}
+      {err && <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: '4px 0 0' }}>{err}</p>}
     </div>
   );
 }
