@@ -54,11 +54,41 @@ function buttons(): HTMLButtonElement[] {
 }
 
 describe('LocaleSwitcher', () => {
-  it('BOUNDARY: renders exactly two locale buttons, EN and KO', () => {
+  it('BOUNDARY: renders exactly two locale buttons, each named in its OWN language', () => {
     render();
     const btns = buttons();
     expect(btns).toHaveLength(2);
-    expect(btns.map((b) => b.textContent)).toEqual(['EN', 'KO']);
+    // Not "EN"/"KO": those are English abbreviations of language names, so
+    // the control that switches AWAY from English was only readable to
+    // someone who already reads English.
+    expect(btns.map((b) => b.textContent)).toEqual(['English', '한국어']);
+  });
+
+  it('CONTRACT: the labels are NOT translated — the ko surface still says "English", the en surface still says "한국어"', () => {
+    for (const initialLocale of ['en', 'ko'] as const) {
+      act(() => {
+        root.render(
+          <I18nProvider initialLocale={initialLocale}>
+            <LocaleSwitcher />
+          </I18nProvider>,
+        );
+      });
+      expect(buttons().map((b) => b.textContent), initialLocale).toEqual(['English', '한국어']);
+    }
+  });
+
+  it('UI: the Hangul label carries neither the mono face nor Latin tracking (both read as broken kerning on Hangul)', () => {
+    render();
+    const [en, ko] = buttons();
+    expect(en.style.fontFamily).toBe('var(--font-mono)');
+    expect(en.style.letterSpacing).toBe('0.02em');
+    expect(ko.style.fontFamily).toBe('var(--font-sans)');
+    expect(ko.style.letterSpacing).toBe('normal');
+  });
+
+  it('UI: neither label may wrap mid-word inside a narrow container (drawer/header are both tight)', () => {
+    render();
+    for (const b of buttons()) expect(b.style.whiteSpace).toBe('nowrap');
   });
 
   it('CONTRACT: the active locale is aria-pressed, the other is not', () => {

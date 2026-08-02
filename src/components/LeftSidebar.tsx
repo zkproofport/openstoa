@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import TopicAvatar from '@/components/TopicAvatar';
+import ThemeToggle from '@/components/ThemeToggle';
+import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import {
   DEFAULT_LEFT_NAV_GROUP_STATE,
@@ -212,16 +214,21 @@ function NavGroup({
   label,
   open,
   onToggle,
+  className,
   children,
 }: {
   id: LeftNavGroupId;
   label: string;
   open: boolean;
   onToggle: (id: LeftNavGroupId) => void;
+  /** Applied to the `<details>` element itself, so a whole group (label
+   *  included) can be hidden by a CSS rule — see the Conversations group's
+   *  `os-nav-mobile-dupe` below. */
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <details open={open} style={{ marginBottom: 'var(--space-5)' }}>
+    <details open={open} className={className} style={{ marginBottom: 'var(--space-5)' }}>
       <summary
         className="os-label os-nav-summary os-nav-row"
         onClick={(e) => {
@@ -375,10 +382,23 @@ export default function LeftSidebar({
   }
 
   const startTopicActive = pathname === '/topics/new';
-  const allActive = viewMode !== 'my' && !activeCategory && !activeTopicId;
   const myTopicsActive = viewMode === 'my';
   const exploreActive = pathname === '/topics/explore';
   const recordedActive = pathname === '/recorded';
+  // `/docs` currently renders `Header` standalone (no `CommunityLayout`, so
+  // no sidebar), which makes this flag unobservable there today — it is
+  // derived anyway so the row follows the same rule as every other
+  // route-backed row the moment that page adopts the layout.
+  const docsActive = pathname === '/docs';
+  // "All" is the only state-driven row, so it has to defer to the
+  // route-driven ones explicitly. Without that last clause it claimed
+  // `aria-current="page"` on `/recorded` and `/topics/explore` too —
+  // both of which DO render this sidebar — leaving two rows marked as the
+  // current view, which is precisely the ambiguity `aria-current` exists to
+  // remove (a screen reader announces "current page" twice, on rows that
+  // point at different places).
+  const routeRowActive = exploreActive || recordedActive || docsActive;
+  const allActive = viewMode !== 'my' && !activeCategory && !activeTopicId && !routeRowActive;
   const exploreCount = formatNavCount(stats.totalTopics);
   const chatBadge = formatNavBadgeCount(unreadChatCount);
 
@@ -566,13 +586,61 @@ export default function LeftSidebar({
           <span style={navIconStyle(recordedActive)}>⛓</span>
           <span style={navLabelStyle}>{t('sidebar.onChainRecords.title')}</span>
         </Link>
+
+        {/* Docs — REQUIRED here, not a nicety: `Header` hides its three text
+            links below 768px and the bottom tab bar has no Docs tab, so this
+            row is the only way to reach `/docs` on a phone. Public route, so
+            it renders for guests too. */}
+        <Link
+          href="/docs"
+          className="os-nav-row"
+          aria-current={docsActive ? 'page' : undefined}
+          onMouseEnter={() => setHoveredItem('docs')}
+          onMouseLeave={() => setHoveredItem(null)}
+          style={{
+            ...navRowStyle(docsActive),
+            ...(hoveredItem === 'docs' && !docsActive ? { background: 'var(--surface-hover)' } : {}),
+          }}
+        >
+          <span style={navIconStyle(docsActive)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+          </span>
+          <span style={navLabelStyle}>{t('sidebar.docs')}</span>
+        </Link>
       </NavGroup>
 
       {/* Conversations — Chat. Only rendered at all when there is a chat for
           the current user to open (never for guests) — a group whose sole
-          row is hidden would render an empty, pointless disclosure. */}
+          row is hidden would render an empty, pointless disclosure.
+
+          `os-nav-mobile-dupe` (globals.css) hides the WHOLE group below
+          768px, where `BottomTabBar` mounts and already owns a Chat tab
+          pointing at the same `openRail(null)` action. Two consequences of
+          hiding it at that breakpoint and not in JS:
+            - the group, not just the row — by the same argument as above, an
+              empty labelled disclosure is worse than no group at all;
+            - CSS, not `useMediaQuery(MOBILE_QUERY)` — this component renders
+              TWICE (the desktop `.layout-left-sidebar` column and the
+              off-canvas `.mobile-sidebar-drawer`), and `CommunityLayout`
+              already `display: none`s whichever one does not belong at the
+              current width, using this exact breakpoint. So a media query
+              hides the row in precisely the drawer instance that is on
+              screen below 768px and nothing else, with no SSR/hydration
+              seam and no matchMedia subscription. `BottomTabBar` reads the
+              breakpoint in JS because it must not MOUNT (a hidden-but-
+              mounted chat surface opens a second SSE stream); nothing here
+              is stateful, so that cost buys nothing. */}
       {onOpenChat && (
-        <NavGroup id="conversations" label={t('sidebar.conversations')} open={groupState.conversations} onToggle={toggleGroup}>
+        <NavGroup
+          id="conversations"
+          label={t('sidebar.conversations')}
+          open={groupState.conversations}
+          onToggle={toggleGroup}
+          className="os-nav-mobile-dupe"
+        >
           <button
             type="button"
             onClick={onOpenChat}
@@ -807,6 +875,37 @@ export default function LeftSidebar({
         </div>
       </div>
 
+      {/* Preferences — theme + language. Their own labelled group, and LAST:
+          these are settings, not destinations, so they sit below every
+          navigational group rather than competing with them. Both controls
+          are the same instances the header renders (shared `useTranslation()`
+          / `theme.ts` state, so the two can never disagree), and both apply
+          to guests as well — neither is auth-gated.
+
+          Row layout notes: `flexWrap` because the locale labels are written
+          in their OWN language ("English" / "한국어", see `LocaleSwitcher`)
+          and are wider than the old EN/KO — in the 280px drawer they wrap
+          instead of overflowing. `env(safe-area-inset-bottom)` keeps the
+          last interactive row in the drawer clear of the home indicator;
+          everything below it in this nav is static text, this is the one
+          place it matters. */}
+      <NavGroup id="preferences" label={t('sidebar.preferences')} open={groupState.preferences} onToggle={toggleGroup}>
+        <div
+          data-testid="left-nav-preferences"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 'var(--space-2)',
+            minHeight: 'var(--touch-target-min)',
+            padding: '0 var(--space-2)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}
+        >
+          <ThemeToggle />
+          <LocaleSwitcher />
+        </div>
+      </NavGroup>
     </nav>
   );
 }

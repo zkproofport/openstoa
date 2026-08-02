@@ -377,6 +377,21 @@ html:lang(ko) {
   content: '';
 }
 
+/* A left-nav group whose destination the phone-width chrome already provides
+   (`BottomTabBar`'s Chat tab — same `openRail(null)` action as the group's
+   only row). Below 768px `LeftSidebar` is only on screen inside
+   `CommunityLayout`'s off-canvas drawer, and the drawer only exists below
+   768px, so this one rule hides exactly the duplicated affordance and
+   nothing else — the desktop sidebar, where no tab bar exists and this is
+   the sole nav entry to chat, is untouched. Breakpoint is the same 767px
+   cut as `MOBILE_QUERY` (useMediaQuery.ts), `Header`'s own
+   `.header-dupe-mobile` rule, and CommunityLayout's sidebar/drawer swap. */
+@media (max-width: 767px) {
+  .os-nav-mobile-dupe {
+    display: none !important;
+  }
+}
+
 /* ============================================================================
  * Header chrome
  *
@@ -458,6 +473,16 @@ html:lang(ko) {
 
 .os-header-link:focus-visible,
 .os-header-btn:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+/* `LocaleSwitcher.tsx`'s two buttons. Everything else about them is inline
+   (per-locale font/tracking, active tint); `:focus-visible` cannot be, and
+   the UA default ring is the one thing this app never leaves to chance —
+   the switcher now also renders inside the left-nav Preferences group, on
+   the same keyboard path as every `.os-nav-row` above it. */
+.os-locale-btn:focus-visible {
   outline: 2px solid var(--color-brand-primary);
   outline-offset: 2px;
 }

@@ -13,9 +13,9 @@
  *     "99+")
  */
 
-export type LeftNavGroupId = 'browse' | 'conversations' | 'categories';
+export type LeftNavGroupId = 'browse' | 'conversations' | 'categories' | 'preferences';
 
-const GROUP_IDS: readonly LeftNavGroupId[] = ['browse', 'conversations', 'categories'];
+const GROUP_IDS: readonly LeftNavGroupId[] = ['browse', 'conversations', 'categories', 'preferences'];
 
 export type LeftNavGroupState = Record<LeftNavGroupId, boolean>;
 
@@ -26,6 +26,7 @@ export const DEFAULT_LEFT_NAV_GROUP_STATE: LeftNavGroupState = {
   browse: true,
   conversations: true,
   categories: true,
+  preferences: true,
 };
 
 export const LEFT_NAV_GROUPS_KEY = 'openstoa:leftnav-groups';

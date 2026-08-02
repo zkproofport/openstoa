@@ -45,9 +45,10 @@ describe('readLeftNavGroupState', () => {
 
   it('BOUNDARY: each group round-trips through read/write independently', () => {
     const states: LeftNavGroupState[] = [
-      { browse: false, conversations: true, categories: true },
-      { browse: true, conversations: false, categories: true },
-      { browse: true, conversations: true, categories: false },
+      { browse: false, conversations: true, categories: true, preferences: true },
+      { browse: true, conversations: false, categories: true, preferences: true },
+      { browse: true, conversations: true, categories: false, preferences: true },
+      { browse: true, conversations: true, categories: true, preferences: false },
     ];
     for (const state of states) {
       writeLeftNavGroupState(state);
@@ -55,9 +56,25 @@ describe('readLeftNavGroupState', () => {
     }
   });
 
+  it('CONTRACT: every group rendered by LeftSidebar has an id here, so all four persist', () => {
+    // A group whose id is missing from GROUP_IDS still renders, but its
+    // toggle silently stops surviving a remount — the exact bug this pins.
+    expect(Object.keys(DEFAULT_LEFT_NAV_GROUP_STATE).sort()).toEqual(
+      ['browse', 'categories', 'conversations', 'preferences'],
+    );
+  });
+
   it('EMPTY: a partial stored payload fills in the default for the missing keys, not false', () => {
     window.localStorage.setItem(LEFT_NAV_GROUPS_KEY, JSON.stringify({ browse: false }));
-    expect(readLeftNavGroupState()).toEqual({ browse: false, conversations: true, categories: true });
+    expect(readLeftNavGroupState()).toEqual({ browse: false, conversations: true, categories: true, preferences: true });
+  });
+
+  it('EMPTY: a payload written before "preferences" existed still yields the default for it (forward-compatible upgrade)', () => {
+    window.localStorage.setItem(
+      LEFT_NAV_GROUPS_KEY,
+      JSON.stringify({ browse: false, conversations: false, categories: false }),
+    );
+    expect(readLeftNavGroupState()).toEqual({ browse: false, conversations: false, categories: false, preferences: true });
   });
 
   it('HOSTILE: corrupted (non-JSON) stored value falls back to the all-open default, not a throw', () => {
@@ -71,7 +88,7 @@ describe('readLeftNavGroupState', () => {
   });
 
   it('HOSTILE: non-boolean values for a known key fall back to that key\'s default, ignoring the bad value', () => {
-    window.localStorage.setItem(LEFT_NAV_GROUPS_KEY, JSON.stringify({ browse: 'yes', conversations: 1, categories: null }));
+    window.localStorage.setItem(LEFT_NAV_GROUPS_KEY, JSON.stringify({ browse: 'yes', conversations: 1, categories: null, preferences: [] }));
     expect(readLeftNavGroupState()).toEqual(DEFAULT_LEFT_NAV_GROUP_STATE);
   });
 
@@ -92,7 +109,7 @@ describe('writeLeftNavGroupState', () => {
     window.localStorage.setItem = () => {
       throw new Error('quota exceeded');
     };
-    expect(() => writeLeftNavGroupState({ browse: false, conversations: false, categories: false })).not.toThrow();
+    expect(() => writeLeftNavGroupState({ browse: false, conversations: false, categories: false, preferences: false })).not.toThrow();
     window.localStorage.setItem = orig;
   });
 });

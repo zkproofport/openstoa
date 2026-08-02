@@ -94,7 +94,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
   }, []);
 
   return (
-    <header className="os-header" role="banner">
+    <header className={`os-header${onMenuToggle ? ' has-mobile-chrome' : ''}`} role="banner">
       <div
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -190,6 +190,12 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           </Link>
           */}
 
+          {/* Hidden below 768px (`.header-nav-link`, see the style block).
+              Their destinations are not lost: Explore and Recorded are the
+              tab bar's Topics tab and the drawer's on-chain-records row, and
+              Docs was added to the drawer. Icons were considered and rejected
+              — "explore" / "recorded" / "docs" have no glyph a user reads
+              unambiguously, so that would trade an overflow for a guess. */}
           <NavLink href="/topics/explore">{t('header.explore')}</NavLink>
           <NavLink href="/recorded">{t('header.recorded')}</NavLink>
           <NavLink href="/docs">{t('header.docs')}</NavLink>
@@ -218,7 +224,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               aria-pressed={chatOpen}
               aria-label={chatOpen ? t('chat.close') : t('header.openChat')}
               title={chatOpen ? t('chat.close') : t('header.openChat')}
-              className="os-header-btn"
+              className="os-header-btn header-dupe-mobile"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
@@ -228,7 +234,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
 
           {/* FIX6: language is not an auth-gated preference — visible for
               guests and signed-in users alike, unlike every link above it. */}
-          <ThemeToggle />
+          <ThemeToggle style={{ }} />
           <LocaleSwitcher />
 
           {!sessionChecked ? (
@@ -238,7 +244,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           ) : user ? (
             <Link
               href="/my"
-              className="os-header-btn"
+              className="os-header-btn header-dupe-mobile"
               style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-label)',
@@ -274,14 +280,28 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
             justify-content: center;
           }
           .header-nav {
-            gap: 2px !important;
+            gap: var(--space-1) !important;
           }
+          /* The overflow fix is REMOVAL, not shrinking. This row carried nine
+             controls at 390px with only a padding reduction to absorb them, so
+             the wordmark overlapped EXPLORE and the nickname chip was clipped
+             off-screen — and the shrunk targets broke the 44px minimum while
+             not solving anything.
+
+             The three text links go for good at this width: Explore is the tab
+             bar's Topics tab, Recorded is the drawer's on-chain-records row,
+             and Docs was added to the drawer. */
           .header-nav-link {
-            padding: 4px 6px !important;
-            /* Was 10px, below the 12px floor even for an uppercase Latin
-               label (--text-label is the floor, not a ceiling). */
-            font-size: var(--text-label) !important;
-            border: none !important;
+            display: none !important;
+          }
+          /* Controls the mobile chrome already provides — the chat toggle
+             (tab bar's Chat) and the nickname chip (tab bar's Profile).
+             Scoped to .has-mobile-chrome: /docs, /recovery and /profile
+             render this Header WITHOUT CommunityLayout, so they have neither a
+             tab bar nor a drawer. Hiding these there would leave those pages
+             with no navigation at all. */
+          .has-mobile-chrome .header-dupe-mobile {
+            display: none !important;
           }
           .header-search-wrap {
             display: none !important;

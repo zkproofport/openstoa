@@ -55,12 +55,14 @@ import { CommentIcon, LayersIcon, HashIcon, UserIcon, LogInIcon } from '@/compon
  * ── Hamburger + drawer still has a job ───────────────────────────────────
  * `CommunityLayout`'s off-canvas drawer (`LeftSidebar` inside it) is NOT
  * retired by this bar. The drawer's content — topic search, category/tag
- * filters, community stats, the on-chain-records link — has no equivalent
- * among these 4 destinations; only its "Chat" entry and its "Explore
- * Topics" link now literally duplicate a tab here, and that is a single
- * repeated affordance inside a much richer secondary menu, not a second
- * competing PRIMARY nav — this bar is the one place all 4 top-level
- * destinations live now. The redesign prototype's own mobile-web frames
+ * filters, community stats, the on-chain-records link, the Docs link (which
+ * has no tab here at all) — has no equivalent among these 4 destinations.
+ * Its "Chat" group hides itself at exactly this bar's breakpoint
+ * (`os-nav-mobile-dupe`, see `LeftSidebar.tsx`) since the Chat tab below
+ * fires the same `openRail(null)`; its "Explore Topics" link is the one
+ * remaining overlap, a single repeated affordance inside a much richer
+ * secondary menu, not a second competing PRIMARY nav — this bar is the one
+ * place all 4 top-level destinations live now. The prototype's mobile frames
  * keep BOTH the hamburger (`.mhdr .mtap`) and the bottom `.tabbar`
  * simultaneously, which is the same call being made here.
  */

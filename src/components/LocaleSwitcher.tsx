@@ -15,7 +15,16 @@
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { SUPPORTED_LOCALES, type Locale } from '@/lib/i18n';
 
-const LOCALE_LABELS: Record<Locale, string> = { en: 'EN', ko: 'KO' };
+/**
+ * Each locale is named IN ITS OWN LANGUAGE, and never translated — a Korean
+ * speaker who has landed on the English surface has to be able to recognise
+ * the way out, which the previous "EN" / "KO" did not give them: those are
+ * English abbreviations of language names, so the control that switches away
+ * from English was itself only readable in English. (`한국어` therefore stays
+ * `한국어` under the `en` locale, and `English` stays `English` under `ko`;
+ * this is why the labels are a constant here rather than i18n keys.)
+ */
+const LOCALE_LABELS: Record<Locale, string> = { en: 'English', ko: '한국어' };
 
 export default function LocaleSwitcher({ style }: { style?: React.CSSProperties }) {
   const { locale, setLocale, t } = useTranslation();
@@ -25,6 +34,7 @@ export default function LocaleSwitcher({ style }: { style?: React.CSSProperties 
         <button
           key={code}
           type="button"
+          className="os-locale-btn"
           onClick={() => setLocale(code)}
           aria-pressed={locale === code}
           style={{
@@ -34,9 +44,16 @@ export default function LocaleSwitcher({ style }: { style?: React.CSSProperties 
             borderRadius: 'var(--radius-control)',
             padding: '4px 8px',
             fontSize: 'var(--text-label)',
-            fontFamily: 'var(--font-mono)',
+            // Per-BUTTON, not per-active-locale: each button's label is
+            // written in its own script, so the mono face + tracking (a
+            // Latin-label idiom — `.os-label:lang(en)` in globals.css exists
+            // for exactly this reason) applies to "English" and never to
+            // "한국어", where IBM Plex Mono has no Hangul coverage anyway and
+            // tracking reads as broken kerning.
+            fontFamily: code === 'ko' ? 'var(--font-sans)' : 'var(--font-mono)',
             fontWeight: 600,
-            letterSpacing: '0.02em',
+            letterSpacing: code === 'ko' ? 'normal' : '0.02em',
+            whiteSpace: 'nowrap',
             cursor: 'pointer',
           }}
         >

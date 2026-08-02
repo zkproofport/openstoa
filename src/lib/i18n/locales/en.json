@@ -491,6 +491,8 @@
       "body": "Posts recorded on Base are permanently preserved on-chain.",
       "cta": "View recorded posts"
     },
+    "docs": "Docs",
+    "preferences": "Preferences",
     "expand": "Expand",
     "collapse": "Collapse"
   },
