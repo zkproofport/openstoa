@@ -8,6 +8,7 @@ import SNSEditor from '@/components/SNSEditor';
 import SNSContent from '@/components/SNSContent';
 import TagInput from '@/components/TagInput';
 import PostCard from '@/components/PostCard';
+import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import TopicAvatar from '@/components/TopicAvatar';
 import ImageLightbox from '@/components/ImageLightbox';
@@ -82,6 +83,46 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
     >
       <polyline points="1 4 1 10 7 10" />
       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  );
+}
+
+// ─── Sort chips ─────────────────────────────────────────────────────────────
+
+/** The four sort affordances, as data. They were four near-identical 25-line
+ *  inline-styled buttons; the styling now comes from `.os-chip` and the only
+ *  per-chip difference left is its key, its label and its glyph. */
+const SORT_OPTIONS = [
+  {
+    key: 'new',
+    labelKey: 'topicPage.sort.new',
+    path: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
+  },
+  {
+    key: 'popular',
+    labelKey: 'topicPage.sort.popular',
+    path: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />,
+  },
+  {
+    key: 'recorded',
+    labelKey: 'topicPage.sort.recorded',
+    path: <path d="M20 6L9 17l-5-5" />,
+  },
+  {
+    key: 'pinned',
+    labelKey: 'topicPage.sort.pinned',
+    path: <><path d="M12 17v5" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></>,
+  },
+] as const;
+
+function SortIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg
+      width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden
+    >
+      {children}
     </svg>
   );
 }
@@ -451,7 +492,7 @@ export default function TopicPage() {
   if (loading) {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-7) 0' }}>
           <Spinner />
         </div>
       </CommunityLayout>
@@ -469,29 +510,25 @@ export default function TopicPage() {
         </div>
         <div style={{
           textAlign: 'center',
-          padding: '80px 20px',
+          padding: 'var(--space-7) var(--space-5)',
           border: '1px dashed var(--border)',
           borderRadius: 'var(--radius-modal)',
         }}>
-          <p style={{ fontSize: 32, marginBottom: 'var(--space-3)' }}>{'\uD83D\uDD12'}</p>
-          <p style={{ fontSize: 'var(--text-body-lg)', fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 'var(--space-2)' }}>
+          <p style={{ fontSize: 'var(--text-heading-lg)', margin: '0 0 var(--space-3)' }}>{'\uD83D\uDD12'}</p>
+          <p style={{ fontSize: 'var(--text-body-lg)', fontWeight: 600, letterSpacing: '-0.02em', margin: '0 0 var(--space-2)' }}>
             {t('topicPage.privateTopic.title')}
           </p>
-          <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', marginBottom: 'var(--space-5)', lineHeight: 1.6 }}>
+          {/* Prose measure, centred: the explanation is running text, and at
+              1600px it would otherwise stretch the full column width. */}
+          <p style={{
+            fontSize: 'var(--text-body)',
+            color: 'var(--muted)',
+            margin: '0 auto var(--space-5)',
+            maxWidth: 'var(--read-max)',
+          }}>
             {t('topicPage.privateTopic.body')}
           </p>
-          <Link
-            href="/"
-            style={{
-              background: 'var(--accent)',
-              color: 'var(--color-text-inverted)',
-              textDecoration: 'none',
-              borderRadius: 'var(--radius-control)',
-              padding: '10px var(--space-5)',
-              fontSize: 'var(--text-body-sm)',
-              fontWeight: 600,
-            }}
-          >
+          <Link href="/" className="os-button os-button-primary">
             {t('header.signIn')}
           </Link>
         </div>
@@ -503,8 +540,8 @@ export default function TopicPage() {
   if (error || !topic) {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
-        <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)' }}>
+        <div style={{ padding: 'var(--space-6) 0', textAlign: 'center' }}>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
             {error ?? t('topicPage.topicNotFound')}
           </p>
           <Link href="/topics" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
@@ -541,7 +578,7 @@ export default function TopicPage() {
       {isGuest && (
         <div
           style={{
-            padding: '10px 16px',
+            padding: 'var(--space-3) var(--space-4)',
             background: 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)',
             border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)',
             borderRadius: 'var(--radius-control)',
@@ -575,7 +612,7 @@ export default function TopicPage() {
       {topic.blindedAt && (
         <div
           style={{
-            padding: '10px 16px',
+            padding: 'var(--space-3) var(--space-4)',
             background: 'color-mix(in srgb, var(--color-status-danger) 6%, transparent)',
             border: '1px solid color-mix(in srgb, var(--color-status-danger) 15%, transparent)',
             borderRadius: 'var(--radius-control)',
@@ -591,128 +628,134 @@ export default function TopicPage() {
         </div>
       )}
 
-      {/* Topic header */}
-      <div style={{
-        padding: '18px 22px',
-        background: 'var(--color-bg-secondary)',
-        border: '1px solid var(--color-border-default)',
-        borderRadius: 'var(--radius-card)',
-        marginBottom: 'var(--space-5)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-      }}>
-        <TopicAvatar
-          name={topic.title}
-          image={topic.image}
-          size={44}
-          onClick={topic.image ? () => handleImageClick(topic.image!) : undefined}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: 'var(--text-heading-sm)', fontWeight: 800, letterSpacing: '-0.03em', margin: 0, color: 'var(--color-text-primary)' }}>
-              {topic.title}
-            </h1>
-            {topic.requiresCountryProof && (
-              <span style={{
-                fontSize: 'var(--text-caption)',
-                fontFamily: 'var(--font-mono)',
-                background: 'var(--color-brand-primary-muted)',
-                color: 'var(--accent)',
-                border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
-                padding: '2px 7px',
-                borderRadius: 4,
-              }}>
-                {t('joinPage.proofBadge.country')}
-              </span>
-            )}
-            {!isGuest && topic.isMember && (
-              <span
-                className="os-label"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 3,
-                  color: 'var(--color-brand-accent)',
-                  background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
-                  borderRadius: 4,
-                  padding: '1px 6px',
-                  lineHeight: 1.2,
-                }}
-                aria-label={t('topicPage.joinedTopicAriaLabel')}
-              >
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                {t('postCard.joined')}
-              </span>
-            )}
-          </div>
-          {topic.description && (
-            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
-              {topic.description}
-            </p>
+      {/* ── Topic header ──────────────────────────────────────────────────
+          The prototype's `.topichdr`: no card, a page heading at the top of
+          the scale, prose capped at the reading measure, the facts on ONE
+          meta line, and the join/invite action as a real `.os-button`
+          instead of a bespoke 7px-padded control. The block is separated
+          from the feed by a rule, not by a filled panel — the posts below
+          are the content, and a tinted box around the header competed with
+          them for weight. */}
+      <header
+        style={{
+          borderBottom: '1px solid var(--color-border-default)',
+          paddingBottom: 'var(--space-4)',
+          marginBottom: 'var(--space-5)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
+          <TopicAvatar
+            name={topic.title}
+            image={topic.image}
+            size={44}
+            onClick={topic.image ? () => handleImageClick(topic.image!) : undefined}
+          />
+          {/* `minWidth: 0` so a long unbroken title shrinks inside the flex
+              row instead of pushing the avatar off the 320px viewport. No
+              nowrap/ellipsis: the title is the one thing on this page that
+              must be readable in full, in any language. */}
+          <h1
+            style={{
+              fontSize: 'var(--text-heading-lg)',
+              fontWeight: 800,
+              letterSpacing: '-0.02em',
+              lineHeight: 'var(--leading-tight)',
+              margin: 0,
+              minWidth: 0,
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            {topic.title}
+          </h1>
+        </div>
+
+        {topic.description && (
+          <p
+            style={{
+              margin: '0 0 var(--space-3)',
+              maxWidth: 'var(--read-max)',
+              fontSize: 'var(--text-body)',
+              color: 'var(--color-text-secondary)',
+            }}
+          >
+            {topic.description}
+          </p>
+        )}
+
+        {/* Facts + actions on one meta line. Wraps at phone widths; the
+            action group keeps to the trailing edge on desktop. */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+            flexWrap: 'wrap',
+            fontSize: 'var(--text-caption)',
+            color: 'var(--color-text-secondary)',
+          }}
+        >
+          {!isGuest ? (
+            <Link
+              href={`/topics/${topicId}/members`}
+              style={{ color: 'inherit', textDecoration: 'none' }}
+            >
+              <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>{topic.memberCount}</b>
+              {' '}
+              {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
+            </Link>
+          ) : (
+            <span>
+              <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>{topic.memberCount}</b>
+              {' '}
+              {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
+            </span>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: 6 }}>
-            {!isGuest ? (
-              <Link
-                href={`/topics/${topicId}/members`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 'var(--text-caption)',
-                  color: 'var(--color-text-tertiary)',
-                  fontFamily: 'var(--font-mono)',
-                  textDecoration: 'none',
-                  transition: 'color 0.12s',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; }}
-              >
-                {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
-              </Link>
-            ) : (
-              <span
-                style={{
-                  fontSize: 'var(--text-caption)',
-                  color: 'var(--color-text-tertiary)',
-                  fontFamily: 'var(--font-mono)',
-                }}
-              >
-                {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
-              </span>
-            )}
+
+          {/* Evidence chips — ONE treatment. The proof requirement is a
+              verified-tone claim, so it goes through `Badge` like every
+              other claim on the surface instead of a hand-rolled tinted
+              pill that only this page knew about. */}
+          {topic.requiresCountryProof && (
+            <Badge type="country" label={t('joinPage.proofBadge.country')} />
+          )}
+          {!isGuest && topic.isMember && (
+            <span
+              className="os-label"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                // Same outline-on-transparent as Badge's verified tone —
+                // there is no accent-muted step, so a tint would be a
+                // second treatment for the same meaning.
+                color: 'var(--color-brand-accent)',
+                background: 'transparent',
+                border: '1px solid var(--color-brand-accent)',
+                borderRadius: 'var(--radius-control)',
+                padding: '1px 6px',
+                lineHeight: 1.2,
+              }}
+              aria-label={t('topicPage.joinedTopicAriaLabel')}
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {t('postCard.joined')}
+            </span>
+          )}
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              flexWrap: 'wrap',
+              marginLeft: 'auto',
+            }}
+          >
             {!isGuest && currentUserRole === 'owner' && (
-              <Link
-                href={`/topics/${topicId}/edit`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 'var(--text-caption)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-secondary)',
-                  background: 'var(--color-bg-tertiary)',
-                  border: '1px solid var(--color-border-default)',
-                  borderRadius: 'var(--radius-control)',
-                  padding: '3px 10px',
-                  textDecoration: 'none',
-                  transition: 'all 0.12s',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
-                  (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
-                  (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-tertiary)';
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Link href={`/topics/${topicId}/edit`} className="os-button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
@@ -720,109 +763,47 @@ export default function TopicPage() {
               </Link>
             )}
             {!isGuest && (currentUserRole === 'owner' || currentUserRole === 'admin') && (
-              <Link
-                href={`/topics/${topicId}/members`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 'var(--text-caption)',
-                  fontWeight: 600,
-                  color: 'var(--color-text-secondary)',
-                  background: 'var(--color-bg-tertiary)',
-                  border: '1px solid var(--color-border-default)',
-                  borderRadius: 'var(--radius-control)',
-                  padding: '3px 10px',
-                  textDecoration: 'none',
-                  transition: 'all 0.12s',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
-                  (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)';
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
-                  (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-tertiary)';
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Link href={`/topics/${topicId}/members`} className="os-button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
                 {t('topicPage.manage')}
               </Link>
             )}
+            {!isGuest && topic.isMember && (
+              <button
+                type="button"
+                onClick={handleCopyInvite}
+                className="os-button"
+                style={copied
+                  ? { color: 'var(--color-brand-accent)', borderColor: 'var(--color-brand-accent)' }
+                  : undefined}
+              >
+                {copied ? t('membersPage.copied') : t('membersPage.invite')}
+              </button>
+            )}
+            {!isGuest && !topic.isMember && (
+              <Link href={`/topics/${topicId}/join`} className="os-button os-button-primary">
+                {t('explorePage.join')}
+              </Link>
+            )}
           </div>
         </div>
-        {!isGuest && topic.isMember && (
-          <button
-            onClick={handleCopyInvite}
-            style={{
-              background: copied ? 'color-mix(in srgb, var(--color-brand-accent) 12%, transparent)' : 'var(--color-bg-tertiary)',
-              color: copied ? 'var(--color-brand-accent)' : 'var(--color-text-tertiary)',
-              border: `1px solid ${copied ? 'color-mix(in srgb, var(--color-brand-accent) 30%, transparent)' : 'var(--color-bg-tertiary)'}`,
-              borderRadius: 'var(--radius-control)',
-              padding: '7px 12px',
-              fontSize: 'var(--text-caption)',
-              cursor: 'pointer',
-              fontWeight: 500,
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s',
-              flexShrink: 0,
-              minHeight: 'var(--touch-target-min)',
-            }}
-          >
-            {copied ? t('membersPage.copied') : t('membersPage.invite')}
-          </button>
-        )}
-        {!isGuest && !topic.isMember && (
-          <Link
-            href={`/topics/${topicId}/join`}
-            style={{
-              background: 'var(--accent)',
-              color: 'var(--color-text-inverted)',
-              border: 'none',
-              borderRadius: 'var(--radius-control)',
-              padding: '7px 16px',
-              fontSize: 'var(--text-caption)',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              textDecoration: 'none',
-              flexShrink: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              minHeight: 'var(--touch-target-min)',
-            }}
-          >
-            {t('explorePage.join')}
-          </Link>
-        )}
-      </div>
+      </header>
 
       {/* ── Tag search + filter bar ── */}
-      <div style={{ marginBottom: 12 }}>
-        {/* Tag search input */}
-        <div ref={tagSearchRef} style={{ position: 'relative', marginBottom: 10 }}>
+      <div style={{ marginBottom: 'var(--space-3)' }}>
+        {/* Tag search input — `.os-input` carries the 16px floor (below it,
+            iOS Safari zooms the page on focus) and the 44px target. */}
+        <div ref={tagSearchRef} style={{ position: 'relative', marginBottom: 'var(--space-2)' }}>
           <input
             type="text"
+            className="os-input"
             placeholder={t('topicPage.searchTagsPlaceholder')}
             value={tagSearch}
             onChange={(e) => handleTagSearchChange(e.target.value)}
             onFocus={() => { if (tagSuggestions.length > 0) setShowTagSuggestions(true); }}
-            style={{
-              width: '100%',
-              background: 'var(--color-bg-secondary)',
-              border: '1px solid var(--color-border-default)',
-              borderRadius: 'var(--radius-control)',
-              padding: '8px 14px',
-              color: 'var(--color-text-primary)',
-              fontSize: 'var(--text-body-sm)',
-              outline: 'none',
-              boxSizing: 'border-box',
-              transition: 'border-color 0.12s',
-            }}
           />
           {showTagSuggestions && tagSuggestions.length > 0 && (
             <div style={{
@@ -830,7 +811,7 @@ export default function TopicPage() {
               top: '100%',
               left: 0,
               right: 0,
-              marginTop: 4,
+              marginTop: 'var(--space-1)',
               background: 'var(--color-bg-secondary)',
               border: '1px solid var(--color-border-default)',
               borderRadius: 'var(--radius-control)',
@@ -847,9 +828,10 @@ export default function TopicPage() {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     width: '100%',
+                    minHeight: 'var(--touch-target-min)',
                     background: 'none',
                     border: 'none',
-                    padding: '8px 14px',
+                    padding: 'var(--space-2) var(--space-4)',
                     color: 'var(--color-text-primary)',
                     fontSize: 'var(--text-body-sm)',
                     cursor: 'pointer',
@@ -867,47 +849,31 @@ export default function TopicPage() {
           )}
         </div>
 
-        {/* Popular tag buttons */}
+        {/* Popular tag chips — `.os-chip`, the one filter-chip treatment.
+            Selection reads as "raised" (`aria-pressed`), not as a row of
+            brand-filled pills shouting over the posts they filter. */}
         {popularTags.length > 0 && (
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            gap: 'var(--space-1)',
             flexWrap: 'wrap',
           }}>
             <button
+              type="button"
+              className="os-chip"
+              aria-pressed={activeTag === null}
               onClick={() => handleTagSelect(null)}
-              style={{
-                background: activeTag === null ? 'var(--accent)' : 'var(--color-bg-secondary)',
-                color: activeTag === null ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
-                border: activeTag === null ? 'none' : '1px solid var(--color-border-default)',
-                borderRadius: 'var(--radius-pill)',
-                padding: '4px 12px',
-                fontSize: 'var(--text-caption)',
-                fontWeight: activeTag === null ? 600 : 400,
-                cursor: 'pointer',
-                transition: 'all 0.12s',
-              }}
             >
               {t('topicPage.allTags')}
             </button>
             {popularTags.slice(0, 8).map((tag) => (
               <button
                 key={tag.id}
+                type="button"
+                className="os-chip"
+                aria-pressed={activeTag === tag.slug}
                 onClick={() => handleTagSelect(tag.slug)}
-                style={{
-                  background: activeTag === tag.slug ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-secondary)',
-                  color: activeTag === tag.slug ? 'var(--accent)' : 'var(--color-text-secondary)',
-                  border: activeTag === tag.slug
-                    ? '1px solid var(--color-brand-primary)'
-                    : '1px solid var(--color-border-default)',
-                  borderRadius: 'var(--radius-pill)',
-                  padding: '4px 12px',
-                  fontSize: 'var(--text-caption)',
-                  fontWeight: activeTag === tag.slug ? 600 : 400,
-                  cursor: 'pointer',
-                  transition: 'all 0.12s',
-                }}
               >
                 #{tag.name}
               </button>
@@ -916,123 +882,45 @@ export default function TopicPage() {
         )}
       </div>
 
-      {/* ── Sort pills ── */}
+      {/* ── Sort chips ────────────────────────────────────────────────────
+          The prototype's `.tools`: a bare row on the page ground. The
+          previous brand-tinted panel (R09) wrapped the row in a second
+          container so the filters read as "within this topic" — the topic
+          header above now says that far more directly, and a tinted box
+          here re-introduced exactly the panel-around-controls idiom this
+          screen is losing everywhere else. Selection is `.os-chip`'s quiet
+          raised state, carried by `aria-pressed` so it is announced, not
+          just seen. */}
       {/* eslint-disable-next-line react/no-unknown-property */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      {/* R09: topic-scoped chip strip — faint brand-tinted background so
-          this filter row reads as "within this topic" and is visually
-          distinct from the feed-home chip row (no tint, no border). */}
       <div style={{
-        marginBottom: 16,
+        marginBottom: 'var(--space-4)',
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
-        padding: '8px 10px',
-        background: 'color-mix(in srgb, var(--color-brand-primary) 3%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
-        borderRadius: 'var(--radius-card)',
+        gap: 'var(--space-1)',
+        flexWrap: 'wrap',
       }}>
-        <button
-          onClick={() => handleSortChange('new')}
-          style={{
-            background: sortBy === 'new' ? 'var(--accent)' : 'var(--color-bg-secondary)',
-            color: sortBy === 'new' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
-            border: sortBy === 'new' ? 'none' : '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-pill)',
-            padding: '4px 14px',
-            fontSize: 'var(--text-caption)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            fontWeight: sortBy === 'new' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.12s',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          {t('topicPage.sort.new')}
-        </button>
-        <button
-          onClick={() => handleSortChange('popular')}
-          style={{
-            background: sortBy === 'popular' ? 'var(--accent)' : 'var(--color-bg-secondary)',
-            color: sortBy === 'popular' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
-            border: sortBy === 'popular' ? 'none' : '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-pill)',
-            padding: '4px 14px',
-            fontSize: 'var(--text-caption)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            fontWeight: sortBy === 'popular' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.12s',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
-          {t('topicPage.sort.popular')}
-        </button>
-        <button
-          onClick={() => handleSortChange('recorded')}
-          style={{
-            background: sortBy === 'recorded' ? 'var(--accent)' : 'var(--color-bg-secondary)',
-            color: sortBy === 'recorded' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
-            border: sortBy === 'recorded' ? 'none' : '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-pill)',
-            padding: '4px 14px',
-            fontSize: 'var(--text-caption)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            fontWeight: sortBy === 'recorded' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.12s',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M20 6L9 17l-5-5"/></svg>
-          {t('topicPage.sort.recorded')}
-        </button>
-        <button
-          onClick={() => handleSortChange('pinned')}
-          style={{
-            background: sortBy === 'pinned' ? 'var(--accent)' : 'var(--color-bg-secondary)',
-            color: sortBy === 'pinned' ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
-            border: sortBy === 'pinned' ? 'none' : '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-pill)',
-            padding: '4px 14px',
-            fontSize: 'var(--text-caption)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            fontWeight: sortBy === 'pinned' ? 600 : 400,
-            cursor: 'pointer',
-            transition: 'all 0.12s',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: 5, verticalAlign: 'middle'}}><path d="M12 17v5"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
-          {t('topicPage.sort.pinned')}
-        </button>
+        {SORT_OPTIONS.map(({ key, labelKey, path }) => (
+          <button
+            key={key}
+            type="button"
+            className="os-chip"
+            aria-pressed={sortBy === key}
+            onClick={() => handleSortChange(key)}
+          >
+            <SortIcon>{path}</SortIcon>
+            {t(labelKey)}
+          </button>
+        ))}
         {/* Manual refresh — resets to page 0 and re-fetches with no-store */}
         <button
+          type="button"
+          className="os-chip"
           onClick={() => { setOffset(0); loadPosts(0, true, activeTag, sortBy); }}
           disabled={postsLoading}
           title={t('topicPage.refreshPosts')}
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 30,
-            height: 30,
-            background: 'var(--color-bg-secondary)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: '50%',
-            cursor: postsLoading ? 'default' : 'pointer',
-            color: 'var(--color-text-secondary)',
-            padding: 0,
-            transition: 'all 0.12s',
-            flexShrink: 0,
-          }}
-          onMouseEnter={(e) => {
-            if (!postsLoading) (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
-          }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
+          aria-label={t('topicPage.refreshPosts')}
+          style={{ marginLeft: 'auto', flexShrink: 0 }}
         >
           <RefreshIcon spinning={postsLoading} />
         </button>
@@ -1046,8 +934,8 @@ export default function TopicPage() {
             background: 'var(--color-bg-secondary)',
             border: '1px solid var(--color-brand-primary)',
             borderRadius: 'var(--radius-card)',
-            padding: '20px',
-            marginBottom: 8,
+            padding: 'var(--space-5)',
+            marginBottom: 'var(--space-2)',
           }}>
             <form onSubmit={handlePostSubmit}>
               {/* Header row — title + Write/Preview toggle + Reset button.
@@ -1060,14 +948,14 @@ export default function TopicPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 14,
-                gap: 12,
+                marginBottom: 'var(--space-4)',
+                gap: 'var(--space-3)',
                 flexWrap: 'wrap',
               }}>
                 <h3 style={{ fontSize: 'var(--text-body)', fontWeight: 700, margin: 0, letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>
                   {t('topicPage.composer.newPost')}
                 </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   <div
                     role="tablist"
                     aria-label={t('topicPage.composer.modeAriaLabel')}
@@ -1089,8 +977,8 @@ export default function TopicPage() {
                         background: composeMode === 'write' ? 'var(--color-brand-primary-muted)' : 'transparent',
                         color: composeMode === 'write' ? 'var(--accent)' : 'var(--color-text-secondary)',
                         border: 'none',
-                        borderRadius: 5,
-                        padding: '5px 12px',
+                        borderRadius: 'var(--radius-control)',
+                        padding: 'var(--space-2) var(--space-3)',
                         fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
@@ -1110,8 +998,8 @@ export default function TopicPage() {
                         background: composeMode === 'preview' ? 'var(--color-brand-primary-muted)' : 'transparent',
                         color: composeMode === 'preview' ? 'var(--accent)' : 'var(--color-text-secondary)',
                         border: 'none',
-                        borderRadius: 5,
-                        padding: '5px 12px',
+                        borderRadius: 'var(--radius-control)',
+                        padding: 'var(--space-2) var(--space-3)',
                         fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
@@ -1131,12 +1019,12 @@ export default function TopicPage() {
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 5,
+                      gap: 'var(--space-1)',
                       background: 'transparent',
                       color: hasComposerContent() ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)',
                       border: '1px solid var(--color-border-default)',
                       borderRadius: 'var(--radius-control)',
-                      padding: '5px 10px',
+                      padding: 'var(--space-2) var(--space-3)',
                       fontSize: 'var(--text-caption)',
                       fontWeight: 600,
                       cursor: hasComposerContent() ? 'pointer' : 'not-allowed',
@@ -1155,7 +1043,7 @@ export default function TopicPage() {
               </div>
 
               {composeMode === 'write' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                   <input
                     type="text"
                     value={postTitle}
@@ -1167,7 +1055,7 @@ export default function TopicPage() {
                       background: 'var(--color-bg-secondary)',
                       border: '1px solid var(--color-border-default)',
                       borderRadius: 'var(--radius-control)',
-                      padding: '10px 14px',
+                      padding: 'var(--space-3) var(--space-4)',
                       color: 'var(--color-text-primary)',
                       // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
                       fontSize: 'var(--text-body)',
@@ -1186,12 +1074,12 @@ export default function TopicPage() {
                     }}
                     minHeight={180}
                   />
-                  <div style={{ marginTop: 4 }}>
+                  <div style={{ marginTop: 'var(--space-1)' }}>
                     <TagInput tags={postTags} onChange={setPostTags} topicId={topicId} />
                   </div>
 
                   {/* Poll toggle + editor */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1209,12 +1097,12 @@ export default function TopicPage() {
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: 6,
+                        gap: 'var(--space-1)',
                         background: postPoll ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-secondary)',
                         color: postPoll ? 'var(--accent)' : 'var(--color-text-secondary)',
                         border: postPoll ? '1px solid var(--color-brand-primary)' : '1px solid var(--color-border-default)',
                         borderRadius: 'var(--radius-control)',
-                        padding: '6px 12px',
+                        padding: 'var(--space-2) var(--space-3)',
                         fontSize: 'var(--text-caption)',
                         fontWeight: 600,
                         cursor: 'pointer',
@@ -1248,11 +1136,11 @@ export default function TopicPage() {
                   style={{
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-card)',
-                    padding: '18px 20px',
+                    padding: 'var(--space-4) var(--space-5)',
                     background: 'var(--color-bg-primary)',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 12,
+                    gap: 'var(--space-3)',
                   }}
                 >
                   {postTitle.trim() ? (
@@ -1272,7 +1160,7 @@ export default function TopicPage() {
                     </p>
                   )}
                   {postTags.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
                       {postTags.map((tag) => (
                         <span
                           key={tag}
@@ -1280,9 +1168,9 @@ export default function TopicPage() {
                             background: 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
                             color: 'var(--accent)',
                             border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)',
-                            borderRadius: 4,
-                            padding: '2px 8px',
-                            fontSize: 'var(--text-caption)',
+                            borderRadius: 'var(--radius-control)',
+                            padding: '2px var(--space-2)',
+                            fontSize: 'var(--text-label)',
                             fontFamily: 'var(--font-mono)',
                             lineHeight: 1.6,
                           }}
@@ -1342,11 +1230,11 @@ export default function TopicPage() {
               )}
 
               {postError && (
-                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: '12px 0 0', fontFamily: 'var(--font-mono)' }}>
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: 'var(--space-3) 0 0', fontFamily: 'var(--font-mono)' }}>
                   {postError}
                 </p>
               )}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', marginTop: 'var(--space-3)' }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -1359,33 +1247,16 @@ export default function TopicPage() {
                     setPostPoll(null);
                     setComposeMode('write');
                   }}
-                  style={{
-                    background: 'var(--color-bg-tertiary)',
-                    color: 'var(--color-text-tertiary)',
-                    border: 'none',
-                    borderRadius: 'var(--radius-control)',
-                    padding: '8px 16px',
-                    fontSize: 'var(--text-body-sm)',
-                    cursor: 'pointer',
-                    minHeight: 'var(--touch-target-min)',
-                  }}
+                  className="os-button"
                 >
                   {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
+                  className="os-button os-button-primary"
                   disabled={!postTitle.trim() || isComposerEmpty() || submitting}
                   style={{
-                    background: 'var(--accent)',
-                    color: 'var(--color-text-inverted)',
-                    border: 'none',
-                    borderRadius: 'var(--radius-control)',
-                    padding: '8px 20px',
-                    fontSize: 'var(--text-body-sm)',
-                    fontWeight: 600,
-                    cursor: 'pointer',
                     opacity: (!postTitle.trim() || isComposerEmpty() || submitting) ? 0.5 : 1,
-                    minHeight: 'var(--touch-target-min)',
                   }}
                 >
                   {submitting ? t('topicPage.composer.posting') : t('topicPage.composer.post')}
@@ -1395,18 +1266,19 @@ export default function TopicPage() {
           </div>
         )}
 
-        {/* Feed border container */}
-        <div style={{
-          border: '1px solid var(--color-border-default)',
-          borderRadius: 'var(--radius-modal)',
-          overflow: 'hidden',
-        }}>
+        {/* Posts sit directly on the page ground, separated by rules — the
+            prototype's `article{border-top:1px solid var(--rule)}`. The old
+            rounded, bordered container drew a box around the feed and made
+            the posts read as contents of a widget rather than as the page
+            itself. `PostCard` draws the rule below each row, so the wrapper
+            supplies only the leading one. */}
+        <div style={{ borderTop: '1px solid var(--color-border-default)' }}>
           {posts.length === 0 && !postsLoading ? (
             <div style={{
               textAlign: 'center',
-              padding: '60px 20px',
+              padding: 'var(--space-7) var(--space-5)',
             }}>
-              <p style={{ fontSize: 'var(--text-body)', color: 'var(--color-text-tertiary)' }}>
+              <p style={{ fontSize: 'var(--text-body)', color: 'var(--color-text-tertiary)', margin: 0 }}>
                 {isGuest ? t('topicPage.empty.guest') : t('topicPage.empty.member')}
               </p>
             </div>
@@ -1433,7 +1305,7 @@ export default function TopicPage() {
 
         {/* Infinite scroll sentinel */}
         {hasMore && (
-          <div ref={sentinelRef} style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+          <div ref={sentinelRef} style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-5) 0' }}>
             {postsLoading && <Spinner />}
           </div>
         )}

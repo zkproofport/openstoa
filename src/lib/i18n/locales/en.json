@@ -126,6 +126,7 @@
   },
   "explorePage": {
     "loadFailed": "Failed to load topics",
+    "errorBody": "We couldn't reach the server. That's different from there being no topics.",
     "unknownError": "Unknown error",
     "guestBanner": "You're browsing as a guest. Sign in to join topics and post.",
     "sort": {
@@ -136,6 +137,7 @@
     },
     "allCategories": "All Categories",
     "noTopicsFound": "No topics found",
+    "noTopicsMatchFilter": "No topics in this category",
     "tryDifferentCategory": "Try selecting a different category.",
     "beFirstToCreate": "Be the first to create a topic.",
     "clearFilter": "Clear filter",
@@ -258,7 +260,19 @@
     "postsLabel": "posts",
     "recordedStatOne": "My posts recorded {{count}} time on Base",
     "recordedStatOther": "My posts recorded {{count}} times on Base",
+    "identityNote": "Nobody can see who you are. Anyone can verify these claims.",
     "settings": {
+      "groups": {
+        "preferences": "Preferences",
+        "profile": "Profile"
+      },
+      "language": {
+        "hint": "Applies to OpenStoa everywhere on this device."
+      },
+      "theme": {
+        "title": "Theme",
+        "hint": "Light or dark, remembered on this device."
+      },
       "profileImage": {
         "title": "Profile Image",
         "change": "Change",
@@ -310,6 +324,7 @@
       "account": {
         "title": "Account",
         "logout": "Logout",
+        "logoutHint": "Ends this session on this device. Your chat keys stay on it.",
         "loggingOut": "Logging out..."
       },
       "dangerZone": {
@@ -626,6 +641,7 @@
     "title": "Messages",
     "subtitle": "End-to-end encrypted 1:1 conversations",
     "loadError": "Failed to load messages",
+    "errorBody": "We couldn't reach the server. That's different from you having no conversations.",
     "needsNickname": "Set a nickname before you can send direct messages.",
     "goToProfile": "Go to profile",
     "empty": {
@@ -636,6 +652,7 @@
   "dmConversationPage": {
     "loadError": "Failed to load this conversation",
     "openMessages": "Open messages",
+    "subtitle": "Direct message",
     "encryptedLabel": "Direct message · end-to-end encrypted",
     "notFound": {
       "title": "Conversation not found",
@@ -708,7 +725,10 @@
     "statusNotSetUp": "Not set up — you could permanently lose chat history if you lose your devices.",
     "backUp": "Back up",
     "registerPasskey": "Register a passkey",
+    "passkeyHint": "Synced by your device's password manager — nothing to write down.",
     "generateRecoveryCode": "Generate a recovery code",
+    "recoveryCodeHint": "Shown once. Keep it somewhere only you can reach.",
+    "backToSettings": "Back to settings",
     "writeDownCode": "Write this down and keep it safe. It is shown only once:",
     "savedIt": "I've saved it",
     "recoverOnDevice": "Recover on this device",

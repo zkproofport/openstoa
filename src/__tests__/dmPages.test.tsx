@@ -273,10 +273,58 @@ describe('/dm — DM list', () => {
 
     await render(<DmListPage />);
 
-    const label = rows()[0].querySelector('span') as HTMLElement;
+    // The row now carries a second line (the locked preview), so the nickname
+    // has its own testid rather than being "the first span".
+    const label = rows()[0].querySelector('[data-testid="dm-row-title"]') as HTMLElement;
     expect(label.textContent).toBe(nick);
     expect(label.style.textOverflow).toBe('ellipsis');
     expect(label.style.whiteSpace).toBe('nowrap');
+  });
+
+  /**
+   * SI-1 — the row's second line is a LOCKED PLACEHOLDER, never a preview.
+   * The server holds ciphertext only; a plaintext preview field here would mean
+   * the server had read the message. Same two sentences the chat rail uses
+   * (`RoomRow` in `ChatRoomList.tsx`), so a DM seen in the rail and the same DM
+   * seen on this page do not read as two different products.
+   */
+  it('SI-1: an active channel says "Encrypted message" — never message content', async () => {
+    routeFetch([
+      ['/api/auth/session', () => json({ userId: 'me' })],
+      ['/api/dm', () => json({ dms: [channel(DM_A, 'bob', '2026-01-02T00:00:00Z')] })],
+    ]);
+
+    await render(<DmListPage />);
+
+    const preview = rows()[0].querySelector('[data-testid="dm-row-preview"]') as HTMLElement;
+    expect(preview.textContent).toContain('Encrypted message');
+  });
+
+  it('EMPTY: a channel that has never been used says so, and shows no timestamp', async () => {
+    routeFetch([
+      ['/api/auth/session', () => json({ userId: 'me' })],
+      ['/api/dm', () => json({ dms: [channel(DM_A, 'quiet', null)] })],
+    ]);
+
+    await render(<DmListPage />);
+
+    const preview = rows()[0].querySelector('[data-testid="dm-row-preview"]') as HTMLElement;
+    expect(preview.textContent).toBe('No messages yet');
+    expect(preview.textContent).not.toContain('Encrypted message');
+  });
+
+  it('EXT-FAILURE: the error is a distinct alert with its own body copy, not an empty list', async () => {
+    routeFetch([
+      ['/api/auth/session', () => json({ userId: 'me' })],
+      ['/api/dm', () => json({ error: 'boom' }, false, 500)],
+    ]);
+
+    await render(<DmListPage />);
+
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    // "That's different from you having no conversations" — the empty-state
+    // title must NOT also be on screen.
+    expect(text()).not.toContain('No direct messages');
   });
 
   it('EXT-FAILURE: a 500 shows an error with a Retry that actually reloads', async () => {
@@ -433,6 +481,39 @@ describe('/dm/[topicId] — conversation', () => {
     expect(text()).toContain('offline');
     expect(container.querySelector('a[href="/dm"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="chat-panel"]')).toBeNull();
+  });
+
+  it('EXT-FAILURE: the failure is announced, and the way back is a real 44px target', async () => {
+    // A bare inline text link was a ~20px target, in a state where it is the
+    // ONLY thing on screen to act on. `.os-button` carries the 44px minimum.
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch;
+
+    await render(<DmConversationPage />);
+
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(container.querySelector('a[href="/dm"]')?.className).toContain('os-button');
+  });
+
+  it('NOT-FOUND is NOT the error treatment — nothing failed, so nothing is alerted', async () => {
+    routeFetch([['/api/dm', () => json({ dms: [] })]]);
+
+    await render(<DmConversationPage />);
+
+    expect(text()).toContain('Conversation not found');
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    expect(container.querySelector('a[href="/dm"]')?.className).toContain('os-button');
+  });
+
+  it('HIERARCHY: the header names the conversation and does not repeat the E2EE claim', async () => {
+    // `ChatPanel` renders the end-to-end-encryption strip directly below this
+    // header. Saying it twice, one line apart, turns both into decoration.
+    routeFetch([['/api/dm', () => json({ dms: [channel(DM_A, 'bob', null)] })]]);
+
+    await render(<DmConversationPage />);
+
+    const subtitle = container.querySelector('.os-label') as HTMLElement;
+    expect(subtitle.textContent).toBe('Direct message');
+    expect(text()).not.toContain('end-to-end encrypted');
   });
 });
 

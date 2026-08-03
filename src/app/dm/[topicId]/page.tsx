@@ -75,66 +75,99 @@ export default function DmConversationPage() {
    * Mirrors `recoveryLink` in `src/app/chat/[topicId]/page.tsx`.
    */
   function recoveryLink(label = t('dmConversationPage.openMessages')) {
+    // `.os-button` rather than a bare inline link: in every one of these states
+    // it is the ONLY thing on screen to act on, and a text link is a ~20px
+    // target under the 44px minimum this app holds everywhere else.
     return (
-      <Link href="/dm" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+      <Link href="/dm" className="os-button">
         {label}
       </Link>
     );
   }
 
-  if (loading) {
+  /** One centred column for every non-conversation state, so loading, the
+   *  nickname prompt, the failure and the not-found all sit in the same place
+   *  rather than each at its own arbitrary inset. */
+  function stateBlock(children: React.ReactNode, role?: 'alert') {
     return (
       <BareChatShell>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 20px' }}>
-          <Spinner />
+        <div
+          role={role}
+          style={{
+            padding: 'var(--space-7) var(--space-5)',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+          }}
+        >
+          {children}
         </div>
       </BareChatShell>
     );
   }
 
+  if (loading) {
+    return stateBlock(<Spinner />);
+  }
+
   if (needsNickname) {
-    return (
-      <BareChatShell>
-        <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)' }}>
-            {t('dmPage.needsNickname')}
-          </p>
-          <Link href={`/profile?returnTo=%2Fdm%2F${encodeURIComponent(topicId)}`} style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
-            {t('dmPage.goToProfile')}
-          </Link>
-        </div>
-      </BareChatShell>
+    return stateBlock(
+      <>
+        <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
+          {t('dmPage.needsNickname')}
+        </p>
+        <Link href={`/profile?returnTo=%2Fdm%2F${encodeURIComponent(topicId)}`} className="os-button">
+          {t('dmPage.goToProfile')}
+        </Link>
+      </>,
     );
   }
 
   if (error) {
-    return (
-      <BareChatShell>
-        <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
-            {error}
-          </p>
-          {recoveryLink()}
-        </div>
-      </BareChatShell>
+    return stateBlock(
+      <>
+        <p style={{
+          color: 'var(--color-status-danger)',
+          fontSize: 'var(--text-body-lg)',
+          fontWeight: 600,
+          margin: 0,
+        }}>
+          {error}
+        </p>
+        {recoveryLink()}
+      </>,
+      'alert',
     );
   }
 
   // Not in the caller's DM list → not a DM they belong to. Say so plainly
-  // rather than mounting a panel that would only 403 on every request.
+  // rather than mounting a panel that would only 403 on every request. This is
+  // deliberately NOT the error treatment: nothing failed.
   if (!channel) {
-    return (
-      <BareChatShell>
-        <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <p style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--foreground)', margin: '0 0 var(--space-2)' }}>
-            {t('dmConversationPage.notFound.title')}
-          </p>
-          <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '0 0 var(--space-3)', lineHeight: 1.6 }}>
-            {t('dmConversationPage.notFound.body')}
-          </p>
-          {recoveryLink()}
-        </div>
-      </BareChatShell>
+    return stateBlock(
+      <>
+        <p style={{
+          fontSize: 'var(--text-body-lg)',
+          fontWeight: 600,
+          color: 'var(--color-text-primary)',
+          letterSpacing: '-0.02em',
+          margin: 0,
+        }}>
+          {t('dmConversationPage.notFound.title')}
+        </p>
+        <p style={{
+          fontSize: 'var(--text-body-sm)',
+          color: 'var(--color-text-secondary)',
+          margin: 0,
+          lineHeight: 'var(--leading-base)',
+          maxWidth: '40ch',
+        }}>
+          {t('dmConversationPage.notFound.body')}
+        </p>
+        {recoveryLink()}
+      </>,
     );
   }
 
@@ -158,18 +191,23 @@ export default function DmConversationPage() {
         <Avatar src={channel.peer.profileImage} name={channel.peer.nickname} size={36} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
-            fontSize: 'var(--text-body)',
+            fontSize: 'var(--text-body-lg)',
             fontWeight: 700,
-            color: 'var(--foreground)',
+            color: 'var(--color-text-primary)',
             letterSpacing: '-0.01em',
+            lineHeight: 'var(--leading-tight)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}>
             {channel.peer.nickname}
           </div>
-          <div className="os-label" style={{ color: 'var(--muted)', marginTop: 1 }}>
-            {t('dmConversationPage.encryptedLabel')}
+          {/* Says WHAT this conversation is, not that it is encrypted — the
+              E2EE strip `ChatPanel` renders directly below already says that,
+              in full, and saying it twice one line apart makes both read as
+              decoration rather than as a claim. */}
+          <div className="os-label" style={{ color: 'var(--color-text-secondary)', marginTop: 1 }}>
+            {t('dmConversationPage.subtitle')}
           </div>
         </div>
         {/* The panel below hides its own header, so the per-topic mute (P-S)

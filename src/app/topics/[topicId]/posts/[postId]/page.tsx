@@ -451,7 +451,7 @@ export default function PostPage() {
   if (loading) {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-7) 0' }}>
           <Spinner />
         </div>
       </CommunityLayout>
@@ -461,11 +461,11 @@ export default function PostPage() {
   if (error || !post) {
     return (
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
-        <div style={{ padding: '60px 0', textAlign: 'center' }}>
-          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 14, marginBottom: 16 }}>
+        <div style={{ padding: 'var(--space-7) 0', textAlign: 'center' }}>
+          <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-4)' }}>
             {error ?? 'Post not found'}
           </p>
-          <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 14 }}>
+          <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
             ← Back to topic
           </Link>
         </div>
@@ -485,13 +485,23 @@ export default function PostPage() {
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
         {/* Breadcrumb */}
-        <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+        <div style={{
+          marginBottom: 'var(--space-5)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-1)',
+          fontSize: 'var(--text-caption)',
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--muted)',
+        }}>
           <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none' }}>Topics</Link>
           <span style={{ color: 'var(--border)' }}>/</span>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--muted)', textDecoration: 'none' }}>
             {post.topicTitle ?? 'Topic'}
           </Link>
           <span style={{ color: 'var(--border)' }}>/</span>
+          {/* The only place on this page a title is allowed to be clipped:
+              it is a trail marker, and the full title is the h1 below. */}
           <span style={{
             maxWidth: 200,
             overflow: 'hidden',
@@ -506,18 +516,18 @@ export default function PostPage() {
         {isGuest && (
           <div
             style={{
-              padding: '10px 16px',
+              padding: 'var(--space-3) var(--space-4)',
               background: 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)',
               border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)',
-              borderRadius: 8,
-              marginBottom: 20,
-              fontSize: 14,
+              borderRadius: 'var(--radius-control)',
+              marginBottom: 'var(--space-5)',
+              fontSize: 'var(--text-body-sm)',
               color: 'var(--color-text-secondary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               flexWrap: 'wrap',
-              gap: 8,
+              gap: 'var(--space-2)',
             }}
           >
             <span>Sign in to vote, comment, and bookmark.</span>
@@ -527,7 +537,7 @@ export default function PostPage() {
                 color: 'var(--accent)',
                 textDecoration: 'none',
                 fontWeight: 600,
-                fontSize: 13,
+                fontSize: 'var(--text-caption)',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -536,14 +546,18 @@ export default function PostPage() {
           </div>
         )}
 
-        {/* Post */}
+        {/* ── Post ──────────────────────────────────────────────────────────
+            On the page ground, closed by a rule — the prototype's
+            `article{padding:var(--s5) 0;border-top:1px solid var(--rule)}`.
+            The post used to sit in a filled, bordered, 14px-radius card
+            inset 32px from a column that is already capped at the reading
+            measure, so the body it contains was the one thing on screen
+            being framed by chrome. */}
         <article
           style={{
-            padding: '28px 32px',
-            background: 'var(--color-bg-secondary)',
-            border: '1px solid var(--border)',
-            borderRadius: 14,
-            marginBottom: 32,
+            paddingBottom: 'var(--space-5)',
+            marginBottom: 'var(--space-5)',
+            borderBottom: '1px solid var(--border)',
             position: 'relative',
           }}
         >
@@ -559,24 +573,25 @@ export default function PostPage() {
             if (!isAuthor && !isAdmin && !canPin) return null;
             const recorded = ((post as { recordCount?: number }).recordCount ?? 0) > 0;
             return (
-              <div style={{ position: 'absolute', top: 14, right: 14 }}>
+              <div style={{ position: 'absolute', top: 0, right: 0 }}>
                 <button
                   type="button"
                   onClick={() => setMenuOpen((v) => !v)}
                   aria-label="Post actions"
+                  aria-expanded={menuOpen}
+                  // `.os-chip` supplies the 36px target and — the part an
+                  // inline style cannot express — the focus ring. The open
+                  // state is styled here rather than via `aria-pressed`:
+                  // this is a menu button, and announcing it as both
+                  // expanded AND pressed says the same thing twice.
+                  className="os-chip"
                   style={{
-                    // Border removed to match the mobile kebab — the button
-                    // is a borderless glyph so it reads as a hit target
-                    // without competing with the surrounding card border.
-                    background: menuOpen ? 'var(--color-bg-tertiary)' : 'transparent',
-                    border: 'none',
-                    color: 'var(--color-text-secondary)',
-                    cursor: 'pointer',
-                    padding: '4px 8px',
-                    borderRadius: 6,
-                    fontSize: 18,
+                    fontSize: 'var(--text-body-lg)',
                     lineHeight: 1,
                     fontFamily: 'var(--font-mono)',
+                    ...(menuOpen
+                      ? { background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border-default)' }
+                      : null),
                   }}
                 >
                   ⋯
@@ -585,12 +600,12 @@ export default function PostPage() {
                   <div
                     style={{
                       position: 'absolute',
-                      top: 'calc(100% + 4px)',
+                      top: 'calc(100% + var(--space-1))',
                       right: 0,
                       background: 'var(--color-bg-secondary)',
                       border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      padding: 4,
+                      borderRadius: 'var(--radius-control)',
+                      padding: 'var(--space-1)',
                       minWidth: 160,
                       boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
                       zIndex: 20,
@@ -604,14 +619,15 @@ export default function PostPage() {
                         style={{
                           display: 'block',
                           width: '100%',
+                          minHeight: 'var(--touch-target-min)',
                           textAlign: 'left',
                           background: 'none',
                           border: 'none',
                           color: 'var(--color-text-primary)',
                           cursor: pinning ? 'not-allowed' : 'pointer',
-                          padding: '8px 12px',
-                          borderRadius: 6,
-                          fontSize: 13,
+                          padding: 'var(--space-2) var(--space-3)',
+                          borderRadius: 'var(--radius-control)',
+                          fontSize: 'var(--text-caption)',
                           fontFamily: 'var(--font-mono)',
                         }}
                       >
@@ -628,14 +644,15 @@ export default function PostPage() {
                           style={{
                             display: 'block',
                             width: '100%',
+                            minHeight: 'var(--touch-target-min)',
                             textAlign: 'left',
                             background: 'none',
                             border: 'none',
                             color: recorded ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
                             cursor: recorded ? 'not-allowed' : 'pointer',
-                            padding: '8px 12px',
-                            borderRadius: 6,
-                            fontSize: 13,
+                            padding: 'var(--space-2) var(--space-3)',
+                            borderRadius: 'var(--radius-control)',
+                            fontSize: 'var(--text-caption)',
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
@@ -648,14 +665,15 @@ export default function PostPage() {
                           style={{
                             display: 'block',
                             width: '100%',
+                            minHeight: 'var(--touch-target-min)',
                             textAlign: 'left',
                             background: 'none',
                             border: 'none',
                             color: 'var(--color-status-danger)',
                             cursor: postDeleting ? 'not-allowed' : 'pointer',
-                            padding: '8px 12px',
-                            borderRadius: 6,
-                            fontSize: 13,
+                            padding: 'var(--space-2) var(--space-3)',
+                            borderRadius: 'var(--radius-control)',
+                            fontSize: 'var(--text-caption)',
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
@@ -670,7 +688,7 @@ export default function PostPage() {
           })()}
 
           {editing ? (
-            <form onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <form onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <input
                 type="text"
                 value={editTitle}
@@ -680,13 +698,15 @@ export default function PostPage() {
                   width: '100%',
                   background: 'var(--color-bg-secondary)',
                   border: '1px solid var(--color-border-default)',
-                  borderRadius: 7,
-                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-control)',
+                  padding: 'var(--space-3) var(--space-4)',
                   color: 'var(--color-text-primary)',
-                  fontSize: 16,
+                  // 16px floor — anything smaller zooms the page on iOS.
+                  fontSize: 'var(--text-body)',
                   fontWeight: 600,
                   outline: 'none',
                   boxSizing: 'border-box',
+                  minHeight: 'var(--touch-target-min)',
                   fontFamily: 'inherit',
                 }}
               />
@@ -714,7 +734,7 @@ export default function PostPage() {
                     onRemove={editPollHadVotes ? () => { /* locked — votes exist */ } : () => setEditPoll(null)}
                   />
                   {editPollHadVotes && (
-                    <p style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'var(--font-mono)', margin: 0 }}>
+                    <p style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', fontFamily: 'var(--font-mono)', margin: 0 }}>
                       Poll options are frozen — votes already exist. Question and closing time can still be updated.
                     </p>
                   )}
@@ -724,53 +744,30 @@ export default function PostPage() {
                 <button
                   type="button"
                   onClick={() => setEditPoll({ question: '', options: ['', ''], multipleChoice: false, closesAt: null })}
-                  style={{
-                    alignSelf: 'flex-start',
-                    background: 'var(--color-bg-secondary)',
-                    color: 'var(--color-text-secondary)',
-                    border: '1px solid var(--color-border-default)',
-                    borderRadius: 7,
-                    padding: '6px 12px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-mono)',
-                  }}
+                  className="os-button"
+                  style={{ alignSelf: 'flex-start' }}
                 >
                   Add poll
                 </button>
               )}
               {editError && (
-                <p style={{ fontSize: 13, color: 'var(--color-status-danger)', margin: 0, fontFamily: 'var(--font-mono)' }}>{editError}</p>
+                <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-status-danger)', margin: 0, fontFamily: 'var(--font-mono)' }}>{editError}</p>
               )}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                 <button
                   type="button"
                   onClick={cancelEdit}
                   disabled={editSaving}
-                  style={{
-                    background: 'transparent',
-                    color: 'var(--color-text-secondary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 7,
-                    padding: '9px 18px',
-                    fontSize: 14,
-                    cursor: editSaving ? 'not-allowed' : 'pointer',
-                  }}
+                  className="os-button"
+                  style={{ cursor: editSaving ? 'not-allowed' : 'pointer' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={editSaving || !editTitle.trim()}
+                  className="os-button os-button-primary"
                   style={{
-                    background: 'var(--accent)',
-                    color: 'var(--color-text-inverted)',
-                    border: 'none',
-                    borderRadius: 7,
-                    padding: '9px 22px',
-                    fontSize: 14,
-                    fontWeight: 600,
                     cursor: editSaving ? 'not-allowed' : 'pointer',
                     opacity: editSaving ? 0.7 : 1,
                   }}
@@ -792,45 +789,43 @@ export default function PostPage() {
               attribution land before content, mirroring the mobile
               PostDetailScreen and ChatRoom message header. */}
           {post.topicTitle ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
+              {/* `.os-label` supplies the size (12px floor), weight and the
+                  uppercase+tracking — gated to :lang(en), because uppercase
+                  is a no-op on Hangul and tracking reads as broken kerning.
+                  The old inline 11px uppercase did neither. */}
               <Link
                 href={`/topics/${topicId}`}
+                className="os-label"
                 style={{
                   display: 'inline-block',
-                  fontSize: 11,
-                  fontWeight: 600,
                   color: 'var(--accent)',
                   textDecoration: 'none',
-                  letterSpacing: '0.02em',
-                  textTransform: 'uppercase',
                 }}
               >
                 {post.topicTitle}
               </Link>
               {post.isJoinedTopic && (
                 <span
-                  // Success-green tint, same intent as the mobile
-                  // `joinedBadge` style. Sits inline with the topic chip
-                  // so the user reads "TOPIC · Joined" at a glance.
+                  // ONE evidence-chip treatment: outline on transparent, the
+                  // same as Badge's verified tone and the topic header's
+                  // Joined pill. The 10px tinted variant this replaces was a
+                  // third treatment for a claim already spoken twice.
+                  className="os-label"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 4,
-                    fontSize: 10,
-                    fontWeight: 700,
+                    gap: 3,
                     color: 'var(--color-brand-accent)',
-                    background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)',
-                    border: '1px solid color-mix(in srgb, var(--color-brand-accent) 25%, transparent)',
-                    borderRadius: 4,
-                    padding: '2px 7px',
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
-                    fontFamily: 'var(--font-mono)',
+                    background: 'transparent',
+                    border: '1px solid var(--color-brand-accent)',
+                    borderRadius: 'var(--radius-control)',
+                    padding: '1px 6px',
                     lineHeight: 1.2,
                   }}
                   aria-label="You are a member of this topic"
                 >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                   Joined
@@ -846,8 +841,8 @@ export default function PostPage() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              marginBottom: 14,
+              gap: 'var(--space-3)',
+              marginBottom: 'var(--space-3)',
             }}
           >
             <span
@@ -856,12 +851,15 @@ export default function PostPage() {
             >
               <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
             </span>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
                 {post.authorNickname}
                 {post.isAI && <Badge type="ai" />}
               </p>
-              <p style={{ fontSize: 15, color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
+              {/* Meta, so it sits BELOW the name in the scale — it was 15px
+                  against the name's 14px, which read as the id being the
+                  more important of the two. */}
+              <p className="os-break-all" style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
                 {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
@@ -869,12 +867,12 @@ export default function PostPage() {
 
           <h1
             style={{
-              fontSize: 28,
+              fontSize: 'var(--text-heading-lg)',
               fontWeight: 800,
-              letterSpacing: '-0.03em',
-              margin: '0 0 18px',
-              lineHeight: 1.3,
-              paddingBottom: 16,
+              letterSpacing: '-0.02em',
+              margin: '0 0 var(--space-4)',
+              lineHeight: 'var(--leading-tight)',
+              paddingBottom: 'var(--space-4)',
               borderBottom: '1px solid var(--border)',
             }}
           >
@@ -902,17 +900,17 @@ export default function PostPage() {
           </h1>
 
           {post.tags && post.tags.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 16 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
               {post.tags.map(tag => (
                 <span
                   key={tag.slug}
                   style={{
-                    background: 'color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
+                    background: 'var(--color-brand-primary-muted)',
                     color: 'var(--accent)',
-                    border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)',
-                    borderRadius: 4,
-                    padding: '2px 8px',
-                    fontSize: 12,
+                    border: '1px solid var(--color-border-default)',
+                    borderRadius: 'var(--radius-control)',
+                    padding: '1px 7px',
+                    fontSize: 'var(--text-label)',
                     fontFamily: 'var(--font-mono)',
                     lineHeight: 1.6,
                   }}
@@ -954,8 +952,8 @@ export default function PostPage() {
           )}
 
           <div style={{
-            marginTop: 20,
-            paddingTop: 16,
+            marginTop: 'var(--space-5)',
+            paddingTop: 'var(--space-4)',
             borderTop: '1px solid var(--border)',
           }}>
             <PostActionBar
@@ -980,8 +978,8 @@ export default function PostPage() {
 
           {/* Emoji reactions — interactive picker lives on the detail page only. */}
           <div style={{
-            marginTop: 16,
-            paddingTop: 14,
+            marginTop: 'var(--space-4)',
+            paddingTop: 'var(--space-3)',
             borderTop: '1px solid var(--border)',
           }}>
             <ReactionRow
@@ -1009,10 +1007,10 @@ export default function PostPage() {
         <div>
           <h2
             style={{
-              fontSize: 20,
+              fontSize: 'var(--text-heading-sm)',
               fontWeight: 700,
               letterSpacing: '-0.02em',
-              margin: '0 0 16px',
+              margin: '0 0 var(--space-4)',
             }}
           >
             {comments.length > 0
@@ -1020,16 +1018,18 @@ export default function PostPage() {
               : 'Comments'}
           </h2>
 
+          {/* A comment is a row on the page ground closed by a rule, not a
+              filled card — the same treatment the post above it now has.
+              Stacking filled cards inside a filled card was two levels of
+              chrome around one paragraph of text. */}
           {comments.length > 0 && (
-            <div className="flex flex-col gap-3" style={{ marginBottom: 24 }}>
+            <div style={{ marginBottom: 'var(--space-5)' }}>
               {comments.map((comment) => (
                 <div
                   key={comment.id}
                   style={{
-                    padding: comment.isDeleted ? '12px 16px' : '16px 20px',
-                    background: comment.isDeleted ? 'var(--color-bg-secondary)' : 'var(--color-bg-secondary)',
-                    border: comment.isDeleted ? '1px solid var(--color-border-default)' : '1px solid var(--border)',
-                    borderRadius: comment.isDeleted ? 8 : 10,
+                    padding: 'var(--space-4) 0',
+                    borderTop: '1px solid var(--color-border-default)',
                   }}
                 >
                   {comment.isDeleted ? (
@@ -1037,7 +1037,7 @@ export default function PostPage() {
                       margin: 0,
                       color: 'var(--color-text-tertiary)',
                       fontStyle: 'italic',
-                      fontSize: 14,
+                      fontSize: 'var(--text-body-sm)',
                     }}>
                       {comment.deletedBy === 'admin' ? 'Deleted by admin' : 'Deleted comment'}
                     </p>
@@ -1047,8 +1047,9 @@ export default function PostPage() {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: 8,
-                          marginBottom: 10,
+                          gap: 'var(--space-2)',
+                          marginBottom: 'var(--space-2)',
+                          flexWrap: 'wrap',
                         }}
                       >
                         <span
@@ -1057,9 +1058,9 @@ export default function PostPage() {
                         >
                           <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
                         </span>
-                        <div style={{ flex: 1 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
                               {comment.authorNickname}
                             </span>
                             {comment.isAI && <Badge type="ai" />}
@@ -1067,7 +1068,7 @@ export default function PostPage() {
                               <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
                             ))}
                           </span>
-                          <span style={{ fontSize: 15, color: 'var(--muted)', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
+                          <span className="os-break-all" style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', marginLeft: 'var(--space-2)', fontFamily: 'var(--font-mono)' }}>
                             {truncateId(comment.authorId ?? '', 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
@@ -1076,14 +1077,13 @@ export default function PostPage() {
                             type="button"
                             onClick={() => handleDeleteComment(comment.id)}
                             disabled={deletingCommentId === comment.id}
+                            className="os-chip"
                             style={{
-                              background: 'none',
-                              border: 'none',
-                              cursor: deletingCommentId === comment.id ? 'not-allowed' : 'pointer',
-                              padding: 4,
+                              minWidth: 36,
+                              padding: 0,
                               color: 'var(--muted)',
-                              opacity: deletingCommentId === comment.id ? 0.5 : 0.6,
-                              transition: 'opacity 0.15s',
+                              opacity: deletingCommentId === comment.id ? 0.5 : 1,
+                              cursor: deletingCommentId === comment.id ? 'not-allowed' : 'pointer',
                               flexShrink: 0,
                             }}
                             title="Delete comment"
@@ -1102,10 +1102,9 @@ export default function PostPage() {
                       {/* nesting and visually corrupt the layout.          */}
                       <div
                         style={{
-                          fontSize: 14,
-                          lineHeight: 1.7,
+                          fontSize: 'var(--text-body)',
                           color: 'var(--foreground)',
-                          wordBreak: 'break-word',
+                          maxWidth: 'var(--read-max)',
                         }}
                       >
                         <SNSContent html={comment.content} />
@@ -1121,25 +1120,16 @@ export default function PostPage() {
           {isGuest ? (
             <div
               style={{
-                padding: '20px',
-                background: 'var(--color-bg-secondary)',
+                padding: 'var(--space-5)',
                 border: '1px solid var(--border)',
-                borderRadius: 12,
+                borderRadius: 'var(--radius-card)',
                 textAlign: 'center',
               }}
             >
-              <p style={{ fontSize: 14, color: 'var(--muted)', margin: '0 0 12px' }}>
+              <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)' }}>
                 Sign in to join the conversation.
               </p>
-              <Link
-                href="/"
-                style={{
-                  color: 'var(--accent)',
-                  textDecoration: 'none',
-                  fontWeight: 600,
-                  fontSize: 14,
-                }}
-              >
+              <Link href="/" className="os-button os-button-primary">
                 Sign in
               </Link>
             </div>
@@ -1147,15 +1137,14 @@ export default function PostPage() {
             <form
               onSubmit={handleCommentSubmit}
               style={{
-                padding: '20px',
-                background: 'var(--color-bg-secondary)',
+                padding: 'var(--space-5)',
                 border: '1px solid var(--border)',
-                borderRadius: 12,
+                borderRadius: 'var(--radius-card)',
               }}
             >
               <label
                 htmlFor="comment"
-                style={{ fontSize: 15, color: 'var(--muted)', display: 'block', marginBottom: 8 }}
+                style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
               >
                 Write a comment
               </label>
@@ -1169,21 +1158,22 @@ export default function PostPage() {
                   width: '100%',
                   background: 'var(--color-bg-secondary)',
                   border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-control)',
+                  padding: 'var(--space-3) var(--space-4)',
                   color: 'var(--foreground)',
-                  fontSize: 14,
+                  // 16px floor: below it, iOS Safari zooms the whole page
+                  // when this textarea takes focus.
+                  fontSize: 'var(--text-body)',
                   outline: 'none',
                   resize: 'vertical',
-                  lineHeight: 1.6,
                   fontFamily: 'inherit',
-                  marginBottom: 8,
+                  marginBottom: 'var(--space-2)',
                 }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-brand-primary)')}
                 onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
               />
               {commentError && (
-                <p style={{ fontSize: 14, color: 'var(--color-status-danger)', margin: '0 0 8px', fontFamily: 'var(--font-mono)' }}>
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: '0 0 var(--space-2)', fontFamily: 'var(--font-mono)' }}>
                   {commentError}
                 </p>
               )}
@@ -1191,17 +1181,8 @@ export default function PostPage() {
                 <button
                   type="submit"
                   disabled={!commentContent.trim() || submitting}
-                  style={{
-                    background: commentContent.trim() ? 'var(--accent)' : 'var(--border)',
-                    color: commentContent.trim() ? 'var(--color-text-inverted)' : 'var(--muted)',
-                    border: 'none',
-                    borderRadius: 7,
-                    padding: '9px 22px',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: commentContent.trim() ? 'pointer' : 'not-allowed',
-                    transition: 'all 0.15s',
-                  }}
+                  className={commentContent.trim() ? 'os-button os-button-primary' : 'os-button'}
+                  style={{ cursor: commentContent.trim() ? 'pointer' : 'not-allowed' }}
                 >
                   {submitting ? 'Posting...' : 'Post Comment'}
                 </button>

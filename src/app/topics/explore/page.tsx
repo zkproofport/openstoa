@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
@@ -53,7 +53,10 @@ function ExplorePageInner() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // A flag, not a message: the raw exception ("ECONNREFUSED 10.0.0.1:5432")
+  // says nothing to a reader and leaks infrastructure. The copy below is
+  // fixed and explicitly denies the "you have nothing" reading.
+  const [failed, setFailed] = useState(false);
   const [sortBy, setSortBy] = useState<'hot' | 'new' | 'active' | 'top'>(
     (searchParams.get('sort') as 'hot' | 'new' | 'active' | 'top') || 'hot',
   );
@@ -63,6 +66,11 @@ function ExplorePageInner() {
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [joiningTopicId, setJoiningTopicId] = useState<string | null>(null);
+  // `joiningTopicId` drives the DISABLED state, which is a render away; two
+  // taps inside one frame (a double-tap, or a stuck click) both get through it
+  // and issue two POSTs. The ref closes that window synchronously. Same guard,
+  // same reason as `dmInFlightRef` in topics/[topicId]/members/page.tsx.
+  const joinInFlightRef = useRef(false);
 
   // ── Auth check ──
   useEffect(() => {
@@ -101,22 +109,21 @@ function ExplorePageInner() {
   // ── Fetch topics ──
   const loadTopics = useCallback(async (sort: string, category: string | null) => {
     setLoading(true);
-    setError(null);
+    setFailed(false);
     try {
       let url = `/api/topics?view=all&sort=${sort}`;
       if (category) {
         url += `&category=${encodeURIComponent(category)}`;
       }
       const res = await fetch(url);
-      if (!res.ok) throw new Error(t('explorePage.loadFailed'));
+      if (!res.ok) throw new Error('failed');
       const data = await res.json();
       setTopics(data.topics ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('explorePage.unknownError'));
+    } catch {
+      setFailed(true);
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -131,6 +138,8 @@ function ExplorePageInner() {
       router.push('/');
       return;
     }
+    if (joinInFlightRef.current) return;
+    joinInFlightRef.current = true;
     setJoiningTopicId(topicId);
     try {
       const res = await fetch(`/api/topics/${topicId}/join`, { method: 'POST' });
@@ -142,6 +151,7 @@ function ExplorePageInner() {
     } catch {
       // silently fail
     } finally {
+      joinInFlightRef.current = false;
       setJoiningTopicId(null);
     }
   }
@@ -151,15 +161,16 @@ function ExplorePageInner() {
       isGuest={isGuest}
       sessionChecked={sessionChecked}
     >
-      {/* Guest banner */}
+      {/* Guest banner — same treatment as the feed's (src/app/topics/page.tsx),
+          so the two browse surfaces greet a signed-out reader identically. */}
       {isGuest && (
         <div
           style={{
-            padding: '10px 16px',
-            background: 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)',
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'var(--color-brand-primary-muted)',
+            border: '1px solid var(--color-border-default)',
             borderRadius: 'var(--radius-control)',
-            marginBottom: 20,
+            marginBottom: 'var(--space-5)',
             fontSize: 'var(--text-body-sm)',
             color: 'var(--color-text-secondary)',
             display: 'flex',
@@ -173,12 +184,11 @@ function ExplorePageInner() {
           <Link
             href="/"
             style={{
-              color: 'var(--accent)',
+              color: 'var(--color-brand-primary)',
               textDecoration: 'none',
               fontWeight: 600,
-              fontSize: 'var(--text-caption)',
+              fontSize: 'var(--text-body-sm)',
               whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-mono)',
             }}
           >
             {t('header.signIn')}
@@ -186,85 +196,68 @@ function ExplorePageInner() {
         </div>
       )}
 
-      {/* Page heading */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 20,
-        }}
-      >
+      {/* Page heading — same step, weight and tracking as the feed's, and no
+          serif face: Explore and Feed are two views of one library, so they
+          must not read as two products. */}
+      <div style={{ marginBottom: 'var(--space-5)' }}>
         <h1
           style={{
             fontSize: 'var(--text-heading-lg)',
             fontWeight: 800,
-            letterSpacing: '-0.04em',
+            letterSpacing: '-0.03em',
             margin: 0,
-            fontFamily: 'var(--font-serif)',
           }}
         >
           {t('sidebar.exploreTopics')}
         </h1>
       </div>
 
-      {/* Sort pills + Category filter */}
+      {/* Sort chips + category filter.
+          `.os-chip` + `aria-pressed` is the feed's control verbatim: selection
+          reads as RAISED (ground + rule), never as a saturated brand fill — a
+          row of filled chips above the list shouts louder than the topics,
+          which are the content. `aria-pressed` is also what makes the state
+          audible to a screen reader, which a background color alone is not. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--space-3)',
-          marginBottom: 20,
+          gap: 'var(--space-2)',
+          marginBottom: 'var(--space-5)',
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', gap: 6 }}>
-          {(
-            [
-              { key: 'hot', label: t('explorePage.sort.hot') },
-              { key: 'new', label: t('explorePage.sort.new') },
-              { key: 'active', label: t('explorePage.sort.active') },
-              { key: 'top', label: t('explorePage.sort.top') },
-            ] as const
-          ).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setSortBy(key)}
-              style={{
-                background: sortBy === key ? 'var(--accent)' : 'transparent',
-                color: sortBy === key ? 'var(--color-text-inverted)' : 'var(--muted)',
-                border: `1px solid ${sortBy === key ? 'var(--accent)' : 'var(--border)'}`,
-                borderRadius: 'var(--radius-pill)',
-                padding: '4px 14px',
-                fontSize: 'var(--text-caption)',
-                fontWeight: sortBy === key ? 600 : 400,
-                cursor: 'pointer',
-                letterSpacing: '0.02em',
-                transition: 'all 0.15s',
-                fontFamily: 'var(--font-mono)',
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {(
+          [
+            { key: 'hot', label: t('explorePage.sort.hot') },
+            { key: 'new', label: t('explorePage.sort.new') },
+            { key: 'active', label: t('explorePage.sort.active') },
+            { key: 'top', label: t('explorePage.sort.top') },
+          ] as const
+        ).map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setSortBy(key)}
+            className="os-chip"
+            aria-pressed={sortBy === key}
+          >
+            {label}
+          </button>
+        ))}
 
-        {/* Category filter */}
+        {/* Category filter. `.os-locale-select` is this app's ONE select
+            treatment (custom chevron, token ground/border, 44px tall,
+            `--text-body` 16px — under 16px iOS Safari zooms the whole page on
+            focus). Reused rather than re-styled so every select in the product
+            is the same control. */}
         {categories.length > 0 && (
           <select
+            className="os-locale-select"
+            aria-label={t('explorePage.allCategories')}
             value={categoryFilter ?? ''}
             onChange={(e) => setCategoryFilter(e.target.value || null)}
-            style={{
-              background: 'var(--surface)',
-              color: 'var(--foreground)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-control)',
-              padding: '5px 10px',
-              fontSize: 'var(--text-caption)',
-              fontFamily: 'var(--font-mono)',
-              cursor: 'pointer',
-              outline: 'none',
-            }}
+            style={{ marginLeft: 'auto' }}
           >
             <option value="">{t('explorePage.allCategories')}</option>
             {categories.map((cat) => (
@@ -278,58 +271,85 @@ function ExplorePageInner() {
 
       {/* Loading state */}
       {loading && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-7) 0' }}>
           <Spinner />
         </div>
       )}
 
-      {/* Error state */}
-      {error && (
+      {/* Error state. A DISTINCT state from empty, on purpose: a failed request
+          used to render a red bar carrying the raw exception and no way
+          forward, which reads to a user as "there are no topics". Same
+          treatment as the feed's error (src/app/topics/page.tsx). */}
+      {!loading && failed && (
         <div
+          role="alert"
           style={{
-            padding: 'var(--space-4) 20px',
-            background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
+            textAlign: 'center',
+            padding: 'var(--space-7) var(--space-5)',
+            border: '1px solid var(--color-status-danger)',
             borderRadius: 'var(--radius-card)',
-            fontSize: 'var(--text-body-sm)',
-            color: 'var(--color-status-danger)',
-            fontFamily: 'var(--font-mono)',
+            background: 'var(--color-bg-secondary)',
           }}
         >
-          {error}
+          <p
+            style={{
+              fontSize: 'var(--text-body-lg)', fontWeight: 600,
+              color: 'var(--color-status-danger)', margin: '0 0 var(--space-2)',
+            }}
+          >
+            {t('explorePage.loadFailed')}
+          </p>
+          <p
+            style={{
+              fontSize: 'var(--text-body-sm)', color: 'var(--color-text-secondary)',
+              margin: '0 0 var(--space-5)',
+            }}
+          >
+            {t('explorePage.errorBody')}
+          </p>
+          <button
+            type="button"
+            onClick={() => loadTopics(sortBy, categoryFilter)}
+            className="os-button os-button-primary"
+          >
+            {t('common.retry')}
+          </button>
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && !error && topics.length === 0 && (
+      {/* Empty state — two genuinely different situations, each with its own
+          title: "your filter excluded everything" is recoverable right here,
+          "nothing exists yet" is not a filter problem and gets no dead button. */}
+      {!loading && !failed && topics.length === 0 && (
         <div
           style={{
             textAlign: 'center',
-            padding: '80px 20px',
-            border: '1px dashed var(--border)',
-            borderRadius: 'var(--radius-modal)',
+            padding: 'var(--space-7) var(--space-5)',
+            border: '1px dashed var(--color-border-default)',
+            borderRadius: 'var(--radius-card)',
           }}
         >
-          <p style={{ fontSize: 'var(--text-body-lg)', fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 'var(--space-2)' }}>
-            {t('explorePage.noTopicsFound')}
+          <p
+            style={{
+              fontSize: 'var(--text-body-lg)', fontWeight: 600,
+              letterSpacing: '-0.02em', margin: '0 0 var(--space-2)',
+            }}
+          >
+            {categoryFilter ? t('explorePage.noTopicsMatchFilter') : t('explorePage.noTopicsFound')}
           </p>
-          <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginBottom: 'var(--space-5)' }}>
+          <p
+            style={{
+              fontSize: 'var(--text-body-sm)', color: 'var(--color-text-secondary)',
+              margin: '0 0 var(--space-5)',
+            }}
+          >
             {categoryFilter ? t('explorePage.tryDifferentCategory') : t('explorePage.beFirstToCreate')}
           </p>
           {categoryFilter && (
             <button
+              type="button"
               onClick={() => setCategoryFilter(null)}
-              style={{
-                background: 'var(--accent)',
-                color: 'var(--color-text-inverted)',
-                border: 'none',
-                borderRadius: 'var(--radius-control)',
-                padding: '10px var(--space-5)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
+              className="os-button os-button-primary"
             >
               {t('explorePage.clearFilter')}
             </button>
@@ -337,23 +357,27 @@ function ExplorePageInner() {
         </div>
       )}
 
-      {/* Topics grid */}
-      {!loading && !error && topics.length > 0 && (
+      {/* Topics grid. `min(260px, 100%)` rather than a bare 260px track: at a
+          320px viewport a fixed minimum overflows the column, and a horizontal
+          scrollbar on the browse page is the one thing no phone reader wants. */}
+      {!loading && !failed && topics.length > 0 && (
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: 16,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
+            gap: 'var(--space-4)',
           }}
         >
           {topics.map((topic) => {
             const badge = proofBadgeLabel(topic.proofType, t);
+            const joining = joiningTopicId === topic.id;
             return (
               <div
                 key={topic.id}
+                data-testid="topic-card"
                 style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border-default)',
                   borderRadius: 'var(--radius-card)',
                   padding: 'var(--space-4)',
                   display: 'flex',
@@ -361,25 +385,32 @@ function ExplorePageInner() {
                   gap: 'var(--space-3)',
                   transition: 'border-color 0.15s',
                 }}
+                // Hover raises the rule one step; it does NOT switch to brand.
+                // A grid of brand-outlined boxes is the same "everything is
+                // shouting" defect as the filled Join buttons were.
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-strong)';
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
                 }}
               >
                 {/* Topic header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                   <TopicAvatar name={topic.title} image={topic.image} size={36} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
                       <Link
                         href={`/topics/${topic.id}`}
+                        data-testid="topic-card-title"
                         style={{
                           fontSize: 'var(--text-body)',
                           fontWeight: 600,
-                          color: 'var(--foreground)',
+                          color: 'var(--color-text-primary)',
                           textDecoration: 'none',
+                          // Layout-only truncation: a 500-character title must
+                          // not push the Joined pill out of the row. The value
+                          // stays intact in the DOM.
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -421,9 +452,7 @@ function ExplorePageInner() {
                       <span
                         style={{
                           fontSize: 'var(--text-caption)',
-                          color: 'var(--muted)',
-                          fontFamily: 'var(--font-mono)',
-                          letterSpacing: '0.02em',
+                          color: 'var(--color-text-tertiary)',
                         }}
                       >
                         {topic.category.icon} {topic.category.name}
@@ -432,14 +461,16 @@ function ExplorePageInner() {
                   </div>
                 </div>
 
-                {/* Description */}
-                {topic.description && (
+                {/* Description. `trim()` before the truthiness test so a
+                    whitespace-only value renders nothing rather than an empty
+                    two-line gap. */}
+                {topic.description && topic.description.trim().length > 0 && (
                   <p
                     style={{
-                      fontSize: 'var(--text-caption)',
+                      fontSize: 'var(--text-body-sm)',
                       color: 'var(--color-text-secondary)',
                       margin: 0,
-                      lineHeight: 1.5,
+                      lineHeight: 'var(--leading-base)',
                       overflow: 'hidden',
                       display: '-webkit-box',
                       WebkitLineClamp: 2,
@@ -463,25 +494,25 @@ function ExplorePageInner() {
                   <span
                     style={{
                       fontSize: 'var(--text-caption)',
-                      color: 'var(--muted)',
-                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--color-text-tertiary)',
                     }}
                   >
                     {topic.memberCount} {topic.memberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
                   </span>
 
                   {badge && (
+                    // Requirement, not decoration: a quiet outline in the
+                    // tertiary voice, the same weight the on-chain chip carries
+                    // on PostCard. It states a fact about the topic; it is not
+                    // an action competing with Join.
                     <span
                       style={{
                         fontSize: 'var(--text-caption)',
-                        padding: '2px 8px',
-                        borderRadius: 'var(--radius-pill)',
-                        background: 'var(--color-brand-primary-muted)',
-                        border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
-                        color: 'var(--accent)',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 500,
-                        letterSpacing: '0.02em',
+                        padding: '1px var(--space-2)',
+                        borderRadius: 'var(--radius-control)',
+                        background: 'transparent',
+                        border: '1px solid var(--color-border-default)',
+                        color: 'var(--color-text-tertiary)',
                         whiteSpace: 'nowrap',
                       }}
                     >
@@ -490,51 +521,26 @@ function ExplorePageInner() {
                   )}
                 </div>
 
-                {/* Action button */}
+                {/* Action. `.os-button` (neutral raised), NOT
+                    `.os-button-primary`: every card in the grid carries one, and
+                    a saturated brand fill repeated N times reads as N calls to
+                    action competing with each other and with the topic names.
+                    Primary fill is reserved for the single action in a state
+                    that has exactly one (the empty state's Clear filter). */}
                 <div>
                   {topic.isMember ? (
-                    <Link
-                      href={`/topics/${topic.id}`}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '6px var(--space-4)',
-                        fontSize: 'var(--text-caption)',
-                        fontWeight: 500,
-                        color: 'var(--muted)',
-                        background: 'transparent',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-control)',
-                        textDecoration: 'none',
-                        fontFamily: 'var(--font-mono)',
-                        transition: 'all 0.15s',
-                        letterSpacing: '0.02em',
-                        minHeight: 'var(--touch-target-min)',
-                      }}
-                    >
+                    <Link href={`/topics/${topic.id}`} className="os-button">
                       {t('explorePage.view')}
                     </Link>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => handleJoin(topic.id)}
-                      disabled={joiningTopicId === topic.id}
-                      style={{
-                        padding: '6px var(--space-4)',
-                        fontSize: 'var(--text-caption)',
-                        fontWeight: 600,
-                        color: 'var(--color-text-inverted)',
-                        background: 'var(--accent)',
-                        border: 'none',
-                        borderRadius: 'var(--radius-control)',
-                        cursor: joiningTopicId === topic.id ? 'wait' : 'pointer',
-                        fontFamily: 'var(--font-mono)',
-                        transition: 'all 0.15s',
-                        letterSpacing: '0.02em',
-                        opacity: joiningTopicId === topic.id ? 0.7 : 1,
-                        minHeight: 'var(--touch-target-min)',
-                      }}
+                      disabled={joining}
+                      className="os-button"
+                      style={{ cursor: joining ? 'wait' : 'pointer', opacity: joining ? 0.7 : 1 }}
                     >
-                      {joiningTopicId === topic.id ? t('joinPage.joining') : t('explorePage.join')}
+                      {joining ? t('joinPage.joining') : t('explorePage.join')}
                     </button>
                   )}
                 </div>

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  CMD_LABELS,
   HISTORY_SCOPES,
   MAX_API_KEY_NAME_LEN,
   cmdLabel,
@@ -24,54 +23,78 @@ interface ApiKeyMeta {
   revokedAt: string | null;
 }
 
-// Font-size/weight/family + the language-conditional uppercase+tracking come
-// from the `.os-label` utility class (globals.css) — apply that class
-// alongside this style object at each usage site (mirrors LeftSidebar's
-// sectionHeadingStyle pattern).
-const sectionTitleStyle: React.CSSProperties = {
-  color: 'var(--color-text-tertiary)',
-  margin: '0 0 12px',
-};
-const subCardStyle: React.CSSProperties = {
+// ─── Settings surface contract ───────────────────────────────────────────────
+
+/**
+ * ONE list idiom for every settings row on this surface.
+ *
+ * `/my`'s Settings tab used to stack five differently-styled panels — a bare
+ * section here, a bordered card there, a tinted danger box at the bottom —
+ * and the two components it embeds (`AiAgentSettings`, and `AccountRecovery`
+ * via `/recovery`) each carried a third and fourth look. These two objects are
+ * the whole contract: a bordered list, and a row inside it.
+ *
+ * Mirrored VERBATIM in `src/app/my/page.tsx` and
+ * `src/components/AccountRecovery.tsx`, which render into this same surface.
+ * `src/__tests__/settingsSurface.test.tsx` re-parses all three files and fails
+ * if any copy drifts, so "they match" is a checked fact, not a convention.
+ */
+const SETTINGS_LIST: React.CSSProperties = {
   background: 'var(--color-bg-secondary)',
   border: '1px solid var(--color-border-default)',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-card)',
+  overflow: 'hidden',
+};
+const SETTINGS_ROW: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'var(--space-4)',
+  flexWrap: 'wrap',
   padding: 'var(--space-4)',
+  minHeight: 'var(--touch-target-min)',
+};
+
+/** A row that holds a composition rather than one control. */
+const STACKED_ROW: React.CSSProperties = {
+  ...SETTINGS_ROW,
+  flexDirection: 'column',
+  alignItems: 'stretch',
+};
+const ROW_DIVIDER: React.CSSProperties = { borderTop: '1px solid var(--color-border-default)' };
+
+/** Explanatory copy under/above a list — capped at a reading measure. */
+const NOTE: React.CSSProperties = {
+  fontSize: 'var(--text-caption)',
+  color: 'var(--color-text-tertiary)',
+  lineHeight: 'var(--leading-base)',
+  maxWidth: '68ch',
+  margin: '0 0 var(--space-3)',
+};
+const FIELD_LABEL: React.CSSProperties = {
+  fontSize: 'var(--text-body-sm)',
+  fontWeight: 600,
+  color: 'var(--color-text-primary)',
+  margin: '0 0 var(--space-2)',
 };
 const inputStyle: React.CSSProperties = {
-  flex: 1,
-  background: 'var(--color-bg-secondary)',
+  flex: '1 1 200px',
+  minWidth: 0,
+  background: 'var(--color-bg-primary)',
   border: '1px solid var(--color-border-default)',
-  borderRadius: 8,
-  padding: '9px 12px',
+  borderRadius: 'var(--radius-control)',
+  padding: '0 var(--space-3)',
   color: 'var(--color-text-primary)',
   // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
   fontSize: 'var(--text-body)',
-  outline: 'none',
+  fontFamily: 'var(--font-sans)',
+  minHeight: 'var(--touch-target-min)',
+  boxSizing: 'border-box',
 };
-const primaryBtn = (enabled: boolean): React.CSSProperties => ({
-  background: 'var(--accent)',
-  color: 'var(--color-text-inverted)',
-  border: 'none',
-  borderRadius: 8,
-  padding: '9px 20px',
-  fontSize: 'var(--text-body-sm)',
-  fontWeight: 600,
-  cursor: enabled ? 'pointer' : 'not-allowed',
-  opacity: enabled ? 1 : 0.5,
-  transition: 'opacity 0.12s',
-});
-const secondaryBtn = (enabled: boolean): React.CSSProperties => ({
-  background: 'var(--color-bg-tertiary)',
-  color: 'var(--color-text-primary)',
-  border: '1px solid var(--color-border-default)',
-  borderRadius: 8,
-  padding: '4px 12px',
-  fontSize: 'var(--text-caption)',
-  fontWeight: 600,
-  cursor: enabled ? 'pointer' : 'not-allowed',
-  opacity: enabled ? 1 : 0.5,
-});
+
+/** Disabled treatment for the shared `.os-button` / `.os-chip` controls. */
+function disabledStyle(enabled: boolean): React.CSSProperties {
+  return { cursor: enabled ? 'pointer' : 'not-allowed', opacity: enabled ? 1 : 0.5 };
+}
 
 function scopeLabel(scope: string): string {
   return HISTORY_SCOPES.find((s) => s.key === scope)?.label ?? scope;
@@ -96,7 +119,7 @@ function CapabilityGrid({
   idPrefix: string;
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       {allowedCmd.map((cmd) => {
         const id = `${idPrefix}-${cmd}`;
         return (
@@ -106,8 +129,10 @@ function CapabilityGrid({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
-              padding: '8px 4px',
+              gap: 'var(--space-3)',
+              // Every row here is a tap target, so it gets the tap minimum.
+              minHeight: 'var(--touch-target-min)',
+              padding: 'var(--space-1) 0',
               cursor: 'pointer',
               borderBottom: '1px solid var(--color-border-default)',
             }}
@@ -117,11 +142,11 @@ function CapabilityGrid({
               type="checkbox"
               checked={selected.has(cmd)}
               onChange={() => onToggle(cmd)}
-              style={{ width: 16, height: 16, accentColor: 'var(--accent)', flexShrink: 0 }}
+              style={{ width: 16, height: 16, accentColor: 'var(--color-brand-primary)', flexShrink: 0 }}
             />
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)', display: 'block' }}>{cmdLabel(cmd)}</span>
-              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{cmd}</span>
+              <span className="os-break-all" style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{cmd}</span>
             </span>
           </label>
         );
@@ -145,7 +170,7 @@ export function ApiKeyMetaSummary({ k }: { k: ApiKeyMeta }) {
       <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>{k.name}</span>
       <code style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{k.prefix}…</code>
       {revoked && (
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-status-danger)', border: '1px solid color-mix(in srgb, var(--color-status-danger) 30%, transparent)', borderRadius: 4, padding: '1px 6px' }}>
+        <span style={{ fontSize: 'var(--text-label)', fontWeight: 600, color: 'var(--color-status-danger)', border: '1px solid color-mix(in srgb, var(--color-status-danger) 30%, transparent)', borderRadius: 'var(--radius-control)', padding: '1px var(--space-2)' }}>
           {t('aiAgentSettings.revoked')}
         </span>
       )}
@@ -156,30 +181,21 @@ export function ApiKeyMetaSummary({ k }: { k: ApiKeyMeta }) {
 /** History-grant chip selector (shared). */
 function HistoryScopeChips({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {HISTORY_SCOPES.map((s) => {
-        const active = value === s.key;
-        return (
-          <button
-            key={s.key}
-            type="button"
-            onClick={() => onChange(s.key)}
-            style={{
-              padding: '7px 14px',
-              borderRadius: 8,
-              fontSize: 'var(--text-caption)',
-              fontWeight: active ? 600 : 400,
-              cursor: 'pointer',
-              background: active ? 'var(--accent)' : 'var(--color-bg-secondary)',
-              color: active ? 'var(--color-text-inverted)' : 'var(--color-text-secondary)',
-              border: `1px solid ${active ? 'var(--accent)' : 'var(--color-bg-tertiary)'}`,
-              transition: 'all 0.12s',
-            }}
-          >
-            {s.label}
-          </button>
-        );
-      })}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+      {HISTORY_SCOPES.map((s) => (
+        <button
+          key={s.key}
+          type="button"
+          className="os-chip"
+          // `.os-chip` styles its own selected state off aria-pressed — the
+          // same quiet "raised, not highlighted" treatment the feed's sort
+          // chips use, so these do not shout over the rows around them.
+          aria-pressed={value === s.key}
+          onClick={() => onChange(s.key)}
+        >
+          {s.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -348,13 +364,13 @@ export default function AiAgentSettings() {
   }
 
   if (loading) {
-    return <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', padding: '8px 0' }}>{t('aiAgentSettings.loadingSettings')}</div>;
+    return <div style={{ ...SETTINGS_LIST, ...SETTINGS_ROW, color: 'var(--color-text-tertiary)', fontSize: 'var(--text-body-sm)' }}>{t('aiAgentSettings.loadingSettings')}</div>;
   }
   if (loadError) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)' }}>{loadError}</div>
-        <button type="button" onClick={() => void loadAll()} style={{ ...primaryBtn(true), alignSelf: 'flex-start' }}>
+      <div style={{ ...SETTINGS_LIST, ...SETTINGS_ROW }}>
+        <span style={{ flex: '1 1 200px', minWidth: 0, fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)' }}>{loadError}</span>
+        <button type="button" className="os-button" onClick={() => void loadAll()}>
           {t('common.retry')}
         </button>
       </div>
@@ -362,111 +378,107 @@ export default function AiAgentSettings() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: 0 }}>
-        {t('aiAgentSettings.intro')}
+    <div>
+      <p style={NOTE}>{t('aiAgentSettings.intro')}</p>
+      <p style={NOTE}>
+        {t('aiAgentSettings.keyDescPre')} <span style={{ fontFamily: 'var(--font-mono)' }}>osk_…</span> {t('aiAgentSettings.keyDescMid')}{' '}
+        <span style={{ fontFamily: 'var(--font-mono)' }}>OPENSTOA_API_KEY</span>{t('aiAgentSettings.keyDescPost')}
       </p>
 
-      {/* ── API keys — the only unit of AI capability scope ────────────────── */}
-      <div>
-        <h3 className="os-label" style={sectionTitleStyle}>{t('aiAgentSettings.apiKeys')}</h3>
-        <p style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-tertiary)', margin: '0 0 12px', lineHeight: 1.5 }}>
-          {t('aiAgentSettings.keyDescPre')} <span style={{ fontFamily: 'var(--font-mono)' }}>osk_…</span> {t('aiAgentSettings.keyDescMid')}{' '}
-          <span style={{ fontFamily: 'var(--font-mono)' }}>OPENSTOA_API_KEY</span>{t('aiAgentSettings.keyDescPost')}
-        </p>
-
-        {/* Raw key — shown exactly once */}
-        {rawKey && (
-          <div
-            style={{
-              ...subCardStyle,
-              background: 'color-mix(in srgb, var(--color-brand-accent) 6%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--color-brand-accent) 30%, transparent)',
-              marginBottom: 16,
-            }}
-          >
-            <p style={{ fontSize: 'var(--text-caption)', fontWeight: 700, color: 'var(--color-brand-accent)', margin: '0 0 6px' }}>
-              {t('aiAgentSettings.copyKeyNow')}
-            </p>
-            <p style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-secondary)', margin: '0 0 10px', lineHeight: 1.5 }}>
-              {t('aiAgentSettings.hashOnlyStored')}
-            </p>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <code
-                style={{
-                  flex: 1,
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 'var(--text-caption)',
-                  color: 'var(--color-text-primary)',
-                  background: 'rgba(0,0,0,0.4)',
-                  border: '1px solid var(--color-border-default)',
-                  borderRadius: 'var(--radius-control)',
-                  padding: '10px 12px',
-                  wordBreak: 'break-all',
-                }}
-              >
-                {rawKey}
-              </code>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard?.writeText(rawKey);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
-                style={{ ...primaryBtn(true), flexShrink: 0 }}
-              >
-                {copied ? t('aiAgentSettings.copied') : t('aiAgentSettings.copy')}
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => { setRawKey(null); setCopied(false); }}
+      {/* Raw key — shown exactly once, and never re-fetched. Deliberately the
+          one panel on this surface that does NOT read as a settings row: it is
+          a transient reveal the user must act on before it disappears, so it
+          keeps the accent border that marks it as such. */}
+      {rawKey && (
+        <div
+          style={{
+            ...SETTINGS_LIST,
+            background: 'color-mix(in srgb, var(--color-brand-accent) 6%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--color-brand-accent) 30%, transparent)',
+            padding: 'var(--space-4)',
+            marginBottom: 'var(--space-3)',
+          }}
+        >
+          <p style={{ fontSize: 'var(--text-body-sm)', fontWeight: 700, color: 'var(--color-brand-accent)', margin: '0 0 var(--space-1)' }}>
+            {t('aiAgentSettings.copyKeyNow')}
+          </p>
+          <p style={{ ...NOTE, margin: '0 0 var(--space-3)' }}>
+            {t('aiAgentSettings.hashOnlyStored')}
+          </p>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+            <code
+              className="os-break-all"
               style={{
-                marginTop: 10,
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-text-tertiary)',
+                flex: '1 1 220px',
+                minWidth: 0,
+                fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-caption)',
-                cursor: 'pointer',
-                padding: 0,
+                color: 'var(--color-text-primary)',
+                // Deliberately near-black in both themes so a shoulder-surfed
+                // key stays low-contrast (see tokenSweep ALLOWLIST).
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid var(--color-border-default)',
+                borderRadius: 'var(--radius-control)',
+                padding: 'var(--space-3)',
               }}
             >
-              {t('aiAgentSettings.dismissSavedKey')}
+              {rawKey}
+            </code>
+            <button
+              type="button"
+              className="os-button os-button-primary"
+              onClick={() => {
+                navigator.clipboard?.writeText(rawKey);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? t('aiAgentSettings.copied') : t('aiAgentSettings.copy')}
             </button>
           </div>
-        )}
+          <button
+            type="button"
+            className="os-chip"
+            onClick={() => { setRawKey(null); setCopied(false); }}
+            style={{ marginTop: 'var(--space-2)', paddingLeft: 0, paddingRight: 0 }}
+          >
+            {t('aiAgentSettings.dismissSavedKey')}
+          </button>
+        </div>
+      )}
 
-        {/* Create form */}
-        <div style={subCardStyle}>
-          <p style={{ fontSize: 'var(--text-caption)', fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 10px' }}>{t('aiAgentSettings.createNewKey')}</p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+      <div style={SETTINGS_LIST}>
+        {/* Create — one row, stacked because it is a form, not a switch. */}
+        <div style={STACKED_ROW}>
+          <p style={FIELD_LABEL}>{t('aiAgentSettings.createNewKey')}</p>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <input
               type="text"
               value={newName}
               onChange={(e) => { setNewName(e.target.value); setCreateError(null); }}
               placeholder={t('aiAgentSettings.keyNamePlaceholder')}
+              aria-label={t('aiAgentSettings.createNewKey')}
               maxLength={MAX_API_KEY_NAME_LEN}
-              style={{ ...inputStyle, borderColor: nameError ? 'var(--color-status-danger)' : 'var(--color-bg-tertiary)' }}
+              style={{ ...inputStyle, borderColor: nameError ? 'var(--color-status-danger)' : 'var(--color-border-default)' }}
             />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-label)', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', fontSize: 'var(--text-label)', margin: 'var(--space-1) 0 var(--space-4)' }}>
             <span style={{ color: nameError ? 'var(--color-status-danger)' : 'var(--color-text-tertiary)' }}>
               {nameError ?? t('aiAgentSettings.keyNameHint')}
             </span>
-            <span style={{ color: 'var(--color-text-tertiary)' }}>{newName.length}/{MAX_API_KEY_NAME_LEN}</span>
+            <span style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{newName.length}/{MAX_API_KEY_NAME_LEN}</span>
           </div>
 
-          <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: '0 0 6px' }}>{t('aiAgentSettings.keyScope')}</p>
+          <p style={FIELD_LABEL}>{t('aiAgentSettings.keyScope')}</p>
           <CapabilityGrid allowedCmd={allowedCmd} selected={newCmd} onToggle={toggleNewCmd} idPrefix="new" />
 
-          <div style={{ marginTop: 14 }}>
-            <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: '0 0 8px' }}>{t('aiAgentSettings.keyHistoryBackfill')}</p>
+          <div style={{ marginTop: 'var(--space-4)' }}>
+            <p style={FIELD_LABEL}>{t('aiAgentSettings.keyHistoryBackfill')}</p>
             <HistoryScopeChips value={newHistory} onChange={setNewHistory} />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
-            <button type="button" onClick={createKey} disabled={!canCreate} style={primaryBtn(canCreate)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap', marginTop: 'var(--space-4)' }}>
+            <button type="button" className="os-button os-button-primary" onClick={createKey} disabled={!canCreate} style={disabledStyle(canCreate)}>
               {creating ? t('aiAgentSettings.creating') : t('aiAgentSettings.createKey')}
             </button>
             {createError && <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-status-danger)' }}>{createError}</span>}
@@ -474,92 +486,90 @@ export default function AiAgentSettings() {
         </div>
 
         {/* Existing keys — each row IS the scope; edit or revoke per key */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
-          {keys.length === 0 ? (
-            <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', padding: '4px 0' }}>{t('aiAgentSettings.noApiKeys')}</div>
-          ) : (
-            keys.map((k) => {
-              const revoked = !!k.revokedAt;
-              const isEditing = editingId === k.id;
-              return (
-                <div key={k.id} style={{ ...subCardStyle, opacity: revoked ? 0.55 : 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <ApiKeyMetaSummary k={k} />
-                    <span style={{ flex: 1 }} />
-                    {!revoked && !isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => startEdit(k)}
-                        style={secondaryBtn(true)}
-                      >
-                        {t('aiAgentSettings.editScope')}
-                      </button>
-                    )}
-                    {!revoked && (
-                      confirmingRevoke === k.id ? (
-                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-                          <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-status-danger)' }}>{t('aiAgentSettings.revokeConfirm')}</span>
-                          <button
-                            type="button"
-                            onClick={() => revokeKey(k.id)}
-                            disabled={revokingId === k.id}
-                            style={{ background: 'var(--color-status-danger)', color: 'var(--color-text-inverted)', border: 'none', borderRadius: 'var(--radius-control)', padding: '4px 12px', fontSize: 'var(--text-caption)', fontWeight: 600, cursor: 'pointer', opacity: revokingId === k.id ? 0.5 : 1 }}
-                          >
-                            {revokingId === k.id ? '…' : t('aiAgentSettings.confirm')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setConfirmingRevoke(null); setRevokeError(null); }}
-                            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)', border: 'none', borderRadius: 'var(--radius-control)', padding: '4px 10px', fontSize: 'var(--text-caption)', cursor: 'pointer' }}
-                          >
-                            {t('common.cancel')}
-                          </button>
-                        </span>
-                      ) : (
+        {keys.length === 0 ? (
+          <div style={{ ...SETTINGS_ROW, ...ROW_DIVIDER, fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)' }}>
+            {t('aiAgentSettings.noApiKeys')}
+          </div>
+        ) : (
+          keys.map((k) => {
+            const revoked = !!k.revokedAt;
+            const isEditing = editingId === k.id;
+            return (
+              <div key={k.id} style={{ ...STACKED_ROW, ...ROW_DIVIDER, opacity: revoked ? 0.55 : 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                  <ApiKeyMetaSummary k={k} />
+                  <span style={{ flex: 1 }} />
+                  {!revoked && !isEditing && (
+                    <button type="button" className="os-chip" onClick={() => startEdit(k)}>
+                      {t('aiAgentSettings.editScope')}
+                    </button>
+                  )}
+                  {!revoked && (
+                    confirmingRevoke === k.id ? (
+                      <span style={{ display: 'inline-flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-status-danger)' }}>{t('aiAgentSettings.revokeConfirm')}</span>
                         <button
                           type="button"
-                          onClick={() => { setConfirmingRevoke(k.id); setRevokeError(null); }}
-                          style={{ background: 'color-mix(in srgb, var(--color-status-danger) 10%, transparent)', color: 'var(--color-status-danger)', border: '1px solid color-mix(in srgb, var(--color-status-danger) 25%, transparent)', borderRadius: 'var(--radius-control)', padding: '4px 12px', fontSize: 'var(--text-caption)', fontWeight: 600, cursor: 'pointer' }}
+                          className="os-chip"
+                          onClick={() => revokeKey(k.id)}
+                          disabled={revokingId === k.id}
+                          style={{ color: 'var(--color-status-danger)', fontWeight: 600, ...disabledStyle(revokingId !== k.id) }}
                         >
-                          {t('aiAgentSettings.revoke')}
+                          {revokingId === k.id ? '…' : t('aiAgentSettings.confirm')}
                         </button>
-                      )
-                    )}
-                  </div>
-
-                  {isEditing ? (
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border-default)' }}>
-                      <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: '0 0 6px' }}>{t('aiAgentSettings.keyScope')}</p>
-                      <CapabilityGrid allowedCmd={allowedCmd} selected={editCmd} onToggle={toggleEditCmd} idPrefix={`edit-${k.id}`} />
-                      <div style={{ marginTop: 14 }}>
-                        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-secondary)', margin: '0 0 8px' }}>{t('aiAgentSettings.keyHistoryBackfill')}</p>
-                        <HistoryScopeChips value={editHistory} onChange={setEditHistory} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
-                        <button type="button" onClick={() => saveEdit(k.id)} disabled={savingEdit} style={primaryBtn(!savingEdit)}>
-                          {savingEdit ? t('aiAgentSettings.saving') : t('aiAgentSettings.saveScope')}
-                        </button>
-                        <button type="button" onClick={cancelEdit} disabled={savingEdit} style={secondaryBtn(!savingEdit)}>
+                        <button
+                          type="button"
+                          className="os-chip"
+                          onClick={() => { setConfirmingRevoke(null); setRevokeError(null); }}
+                        >
                           {t('common.cancel')}
                         </button>
-                        {editError && <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-status-danger)' }}>{editError}</span>}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-tertiary)', marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                      <span>{t('aiAgentSettings.scopeLabel', { value: k.cmd.length === 0 ? t('aiAgentSettings.scopeNone') : k.cmd.map(cmdLabel).join(', ') })}</span>
-                      <span>{t('aiAgentSettings.historyLabel', { value: scopeLabel(k.historyGrant) })}</span>
-                      <span>{t('aiAgentSettings.createdLabel', { value: fmtDate(k.createdAt) })}</span>
-                      <span>{t('aiAgentSettings.lastUsedLabel', { value: fmtDate(k.lastUsedAt) })}</span>
-                    </div>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="os-chip"
+                        onClick={() => { setConfirmingRevoke(k.id); setRevokeError(null); }}
+                        style={{ color: 'var(--color-status-danger)' }}
+                      >
+                        {t('aiAgentSettings.revoke')}
+                      </button>
+                    )
                   )}
                 </div>
-              );
-            })
-          )}
-          {revokeError && <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-status-danger)' }}>{revokeError}</div>}
-        </div>
+
+                {isEditing ? (
+                  <div style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-default)' }}>
+                    <p style={FIELD_LABEL}>{t('aiAgentSettings.keyScope')}</p>
+                    <CapabilityGrid allowedCmd={allowedCmd} selected={editCmd} onToggle={toggleEditCmd} idPrefix={`edit-${k.id}`} />
+                    <div style={{ marginTop: 'var(--space-4)' }}>
+                      <p style={FIELD_LABEL}>{t('aiAgentSettings.keyHistoryBackfill')}</p>
+                      <HistoryScopeChips value={editHistory} onChange={setEditHistory} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap', marginTop: 'var(--space-4)' }}>
+                      <button type="button" className="os-button os-button-primary" onClick={() => saveEdit(k.id)} disabled={savingEdit} style={disabledStyle(!savingEdit)}>
+                        {savingEdit ? t('aiAgentSettings.saving') : t('aiAgentSettings.saveScope')}
+                      </button>
+                      <button type="button" className="os-button" onClick={cancelEdit} disabled={savingEdit} style={disabledStyle(!savingEdit)}>
+                        {t('common.cancel')}
+                      </button>
+                      {editError && <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-status-danger)' }}>{editError}</span>}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-tertiary)', marginTop: 'var(--space-2)', display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+                    <span>{t('aiAgentSettings.scopeLabel', { value: k.cmd.length === 0 ? t('aiAgentSettings.scopeNone') : k.cmd.map(cmdLabel).join(', ') })}</span>
+                    <span>{t('aiAgentSettings.historyLabel', { value: scopeLabel(k.historyGrant) })}</span>
+                    <span>{t('aiAgentSettings.createdLabel', { value: fmtDate(k.createdAt) })}</span>
+                    <span>{t('aiAgentSettings.lastUsedLabel', { value: fmtDate(k.lastUsedAt) })}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
+      {revokeError && <p style={{ ...NOTE, color: 'var(--color-status-danger)', margin: 'var(--space-3) 0 0' }}>{revokeError}</p>}
     </div>
   );
 }

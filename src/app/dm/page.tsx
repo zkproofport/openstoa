@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
 import Avatar from '@/components/Avatar';
 import Spinner from '@/components/Spinner';
+import { rowStyle, emptyStateStyle } from '@/components/ChatRoomList';
 import { relativeTime } from '@/lib/utils';
 import { sortDmChannels, type DmChannel } from '@/lib/dm';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
@@ -16,22 +17,20 @@ import { useTranslation } from '@/lib/i18n/I18nProvider';
  * information model so the two surfaces agree: the peer's identity plus a
  * last-activity timestamp, most-recently-active first.
  *
+ * The row TREATMENT is the chat rail's, imported rather than re-invented:
+ * `rowStyle` / `emptyStateStyle` come from `ChatRoomList.tsx`, which the rail
+ * and the standalone `/chat` list both render. The same conversation seen in
+ * the rail and on this page has to look like one thing — a bordered card here
+ * and a rule-separated row there read as two different products. (The row is
+ * an `<a>` here and a `<button>` in the rail because this page navigates and
+ * the rail opens in place; that is the one intended difference.)
+ *
  * SI-1: `GET /api/dm` carries routing metadata ONLY — no message body and no
  * decrypted preview. Plaintext exists only inside the MLS session opened by the
- * conversation view, so this page holds no crypto and never touches one.
+ * conversation view, so this page holds no crypto and never touches one. The
+ * second line of a row is therefore a LOCKED PLACEHOLDER, never content —
+ * identical to `RoomRow` in `ChatRoomList.tsx`, for the same reason.
  */
-
-const rowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 'var(--space-3)',
-  padding: 'var(--space-3) var(--space-4)',
-  background: 'var(--surface)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-card)',
-  textDecoration: 'none',
-  transition: 'background 0.12s',
-};
 
 export default function DmListPage() {
   const router = useRouter();
@@ -77,106 +76,150 @@ export default function DmListPage() {
 
   return (
     <CommunityLayout isGuest={false} sessionChecked={true}>
-      {/* maxWidth/36px/80px are page-shell layout constants with no matching
-          space-scale step; kept literal to avoid shifting the column width. */}
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '36px var(--space-5) 80px' }}>
-        <h1 style={{
-          fontSize: 'var(--text-heading-sm)',
-          fontWeight: 800,
-          letterSpacing: '-0.03em',
-          margin: '0 0 var(--space-1)',
-          color: 'var(--foreground)',
-        }}>
-          {t('dmPage.title')}
-        </h1>
-        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '0 0 var(--space-5)', fontFamily: 'var(--font-mono)' }}>
-          {t('dmPage.subtitle')}
-        </p>
+      {/* 560px is a list measure, narrower than the page's own --read-max prose
+          cap: these rows are scanned, not read, and a name + timestamp stretched
+          across 860px puts the two ends of one row out of each other's reach. */}
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: 'var(--space-6) 0 var(--space-7)' }}>
+        {/* Identity block — heading step, weight and tracking match the feed and
+            Explore (all three are CommunityLayout pages), and the sub-line is
+            `.os-label`, the same subtitle idiom the chat rail and the popped-out
+            /chat page use. */}
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <h1 style={{
+            fontSize: 'var(--text-heading-lg)',
+            fontWeight: 800,
+            letterSpacing: '-0.03em',
+            margin: '0 0 var(--space-1)',
+            color: 'var(--color-text-primary)',
+          }}>
+            {t('dmPage.title')}
+          </h1>
+          <div className="os-label" style={{ color: 'var(--color-text-secondary)' }}>
+            {t('dmPage.subtitle')}
+          </div>
+        </div>
 
         {loading && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-7) 0' }}>
             <Spinner />
           </div>
         )}
 
         {!loading && needsNickname && (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)' }}>
+          <div style={emptyStateStyle}>
+            <p style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-body-sm)' }}>
               {t('dmPage.needsNickname')}
             </p>
-            <Link href="/profile?returnTo=%2Fdm" style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
+            <Link href="/profile?returnTo=%2Fdm" className="os-button">
               {t('dmPage.goToProfile')}
             </Link>
           </div>
         )}
 
+        {/* Error is a DISTINCT state from empty, not a red variant of it: a
+            failed request that renders an empty list tells the reader they have
+            no conversations, which is a different and wrong fact. */}
         {!loading && error && (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-3)' }}>
+          <div
+            role="alert"
+            style={{
+              textAlign: 'center',
+              padding: 'var(--space-7) var(--space-5)',
+              border: '1px solid var(--color-status-danger)',
+              borderRadius: 'var(--radius-card)',
+              background: 'var(--color-bg-secondary)',
+            }}
+          >
+            <p style={{
+              color: 'var(--color-status-danger)',
+              fontSize: 'var(--text-body-lg)',
+              fontWeight: 600,
+              margin: '0 0 var(--space-2)',
+            }}>
               {error}
             </p>
-            <button
-              onClick={() => loadDms()}
-              style={{
-                background: 'var(--color-brand-primary-muted)',
-                color: 'var(--accent)',
-                border: '1px solid color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
-                borderRadius: 'var(--radius-control)',
-                padding: '6px var(--space-4)',
-                fontSize: 'var(--text-body-sm)',
-                fontWeight: 500,
-                cursor: 'pointer',
-                minHeight: 'var(--touch-target-min)',
-              }}
-            >
+            <p style={{
+              fontSize: 'var(--text-body-sm)',
+              color: 'var(--color-text-secondary)',
+              margin: '0 0 var(--space-5)',
+            }}>
+              {t('dmPage.errorBody')}
+            </p>
+            <button type="button" onClick={() => loadDms()} className="os-button os-button-primary">
               {t('common.retry')}
             </button>
           </div>
         )}
 
         {!loading && !error && !needsNickname && dms.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <p style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--foreground)', margin: '0 0 var(--space-2)' }}>
+          <div style={emptyStateStyle}>
+            <p style={{
+              fontSize: 'var(--text-body-lg)',
+              fontWeight: 600,
+              color: 'var(--color-text-primary)',
+              margin: '0 0 var(--space-2)',
+              letterSpacing: '-0.02em',
+            }}>
               {t('dmPage.empty.title')}
             </p>
-            <p style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: 0, lineHeight: 1.6 }}>
-              {t('dmPage.empty.body')}
-            </p>
+            <p style={{ margin: 0 }}>{t('dmPage.empty.body')}</p>
           </div>
         )}
 
         {!loading && !error && !needsNickname && dms.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div>
             {dms.map((dm) => (
               <Link
                 key={dm.topicId}
                 href={`/dm/${dm.topicId}`}
                 data-testid="dm-row"
-                style={rowStyle}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface)'; }}
+                style={{ ...rowStyle, textDecoration: 'none' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
-                <Avatar src={dm.peer.profileImage} name={dm.peer.nickname} size={40} />
-                <span style={{
-                  flex: 1,
-                  minWidth: 0,
-                  fontSize: 'var(--text-body)',
-                  fontWeight: 600,
-                  color: 'var(--foreground)',
-                  // Layout-only truncation: a very long nickname must not push
-                  // the timestamp out of the row.
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {dm.peer.nickname}
+                <Avatar src={dm.peer.profileImage} name={dm.peer.nickname} size={36} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span
+                    data-testid="dm-row-title"
+                    style={{
+                      display: 'block',
+                      fontSize: 'var(--text-body-sm)',
+                      fontWeight: 600,
+                      color: 'var(--color-text-primary)',
+                      // Layout-only truncation: a very long nickname must not
+                      // push the timestamp out of the row. The value is intact
+                      // in the DOM.
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {dm.peer.nickname}
+                  </span>
+                  {/* SI-1 — never a preview. "Encrypted message" where the
+                      channel has seen activity, "No messages yet" where it
+                      provably has not; same two sentences the rail uses. */}
+                  <span
+                    data-testid="dm-row-preview"
+                    style={{
+                      display: 'block',
+                      fontSize: 'var(--text-caption)',
+                      color: 'var(--color-text-tertiary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {dm.lastActivityAt ? `🔒 ${t('chat.encryptedPreview')}` : t('chat.noMessagesYet')}
+                  </span>
                 </span>
                 {dm.lastActivityAt && (
                   <span style={{
-                    fontSize: 'var(--text-caption)',
+                    fontSize: 'var(--text-label)',
                     fontFamily: 'var(--font-mono)',
-                    color: 'var(--muted)',
+                    color: 'var(--color-text-tertiary)',
                     flexShrink: 0,
+                    alignSelf: 'flex-start',
                   }}>
                     {relativeTime(dm.lastActivityAt)}
                   </span>

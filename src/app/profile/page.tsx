@@ -1,5 +1,14 @@
 'use client';
 
+/**
+ * One-time nickname setup, reached straight after the proof-of-identity step
+ * and redirected away from once a real nickname exists.
+ *
+ * Standalone chrome: `<Header />` and nothing else — no `CommunityLayout`, so
+ * no sidebar, no tab bar, no chat rail. It is a single-column form that has to
+ * stand on its own, so the heading, the identity it is naming, and the one
+ * action are the whole page.
+ */
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
@@ -150,46 +159,56 @@ function ProfilePageInner() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '40px var(--space-5)',
+          padding: 'var(--space-6) var(--space-5) var(--space-7)',
         }}
       >
         <div style={{ width: '100%', maxWidth: 440 }}>
-          <div style={{ marginBottom: 'var(--space-6)' }}>
-            <h1
-              style={{
-                fontSize: 'var(--text-heading-lg)',
-                fontWeight: 800,
-                letterSpacing: '-0.04em',
-                margin: 0,
-              }}
-            >
-              {t('profilePage.title')}
-            </h1>
-            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginTop: 'var(--space-2)' }}>
-              {t('profilePage.subtitle')}
-            </p>
-          </div>
+          <h1
+            style={{
+              fontSize: 'var(--text-heading-lg)',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              color: 'var(--color-text-primary)',
+              margin: 0,
+            }}
+          >
+            {t('profilePage.title')}
+          </h1>
+          <p
+            style={{
+              fontSize: 'var(--text-body-sm)',
+              color: 'var(--color-text-secondary)',
+              lineHeight: 'var(--leading-base)',
+              maxWidth: '48ch',
+              margin: 'var(--space-2) 0 var(--space-6)',
+            }}
+          >
+            {t('profilePage.subtitle')}
+          </p>
 
+          {/* The identity this nickname is being attached to — a nullifier, not
+              a wallet. Shown so the user can see that naming it changes
+              nothing about what the account reveals. */}
           {userId && (
             <div
               style={{
-                padding: '10px 14px',
+                padding: 'var(--space-3) var(--space-4)',
                 background: 'var(--color-bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-control)',
+                border: '1px solid var(--color-border-default)',
+                borderRadius: 'var(--radius-card)',
                 marginBottom: 'var(--space-5)',
               }}
             >
-              <p style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', margin: 0, fontFamily: 'var(--font-mono)' }}>
+              <p className="os-label" style={{ color: 'var(--color-text-tertiary)', margin: 0 }}>
                 {t('profilePage.verifiedIdentity')}
               </p>
               <p
+                className="os-break-all"
                 style={{
-                  fontSize: 'var(--text-body)',
-                  color: 'var(--foreground)',
+                  fontSize: 'var(--text-body-sm)',
+                  color: 'var(--color-text-primary)',
                   margin: 'var(--space-1) 0 0',
                   fontFamily: 'var(--font-mono)',
-                  wordBreak: 'break-all',
                 }}
               >
                 {userId.slice(0, 8)}...{userId.slice(-6)}
@@ -197,12 +216,12 @@ function ProfilePageInner() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
             {/* Profile Image Upload */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
               {profileImage ? (
                 <div style={{ position: 'relative' }}>
-                  <Avatar src={profileImage} name={nickname || 'U'} size={80} />
+                  <Avatar src={profileImage} name={nickname || 'U'} size={72} />
                   <button
                     type="button"
                     onClick={handleImageRemove}
@@ -212,9 +231,9 @@ function ProfilePageInner() {
                       position: 'absolute',
                       top: -6,
                       right: -6,
-                      width: 22,
-                      height: 22,
-                      borderRadius: '50%',
+                      width: 24,
+                      height: 24,
+                      borderRadius: 'var(--radius-pill)',
                       background: 'var(--color-status-danger)',
                       color: 'var(--color-text-inverted)',
                       border: 'none',
@@ -233,19 +252,19 @@ function ProfilePageInner() {
               ) : (
                 <label
                   style={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: '50%',
-                    border: '2px dashed var(--color-bg-tertiary)',
+                    width: 72,
+                    height: 72,
+                    borderRadius: 'var(--radius-pill)',
+                    border: '2px dashed var(--color-border-default)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: imageUploading ? 'wait' : 'pointer',
-                    color: 'var(--muted)',
-                    fontSize: 'var(--text-body)',
+                    color: 'var(--color-text-tertiary)',
+                    fontSize: 'var(--text-label)',
                     textAlign: 'center',
-                    lineHeight: 1.3,
+                    lineHeight: 'var(--leading-tight)',
                     transition: 'border-color 0.15s',
                     flexShrink: 0,
                     opacity: imageUploading ? 0.5 : 1,
@@ -267,7 +286,7 @@ function ProfilePageInner() {
                   <span>{imageUploading ? t('profilePage.uploading') : t('profilePage.uploadPhoto')}</span>
                 </label>
               )}
-              <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-tertiary)', lineHeight: 1.5 }}>
+              <div style={{ flex: '1 1 180px', minWidth: 0, fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', lineHeight: 'var(--leading-base)' }}>
                 {t('profilePage.photoHelp.line1')}
                 <br />
                 {t('profilePage.photoHelp.line2')}
@@ -277,7 +296,13 @@ function ProfilePageInner() {
             <div>
               <label
                 htmlFor="nickname"
-                style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
+                style={{
+                  display: 'block',
+                  fontSize: 'var(--text-body-sm)',
+                  fontWeight: 600,
+                  color: 'var(--color-text-primary)',
+                  marginBottom: 'var(--space-2)',
+                }}
               >
                 {t('profilePage.nicknameLabel')}
               </label>
@@ -292,13 +317,12 @@ function ProfilePageInner() {
                 style={{
                   width: '100%',
                   background: 'var(--color-bg-secondary)',
-                  border: `1px solid ${validationError ? 'var(--color-status-danger)' : isValid && nickname ? 'var(--color-brand-accent)' : 'var(--border)'}`,
+                  border: `1px solid ${validationError ? 'var(--color-status-danger)' : isValid && nickname ? 'var(--color-brand-accent)' : 'var(--color-border-default)'}`,
                   borderRadius: 'var(--radius-control)',
-                  padding: 'var(--space-3) 14px',
-                  color: 'var(--foreground)',
+                  padding: '0 var(--space-4)',
+                  color: 'var(--color-text-primary)',
                   // var(--text-body) = 16px: below that, iOS Safari zooms the page on focus.
                   fontSize: 'var(--text-body)',
-                  outline: 'none',
                   fontFamily: 'var(--font-mono)',
                   transition: 'border-color 0.15s',
                   minHeight: 'var(--touch-target-min)',
@@ -309,19 +333,21 @@ function ProfilePageInner() {
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  marginTop: 6,
+                  gap: 'var(--space-3)',
+                  marginTop: 'var(--space-2)',
+                  fontSize: 'var(--text-caption)',
                 }}
               >
                 {validationError ? (
-                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: 0 }}>{validationError}</p>
+                  <p style={{ color: 'var(--color-status-danger)', margin: 0 }}>{validationError}</p>
                 ) : isValid && nickname ? (
-                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-brand-accent)', margin: 0 }}>{t('profilePage.looksGood')}</p>
+                  <p style={{ color: 'var(--color-brand-accent)', margin: 0 }}>{t('profilePage.looksGood')}</p>
                 ) : (
-                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: 0 }}>
+                  <p style={{ color: 'var(--color-text-tertiary)', margin: 0 }}>
                     {t('profilePage.charsetHint')}
                   </p>
                 )}
-                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: 0 }}>
+                <p style={{ color: 'var(--color-text-tertiary)', margin: 0, fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
                   {nickname.length}/20
                 </p>
               </div>
@@ -330,14 +356,14 @@ function ProfilePageInner() {
             {error && (
               <p
                 style={{
-                  fontSize: 'var(--text-body)',
+                  fontSize: 'var(--text-body-sm)',
                   color: 'var(--color-status-danger)',
+                  lineHeight: 'var(--leading-base)',
                   margin: 0,
-                  fontFamily: 'var(--font-mono)',
                   background: 'color-mix(in srgb, var(--color-status-danger) 8%, transparent)',
                   border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)',
                   borderRadius: 'var(--radius-control)',
-                  padding: 'var(--space-2) var(--space-3)',
+                  padding: 'var(--space-3) var(--space-4)',
                 }}
               >
                 {error}
@@ -346,18 +372,12 @@ function ProfilePageInner() {
 
             <button
               type="submit"
+              className={`os-button${isValid ? ' os-button-primary' : ''}`}
               disabled={!isValid || loading}
               style={{
-                background: isValid ? 'var(--accent)' : 'var(--border)',
-                color: isValid ? 'var(--color-text-inverted)' : 'var(--muted)',
-                border: 'none',
-                borderRadius: 'var(--radius-control)',
-                padding: 'var(--space-3)',
-                fontSize: 'var(--text-body)',
-                fontWeight: 600,
+                width: '100%',
                 cursor: isValid ? 'pointer' : 'not-allowed',
-                transition: 'all 0.15s',
-                minHeight: 'var(--touch-target-min)',
+                opacity: isValid ? 1 : 0.6,
               }}
             >
               {loading ? t('profilePage.settingUp') : t('profilePage.continue')}

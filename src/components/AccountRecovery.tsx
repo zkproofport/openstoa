@@ -19,23 +19,58 @@ import * as kb from '@/lib/mls/keyBackup';
 import { isPasskeySupported, registerPasskeyPrf, getPasskeyPrf } from '@/lib/passkeyPrf';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
-const card: React.CSSProperties = {
-  padding: '16px 18px',
+// ─── Settings surface contract ───────────────────────────────────────────────
+
+/**
+ * ONE list idiom for every settings row on this surface.
+ *
+ * `/my`'s Settings tab used to stack five differently-styled panels — a bare
+ * section here, a bordered card there, a tinted danger box at the bottom —
+ * and the two components it embeds (`AiAgentSettings`, and `AccountRecovery`
+ * via `/recovery`) each carried a third and fourth look. These two objects are
+ * the whole contract: a bordered list, and a row inside it.
+ *
+ * Mirrored VERBATIM in `src/app/my/page.tsx` and
+ * `src/components/AiAgentSettings.tsx`, which render into this same surface.
+ * `src/__tests__/settingsSurface.test.tsx` re-parses all three files and fails
+ * if any copy drifts, so "they match" is a checked fact, not a convention.
+ */
+const SETTINGS_LIST: React.CSSProperties = {
   background: 'var(--color-bg-secondary)',
-  border: '1px solid var(--border)',
-  borderRadius: 10,
-  marginBottom: 'var(--space-4)',
+  border: '1px solid var(--color-border-default)',
+  borderRadius: 'var(--radius-card)',
+  overflow: 'hidden',
 };
-const btn: React.CSSProperties = {
-  padding: '9px 14px',
-  borderRadius: 8,
-  border: '1px solid var(--border)',
-  background: 'var(--color-bg-secondary)',
-  color: 'var(--foreground)',
+const SETTINGS_ROW: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'var(--space-4)',
+  flexWrap: 'wrap',
+  padding: 'var(--space-4)',
+  minHeight: 'var(--touch-target-min)',
+};
+
+const ROW_DIVIDER: React.CSSProperties = { borderTop: '1px solid var(--color-border-default)' };
+const ROW_TEXT: React.CSSProperties = { flex: '1 1 200px', minWidth: 0 };
+const ROW_LABEL: React.CSSProperties = {
   fontSize: 'var(--text-body-sm)',
-  cursor: 'pointer',
+  fontWeight: 600,
+  color: 'var(--color-text-primary)',
+  margin: 0,
 };
-const label: React.CSSProperties = { fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: 0 };
+const ROW_HINT: React.CSSProperties = {
+  fontSize: 'var(--text-caption)',
+  color: 'var(--color-text-tertiary)',
+  lineHeight: 'var(--leading-base)',
+  maxWidth: '60ch',
+  margin: '2px 0 0',
+};
+/** Section heading above a list. `.os-label` gates uppercase+tracking to :lang(en). */
+const SECTION_HEADING: React.CSSProperties = {
+  color: 'var(--color-text-tertiary)',
+  margin: '0 0 var(--space-3)',
+};
+const SECTION: React.CSSProperties = { marginBottom: 'var(--space-6)' };
 
 export function AccountRecovery({ userId, displayName }: { userId: string; displayName: string }) {
   const { t } = useTranslation();
@@ -115,100 +150,200 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
     });
 
   return (
-    <div style={{ marginTop: 'var(--space-6)' }}>
-      <h2 style={{ fontSize: 'var(--text-body-lg)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 4px' }}>
+    <div>
+      {/* `<h1>`, not `<h2>`: this component is rendered on exactly one page
+          (`/recovery`), which carries no other heading — that page has no
+          sidebar or tab bar to name it, so the heading has to. */}
+      <h1
+        style={{
+          fontSize: 'var(--text-heading-lg)',
+          fontWeight: 700,
+          letterSpacing: '-0.03em',
+          color: 'var(--color-text-primary)',
+          margin: 0,
+        }}
+      >
         {t('accountRecovery.heading')}
-      </h2>
-      <p style={{ ...label, marginBottom: 'var(--space-4)' }}>
+      </h1>
+      <p
+        style={{
+          fontSize: 'var(--text-body-sm)',
+          color: 'var(--color-text-secondary)',
+          lineHeight: 'var(--leading-base)',
+          maxWidth: '68ch',
+          margin: 'var(--space-2) 0 var(--space-6)',
+        }}
+      >
         {t('accountRecovery.intro')}
       </p>
 
       {/* Status */}
-      <div style={card}>
-        <p style={label}>{t('accountRecovery.status')}</p>
-        <p style={{ fontSize: 15, margin: '4px 0 0', color: hasBackup ? 'var(--foreground)' : 'var(--color-status-warning)' }}>
-          {state == null
-            ? t('accountRecovery.statusChecking')
-            : hasBackup
-              ? `${t('accountRecovery.statusSetUp')}${state.passkeys.length ? t('accountRecovery.statusPasskeyCount', { count: state.passkeys.length }) : ''}${state.wrappedMaster ? t('accountRecovery.statusRecoveryCode') : ''}.`
-              : t('accountRecovery.statusNotSetUp')}
-        </p>
-      </div>
+      <section style={SECTION}>
+        <h2 className="os-label" style={SECTION_HEADING}>{t('accountRecovery.status')}</h2>
+        <div style={SETTINGS_LIST}>
+          <div style={SETTINGS_ROW}>
+            <div style={ROW_TEXT}>
+              <p
+                style={{
+                  ...ROW_LABEL,
+                  color: state != null && !hasBackup ? 'var(--color-status-warning)' : 'var(--color-text-primary)',
+                }}
+              >
+                {state == null
+                  ? t('accountRecovery.statusChecking')
+                  : hasBackup
+                    ? `${t('accountRecovery.statusSetUp')}${state.passkeys.length ? t('accountRecovery.statusPasskeyCount', { count: state.passkeys.length }) : ''}${state.wrappedMaster ? t('accountRecovery.statusRecoveryCode') : ''}.`
+                    : t('accountRecovery.statusNotSetUp')}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Back up */}
-      <div style={card}>
-        <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>{t('accountRecovery.backUp')}</p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <section style={SECTION}>
+        <h2 className="os-label" style={SECTION_HEADING}>{t('accountRecovery.backUp')}</h2>
+        <div style={SETTINGS_LIST}>
           {isPasskeySupported() && (
-            <button style={btn} disabled={busy} onClick={addPasskey}>
-              {t('accountRecovery.registerPasskey')}
-            </button>
+            <div style={SETTINGS_ROW}>
+              <div style={ROW_TEXT}>
+                <p style={ROW_LABEL}>{t('accountRecovery.registerPasskey')}</p>
+                <p style={ROW_HINT}>{t('accountRecovery.passkeyHint')}</p>
+              </div>
+              <button
+                type="button"
+                className="os-button"
+                disabled={busy}
+                onClick={addPasskey}
+                style={{ cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1 }}
+              >
+                {t('accountRecovery.registerPasskey')}
+              </button>
+            </div>
           )}
-          <button style={btn} disabled={busy} onClick={genRecoveryCode}>
-            {t('accountRecovery.generateRecoveryCode')}
-          </button>
+          <div style={{ ...SETTINGS_ROW, ...(isPasskeySupported() ? ROW_DIVIDER : null) }}>
+            <div style={ROW_TEXT}>
+              <p style={ROW_LABEL}>{t('accountRecovery.generateRecoveryCode')}</p>
+              <p style={ROW_HINT}>{t('accountRecovery.recoveryCodeHint')}</p>
+            </div>
+            <button
+              type="button"
+              className="os-button"
+              disabled={busy}
+              onClick={genRecoveryCode}
+              style={{ cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1 }}
+            >
+              {t('accountRecovery.generateRecoveryCode')}
+            </button>
+          </div>
         </div>
+
+        {/* The code is shown exactly once — a transient reveal the user must
+            act on, so it deliberately does NOT read as a settings row. */}
         {shownCode && (
-          <div style={{ marginTop: 12 }}>
-            <p style={label}>{t('accountRecovery.writeDownCode')}</p>
+          <div
+            style={{
+              ...SETTINGS_LIST,
+              background: 'color-mix(in srgb, var(--color-brand-accent) 6%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-brand-accent) 30%, transparent)',
+              padding: 'var(--space-4)',
+              marginTop: 'var(--space-3)',
+            }}
+          >
+            <p style={{ ...ROW_LABEL, color: 'var(--color-brand-accent)' }}>{t('accountRecovery.writeDownCode')}</p>
             <code
+              className="os-break-all"
               style={{
                 display: 'block',
-                marginTop: 6,
-                padding: '10px 12px',
+                marginTop: 'var(--space-2)',
+                padding: 'var(--space-3)',
                 background: 'var(--color-bg-primary)',
-                border: '1px solid var(--border)',
-                borderRadius: 8,
+                border: '1px solid var(--color-border-default)',
+                borderRadius: 'var(--radius-control)',
                 fontFamily: 'var(--font-mono)',
-                fontSize: 15,
+                fontSize: 'var(--text-body)',
                 letterSpacing: '0.06em',
-                wordBreak: 'break-all',
               }}
             >
               {shownCode}
             </code>
-            <button style={{ ...btn, marginTop: 8 }} onClick={() => setShownCode(null)}>
+            <button type="button" className="os-button" style={{ marginTop: 'var(--space-3)' }} onClick={() => setShownCode(null)}>
               {t('accountRecovery.savedIt')}
             </button>
           </div>
         )}
-      </div>
+      </section>
 
       {/* Recover */}
-      <div style={card}>
-        <p style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>{t('accountRecovery.recoverOnDevice')}</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <section style={SECTION}>
+        <h2 className="os-label" style={SECTION_HEADING}>{t('accountRecovery.recoverOnDevice')}</h2>
+        <div style={SETTINGS_LIST}>
           {isPasskeySupported() && (
-            <button style={btn} disabled={busy} onClick={recoverWithPasskeyFlow}>
-              {t('accountRecovery.recoverWithPasskey')}
-            </button>
+            <div style={SETTINGS_ROW}>
+              <div style={ROW_TEXT}>
+                <p style={ROW_LABEL}>{t('accountRecovery.recoverWithPasskey')}</p>
+              </div>
+              <button
+                type="button"
+                className="os-button"
+                disabled={busy}
+                onClick={recoverWithPasskeyFlow}
+                style={{ cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1 }}
+              >
+                {t('accountRecovery.recoverWithPasskey')}
+              </button>
+            </div>
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              value={recoverCode}
-              onChange={(e) => setRecoverCode(e.target.value)}
-              placeholder={t('accountRecovery.recoveryCodePlaceholder')}
-              style={{
-                flex: 1,
-                padding: '9px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'var(--color-bg-primary)',
-                color: 'var(--foreground)',
-                fontFamily: 'var(--font-mono)',
-                // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
-                fontSize: 'var(--text-body)',
-              }}
-            />
-            <button style={btn} disabled={busy || !recoverCode.trim()} onClick={recoverWithCode}>
-              {t('accountRecovery.recover')}
-            </button>
+          <div style={{ ...SETTINGS_ROW, ...(isPasskeySupported() ? ROW_DIVIDER : null), flexDirection: 'column', alignItems: 'stretch' }}>
+            <p style={ROW_LABEL}>{t('accountRecovery.recover')}</p>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+              <input
+                value={recoverCode}
+                onChange={(e) => setRecoverCode(e.target.value)}
+                placeholder={t('accountRecovery.recoveryCodePlaceholder')}
+                aria-label={t('accountRecovery.recoveryCodePlaceholder')}
+                style={{
+                  flex: '1 1 200px',
+                  minWidth: 0,
+                  padding: '0 var(--space-3)',
+                  minHeight: 'var(--touch-target-min)',
+                  borderRadius: 'var(--radius-control)',
+                  border: '1px solid var(--color-border-default)',
+                  background: 'var(--color-bg-primary)',
+                  color: 'var(--color-text-primary)',
+                  fontFamily: 'var(--font-mono)',
+                  // var(--text-body) = 16px: below that, iOS Safari zooms on focus.
+                  fontSize: 'var(--text-body)',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                type="button"
+                className="os-button"
+                disabled={busy || !recoverCode.trim()}
+                onClick={recoverWithCode}
+                style={{
+                  cursor: busy || !recoverCode.trim() ? 'not-allowed' : 'pointer',
+                  opacity: busy || !recoverCode.trim() ? 0.5 : 1,
+                }}
+              >
+                {t('accountRecovery.recover')}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {msg && <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-brand-accent)', margin: '4px 0 0' }}>{msg}</p>}
-      {err && <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', margin: '4px 0 0' }}>{err}</p>}
+      {msg && (
+        <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-brand-accent)', lineHeight: 'var(--leading-base)', maxWidth: '68ch', margin: 0 }}>
+          {msg}
+        </p>
+      )}
+      {err && (
+        <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-danger)', lineHeight: 'var(--leading-base)', maxWidth: '68ch', margin: 'var(--space-2) 0 0' }}>
+          {err}
+        </p>
+      )}
     </div>
   );
 }
