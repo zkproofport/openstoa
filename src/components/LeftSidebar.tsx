@@ -882,9 +882,10 @@ export default function LeftSidebar({
           / `theme.ts` state, so the two can never disagree), and both apply
           to guests as well — neither is auth-gated.
 
-          Row layout notes: `flexWrap` because the locale labels are written
-          in their OWN language ("English" / "한국어", see `LocaleSwitcher`)
-          and are wider than the old EN/KO — in the 280px drawer they wrap
+          Row layout notes: `flexWrap` because the locale select is sized by
+          its own content — the labels are written in their OWN language
+          ("English" / "한국어", see `LocaleSwitcher`) and the Korean one is
+          the wider — so in the 280px drawer the pair wraps to a second line
           instead of overflowing. `env(safe-area-inset-bottom)` keeps the
           last interactive row in the drawer clear of the home indicator;
           everything below it in this nav is static text, this is the one

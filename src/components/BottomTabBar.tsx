@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useMediaQuery, MOBILE_QUERY } from '@/hooks/useMediaQuery';
 import { useChatRail } from '@/lib/chatRailContext';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
-import { CommentIcon, LayersIcon, HashIcon, UserIcon, LogInIcon } from '@/components/icons';
+import { CommentIcon, LayersIcon, HashIcon, UserIcon } from '@/components/icons';
 
 /**
  * Phone-width bottom navigation — Feed / Topics / Chat / Profile, mirroring
@@ -44,13 +44,24 @@ import { CommentIcon, LayersIcon, HashIcon, UserIcon, LogInIcon } from '@/compon
  * hides) rather than sitting behind/under the composer inviting mis-taps.
  *
  * ── Guest vs member ──────────────────────────────────────────────────────
- * Chat and Profile both require a session (no chat to open, no `/my` to
- * view — middleware redirects a guest hitting `/my` straight to `/`
- * anyway). Rather than rendering 4 tabs with 2 that silently bounce to
- * login, a guest gets exactly the 3 tabs that make sense: Feed, Topics,
- * and a "Sign in" tab in the two slots' place — mirroring how `Header`
- * already swaps its own chat toggle + nickname chip for one "Sign in" CTA
- * for a guest, rather than showing a dead affordance.
+ * BOTH get the same four tabs. The information architecture does not change
+ * with auth state — signing in happens at the point of need, when the tapped
+ * action actually requires it, which is also how the header behaves now
+ * (its permanent "Sign in" CTA is hidden at these widths). The earlier
+ * 3-tab guest set (Feed / Topics / Sign in) made the nav itself an auth
+ * status display: a guest and a member navigating the same app saw two
+ * different maps of it, and the one destination a guest was offered was the
+ * one thing they had not asked to do yet.
+ *
+ * The two auth-gated destinations resolve honestly rather than dead-ending:
+ *   - Profile → `/my`, which already redirects a guest to `/` (`src/app/my/
+ *     page.tsx` and `src/middleware.ts`), i.e. to the sign-in surface. No
+ *     special-casing needed here.
+ *   - Chat → for a guest this is a LINK to `/`, not the member's rail
+ *     button: `CommunityLayout` gates the rail on `!isGuest`, so calling
+ *     `openRail` as a guest would open nothing at all and the tap would have
+ *     no outcome. A link to the sign-in surface is the honest version of the
+ *     same intent.
  *
  * ── Hamburger + drawer still has a job ───────────────────────────────────
  * `CommunityLayout`'s off-canvas drawer (`LeftSidebar` inside it) is NOT
@@ -114,25 +125,26 @@ export default function BottomTabBar({ isGuest, hidden }: BottomTabBarProps) {
     | { key: string; kind: 'link'; href: string; label: string; icon: React.ReactNode; current: boolean }
     | { key: string; kind: 'button'; onClick: () => void; label: string; icon: React.ReactNode; current: boolean };
 
-  const items: Item[] = isGuest
-    ? [
-        { key: 'feed', kind: 'link', href: '/topics', label: t('tabbar.feed'), icon: <LayersIcon />, current: isFeedActive(pathname) },
-        { key: 'topics', kind: 'link', href: '/topics/explore', label: t('tabbar.topics'), icon: <HashIcon />, current: isTopicsActive(pathname) },
-        { key: 'signIn', kind: 'link', href: '/', label: t('header.signIn'), icon: <LogInIcon />, current: pathname === '/' },
-      ]
-    : [
-        { key: 'feed', kind: 'link', href: '/topics', label: t('tabbar.feed'), icon: <LayersIcon />, current: isFeedActive(pathname) },
-        { key: 'topics', kind: 'link', href: '/topics/explore', label: t('tabbar.topics'), icon: <HashIcon />, current: isTopicsActive(pathname) },
-        {
-          key: 'chat',
-          kind: 'button',
-          onClick: () => chatRail?.openRail(null),
-          label: t('tabbar.chat'),
-          icon: <CommentIcon size={20} />,
-          current: isChatActive(pathname),
-        },
-        { key: 'profile', kind: 'link', href: '/my', label: t('tabbar.profile'), icon: <UserIcon />, current: isProfileActive(pathname) },
-      ];
+  // One list for both auth states — see the "Guest vs member" note above.
+  // Only the Chat entry differs, and only in HOW it resolves, never in
+  // whether it is offered.
+  const chatItem: Item = isGuest
+    ? { key: 'chat', kind: 'link', href: '/', label: t('tabbar.chat'), icon: <CommentIcon size={20} />, current: isChatActive(pathname) }
+    : {
+        key: 'chat',
+        kind: 'button',
+        onClick: () => chatRail?.openRail(null),
+        label: t('tabbar.chat'),
+        icon: <CommentIcon size={20} />,
+        current: isChatActive(pathname),
+      };
+
+  const items: Item[] = [
+    { key: 'feed', kind: 'link', href: '/topics', label: t('tabbar.feed'), icon: <LayersIcon />, current: isFeedActive(pathname) },
+    { key: 'topics', kind: 'link', href: '/topics/explore', label: t('tabbar.topics'), icon: <HashIcon />, current: isTopicsActive(pathname) },
+    chatItem,
+    { key: 'profile', kind: 'link', href: '/my', label: t('tabbar.profile'), icon: <UserIcon />, current: isProfileActive(pathname) },
+  ];
 
   return (
     <>

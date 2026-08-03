@@ -7,13 +7,22 @@
  *   boundary     — renders only when the mobile media query matches; renders
  *                  nothing on desktop and nothing while `hidden` (the
  *                  full-screen chat sheet) is true, even on mobile
- *   authz        — guest gets exactly [Feed, Topics, Sign in]; a signed-in
- *                  member gets [Feed, Topics, Chat, Profile] — two disjoint
- *                  tab sets, not one set with disabled/dead entries
- *   contract     — the Chat tab calls `useChatRail().openRail(null)` exactly
- *                  once per click, the same module-level action Header's
- *                  chat toggle and LeftSidebar's "Chat" entry already use —
- *                  it never renders as a plain link to a URL
+ *   authz        — guest and member get the SAME four tabs. The nav is not an
+ *                  auth-status display; signing in happens when the tapped
+ *                  action needs it. Only the Chat entry differs, and only in
+ *                  how it resolves (see below), never in whether it is there.
+ *   authz        — a GUEST's Chat tab is a link to the sign-in surface `/`,
+ *                  NOT the rail button: `CommunityLayout` gates the rail on
+ *                  `!isGuest`, so `openRail` would open nothing and the tap
+ *                  would have no outcome at all
+ *   authz        — a guest's Profile tab still points at `/my`, which already
+ *                  redirects a guest to `/` (`src/app/my/page.tsx`,
+ *                  `src/middleware.ts`) — no special-casing here, and a test
+ *                  pins that the href is not quietly rewritten
+ *   contract     — a MEMBER's Chat tab calls `useChatRail().openRail(null)`
+ *                  exactly once per click, the same module-level action
+ *                  Header's chat toggle and LeftSidebar's "Chat" entry
+ *                  already use — it never renders as a plain link to a URL
  *   race         — clicking Chat when no `CommunityLayout` published a rail
  *                  API (`useChatRail()` resolves `null`) does not throw
  *   result       — `aria-current="page"` tracks `usePathname()` for every
@@ -113,10 +122,16 @@ describe('BOUNDARY: mount conditions', () => {
 });
 
 describe('AUTHZ: guest vs signed-in tab sets', () => {
-  it('guest sees exactly Feed, Topics, Sign in — no Chat, no Profile', async () => {
+  // CHANGED DELIBERATELY: a guest used to get [Feed, Topics, Sign in]. That
+  // made the primary nav an auth-status display — a guest and a member
+  // navigating the same app saw two different maps of it, and the one
+  // destination a guest was offered was the one thing they had not asked to
+  // do yet. Signing in is now contextual, at the point the tapped action
+  // actually requires it, which is also what the header does at these widths.
+  it('guest sees the SAME four tabs as a member — Feed, Topics, Chat, Profile', async () => {
     await render({ isGuest: true });
     const keys = tabs().map((el) => el.getAttribute('data-testid'));
-    expect(keys).toEqual(['tabbar-feed', 'tabbar-topics', 'tabbar-signIn']);
+    expect(keys).toEqual(['tabbar-feed', 'tabbar-topics', 'tabbar-chat', 'tabbar-profile']);
   });
 
   it('signed-in member sees exactly Feed, Topics, Chat, Profile', async () => {
@@ -125,21 +140,47 @@ describe('AUTHZ: guest vs signed-in tab sets', () => {
     expect(keys).toEqual(['tabbar-feed', 'tabbar-topics', 'tabbar-chat', 'tabbar-profile']);
   });
 
-  it('guest Sign in tab links to /', async () => {
+  it('the two tab sets are identical, key for key', async () => {
     await render({ isGuest: true });
-    expect(tab('signIn')?.getAttribute('href')).toBe('/');
+    const guestKeys = tabs().map((el) => el.getAttribute('data-testid'));
+    await render({ isGuest: false });
+    const memberKeys = tabs().map((el) => el.getAttribute('data-testid'));
+    expect(guestKeys).toEqual(memberKeys);
+  });
+
+  it('the standalone Sign in tab is gone entirely', async () => {
+    await render({ isGuest: true });
+    expect(tab('signIn')).toBeNull();
+  });
+
+  it("guest Profile keeps pointing at /my — the page itself redirects a guest to /, so no special-casing here", async () => {
+    await render({ isGuest: true });
+    expect(tab('profile')?.getAttribute('href')).toBe('/my');
   });
 });
 
 describe('CONTRACT: Chat tab', () => {
-  it('is a button, not a link (no dead-URL destination)', async () => {
+  it('MEMBER: is a button, not a link (no dead-URL destination)', async () => {
     await render({ isGuest: false });
     const chatTab = tab('chat');
     expect(chatTab?.tagName).toBe('BUTTON');
     expect(chatTab?.getAttribute('href')).toBeNull();
   });
 
-  it('clicking it calls openRail(null) exactly once', async () => {
+  it('GUEST: is a link to the sign-in surface / — openRail is gated on !isGuest, so a button there would do nothing', async () => {
+    await render({ isGuest: true });
+    const chatTab = tab('chat');
+    expect(chatTab?.tagName).toBe('A');
+    expect(chatTab?.getAttribute('href')).toBe('/');
+  });
+
+  it('GUEST: the bar renders no <button> at all — nothing that could reach the gated rail', async () => {
+    await render({ isGuest: true });
+    expect(container.querySelectorAll('[data-testid="bottom-tabbar"] button')).toHaveLength(0);
+    expect(chatRailMock.openRail).not.toHaveBeenCalled();
+  });
+
+  it('MEMBER: clicking it calls openRail(null) exactly once', async () => {
     await render({ isGuest: false });
     await act(async () => {
       (tab('chat') as HTMLButtonElement).click();
@@ -215,11 +256,34 @@ describe('UTF-8: Korean locale', () => {
     expect(text).not.toContain('tabbar.');
   });
 
-  it('guest Korean labels render correctly, including the shared header.signIn key', async () => {
+  it('a guest gets the same four Korean labels — the tab set does not change with auth, so neither do the labels', async () => {
     await render({ isGuest: true }, 'ko');
     const text = container.textContent ?? '';
     expect(text).toContain('피드');
     expect(text).toContain('토픽');
-    expect(text).toContain('로그인');
+    expect(text).toContain('채팅');
+    expect(text).toContain('프로필');
+    expect(text).not.toContain('tabbar.');
+    // The Korean labels are longer than the English ones and nothing in the
+    // bar is fixed-width — every item is `flex: 1 1 0; min-width: 0`, so four
+    // of them still divide the row evenly at 320px.
+    const css = container.querySelector('style')?.textContent ?? '';
+    expect(css).toMatch(/\.os-tabbar-item\s*{[^}]*flex:\s*1 1 0;[^}]*min-width:\s*0;/s);
+  });
+});
+
+describe('RESULT: aria-current for a guest', () => {
+  it('no tab is current on the sign-in surface / — the Chat tab points there, but / is not "chat"', async () => {
+    pathnameMock.current = '/';
+    await render({ isGuest: true });
+    for (const el of tabs()) {
+      expect(el.getAttribute('aria-current')).toBeNull();
+    }
+  });
+
+  it('Feed is still current on /topics for a guest', async () => {
+    pathnameMock.current = '/topics';
+    await render({ isGuest: true });
+    expect(tab('feed')?.getAttribute('aria-current')).toBe('page');
   });
 });

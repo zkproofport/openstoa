@@ -16,7 +16,13 @@ import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { applyTheme, currentTheme, writeStoredTheme, type Theme } from '@/lib/theme';
 import { MoonIcon, SunIcon } from '@/components/icons';
 
-export default function ThemeToggle({ style }: { style?: React.CSSProperties }) {
+export default function ThemeToggle({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   const { t } = useTranslation();
   // Starts at null, not at a guessed theme: the real value lives on <html>,
   // written by the pre-paint script, and the server has no way to know it.
@@ -27,9 +33,12 @@ export default function ThemeToggle({ style }: { style?: React.CSSProperties }) 
     setTheme(currentTheme());
   }, []);
 
-  // Reserve the footprint so the header does not reflow when the theme resolves.
+  // Reserve the footprint so the header does not reflow when the theme
+  // resolves. `className` is carried here too: the header hides this control
+  // at phone widths via a class, and a placeholder that ignored it would
+  // reserve 44px of nothing in a row that is supposed to be empty.
   if (theme === null) {
-    return <span style={{ width: 'var(--touch-target-min)', height: 'var(--touch-target-min)', ...style }} />;
+    return <span className={className} style={{ width: 'var(--touch-target-min)', height: 'var(--touch-target-min)', ...style }} />;
   }
 
   const next: Theme = theme === 'dark' ? 'light' : 'dark';
@@ -38,7 +47,7 @@ export default function ThemeToggle({ style }: { style?: React.CSSProperties }) 
   return (
     <button
       type="button"
-      className="os-header-btn"
+      className={`os-header-btn${className ? ` ${className}` : ''}`}
       // The control's job is "switch to the other one", so it is named for the
       // destination, not the current state — and the title matches the label so
       // hover and screen reader agree.

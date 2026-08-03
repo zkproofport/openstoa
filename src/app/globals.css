@@ -477,12 +477,41 @@ html:lang(ko) {
   outline-offset: 2px;
 }
 
-/* `LocaleSwitcher.tsx`'s two buttons. Everything else about them is inline
-   (per-locale font/tracking, active tint); `:focus-visible` cannot be, and
-   the UA default ring is the one thing this app never leaves to chance —
-   the switcher now also renders inside the left-nav Preferences group, on
-   the same keyboard path as every `.os-nav-row` above it. */
-.os-locale-btn:focus-visible {
+/* `LocaleSwitcher.tsx`'s <select>. Sized and bordered like `.os-header-btn`
+   above so the preference controls read as one set wherever they sit together
+   — the header row, the left-nav Preferences group (on the same keyboard path
+   as every `.os-nav-row` around it), and on its own under a heading in `/my`'s
+   Settings tab.
+
+   `font-size: var(--text-body)` (16px) is not cosmetic: iOS Safari zooms the
+   whole page when a form control below 16px takes focus, and this one sits in
+   a sticky header, so the zoom would strand the user mid-page.
+
+   `--font-sans` unconditionally, unlike the two buttons this replaced: the
+   control's own displayed value alternates between Latin ("English") and
+   Hangul ("한국어"), and the mono face has no Hangul coverage — a per-locale
+   face would break the moment the user picked Korean.
+
+   No width or max-width: the Korean label is longer than the English one, and
+   both have to fit whatever the UA needs down to a 320px viewport. */
+.os-locale-select {
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.os-locale-select:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+/* The UA default ring is the one thing this app never leaves to chance. */
+.os-locale-select:focus-visible {
   outline: 2px solid var(--color-brand-primary);
   outline-offset: 2px;
 }

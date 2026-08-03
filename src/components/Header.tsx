@@ -138,6 +138,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           {/* Logo mark */}
           <img src="/images/openstoa-logo-mark-transparent.png" alt="OpenStoa" width={24} height={24} style={{ objectFit: 'contain' }} />
           <span
+            className="header-wordmark"
             style={{
               fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 'var(--text-body-lg)',
               letterSpacing: '-0.03em', color: 'var(--color-text-primary)',
@@ -233,14 +234,21 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           )}
 
           {/* FIX6: language is not an auth-gated preference — visible for
-              guests and signed-in users alike, unlike every link above it. */}
-          <ThemeToggle style={{ }} />
-          <LocaleSwitcher />
+              guests and signed-in users alike, unlike every link above it.
+              Both carry `header-dupe-mobile`: below 768px the drawer's
+              Preferences group renders these same two controls (shared
+              `useTranslation()` / `theme.ts` state, so they cannot disagree),
+              and a preference the user changes once a month has no claim on
+              a phone-width header row. */}
+          <ThemeToggle className="header-dupe-mobile" />
+          <LocaleSwitcher className="header-dupe-mobile" />
 
           {!sessionChecked ? (
             // Reserves the chip's footprint so the row does not reflow when the
-            // session resolves.
-            <span style={{ width: 88, height: 'var(--touch-target-min)' }} />
+            // session resolves — and is hidden at phone widths on the same
+            // terms as the chip it stands in for, or it would reserve 88px of
+            // nothing there.
+            <span className="header-dupe-mobile" style={{ width: 88, height: 'var(--touch-target-min)' }} />
           ) : user ? (
             <Link
               href="/my"
@@ -264,8 +272,15 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
             </Link>
           ) : (
             // The only brand-filled control in the header: signing in is the
-            // one action a guest is here to take.
-            <Link href="/" className="os-header-btn os-header-cta os-label">
+            // one action a guest is here to take — on desktop. At phone
+            // widths it carries `header-dupe-mobile` like the chip it
+            // alternates with, because a guest there signs in at the point of
+            // need (opening Profile, writing a post), which is where a member
+            // would have acted too. A permanent header button would be the
+            // one control whose presence announced "you are not signed in" on
+            // every screen, while doing nothing the contextual prompt does
+            // not already do.
+            <Link href="/" className="os-header-btn os-header-cta os-label header-dupe-mobile">
               {t('header.signIn')}
             </Link>
           )}
@@ -294,13 +309,31 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           .header-nav-link {
             display: none !important;
           }
-          /* Controls the mobile chrome already provides — the chat toggle
-             (tab bar's Chat) and the nickname chip (tab bar's Profile).
+          /* Controls the mobile chrome already provides — the chat toggle and
+             the nickname chip (tab bar's Chat and Profile), the theme toggle
+             and language select (drawer's Preferences group), and the guest
+             Sign in CTA (a guest signs in at the point of need, the same
+             moment a member would have acted).
+
+             What is left at 390px is a hamburger and the logo mark, which is
+             the whole point: every one of these has a home in the drawer or
+             the tab bar, so keeping a second copy in the header was not
+             redundancy the user could ignore — it was the row overflowing.
+
              Scoped to .has-mobile-chrome: /docs, /recovery and /profile
              render this Header WITHOUT CommunityLayout, so they have neither a
              tab bar nor a drawer. Hiding these there would leave those pages
-             with no navigation at all. */
+             with no navigation and no way to change theme or language at all. */
           .has-mobile-chrome .header-dupe-mobile {
+            display: none !important;
+          }
+          /* The wordmark TEXT only — the <img> logo mark stays, and the link's
+             own aria-label carries the accessible name either way, so this
+             costs no information. Separate from the rule above because the
+             reason is different: nothing duplicates the wordmark, it is simply
+             the widest thing in the row that is not an affordance. Same
+             .has-mobile-chrome scope, so standalone pages keep it. */
+          .has-mobile-chrome .header-wordmark {
             display: none !important;
           }
           .header-search-wrap {

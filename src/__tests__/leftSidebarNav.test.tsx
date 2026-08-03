@@ -440,11 +440,12 @@ describe('LeftSidebar — Preferences group', () => {
     // Theme: the toggle is named for its destination ("switch to light"),
     // and starts from the DOM's own data-theme (dark by default).
     expect(row!.querySelector('button[aria-label="Switch to light theme"]')).not.toBeNull();
-    // Language: the same `LocaleSwitcher` the header renders — labelled
-    // group + one button per locale, each named in its own language.
-    const localeGroup = row!.querySelector('[role="group"][aria-label="Language"]');
-    expect(localeGroup).not.toBeNull();
-    expect(Array.from(localeGroup!.querySelectorAll('button')).map((b) => b.textContent))
+    // Language: the same `LocaleSwitcher` the header renders — one <select>
+    // (it used to be one button per locale) with an option per locale, each
+    // named in its own language and never translated.
+    const localeSelect = row!.querySelector('select[aria-label="Language"]');
+    expect(localeSelect).not.toBeNull();
+    expect(Array.from(localeSelect!.querySelectorAll('option')).map((o) => o.textContent))
       .toEqual(['English', '한국어']);
   });
 
@@ -480,19 +481,24 @@ describe('LeftSidebar — Preferences group', () => {
     expect(src).toContain("paddingBottom: 'env(safe-area-inset-bottom, 0px)'");
   });
 
-  it('UI: both controls are real, focusable buttons carrying an explicit focus-visible rule', async () => {
+  it('UI: both controls are real, focusable, enabled, and carry an explicit focus-visible rule', async () => {
     stubFetch();
     await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />);
 
-    const buttons = Array.from(prefsRow()!.querySelectorAll('button'));
-    expect(buttons).toHaveLength(3); // theme + two locales
-    for (const b of buttons) {
-      expect(b.tagName).toBe('BUTTON');
-      expect(b.hasAttribute('disabled')).toBe(false);
+    // Two controls, not three: `LocaleSwitcher` is one <select> now, where it
+    // used to be one button per locale. The old pair spent the width of BOTH
+    // language names permanently for a control where only one of the two was
+    // ever actionable.
+    const theme = Array.from(prefsRow()!.querySelectorAll('button'));
+    const locale = Array.from(prefsRow()!.querySelectorAll('select'));
+    expect(theme).toHaveLength(1);
+    expect(locale).toHaveLength(1);
+    for (const el of [...theme, ...locale]) {
+      expect(el.hasAttribute('disabled')).toBe(false);
     }
     const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf-8');
     expect(css).toMatch(/\.os-header-btn:focus-visible\s*{[^}]*outline:/s); // ThemeToggle
-    expect(css).toMatch(/\.os-locale-btn:focus-visible\s*{[^}]*outline:/s); // LocaleSwitcher
+    expect(css).toMatch(/\.os-locale-select:focus-visible\s*{[^}]*outline:/s); // LocaleSwitcher
   });
 
   it('en/ko: the group label is translated', async () => {
