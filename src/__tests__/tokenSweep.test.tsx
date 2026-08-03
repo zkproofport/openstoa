@@ -50,6 +50,11 @@ const SWEPT_FILES = [
   'src/components/PostCard.tsx',
   'src/components/Badge.tsx',
   'src/components/ChatRail.tsx',
+  // Extracted OUT of ChatRail.tsx (the shared two-tab conversation list, now
+  // also rendered by the standalone /chat page) — it carries that file's
+  // swept markup verbatim, so it inherits the full typography guarantee
+  // rather than dropping to color-only.
+  'src/components/ChatRoomList.tsx',
   'src/components/ChatPanel.tsx',
   'src/components/RightSidebar.tsx',
   'src/components/post/PostActionBar.tsx',
@@ -75,6 +80,7 @@ const COLOR_SWEPT_FILES = [
   'src/components/ThemeToggle.tsx',
   'src/components/icons.tsx',
   'src/app/ask/page.tsx',
+  'src/app/chat/page.tsx',
   'src/app/chat/[topicId]/page.tsx',
   'src/app/dm/[topicId]/page.tsx',
   'src/app/dm/page.tsx',

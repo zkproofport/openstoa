@@ -17,8 +17,9 @@
  *   hostile      — a `<script>`-shaped nickname renders as text only
  *   self         — the viewer never appears in the new-conversation picker
  *   race         — a double-clicked candidate issues exactly ONE POST /api/dm
- *   contract     — open-in-new-tab href: /chat/{id} for a topic, /dm/{id} for
- *                  a DM; new conversation POSTs /api/dm and opens the room
+ *   contract     — open-in-new-tab href: /chat for the LIST, /chat/{id} for a
+ *                  topic room, /dm/{id} for a DM room, and never two of them
+ *                  at once; new conversation POSTs /api/dm and opens the room
  *   mount-unique — a room whose standalone page IS the current pathname is
  *                  never handed to ChatPanel (suppressPanel) — this is the
  *                  regression this whole redesign must not reintroduce
@@ -281,6 +282,60 @@ describe('list view — Direct tab', () => {
     expect(panelProps.current).toMatchObject({ topicId: 'd1' });
     const newTab = container.querySelector('a[aria-label="Open in new tab"]');
     expect(newTab?.getAttribute('href')).toBe('/dm/d1');
+  });
+});
+
+describe('list header — pop the LIST out into its own tab', () => {
+  function listPopOut(): HTMLAnchorElement | null {
+    return container.querySelector('a[aria-label="Open chat list in new tab"]');
+  }
+
+  it('CONTRACT: the list header offers a pop-out link to /chat, in a new tab', async () => {
+    routeFetch(defaultRoutes);
+    await mount();
+
+    const link = listPopOut();
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute('href')).toBe('/chat');
+    expect(link!.getAttribute('target')).toBe('_blank');
+    // `noopener` is what keeps the popped-out tab from reaching back into
+    // this one via window.opener — same treatment as the room pop-out.
+    expect(link!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('CONTRACT: it is the LIST-level control — the room view offers the room pop-out instead', async () => {
+    routeFetch([
+      ...defaultRoutes.filter(([p]) => p !== '/api/topics'),
+      ['/api/topics', () => json({ topics: [{ id: 't1', title: 'Zoning Law' }] })],
+    ]);
+    await mount();
+    expect(listPopOut()).not.toBeNull();
+
+    await act(async () => { byTestId('chat-rail-topic-row')[0].click(); });
+
+    // In a room the two must not both be present — one pop-out affordance at
+    // a time, whose target is unambiguous.
+    expect(listPopOut()).toBeNull();
+    expect(container.querySelector('a[aria-label="Open in new tab"]')?.getAttribute('href')).toBe('/chat/t1');
+  });
+
+  it('the pop-out survives the new-conversation picker being opened and cancelled', async () => {
+    routeFetch([
+      ['/api/dm/candidates', () => json({ candidates: [] })],
+      ...defaultRoutes,
+    ]);
+    await mount();
+    await act(async () => {
+      (container.querySelector('button[aria-label="New conversation"]') as HTMLButtonElement).click();
+    });
+    await flush();
+    // The picker replaces the BODY, not the header — the list header (and so
+    // its pop-out) is still the chrome above it.
+    expect(listPopOut()).not.toBeNull();
+
+    const cancel = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Cancel')!;
+    await act(async () => { cancel.click(); });
+    expect(listPopOut()).not.toBeNull();
   });
 });
 

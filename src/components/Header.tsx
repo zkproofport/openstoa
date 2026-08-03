@@ -94,7 +94,14 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
   }, []);
 
   return (
-    <header className={`os-header${onMenuToggle ? ' has-mobile-chrome' : ''}`} role="banner">
+    // `has-app-shell` = "CommunityLayout is around this header, so a drawer, a
+    // left sidebar and a tab bar carry navigation". `onMenuToggle` is only ever
+    // passed from there, so its presence IS that signal. It was previously
+    // named after the phone-width chrome alone, which stopped being true once
+    // it also gated a desktop-width rule (the three nav links, which the
+    // sidebar duplicates at every width) — the old name is gone entirely, and
+    // `header.test.tsx` asserts no occurrence of it survives anywhere.
+    <header className={`os-header${onMenuToggle ? ' has-app-shell' : ''}`} role="banner">
       <div
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -102,12 +109,17 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Mobile hamburger -- visible below 768px only */}
+          {/* Mobile hamburger -- visible below 768px only.
+              `.os-header-btn-ghost`, not `.os-header-btn`: at phone widths this
+              button and the logo mark are the only two things left in the row,
+              and a bordered, filled box beside a bare 24px mark is the louder
+              of the pair by a wide margin. Ghost keeps the hover ground, the
+              focus ring and the 44px target — see globals.css. */}
           {onMenuToggle && (
             <button
               onClick={onMenuToggle}
               aria-label={menuOpen ? t('header.closeMenu') : t('header.openMenu')}
-              className="header-hamburger os-header-btn"
+              className="header-hamburger os-header-btn-ghost"
               style={{ display: 'none' }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -129,6 +141,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
 
           <Link
             href="/topics"
+            className="header-brand"
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               textDecoration: 'none', color: 'inherit',
@@ -191,15 +204,31 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           </Link>
           */}
 
-          {/* Hidden below 768px (`.header-nav-link`, see the style block).
-              Their destinations are not lost: Explore and Recorded are the
-              tab bar's Topics tab and the drawer's on-chain-records row, and
-              Docs was added to the drawer. Icons were considered and rejected
-              — "explore" / "recorded" / "docs" have no glyph a user reads
-              unambiguously, so that would trade an overflow for a guess. */}
-          <NavLink href="/topics/explore">{t('header.explore')}</NavLink>
-          <NavLink href="/recorded">{t('header.recorded')}</NavLink>
-          <NavLink href="/docs">{t('header.docs')}</NavLink>
+          {/* Explore / Recorded / Docs — rendered ONLY on the standalone pages.
+              `LeftSidebar` carries all three at every width it is on screen
+              (the desktop rail and, below 768px, `CommunityLayout`'s drawer),
+              so inside the app shell these were a second copy of the same
+              three destinations on desktop and a hidden-by-CSS overflow risk
+              on a phone. They are now absent from the DOM there rather than
+              hidden, which is the honest version of the same result.
+
+              The gate is `!onMenuToggle`, i.e. NOT `.has-app-shell`: `/docs`,
+              `/recovery` and `/profile` render this Header on their own, with
+              no sidebar, no drawer and no tab bar. Deleting the links
+              unconditionally would leave those three pages with no navigation
+              at all — this is the ONE place they still exist. Below 768px the
+              style block still hides them even here (the standalone row cannot
+              fit three text links next to the wordmark, theme, language and
+              the session chip at 320px); the logo mark remains the way home.
+              Icons instead of text were considered and rejected — "explore" /
+              "recorded" / "docs" have no glyph a user reads unambiguously. */}
+          {!onMenuToggle && (
+            <>
+              <NavLink href="/topics/explore">{t('header.explore')}</NavLink>
+              <NavLink href="/recorded">{t('header.recorded')}</NavLink>
+              <NavLink href="/docs">{t('header.docs')}</NavLink>
+            </>
+          )}
 
           {/* FIX7: the "Messages" text link that used to live here full-page-
               navigated to `/dm`, duplicating this chat toggle button — two
@@ -303,11 +332,40 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
              off-screen — and the shrunk targets broke the 44px minimum while
              not solving anything.
 
-             The three text links go for good at this width: Explore is the tab
-             bar's Topics tab, Recorded is the drawer's on-chain-records row,
-             and Docs was added to the drawer. */
+             Inside the app shell the three text links are no longer rendered at
+             ALL widths (see the JSX), so this rule now only reaches the
+             standalone pages, where they ARE rendered and where the row still
+             cannot fit them next to the wordmark, the theme toggle, the
+             language select and the session chip at 320px. Their destinations
+             are still one tap away there via the logo mark -> /topics. */
           .header-nav-link {
             display: none !important;
+          }
+          /* Centre the logo mark in the bar — the phone convention, and the
+             fix for the specific complaint: with the right-hand nav emptied
+             out, justify-content: space-between jammed the mark against the
+             hamburger and left the rest of the bar void.
+
+             Absolute against .os-header (which is position: sticky, so it IS
+             the containing block) and NOT a flex trick, because the row's two
+             sides are asymmetric by construction — a 44px hamburger on one
+             side, nothing on the other. Centring inside the remaining flex
+             space would therefore park the mark right of centre and, worse,
+             move it again the moment anything is added back to either side.
+             left: 50% is measured against the header, so it holds regardless.
+
+             Only under .has-app-shell: the standalone header still has its
+             wordmark, its nav links and a full search bar in the middle of the
+             row, and an absolutely-positioned mark would sit on top of them.
+
+             At 320px (the narrowest supported width) the hamburger's box ends
+             68px in — 24px row padding + 44px target — and the centred 24px
+             mark spans 148..172px, so the two cannot collide. */
+          .has-app-shell .header-brand {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
           }
           /* Controls the mobile chrome already provides — the chat toggle and
              the nickname chip (tab bar's Chat and Profile), the theme toggle
@@ -320,11 +378,11 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
              the tab bar, so keeping a second copy in the header was not
              redundancy the user could ignore — it was the row overflowing.
 
-             Scoped to .has-mobile-chrome: /docs, /recovery and /profile
+             Scoped to .has-app-shell: /docs, /recovery and /profile
              render this Header WITHOUT CommunityLayout, so they have neither a
              tab bar nor a drawer. Hiding these there would leave those pages
              with no navigation and no way to change theme or language at all. */
-          .has-mobile-chrome .header-dupe-mobile {
+          .has-app-shell .header-dupe-mobile {
             display: none !important;
           }
           /* The wordmark TEXT only — the <img> logo mark stays, and the link's
@@ -332,22 +390,20 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
              costs no information. Separate from the rule above because the
              reason is different: nothing duplicates the wordmark, it is simply
              the widest thing in the row that is not an affordance. Same
-             .has-mobile-chrome scope, so standalone pages keep it. */
-          .has-mobile-chrome .header-wordmark {
+             .has-app-shell scope, so standalone pages keep it. */
+          .has-app-shell .header-wordmark {
             display: none !important;
           }
           .header-search-wrap {
             display: none !important;
           }
         }
-        @media (max-width: 380px) {
-          .header-nav-link {
-            padding: 3px 4px !important;
-            /* Was 9px, below the 12px floor. */
-            font-size: var(--text-label) !important;
-            letter-spacing: 0.01em !important;
-          }
-        }
+        /* The @media (max-width: 380px) block that used to sit here shrank
+           .header-nav-link's padding and tracking to buy width. It was dead
+           code — 380px is inside the 767px range above, where those links are
+           already display: none — and it survived only because nothing pointed
+           that out. Shrinking a tap target to fit is also the approach the
+           row's whole redesign rejected. */
       `}</style>
     </header>
   );

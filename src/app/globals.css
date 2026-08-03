@@ -471,6 +471,40 @@ html:lang(ko) {
   color: var(--color-text-inverted);
 }
 
+/* A bare icon affordance in the header — currently just the hamburger.
+   Deliberately NOT `.os-header-btn`: inside the app shell at phone widths the
+   row holds exactly two things, the hamburger and the 24px logo mark, and a
+   filled, bordered box beside a bare mark reads as one loud control next to
+   one quiet one — which is the "겹쳐서 이상하다" the owner saw. Transparent
+   ground and no border so the two carry the same weight; the hover ground,
+   the focus ring and the 44px target are all kept, because those are the
+   parts a ghost button usually loses. */
+.os-header-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.os-header-btn-ghost:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+/* Its own rule rather than a third selector on the shared list below: with no
+   border and no filled ground, the ring is the ONLY thing that marks this
+   control as focused, so it must not be possible to drop it by editing an
+   unrelated selector in a group. */
+.os-header-btn-ghost:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
 .os-header-link:focus-visible,
 .os-header-btn:focus-visible {
   outline: 2px solid var(--color-brand-primary);
@@ -493,13 +527,42 @@ html:lang(ko) {
    face would break the moment the user picked Korean.
 
    No width or max-width: the Korean label is longer than the English one, and
-   both have to fit whatever the UA needs down to a 320px viewport. */
+   both have to fit whatever the UA needs down to a 320px viewport.
+
+   `appearance: none` drops the UA's own chrome — the platform arrow and, on
+   Chrome/Windows, a grey inset ground that ignored every token above and was
+   the reason this control read as pasted in from another app. It stays a real
+   `<select>`: only the painting changes, so mobile still opens the native
+   wheel/sheet and the keyboard contract (Up/Down, type-ahead, Enter) is the
+   UA's, not ours. A div-based listbox would have had to re-implement all of
+   that and would have lost the native picker.
+
+   The replacement chevron is two gradient strokes, NOT a data-URI SVG:
+   `currentColor` resolves inside a gradient but not inside an embedded SVG, so
+   this one declaration follows the theme AND the `:hover` color change below,
+   where an SVG would need a hardcoded light copy and dark copy that can drift
+   apart. Layer 1 (45deg) paints the "\" half, layer 2 (-45deg) the "/" half,
+   sat side by side 8px and 14px in from the trailing edge.
+
+   LTR-only: the chevron is pinned to the right and the padding is asymmetric.
+   The app does not support RTL (no `dir="rtl"` surface, no logical-property
+   pass anywhere in this file), so this matches the rest of the sheet rather
+   than being the one control that pretends otherwise. */
 .os-locale-select {
+  appearance: none;
+  -webkit-appearance: none;
   min-height: var(--touch-target-min);
-  padding: 0 var(--space-2);
+  /* Trailing side clears the chevron: 8px inset + 12px glyph + 12px gap. */
+  padding: 0 var(--space-6) 0 var(--space-3);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-control);
   background: var(--color-bg-secondary);
+  background-image:
+    linear-gradient(45deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%),
+    linear-gradient(-45deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%);
+  background-repeat: no-repeat;
+  background-size: 6px 6px;
+  background-position: right 14px center, right 8px center;
   color: var(--color-text-secondary);
   font-family: var(--font-sans);
   font-size: var(--text-body);

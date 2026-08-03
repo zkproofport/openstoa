@@ -508,6 +508,11 @@
     "subtitle": "Posts recorded on Base by the community",
     "empty": "No recorded posts yet. Be the first to record a post on-chain!"
   },
+  "chatListPage": {
+    "subtitle": "End-to-end encrypted topic rooms and 1:1 conversations",
+    "loadError": "Failed to load your conversations",
+    "needsNickname": "Set a nickname before you can use chat."
+  },
   "chatPage": {
     "openTopicPage": "Open topic page",
     "needsNickname": "Set a nickname before you can use chat.",
@@ -549,6 +554,7 @@
     "showMembers": "Show members",
     "members": "Members",
     "openInNewTab": "Open in new tab",
+    "openListInNewTab": "Open chat list in new tab",
     "newConversation": "New conversation",
     "suppressedNotice": "You're already viewing this conversation in the page behind this panel.",
     "backToList": "Back to list",

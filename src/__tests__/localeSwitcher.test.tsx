@@ -21,6 +21,14 @@
  *               header
  *   narrow    — no width/max-width anywhere: the Korean label is the longer
  *               of the two and both must fit down to a 320px viewport
+ *   contract  — it is STILL a real <select> after the restyle: `appearance:
+ *               none` repaints it, it does not replace it, so mobile keeps the
+ *               native picker and the keyboard contract stays the UA's
+ *   theme     — the custom chevron is drawn in `currentColor`, so ONE
+ *               declaration covers light, dark and the :hover color change;
+ *               there is no second copy that can drift out of sync
+ *   layout    — the trailing padding actually clears the chevron (a chevron
+ *               painted over the label is worse than the native arrow was)
  *   UTF-8     — `한국어` renders under BOTH locales, never translated
  *   contract  — persistence and the `<html lang>` flip are I18nProvider's own
  *               contract (see `i18nProvider.test.tsx`) — not re-asserted here,
@@ -189,6 +197,56 @@ describe('LocaleSwitcher', () => {
     for (const decl of ['border: 1px solid var(--color-border-default)', 'background: var(--color-bg-secondary)', 'color: var(--color-text-secondary)']) {
       expect(BASE_RULE).toContain(decl);
     }
+  });
+
+  it('STYLED: the native control chrome is suppressed — that grey UA ground/arrow ignored every token above it', () => {
+    expect(BASE_RULE).toContain('appearance: none');
+    // Safari (desktop and iOS) still needs the prefixed form.
+    expect(BASE_RULE).toContain('-webkit-appearance: none');
+  });
+
+  it('CONTRACT: it is still a real <select>, not a div listbox — `appearance` repaints, it does not replace', () => {
+    render();
+    const el = select();
+    expect(el.tagName).toBe('SELECT');
+    // The native picker and the whole keyboard contract (Up/Down, type-ahead,
+    // Enter/Escape) ride on this being a <select>; nothing here re-implements
+    // them, and a custom listbox would have had to.
+    expect(el.getAttribute('role')).toBeNull();
+    expect(container.querySelectorAll('[role="listbox"], [role="option"]')).toHaveLength(0);
+    expect(options()).toHaveLength(2);
+  });
+
+  it('CHEVRON: a custom one is drawn, positioned on the trailing edge, and does not repeat', () => {
+    expect(BASE_RULE).toMatch(/background-image:\s*\n?\s*linear-gradient\(45deg,/);
+    expect(BASE_RULE).toContain('linear-gradient(-45deg,');
+    expect(BASE_RULE).toContain('background-repeat: no-repeat');
+    expect(BASE_RULE).toContain('background-position: right 14px center, right 8px center');
+  });
+
+  it('THEME: the chevron is currentColor, so light, dark and :hover all resolve from one declaration', () => {
+    // A data-URI SVG cannot read `currentColor`, so it would have needed a
+    // hardcoded light copy and dark copy — two values that can drift. Gradients
+    // can, which is the whole reason the chevron is drawn this way.
+    const chevron = BASE_RULE.match(/background-image:([\s\S]*?);/)?.[1] ?? '';
+    expect(chevron).toContain('currentColor');
+    expect(chevron).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(chevron).not.toMatch(/\brgba?\(/);
+    expect(chevron).not.toContain('url(');
+  });
+
+  it('LAYOUT: the trailing padding clears the chevron, so the label never runs under it', () => {
+    // Chevron occupies 8px..20px in from the trailing edge (two 6px boxes at
+    // right-8 and right-14), so the trailing padding has to exceed 20px.
+    // --space-6 is 32px; --space-3 (12px) is the leading side.
+    expect(BASE_RULE).toContain('padding: 0 var(--space-6) 0 var(--space-3)');
+  });
+
+  it('CONTRACT: it still changes locale after the restyle — the styling touched paint, not behaviour', () => {
+    render('en');
+    pick('ko');
+    expect(select().value).toBe('ko');
+    expect(document.cookie).toContain('NEXT_LOCALE=ko');
   });
 
   it('composes an extra className (the header hides it at phone widths through one)', () => {

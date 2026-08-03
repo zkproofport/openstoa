@@ -508,6 +508,11 @@
     "subtitle": "커뮤니티가 Base에 기록한 게시물",
     "empty": "아직 기록된 게시물이 없습니다. 첫 번째로 게시물을 온체인에 기록해 보세요!"
   },
+  "chatListPage": {
+    "subtitle": "종단 간 암호화된 토픽 채팅방과 1:1 대화",
+    "loadError": "대화 목록을 불러오지 못했습니다",
+    "needsNickname": "채팅을 사용하려면 먼저 닉네임을 설정하세요."
+  },
   "chatPage": {
     "openTopicPage": "토픽 페이지 열기",
     "needsNickname": "채팅을 사용하려면 먼저 닉네임을 설정하세요.",
@@ -549,6 +554,7 @@
     "showMembers": "멤버 보기",
     "members": "멤버",
     "openInNewTab": "새 탭에서 열기",
+    "openListInNewTab": "채팅 목록을 새 탭에서 열기",
     "newConversation": "새 대화",
     "suppressedNotice": "이 패널 뒤 페이지에서 이미 이 대화를 보고 있습니다.",
     "backToList": "목록으로 돌아가기",
