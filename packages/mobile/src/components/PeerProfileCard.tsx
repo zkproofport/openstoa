@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { canDm, dmUnavailableReason, initialFor, type PeerProfileTarget } from '../lib/peerProfile';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface PeerProfileCardProps {
   /** The tapped member/author, or null to render nothing (mirrors the
@@ -42,7 +43,7 @@ function makeStyles(colors: ThemeColors) {
       maxWidth: 360,
       maxHeight: '80%',
       backgroundColor: colors.background.primary,
-      borderRadius: 20,
+      borderRadius: RADIUS.modal,
       paddingHorizontal: 20,
       paddingTop: 28,
       paddingBottom: 20,
@@ -51,7 +52,7 @@ function makeStyles(colors: ThemeColors) {
     avatar: {
       width: 76,
       height: 76,
-      borderRadius: 38,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primaryMuted,
       alignItems: 'center',
       justifyContent: 'center',
@@ -60,11 +61,11 @@ function makeStyles(colors: ThemeColors) {
     avatarImage: {
       width: 76,
       height: 76,
-      borderRadius: 38,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.tertiary,
     },
     avatarInitial: {
-      fontSize: 30,
+      fontSize: TYPE_SCALE.headingLarge,
       fontWeight: '700',
       color: colors.brand.primary,
     },
@@ -75,18 +76,18 @@ function makeStyles(colors: ThemeColors) {
       maxWidth: '100%',
     },
     nickname: {
-      fontSize: 19,
+      fontSize: TYPE_SCALE.bodyLarge,
       fontWeight: '700',
       color: colors.text.primary,
       flexShrink: 1,
     },
     aiBadge: {
-      fontSize: 10,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
       color: colors.background.primary,
       backgroundColor: colors.brand.primary,
       overflow: 'hidden',
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 5,
       paddingVertical: 2,
       marginLeft: 6,
@@ -104,18 +105,18 @@ function makeStyles(colors: ThemeColors) {
     },
     badgeChip: {
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 20,
+      borderRadius: RADIUS.pill,
       paddingHorizontal: 12,
       paddingVertical: 5,
     },
     badgeLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
     note: {
       marginTop: 12,
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       lineHeight: 17,
       color: colors.text.tertiary,
       textAlign: 'center',
@@ -124,7 +125,7 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 20,
       alignSelf: 'stretch',
       paddingVertical: 12,
-      borderRadius: 24,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -134,7 +135,7 @@ function makeStyles(colors: ThemeColors) {
     },
     messageButtonText: {
       color: '#FFFFFF',
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
     },
     closeButton: {
@@ -143,7 +144,7 @@ function makeStyles(colors: ThemeColors) {
     },
     closeButtonText: {
       color: colors.text.tertiary,
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
     },
   });

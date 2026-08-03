@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface TagChip {
   slug: string | null;
@@ -27,7 +28,7 @@ function makeStyles(colors: ThemeColors) {
     chip: {
       paddingHorizontal: 12,
       minHeight: 30,
-      borderRadius: 14,
+      borderRadius: RADIUS.pill,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
@@ -41,7 +42,7 @@ function makeStyles(colors: ThemeColors) {
       borderColor: colors.brand.primary,
     },
     label: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '500',
     },
     labelIdle: {

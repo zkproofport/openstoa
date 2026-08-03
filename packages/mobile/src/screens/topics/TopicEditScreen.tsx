@@ -20,6 +20,7 @@ import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicEdit'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicEdit'>;
@@ -48,7 +49,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.primary,
     },
     label: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.secondary,
       marginBottom: 6,
@@ -59,10 +60,10 @@ function makeStyles(colors: ThemeColors) {
     input: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.secondary,
       minHeight: 44,
@@ -72,7 +73,7 @@ function makeStyles(colors: ThemeColors) {
       paddingTop: 12,
     },
     charCount: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       textAlign: 'right',
       marginTop: 4,
@@ -80,7 +81,7 @@ function makeStyles(colors: ThemeColors) {
     submitButton: {
       marginTop: 32,
       backgroundColor: colors.brand.primary,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       paddingVertical: 14,
       alignItems: 'center',
       minHeight: 48,
@@ -90,7 +91,7 @@ function makeStyles(colors: ThemeColors) {
       opacity: 0.5,
     },
     submitLabel: {
-      fontSize: 16,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '700',
       color: '#FFFFFF',
     },
@@ -98,14 +99,14 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 16,
       borderWidth: 1,
       borderColor: colors.status.danger,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       paddingVertical: 14,
       alignItems: 'center',
       minHeight: 48,
       justifyContent: 'center',
     },
     deleteLabel: {
-      fontSize: 16,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.status.danger,
     },

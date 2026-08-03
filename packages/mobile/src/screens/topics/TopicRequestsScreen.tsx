@@ -19,6 +19,7 @@ import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { formatRelativeTime } from '../../utils/relativeTime';
+import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicRequests'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicRequests'>;
@@ -60,7 +61,7 @@ function makeStyles(colors: ThemeColors) {
     avatar: {
       width: 36,
       height: 36,
-      borderRadius: 18,
+      borderRadius: RADIUS.pill,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.background.tertiary,
@@ -69,12 +70,12 @@ function makeStyles(colors: ThemeColors) {
       flex: 1,
     },
     nickname: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.primary,
     },
     timeText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       marginTop: 2,
     },
@@ -83,10 +84,10 @@ function makeStyles(colors: ThemeColors) {
       gap: 8,
     },
     actionBtn: {
-      minHeight: 36,
+      minHeight: TOUCH_TARGET_MIN,
       minWidth: 64,
       paddingHorizontal: 12,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -94,7 +95,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.brand.primary,
     },
     approveText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.inverted,
     },
@@ -102,7 +103,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.tertiary,
     },
     rejectText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.secondary,
     },
@@ -115,7 +116,7 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'center',
     },
     emptyText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
   });

@@ -17,6 +17,7 @@ import {
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Feather from 'react-native-vector-icons/Feather';
 import { KeyboardSafeScroll } from '../../components/KeyboardSafeScroll';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 // expo-image-picker is a native module — lazy-load to avoid crashing on
 // stale Metro reloads where the native binary hasn't been rebuilt yet.
 type ImagePickerModule = typeof import('expo-image-picker');
@@ -141,7 +142,7 @@ function makeStyles(colors: ThemeColors) {
     scroll: { flex: 1 },
     content: { padding: 20, paddingBottom: 40 },
     topicLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
       marginBottom: 12,
@@ -158,7 +159,7 @@ function makeStyles(colors: ThemeColors) {
       flexDirection: 'row',
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       overflow: 'hidden',
     },
     resetBtn: {
@@ -167,13 +168,13 @@ function makeStyles(colors: ThemeColors) {
       gap: 4,
       paddingHorizontal: 10,
       paddingVertical: 8,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       borderWidth: 1,
       borderColor: colors.border.default,
       backgroundColor: colors.background.secondary,
     },
     resetBtnLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
     },
     segmentItem: {
@@ -187,7 +188,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.brand.primary,
     },
     segmentLabel: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.secondary,
     },
@@ -195,7 +196,7 @@ function makeStyles(colors: ThemeColors) {
       color: '#FFFFFF',
     },
     label: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.secondary,
       marginBottom: 6,
@@ -205,10 +206,10 @@ function makeStyles(colors: ThemeColors) {
     input: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.secondary,
     },
@@ -237,7 +238,7 @@ function makeStyles(colors: ThemeColors) {
     },
     kbDoneLabel: {
       color: colors.brand.primary,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
     },
     toolbarBtn: {
@@ -246,18 +247,18 @@ function makeStyles(colors: ThemeColors) {
       gap: 4,
       paddingHorizontal: 10,
       paddingVertical: 6,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.secondary,
       borderWidth: 1,
       borderColor: colors.border.default,
     },
     toolbarBtnLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.secondary,
     },
     toolbarFlex: { flex: 1 },
     charCount: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       fontVariantNumeric: 'tabular-nums',
     },
@@ -268,7 +269,7 @@ function makeStyles(colors: ThemeColors) {
       gap: 6,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 10,
       paddingVertical: 8,
       backgroundColor: colors.background.secondary,
@@ -279,27 +280,27 @@ function makeStyles(colors: ThemeColors) {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 3,
       gap: 4,
     },
     tagChipText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.brand.primary,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
-    tagRemove: { fontSize: 14, color: colors.text.tertiary, lineHeight: 16 },
+    tagRemove: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.tertiary, lineHeight: 16 },
     tagInput: {
       flex: 1,
       minWidth: 80,
-      fontSize: 14,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       paddingVertical: 0,
       height: 28,
     },
     tagHint: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       marginTop: 4,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -307,7 +308,7 @@ function makeStyles(colors: ThemeColors) {
     suggestionsBox: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 8,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.background.secondary,
       marginTop: 2,
       overflow: 'hidden',
@@ -319,12 +320,12 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 9,
     },
     suggestionName: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.primary,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
     suggestionCount: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
@@ -338,7 +339,7 @@ function makeStyles(colors: ThemeColors) {
     imageThumb: {
       width: 72,
       height: 72,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.tertiary,
     },
     imageRemoveBtn: {
@@ -347,14 +348,14 @@ function makeStyles(colors: ThemeColors) {
       right: -6,
       width: 20,
       height: 20,
-      borderRadius: 10,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.status.danger,
       alignItems: 'center',
       justifyContent: 'center',
     },
     imageRemoveText: {
       color: '#FFFFFF',
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
       lineHeight: 14,
     },
@@ -371,13 +372,13 @@ function makeStyles(colors: ThemeColors) {
       gap: 8,
       paddingHorizontal: 10,
       paddingVertical: 8,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.secondary,
       borderWidth: 1,
       borderColor: colors.border.default,
     },
     videoChipLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.secondary,
       flex: 1,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -393,7 +394,7 @@ function makeStyles(colors: ThemeColors) {
     // native-stack title without overflowing the header area.
     headerSubmitPill: {
       backgroundColor: colors.brand.primary,
-      borderRadius: 999,
+      borderRadius: RADIUS.pill,
       paddingVertical: 6,
       paddingHorizontal: 16,
       alignItems: 'center',
@@ -405,7 +406,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.secondary,
     },
     headerSubmitPillLabel: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '700',
       color: '#FFFFFF',
     },
@@ -418,27 +419,27 @@ function makeStyles(colors: ThemeColors) {
     },
     modalCard: {
       backgroundColor: colors.background.primary,
-      borderRadius: 14,
+      borderRadius: RADIUS.modal,
       padding: 20,
       gap: 12,
     },
     modalTitle: {
-      fontSize: 16,
+      fontSize: TYPE_SCALE.bodyLarge,
       fontWeight: '700',
       color: colors.text.primary,
     },
     modalInput: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      fontSize: 14,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.secondary,
     },
     modalError: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.status.danger,
     },
     modalButtons: {
@@ -450,7 +451,7 @@ function makeStyles(colors: ThemeColors) {
     modalBtnText: {
       paddingHorizontal: 14,
       paddingVertical: 8,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
     },
     modalBtnCancel: {
       backgroundColor: colors.background.secondary,
@@ -460,17 +461,17 @@ function makeStyles(colors: ThemeColors) {
     },
     modalBtnCancelLabel: {
       color: colors.text.secondary,
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
     },
     modalBtnAddLabel: {
       color: '#FFFFFF',
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '700',
     },
     // Preview
     previewTitle: {
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '700',
       color: colors.text.primary,
       marginBottom: 10,
@@ -480,12 +481,12 @@ function makeStyles(colors: ThemeColors) {
       padding: 12,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.background.secondary,
       gap: 8,
     },
     previewPollQuestion: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.primary,
     },
@@ -494,15 +495,15 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 10,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.primary,
     },
     previewPollOptionText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.primary,
     },
     previewPollMeta: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       marginTop: 4,
     },
@@ -514,17 +515,17 @@ function makeStyles(colors: ThemeColors) {
     },
     previewTagChip: {
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 3,
     },
     previewTagChipText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.brand.primary,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
     previewEmpty: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
       paddingVertical: 40,
       textAlign: 'center',

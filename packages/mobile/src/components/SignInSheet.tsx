@@ -20,6 +20,7 @@ import { useOpenStoaSession } from '../stores/sessionStore';
 import { useSignInLauncher } from '../auth/SignInLauncher';
 import { useThemeColors } from '../theme/ThemeContext';
 import { useDeveloperMode } from '../hooks/useDeveloperMode';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 interface SignInSheetContextValue {
   /**
@@ -286,47 +287,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: 32,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: RADIUS.modal,
+    borderTopRightRadius: RADIUS.modal,
   },
   handle: {
     alignSelf: 'center',
     width: 36,
     height: 4,
-    borderRadius: 2,
+    borderRadius: RADIUS.pill,
     marginBottom: 18,
   },
   title: {
-    fontSize: 20,
+    fontSize: TYPE_SCALE.headingSmall,
     fontWeight: '700',
     letterSpacing: -0.3,
     marginBottom: 10,
   },
   body: {
-    fontSize: 14,
+    fontSize: TYPE_SCALE.body,
     lineHeight: 20,
     marginBottom: 18,
   },
   error: {
-    fontSize: 13,
+    fontSize: TYPE_SCALE.caption,
     fontWeight: '500',
     marginBottom: 12,
   },
   primary: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
   },
   primaryText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: TYPE_SCALE.body,
     fontWeight: '700',
   },
   mdl: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
@@ -334,7 +335,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   mdlText: {
-    fontSize: 15,
+    fontSize: TYPE_SCALE.bodySmall,
     fontWeight: '700',
   },
   secondary: {
@@ -344,7 +345,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   secondaryText: {
-    fontSize: 14,
+    fontSize: TYPE_SCALE.bodySmall,
     fontWeight: '600',
   },
 });
@@ -353,28 +354,28 @@ const cardStyles = StyleSheet.create({
   card: {
     margin: 16,
     padding: 20,
-    borderRadius: 16,
+    borderRadius: RADIUS.card,
   },
   title: {
-    fontSize: 16,
+    fontSize: TYPE_SCALE.body,
     fontWeight: '700',
     marginBottom: 8,
     letterSpacing: -0.2,
   },
   body: {
-    fontSize: 14,
+    fontSize: TYPE_SCALE.bodySmall,
     lineHeight: 20,
     marginBottom: 16,
   },
   button: {
     height: 44,
-    borderRadius: 10,
+    borderRadius: RADIUS.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: TYPE_SCALE.bodySmall,
     fontWeight: '700',
   },
 });

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Linking, Text, useWindowDimensions, View } from 'react-native';
 import RenderHtml, { defaultSystemFonts } from 'react-native-render-html';
 import { useThemeColors } from '../theme/ThemeContext';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface PostContentProps {
   /** HTML-formatted post body. Mirrors the web's `post.content` field which
@@ -183,26 +184,26 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
 
   const tagsStyles = useMemo<Record<string, object>>(
     () => ({
-      body: { fontSize: 13, lineHeight: 18, color: colors.text.secondary },
+      body: { fontSize: TYPE_SCALE.body, lineHeight: 18, color: colors.text.secondary },
       p: { marginVertical: 4 },
       a: { color: colors.brand.primary, textDecorationLine: 'underline' },
-      img: { maxWidth: '100%', borderRadius: 8, marginVertical: 6 },
-      h1: { fontSize: 20, fontWeight: '700', color: colors.text.primary, marginVertical: 6 },
-      h2: { fontSize: 17, fontWeight: '700', color: colors.text.primary, marginVertical: 6 },
-      h3: { fontSize: 15, fontWeight: '700', color: colors.text.primary, marginVertical: 4 },
+      img: { maxWidth: '100%', borderRadius: RADIUS.control, marginVertical: 6 },
+      h1: { fontSize: TYPE_SCALE.headingSmall, fontWeight: '700', color: colors.text.primary, marginVertical: 6 },
+      h2: { fontSize: TYPE_SCALE.bodyLarge, fontWeight: '700', color: colors.text.primary, marginVertical: 6 },
+      h3: { fontSize: TYPE_SCALE.body, fontWeight: '700', color: colors.text.primary, marginVertical: 4 },
       code: {
         backgroundColor: colors.background.tertiary,
         paddingHorizontal: 4,
-        borderRadius: 4,
+        borderRadius: RADIUS.control,
         fontFamily: 'Menlo',
-        fontSize: 12,
+        fontSize: TYPE_SCALE.bodySmall,
       },
       pre: {
         backgroundColor: colors.background.tertiary,
         padding: 8,
-        borderRadius: 6,
+        borderRadius: RADIUS.control,
         fontFamily: 'Menlo',
-        fontSize: 12,
+        fontSize: TYPE_SCALE.bodySmall,
       },
       blockquote: {
         borderLeftWidth: 3,
@@ -220,7 +221,7 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
   );
 
   const baseStyle = useMemo(
-    () => ({ color: colors.text.secondary, fontSize: 13, lineHeight: 18 }),
+    () => ({ color: colors.text.secondary, fontSize: TYPE_SCALE.body, lineHeight: 18 }),
     [colors],
   );
 
@@ -248,7 +249,7 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
   if (isPlainText && plainSegments) {
     return (
       <Text
-        style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 18 }}
+        style={{ color: colors.text.secondary, fontSize: TYPE_SCALE.body, lineHeight: 18 }}
         numberOfLines={maxLines}
         selectable
       >

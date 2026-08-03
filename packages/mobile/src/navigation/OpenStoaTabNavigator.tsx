@@ -14,6 +14,7 @@ import { ProfileStack } from './stacks/ProfileStack';
 import { useThemeColors } from '../theme/ThemeContext';
 import { usePendingChatTopicId } from '../hooks/usePushTapRouting';
 import { getPendingChatTopicId } from '../hooks/pushTapRouting';
+import { TYPE_SCALE } from '../theme/tokens';
 
 export type OpenStoaTabParamList = {
   FeedTab: undefined;
@@ -145,7 +146,7 @@ export function OpenStoaTabNavigator() {
         tabBarActiveTintColor: colors.brand.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: TYPE_SCALE.label,
           fontWeight: '600',
           marginTop: 2,
         },

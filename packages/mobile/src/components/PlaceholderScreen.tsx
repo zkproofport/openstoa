@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { TYPE_SCALE } from '../theme/tokens';
 
 export interface PlaceholderScreenProps {
   title: string;
@@ -18,13 +19,13 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.primary,
     },
     title: {
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '600',
       color: colors.text.primary,
     },
     hint: {
       marginTop: 12,
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       textAlign: 'center',
     },

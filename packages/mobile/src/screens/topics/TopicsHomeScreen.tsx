@@ -25,6 +25,7 @@ import { InvitePromptModal } from '../../components/InvitePromptModal';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicsHome'>;
 
@@ -68,7 +69,7 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 60,
     },
     emptyText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
     sectionHeader: {
@@ -77,7 +78,7 @@ function makeStyles(colors: ThemeColors) {
       paddingBottom: 6,
     },
     sectionTitle: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '700',
       color: colors.text.secondary,
       textTransform: 'uppercase',
@@ -103,7 +104,7 @@ function makeStyles(colors: ThemeColors) {
     filterChip: {
       paddingHorizontal: 14,
       paddingVertical: 6,
-      borderRadius: 16,
+      borderRadius: RADIUS.pill,
       borderWidth: 1,
       borderColor: colors.border.default,
       backgroundColor: colors.background.tertiary,
@@ -113,7 +114,7 @@ function makeStyles(colors: ThemeColors) {
       borderColor: colors.brand.primary,
     },
     filterChipText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       fontWeight: '500',
     },

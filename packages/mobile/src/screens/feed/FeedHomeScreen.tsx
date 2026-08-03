@@ -23,6 +23,7 @@ import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { useAuthGuardedAction } from '../../auth';
 import { RecordIcon } from '../../components/icons';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 interface FeedPage {
   posts: Post[];
@@ -63,13 +64,13 @@ function makeStyles(colors: ThemeColors) {
       padding: 24,
     },
     errorText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.status.danger,
       marginBottom: 12,
       textAlign: 'center',
     },
     retryText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.brand.primary,
       fontWeight: '600',
     },
@@ -78,7 +79,7 @@ function makeStyles(colors: ThemeColors) {
       alignItems: 'center',
     },
     emptyText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
       textAlign: 'center',
     },
@@ -100,13 +101,13 @@ function makeStyles(colors: ThemeColors) {
       alignSelf: 'flex-start',
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 999,
+      borderRadius: RADIUS.pill,
       backgroundColor: 'rgba(139,92,246,0.10)',
       borderWidth: 1,
       borderColor: 'rgba(139,92,246,0.25)',
     },
     recordedChipText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: '#a78bfa',
     },

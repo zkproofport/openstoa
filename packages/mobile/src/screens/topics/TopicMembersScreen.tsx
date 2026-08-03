@@ -23,6 +23,7 @@ import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { PeerProfileCard } from '../../components/PeerProfileCard';
 import type { PeerBadge, PeerProfileTarget } from '../../lib/peerProfile';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicMembers'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicMembers'>;
@@ -79,7 +80,7 @@ function makeStyles(colors: ThemeColors) {
     avatar: {
       width: 36,
       height: 36,
-      borderRadius: 18,
+      borderRadius: RADIUS.pill,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.background.tertiary,
@@ -88,12 +89,12 @@ function makeStyles(colors: ThemeColors) {
       flex: 1,
     },
     nickname: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.primary,
     },
     roleText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       marginTop: 2,
     },
@@ -106,7 +107,7 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'center',
     },
     emptyText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
   });

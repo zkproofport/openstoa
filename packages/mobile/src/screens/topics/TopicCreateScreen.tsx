@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { Topic } from '@openstoa/api-types';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 interface Category {
   id: string;
@@ -63,7 +64,7 @@ function makeStyles(colors: ThemeColors) {
       paddingBottom: 40,
     },
     label: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.secondary,
       marginBottom: 6,
@@ -77,10 +78,10 @@ function makeStyles(colors: ThemeColors) {
     input: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.secondary,
     },
@@ -89,7 +90,7 @@ function makeStyles(colors: ThemeColors) {
       paddingTop: 12,
     },
     charCount: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       textAlign: 'right',
       marginTop: 4,
@@ -103,7 +104,7 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'space-between',
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       paddingHorizontal: 14,
       paddingVertical: 12,
       backgroundColor: colors.background.secondary,
@@ -113,7 +114,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.brand.primaryMuted,
     },
     pickerOptionText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
     },
     pickerOptionTextSelected: {
@@ -121,18 +122,18 @@ function makeStyles(colors: ThemeColors) {
       fontWeight: '600',
     },
     wipBadge: {
-      fontSize: 10,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
       color: colors.text.tertiary,
       backgroundColor: colors.background.tertiary,
       paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
     },
     submitButton: {
       marginTop: 32,
       backgroundColor: colors.brand.primary,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       paddingVertical: 14,
       alignItems: 'center',
     },
@@ -140,17 +141,17 @@ function makeStyles(colors: ThemeColors) {
       opacity: 0.5,
     },
     submitLabel: {
-      fontSize: 16,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '700',
       color: '#FFFFFF',
     },
     extraInput: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 14,
       paddingVertical: 10,
-      fontSize: 14,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.secondary,
       fontVariant: ['tabular-nums' as const],
@@ -162,7 +163,7 @@ function makeStyles(colors: ThemeColors) {
     modeBtn: {
       flex: 1,
       paddingVertical: 10,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       alignItems: 'center' as const,
       borderWidth: 1,
     },
@@ -175,17 +176,17 @@ function makeStyles(colors: ThemeColors) {
       borderColor: colors.border.default,
     },
     modeBtnText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600' as const,
     },
     infoBox: {
       marginTop: 10,
       padding: 12,
       backgroundColor: colors.background.tertiary,
-      borderRadius: 8,
+      borderRadius: RADIUS.card,
     },
     infoText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       lineHeight: 18,
     },
@@ -360,12 +361,12 @@ export function TopicCreateScreen() {
                   <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextSelected]}>
                     {opt.label}
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.text.tertiary, marginTop: 2 }}>{opt.desc}</Text>
+                  <Text style={{ fontSize: TYPE_SCALE.caption, color: colors.text.tertiary, marginTop: 2 }}>{opt.desc}</Text>
                 </View>
                 {opt.wip ? (
                   <Text style={styles.wipBadge}>{t('openstoa.topicCreate.comingSoonShort')}</Text>
                 ) : isSelected ? (
-                  <Text style={{ fontSize: 14, color: colors.brand.primary }}>✓</Text>
+                  <Text style={{ fontSize: TYPE_SCALE.bodySmall, color: colors.brand.primary }}>✓</Text>
                 ) : null}
               </TouchableOpacity>
             );

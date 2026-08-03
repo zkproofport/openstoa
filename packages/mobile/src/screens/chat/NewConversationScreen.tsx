@@ -19,6 +19,7 @@ import { SearchBar } from '../../components/SearchBar';
 import { initialFor } from '../../lib/peerProfile';
 import { buildDmCandidatesPath, type DmCandidate } from '../../lib/dmCandidates';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 type Nav = NativeStackNavigationProp<ChatStackParamList, 'NewConversation'>;
 
@@ -49,32 +50,32 @@ function makeStyles(colors: ThemeColors) {
     avatar: {
       width: AVATAR_SIZE,
       height: AVATAR_SIZE,
-      borderRadius: AVATAR_SIZE / 2,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primaryMuted,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 12,
       flexShrink: 0,
     },
-    avatarText: { fontSize: 16, fontWeight: '700', color: colors.brand.primary },
+    avatarText: { fontSize: TYPE_SCALE.bodyLarge, fontWeight: '700', color: colors.brand.primary },
     rowContent: { flex: 1 },
-    peerName: { fontSize: 15, fontWeight: '600', color: colors.text.primary },
-    sharedTopic: { fontSize: 12, color: colors.text.tertiary, marginTop: 2 },
-    emptyTitle: { fontSize: 17, fontWeight: '600', color: colors.text.primary },
+    peerName: { fontSize: TYPE_SCALE.body, fontWeight: '600', color: colors.text.primary },
+    sharedTopic: { fontSize: TYPE_SCALE.caption, color: colors.text.tertiary, marginTop: 2 },
+    emptyTitle: { fontSize: TYPE_SCALE.bodyLarge, fontWeight: '600', color: colors.text.primary },
     emptyBody: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       marginTop: 8,
       textAlign: 'center',
       lineHeight: 20,
     },
-    errorTitle: { fontSize: 16, fontWeight: '600', color: colors.status.danger },
-    errorBody: { fontSize: 12, color: colors.text.secondary, marginTop: 6, textAlign: 'center' },
+    errorTitle: { fontSize: TYPE_SCALE.body, fontWeight: '600', color: colors.status.danger },
+    errorBody: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.secondary, marginTop: 6, textAlign: 'center' },
     retryBtn: {
       marginTop: 16,
       paddingHorizontal: 18,
       paddingVertical: 10,
-      borderRadius: 18,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
     },
     retryLabel: { color: '#FFFFFF', fontWeight: '600' },

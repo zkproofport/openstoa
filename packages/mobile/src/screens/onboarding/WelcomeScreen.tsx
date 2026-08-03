@@ -10,6 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../../theme/ThemeContext';
 import { OpenStoaMarkIcon } from '../../components/icons';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 export interface WelcomeScreenProps {
   onSignIn: () => void;
@@ -206,13 +207,13 @@ const styles = StyleSheet.create({
   // unstyled below — no custom letterSpacing or extra weights — so the
   // mini-app reads as the same brand as the host boot.
   heading: {
-    fontSize: 28,
+    fontSize: TYPE_SCALE.headingLarge,
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 10,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: TYPE_SCALE.body,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
@@ -231,11 +232,11 @@ const styles = StyleSheet.create({
   bulletDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: RADIUS.pill,
   },
   bulletText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: TYPE_SCALE.bodySmall,
     lineHeight: 20,
   },
   footer: {
@@ -243,33 +244,33 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   error: {
-    fontSize: 13,
+    fontSize: TYPE_SCALE.caption,
     fontWeight: '500',
     textAlign: 'center',
     marginBottom: 4,
   },
   primaryButton: {
     height: 52,
-    borderRadius: 14,
+    borderRadius: RADIUS.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: TYPE_SCALE.body,
     fontWeight: '700',
     letterSpacing: 0.1,
   },
   mdlButton: {
     height: 52,
-    borderRadius: 14,
+    borderRadius: RADIUS.card,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     backgroundColor: 'transparent',
   },
   mdlButtonText: {
-    fontSize: 15,
+    fontSize: TYPE_SCALE.bodySmall,
     fontWeight: '700',
     letterSpacing: 0.1,
   },
@@ -279,11 +280,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryButtonText: {
-    fontSize: 15,
+    fontSize: TYPE_SCALE.bodySmall,
     fontWeight: '600',
   },
   legal: {
-    fontSize: 11,
+    fontSize: TYPE_SCALE.caption,
     textAlign: 'center',
     marginTop: 4,
   },

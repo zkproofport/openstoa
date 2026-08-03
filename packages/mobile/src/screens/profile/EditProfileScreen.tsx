@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
 // expo-image-picker is a native module — lazy-load to avoid crashing on
 // stale Metro reloads where the native binary hasn't been rebuilt yet.
 type ImagePickerModule = typeof import('expo-image-picker');
@@ -26,12 +27,17 @@ function loadImagePicker(): ImagePickerModule | null {
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useHost } from '@openstoa/miniapp-bridge';
 import type { DomainBadgeStatus, SessionInfo } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
+import { LANGUAGE_LABELS, SUPPORTED_LANGUAGES } from '../../i18n/language';
+import { useLanguage } from '../../i18n/useLanguage';
+import { buildDocsUrl } from '../../lib/docsLink';
+import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 
 const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
 
@@ -48,13 +54,13 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.primary,
       marginHorizontal: 16,
       marginBottom: 16,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       padding: 16,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border.default,
     },
     sectionTitle: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.text.tertiary,
       textTransform: 'uppercase',
@@ -74,13 +80,13 @@ function makeStyles(colors: ThemeColors) {
     avatarImage: {
       width: 72,
       height: 72,
-      borderRadius: 36,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.tertiary,
     },
     avatarPlaceholder: {
       width: 72,
       height: 72,
-      borderRadius: 36,
+      borderRadius: RADIUS.pill,
       borderWidth: 2,
       borderColor: colors.border.default,
       borderStyle: 'dashed',
@@ -89,7 +95,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.secondary,
     },
     avatarPlaceholderText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       textAlign: 'center',
       lineHeight: 16,
@@ -100,19 +106,19 @@ function makeStyles(colors: ThemeColors) {
       right: -4,
       width: 20,
       height: 20,
-      borderRadius: 10,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.status.danger,
       alignItems: 'center',
       justifyContent: 'center',
     },
     avatarRemoveText: {
       color: '#FFFFFF',
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '700',
       lineHeight: 15,
     },
     avatarHint: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       lineHeight: 20,
     },
@@ -121,12 +127,12 @@ function makeStyles(colors: ThemeColors) {
       alignSelf: 'flex-start',
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 7,
+      borderRadius: RADIUS.control,
       borderWidth: 1,
       borderColor: colors.border.strong,
     },
     avatarUploadBtnText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       fontWeight: '500',
     },
@@ -141,9 +147,9 @@ function makeStyles(colors: ThemeColors) {
       height: 44,
       borderWidth: 1,
       borderColor: colors.border.strong,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 12,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.secondary,
     },
@@ -154,7 +160,7 @@ function makeStyles(colors: ThemeColors) {
       borderColor: colors.status.danger,
     },
     validationText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       marginTop: 5,
     },
     validationOk: {
@@ -167,7 +173,7 @@ function makeStyles(colors: ThemeColors) {
       color: colors.text.tertiary,
     },
     charCount: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       textAlign: 'right',
       marginTop: 4,
@@ -175,7 +181,7 @@ function makeStyles(colors: ThemeColors) {
     saveButton: {
       height: 44,
       paddingHorizontal: 18,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.brand.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -184,7 +190,7 @@ function makeStyles(colors: ThemeColors) {
       opacity: 0.5,
     },
     saveButtonText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '700',
       color: colors.text.inverted,
     },
@@ -197,37 +203,37 @@ function makeStyles(colors: ThemeColors) {
       gap: 8,
     },
     domainBadgeActiveText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.primary,
     },
     activeDot: {
       width: 8,
       height: 8,
-      borderRadius: 4,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.status.success,
     },
     domainBadgeButton: {
       alignSelf: 'flex-start',
       paddingHorizontal: 14,
       paddingVertical: 7,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       borderWidth: 1,
       borderColor: colors.status.danger,
     },
     domainBadgeButtonText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.status.danger,
     },
     domainBadgeOffText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       lineHeight: 20,
     },
     actionButton: {
       height: 48,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.background.secondary,
@@ -236,7 +242,7 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 10,
     },
     actionButtonText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.secondary,
     },
@@ -255,18 +261,52 @@ function makeStyles(colors: ThemeColors) {
     },
     badgeChip: {
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 20,
+      borderRadius: RADIUS.pill,
       paddingHorizontal: 12,
       paddingVertical: 5,
     },
     badgeLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
     badgeEmpty: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
+    },
+    // Language picker — radio-style rows rather than a segmented control so
+    // a long endonym (or a future third language) wraps down the list
+    // instead of squeezing every option on the narrowest phone.
+    languageRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      minHeight: TOUCH_TARGET_MIN,
+      paddingHorizontal: 12,
+      borderRadius: RADIUS.control,
+      borderWidth: 1,
+      borderColor: colors.border.strong,
+      backgroundColor: colors.background.secondary,
+      marginBottom: 8,
+    },
+    languageRowActive: {
+      borderColor: colors.brand.primary,
+      backgroundColor: colors.brand.primaryMuted,
+    },
+    languageLabel: {
+      flexShrink: 1,
+      fontSize: TYPE_SCALE.body,
+      fontWeight: '600',
+      color: colors.text.secondary,
+    },
+    languageLabelActive: {
+      color: colors.brand.primary,
+    },
+    languageCheck: {
+      fontSize: TYPE_SCALE.body,
+      fontWeight: '700',
+      color: colors.brand.primary,
     },
   });
 }
@@ -275,10 +315,17 @@ export function EditProfileScreen() {
   const { t } = useTranslation();
   const client = useOpenStoaClient();
   const host = useHost();
-  const navigation = useNavigation();
+  // Typed against the stack this screen lives on, so the routes it pushes
+  // (and their params) are checked instead of being cast through `never`.
+  const navigation =
+    useNavigation<NativeStackNavigationProp<ProfileStackParamList, 'EditProfile'>>();
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
+  const { language, setLanguage } = useLanguage();
+  // Null when the host reports an unusable base URL — the Docs row is hidden
+  // in that case rather than opening a WebView on a broken address.
+  const docsUrl = buildDocsUrl(host.getEnvironment().openstoaBaseUrl);
 
   const sessionQuery = useQuery<SessionInfo>({
     queryKey: ['session'],
@@ -672,7 +719,7 @@ export function EditProfileScreen() {
           <Text style={styles.sectionTitle}>Notifications</Text>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('NotificationSettings' as never)}
+            onPress={() => navigation.navigate('NotificationSettings')}
           >
             <Text style={styles.actionButtonText}>Push notification settings</Text>
           </TouchableOpacity>
@@ -683,7 +730,7 @@ export function EditProfileScreen() {
           <Text style={styles.sectionTitle}>Chat recovery</Text>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('AccountRecovery' as never)}
+            onPress={() => navigation.navigate('AccountRecovery')}
           >
             <Text style={styles.actionButtonText}>Back up &amp; recover encrypted chat keys</Text>
           </TouchableOpacity>
@@ -694,11 +741,60 @@ export function EditProfileScreen() {
           <Text style={styles.sectionTitle}>{t('openstoa.apiKeys.title')}</Text>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('AiPermissions' as never)}
+            onPress={() => navigation.navigate('AiPermissions')}
           >
             <Text style={styles.actionButtonText}>{t('openstoa.apiKeys.yourKeys')}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Language — the mini-app had no switcher at all, so a user whose
+            host language was wrong had no way to correct it from inside
+            OpenStoa. Labels are endonyms (see i18n/language.ts). */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('openstoa.editProfile.language')}</Text>
+          {SUPPORTED_LANGUAGES.map((lang) => {
+            const isActive = language === lang;
+            return (
+              <TouchableOpacity
+                key={lang}
+                style={[styles.languageRow, isActive && styles.languageRowActive]}
+                onPress={() => setLanguage(lang)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={LANGUAGE_LABELS[lang]}
+              >
+                <Text
+                  style={[styles.languageLabel, isActive && styles.languageLabelActive]}
+                  numberOfLines={1}
+                >
+                  {LANGUAGE_LABELS[lang]}
+                </Text>
+                {isActive ? <Text style={styles.languageCheck}>✓</Text> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Docs — the web guide had no entry point anywhere in the mini-app.
+            Opens in the in-app WebView per the project-wide rule that
+            outbound http(s) links never punt to the system browser. */}
+        {docsUrl ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('openstoa.editProfile.help')}</Text>
+            <TouchableOpacity
+              style={styles.actionButton}
+              accessibilityRole="link"
+              onPress={() =>
+                navigation.navigate('InAppBrowser', {
+                  url: docsUrl,
+                  title: t('openstoa.editProfile.docs'),
+                })
+              }
+            >
+              <Text style={styles.actionButtonText}>{t('openstoa.editProfile.docs')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* Account actions */}
         <View style={styles.section}>

@@ -27,6 +27,7 @@ import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 import { formatRelativeTime } from '../../utils/relativeTime';
+import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
 
 type ProfileNavProp = NativeStackNavigationProp<ProfileStackParamList, 'ProfileHome'>;
 
@@ -100,13 +101,13 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.primary,
     },
     errorText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.status.danger,
       marginBottom: 12,
       textAlign: 'center',
     },
     retryText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.brand.primary,
       fontWeight: '600',
     },
@@ -126,14 +127,16 @@ function makeStyles(colors: ThemeColors) {
       position: 'absolute',
       top: 12,
       right: 12,
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      // 36pt icon, 44pt target: the gear grows its hit area
+      // outward without moving the glyph, which stays centered.
+      width: TOUCH_TARGET_MIN,
+      height: TOUCH_TARGET_MIN,
+      borderRadius: RADIUS.pill,
       alignItems: 'center',
       justifyContent: 'center',
     },
     editButtonText: {
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       lineHeight: 24,
       fontWeight: '600',
       color: colors.text.secondary,
@@ -141,7 +144,7 @@ function makeStyles(colors: ThemeColors) {
     avatarCircle: {
       width: 72,
       height: 72,
-      borderRadius: 36,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primaryMuted,
       alignItems: 'center',
       justifyContent: 'center',
@@ -150,41 +153,41 @@ function makeStyles(colors: ThemeColors) {
     avatarImage: {
       width: 72,
       height: 72,
-      borderRadius: 36,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.tertiary,
       marginBottom: 8,
     },
     avatarInitial: {
-      fontSize: 30,
+      fontSize: TYPE_SCALE.headingLarge,
       fontWeight: '700',
       color: colors.brand.primary,
     },
     editPhotoText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
       color: colors.brand.primary,
       marginBottom: 8,
     },
     nickname: {
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '700',
       color: colors.text.primary,
       marginBottom: 4,
     },
     userId: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       fontFamily: 'monospace',
       marginBottom: 4,
     },
     recorded: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
       marginBottom: 4,
     },
     joinedAt: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
     },
 
@@ -204,14 +207,14 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'space-between',
     },
     domainText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.secondary,
       marginTop: 2,
     },
     toggleButton: {
       paddingHorizontal: 16,
       paddingVertical: 6,
-      borderRadius: 20,
+      borderRadius: RADIUS.pill,
       borderWidth: 1,
     },
     toggleButtonActive: {
@@ -223,7 +226,7 @@ function makeStyles(colors: ThemeColors) {
       borderColor: colors.border.strong,
     },
     toggleButtonText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
     },
     toggleButtonTextActive: {
@@ -248,13 +251,13 @@ function makeStyles(colors: ThemeColors) {
     },
     badgeChip: {
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 20,
+      borderRadius: RADIUS.pill,
       paddingHorizontal: 12,
       paddingVertical: 5,
       marginRight: 8,
     },
     badgeLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
@@ -278,7 +281,7 @@ function makeStyles(colors: ThemeColors) {
       borderBottomColor: colors.brand.primary,
     },
     tabText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '500',
       color: colors.text.tertiary,
     },
@@ -303,7 +306,7 @@ function makeStyles(colors: ThemeColors) {
     },
     myTxStripText: {
       flex: 1,
-      fontSize: 11,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
       color: colors.brand.primary,
     },
@@ -323,19 +326,19 @@ function makeStyles(colors: ThemeColors) {
     subTab: {
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 14,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.secondary,
     },
     subTabActive: {
       backgroundColor: colors.brand.primaryMuted,
     },
     subTabText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '500',
       color: colors.text.secondary,
     },
     subTabTextActive: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '700',
       color: colors.brand.primary,
     },
@@ -347,14 +350,14 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 24,
     },
     emptyText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
       textAlign: 'center',
     },
 
     // Section label
     sectionLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.text.tertiary,
       textTransform: 'uppercase',
@@ -375,12 +378,12 @@ function makeStyles(colors: ThemeColors) {
       alignItems: 'center',
     },
     statNumber: {
-      fontSize: 20,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '800' as const,
       color: colors.brand.primary,
     },
     statLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
     },
 
@@ -389,13 +392,13 @@ function makeStyles(colors: ThemeColors) {
       marginLeft: 6,
       paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       backgroundColor: 'rgba(234,179,8,0.15)',
       borderWidth: 1,
       borderColor: 'rgba(234,179,8,0.3)',
     },
     adminChipText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700' as const,
       color: '#eab308',
     },
@@ -414,7 +417,7 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 0,
     },
     recordedBannerText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: '#a78bfa',
       flex: 1,
     },
@@ -437,24 +440,24 @@ function makeStyles(colors: ThemeColors) {
     topicInitial: {
       width: 36,
       height: 36,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.brand.primary,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
       flexShrink: 0,
     },
     topicInitialText: {
-      fontSize: 16,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '700' as const,
       color: '#ffffff',
     },
     topicTitle: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600' as const,
       color: colors.text.primary,
     },
     topicMeta: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       marginTop: 2,
     },
@@ -467,24 +470,24 @@ function makeStyles(colors: ThemeColors) {
     footerButton: {
       alignItems: 'center',
       paddingVertical: 14,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       borderWidth: 1,
       borderColor: colors.border.strong,
       backgroundColor: colors.background.primary,
     },
     footerButtonText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.secondary,
     },
     footerButtonDanger: {
       alignItems: 'center',
       paddingVertical: 14,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.status.danger,
     },
     footerButtonDangerText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: '#FFFFFF',
     },

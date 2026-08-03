@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface InvitePromptModalProps {
   visible: boolean;
@@ -38,22 +39,22 @@ function makeStyles(colors: ThemeColors) {
       width: '85%',
       maxWidth: 360,
       backgroundColor: colors.background.primary,
-      borderRadius: 16,
+      borderRadius: RADIUS.modal,
       padding: 20,
       gap: 12,
     },
     title: {
-      fontSize: 17,
+      fontSize: TYPE_SCALE.bodyLarge,
       fontWeight: '700',
       color: colors.text.primary,
     },
     input: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.secondary,
       minHeight: 44,
@@ -68,12 +69,12 @@ function makeStyles(colors: ThemeColors) {
       minWidth: 72,
       minHeight: 44,
       paddingHorizontal: 14,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       alignItems: 'center',
       justifyContent: 'center',
     },
     cancelLabel: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.secondary,
     },
@@ -81,7 +82,7 @@ function makeStyles(colors: ThemeColors) {
       minWidth: 80,
       minHeight: 44,
       paddingHorizontal: 18,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.brand.primary,
@@ -90,7 +91,7 @@ function makeStyles(colors: ThemeColors) {
       opacity: 0.5,
     },
     submitLabel: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '700',
       color: colors.text.inverted,
     },

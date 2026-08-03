@@ -28,6 +28,7 @@ import { useAuthGuardedAction } from '../../auth';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicDetail'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicDetail'>;
@@ -69,7 +70,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.secondary,
     },
     errorText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.status.danger,
     },
     topicHeader: {
@@ -89,7 +90,7 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 6,
     },
     topicTitle: {
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '700',
       color: colors.text.primary,
     },
@@ -97,17 +98,17 @@ function makeStyles(colors: ThemeColors) {
     // label so the badge reads the same wherever it appears.
     joinedBadge: {
       backgroundColor: colors.status.success + '22',
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 6,
       paddingVertical: 2,
     },
     joinedBadgeText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.status.success,
     },
     topicDescription: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.secondary,
       lineHeight: 20,
       marginBottom: 12,
@@ -119,18 +120,18 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 16,
     },
     topicMetaText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
     },
     badge: {
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 6,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 3,
       marginLeft: 4,
     },
     badgeText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
@@ -140,7 +141,7 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'center',
       gap: 8,
       backgroundColor: colors.brand.primary,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       paddingVertical: 12,
       minHeight: 44,
     },
@@ -148,7 +149,7 @@ function makeStyles(colors: ThemeColors) {
       opacity: 0.6,
     },
     actionButtonText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.inverted,
     },
@@ -161,7 +162,7 @@ function makeStyles(colors: ThemeColors) {
       bottom: 24,
       width: 56,
       height: 56,
-      borderRadius: 28,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -182,7 +183,7 @@ function makeStyles(colors: ThemeColors) {
       paddingBottom: 6,
     },
     sectionLabel: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '700',
       color: colors.text.secondary,
       textTransform: 'uppercase',
@@ -196,7 +197,7 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 40,
     },
     emptyText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
     headerButton: {

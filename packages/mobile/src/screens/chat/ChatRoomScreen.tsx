@@ -19,6 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 // expo-image-picker is a native module — a top-level import instantiates
 // its native bridge at module-load time, which crashes ChatRoomScreen with
 // "Cannot find native module 'ExponentImagePicker'" on JS-only Metro
@@ -135,7 +136,7 @@ function makeStyles(colors: ThemeColors) {
       padding: 24,
     },
     emptyText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
 
@@ -164,12 +165,12 @@ function makeStyles(colors: ThemeColors) {
       marginVertical: 2,
     },
     systemMsg: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       backgroundColor: colors.background.secondary,
       paddingHorizontal: 10,
       paddingVertical: 3,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       overflow: 'hidden',
     },
 
@@ -185,17 +186,17 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 6,
     },
     author: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
       color: colors.brand.primary,
       marginRight: 6,
     },
     msgTime: {
-      fontSize: 10,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
     },
     body: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       lineHeight: 21,
     },
@@ -213,12 +214,12 @@ function makeStyles(colors: ThemeColors) {
     presenceDot: {
       width: 7,
       height: 7,
-      borderRadius: 4,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.status.success,
       marginRight: 4,
     },
     presenceCount: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.secondary,
     },
 
@@ -233,7 +234,7 @@ function makeStyles(colors: ThemeColors) {
       borderBottomColor: colors.border.default,
     },
     statusError: { backgroundColor: '#FFF0F0' },
-    statusText: { fontSize: 12, color: colors.text.secondary },
+    statusText: { fontSize: TYPE_SCALE.caption, color: colors.text.secondary },
     statusErrorText: { color: colors.status.danger },
 
     // Bubble chat styles
@@ -250,25 +251,25 @@ function makeStyles(colors: ThemeColors) {
     },
     bubble: {
       maxWidth: '75%' as const,
-      borderRadius: 16,
+      borderRadius: RADIUS.modal,
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
     bubbleOwn: {
       backgroundColor: colors.brand.primary,
-      borderBottomRightRadius: 4,
+      borderBottomRightRadius: RADIUS.control,
     },
     bubbleOther: {
       backgroundColor: colors.background.secondary,
-      borderBottomLeftRadius: 4,
+      borderBottomLeftRadius: RADIUS.control,
     },
     bubbleTextOwn: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       lineHeight: 21,
       color: '#FFFFFF',
     },
     bubbleTextOther: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       lineHeight: 21,
       color: colors.text.primary,
     },
@@ -287,24 +288,24 @@ function makeStyles(colors: ThemeColors) {
       marginLeft: 2,
     },
     bubbleAuthor: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600' as const,
       color: colors.brand.primary,
     },
     // AI-member badge (design §7 D9 — nickname + AI badge, is_ai=true).
     aiBadge: {
-      fontSize: 9,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700' as const,
       color: colors.background.primary,
       backgroundColor: colors.brand.primary,
       overflow: 'hidden' as const,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 4,
       paddingVertical: 1,
       marginLeft: 6,
     },
     bubbleTime: {
-      fontSize: 10,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       alignSelf: 'flex-end' as const,
       marginTop: 3,
@@ -342,10 +343,10 @@ function makeStyles(colors: ThemeColors) {
       maxHeight: 120,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 20,
+      borderRadius: RADIUS.pill,
       paddingHorizontal: 14,
       paddingVertical: Platform.OS === 'ios' ? 10 : 6,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.primary,
     },
@@ -353,23 +354,23 @@ function makeStyles(colors: ThemeColors) {
       marginLeft: 8,
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
       alignItems: 'center',
       justifyContent: 'center',
     },
     sendButtonDisabled: { backgroundColor: colors.border.strong },
-    sendLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+    sendLabel: { color: '#FFFFFF', fontSize: TYPE_SCALE.bodySmall, fontWeight: '600' },
     attachButton: {
       marginRight: 8,
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.tertiary,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    attachLabel: { color: colors.text.primary, fontSize: 24 },
+    attachLabel: { color: colors.text.primary, fontSize: TYPE_SCALE.headingSmall },
   });
 }
 
@@ -1295,7 +1296,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
               style={{
                 width: 220,
                 height: 220,
-                borderRadius: 12,
+                borderRadius: RADIUS.card,
                 backgroundColor: 'rgba(255,255,255,0.05)',
               }}
               resizeMode="cover"

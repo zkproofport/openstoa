@@ -19,6 +19,7 @@ import type { ThemeColors } from '../../theme/colors';
 import { keyBackupHttp, recoverDevice, getDeviceMasterKey } from '../../crypto/mobileTransport';
 import * as km from '../../crypto/keyManager';
 import * as kb from '../../crypto/keyBackup';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 // Byte-identical to the web PRF salt (src/lib/passkeyPrf.ts) so a synced passkey
 // yields the same PRF output — hence the same master_key — on web and mobile.
@@ -189,55 +190,55 @@ function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background.primary },
     content: { padding: 20 },
-    title: { fontSize: 22, fontWeight: '800', color: colors.text.primary, letterSpacing: -0.4 },
-    sub: { fontSize: 13, color: colors.text.tertiary, marginTop: 6, lineHeight: 18 },
+    title: { fontSize: TYPE_SCALE.headingSmall, fontWeight: '800', color: colors.text.primary, letterSpacing: -0.4 },
+    sub: { fontSize: TYPE_SCALE.caption, color: colors.text.tertiary, marginTop: 6, lineHeight: 18 },
     card: {
       marginTop: 16,
       padding: 16,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.background.secondary,
       borderWidth: 1,
       borderColor: colors.border.default,
     },
-    cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text.primary, marginBottom: 10 },
-    cardLabel: { fontSize: 12, color: colors.text.tertiary },
-    status: { fontSize: 15, marginTop: 4 },
+    cardTitle: { fontSize: TYPE_SCALE.body, fontWeight: '700', color: colors.text.primary, marginBottom: 10 },
+    cardLabel: { fontSize: TYPE_SCALE.label, color: colors.text.tertiary },
+    status: { fontSize: TYPE_SCALE.body, marginTop: 4 },
     btn: {
       marginTop: 10,
       paddingVertical: 11,
       paddingHorizontal: 14,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       borderWidth: 1,
       borderColor: colors.border.default,
       alignItems: 'center',
     },
-    btnText: { fontSize: 14, color: colors.text.primary, fontWeight: '600' },
+    btnText: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.primary, fontWeight: '600' },
     code: {
       marginTop: 6,
       padding: 12,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.primary,
       borderWidth: 1,
       borderColor: colors.border.default,
       color: colors.text.primary,
       fontFamily: 'Menlo',
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       letterSpacing: 1,
     },
     input: {
       marginTop: 10,
       paddingVertical: 10,
       paddingHorizontal: 12,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       borderWidth: 1,
       borderColor: colors.border.default,
       backgroundColor: colors.background.primary,
       color: colors.text.primary,
       fontFamily: 'Menlo',
-      fontSize: 14,
+      fontSize: TYPE_SCALE.body,
     },
-    ok: { marginTop: 12, fontSize: 14, color: colors.status.success },
-    error: { marginTop: 12, fontSize: 14, color: colors.status.danger },
-    footId: { marginTop: 20, fontSize: 12, color: colors.text.tertiary, fontFamily: 'Menlo' },
+    ok: { marginTop: 12, fontSize: TYPE_SCALE.bodySmall, color: colors.status.success },
+    error: { marginTop: 12, fontSize: TYPE_SCALE.bodySmall, color: colors.status.danger },
+    footId: { marginTop: 20, fontSize: TYPE_SCALE.label, color: colors.text.tertiary, fontFamily: 'Menlo' },
   });
 }

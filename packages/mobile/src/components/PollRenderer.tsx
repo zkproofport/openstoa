@@ -10,6 +10,7 @@ import { useOpenStoaSession } from '../stores/sessionStore';
 import { useAuthGuardedAction } from '../auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { patchPostInAllCaches } from '../utils/postCachePatch';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface PollRendererProps {
   postId: string;
@@ -28,12 +29,12 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 12,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.background.secondary,
       gap: 8,
     },
     question: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.primary,
       marginBottom: 4,
@@ -46,7 +47,7 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 10,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.primary,
     },
     optionRowSelected: {
@@ -55,13 +56,13 @@ function makeStyles(colors: ThemeColors) {
     },
     optionLabel: {
       flex: 1,
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.primary,
     },
     optionCheck: {
       width: 18,
       height: 18,
-      borderRadius: 9,
+      borderRadius: RADIUS.pill,
       borderWidth: 1.5,
       borderColor: colors.text.tertiary,
       alignItems: 'center',
@@ -75,7 +76,7 @@ function makeStyles(colors: ThemeColors) {
     resultRow: {
       paddingVertical: 8,
       paddingHorizontal: 10,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.primary,
       overflow: 'hidden',
       position: 'relative',
@@ -98,18 +99,18 @@ function makeStyles(colors: ThemeColors) {
     },
     resultLabel: {
       flex: 1,
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.primary,
       fontWeight: '500',
     },
     resultPct: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.secondary,
       fontVariantNumeric: 'tabular-nums',
       fontWeight: '600',
     },
     resultCount: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       fontVariantNumeric: 'tabular-nums',
     },
@@ -120,14 +121,14 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 4,
     },
     footerMeta: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       flex: 1,
     },
     voteBtn: {
       paddingVertical: 9,
       paddingHorizontal: 14,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.brand.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -138,7 +139,7 @@ function makeStyles(colors: ThemeColors) {
     },
     voteBtnLabel: {
       color: '#FFFFFF',
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '700',
     },
     unvoteBtn: {
@@ -146,7 +147,7 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 8,
     },
     unvoteLabel: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.brand.primary,
       fontWeight: '600',
     },

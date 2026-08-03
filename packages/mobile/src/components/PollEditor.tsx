@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface PollEditorValue {
   question?: string;
@@ -39,7 +40,7 @@ function makeStyles(colors: ThemeColors) {
       padding: 12,
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.background.secondary,
       gap: 10,
     },
@@ -50,7 +51,7 @@ function makeStyles(colors: ThemeColors) {
     },
     headerLabel: {
       flex: 1,
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '700',
       color: colors.text.primary,
     },
@@ -58,10 +59,10 @@ function makeStyles(colors: ThemeColors) {
     input: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      fontSize: 14,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.primary,
       backgroundColor: colors.background.primary,
     },
@@ -79,13 +80,13 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 6,
       paddingHorizontal: 10,
       alignSelf: 'flex-start',
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.primary,
       borderWidth: 1,
       borderColor: colors.border.default,
     },
     addBtnLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.secondary,
     },
     row: {
@@ -95,7 +96,7 @@ function makeStyles(colors: ThemeColors) {
     },
     rowLabel: {
       flex: 1,
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.secondary,
     },
     durationRow: {
@@ -105,7 +106,7 @@ function makeStyles(colors: ThemeColors) {
     durationChip: {
       paddingVertical: 6,
       paddingHorizontal: 10,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       borderWidth: 1,
       borderColor: colors.border.default,
       backgroundColor: colors.background.primary,
@@ -115,7 +116,7 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.brand.primaryMuted,
     },
     durationChipLabel: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.secondary,
     },
     durationChipLabelActive: {

@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface OGData {
   title: string | null;
@@ -28,7 +29,7 @@ function makeStyles(colors: ThemeColors) {
     container: {
       borderWidth: 1,
       borderColor: colors.border.default,
-      borderRadius: 8,
+      borderRadius: RADIUS.card,
       padding: 12,
       backgroundColor: colors.background.secondary,
       marginTop: 6,
@@ -41,29 +42,29 @@ function makeStyles(colors: ThemeColors) {
     favicon: {
       width: 14,
       height: 14,
-      borderRadius: 2,
+      borderRadius: RADIUS.control,
       marginRight: 5,
     },
     siteName: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
     },
     title: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.primary,
       lineHeight: 20,
       marginBottom: 2,
     },
     description: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.secondary,
       lineHeight: 17,
     },
     image: {
       width: '100%',
       aspectRatio: 1.91,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       marginTop: 8,
       backgroundColor: colors.background.tertiary,
     },

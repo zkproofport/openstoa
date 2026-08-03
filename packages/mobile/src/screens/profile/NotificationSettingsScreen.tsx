@@ -23,6 +23,7 @@ import {
 } from '../../hooks/pushPermission';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
+import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
 
 /**
  * Notification settings (P-M) — the in-app GLOBAL push switch, reconciled with
@@ -52,48 +53,48 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.primary,
       marginHorizontal: 16,
       marginBottom: 16,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       padding: 16,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border.default,
     },
     sectionTitle: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.text.tertiary,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
       marginBottom: 8,
     },
-    intro: { fontSize: 13, color: colors.text.secondary, lineHeight: 20 },
+    intro: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.secondary, lineHeight: 20 },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingVertical: 6,
     },
-    rowLabel: { fontSize: 15, color: colors.text.primary, flex: 1, marginRight: 12 },
-    rowHint: { fontSize: 12, color: colors.text.tertiary, marginTop: 6, lineHeight: 18 },
+    rowLabel: { fontSize: TYPE_SCALE.body, color: colors.text.primary, flex: 1, marginRight: 12 },
+    rowHint: { fontSize: TYPE_SCALE.caption, color: colors.text.tertiary, marginTop: 6, lineHeight: 18 },
     blockedBox: {
       marginTop: 12,
       padding: 12,
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       backgroundColor: 'rgba(239,68,68,0.08)',
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: 'rgba(239,68,68,0.35)',
     },
-    blockedText: { fontSize: 13, color: '#ef4444', lineHeight: 19 },
+    blockedText: { fontSize: TYPE_SCALE.bodySmall, color: '#ef4444', lineHeight: 19 },
     settingsButton: {
       marginTop: 10,
-      height: 40,
-      borderRadius: 8,
+      height: TOUCH_TARGET_MIN,
+      borderRadius: RADIUS.control,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.brand.primary,
     },
-    settingsButtonText: { fontSize: 14, fontWeight: '700', color: colors.text.inverted },
+    settingsButtonText: { fontSize: TYPE_SCALE.bodySmall, fontWeight: '700', color: colors.text.inverted },
     errorBox: { marginTop: 12 },
-    errorText: { fontSize: 13, color: '#ef4444', lineHeight: 19 },
+    errorText: { fontSize: TYPE_SCALE.caption, color: '#ef4444', lineHeight: 19 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   });
 }

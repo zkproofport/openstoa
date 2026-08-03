@@ -145,7 +145,10 @@
       "delete": {
         "title": "계정 삭제",
         "message": "계정을 삭제하면 모든 게시글, 댓글, 뱃지가 영구적으로 삭제돼요. 계속할까요?"
-      }
+      },
+      "language": "언어",
+      "help": "도움말",
+      "docs": "문서"
     },
     "topics": {
       "detailTitle": "토픽",

@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather';
 import { useThemeColors } from '../theme/ThemeContext';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface SearchBarProps {
   /** The current draft text the user is typing — controlled. */
@@ -101,13 +102,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+    borderRadius: RADIUS.control,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   input: {
     flex: 1,
-    fontSize: 14,
+    fontSize: TYPE_SCALE.body,
     paddingVertical: 4,
   },
   iconSlot: {

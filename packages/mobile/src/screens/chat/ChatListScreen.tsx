@@ -19,6 +19,7 @@ import { formatRelativeTime } from '../../utils/relativeTime';
 import { usePendingChatTopicId } from '../../hooks/usePushTapRouting';
 import { takePendingChatTopicId } from '../../hooks/pushTapRouting';
 import type { ChatMessage, Topic } from '@openstoa/api-types';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 interface ChatHistoryResponse {
   messages: ChatMessage[];
@@ -53,7 +54,7 @@ function makeStyles(colors: ThemeColors) {
     avatar: {
       width: AVATAR_SIZE,
       height: AVATAR_SIZE,
-      borderRadius: AVATAR_SIZE / 2,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primaryMuted,
       alignItems: 'center',
       justifyContent: 'center',
@@ -61,7 +62,7 @@ function makeStyles(colors: ThemeColors) {
       flexShrink: 0,
     },
     avatarText: {
-      fontSize: 18,
+      fontSize: TYPE_SCALE.bodyLarge,
       fontWeight: '700',
       color: colors.brand.primary,
     },
@@ -74,7 +75,7 @@ function makeStyles(colors: ThemeColors) {
     },
     topicTitle: {
       flex: 1,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.primary,
       marginRight: 8,
@@ -83,12 +84,12 @@ function makeStyles(colors: ThemeColors) {
       fontWeight: '700',
     },
     time: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       flexShrink: 0,
     },
     lastMessage: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
     },
     lastMessageUnread: {
@@ -102,7 +103,7 @@ function makeStyles(colors: ThemeColors) {
     unreadBadge: {
       minWidth: UNREAD_BADGE_SIZE,
       height: UNREAD_BADGE_SIZE,
-      borderRadius: UNREAD_BADGE_SIZE / 2,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -111,7 +112,7 @@ function makeStyles(colors: ThemeColors) {
       flexShrink: 0,
     },
     unreadBadgeText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
       color: '#FFFFFF',
     },
@@ -123,24 +124,24 @@ function makeStyles(colors: ThemeColors) {
       flexShrink: 0,
     },
     emptyTitle: {
-      fontSize: 18,
+      fontSize: TYPE_SCALE.bodyLarge,
       fontWeight: '600',
       color: colors.text.primary,
     },
     emptyBody: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       marginTop: 8,
       textAlign: 'center',
       lineHeight: 20,
     },
     errorTitle: {
-      fontSize: 16,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.status.danger,
     },
     errorBody: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       marginTop: 6,
       textAlign: 'center',
@@ -149,7 +150,7 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 16,
       paddingHorizontal: 18,
       paddingVertical: 10,
-      borderRadius: 18,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
     },
     retryLabel: { color: '#FFFFFF', fontWeight: '600' },

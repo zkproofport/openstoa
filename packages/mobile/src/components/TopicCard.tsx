@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import type { Topic, ProofType } from '@openstoa/api-types';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 const PROOF_TYPE_LABEL: Record<ProofType, string | null> = {
   none: null,
@@ -30,7 +31,7 @@ function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     card: {
       backgroundColor: colors.background.primary,
-      borderRadius: 12,
+      borderRadius: RADIUS.card,
       padding: 16,
       marginHorizontal: 16,
       marginVertical: 6,
@@ -45,34 +46,34 @@ function makeStyles(colors: ThemeColors) {
     },
     title: {
       flex: 1,
-      fontSize: 16,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '600',
       color: colors.text.primary,
     },
     badge: {
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 6,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 3,
     },
     badgeText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
     joinedBadge: {
       backgroundColor: colors.status.success + '22', // soft tint
-      borderRadius: 6,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 3,
     },
     joinedBadgeText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.status.success,
     },
     description: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       marginBottom: 10,
     },
@@ -83,17 +84,17 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 4,
     },
     memberCount: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
     },
     joinButton: {
       backgroundColor: colors.brand.primary,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 14,
       paddingVertical: 6,
     },
     joinButtonText: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.inverted,
     },

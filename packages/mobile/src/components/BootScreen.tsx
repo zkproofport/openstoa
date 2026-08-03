@@ -12,6 +12,7 @@ import { useThemeColors } from '../theme/ThemeContext';
 // path works (it renders correctly in the tab bar), so any rendering issue
 // we still see is in the screen wrapping, not in the Image itself.
 import { OpenStoaMarkIcon } from './icons';
+import { TYPE_SCALE } from '../theme/tokens';
 
 interface BootScreenProps {
   /** Optional one-line status under the tagline (e.g. "Preparing your anonymous identity…"). */
@@ -115,15 +116,15 @@ const styles = StyleSheet.create({
   // (32 / bold + 14 plain) so the boot beat feels like one continuous
   // brand surface across host → mini-app.
   brand: {
-    fontSize: 32,
+    fontSize: TYPE_SCALE.headingLarge,
     fontWeight: 'bold',
     marginBottom: 8,
   },
   tagline: {
-    fontSize: 14,
+    fontSize: TYPE_SCALE.bodySmall,
   },
   status: {
     marginTop: 28,
-    fontSize: 12,
+    fontSize: TYPE_SCALE.label,
   },
 });

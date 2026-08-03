@@ -16,6 +16,7 @@ import {
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { VideoEmbed } from './VideoEmbed';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface MediaGalleryProps {
   images?: string[];
@@ -61,7 +62,7 @@ function makeStyles(colors: ThemeColors) {
     wrap: { marginTop: 8, marginBottom: 8 },
     carousel: { position: 'relative' },
     galleryImage: {
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.background.tertiary,
     },
     pageIndicator: {
@@ -71,11 +72,11 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: 'rgba(0,0,0,0.6)',
       paddingHorizontal: 8,
       paddingVertical: 3,
-      borderRadius: 12,
+      borderRadius: RADIUS.pill,
     },
     pageIndicatorText: {
       color: '#FFFFFF',
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       fontVariantNumeric: 'tabular-nums',
     },
@@ -89,7 +90,7 @@ function makeStyles(colors: ThemeColors) {
     dot: {
       width: 6,
       height: 6,
-      borderRadius: 3,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.text.tertiary,
       opacity: 0.4,
     },
@@ -103,11 +104,11 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: 'rgba(0,0,0,0.7)',
       paddingHorizontal: 8,
       paddingVertical: 4,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
     },
     moreVideosText: {
       color: '#FFFFFF',
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
     },
     // Fullscreen lightbox (detail mode only). Tap anywhere to close.
@@ -123,7 +124,7 @@ function makeStyles(colors: ThemeColors) {
       right: 16,
       width: 38,
       height: 38,
-      borderRadius: 19,
+      borderRadius: RADIUS.pill,
       backgroundColor: 'rgba(255,255,255,0.12)',
       alignItems: 'center',
       justifyContent: 'center',
@@ -131,7 +132,7 @@ function makeStyles(colors: ThemeColors) {
     },
     lightboxCloseLabel: {
       color: '#fff',
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '600',
       lineHeight: 22,
       marginTop: -2,
@@ -145,12 +146,12 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: 'rgba(0,0,0,0.6)',
       paddingHorizontal: 10,
       paddingVertical: 4,
-      borderRadius: 12,
+      borderRadius: RADIUS.pill,
       zIndex: 1,
     },
     lightboxCounterText: {
       color: '#FFFFFF',
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       fontVariantNumeric: 'tabular-nums',
     },

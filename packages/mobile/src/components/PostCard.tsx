@@ -18,6 +18,7 @@ import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
 import { usePostMutations } from '../hooks/usePostMutations';
 import { useAuthGuardedAction, useRequireAuth } from '../auth';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 // Lazy clipboard load — same pattern as ChatRoomScreen
 type ClipboardModule = typeof import('@react-native-clipboard/clipboard').default;
@@ -111,17 +112,17 @@ function makeStyles(colors: ThemeColors) {
     authorAvatar: {
       width: 24,
       height: 24,
-      borderRadius: 12,
+      borderRadius: RADIUS.pill,
     },
     authorAvatarFallback: {
       width: 24,
       height: 24,
-      borderRadius: 12,
+      borderRadius: RADIUS.pill,
       alignItems: 'center',
       justifyContent: 'center',
     },
     authorAvatarFallbackText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
       color: '#fff',
     },
@@ -133,17 +134,17 @@ function makeStyles(colors: ThemeColors) {
       flexWrap: 'wrap',
     },
     authorNickname: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '500',
       color: colors.text.secondary,
     },
     authorTimestamp: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
       fontVariantNumeric: 'tabular-nums',
     },
     authorSeparator: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
     },
     // Topic + joined badge live in the same row; the joined chip sits
@@ -157,23 +158,23 @@ function makeStyles(colors: ThemeColors) {
     },
     joinedBadge: {
       backgroundColor: colors.status.success + '22',
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 6,
       paddingVertical: 2,
     },
     joinedBadgeText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.status.success,
     },
     topicLabel: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
       backgroundColor: colors.brand.primaryMuted,
       paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       overflow: 'hidden',
     },
     titleRow: {
@@ -190,7 +191,7 @@ function makeStyles(colors: ThemeColors) {
       // visually understated relative to the body content — bumping size +
       // weight makes the title win the hierarchy the same way it does on
       // the web feed.
-      fontSize: 18,
+      fontSize: TYPE_SCALE.bodyLarge,
       fontWeight: '700',
       color: colors.text.primary,
       lineHeight: 24,
@@ -198,7 +199,7 @@ function makeStyles(colors: ThemeColors) {
       flexShrink: 1,
     },
     content: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.secondary,
       lineHeight: 18,
     },
@@ -207,7 +208,7 @@ function makeStyles(colors: ThemeColors) {
       paddingBottom: 2,
     },
     toggleText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
       color: colors.brand.primary,
     },
@@ -218,11 +219,11 @@ function makeStyles(colors: ThemeColors) {
       gap: 4,
     },
     countText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
     },
     countSep: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.border.strong,
     },
     mediaStrip: {
@@ -233,7 +234,7 @@ function makeStyles(colors: ThemeColors) {
     mediaTile: {
       width: 80,
       height: 80,
-      borderRadius: 8,
+      borderRadius: RADIUS.control,
       overflow: 'hidden',
       backgroundColor: colors.background.tertiary,
       borderWidth: 1,
@@ -249,26 +250,26 @@ function makeStyles(colors: ThemeColors) {
       height: 28,
       marginLeft: -14,
       marginTop: -14,
-      borderRadius: 14,
+      borderRadius: RADIUS.pill,
       backgroundColor: 'rgba(0,0,0,0.6)',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    mediaPlayGlyph: { color: '#fff', fontSize: 12, marginLeft: 2 },
+    mediaPlayGlyph: { color: '#fff', fontSize: TYPE_SCALE.label, marginLeft: 2 },
     mediaMoreOverlay: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: 'rgba(0,0,0,0.55)',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    mediaMoreText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    mediaMoreText: { color: '#fff', fontSize: TYPE_SCALE.bodySmall, fontWeight: '700' },
     mediaVideoLabel: {
       width: '100%',
       height: '100%',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    mediaVideoLabelText: { color: colors.text.tertiary, fontSize: 12 },
+    mediaVideoLabelText: { color: colors.text.tertiary, fontSize: TYPE_SCALE.label },
     // Action bar
     actionBar: {
       flexDirection: 'row',
@@ -286,11 +287,11 @@ function makeStyles(colors: ThemeColors) {
     tagChip: {
       paddingHorizontal: 8,
       paddingVertical: 3,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.brand.primaryMuted,
     },
     tagChipText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.brand.primary,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
@@ -309,7 +310,7 @@ function makeStyles(colors: ThemeColors) {
       gap: 4,
       paddingHorizontal: 8,
       paddingVertical: 3,
-      borderRadius: 12,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.secondary,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border.default,
@@ -319,15 +320,15 @@ function makeStyles(colors: ThemeColors) {
       borderColor: colors.brand.primary,
     },
     reactionEmoji: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
     },
     reactionCount: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.text.secondary,
     },
     reactionCountActive: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
@@ -339,18 +340,18 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 4,
     },
     actionIcon: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
     actionIconActive: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
     },
     actionCount: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
     },
     actionCountActive: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
     },
     actionSpacer: {
       flex: 1,
@@ -361,7 +362,7 @@ function makeStyles(colors: ThemeColors) {
       gap: 6,
       paddingHorizontal: 10,
       paddingVertical: 5,
-      borderRadius: 16,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.tertiary,
       borderWidth: 1,
       borderColor: colors.border.default,
@@ -371,14 +372,14 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 1,
     },
     votePillCount: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
       color: colors.text.secondary,
       minWidth: 12,
       textAlign: 'center',
     },
     votePillCountActive: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '700',
     },
   });

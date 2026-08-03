@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 export interface SortPillsItem<T extends string> {
   key: T;
@@ -27,7 +28,7 @@ function makeStyles(colors: ThemeColors) {
     pill: {
       paddingHorizontal: 14,
       minHeight: 32,
-      borderRadius: 16,
+      borderRadius: RADIUS.pill,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
@@ -41,7 +42,7 @@ function makeStyles(colors: ThemeColors) {
       borderColor: colors.brand.primary,
     },
     label: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
     },
     labelIdle: {

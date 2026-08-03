@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps, NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { useThemeColors } from '../theme/ThemeContext';
+import { TYPE_SCALE } from '../theme/tokens';
 
 // Modern openstoa header — mirrors the host app's
 // proofport-app/src/navigation/shared.tsx so a navigated screen on the
@@ -76,13 +77,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backChevron: {
-    fontSize: 34,
+    fontSize: TYPE_SCALE.headingLarge,
     fontWeight: '300',
     marginTop: -2,
   },
   title: {
     flex: 1,
-    fontSize: 17,
+    fontSize: TYPE_SCALE.bodyLarge,
     fontWeight: '600',
     textAlign: 'center',
   },

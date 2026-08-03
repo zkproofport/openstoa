@@ -17,6 +17,7 @@ import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { PostCard } from '../../components/PostCard';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
+import { TYPE_SCALE } from '../../theme/tokens';
 
 // Cross-topic feed of every post the calling user has recorded on-chain
 // (server returns posts they recorded in any topic they're still a member
@@ -59,23 +60,23 @@ function makeStyles(colors: ThemeColors) {
       borderBottomColor: colors.border.default,
     },
     title: {
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '700',
       color: colors.text.primary,
       marginBottom: 4,
     },
     subtitle: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
     },
     errorText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.status.danger,
       marginBottom: 12,
       textAlign: 'center',
     },
     retryText: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.brand.primary,
       fontWeight: '600',
     },
@@ -85,7 +86,7 @@ function makeStyles(colors: ThemeColors) {
       paddingHorizontal: 24,
     },
     emptyText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
       textAlign: 'center',
     },

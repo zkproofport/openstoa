@@ -3,6 +3,7 @@ import { Dimensions, View } from 'react-native';
 import WebView from 'react-native-webview';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { useThemeColors } from '../theme/ThemeContext';
+import { RADIUS } from '../theme/tokens';
 
 export interface VideoEmbedProps {
   type: 'youtube' | 'vimeo';
@@ -36,7 +37,7 @@ export function VideoEmbed({ type, videoId }: VideoEmbedProps) {
         onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
         style={{
           width: '100%',
-          borderRadius: 10,
+          borderRadius: RADIUS.card,
           overflow: 'hidden',
           backgroundColor: colors.background.tertiary,
         }}
@@ -61,7 +62,7 @@ export function VideoEmbed({ type, videoId }: VideoEmbedProps) {
       style={{
         width: '100%',
         aspectRatio: 16 / 9,
-        borderRadius: 10,
+        borderRadius: RADIUS.card,
         overflow: 'hidden',
         backgroundColor: colors.background.tertiary,
       }}

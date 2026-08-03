@@ -20,6 +20,7 @@ import type { ThemeColors } from '../../theme/colors';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { initialFor } from '../../lib/peerProfile';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 type Nav = NativeStackNavigationProp<ChatStackParamList, 'DmList'>;
 
@@ -59,32 +60,32 @@ function makeStyles(colors: ThemeColors) {
     avatar: {
       width: AVATAR_SIZE,
       height: AVATAR_SIZE,
-      borderRadius: AVATAR_SIZE / 2,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primaryMuted,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 12,
       flexShrink: 0,
     },
-    avatarText: { fontSize: 18, fontWeight: '700', color: colors.brand.primary },
+    avatarText: { fontSize: TYPE_SCALE.bodyLarge, fontWeight: '700', color: colors.brand.primary },
     rowContent: { flex: 1 },
-    peerName: { fontSize: 15, fontWeight: '600', color: colors.text.primary },
-    time: { fontSize: 11, color: colors.text.tertiary, marginLeft: 8, flexShrink: 0 },
-    emptyTitle: { fontSize: 18, fontWeight: '600', color: colors.text.primary },
+    peerName: { fontSize: TYPE_SCALE.body, fontWeight: '600', color: colors.text.primary },
+    time: { fontSize: TYPE_SCALE.caption, color: colors.text.tertiary, marginLeft: 8, flexShrink: 0 },
+    emptyTitle: { fontSize: TYPE_SCALE.bodyLarge, fontWeight: '600', color: colors.text.primary },
     emptyBody: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.secondary,
       marginTop: 8,
       textAlign: 'center',
       lineHeight: 20,
     },
-    errorTitle: { fontSize: 16, fontWeight: '600', color: colors.status.danger },
-    errorBody: { fontSize: 12, color: colors.text.secondary, marginTop: 6, textAlign: 'center' },
+    errorTitle: { fontSize: TYPE_SCALE.body, fontWeight: '600', color: colors.status.danger },
+    errorBody: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.secondary, marginTop: 6, textAlign: 'center' },
     retryBtn: {
       marginTop: 16,
       paddingHorizontal: 18,
       paddingVertical: 10,
-      borderRadius: 18,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
     },
     retryLabel: { color: '#FFFFFF', fontWeight: '600' },
@@ -92,10 +93,10 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 20,
       paddingHorizontal: 20,
       paddingVertical: 12,
-      borderRadius: 24,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
     },
-    newConversationLabel: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+    newConversationLabel: { color: '#FFFFFF', fontWeight: '600', fontSize: TYPE_SCALE.bodySmall },
   });
 }
 

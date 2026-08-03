@@ -36,6 +36,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
+import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 // ---------------------------------------------------------------------------
 // Lazy clipboard — same pattern as PostCard / ChatRoomScreen
@@ -90,7 +91,7 @@ function Avatar({
     return (
       <Image
         source={{ uri: src }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
+        style={{ width: size, height: size, borderRadius: RADIUS.pill }}
         resizeMode="cover"
       />
     );
@@ -100,7 +101,7 @@ function Avatar({
       style={{
         width: size,
         height: size,
-        borderRadius: size / 2,
+        borderRadius: RADIUS.pill,
         backgroundColor: colors.background.tertiary,
         alignItems: 'center',
         justifyContent: 'center',
@@ -131,7 +132,7 @@ function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     flex: { flex: 1, backgroundColor: colors.background.primary },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-    errorText: { fontSize: 14, color: colors.status.danger, textAlign: 'center' },
+    errorText: { fontSize: TYPE_SCALE.bodySmall, color: colors.status.danger, textAlign: 'center' },
     listContent: { paddingBottom: 16 },
 
     // Post header
@@ -149,18 +150,18 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 10,
     },
     topicLabel: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
     joinedBadge: {
       backgroundColor: colors.status.success + '22',
-      borderRadius: 6,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 2,
     },
     joinedBadgeText: {
-      fontSize: 10,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.status.success,
     },
@@ -171,21 +172,21 @@ function makeStyles(colors: ThemeColors) {
       alignItems: 'center',
       gap: 4,
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 6,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 2,
     },
     pinnedBadgeText: {
-      fontSize: 10,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '700',
       color: colors.brand.primary,
     },
     authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     authorInfo: { flex: 1 },
-    authorName: { fontSize: 14, fontWeight: '600', color: colors.text.primary },
-    authorMeta: { fontSize: 12, color: colors.text.tertiary, marginTop: 2 },
+    authorName: { fontSize: TYPE_SCALE.bodySmall, fontWeight: '600', color: colors.text.primary },
+    authorMeta: { fontSize: TYPE_SCALE.caption, color: colors.text.tertiary, marginTop: 2 },
     headerKebab: { paddingHorizontal: 8, paddingVertical: 4 },
-    headerKebabGlyph: { fontSize: 20, color: colors.text.tertiary, lineHeight: 22 },
+    headerKebabGlyph: { fontSize: TYPE_SCALE.headingSmall, color: colors.text.tertiary, lineHeight: 22 },
 
     // Title
     postTitleRow: {
@@ -200,7 +201,7 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 8,
     },
     postTitle: {
-      fontSize: 22,
+      fontSize: TYPE_SCALE.headingSmall,
       fontWeight: '700',
       color: colors.text.primary,
       lineHeight: 30,
@@ -217,12 +218,12 @@ function makeStyles(colors: ThemeColors) {
     },
     tag: {
       backgroundColor: colors.brand.primaryMuted,
-      borderRadius: 4,
+      borderRadius: RADIUS.control,
       paddingHorizontal: 8,
       paddingVertical: 3,
     },
     tagText: {
-      fontSize: 12,
+      fontSize: TYPE_SCALE.label,
       color: colors.brand.primary,
       fontWeight: '500',
     },
@@ -247,10 +248,10 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 4,
       paddingHorizontal: 2,
     },
-    actionIcon: { fontSize: 14, color: colors.text.tertiary },
-    actionIconActive: { fontSize: 14 },
-    actionCount: { fontSize: 12, color: colors.text.tertiary },
-    actionCountActive: { fontSize: 12 },
+    actionIcon: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.tertiary },
+    actionIconActive: { fontSize: TYPE_SCALE.bodySmall },
+    actionCount: { fontSize: TYPE_SCALE.label, color: colors.text.tertiary },
+    actionCountActive: { fontSize: TYPE_SCALE.label },
     actionSpacer: { flex: 1 },
     votePill: {
       flexDirection: 'row',
@@ -258,7 +259,7 @@ function makeStyles(colors: ThemeColors) {
       gap: 6,
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 18,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.background.tertiary,
       borderWidth: 1,
       borderColor: colors.border.default,
@@ -268,14 +269,14 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 2,
     },
     votePillCount: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600',
       color: colors.text.secondary,
       minWidth: 14,
       textAlign: 'center',
     },
     votePillCountActive: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '700',
     },
 
@@ -296,7 +297,7 @@ function makeStyles(colors: ThemeColors) {
       gap: 4,
       paddingHorizontal: 10,
       paddingVertical: 4,
-      borderRadius: 999,
+      borderRadius: RADIUS.pill,
       borderWidth: 1,
     },
     reactionPillActive: {
@@ -307,18 +308,18 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.secondary,
       borderColor: colors.border.default,
     },
-    reactionEmoji: { fontSize: 14 },
-    reactionCount: { fontSize: 12, color: colors.text.tertiary },
-    reactionCountActive: { fontSize: 12, color: colors.brand.primary, fontWeight: '600' },
+    reactionEmoji: { fontSize: TYPE_SCALE.bodySmall },
+    reactionCount: { fontSize: TYPE_SCALE.label, color: colors.text.tertiary },
+    reactionCountActive: { fontSize: TYPE_SCALE.label, color: colors.brand.primary, fontWeight: '600' },
     addReactionBtn: {
       paddingHorizontal: 12,
       paddingVertical: 4,
-      borderRadius: 999,
+      borderRadius: RADIUS.pill,
       borderWidth: 1,
       borderColor: colors.border.default,
       backgroundColor: colors.background.secondary,
     },
-    addReactionText: { fontSize: 14, color: colors.text.tertiary },
+    addReactionText: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.tertiary },
 
     // Emoji picker modal
     pickerOverlay: {
@@ -328,15 +329,15 @@ function makeStyles(colors: ThemeColors) {
     },
     pickerSheet: {
       backgroundColor: colors.background.secondary,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
+      borderTopLeftRadius: RADIUS.modal,
+      borderTopRightRadius: RADIUS.modal,
       paddingVertical: 16,
       paddingHorizontal: 8,
       flexDirection: 'row',
       justifyContent: 'space-around',
     },
     pickerEmoji: {
-      fontSize: 28,
+      fontSize: TYPE_SCALE.headingLarge,
       padding: 10,
     },
 
@@ -347,7 +348,7 @@ function makeStyles(colors: ThemeColors) {
       paddingBottom: 8,
     },
     commentsSectionTitle: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       fontWeight: '700',
       color: colors.text.primary,
     },
@@ -365,7 +366,7 @@ function makeStyles(colors: ThemeColors) {
       paddingVertical: 6,
     },
     recordsHeader: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '700',
       color: colors.text.secondary,
       textTransform: 'uppercase',
@@ -379,12 +380,12 @@ function makeStyles(colors: ThemeColors) {
     },
     recordMain: { flex: 1, minWidth: 0 },
     recordNickname: {
-      fontSize: 13,
+      fontSize: TYPE_SCALE.caption,
       fontWeight: '600',
       color: colors.text.primary,
     },
     recordMeta: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
       marginTop: 1,
     },
@@ -394,16 +395,16 @@ function makeStyles(colors: ThemeColors) {
       gap: 4,
       paddingHorizontal: 8,
       paddingVertical: 4,
-      borderRadius: 6,
+      borderRadius: RADIUS.control,
       backgroundColor: colors.background.tertiary,
     },
     recordTxLinkText: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.label,
       fontWeight: '600',
       color: colors.brand.primary,
     },
     recordEditedWarn: {
-      fontSize: 11,
+      fontSize: TYPE_SCALE.caption,
       color: colors.status.warning,
       marginBottom: 6,
     },
@@ -429,18 +430,18 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 6,
     },
     commentAuthorInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
-    commentAuthor: { fontSize: 13, fontWeight: '600', color: colors.text.primary },
-    commentMeta: { fontSize: 11, color: colors.text.tertiary },
-    commentBody: { fontSize: 15, lineHeight: 22, color: colors.text.primary },
-    commentDeleted: { fontSize: 14, color: colors.text.tertiary, fontStyle: 'italic' },
+    commentAuthor: { fontSize: TYPE_SCALE.caption, fontWeight: '600', color: colors.text.primary },
+    commentMeta: { fontSize: TYPE_SCALE.caption, color: colors.text.tertiary },
+    commentBody: { fontSize: TYPE_SCALE.body, lineHeight: 22, color: colors.text.primary },
+    commentDeleted: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.tertiary, fontStyle: 'italic' },
 
     deleteBtn: {
       padding: 6,
     },
-    deleteBtnText: { fontSize: 14, color: colors.text.tertiary },
+    deleteBtnText: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.tertiary },
 
     emptyComments: {
-      fontSize: 14,
+      fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
       textAlign: 'center',
       paddingVertical: 24,
@@ -469,7 +470,7 @@ function makeStyles(colors: ThemeColors) {
       flexDirection: 'row',
       alignItems: 'flex-end',
       backgroundColor: colors.background.secondary,
-      borderRadius: 22,
+      borderRadius: RADIUS.pill,
       paddingLeft: 16,
       paddingRight: 6,
       paddingVertical: 4,
@@ -481,19 +482,19 @@ function makeStyles(colors: ThemeColors) {
       paddingTop: Platform.OS === 'ios' ? 8 : 4,
       paddingBottom: Platform.OS === 'ios' ? 8 : 4,
       color: colors.text.primary,
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
     },
     sendButton: {
       width: 32,
       height: 32,
-      borderRadius: 16,
+      borderRadius: RADIUS.pill,
       backgroundColor: colors.brand.primary,
       alignItems: 'center',
       justifyContent: 'center',
       marginLeft: 6,
     },
     sendButtonDisabled: { backgroundColor: colors.background.tertiary },
-    sendLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+    sendLabel: { color: '#FFFFFF', fontSize: TYPE_SCALE.bodySmall, fontWeight: '700' },
 
     // Collapsed footer — single "Add comment" pill shown when the keyboard
     // is dismissed. Tapping it switches to composing mode and focuses the
@@ -509,14 +510,14 @@ function makeStyles(colors: ThemeColors) {
     addCommentBtn: {
       flex: 1,
       backgroundColor: colors.background.secondary,
-      borderRadius: 22,
+      borderRadius: RADIUS.pill,
       paddingHorizontal: 16,
       paddingVertical: 10,
       minHeight: 40,
       justifyContent: 'center',
     },
     addCommentText: {
-      fontSize: 15,
+      fontSize: TYPE_SCALE.body,
       color: colors.text.tertiary,
     },
   });

@@ -145,7 +145,10 @@
       "delete": {
         "title": "Delete account",
         "message": "Deleting your account permanently removes all your posts, comments, and badges. Continue?"
-      }
+      },
+      "language": "Language",
+      "help": "Help",
+      "docs": "Docs"
     },
     "topics": {
       "detailTitle": "Topic",

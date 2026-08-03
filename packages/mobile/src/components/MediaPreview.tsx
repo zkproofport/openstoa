@@ -4,6 +4,7 @@ import type { PostMedia } from '@openstoa/api-types';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { VideoEmbed } from './VideoEmbed';
+import { RADIUS } from '../theme/tokens';
 
 export interface MediaPreviewProps {
   media: PostMedia | null | undefined;
@@ -43,13 +44,13 @@ function makeStyles(colors: ThemeColors) {
     section: { marginTop: 8 },
     imageStripContent: { paddingRight: 8 },
     image: {
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       marginRight: 8,
       backgroundColor: colors.background.tertiary,
     },
     fullImage: {
       width: '100%',
-      borderRadius: 10,
+      borderRadius: RADIUS.card,
       backgroundColor: colors.background.tertiary,
       marginBottom: 8,
       aspectRatio: 16 / 10,
