@@ -272,13 +272,30 @@ export function getDeviceMasterKey(): Promise<Uint8Array> {
 export type DeviceKeyState = 'ready' | 'recoverable' | 'no-backup';
 
 export async function getDeviceKeyState(): Promise<DeviceKeyState> {
-  if (await km.hasMasterKey(idbStore())) return 'ready';
+  const http = keyBackupHttp();
   try {
-    const backup = await keyBackupHttp().getBackup();
-    return backup.passkeys.length > 0 || backup.wrappedMaster ? 'recoverable' : 'no-backup';
+    const blob = await http.getTakBackup();
+    // Nothing archived under any key: recovering a master_key would restore an
+    // empty keychain, so there is genuinely nothing to offer.
+    if (!blob) return 'no-backup';
+
+    // THE question is not "does this device hold a master_key" — it always
+    // does, because `loadOrCreateMasterKey` mints one the instant chat touches
+    // the encrypting store. Asking that returned 'ready' on a brand-new
+    // browser and hid the recovery offer behind the very condition it was
+    // meant to detect. The real question is whether the key this device holds
+    // can OPEN the account's archive.
+    const opened = await km.restoreTakKeychain(await masterKey(), async () => blob);
+    if (opened) return 'ready';
+
+    // The archive exists but this device's key does not fit it — it belongs to
+    // the account's real key. Offer recovery only if something can actually
+    // produce that key.
+    const wraps = await http.getBackup();
+    return wraps.passkeys.length > 0 || wraps.wrappedMaster ? 'recoverable' : 'no-backup';
   } catch {
-    // Offline or the endpoint failed: claim nothing. Callers treat an unknown
-    // state as 'no-backup' for display but must not destroy anything on it.
+    // Offline, or an endpoint failed: claim nothing. Callers may show this as
+    // "no backup" but must never destroy anything on the strength of it.
     return 'no-backup';
   }
 }
