@@ -74,7 +74,18 @@ export interface HostApi {
    * callback → poll?format=token). Resolves with the new token. If a valid
    * token already exists the host may short-circuit and return it as-is.
    */
-  loginToOpenStoa(opts?: { force?: boolean }): Promise<AuthResult>;
+  loginToOpenStoa(opts?: {
+    force?: boolean;
+    /**
+     * Which proof flavor to run. The mini-app already passes this
+     * (`OpenStoaApp.performSignIn`) and ZKProofport already implements it
+     * (`zkProofportHostApi.loginToOpenStoa`) — it was missing from the type
+     * only, and nothing caught that because `packages/mobile` is excluded from
+     * every tsconfig in the repo (see the host's `tsconfig.json` exclude).
+     * Omitted → the host's default (OIDC).
+     */
+    method?: 'oidc' | 'mdl';
+  }): Promise<AuthResult>;
 
   /** Drop the cached token; subsequent API calls must re-authenticate. */
   logoutFromOpenStoa(): Promise<void>;

@@ -13,7 +13,7 @@
  * sets up neither path, recovery is impossible by design — surfaced explicitly.
  */
 import { useEffect, useState } from 'react';
-import { getDeviceMasterKey, keyBackupHttp, recoverDevice } from '@/lib/mls/webTransport';
+import { getDeviceMasterKey, keyBackupHttp, recoverDevice, uploadTakKeychainNow } from '@/lib/mls/webTransport';
 import * as km from '@/lib/mls/keyManager';
 import * as kb from '@/lib/mls/keyBackup';
 import { isPasskeySupported, registerPasskeyPrf, getPasskeyPrf } from '@/lib/passkeyPrf';
@@ -81,6 +81,10 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
   const [err, setErr] = useState<string | null>(null);
   const [shownCode, setShownCode] = useState<string | null>(null);
   const [recoverCode, setRecoverCode] = useState('');
+  // Recovery succeeded but the chat-key snapshot did not go up. NOT an error —
+  // the master_key wrap is real and worth keeping — but it must be VISIBLE,
+  // because the resulting half-built state is exactly the reported bug.
+  const [partial, setPartial] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -100,6 +104,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
     setBusy(true);
     setErr(null);
     setMsg(null);
+    setPartial(null);
     try {
       await fn();
     } catch (e) {
@@ -109,12 +114,40 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
     }
   }
 
+  /**
+   * Setting recovery up IS the user saying "back up what I hold now".
+   *
+   * Without this, `tak_key_backups` was only ever written by the TAK key-CHANGE
+   * hook, so a user who already held their keys and then registered a passkey
+   * got a `key_backups` row and NOTHING to restore: recovery came back and
+   * unlocked nothing, and opening a chat wrote no new key so the change hook
+   * never fired again.
+   *
+   * NEVER rolls the master_key wrap back. A failed keychain upload leaves the
+   * account strictly better off than no recovery at all — the honest move is to
+   * keep the wrap and say plainly that the chat keys have not gone up yet.
+   */
+  async function backUpKeychain(): Promise<void> {
+    switch (await uploadTakKeychainNow()) {
+      case 'untrusted':
+        setPartial(t('accountRecovery.keychainUntrusted'));
+        break;
+      case 'failed':
+        setPartial(t('accountRecovery.keychainUploadFailed'));
+        break;
+      // 'uploaded' — done. 'empty' — no chat keys on this device yet, so there
+      // is genuinely nothing to snapshot; the wrap alone is the right outcome.
+      // 'present' is unreachable here (this path always attempts the upload).
+    }
+  }
+
   const genRecoveryCode = () =>
     run(async () => {
       const mk = await getDeviceMasterKey();
       const code = await km.backupWithRecoveryCode(mk, http.postRecovery);
       setShownCode(code);
       setMsg(t('accountRecovery.recoveryCodeCreated'));
+      await backUpKeychain();
       await refresh();
     });
 
@@ -124,6 +157,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
       const { credentialId, prfOutput } = await registerPasskeyPrf(userId, displayName);
       await km.backupWithPasskey(mk, credentialId, prfOutput, http.postPasskey);
       setMsg(t('accountRecovery.passkeyRegistered'));
+      await backUpKeychain();
       await refresh();
     });
 
@@ -337,6 +371,17 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
       {msg && (
         <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-brand-accent)', lineHeight: 'var(--leading-base)', maxWidth: '68ch', margin: 0 }}>
           {msg}
+        </p>
+      )}
+      {/* Warning, not danger: the recovery key IS saved. What did not happen is
+          the chat-key snapshot, and saying so is the whole point — a silent
+          half-built recovery is the defect this page was reported for. */}
+      {partial && (
+        <p
+          data-testid="recovery-partial"
+          style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-warning)', lineHeight: 'var(--leading-base)', maxWidth: '68ch', margin: 'var(--space-2) 0 0' }}
+        >
+          {partial}
         </p>
       )}
       {err && (

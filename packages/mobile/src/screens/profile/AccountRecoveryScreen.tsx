@@ -11,12 +11,13 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
-import { keyBackupHttp, recoverDevice, getDeviceMasterKey } from '../../crypto/mobileTransport';
+import { keyBackupHttp, recoverDevice, getDeviceMasterKey, uploadTakKeychainNow } from '../../crypto/mobileTransport';
 import * as km from '../../crypto/keyManager';
 import * as kb from '../../crypto/keyBackup';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
@@ -27,6 +28,7 @@ const PRF_SALT_B64 = kb.b64(new TextEncoder().encode('openstoa-master-key-prf/v1
 
 export function AccountRecoveryScreen() {
   const { colors } = useThemeColors();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
   const client = useOpenStoaClient();
   const host = useHost();
@@ -43,6 +45,10 @@ export function AccountRecoveryScreen() {
   const [err, setErr] = useState<string | null>(null);
   const [shownCode, setShownCode] = useState<string | null>(null);
   const [recoverCode, setRecoverCode] = useState('');
+  // Recovery succeeded but the chat-key snapshot did not go up. NOT an error —
+  // the master_key wrap is real and worth keeping — but it must be VISIBLE,
+  // because the resulting half-built state is exactly the reported bug.
+  const [partial, setPartial] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -62,12 +68,40 @@ export function AccountRecoveryScreen() {
     setBusy(true);
     setErr(null);
     setMsg(null);
+    setPartial(null);
     try {
       await fn();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Setting recovery up IS the user saying "back up what I hold now".
+   *
+   * Without this, `tak_key_backups` was only ever written by the TAK key-CHANGE
+   * hook, so a user who already held their keys and then registered a passkey
+   * got a `key_backups` row and NOTHING to restore: recovery came back and
+   * unlocked nothing, and opening a chat wrote no new key so the change hook
+   * never fired again.
+   *
+   * NEVER rolls the master_key wrap back. A failed keychain upload leaves the
+   * account strictly better off than no recovery at all — the honest move is to
+   * keep the wrap and say plainly that the chat keys have not gone up yet.
+   */
+  async function backUpKeychain(): Promise<void> {
+    if (!secureStore) return;
+    switch (await uploadTakKeychainNow(client, secureStore, host.localStore)) {
+      case 'untrusted':
+        setPartial(t('openstoa.recovery.keychainUntrusted'));
+        break;
+      case 'failed':
+        setPartial(t('openstoa.recovery.keychainUploadFailed'));
+        break;
+      // 'uploaded' — done. 'empty' — no chat keys on this device yet, so there
+      // is genuinely nothing to snapshot; the wrap alone is the right outcome.
     }
   }
 
@@ -78,6 +112,7 @@ export function AccountRecoveryScreen() {
       const code = await km.backupWithRecoveryCode(mk, http.postRecovery);
       setShownCode(code);
       setMsg('Recovery code created. Store it now — it is shown only once.');
+      await backUpKeychain();
       await refresh();
     });
 
@@ -88,6 +123,7 @@ export function AccountRecoveryScreen() {
       const { credentialId, prfOutputB64 } = await host.passkeyPrf({ mode: 'create', saltB64: PRF_SALT_B64 });
       await km.backupWithPasskey(mk, credentialId, kb.unb64(prfOutputB64), http.postPasskey);
       setMsg('Passkey registered for recovery.');
+      await backUpKeychain();
       await refresh();
     });
 
@@ -180,6 +216,10 @@ export function AccountRecoveryScreen() {
 
       {busy && <ActivityIndicator color={colors.brand.accent} style={{ marginTop: 8 }} />}
       {msg && <Text style={styles.ok}>{msg}</Text>}
+      {/* Warning, not danger: the recovery key IS saved. What did not happen is
+          the chat-key snapshot, and saying so is the whole point — a silent
+          half-built recovery is the defect this screen was reported for. */}
+      {partial && <Text style={styles.partial}>{partial}</Text>}
       {err && <Text style={styles.error}>{err}</Text>}
       {session?.userId ? <Text style={styles.footId}>Identity {session.userId.slice(0, 8)}…</Text> : null}
     </ScrollView>
@@ -238,6 +278,7 @@ function makeStyles(colors: ThemeColors) {
       fontSize: TYPE_SCALE.body,
     },
     ok: { marginTop: 12, fontSize: TYPE_SCALE.bodySmall, color: colors.status.success },
+    partial: { marginTop: 8, fontSize: TYPE_SCALE.bodySmall, color: colors.status.warning, lineHeight: 18 },
     error: { marginTop: 12, fontSize: TYPE_SCALE.bodySmall, color: colors.status.danger },
     footId: { marginTop: 20, fontSize: TYPE_SCALE.label, color: colors.text.tertiary, fontFamily: 'Menlo' },
   });

@@ -742,7 +742,9 @@
     "recoveredWithPasskey": "패스키로 복구되었습니다. 채팅 기록이 다시 불러와집니다.",
     "invalidRecoveryCode": "올바른 복구 코드 형식이 아닙니다.",
     "recoveryFailedCode": "복구에 실패했습니다 — 잘못된 코드이거나 복구 코드 백업이 없습니다.",
-    "recoveryFailedPasskey": "복구에 실패했습니다 — 이 패스키에 저장된 백업이 없습니다."
+    "recoveryFailedPasskey": "복구에 실패했습니다 — 이 패스키에 저장된 백업이 없습니다.",
+    "keychainUploadFailed": "복구 키는 저장되었지만 이 기기의 채팅 키를 지금 업로드하지 못했습니다. 온라인 상태에서 이 페이지를 다시 열어 백업을 마무리해 주세요.",
+    "keychainUntrusted": "복구 키는 저장되었습니다. 다만 이 기기의 채팅 키는 계정에 이미 있는 백업과 맞지 않아 업로드하지 않았습니다. 먼저 이 기기에서 복구한 뒤 복구 설정을 다시 진행해 주세요."
   },
   "proofGate": {
     "defaultLabel": "ZKProofport 앱으로 스캔하여 인증하세요",
@@ -842,5 +844,12 @@
       "filteredTitle": "이 필터에 맞는 글이 없습니다",
       "filteredBody": "다른 카테고리나 태그를 선택해 보세요."
     }
+  },
+  "recoveryNudge": {
+    "title": "채팅 키를 백업하세요",
+    "body": "암호화된 채팅 기록은 기기에 있는 키로만 읽을 수 있습니다. 백업 없이 기기를 잃어버리면 모든 메시지가 영구히 사라지며, 저희를 포함해 누구도 되살릴 수 없습니다.",
+    "cta": "복구 설정하기",
+    "dismiss": "나중에",
+    "dismissAria": "채팅 복구 안내 닫기"
   }
 }

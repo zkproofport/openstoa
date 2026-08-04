@@ -7,6 +7,7 @@ import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
 import ChatRail from '@/components/ChatRail';
 import BottomTabBar from '@/components/BottomTabBar';
+import RecoveryNudge from '@/components/RecoveryNudge';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { readRailOpenPreference, writeRailOpenPreference, type RailRoom } from '@/lib/chatRail';
 import { getChatRailApi, publishChatRailApi } from '@/lib/chatRailStore';
@@ -360,6 +361,13 @@ export default function CommunityLayout({
               }}
             >
               <div style={{ width: '100%', maxWidth: 'var(--read-max)', minWidth: 0 }}>
+                {/* Above the content, not over it: the E2EE key-backup repair +
+                    first-run recovery prompt. Renders null for guests and
+                    whenever recovery is already set up (the common case), so
+                    this is a layout slot, not a permanent banner. Mounted here
+                    because this shell is what every signed-in page renders —
+                    the repair must not depend on visiting a chat room. */}
+                <RecoveryNudge isGuest={isGuest} sessionChecked={sessionChecked} />
                 {children}
               </div>
             </div>

@@ -447,6 +447,18 @@
       "historyLabel": "History: {{value}}",
       "createdLabel": "Created: {{value}}",
       "lastUsedLabel": "Last used: {{value}}"
+    },
+    "recovery": {
+      "keychainUploadFailed": "Your recovery key is saved, but this device could not upload its chat keys just now. Reopen this screen while online to finish the backup.",
+      "keychainUntrusted": "Your recovery key is saved. This device's chat keys were not uploaded, because they do not match the backup already on your account — recover on this device first, then set recovery up again."
+    },
+    "recoveryNudge": {
+      "title": "Back up your chat keys",
+      "body": "Your encrypted chat history can only be read with keys held on your devices. Lose them without a backup and every message is gone for good — no one, including us, can bring it back.",
+      "cta": "Set up recovery",
+      "dismiss": "Not now",
+      "dismissAria": "Dismiss the chat recovery reminder",
+      "close": "Close"
     }
   }
 }

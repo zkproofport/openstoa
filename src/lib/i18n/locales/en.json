@@ -742,7 +742,9 @@
     "recoveredWithPasskey": "Recovered with passkey. Your chat history will reload.",
     "invalidRecoveryCode": "That does not look like a valid recovery code.",
     "recoveryFailedCode": "Recovery failed — wrong code, or no recovery-code backup exists.",
-    "recoveryFailedPasskey": "Recovery failed — this passkey has no backup on file."
+    "recoveryFailedPasskey": "Recovery failed — this passkey has no backup on file.",
+    "keychainUploadFailed": "Your recovery key is saved, but this device could not upload its chat keys just now. Reopen this page while online to finish the backup.",
+    "keychainUntrusted": "Your recovery key is saved. This device's chat keys were not uploaded, because they do not match the backup already on your account — recover on this device first, then set recovery up again."
   },
   "proofGate": {
     "defaultLabel": "Scan with ZKProofport app to verify",
@@ -842,5 +844,12 @@
       "filteredTitle": "No posts match these filters",
       "filteredBody": "Try a different category or tag."
     }
+  },
+  "recoveryNudge": {
+    "title": "Back up your chat keys",
+    "body": "Your encrypted chat history can only be read with keys held on your devices. Lose them without a backup and every message is gone for good — no one, including us, can bring it back.",
+    "cta": "Set up recovery",
+    "dismiss": "Not now",
+    "dismissAria": "Dismiss the chat recovery reminder"
   }
 }

@@ -113,6 +113,7 @@ const COLOR_SWEPT_FILES = [
   'src/components/PollRenderer.tsx',
   'src/components/PostRecordsSection.tsx',
   'src/components/ProofGate.tsx',
+  'src/components/RecoveryNudge.tsx',
   'src/components/SNSContent.tsx',
   'src/components/SNSEditor.tsx',
   'src/components/Spinner.tsx',

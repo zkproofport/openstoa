@@ -184,6 +184,99 @@ export function createTakTransport(client: OpenStoaClient): TakTransport {
   };
 }
 
+/**
+ * What an attempt to put this device's TAK keychain on the server did. Mirrors
+ * the web twin (`src/lib/mls/webTransport.ts`) — see there for why a
+ * USER-FACING caller has to tell these apart.
+ */
+export type TakBackupOutcome = 'uploaded' | 'empty' | 'present' | 'untrusted' | 'failed';
+
+/**
+ * Would uploading from this device DESTROY the account's recovery snapshot?
+ *
+ * `POST /api/keys/tak-backup` upserts a single row per user. A device that
+ * minted its own master_key would replace a keychain sealed under the REAL key
+ * with one only it can open, and the user's recovery code would then restore a
+ * keychain that decrypts to nothing. So: skip only when a backup exists, this
+ * device's key cannot open it, AND something can still produce the real key. If
+ * nothing can, the existing row is already unrecoverable and replacing it is
+ * strictly better than leaving it.
+ *
+ * This is the same rule web enforces through `getDeviceKeyState() === 'recoverable'`.
+ */
+async function uploadWouldClobber(client: OpenStoaClient, rootStore: SecureKVStore): Promise<boolean> {
+  const http = keyBackupHttp(client);
+  const blob = await http.getTakBackup();
+  if (!blob) return false; // nothing on the server to lose
+  if (await km.restoreTakKeychain(await masterKey(rootStore), async () => blob)) return false; // our key opens it
+  const wraps = await http.getBackup();
+  return wraps.passkeys.length > 0 || !!wraps.wrappedMaster;
+}
+
+/**
+ * The ONE uploader. Every call site — the debounced key-change hook, recovery
+ * setup, and the session-boot repair — routes through here so the trust guards
+ * cannot be bypassed by adding a second one.
+ */
+async function pushTakKeychain(
+  client: OpenStoaClient,
+  rootStore: SecureKVStore,
+  tak: TakSessionStore,
+): Promise<TakBackupOutcome> {
+  try {
+    if (await uploadWouldClobber(client, rootStore)) return 'untrusted';
+    // `exportKeychain` drops orphan roots and THROWS when it cannot check one,
+    // so an unverified root can never reach the account's single backup row.
+    const keychain = await tak.exportKeychain();
+    if (Object.keys(keychain).length === 0) return 'empty';
+    await km.uploadTakKeychain(await masterKey(rootStore), keychain, (ciphertext) =>
+      client.post('/api/keys/tak-backup', { ciphertext }),
+    );
+    return 'uploaded';
+  } catch {
+    return 'failed';
+  }
+}
+
+/** Upload this device's TAK keychain now (recovery setup calls this). */
+export async function uploadTakKeychainNow(
+  client: OpenStoaClient,
+  hostSecureStore: HostSecureStore,
+  hostLocalStore?: HostSecureStore,
+): Promise<TakBackupOutcome> {
+  const rootStore = adapt(hostSecureStore);
+  if (!rootStore) return 'failed';
+  return pushTakKeychain(client, rootStore, getTakSessionStore(client, hostSecureStore, hostLocalStore));
+}
+
+/**
+ * Idempotent repair: make sure the account HAS a TAK-keychain backup.
+ *
+ * The defect this exists for: `tak_key_backups` was only ever written by the
+ * key-CHANGE hook below, which fires when a key is newly WRITTEN. A user who
+ * already held their keys and then set recovery up got a `key_backups` row and
+ * an EMPTY `tak_key_backups` — recovery came back, opened nothing, and opening
+ * a chat wrote no new key so the change hook never fired again. Every account
+ * already in that state needs a trigger that does not depend on writing a key.
+ *
+ * Runs when the session is established, NOT on chat-room entry: the backup is
+ * account-level (one row per user, covering every topic), so binding its repair
+ * to entering one room is what let the gap persist.
+ */
+export async function ensureTakKeychainBackup(
+  client: OpenStoaClient,
+  hostSecureStore: HostSecureStore,
+  hostLocalStore?: HostSecureStore,
+): Promise<TakBackupOutcome> {
+  try {
+    if (await keyBackupHttp(client).getTakBackup()) return 'present';
+  } catch {
+    // Claim nothing when the server cannot be read — never upload on a guess.
+    return 'failed';
+  }
+  return uploadTakKeychainNow(client, hostSecureStore, hostLocalStore);
+}
+
 // Debounced upload of the master_key-encrypted TAK keychain (design §6.4.1) so a
 // recovered master_key re-reads all archived history without another member
 // online. Best-effort; a failure never breaks chat.
@@ -191,18 +284,8 @@ let _takBackupTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleTakKeychainBackup(client: OpenStoaClient, rootStore: SecureKVStore): void {
   if (_takBackupTimer) clearTimeout(_takBackupTimer);
   _takBackupTimer = setTimeout(() => {
-    void (async () => {
-      try {
-        if (!_takStore) return;
-        const keychain = await _takStore.exportKeychain();
-        if (Object.keys(keychain).length === 0) return;
-        await km.uploadTakKeychain(await masterKey(rootStore), keychain, (ciphertext) =>
-          client.post('/api/keys/tak-backup', { ciphertext }),
-        );
-      } catch {
-        /* best-effort backup; retried on the next keychain change */
-      }
-    })();
+    // retried on the next keychain change
+    if (_takStore) void pushTakKeychain(client, rootStore, _takStore);
   }, 1500);
 }
 

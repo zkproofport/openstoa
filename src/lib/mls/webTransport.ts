@@ -211,40 +211,97 @@ function httpTakTransport(): TakTransport {
   };
 }
 
-// Debounced upload of the master_key-encrypted TAK keychain to the server, so a
-// recovered master_key re-reads all archived history with no other member online
-// (design §6.4.1). Fired after any TAK write; best-effort (a failure never breaks
-// chat — the local keychain is still authoritative).
+/**
+ * What an attempt to put this device's TAK keychain on the server did.
+ *
+ * Callers that are USER-FACING (recovery setup) must distinguish these: a
+ * recovery setup that wrapped the master_key but silently failed to upload the
+ * keychain is the exact half-built state that made recovery look configured and
+ * unlock nothing. 'empty' is a genuine success — a user with no chat keys yet
+ * has nothing to snapshot, and the master_key wrap is still worth having.
+ *
+ *   'uploaded'  the keychain is on the server, sealed under this device's key
+ *   'empty'     this device holds no TAK keys — successful no-op
+ *   'present'   a backup already exists (ensure-path only; nothing was sent)
+ *   'untrusted' this device's key is a throwaway — uploading would CLOBBER the
+ *               account's real backup, so nothing was sent
+ *   'failed'    export or upload threw (offline, or the orphan check could not
+ *               be completed — see `exportKeychain`)
+ */
+export type TakBackupOutcome = 'uploaded' | 'empty' | 'present' | 'untrusted' | 'failed';
+
+/**
+ * Snapshot this device's TAK keychain, seal it under the master_key, and upload
+ * it (design §6.4.1) so a recovered master_key re-reads all archived history
+ * with no other member online.
+ *
+ * The ONE uploader. The debounced key-change hook, recovery setup and the
+ * session-boot repair all route through here so the trust guards below can
+ * never be bypassed by adding a second call site.
+ */
+export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
+  try {
+    // Do NOT overwrite the account's backup from a device whose master_key
+    // is a throwaway. `POST /api/keys/tak-backup` upserts a single row per
+    // user, so a second device that minted its own key would replace a
+    // keychain sealed under the REAL key with one only it can open — and
+    // the user's recovery code would then restore a keychain that decrypts
+    // to nothing. Uploading is only safe once this device holds the
+    // account's key, i.e. after recovery or first-run induction.
+    if ((await getDeviceKeyState()) === 'recoverable') return 'untrusted';
+
+    // `exportKeychain` drops orphan roots and THROWS when it cannot check one,
+    // so an unverified root can never reach the account's single backup row.
+    const keychain = await getTakSessionStore().exportKeychain();
+    if (Object.keys(keychain).length === 0) return 'empty';
+    await km.uploadTakKeychain(await masterKey(), keychain, async (ciphertext) => {
+      const r = await fetch('/api/keys/tak-backup', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ciphertext }),
+      });
+      if (!r.ok) throw new Error(`tak-backup POST ${r.status}`);
+    });
+    return 'uploaded';
+  } catch {
+    return 'failed';
+  }
+}
+
+/**
+ * Idempotent repair: make sure the account HAS a TAK-keychain backup.
+ *
+ * The defect this exists for: `tak_key_backups` was only ever written by the
+ * key-CHANGE hook below, which fires when a key is newly WRITTEN. A user who
+ * already held their keys and then set recovery up got a `key_backups` row and
+ * an EMPTY `tak_key_backups` — recovery came back, opened nothing, and opening
+ * a chat wrote no new key so the change hook never fired again. Every account
+ * already in that state needs a trigger that does not depend on writing a key;
+ * this is it.
+ *
+ * Runs when the session is established, NOT on chat-room entry: the backup is
+ * account-level (one row per user, covering every topic), so binding its repair
+ * to entering one room is what let the gap persist.
+ */
+export async function ensureTakKeychainBackup(): Promise<TakBackupOutcome> {
+  try {
+    if (await keyBackupHttp().getTakBackup()) return 'present';
+  } catch {
+    // Claim nothing when the server cannot be read — never upload on a guess.
+    return 'failed';
+  }
+  return uploadTakKeychainNow();
+}
+
+// Debounced upload of the master_key-encrypted TAK keychain to the server.
+// Fired after any TAK write; best-effort (a failure never breaks chat — the
+// local keychain is still authoritative).
 let _takBackupTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleTakKeychainBackup(): void {
   if (_takBackupTimer) clearTimeout(_takBackupTimer);
   _takBackupTimer = setTimeout(() => {
-    void (async () => {
-      try {
-        // Do NOT overwrite the account's backup from a device whose master_key
-        // is a throwaway. `POST /api/keys/tak-backup` upserts a single row per
-        // user, so a second device that minted its own key would replace a
-        // keychain sealed under the REAL key with one only it can open — and
-        // the user's recovery code would then restore a keychain that decrypts
-        // to nothing. Uploading is only safe once this device holds the
-        // account's key, i.e. after recovery or first-run induction.
-        if ((await getDeviceKeyState()) === 'recoverable') return;
-
-        const keychain = await getTakSessionStore().exportKeychain();
-        if (Object.keys(keychain).length === 0) return;
-        await km.uploadTakKeychain(await masterKey(), keychain, async (ciphertext) => {
-          const r = await fetch('/api/keys/tak-backup', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ciphertext }),
-          });
-          if (!r.ok) throw new Error(`tak-backup POST ${r.status}`);
-        });
-      } catch {
-        /* best-effort backup; retried on the next keychain change */
-      }
-    })();
+    void uploadTakKeychainNow(); // retried on the next keychain change
   }, 1500);
 }
 

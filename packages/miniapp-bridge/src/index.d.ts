@@ -53,7 +53,7 @@ export interface PushNotificationTap {
 export interface HostApi {
   getEnvironment(): HostEnvironmentInfo;
   getOpenStoaToken(): Promise<string | null>;
-  loginToOpenStoa(opts?: { force?: boolean }): Promise<AuthResult>;
+  loginToOpenStoa(opts?: { force?: boolean; method?: 'oidc' | 'mdl' }): Promise<AuthResult>;
   logoutFromOpenStoa(): Promise<void>;
   setOpenStoaToken(token: string): Promise<void>;
   /** Optional secure KV storage (Keychain/Keystore) for MLS state persistence. */

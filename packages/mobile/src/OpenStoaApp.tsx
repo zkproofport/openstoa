@@ -7,6 +7,7 @@ import { OpenStoaTabNavigator } from './navigation/OpenStoaTabNavigator';
 import { useOpenStoaSession } from './stores/sessionStore';
 import { ThemeProvider, useThemeColors } from './theme/ThemeContext';
 import { BootScreen } from './components/BootScreen';
+import { RecoveryNudge } from './components/RecoveryNudge';
 import { WelcomeScreen } from './screens/onboarding/WelcomeScreen';
 import { SignInSheetProvider } from './components/SignInSheet';
 import { queryClient } from './api/queryClient';
@@ -394,6 +395,13 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
         <View
           style={[styles.fill, { backgroundColor: colors.background.primary }]}
         >
+          {/* E2EE key-backup repair + first-run recovery prompt. Renders null
+              for guests and whenever recovery is already set up (the common
+              case). Mounted at the ROOT, above the navigator: the repair is
+              account-level and must not depend on the user opening a chat
+              room — the old key-change-only trigger is exactly why accounts
+              ended up with a wrapped master_key and nothing to restore. */}
+          <RecoveryNudge />
           <OpenStoaTabNavigator />
         </View>
       </SignInSheetProvider>
