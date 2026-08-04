@@ -449,7 +449,18 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
     };
   }, [lockedCount]);
 
-  if (lockedCount === 0 || state === null || state === 'ready') return null;
+  // GROUND TRUTH is `lockedCount`: these messages are on screen and this device
+  // could not open them. That needs no inference, so it alone decides whether to
+  // speak.
+  //
+  // This used to also bail on `state === 'ready'` and on `state === null`, and
+  // both were wrong. 'ready' only means the local key opens the account's TAK
+  // archive — the archive may not COVER these epochs, so a device can be
+  // perfectly "ready" and still hold nothing for the messages in front of it.
+  // And suppressing while the probe is in flight meant a slow or failing probe
+  // silently hid the only route out. The key state now chooses WHICH remedy to
+  // offer, never whether the user is told anything at all.
+  if (lockedCount === 0) return null;
 
   const unlock = async () => {
     setBusy(true);
@@ -465,6 +476,9 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
     }
   };
 
+  // Until the probe resolves (or if it failed), fall back to the honest,
+  // always-true half of the message: these are locked and recovery is where to
+  // look. Never offer an unlock that has nothing behind it.
   const recoverable = state === 'recoverable';
   return (
     <div

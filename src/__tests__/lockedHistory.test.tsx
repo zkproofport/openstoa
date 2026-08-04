@@ -162,10 +162,26 @@ describe('the notice explains the cause and offers the right next step', () => {
     expect(link?.getAttribute('href')).toBe('/my');
   });
 
-  it('ready → no notice at all (this device can read what it can read)', async () => {
+  it("REGRESSION: 'ready' does NOT suppress the notice when messages are locked", async () => {
+    // This asserted the opposite, and that is precisely how the feature shipped
+    // dead: a second device reported 'ready' (its key opens the account
+    // archive) while still holding nothing for the messages on screen, so the
+    // only route out was hidden behind an inference. What is on screen —
+    // locked messages — is the fact that decides.
     keyState.state = 'ready';
     await mount('en');
-    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    // 'ready' is not 'recoverable', so it must not offer an unlock that has
+    // nothing behind it.
+    expect(buttons().some((b) => (b.textContent ?? '').includes(en.chat.lockedHistory.unlock))).toBe(false);
+  });
+
+  it('the notice appears even before the probe resolves, and never blocks on it', async () => {
+    // A slow or failing probe must not hide the remedy. `mount` flushes only a
+    // few microtask generations, so a never-resolving probe leaves state null.
+    keyState.state = 'no-backup';
+    await mount('en');
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
   });
 });
 
