@@ -28,7 +28,7 @@ import ko from '@/lib/i18n/locales/ko.json';
 const keyState = vi.hoisted(() => ({
   state: 'recoverable' as 'ready' | 'recoverable' | 'no-backup',
   recoverCalls: 0,
-  recoverResult: true as boolean | Error,
+  recoverResult: 'restored' as 'restored' | 'no-archive' | 'unavailable' | Error,
 }));
 
 vi.mock('@/lib/mls/webTransport', () => ({
@@ -102,7 +102,7 @@ const buttons = () => Array.from(container.querySelectorAll('button'));
 beforeEach(() => {
   keyState.state = 'recoverable';
   keyState.recoverCalls = 0;
-  keyState.recoverResult = true;
+  keyState.recoverResult = 'restored';
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -205,7 +205,7 @@ describe('recovery is gesture-driven, not automatic', () => {
 
   it('a failed unlock says so instead of silently doing nothing', async () => {
     keyState.state = 'recoverable';
-    keyState.recoverResult = false; // no passkey wrap to recover from
+    keyState.recoverResult = 'unavailable'; // no passkey wrap to recover from
     await mount('en');
     const btn = buttons().find((b) => (b.textContent ?? '').includes(en.chat.lockedHistory.unlock))!;
     await act(async () => {
@@ -227,6 +227,28 @@ describe('recovery is gesture-driven, not automatic', () => {
     expect(text()).toContain(en.chat.lockedHistory.failed);
     // and the raw exception is not shown to the user
     expect(text()).not.toContain('NotAllowedError');
+  });
+});
+
+describe('recovery reports what actually happened', () => {
+  it("REGRESSION: a recovered key with an unopenable archive is NOT reported as success", async () => {
+    // This is what the user hit. `recoverDeviceWithPasskey` returned true
+    // whenever the KEY came back, the page reloaded, and the same locked
+    // messages reappeared with nothing said — so the button looked broken
+    // rather than blocked. "The key came back" and "your history came back"
+    // are different events.
+    keyState.state = 'recoverable';
+    keyState.recoverResult = 'no-archive';
+    await mount('en');
+    const btn = buttons().find((b) => (b.textContent ?? '').includes(en.chat.lockedHistory.unlock))!;
+    await act(async () => {
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+
+    expect(text()).toContain(en.chat.lockedHistory.noArchive);
+    // And it must not keep offering a retry that cannot succeed.
+    expect(buttons().some((b) => (b.textContent ?? '').includes(en.chat.lockedHistory.unlock))).toBe(false);
   });
 });
 

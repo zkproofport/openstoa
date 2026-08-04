@@ -307,15 +307,31 @@ export async function getDeviceKeyState(): Promise<DeviceKeyState> {
  * Returns false when the account has no passkey wrap to recover from, so the
  * caller can fall back to the recovery-code flow instead of showing a failure.
  */
-export async function recoverDeviceWithPasskey(): Promise<boolean> {
+/**
+ * What actually happened, because "the key came back" and "your history came
+ * back" are different events and conflating them is what made the unlock button
+ * look broken: it returned true whenever the KEY was recovered, reloaded the
+ * page, and left the same locked messages on screen with no explanation.
+ *
+ *   'restored'    key recovered AND the archive opened — history is readable
+ *   'no-archive'  key recovered, but nothing on the server opens with it. The
+ *                 usual cause is that another device overwrote the account's
+ *                 TAK backup with one sealed under ITS OWN key (see the upload
+ *                 guard in `scheduleTakKeychainBackup`). Recovering again will
+ *                 not help; the device that still holds the real keys has to
+ *                 re-upload them.
+ *   'unavailable' nothing to recover from at all
+ */
+export type RecoveryOutcome = 'restored' | 'no-archive' | 'unavailable';
+
+export async function recoverDeviceWithPasskey(): Promise<RecoveryOutcome> {
   const http = keyBackupHttp();
   const backup = await http.getBackup();
-  if (backup.passkeys.length === 0) return false;
+  if (backup.passkeys.length === 0) return 'unavailable';
   const { prfOutput } = await getPasskeyPrf();
   const mk = await km.recoverWithPasskey(prfOutput, () => http.getBackup());
-  if (!mk) return false;
-  await recoverDevice(mk);
-  return true;
+  if (!mk) return 'unavailable';
+  return (await recoverDevice(mk)) ? 'restored' : 'no-archive';
 }
 
 /** HTTP client for /api/keys/backup + /api/keys/tak-backup (cookie auth). */
@@ -358,12 +374,14 @@ export function keyBackupHttp() {
  * the server backup (recovery path). After this, chat re-joins MLS as a new leaf
  * and reads all archived history the recovered keychain covers.
  */
-export async function recoverDevice(recoveredMasterKey: Uint8Array): Promise<void> {
+export async function recoverDevice(recoveredMasterKey: Uint8Array): Promise<boolean> {
   await km.installMasterKey(idbStore(), recoveredMasterKey);
   _masterKeyPromise = Promise.resolve(recoveredMasterKey); // refresh memo for the encrypting store
   _encStore = null;
   _store = null;
   _takStore = null; // rebuild stores under the recovered key
   const keychain = await km.restoreTakKeychain(recoveredMasterKey, () => keyBackupHttp().getTakBackup());
-  if (keychain) await getTakSessionStore().importKeychain(keychain);
+  if (!keychain) return false;
+  await getTakSessionStore().importKeychain(keychain);
+  return true;
 }

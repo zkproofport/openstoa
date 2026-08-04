@@ -13,6 +13,7 @@ import {
   getDeviceKeyState,
   recoverDeviceWithPasskey,
   type DeviceKeyState,
+  type RecoveryOutcome,
 } from '@/lib/mls/webTransport';
 import type { Visibility } from '@/lib/mls/takSession';
 import {
@@ -435,7 +436,7 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
   const { t } = useTranslation();
   const [state, setState] = useState<DeviceKeyState | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [outcome, setOutcome] = useState<RecoveryOutcome | null>(null);
 
   useEffect(() => {
     if (lockedCount === 0) return;
@@ -464,13 +465,20 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
 
   const unlock = async () => {
     setBusy(true);
-    setFailed(false);
+    setOutcome(null);
     try {
       // Runs inside the click, preserving the user activation Safari needs.
-      if (!(await recoverDeviceWithPasskey())) setFailed(true);
-      else window.location.reload(); // rebuilt key stores; re-read history under the recovered key
+      const result = await recoverDeviceWithPasskey();
+      if (result === 'restored') {
+        // Only reload when something actually changed. Reloading on failure is
+        // what made this look broken: the page bounced back to the same locked
+        // messages with nothing said.
+        window.location.reload();
+        return;
+      }
+      setOutcome(result);
     } catch {
-      setFailed(true);
+      setOutcome('unavailable');
     } finally {
       setBusy(false);
     }
@@ -498,13 +506,17 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
       }}
     >
       <span style={{ flex: 1, minWidth: 0 }}>
-        {failed
-          ? t('chat.lockedHistory.failed')
-          : recoverable
-            ? t('chat.lockedHistory.recoverable', { count: String(lockedCount) })
-            : t('chat.lockedHistory.noBackup', { count: String(lockedCount) })}
+        {outcome === 'no-archive'
+          ? // The key came back but nothing on the server opens with it.
+            // Retrying achieves nothing, so say what would.
+            t('chat.lockedHistory.noArchive')
+          : outcome === 'unavailable'
+            ? t('chat.lockedHistory.failed')
+            : recoverable
+              ? t('chat.lockedHistory.recoverable', { count: String(lockedCount) })
+              : t('chat.lockedHistory.noBackup', { count: String(lockedCount) })}
       </span>
-      {recoverable ? (
+      {recoverable && outcome !== 'no-archive' ? (
         <button type="button" className="os-button os-button-primary" onClick={unlock} disabled={busy}>
           {busy ? t('chat.lockedHistory.unlocking') : t('chat.lockedHistory.unlock')}
         </button>
