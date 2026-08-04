@@ -158,6 +158,9 @@ const ALLOWLIST: Array<{ file: string; value: string; reason: string }> = [
   { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.25)', reason: 'Same disabled AI-Ask block.' },
   { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.1)', reason: 'Same disabled AI-Ask block.' },
   { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.5)', reason: 'Same disabled AI-Ask block.' },
+  // ── 3. Renderer arguments, not CSS ──
+  { file: 'src/components/ProofGate.tsx', value: '#000000', reason: 'QR module colour. Passed to the qrcode canvas renderer, NOT to CSS — a var(--…) here throws "Invalid hex color" and the login QR fails to render (it did). Fixed black-on-white in both themes because scanners only guarantee dark-on-light polarity.' },
+  { file: 'src/components/ProofGate.tsx', value: '#ffffff', reason: 'QR quiet-zone colour — same renderer-argument contract as above.' },
   { file: 'src/components/ImageLightbox.tsx', value: 'rgba(0,0,0,0.9)', reason: 'Full-screen lightbox scrim — black over the photo in both themes.' },
   { file: 'src/components/ImageLightbox.tsx', value: 'rgba(0,0,0,0.6)', reason: 'Lightbox panel shadow over the scrim.' },
   { file: 'src/components/ImageLightbox.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Prev/next arrow pill, sits on the photo.' },
@@ -497,5 +500,47 @@ describe('Badge — collapsed to three tones, every type intact', () => {
     expect(style).toContain('var(--color-brand-accent)');
     expect(style).toContain('transparent');
     expect(style).toContain('var(--radius-control)');
+  });
+});
+
+/**
+ * A CSS custom property is meaningless to anything that is not CSS.
+ *
+ * The sweep replaced two hex literals in `ProofGate.tsx` that were arguments to
+ * the `qrcode` canvas renderer, not style values. The build passed, the types
+ * passed, every unit test passed — and the login QR threw
+ * "Invalid hex color: var(--color-text-primary)" in the browser, so nobody
+ * could sign in. Colour correctness is not something tsc can check.
+ *
+ * This pins the known non-CSS colour sinks. It is a list, not a heuristic:
+ * a heuristic over "is this inside a style prop" would be guesswork, whereas
+ * every entry here is a real API that takes a colour STRING.
+ */
+describe('var(--…) never reaches a non-CSS colour sink', () => {
+  const NON_CSS_SINKS = [
+    'darkColor',
+    'lightColor',
+    'fillStyle',
+    'strokeStyle',
+    'shadowColor',
+    'themeColor',
+  ];
+
+  it.each(NON_CSS_SINKS)('no `var(--…)` is assigned to %s', (sink) => {
+    const offenders: string[] = [];
+    for (const file of [...COLOR_SWEPT_FILES]) {
+      for (const line of source(file).split('\n')) {
+        if (line.includes(sink) && line.includes('var(--')) offenders.push(`${file}: ${line.trim()}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('the QR renderer still gets real hex, in both its primary and fallback call', () => {
+    const src = source('src/components/ProofGate.tsx');
+    // Primary path (custom renderer) and the `qrcode` fallback both take colours.
+    expect(src).toMatch(/darkColor: '#[0-9a-fA-F]{6}'/);
+    expect(src).toMatch(/lightColor: '#[0-9a-fA-F]{6}'/);
+    expect(src).toMatch(/dark: '#[0-9a-fA-F]{6}', light: '#[0-9a-fA-F]{6}'/);
   });
 });
