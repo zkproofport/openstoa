@@ -16,6 +16,16 @@ is read-only — bundles stay pending until the device acks them with `DELETE` a
 persisting the keys, so a crash between fetch and persist re-delivers rather than losing
 history. **Membership required** (a removed member gets 403 — D11 archive gating).
 
+**API-key callers — two scopes apply.** The key needs `/openstoa/chat/read` in its `cmd`
+(else 403), AND its `historyGrant` bounds which bundles are delivered — a bundle IS the
+ability to decrypt its own `scope`, so only bundles provably no wider than the grant are
+returned. `full` = all bundles, `none` = **403**. A bounded grant (`Nd` / `N` /
+`since_epoch:N`) receives bundles of the SAME shape that are no wider (e.g. a `30d` key
+gets `7d` and `30d` bundles, never `full`); a bundle in a different shape than the grant
+is withheld, because the server cannot prove `since_epoch:N` is inside `Nd` without a
+per-epoch clock. Withheld bundles are left UNACKED and are still delivered to a wider
+credential. Human sessions are unaffected.
+
 **Endpoint:** `GET /api/topics/{topicId}/tak/bundles`
 **Auth:** Bearer token or session cookie
 

@@ -51,6 +51,18 @@ export const topics = pgTable('topics', {
   // NULL for normal topics. The unique index below makes `POST /api/dm` idempotent
   // (either order of the pair maps to the same row) at the storage layer.
   dmPair: text('dm_pair'),
+  // Identity of the PUBLIC archive root this topic's history is sealed under:
+  // base64(HKDF(root, "openstoa-archive-root-id/v1", 16)). Opaque bytes to the
+  // server — it never derives or verifies this (C1: crypto-free DS); clients
+  // compute it from the root they hold and compare. NULL means "no root has
+  // been claimed yet", which is NOT the same as "this topic has no root": a
+  // topic that predates this column has archive rows and a null fingerprint, so
+  // clients also require `chat_archive` to be empty before minting a new root.
+  // WRITE-ONCE: only ever set from NULL (compare-and-set), so two devices racing
+  // to create the first root cannot both win — the loser adopts the winner's
+  // root instead of overwriting the archive's identity. Public tier only;
+  // private/secret/DM topics are per-epoch (§5.2) and leave this NULL forever.
+  archiveRootFingerprint: text('archive_root_fingerprint'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   score: real('score').notNull().default(0),

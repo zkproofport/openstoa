@@ -137,6 +137,22 @@ function httpTak(token: string): TakTransport {
       if (!r.ok) throw new Error(`bundle GET ${r.status}`);
       return (await r.json()).bundles as TakBundleRow[];
     },
+    async getRootFingerprint(topicId) {
+      const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, { headers: h });
+      // 400/404: no public archive root concept for this topic (private/secret).
+      if (r.status === 400 || r.status === 404) return { fingerprint: null, archiveCount: 0 };
+      if (!r.ok) throw new Error(`root-fingerprint GET ${r.status}`);
+      return await r.json();
+    },
+    async setRootFingerprint(topicId, fingerprint) {
+      const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, {
+        method: 'PUT',
+        headers: h,
+        body: JSON.stringify({ fingerprint }),
+      });
+      if (!r.ok) throw new Error(`root-fingerprint PUT ${r.status}`);
+      return await r.json();
+    },
     async ackBundles(topicId, deviceId, ids) {
       const r = await fetch(`${base(topicId)}/tak/bundles`, {
         method: 'DELETE',

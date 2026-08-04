@@ -45,7 +45,14 @@ const ROUTE = '/api/profile/api-keys';
  *                 description: 'Ability allowlist bound to THIS key — a (possibly empty) subset of the allowed commands, e.g. ["/openstoa/chat/read", "/openstoa/post/write"]. Unknown commands are rejected with 400.'
  *               historyGrant:
  *                 type: string
- *                 description: 'Chat archive scope this key may back-fill: none | Nd | since_epoch:N | full. Invalid scope → 400.'
+ *                 description: >
+ *                   How much chat history this key may read. ENFORCED on every history surface
+ *                   (`GET /api/topics/{id}/chat`, `/archive`, `/tak/bundles`) in addition to the
+ *                   `cmd` check — `/openstoa/chat/read` lets the key call those endpoints, this
+ *                   decides how far back it sees. Values: `full` (everything), `none` (403 — no
+ *                   history at all; use it for send-only or write-only keys), `Nd` (last N days,
+ *                   e.g. `7d`), `since_epoch:N` (from MLS group epoch N onward), `N` (the newest N
+ *                   messages, e.g. `100`). Invalid scope → 400.
  *               isAI:
  *                 type: boolean
  *                 description: Whether requests authenticated with this key set session.isAI=true. Defaults to true (the whole point of an API key is scripted/agent access).

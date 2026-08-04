@@ -13,6 +13,7 @@ import {
 } from '@/lib/mls/http';
 import { storeTakBundle, fetchUndeliveredBundles, markBundlesDelivered } from '@/lib/mls/archive';
 import { requireAiCapability } from '@/lib/aiPermissions';
+import { historyGrantDenial, resolveEnforcedHistoryGrant, takScopeWithinGrant } from '@/lib/historyGrant';
 
 const ROUTE = '/api/topics/[topicId]/tak/bundles';
 
@@ -164,6 +165,16 @@ export async function POST(
  *       is read-only — bundles stay pending until the device acks them with `DELETE` after durably
  *       persisting the keys, so a crash between fetch and persist re-delivers rather than losing
  *       history. **Membership required** (a removed member gets 403 — D11 archive gating).
+ *
+ *       **API-key callers — two scopes apply.** The key needs `/openstoa/chat/read` in its `cmd`
+ *       (else 403), AND its `historyGrant` bounds which bundles are delivered — a bundle IS the
+ *       ability to decrypt its own `scope`, so only bundles provably no wider than the grant are
+ *       returned. `full` = all bundles, `none` = **403**. A bounded grant (`Nd` / `N` /
+ *       `since_epoch:N`) receives bundles of the SAME shape that are no wider (e.g. a `30d` key
+ *       gets `7d` and `30d` bundles, never `full`); a bundle in a different shape than the grant
+ *       is withheld, because the server cannot prove `since_epoch:N` is inside `Nd` without a
+ *       per-epoch clock. Withheld bundles are left UNACKED and are still delivered to a wider
+ *       credential. Human sessions are unaffected.
  *     operationId: getTakBundles
  *     x-related-skills: [deliver-tak-bundle]
  *     parameters:
@@ -195,7 +206,10 @@ export async function POST(
  *                       createdAt: { type: string, format: date-time }
  *       400: { description: Missing deviceId }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { $ref: '#/components/responses/Forbidden' }
+ *       403:
+ *         description: |
+ *           Not a member; or an API key lacking `/openstoa/chat/read`; or an API key whose
+ *           `historyGrant` is `none`.
  */
 export async function GET(
   request: NextRequest,
@@ -212,12 +226,30 @@ export async function GET(
     const readGate = await requireAiCapability(db, auth.session, '/openstoa/chat/read');
     if (readGate) return readGate;
 
+    // …and the key's own history grant bounds WHICH keys it may take delivery of
+    // (`src/lib/historyGrant.ts`). This surface is the sharpest of the three: a
+    // bundle IS the ability to decrypt its range, so handing over a `full` bundle
+    // to a `7d` key would defeat the bound on the archive read next to it.
+    const grant = resolveEnforcedHistoryGrant(auth.session);
+    const grantDenied = historyGrantDenial(grant);
+    if (grantDenied) {
+      logger.warn(ROUTE, 'AI caller has no history grant', { topicId, userId: auth.session.userId });
+      return grantDenied;
+    }
+
     const deviceId = new URL(request.url).searchParams.get('deviceId');
     if (!deviceId || deviceId.trim().length === 0) {
       return NextResponse.json({ error: 'deviceId query parameter is required' }, { status: 400 });
     }
 
-    const bundles = await fetchUndeliveredBundles(db, topicId, deviceId);
+    const all = await fetchUndeliveredBundles(db, topicId, deviceId);
+    // Filtered on the SERVER, before serialization — an out-of-scope bundle never
+    // reaches the response body. Done here rather than in SQL because the fetch
+    // is an unpaginated to-device queue (no page/limit contract to preserve) and
+    // scope containment is a partial order the DB cannot express (see
+    // `takScopeWithinGrant`). Bundles stay UNACKED, so narrowing a key does not
+    // destroy keys a wider credential is still entitled to collect.
+    const bundles = grant ? all.filter((b) => takScopeWithinGrant(b.scope, grant)) : all;
     return NextResponse.json({
       bundles: bundles.map((b) => ({
         id: b.id,

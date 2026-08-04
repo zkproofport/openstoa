@@ -3,8 +3,10 @@
 # Three jobs:
 #   packages   — matrix over the five publishable @masselabs/* packages:
 #                install -> typecheck -> unit tests.
-#   server     — the root Next.js app: unit tests (against a real redis:7 service
-#                container) + `next build`.
+#   server     — the root Next.js app: the SI-1 plaintext-absence gate (source
+#                guard + a real row-count query against the postgres service),
+#                unit tests (against a real redis:7 service container), and
+#                `next build`.
 #   mcp-smoke  — boots the built `openstoa-mcp` stdio binary and asserts it
 #                answers a real MCP `initialize` + `tools/list` handshake.
 #
@@ -154,6 +156,15 @@ jobs:
         # `npm run db:migrate` (drizzle-kit): against a fresh database that
         # aborts with a column-name collision and creates zero tables.
         run: npm run db:migrate:apply
+
+      - name: SI-1 plaintext-absence gate
+        # Two halves: the chat POST route still carries its plaintext-rejection
+        # guard, AND no chat_messages row of type='message' has a non-NULL
+        # plaintext system_text. `--strict` makes an unset/unreachable
+        # DATABASE_URL FATAL — without it the DB half self-skips with a warning
+        # and the step goes green having verified nothing, which is worse than
+        # having no gate at all. Runs after migrations so the table exists.
+        run: npm run verify:no-plaintext-chat -- --strict
 
       - name: Unit tests
         # `packages/**` is excluded: the five publishable packages have their own

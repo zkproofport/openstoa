@@ -206,6 +206,94 @@ export async function getArchiveSince(
 }
 
 // ---------------------------------------------------------------------------
+// public archive-root identity (§5.2 public tier)
+// ---------------------------------------------------------------------------
+
+export interface ArchiveRootIdentity {
+  /** base64 HKDF tag of the topic's public archive root, or null if unclaimed. */
+  fingerprint: string | null;
+  /** How many archive rows this topic has. Non-zero PROVES a root already exists. */
+  archiveCount: number;
+}
+
+/**
+ * Read the public archive root's published identity together with the archive
+ * row count — in ONE query, because a client must weigh both before it is
+ * allowed to mint a root:
+ *
+ *   fingerprint != null            → a root is claimed; adopt it or prove you match
+ *   fingerprint == null, count > 0 → a root exists but predates this column
+ *                                    (every topic in production right now). Minting
+ *                                    here is exactly the bug: the new random root
+ *                                    orphans every existing row.
+ *   fingerprint == null, count == 0 → genesis; minting is safe
+ *
+ * `COUNT(*)` is metadata the server already holds; it decrypts nothing, so this
+ * keeps the DS crypto-free (C1). The count is deliberately taken from
+ * `chat_archive` and not `tak_bundles`: bundle rows are DELETED on delivery, so
+ * their absence proves nothing, whereas an archive row is permanent evidence.
+ */
+export async function getArchiveRootIdentity(
+  executor: SqlExecutor,
+  topicId: string,
+): Promise<ArchiveRootIdentity> {
+  const res = (await executor.execute(sql`
+    SELECT t.archive_root_fingerprint AS fingerprint,
+           (SELECT count(*) FROM chat_archive a WHERE a.topic_id = t.id) AS archive_count
+    FROM topics t WHERE t.id = ${topicId}
+  `)) as Rows<{ fingerprint: string | null; archive_count: string | number }>;
+  const row = res.rows[0];
+  if (!row) return { fingerprint: null, archiveCount: 0 };
+  return { fingerprint: row.fingerprint ?? null, archiveCount: Number(row.archive_count) };
+}
+
+export interface RootClaimResult {
+  /** The fingerprint now published for the topic — the caller's, or the winner's. */
+  fingerprint: string;
+  /** True when the caller's value is the one that took hold. */
+  claimed: boolean;
+}
+
+/**
+ * COMPARE-AND-SET the public archive root fingerprint: it is only ever written
+ * over NULL, never over an existing value. First writer wins, permanently.
+ *
+ * This is the whole anti-clobber guarantee. Two devices racing to create the
+ * first root both post their own fingerprint; exactly one UPDATE matches the
+ * `IS NULL` predicate (Postgres re-evaluates it after taking the row lock), so
+ * the loser gets the WINNER's fingerprint back and must adopt the winner's root
+ * instead of archiving under its own — which is what previously produced rows
+ * nobody could ever read. A later attempt to publish a different fingerprint is
+ * likewise rejected, so a rogue or stale device can never re-point a topic's
+ * archive identity at a root of its choosing.
+ *
+ * The server does NOT verify that the fingerprint corresponds to any real root —
+ * it cannot (C1). Proving the root actually opens this topic's history is the
+ * CLIENT's job before it calls this (see takSession.resolveRoot).
+ */
+export async function claimArchiveRootFingerprint(
+  executor: SqlExecutor,
+  topicId: string,
+  fingerprint: string,
+): Promise<RootClaimResult | null> {
+  const upd = (await executor.execute(sql`
+    UPDATE topics SET archive_root_fingerprint = ${fingerprint}
+    WHERE id = ${topicId} AND archive_root_fingerprint IS NULL
+    RETURNING archive_root_fingerprint
+  `)) as Rows<{ archive_root_fingerprint: string }>;
+  if (upd.rows.length > 0) return { fingerprint, claimed: true };
+
+  // Lost the CAS (or the topic is gone). Re-read so the caller learns the
+  // winning value and can adopt it rather than silently keep its own.
+  const cur = (await executor.execute(sql`
+    SELECT archive_root_fingerprint AS fingerprint FROM topics WHERE id = ${topicId}
+  `)) as Rows<{ fingerprint: string | null }>;
+  const row = cur.rows[0];
+  if (!row || row.fingerprint == null) return null; // topic missing — caller 404s
+  return { fingerprint: row.fingerprint, claimed: row.fingerprint === fingerprint };
+}
+
+// ---------------------------------------------------------------------------
 // archive-holder succession (SI-6, public topics only)
 // ---------------------------------------------------------------------------
 

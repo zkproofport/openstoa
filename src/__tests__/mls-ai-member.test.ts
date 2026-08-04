@@ -91,6 +91,18 @@ class MemoryTak implements TakTransport {
   async ackBundles(t: string, deviceId: string, ids: string[]) {
     for (const b of this.bundles.get(t) ?? []) if (b.recipientDeviceId === deviceId && ids.includes(b.id)) b.delivered = true;
   }
+  fingerprints = new Map<string, string>();
+  async getRootFingerprint(t: string) {
+    return { fingerprint: this.fingerprints.get(t) ?? null, archiveCount: (this.archive.get(t) ?? []).length };
+  }
+  async setRootFingerprint(t: string, fingerprint: string) {
+    const cur = this.fingerprints.get(t);
+    if (cur === undefined) {
+      this.fingerprints.set(t, fingerprint);
+      return { fingerprint, claimed: true };
+    }
+    return { fingerprint: cur, claimed: cur === fingerprint };
+  }
 }
 
 /** In-memory AI directory: atomic KeyPackage consume (last-resort reusable). */

@@ -26,6 +26,8 @@ import {
   claimOrRenewHolder,
   updateHolderCoverage,
   getHolder,
+  getArchiveRootIdentity,
+  claimArchiveRootFingerprint,
   type ArchiveCursor,
 } from '@/lib/mls/archive';
 
@@ -292,5 +294,57 @@ describe('holder coverage epoch-fence (SI-7)', () => {
     const res = await updateHolderCoverage(db, TOPIC, USER_A, DEV_1, 0);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('no-group');
+  });
+});
+
+describe('public archive-root identity (write-once compare-and-set)', () => {
+  const FP_A = 'AAECAwQFBgcICQoLDA0ODw=='; // base64 of 16 bytes
+  const FP_B = 'EBESExQVFhcYGRobHB0eHw==';
+
+  async function resetFingerprint() {
+    await db.execute(sql`UPDATE topics SET archive_root_fingerprint = NULL WHERE id = ${TOPIC}`);
+  }
+  beforeEach(resetFingerprint);
+
+  it('reports null + the archive row count so a client can tell "no root" from "root predates the column"', async () => {
+    expect(await getArchiveRootIdentity(db, TOPIC)).toEqual({ fingerprint: null, archiveCount: 0 });
+
+    // The retroactive case: rows exist but nothing is published. This is the
+    // state every public topic in production is in right now.
+    await storeArchiveRow(db, TOPIC, '44444444-4444-4444-8444-444444444441', 0, Buffer.from('ct1'));
+    await storeArchiveRow(db, TOPIC, '44444444-4444-4444-8444-444444444442', 0, Buffer.from('ct2'));
+    expect(await getArchiveRootIdentity(db, TOPIC)).toEqual({ fingerprint: null, archiveCount: 2 });
+  });
+
+  it('first writer wins permanently; a rival value never overwrites it', async () => {
+    expect(await claimArchiveRootFingerprint(db, TOPIC, FP_A)).toEqual({ fingerprint: FP_A, claimed: true });
+
+    // A second device publishing a DIFFERENT root gets the winner back and is
+    // told it did not claim — it must adopt the winner's root, not keep its own.
+    expect(await claimArchiveRootFingerprint(db, TOPIC, FP_B)).toEqual({ fingerprint: FP_A, claimed: false });
+    expect((await getArchiveRootIdentity(db, TOPIC)).fingerprint).toBe(FP_A);
+  });
+
+  it('re-publishing the SAME value is idempotent', async () => {
+    await claimArchiveRootFingerprint(db, TOPIC, FP_A);
+    expect(await claimArchiveRootFingerprint(db, TOPIC, FP_A)).toEqual({ fingerprint: FP_A, claimed: true });
+  });
+
+  it('serializes concurrent genesis claims — exactly one of N racers wins', async () => {
+    const candidates = Array.from({ length: 8 }, (_, i) =>
+      Buffer.from(Array.from({ length: 16 }, (_, j) => i * 16 + j)).toString('base64'),
+    );
+    const results = await Promise.all(candidates.map((fp) => claimArchiveRootFingerprint(db, TOPIC, fp)));
+    expect(results.filter((r) => r?.claimed)).toHaveLength(1);
+    // Every loser was handed the SAME winning value, so they all converge on one root.
+    const stored = (await getArchiveRootIdentity(db, TOPIC)).fingerprint;
+    expect(new Set(results.map((r) => r!.fingerprint))).toEqual(new Set([stored]));
+    expect(candidates).toContain(stored);
+  });
+
+  it('returns null for a topic that does not exist (no phantom row)', async () => {
+    const missing = '00000000-0000-4000-8000-00000000dead';
+    expect(await claimArchiveRootFingerprint(db, missing, FP_A)).toBeNull();
+    expect(await getArchiveRootIdentity(db, missing)).toEqual({ fingerprint: null, archiveCount: 0 });
   });
 });

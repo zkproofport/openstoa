@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { chatMessages, topicMembers, users } from '@/lib/db/schema';
-import { eq, and, desc, count, gt, lt } from 'drizzle-orm';
+import { eq, and, desc, count, gt, gte, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { requireAiCapability } from '@/lib/aiPermissions';
+import { historyGrantDenial, resolveEnforcedHistoryGrant } from '@/lib/historyGrant';
+import { resolveHistoryWindow } from '@/lib/mls/historyWindow';
 import {
   dispatchDummyForMessage,
   dispatchCiphertextForMessage,
@@ -73,6 +75,15 @@ function parsePushArchive(v: unknown): PushArchiveInput | null {
  *       Without either parameter, returns the latest `limit` messages newest-first. For agents
  *       that can handle streaming responses, `GET /api/topics/{topicId}/chat/subscribe` is the
  *       lower-latency alternative.
+ *
+ *       **API-key callers — two scopes apply.** The key needs the `/openstoa/chat/read`
+ *       capability in its `cmd` (else 403), AND its `historyGrant` bounds how far back it can
+ *       see: `full` = everything, `none` = **403, no history at all**, `Nd` = only messages from
+ *       the last N days, `since_epoch:N` = only messages sealed at group epoch N or later,
+ *       `N` = only the newest N messages. The bound is applied in the query, so paging with
+ *       `before=` cannot walk past it, and `total` counts only what is inside the window. Issue
+ *       the key with the grant you actually need — see `POST /api/profile/api-keys`. Human
+ *       (non-agent) sessions are unaffected.
  *     operationId: getChatHistory
  *     x-related-skills: [subscribe-chat-sse, send-chat-message]
  *     parameters:
@@ -121,7 +132,9 @@ function parsePushArchive(v: unknown): PushArchiveInput | null {
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         $ref: '#/components/responses/Forbidden'
+ *         description: |
+ *           Not a member; or an API key lacking the `/openstoa/chat/read` capability; or an API
+ *           key whose `historyGrant` is `none` (it may not read history at all).
  *       404:
  *         description: Topic not found or user is not a member
  */
@@ -157,6 +170,17 @@ export async function GET(
     if (readGate) {
       logger.warn(ROUTE, 'AI caller lacks chat/read capability', { userId: session.userId, topicId });
       return readGate;
+    }
+
+    // The key's OWN history grant (design §7, `src/lib/historyGrant.ts`): holding
+    // chat/read says the key may call this endpoint, the grant says how far back
+    // it may see. `null` = human or `full` — the query below is then built
+    // exactly as it was before this gate existed.
+    const grant = resolveEnforcedHistoryGrant(session);
+    const grantDenied = historyGrantDenial(grant);
+    if (grantDenied) {
+      logger.warn(ROUTE, 'AI caller has no history grant', { userId: session.userId, topicId });
+      return grantDenied;
     }
 
     const { searchParams } = new URL(request.url);
@@ -206,6 +230,25 @@ export async function GET(
       orderByCol = desc(chatMessages.createdAt);
     }
 
+    // Apply the history grant to BOTH the page and the total. It bounds the page
+    // so out-of-scope rows are never selected (not filtered after the fact, so
+    // pagination cannot walk around it), and it bounds `total` so the count does
+    // not leak how much history exists beyond the window.
+    let totalWhere = eq(chatMessages.topicId, topicId);
+    if (grant) {
+      const window = await resolveHistoryWindow(db, topicId, grant);
+      const bounds = [];
+      if (window.createdAfter) bounds.push(gte(chatMessages.createdAt, window.createdAfter));
+      // NULL epochs (system join/leave rows) fall outside `>=` and are excluded
+      // under a since_epoch grant — conservative on purpose: a row whose epoch is
+      // unknown cannot be proven to be inside the granted range.
+      if (window.minEpoch !== null) bounds.push(gte(chatMessages.epoch, window.minEpoch));
+      if (bounds.length > 0) {
+        whereClause = and(whereClause, ...bounds)!;
+        totalWhere = and(totalWhere, ...bounds)!;
+      }
+    }
+
     const [rows, [{ value: total }]] = await Promise.all([
       db
         .select({
@@ -230,7 +273,7 @@ export async function GET(
       db
         .select({ value: count() })
         .from(chatMessages)
-        .where(eq(chatMessages.topicId, topicId)),
+        .where(totalWhere),
     ]);
 
     // Shape rows for the wire: user messages expose only the sealed body

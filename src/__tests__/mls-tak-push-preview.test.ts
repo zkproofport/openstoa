@@ -71,6 +71,18 @@ class MemoryTak implements TakTransport {
     return [];
   }
   async ackBundles() {}
+  fingerprints = new Map<string, string>();
+  async getRootFingerprint(t: string) {
+    return { fingerprint: this.fingerprints.get(t) ?? null, archiveCount: (this.archive.get(t) ?? []).length };
+  }
+  async setRootFingerprint(t: string, fingerprint: string) {
+    const cur = this.fingerprints.get(t);
+    if (cur === undefined) {
+      this.fingerprints.set(t, fingerprint);
+      return { fingerprint, claimed: true };
+    }
+    return { fingerprint: cur, claimed: cur === fingerprint };
+  }
 }
 
 function memKv(): SecureKVStore {

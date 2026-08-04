@@ -188,6 +188,26 @@ function httpTakTransport(): TakTransport {
       });
       if (!r.ok) throw new Error(`bundle DELETE ${r.status}`);
     },
+    async getRootFingerprint(topicId) {
+      const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, { credentials: 'include' });
+      // 400 = not a public topic, 404 = topic gone. Neither is a failure to
+      // report: those topics have no shared archive root at all, so the honest
+      // answer is "nothing published". Throwing here would abort the keychain
+      // backup for a stray root key on a non-public topic.
+      if (r.status === 400 || r.status === 404) return { fingerprint: null, archiveCount: 0 };
+      if (!r.ok) throw new Error(`root-fingerprint GET ${r.status}`);
+      return await r.json();
+    },
+    async setRootFingerprint(topicId, fingerprint) {
+      const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: json,
+        body: JSON.stringify({ fingerprint }),
+      });
+      if (!r.ok) throw new Error(`root-fingerprint PUT ${r.status}`);
+      return await r.json();
+    },
   };
 }
 

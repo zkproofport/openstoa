@@ -24,7 +24,8 @@
  *
  * EDGE-CASE MATRIX (CLAUDE.md) → case mapping (case titles quoted verbatim)
  *   boundary            → 'name length boundary…', 'cmd count and type boundary…',
- *                         'historyGrant scope boundary…'
+ *                         'historyGrant scope boundary…',
+ *                         'a bounded historyGrant still reads…' (every grant shape)
  *   hostile input       → 'hostile and multi-script names round-trip…',
  *                         'hostile cmd entries are rejected outright…',
  *                         'malformed osk_ bearer tokens are 401, never 500…'
@@ -38,7 +39,11 @@
  *                         'cmd count and type boundary…' (cap+1 entries → 400)
  *   authorization       → 'guest: every api-keys verb is 401…',
  *                         'a foreign keyId is indistinguishable from an unknown one…',
- *                         'FAIL-CLOSED: a key with an EMPTY cmd list can do nothing…'
+ *                         'FAIL-CLOSED: a key with an EMPTY cmd list can do nothing…',
+ *                         'historyGrant is ENFORCED…' (the SECOND scope axis: a key
+ *                         can hold chat/read and still be refused the past),
+ *                         'the grant gates HISTORY only…' (it must not leak into
+ *                         send/write or ungated reads)
  *   race / fire-and-forget → 'concurrent revoke…', 'concurrent re-scope…',
  *                         'lastUsedAt starts null and is bumped by use…'
  *   contract invocation → 'GET list advertises the server's own ALLOWED_CMDS…'
@@ -47,9 +52,14 @@
  *   external dependency → N/A: the API-key path touches only Postgres, which the
  *                         container under test owns. No R2 / RPC / prover.
  *
- * Three cases are `it.skip` with the gap named in the title — they assert the
+ * Some cases are `it.skip` with the gap named in the title — they assert the
  * SECURE behavior and are one word away from running once the gap is closed.
  * See the report accompanying this change.
+ *
+ * The historyGrant-enforcement gap is CLOSED (2026-08-04): the case that named
+ * it now runs, alongside three siblings covering the bounded shapes, in-place
+ * re-scoping of the grant, and the non-history surfaces it must NOT touch.
+ * `createKey`'s default grant is `full` for the reason documented on it.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ALLOWED_CMDS } from '@/lib/aiPermissions';
@@ -133,11 +143,19 @@ function postKey(token: string, body: unknown): Promise<Response> {
   return resilientFetch(`${BASE}/api/profile/api-keys`, { method: 'POST', headers: bearer(token), body: JSON.stringify(body) });
 }
 
-/** Issue a key that MUST succeed; returns the raw key + metadata. */
+/**
+ * Issue a key that MUST succeed; returns the raw key + metadata.
+ *
+ * The default grant is `full` so a case that is about the CMD allowlist is not
+ * silently also testing the HISTORY grant — the two scopes gate independently
+ * (`src/lib/historyGrant.ts`), and a bounded default would make every chat-read
+ * probe below 403 for a reason the case never meant to exercise. The cases that
+ * are about the grant pass it explicitly.
+ */
 async function createKey(
   token: string,
   cmd: string[],
-  historyGrant = 'none',
+  historyGrant = 'full',
   name = `k_${rnd()}`,
 ): Promise<{ rawKey: string; key: KeyMeta }> {
   const res = await postKey(token, { name, cmd, historyGrant });
@@ -352,7 +370,10 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     expect(await probe('chatRead', rawKey)).toBe(200);
     expect(await probe('chatSend', rawKey)).toBe(201);
 
-    const res = await patchKey(owner.token, key.id, { cmd: ['/openstoa/chat/read'], historyGrant: 'none' });
+    // historyGrant stays 'full' across the PATCH so the only thing that moves is
+    // the cmd list — narrowing the grant at the same time would make the
+    // chat-read assertion below ambiguous.
+    const res = await patchKey(owner.token, key.id, { cmd: ['/openstoa/chat/read'], historyGrant: 'full' });
     expect(res.status).toBe(200);
     expect(((await res.json()).key as KeyMeta).cmd).toEqual(['/openstoa/chat/read']);
 
@@ -386,7 +407,9 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
   });
 
   it('PATCH validation: unknown cmd, non-array cmd, missing/garbage historyGrant, empty body, non-uuid id', async () => {
-    const { key } = await createKey(owner.token, []);
+    // Grant passed explicitly: the closing assertion checks the ORIGINAL scope
+    // survived every rejected PATCH, so it must not ride on createKey's default.
+    const { key } = await createKey(owner.token, [], 'none');
 
     expect((await patchKey(owner.token, key.id, { cmd: ['/root/delete'], historyGrant: 'none' })).status).toBe(400);
     expect((await patchKey(owner.token, key.id, { cmd: '/openstoa/chat/read', historyGrant: 'none' })).status).toBe(400);
@@ -456,7 +479,9 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
       expect((await res.json()).error).toContain('/openstoa/chat/read');
     }
 
-    const { rawKey: withRead } = await createKey(owner.token, ['/openstoa/chat/read'], 'none');
+    // Grant `full` so the ONLY difference between the two keys is the cmd — the
+    // history grant is the separate axis exercised by the cases below it.
+    const { rawKey: withRead } = await createKey(owner.token, ['/openstoa/chat/read'], 'full');
     for (const p of paths) {
       expect((await resilientFetch(`${BASE}${p}`, { headers: bearer(withRead) })).status, `${p} must be 200 with chat/read`).toBe(200);
     }
@@ -479,16 +504,82 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     expect((await listKeys(owner.token)).apiKeys.find((k) => k.id === key.id)?.historyGrant).toBe('7d');
   });
 
-  it.skip("SKIPPED [KNOWN GAP: historyGrant is validated and stored but never ENFORCED — no route reads session.apiKeyHistoryGrant; back-fill is gated by chat/read alone]", async () => {
-    // Preserved so the intended contract is written down and one word away from
-    // running. `getApiKeySession` (src/lib/session.ts) puts the key's grant on
-    // the session as `apiKeyHistoryGrant`, but nothing consumes it: grep the
-    // repo and the only hits are session.ts itself and a unit test. A key
-    // issued with historyGrant 'none' can today read the ENTIRE history of any
-    // topic it is a member of, as long as it holds chat/read.
+  it('historyGrant is ENFORCED, not merely stored: grant `none` + chat/read cannot read history', async () => {
+    // Previously skipped as a known gap — `getApiKeySession` put the grant on the
+    // session as `apiKeyHistoryGrant` and nothing consumed it, so a key issued
+    // with 'none' could read the ENTIRE history of any topic it belonged to as
+    // long as it held chat/read. It is now enforced server-side in the query
+    // (`src/lib/historyGrant.ts` + `src/lib/mls/historyWindow.ts`).
+    //
+    // The design decision that was left open: `none` answers 403, not an empty
+    // 200. It is an authorization outcome in the same shape as a missing cmd, so
+    // a mis-scoped key is loud instead of looking like an empty topic.
     const { rawKey } = await createKey(owner.token, ['/openstoa/chat/read'], 'none');
-    const res = await resilientFetch(`${BASE}/api/topics/${memberTopicId}/chat`, { headers: bearer(rawKey) });
-    expect(res.status).toBe(403); // or 200 with an empty/limited window — the design decision is open
+
+    // All THREE history doors, not just the live feed: the archive and the TAK
+    // bundles that decrypt it are the same history by another route.
+    for (const p of [
+      `/api/topics/${memberTopicId}/chat`,
+      `/api/topics/${memberTopicId}/archive`,
+      `/api/topics/${memberTopicId}/tak/bundles?deviceId=e2e-${rnd()}`,
+    ]) {
+      const res = await resilientFetch(`${BASE}${p}`, { headers: bearer(rawKey) });
+      expect(res.status, `${p} must be 403 for a 'none' grant`).toBe(403);
+      // The 403 names the GRANT, not the capability — the key HAS chat/read, so
+      // a capability-shaped error here would mean the wrong gate fired.
+      const err = (await res.json()).error;
+      expect(err).toContain('historyGrant');
+      expect(err).not.toContain('/openstoa/chat/read');
+    }
+
+    // The same account, same topic, via a JWT: unchanged. The 403s above are the
+    // KEY's own grant, not a topic- or account-level block.
+    expect(
+      (await resilientFetch(`${BASE}/api/topics/${memberTopicId}/chat`, { headers: bearer(owner.token) })).status,
+    ).toBe(200);
+  });
+
+  it('a bounded historyGrant still reads — `none` is a refusal, `Nd` / `N` / `since_epoch:N` are windows', async () => {
+    // Separates "grant enforcement" from "grant breaks chat/read entirely": every
+    // bounded shape answers 200 with a (possibly empty) window on all three
+    // surfaces. The exact row-level windowing is proven against real SQL in
+    // src/__tests__/historyWindow.test.ts and historyGrant-routes.test.ts; here
+    // the point is the wire contract through a real container.
+    for (const grant of ['30d', '100', 'since_epoch:0', 'full']) {
+      const { rawKey } = await createKey(owner.token, ['/openstoa/chat/read'], grant);
+      for (const p of [
+        `/api/topics/${memberTopicId}/chat`,
+        `/api/topics/${memberTopicId}/archive`,
+        `/api/topics/${memberTopicId}/tak/bundles?deviceId=e2e-${rnd()}`,
+      ]) {
+        const res = await resilientFetch(`${BASE}${p}`, { headers: bearer(rawKey) });
+        expect(res.status, `${p} with grant ${grant}`).toBe(200);
+      }
+    }
+  });
+
+  it('PATCH re-scopes the GRANT in place too: the same raw key loses and regains history access', async () => {
+    // The operational direction — narrowing a key already in an agent's hands.
+    const { rawKey, key } = await createKey(owner.token, ['/openstoa/chat/read'], 'full');
+    expect(await probe('chatRead', rawKey)).toBe(200);
+
+    expect((await patchKey(owner.token, key.id, { cmd: ['/openstoa/chat/read'], historyGrant: 'none' })).status).toBe(200);
+    expect(await probe('chatRead', rawKey), 'grant narrowed to none → next request is refused').toBe(403);
+
+    expect((await patchKey(owner.token, key.id, { cmd: ['/openstoa/chat/read'], historyGrant: '7d' })).status).toBe(200);
+    expect(await probe('chatRead', rawKey), 'a bounded grant reads again — no re-issue needed').toBe(200);
+  });
+
+  it('the grant gates HISTORY only — a `none` key holding chat/send can still send, and non-chat reads are untouched', async () => {
+    // A send-only agent is the whole reason `none` exists: it must be able to
+    // participate without being handed the past.
+    const { rawKey } = await createKey(owner.token, ['/openstoa/chat/send', '/openstoa/post/write'], 'none');
+    expect(await probe('chatSend', rawKey), 'sending is not a history read').toBe(201);
+    expect(await probe('postWrite', rawKey), 'posting is not a history read').toBe(201);
+    expect(
+      (await resilientFetch(`${BASE}/api/posts/${postId}`, { headers: bearer(rawKey) })).status,
+      'an ungated read is unaffected by the grant',
+    ).toBe(200);
   });
 
   // ─────────────────────────────────────────────────────────────────────────

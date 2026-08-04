@@ -52,6 +52,19 @@ const ARCHIVE_LABEL = 'openstoa-archive/v1';
 const TAK_LEN = 32;
 const ARCHIVE_KEY_LEN = 16; // matches the suite AEAD (AES-128-GCM)
 
+/**
+ * Domain-separated tag identifying WHICH public archive root a topic uses.
+ * Deliberately NOT a raw hash/CRC of the root: the tag is published to the
+ * server, so it must be one-way (the server must never be able to work back to
+ * key material) AND bound to this one purpose, so it can never be replayed as
+ * an archive key, a TAK, or any other derived value. 16 bytes is ample for
+ * identity — collisions are the only failure mode and 2^128 is far past it.
+ */
+const ROOT_FINGERPRINT_LABEL = 'openstoa-archive-root-id/v1';
+const ROOT_FINGERPRINT_LEN = 16;
+/** base64 length of a ROOT_FINGERPRINT_LEN-byte value ("....==" for 16 bytes). */
+export const ROOT_FINGERPRINT_B64_LEN = Math.ceil(ROOT_FINGERPRINT_LEN / 3) * 4;
+
 /** topic_id ‖ epoch (8-byte big-endian) — the exporter context binding. */
 function takContext(topicId: string, epoch: number): Uint8Array {
   const t = enc.encode(topicId);
@@ -78,6 +91,41 @@ export async function deriveEpochTak(state: gc.GroupState, topicId: string, epoc
 /** Fresh random archive root key for a public topic (1 key = whole history). */
 export function generatePublicRootKey(): Uint8Array {
   return randomBytes(TAK_LEN);
+}
+
+/**
+ * The topic-wide IDENTITY of a public archive root:
+ *
+ *     root_fingerprint = HKDF(root, "openstoa-archive-root-id/v1", 16 bytes)
+ *
+ * A single random root per public topic (§5.2) has no generation counter —
+ * `tak_version` is pinned at 0 — so nothing in the archive rows themselves can
+ * tell "the topic's real root" apart from a root some other device minted while
+ * it was waiting for the real one. That is what let an orphan root be broadcast
+ * over everyone's real root and make every archived row permanently unreadable.
+ *
+ * The fingerprint is that missing identity. One published value answers both
+ * questions a client has to ask before it touches the archive:
+ *   - does a root exist for this topic at all?  → the published value is non-null
+ *   - is the root I hold the real one?          → my fingerprint equals it
+ *
+ * The server stores it as OPAQUE BYTES and never computes it (C1: the Delivery
+ * Service stays crypto-free) — clients derive and compare. Deriving it costs one
+ * HKDF and leaks nothing: it is one-way and domain-separated, so publishing it
+ * neither reveals the root nor produces a value reusable anywhere else.
+ *
+ * Byte-identical on web and mobile: the label and length below are the wire
+ * contract, and `packages/mobile/src/crypto/takClient.ts` is a byte-for-byte
+ * mirror of this file. Changing either one on one platform silently splits the
+ * two clients into different fingerprints for the same root.
+ */
+export async function deriveRootFingerprint(root: Uint8Array): Promise<string> {
+  const cs = await gc.ciphersuiteImpl();
+  // Same HKDF shape as archiveKey: zero salt of hash length (this Kdf impl
+  // requires it), all domain separation carried in the expand info.
+  const salt = new Uint8Array(cs.kdf.size);
+  const prk = await cs.kdf.extract(salt, root);
+  return b64(await cs.kdf.expand(prk, enc.encode(ROOT_FINGERPRINT_LABEL), ROOT_FINGERPRINT_LEN));
 }
 
 /** HKDF-derive the per-message 16-byte AEAD key from a TAK/root + message id. */

@@ -130,7 +130,11 @@ describe.sequential('API keys (E2E, real container)', () => {
   // ── the requested scenario: scoped key, allowed vs out-of-scope, then revoke ──
   it('an agent using ONLY a scoped key can do allowed ops but is 403\'d on an out-of-scope op; revoke → 401', async () => {
     // Scoped to topic/join + chat/read — deliberately NOT post/write.
-    const created = await createKey(owner.token, ['/openstoa/topic/join', '/openstoa/chat/read'], 'none', 'scoped-agent-key');
+    // historyGrant 'full': this case is about the CMD allowlist, and a bounded
+    // grant would 403 the chat read below for an unrelated reason (grant
+    // enforcement lives in `src/lib/historyGrant.ts` and is covered by
+    // apikey-gated-topics.test.ts).
+    const created = await createKey(owner.token, ['/openstoa/topic/join', '/openstoa/chat/read'], 'full', 'scoped-agent-key');
     const agentAuth = bearer(created.rawKey);
 
     // Allowed: join a topic owner is NOT already a member of, using ONLY the

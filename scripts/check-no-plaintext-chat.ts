@@ -13,6 +13,12 @@
  *
  * Run: `DATABASE_URL=... npx tsx scripts/check-no-plaintext-chat.ts`
  * Or:  `npm run verify:no-plaintext-chat`
+ *
+ * STRICT MODE (`--strict`, or any environment where `CI` is set): a missing or
+ * unreachable DATABASE_URL becomes a FAILURE instead of a warning. Without it,
+ * half the gate silently skips itself and the job goes green having checked
+ * nothing but the source string — a gate that looks like protection and is not.
+ * The lenient default is for local runs, where the compose DB is often down.
  */
 
 import { Pool } from 'pg';
@@ -92,11 +98,34 @@ export function checkChatRouteGuard(routeFilePath: string = CHAT_ROUTE_GLOB): So
 }
 
 // ---------------------------------------------------------------------------
+// Strict mode
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide whether a skipped DB check is fatal. Pure (argv/env passed in) so the
+ * decision itself is unit-testable — the CI wiring is only as good as this
+ * predicate.
+ *
+ * Two triggers, deliberately:
+ *   - `--strict` on the command line: explicit, visible in the workflow file,
+ *     and usable by anyone who wants the full gate locally.
+ *   - `CI` set to a non-empty value: GitHub Actions (and every other major CI)
+ *     sets it, so the gate is fatal even if a future workflow forgets the flag.
+ *     A gate that can be defeated by omitting an argument is not a gate.
+ */
+export function isStrictMode(argv: string[], env: Record<string, string | undefined>): boolean {
+  if (argv.includes('--strict')) return true;
+  return typeof env.CI === 'string' && env.CI.length > 0 && env.CI !== 'false' && env.CI !== '0';
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   let allOk = true;
+  const strict = isStrictMode(process.argv.slice(2), process.env);
+  console.log(`[check-no-plaintext-chat] mode: ${strict ? 'STRICT (DB check is mandatory)' : 'lenient (local dev)'}`);
 
   // --- (b) Source check (always runs, no DB required) ---
   const src = checkChatRouteGuard();
@@ -107,13 +136,18 @@ async function main(): Promise<void> {
     console.log(`[check-no-plaintext-chat] source check OK — guard present in ${src.filePath}`);
   }
 
-  // --- (a) DB check (soft-fail when DB is unreachable) ---
+  // --- (a) DB check (mandatory in strict mode, soft-skip locally) ---
   const url = process.env.DATABASE_URL;
   if (!url) {
-    console.warn(
-      '[check-no-plaintext-chat] WARNING: DATABASE_URL not set — skipping DB check. ' +
-        'Set DATABASE_URL to run the full SI-1 gate.',
-    );
+    const msg =
+      'DATABASE_URL not set — the DB half of the SI-1 gate cannot run. ' +
+      'Set DATABASE_URL to run the full gate.';
+    if (strict) {
+      console.error(`[check-no-plaintext-chat] FAILED (strict): ${msg}`);
+      allOk = false;
+    } else {
+      console.warn(`[check-no-plaintext-chat] WARNING: ${msg}`);
+    }
   } else {
     const pool = new Pool({ connectionString: url, connectionTimeoutMillis: 5000 });
     try {
@@ -136,14 +170,23 @@ async function main(): Promise<void> {
         console.log('[check-no-plaintext-chat] DB check OK — no plaintext user messages found.');
       }
     } catch (err) {
-      // DB unreachable — warn but do NOT fail the gate. This gate is meant
-      // for CI environments where a DB is present; locally the DB may be
-      // down at script invocation time.
+      // DB unreachable. In strict mode that is a FAILURE: an unreachable DB and
+      // a clean DB are indistinguishable from here, and treating them the same
+      // turns the gate into a no-op exactly when it is supposed to be load-
+      // bearing. Locally the compose DB is often down, so the run stays lenient.
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(
-        `[check-no-plaintext-chat] WARNING: DB unreachable (${msg}) — skipping DB check. ` +
-          'Run with a live DATABASE_URL to enforce the full SI-1 invariant.',
-      );
+      if (strict) {
+        console.error(
+          `[check-no-plaintext-chat] FAILED (strict): DB unreachable (${msg}) — the SI-1 ` +
+            'invariant could not be verified. An unverifiable gate is a failed gate.',
+        );
+        allOk = false;
+      } else {
+        console.warn(
+          `[check-no-plaintext-chat] WARNING: DB unreachable (${msg}) — skipping DB check. ` +
+            'Run with a live DATABASE_URL to enforce the full SI-1 invariant.',
+        );
+      }
     } finally {
       await pool.end();
     }

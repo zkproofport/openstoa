@@ -130,18 +130,33 @@ describe('master_key backup + recovery', () => {
 describe('TakSessionStore keychain snapshot (export/import + manifest + onChange)', () => {
   // public archiveOnSend does not touch MLS state, so a null mls is safe here.
   const noMls = null as unknown as MlsSessionStore;
-  const noopTransport = {
-    postArchive: async () => {},
-    getArchive: async () => [],
-    postBundle: async () => {},
-    getBundles: async () => [],
-    ackBundles: async () => {},
-  };
+  // A transport that accepts the first fingerprint claim per topic, like the
+  // server's compare-and-set — so archiveOnSend can mint a genesis root.
+  function noopTransport() {
+    const fingerprints = new Map<string, string>();
+    return {
+      postArchive: async () => {},
+      getArchive: async () => [],
+      postBundle: async () => {},
+      getBundles: async () => [],
+      ackBundles: async () => {},
+      getRootFingerprint: async (t: string) => ({ fingerprint: fingerprints.get(t) ?? null, archiveCount: 0 }),
+      setRootFingerprint: async (t: string, fingerprint: string) => {
+        const cur = fingerprints.get(t);
+        if (cur === undefined) {
+          fingerprints.set(t, fingerprint);
+          return { fingerprint, claimed: true };
+        }
+        return { fingerprint: cur, claimed: cur === fingerprint };
+      },
+    };
+  }
 
   it('exports written TAK keys, fires onChange, and imports into a fresh store', async () => {
     const store = memStore();
     let changes = 0;
-    const tak = new TakSessionStore(noMls, noopTransport, store, () => void changes++);
+    const transport = noopTransport();
+    const tak = new TakSessionStore(noMls, transport, store, () => void changes++);
 
     await tak.archiveOnSend('topicA', 'msg1', 'hello', 'public');
     await tak.archiveOnSend('topicA', 'msg2', 'world', 'public'); // same root, reused
@@ -153,7 +168,7 @@ describe('TakSessionStore keychain snapshot (export/import + manifest + onChange
 
     // import into a fresh store → same snapshot round-trips
     const store2 = memStore();
-    const tak2 = new TakSessionStore(noMls, noopTransport, store2);
+    const tak2 = new TakSessionStore(noMls, transport, store2);
     await tak2.importKeychain(keychain);
     expect(await tak2.exportKeychain()).toEqual(keychain);
   });
@@ -162,7 +177,7 @@ describe('TakSessionStore keychain snapshot (export/import + manifest + onChange
     const mk = kb.generateMasterKey();
     const inner = memStore();
     const enc = await km.EncryptingKVStore.create(inner, mk);
-    const tak = new TakSessionStore(noMls, noopTransport, enc);
+    const tak = new TakSessionStore(noMls, noopTransport(), enc);
 
     await tak.archiveOnSend('topicE', 'm1', 'secret', 'public');
     const keychain = await tak.exportKeychain();

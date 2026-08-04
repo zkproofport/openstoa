@@ -12,6 +12,8 @@ import {
 } from '@/lib/mls/http';
 import { storeArchiveRow, getArchiveSince, type ArchiveCursor } from '@/lib/mls/archive';
 import { requireAiCapability } from '@/lib/aiPermissions';
+import { historyGrantDenial, resolveEnforcedHistoryGrant } from '@/lib/historyGrant';
+import { getArchiveWindowed, isUnboundedWindow, resolveHistoryWindow } from '@/lib/mls/historyWindow';
 
 const ROUTE = '/api/topics/[topicId]/archive';
 const ARCHIVE_PAGE_DEFAULT = 200;
@@ -133,6 +135,13 @@ export async function POST(
  *       `createdAt` + `messageId` back as `since` + `sinceMsg` to get the next page — exact even when
  *       rows share a timestamp (no skips, no duplicates). **Membership required** (a removed member
  *       gets 403 — D11 archive gating).
+ *
+ *       **API-key callers — two scopes apply.** The key needs `/openstoa/chat/read` in its `cmd`
+ *       (else 403), AND its `historyGrant` bounds which rows come back: `full` = everything,
+ *       `none` = **403**, `Nd` / `since_epoch:N` / `N` = only rows whose ORIGINAL message falls
+ *       inside that window (the bound is on the message's own age and epoch, not on when the row
+ *       was archived). Pair the grant with the matching TAK bundles from `GET /tak/bundles`, which
+ *       enforces the same grant. Human sessions are unaffected.
  *     operationId: getArchive
  *     x-related-skills: [store-archive-message, get-tak-bundles]
  *     parameters:
@@ -174,7 +183,10 @@ export async function POST(
  *                       createdAt: { type: string, format: date-time }
  *       400: { description: Invalid since/sinceMsg/limit }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { $ref: '#/components/responses/Forbidden' }
+ *       403:
+ *         description: |
+ *           Not a member; or an API key lacking `/openstoa/chat/read`; or an API key whose
+ *           `historyGrant` is `none`.
  */
 export async function GET(
   request: NextRequest,
@@ -190,6 +202,16 @@ export async function GET(
     // gate. Humans are gated by membership only.
     const readGate = await requireAiCapability(db, auth.session, '/openstoa/chat/read');
     if (readGate) return readGate;
+
+    // …and the key's own history grant bounds WHICH archived rows it may pull
+    // back (`src/lib/historyGrant.ts`). `null` = human or `full`: the read below
+    // then takes the original, unbounded path.
+    const grant = resolveEnforcedHistoryGrant(auth.session);
+    const grantDenied = historyGrantDenial(grant);
+    if (grantDenied) {
+      logger.warn(ROUTE, 'AI caller has no history grant', { topicId, userId: auth.session.userId });
+      return grantDenied;
+    }
 
     const sp = new URL(request.url).searchParams;
     const since = sp.get('since');
@@ -218,7 +240,13 @@ export async function GET(
       cursor = { createdAt: since, messageId: sinceMsg };
     }
 
-    const rows = await getArchiveSince(db, topicId, cursor, limit);
+    // A bounded grant goes through the windowed read (joins chat_messages so the
+    // bound is on the ORIGINAL message's age, not on when the row was archived —
+    // see src/lib/mls/historyWindow.ts). Everyone else keeps the plain read.
+    const window = grant ? await resolveHistoryWindow(db, topicId, grant) : null;
+    const rows = window && !isUnboundedWindow(window)
+      ? await getArchiveWindowed(db, topicId, cursor, limit, window)
+      : await getArchiveSince(db, topicId, cursor, limit);
     return NextResponse.json({
       archive: rows.map((r) => ({
         messageId: r.messageId,

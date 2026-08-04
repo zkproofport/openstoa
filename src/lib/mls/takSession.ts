@@ -47,6 +47,52 @@ export interface PushPreviewSeal {
   takB64: string;
 }
 
+/** What the server publishes about a public topic's archive root (crypto-free). */
+export interface ArchiveRootIdentity {
+  /** base64 HKDF tag of the topic's archive root, or null if none is claimed yet. */
+  fingerprint: string | null;
+  /** Archive row count. Non-zero is permanent PROOF that a root already exists. */
+  archiveCount: number;
+}
+
+/** Outcome of publishing a fingerprint: compare-and-set, first writer wins. */
+export interface ArchiveRootClaim {
+  /** The value now stored for the topic — ours, or the winner's. */
+  fingerprint: string;
+  /** True when ours is the stored one. */
+  claimed: boolean;
+}
+
+/**
+ * Where this device stands on a PUBLIC topic's archive root:
+ *
+ *   'verified'   — the root we hold matches the topic's published fingerprint.
+ *                  The only state in which archiving is allowed.
+ *   'waiting'    — we hold no usable root and are not allowed to mint one. The
+ *                  real root has to arrive as a TAK bundle. Live chat is
+ *                  unaffected (MLS messages do not use this key) — we simply
+ *                  skip the archive append until it does.
+ *   'orphan'     — we hold a root that is NOT the topic's. Read-only: it still
+ *                  opens the rows this device sealed under it, but nothing new
+ *                  may be sealed, distributed, or backed up under it.
+ *   'unverified' — the check could not be completed (server unreachable). FAIL
+ *                  SAFE: never mint, never archive. An unchecked mint is exactly
+ *                  what orphans a topic's history.
+ */
+export type ArchiveRootState = 'verified' | 'waiting' | 'orphan' | 'unverified';
+
+/** Result of an archive append. `rootState` is null for the per-epoch tiers. */
+export interface ArchiveResult {
+  archived: boolean;
+  rootState: ArchiveRootState | null;
+}
+
+/** A resolved public root: the key we may use (if any) and why. */
+interface RootResolution {
+  key: Uint8Array | null;
+  state: ArchiveRootState;
+}
+
 /** DS surface the TAK layer needs (server is crypto-free; this only moves bytes). */
 export interface TakTransport {
   postArchive(topicId: string, messageId: string, takVersion: number, archiveB64: string): Promise<void>;
@@ -60,6 +106,10 @@ export interface TakTransport {
   ): Promise<void>;
   getBundles(topicId: string, deviceId: string): Promise<TakBundleRow[]>;
   ackBundles(topicId: string, deviceId: string, ids: string[]): Promise<void>;
+  /** Read the public archive root's published identity + archive row count. */
+  getRootFingerprint(topicId: string): Promise<ArchiveRootIdentity>;
+  /** Publish our root's fingerprint. COMPARE-AND-SET — never overwrites. */
+  setRootFingerprint(topicId: string, fingerprint: string): Promise<ArchiveRootClaim>;
 }
 
 const dec = new TextDecoder();
@@ -100,6 +150,14 @@ export class TakSessionStore {
   private rootKey(t: string) {
     return `tak.root.${t}`;
   }
+  // A root this device archived under before learning it was not the topic's.
+  // Kept READ-ONLY and LOCAL ONLY: it is the sole key to rows this device
+  // sealed, so deleting it would lose those too — but it is deliberately never
+  // recorded in the manifest, so it can never reach the server keychain backup
+  // or be handed to another member.
+  private orphanRootKey(t: string) {
+    return `tak.root.orphan.${t}`;
+  }
   private epochKey(t: string, e: number) {
     return `tak.epoch.${t}.${e}`;
   }
@@ -124,17 +182,59 @@ export class TakSessionStore {
     const v = await this.store.get(this.rootKey(topicId));
     return v ? unb64(v) : null;
   }
+  // Writes are NO-OPS when the value is unchanged. Re-storing an identical key
+  // would still fire onKeychainChange, and every mount/join re-delivers the same
+  // root bundle — so without this a normal session schedules a full encrypted
+  // keychain re-upload for material that did not change.
   private async setRoot(topicId: string, root: Uint8Array): Promise<void> {
-    await this.store.set(this.rootKey(topicId), b64(root));
+    const v = b64(root);
+    const prev = await this.store.get(this.rootKey(topicId));
+    if (prev === v) return;
+    // Replacing a root we held means that one was an orphan. Stash it so rows
+    // this device already sealed under it stay readable to it (see backfill).
+    if (prev != null) await this.store.set(this.orphanRootKey(topicId), prev);
+    await this.store.set(this.rootKey(topicId), v);
+    this.rootResolutions.delete(topicId); // the stored root changed — re-resolve
     await this.recordKey(this.rootKey(topicId));
+  }
+  private async getOrphanRoot(topicId: string): Promise<Uint8Array | null> {
+    const v = await this.store.get(this.orphanRootKey(topicId));
+    return v ? unb64(v) : null;
   }
   private async getEpochTak(topicId: string, epoch: number): Promise<Uint8Array | null> {
     const v = await this.store.get(this.epochKey(topicId, epoch));
     return v ? unb64(v) : null;
   }
   private async setEpochTak(topicId: string, epoch: number, t: Uint8Array): Promise<void> {
-    await this.store.set(this.epochKey(topicId, epoch), b64(t));
+    const v = b64(t);
+    if ((await this.store.get(this.epochKey(topicId, epoch))) === v) return;
+    await this.store.set(this.epochKey(topicId, epoch), v);
     await this.recordKey(this.epochKey(topicId, epoch));
+  }
+
+  /** `tak.root.<topicId>` → topicId; null for any other key (incl. orphan stashes). */
+  private topicIdOfRootKey(storeKey: string): string | null {
+    if (!storeKey.startsWith('tak.root.') || storeKey.startsWith('tak.root.orphan.')) return null;
+    return storeKey.slice('tak.root.'.length);
+  }
+
+  /**
+   * Is this root provably NOT the topic's real archive root? THROWS when the
+   * check cannot be completed — callers must treat "unknown" as "do not act",
+   * never as "not an orphan".
+   */
+  private async rootIsOrphan(topicId: string, root: Uint8Array): Promise<boolean> {
+    // Deliberately NOT served from the resolution cache. Backing up an orphan
+    // root corrupts the user's single recovery snapshot, which is unrecoverable
+    // and invisible until a recovery "succeeds" and opens nothing — so this asks
+    // the server every time rather than trusting a cached verdict. The keychain
+    // backup is debounced and only fires on a real key change, so the cost is
+    // a handful of requests, not a per-message one.
+    const identity = await this.transport.getRootFingerprint(topicId);
+    // Nothing published: we have no basis to condemn this root (the retroactive
+    // case — see resolveRoot). Absence of evidence is not evidence.
+    if (!identity.fingerprint) return false;
+    return (await tak.deriveRootFingerprint(root)) !== identity.fingerprint;
   }
 
   /**
@@ -151,7 +251,17 @@ export class TakSessionStore {
     const out: Record<string, string> = {};
     for (const k of Object.keys(set)) {
       const v = await this.store.get(k);
-      if (v != null) out[k] = v;
+      if (v == null) continue;
+      // An ORPHAN root must never reach the server backup. The backup is one row
+      // per user, so uploading one would replace the root in the user's own
+      // recovery snapshot — which is why a technically successful passkey
+      // recovery could still open nothing: the key was right, the root inside
+      // was not. `rootIsOrphan` THROWS when it cannot check, aborting the whole
+      // export so the caller skips the upload rather than overwriting a good
+      // backup with a partial keychain.
+      const topicId = this.topicIdOfRootKey(k);
+      if (topicId !== null && (await this.rootIsOrphan(topicId, unb64(v)))) continue;
+      out[k] = v;
     }
     return out;
   }
@@ -170,30 +280,156 @@ export class TakSessionStore {
     await this.store.set(this.manifestKey(), JSON.stringify(set));
   }
 
-  // In-flight ensurePublicRoot per topic. Without this, a holder that calls
-  // ensurePublicRoot concurrently (distribute-on-open + archive-on-send) would
-  // race: both read no root, both generate a DIFFERENT random root, then archives
-  // get sealed under one while the other is distributed — so receivers can't
-  // decrypt. Memoizing the promise makes concurrent callers share one generation.
-  private rootPromises = new Map<string, Promise<Uint8Array>>();
+  // In-flight resolvePublicRoot per topic. Without this, a holder that resolves
+  // concurrently (distribute-on-open + archive-on-send) would race: both read no
+  // root, both generate a DIFFERENT random root, then archives get sealed under
+  // one while the other is distributed — so receivers can't decrypt. Memoizing
+  // the promise makes concurrent callers share one generation + one claim.
+  private rootPromises = new Map<string, Promise<RootResolution>>();
+  // Settled resolutions. 'verified' is cached for the session (the answer cannot
+  // change: the fingerprint is write-once and our root then matches it);
+  // 'waiting' / 'orphan' are real server answers, re-checked after a short TTL so
+  // a device that was waiting picks the real root up as soon as its bundle lands.
+  // 'unverified' is NOT cached at all — it means the check failed, and a failed
+  // check must not keep a reachable server's answer out for another 15 seconds.
+  private rootResolutions = new Map<string, { at: number; res: RootResolution }>();
+  private static readonly UNSETTLED_ROOT_TTL_MS = 15_000;
+  // Memo of "does this root open the topic's oldest archive row" — neither the
+  // root nor the oldest row changes, so one answer per (topic, root) is final.
+  private oldestRowProbe = new Map<string, boolean>();
   // Leaves we've already granted to (avoid re-granting the same device).
   private grantedLeaves = new Map<string, Set<string>>();
 
-  /** Holder bootstrap: generate the public archive root once, then reuse it. */
-  ensurePublicRoot(topicId: string): Promise<Uint8Array> {
+  /**
+   * Where this device stands on a public topic's archive root. Everything that
+   * touches the public archive goes through here.
+   *
+   * The decision table, given the topic's published fingerprint F and its
+   * archive row count N (both read from the server, which computes neither):
+   *
+   *   F set,  our root matches F        → verified   (archive normally)
+   *   F set,  our root differs          → orphan     (read-only; wait for the real root)
+   *   F set,  no root held              → waiting    (wait for the real root)
+   *   F null, N == 0, no root held      → mint, publish F, then persist → verified
+   *   F null, N == 0, root held         → publish its F                → verified
+   *   F null, N  > 0, no root held      → waiting    (rows PROVE a root exists)
+   *   F null, N  > 0, root opens row #1 → publish its F                → verified
+   *   F null, N  > 0, root does not     → orphan
+   *   check failed (offline)            → unverified (never mint, never archive)
+   *
+   * The `F null, N > 0` rows are the retroactive half: every topic in production
+   * today has archive rows and no fingerprint, and the old code read "no local
+   * root" as "no root exists" and minted one — silently orphaning all of it. The
+   * row count is what closes that hole, and decrypting the OLDEST row is what
+   * decides which of two unproven roots is the real one: row #1 predates any
+   * root minted later by a device that was merely waiting.
+   */
+  private resolvePublicRoot(topicId: string): Promise<RootResolution> {
+    const cached = this.rootResolutions.get(topicId);
+    if (cached && (cached.res.state === 'verified' || Date.now() - cached.at < TakSessionStore.UNSETTLED_ROOT_TTL_MS)) {
+      return Promise.resolve(cached.res);
+    }
     let p = this.rootPromises.get(topicId);
     if (!p) {
-      p = (async () => {
-        let r = await this.getRoot(topicId);
-        if (!r) {
-          r = tak.generatePublicRootKey();
-          await this.setRoot(topicId, r);
-        }
-        return r;
-      })();
+      p = this.computePublicRoot(topicId)
+        .then((res) => {
+          if (res.state !== 'unverified') this.rootResolutions.set(topicId, { at: Date.now(), res });
+          return res;
+        })
+        .finally(() => {
+          this.rootPromises.delete(topicId);
+        });
       this.rootPromises.set(topicId, p);
     }
     return p;
+  }
+
+  private async computePublicRoot(topicId: string): Promise<RootResolution> {
+    const local = await this.getRoot(topicId);
+    let identity: ArchiveRootIdentity;
+    try {
+      identity = await this.transport.getRootFingerprint(topicId);
+    } catch {
+      // FAIL SAFE. A root minted without checking is the whole defect: it looks
+      // valid to this device forever and orphans everything sealed under it.
+      return { key: local, state: 'unverified' };
+    }
+
+    if (identity.fingerprint) {
+      if (!local) return { key: null, state: 'waiting' };
+      const mine = await tak.deriveRootFingerprint(local);
+      return { key: local, state: mine === identity.fingerprint ? 'verified' : 'orphan' };
+    }
+
+    // Nothing published yet.
+    if (!local) {
+      // Archive rows are permanent proof a root existed (unlike tak_bundles,
+      // which are deleted once delivered). Minting here is never safe.
+      if (identity.archiveCount > 0) return { key: null, state: 'waiting' };
+      return this.claimRoot(topicId, tak.generatePublicRootKey(), false);
+    }
+
+    if (identity.archiveCount > 0) {
+      const opens = await this.rootOpensOldestArchiveRow(topicId, local);
+      if (opens === null) return { key: local, state: 'unverified' }; // could not read the archive
+      if (!opens) return { key: local, state: 'orphan' };
+    }
+    return this.claimRoot(topicId, local, true);
+  }
+
+  /**
+   * Publish `root`'s fingerprint and interpret the compare-and-set outcome.
+   * `persisted` says whether the root is already in the local store: a root we
+   * just minted has sealed nothing, so if it loses the race we DROP it rather
+   * than keep a guaranteed orphan; a stored root is kept read-only because rows
+   * this device already sealed under it would otherwise become unreadable too.
+   */
+  private async claimRoot(topicId: string, root: Uint8Array, persisted: boolean): Promise<RootResolution> {
+    const fp = await tak.deriveRootFingerprint(root);
+    let claim: ArchiveRootClaim;
+    try {
+      claim = await this.transport.setRootFingerprint(topicId, fp);
+    } catch {
+      return { key: persisted ? root : null, state: 'unverified' };
+    }
+    if (claim.claimed) {
+      if (!persisted) await this.setRoot(topicId, root);
+      return { key: root, state: 'verified' };
+    }
+    return persisted ? { key: root, state: 'orphan' } : { key: null, state: 'waiting' };
+  }
+
+  /**
+   * Does `root` decrypt the topic's OLDEST archive row? null when the archive
+   * could not be read (treat as unknown, never as a verdict). True when the
+   * topic has no rows at all — nothing contradicts the root.
+   */
+  private async rootOpensOldestArchiveRow(topicId: string, root: Uint8Array): Promise<boolean | null> {
+    const memoKey = `${topicId}|${b64(root)}`;
+    const memo = this.oldestRowProbe.get(memoKey);
+    if (memo !== undefined) return memo;
+    let rows: ArchiveEntry[];
+    try {
+      rows = await this.transport.getArchive(topicId);
+    } catch {
+      return null;
+    }
+    if (rows.length === 0) return true; // not memoized: rows may appear later
+    // getArchive is ascending by (created_at, message_id).
+    const oldest = rows[0];
+    const opens = (await tak.openArchive(root, oldest.messageId, oldest.ciphertext)) != null;
+    this.oldestRowProbe.set(memoKey, opens);
+    return opens;
+  }
+
+  /**
+   * This device's standing on a topic's archive root — for surfacing "history is
+   * still syncing" in the UI. Null for private/secret/AI topics, whose archive
+   * keys are per-epoch and have no topic-wide root (§5.2).
+   */
+  async archiveRootState(topicId: string, visibility: Visibility): Promise<ArchiveRootState | null> {
+    if (visibility !== 'public') return null;
+    return (await this.resolvePublicRoot(topicId)).state;
   }
 
   /** Derive + cache the current epoch's TAK (call as each epoch is processed). */
@@ -219,9 +455,16 @@ export class TakSessionStore {
    * is cached as a side effect so it can be granted later (the exporter secret is
    * gone once the epoch advances).
    */
-  private async currentArchiveKey(topicId: string, visibility: Visibility): Promise<{ key: Uint8Array; takVersion: number }> {
+  private async currentArchiveKey(
+    topicId: string,
+    visibility: Visibility,
+  ): Promise<{ key: Uint8Array | null; takVersion: number; rootState: ArchiveRootState | null }> {
     if (visibility === 'public') {
-      return { key: await this.ensurePublicRoot(topicId), takVersion: 0 };
+      const r = await this.resolvePublicRoot(topicId);
+      // Only a VERIFIED root may seal anything. An orphan/unverified root would
+      // produce rows that no member — including this device after it adopts the
+      // real root — can ever read.
+      return { key: r.state === 'verified' ? r.key : null, takVersion: 0, rootState: r.state };
     }
     const epoch = await this.mls.readState(topicId, async (s) => gc.currentEpoch(s));
     let t = await this.getEpochTak(topicId, epoch);
@@ -229,17 +472,29 @@ export class TakSessionStore {
       t = await this.mls.readState(topicId, (s) => tak.deriveEpochTak(s, topicId, epoch));
       await this.setEpochTak(topicId, epoch, t);
     }
-    return { key: t, takVersion: epoch };
+    return { key: t, takVersion: epoch, rootState: null };
   }
 
   /**
    * Re-encrypt a body we just sent and upload it to the archive (P3-13). public
    * → encrypt under the shared root (tak_version 0); scoped → under the current
    * epoch TAK (tak_version = epoch), which we also cache for later granting.
+   *
+   * A public topic whose root is not verified SKIPS the append and reports why,
+   * instead of writing a row nobody can decrypt. This never blocks the message:
+   * MLS application messages carry the live conversation and are independent of
+   * the archive root, so the send has already succeeded by the time this runs.
    */
-  async archiveOnSend(topicId: string, messageId: string, plaintext: string, visibility: Visibility): Promise<void> {
-    const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+  async archiveOnSend(
+    topicId: string,
+    messageId: string,
+    plaintext: string,
+    visibility: Visibility,
+  ): Promise<ArchiveResult> {
+    const { key, takVersion, rootState } = await this.currentArchiveKey(topicId, visibility);
+    if (!key) return { archived: false, rootState };
     await this.transport.postArchive(topicId, messageId, takVersion, await tak.sealArchive(key, messageId, plaintext));
+    return { archived: true, rootState };
   }
 
   /**
@@ -260,6 +515,9 @@ export class TakSessionStore {
   async sealForPush(topicId: string, plaintext: string, visibility: Visibility): Promise<PushPreviewSeal | null> {
     try {
       const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+      // No verified root → no preview. Sealing under an orphan root would ship a
+      // notification body every recipient fails to open.
+      if (!key) return null;
       return { ct: await tak.sealPushPreview(key, plaintext), takVersion, takB64: b64(key) };
     } catch {
       return null;
@@ -277,6 +535,7 @@ export class TakSessionStore {
   async takForPush(topicId: string, visibility: Visibility): Promise<Omit<PushPreviewSeal, 'ct'> | null> {
     try {
       const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+      if (!key) return null; // nothing worth mirroring until the real root arrives
       return { takVersion, takB64: b64(key) };
     } catch {
       return null;
@@ -303,13 +562,20 @@ export class TakSessionStore {
    * Holder action (public, SI-6): wrap the archive root to EVERY current member
    * leaf and upload the bundles, so any member — including ones who joined later
    * — can derive every archived epoch. Returns how many bundles were sent.
+   *
+   * REFUSES (returns 0) unless our root is verified. This is the blast radius
+   * that made the defect catastrophic rather than local: the holder lease is
+   * only 900s and is renewed only while someone has the chat open, so a device
+   * holding an orphan root could easily win the lease and push that root to
+   * every member — overwriting the real one everywhere at once.
    */
   async distributePublicRoot(topicId: string): Promise<number> {
     // Catch up first so we see every current member's leaf — a holder whose
     // history decrypted from cache never MLS-opened, so its tree could be stale.
     await this.mls.sync(topicId);
-    const root = await this.ensurePublicRoot(topicId);
-    const payload: tak.PublicBundle = { tier: 'public', rootKey: b64(root) };
+    const resolved = await this.resolvePublicRoot(topicId);
+    if (resolved.state !== 'verified' || !resolved.key) return 0;
+    const payload: tak.PublicBundle = { tier: 'public', rootKey: b64(resolved.key) };
     const leaves = await this.allMemberLeaves(topicId);
     let n = 0;
     for (const lf of leaves) {
@@ -401,6 +667,41 @@ export class TakSessionStore {
     return n;
   }
 
+  /**
+   * Should an incoming public root REPLACE what we hold? The old code answered
+   * "always" — it called setRoot unconditionally — which is how one device's
+   * orphan root reached every member and every keychain backup.
+   *
+   *   already hold this exact root      → false (no-op; no keychain churn)
+   *   fingerprint published             → only if the incoming root matches it
+   *   fingerprint null, no root held    → true (nothing to lose)
+   *   fingerprint null, root held       → only if the incoming root opens the
+   *                                       topic's oldest archive row and ours
+   *                                       does not — the one piece of evidence
+   *                                       available on a topic that predates the
+   *                                       fingerprint. This is what repairs an
+   *                                       already-orphaned device.
+   *   check failed                      → false (never overwrite on a guess)
+   */
+  private async shouldAdoptRoot(topicId: string, incoming: Uint8Array): Promise<boolean> {
+    const local = await this.getRoot(topicId);
+    if (local && b64(local) === b64(incoming)) return false;
+
+    let identity: ArchiveRootIdentity;
+    try {
+      identity = await this.transport.getRootFingerprint(topicId);
+    } catch {
+      return false;
+    }
+
+    if (identity.fingerprint) {
+      return (await tak.deriveRootFingerprint(incoming)) === identity.fingerprint;
+    }
+    if (!local) return true;
+    if ((await this.rootOpensOldestArchiveRow(topicId, incoming)) !== true) return false;
+    return (await this.rootOpensOldestArchiveRow(topicId, local)) === false;
+  }
+
   /** Pull bundles addressed to this device, unwrap, cache their TAKs, ack. */
   async ingestBundles(topicId: string): Promise<void> {
     const myDev = await this.myDeviceId(topicId);
@@ -415,7 +716,11 @@ export class TakSessionStore {
       }
       if (!payload) continue;
       if (payload.tier === 'public') {
-        await this.setRoot(topicId, unb64(payload.rootKey));
+        const incoming = unb64(payload.rootKey);
+        if (await this.shouldAdoptRoot(topicId, incoming)) await this.setRoot(topicId, incoming);
+        // A rejected bundle is still acked: the published fingerprint is
+        // write-once, so a root that fails the check now can never pass later —
+        // leaving it undelivered would only make us re-fetch it forever.
       } else {
         for (const [e, k] of Object.entries(payload.taks)) await this.setEpochTak(topicId, Number(e), unb64(k));
       }
@@ -432,12 +737,24 @@ export class TakSessionStore {
   async backfill(topicId: string, visibility: Visibility): Promise<Array<{ messageId: string; plaintext: string }>> {
     await this.ingestBundles(topicId);
     const rows = await this.transport.getArchive(topicId);
+    // Public reads try the topic's root first, then any orphan root this device
+    // previously archived under — those rows are unreadable to everyone else,
+    // but there is no reason to hide them from the device that wrote them.
+    const publicKeys =
+      visibility === 'public'
+        ? ([await this.getRoot(topicId), await this.getOrphanRoot(topicId)].filter(Boolean) as Uint8Array[])
+        : [];
     const out: Array<{ messageId: string; plaintext: string }> = [];
     for (const r of rows) {
-      const key = visibility === 'public' ? await this.getRoot(topicId) : await this.getEpochTak(topicId, r.takVersion);
-      if (!key) continue;
-      const pt = await tak.openArchive(key, r.messageId, r.ciphertext);
-      if (pt != null) out.push({ messageId: r.messageId, plaintext: pt });
+      const keys = visibility === 'public' ? publicKeys : [await this.getEpochTak(topicId, r.takVersion)];
+      for (const key of keys) {
+        if (!key) continue;
+        const pt = await tak.openArchive(key, r.messageId, r.ciphertext);
+        if (pt != null) {
+          out.push({ messageId: r.messageId, plaintext: pt });
+          break;
+        }
+      }
     }
     return out;
   }

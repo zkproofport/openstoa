@@ -169,6 +169,13 @@
       "when": 1785333619948,
       "tag": "0023_marvelous_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785420019948,
+      "tag": "0024_public_archive_root_fingerprint",
+      "breakpoints": true
     }
   ]
 }

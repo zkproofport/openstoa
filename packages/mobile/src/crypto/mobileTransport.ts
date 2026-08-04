@@ -13,7 +13,14 @@
 import type { ChatMessage } from '@openstoa/api-types';
 import type { OpenStoaClient } from '../api/openstoaClient';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
-import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
+import {
+  TakSessionStore,
+  type TakTransport,
+  type TakBundleRow,
+  type ArchiveEntry,
+  type ArchiveRootIdentity,
+  type ArchiveRootClaim,
+} from './takSession';
 import * as km from './keyManager';
 
 function statusOf(e: unknown): number | null {
@@ -157,6 +164,22 @@ export function createTakTransport(client: OpenStoaClient): TakTransport {
     },
     async ackBundles(topicId, deviceId, ids) {
       await client.delete(`${base(topicId)}/tak/bundles`, { body: JSON.stringify({ deviceId, ids }) });
+    },
+    async getRootFingerprint(topicId) {
+      try {
+        return await client.get<ArchiveRootIdentity>(`${base(topicId)}/tak/root-fingerprint`);
+      } catch (e) {
+        // 400 = not a public topic, 404 = topic gone. Neither is a failure to
+        // report: those topics have no shared archive root at all, so the honest
+        // answer is "nothing published". Anything else (offline, 5xx) must
+        // propagate so callers fail safe instead of minting a root blind.
+        const s = statusOf(e);
+        if (s === 400 || s === 404) return { fingerprint: null, archiveCount: 0 };
+        throw e;
+      }
+    },
+    async setRootFingerprint(topicId, fingerprint) {
+      return client.put<ArchiveRootClaim>(`${base(topicId)}/tak/root-fingerprint`, { fingerprint });
     },
   };
 }
