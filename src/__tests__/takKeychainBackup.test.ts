@@ -62,7 +62,14 @@ beforeEach(() => {
   vi.resetModules(); // webTransport memoizes its stores — every test gets a fresh module
   store.exportKeychain.mockResolvedValue({});
   km.loadOrCreateMasterKey.mockResolvedValue(new Uint8Array(32));
-  km.restoreTakKeychain.mockResolvedValue(null);
+  // A realistic server round-trip: the fake uploader seals as `sealed:<json>`, so
+  // opening a blob returns exactly what was last uploaded. Merge semantics are
+  // untestable against a mock that always says "opened nothing".
+  km.restoreTakKeychain.mockImplementation(async (_mk: Uint8Array, fetchBlob: () => Promise<string | null>) => {
+    const blob = await fetchBlob();
+    if (!blob) return null;
+    return blob.startsWith('sealed:') ? (JSON.parse(blob.slice(7)) as Record<string, string>) : null;
+  });
   server.takBlob = null;
   server.passkeys = [];
   server.wrappedMaster = null;
@@ -200,13 +207,31 @@ describe('ensureTakKeychainBackup — the repair path for already-broken account
     expect(posts).toHaveLength(1);
   });
 
-  it('CONTRACT: an existing backup short-circuits before the export — no upload storm', async () => {
-    server.takBlob = 'already-there';
-    km.restoreTakKeychain.mockResolvedValue({ 'tak.root.t1': 'AAA' });
+  it('REGRESSION: a snapshot MISSING keys this device holds is merged, never replaced', async () => {
+    // The 6-keys-to-2 loss, reproduced. A browser that has just recovered holds
+    // the account's real key, so every trust check passes — and then it uploads
+    // only its own two keys over the account's six, deleting four the user could
+    // read minutes earlier. The upload must be a union.
+    server.takBlob = `sealed:${JSON.stringify({ 'tak.root.t1': 'AAA', 'tak.epoch.t1.0': 'BBB', 'tak.epoch.t1.1': 'CCC' })}`;
+    store.exportKeychain.mockResolvedValue({ 'tak.root.t1': 'AAA', 'tak.epoch.t2.0': 'DDD' });
+    const { ensureTakKeychainBackup } = await mod();
+
+    expect(await ensureTakKeychainBackup()).toBe('uploaded');
+    expect(posts).toHaveLength(1);
+    const sent = JSON.parse(
+      (JSON.parse(posts[0] as string) as { ciphertext: string }).ciphertext.slice(7),
+    ) as Record<string, string>;
+    expect(Object.keys(sent).sort()).toEqual(['tak.epoch.t1.0', 'tak.epoch.t1.1', 'tak.epoch.t2.0', 'tak.root.t1']);
+  });
+
+  it('CONTRACT: a snapshot that already covers this device is left alone — no upload storm', async () => {
+    server.takBlob = `sealed:${JSON.stringify({ 'tak.root.t1': 'AAA', 'tak.epoch.t1.0': 'BBB' })}`;
+    store.exportKeychain.mockResolvedValue({ 'tak.root.t1': 'AAA' });
     const { ensureTakKeychainBackup } = await mod();
 
     expect(await ensureTakKeychainBackup()).toBe('present');
-    expect(store.exportKeychain).not.toHaveBeenCalled();
+    // The export now runs on every call — it is the only way to know whether we
+    // hold anything the snapshot lacks. What must NOT happen is the write.
     expect(posts).toEqual([]);
   });
 

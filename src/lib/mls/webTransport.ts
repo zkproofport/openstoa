@@ -250,11 +250,29 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
     // account's key, i.e. after recovery or first-run induction.
     if ((await getDeviceKeyState()) === 'recoverable') return 'untrusted';
 
+    // MERGE, NEVER REPLACE. The row is one per user and the POST overwrites it
+    // whole, so a device that uploads only what it happens to hold DELETES every
+    // key it does not — and holding the account's real key makes that device look
+    // maximally trustworthy while it does so. That is not hypothetical: a browser
+    // that had just recovered wrote its 2 keys over the account's 6 and re-locked
+    // history the user could read minutes earlier.
+    const base = await readBackedUpKeychain();
+
     // `exportKeychain` drops orphan roots and THROWS when it cannot check one,
     // so an unverified root can never reach the account's single backup row.
-    const keychain = await getTakSessionStore().exportKeychain();
-    if (Object.keys(keychain).length === 0) return 'empty';
-    await km.uploadTakKeychain(await masterKey(), keychain, async (ciphertext) => {
+    const mine = await getTakSessionStore().exportKeychain();
+    const merged = { ...base, ...mine };
+    const count = Object.keys(merged).length;
+    if (count === 0) return 'empty';
+    // Nothing of ours was missing from the snapshot. Uploading an identical map
+    // would only add churn (and another chance to lose the race with a device
+    // that does hold more).
+    if (count === Object.keys(base).length) {
+      report('upload/already-covered', { count });
+      return 'present';
+    }
+
+    await km.uploadTakKeychain(await masterKey(), merged, async (ciphertext) => {
       const r = await fetch('/api/keys/tak-backup', {
         method: 'POST',
         credentials: 'include',
@@ -263,10 +281,27 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
       });
       if (!r.ok) throw new Error(`tak-backup POST ${r.status}`);
     });
+    report('upload/merged', { was: Object.keys(base).length, now: count });
     return 'uploaded';
-  } catch {
+  } catch (e) {
+    report('upload/failed', { error: String(e) });
     return 'failed';
   }
+}
+
+/**
+ * The account's server-side keychain as this device can read it.
+ *
+ * `{}` means there is nothing to merge into: either nothing is backed up yet, or
+ * a snapshot exists that no key on this account can open. The second case is
+ * dead weight — the `'recoverable'` guard above already declined the case where
+ * something CAN still produce the real key — so letting our keys replace it is
+ * strictly better than preserving bytes nobody will ever read.
+ */
+async function readBackedUpKeychain(): Promise<Record<string, string>> {
+  const blob = await keyBackupHttp().getTakBackup();
+  if (!blob) return {};
+  return (await km.restoreTakKeychain(await masterKey(), async () => blob)) ?? {};
 }
 
 /**
@@ -286,9 +321,16 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
  */
 export async function ensureTakKeychainBackup(): Promise<TakBackupOutcome> {
   try {
-    if (await keyBackupHttp().getTakBackup()) return 'present';
-  } catch {
+    // Deliberately NOT "a row exists, so we are done". That short-circuit is a
+    // one-way door: once any device writes a partial snapshot, every device
+    // holding the missing keys sees a row and stays quiet, so the account can
+    // never climb back out. `uploadTakKeychainNow` merges and reports 'present'
+    // by itself when it finds nothing to add, which is the same cheap outcome
+    // without the trap.
+    await keyBackupHttp().getTakBackup();
+  } catch (e) {
     // Claim nothing when the server cannot be read — never upload on a guess.
+    report('ensure/read-failed', { error: String(e) });
     return 'failed';
   }
   return uploadTakKeychainNow();

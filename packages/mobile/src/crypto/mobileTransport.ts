@@ -204,15 +204,28 @@ export type TakBackupOutcome = 'uploaded' | 'empty' | 'present' | 'untrusted' | 
  *
  * This is the same rule web enforces through `getDeviceKeyState() === 'recoverable'`.
  */
-async function uploadWouldClobber(client: OpenStoaClient, rootStore: SecureKVStore): Promise<boolean> {
+async function readBackedUpKeychain(
+  client: OpenStoaClient,
+  rootStore: SecureKVStore,
+): Promise<Record<string, string> | 'clobber'> {
   const http = keyBackupHttp(client);
   const blob = await http.getTakBackup();
-  if (!blob) return false; // nothing on the server to lose
-  if (await km.restoreTakKeychain(await masterKey(rootStore), async () => blob)) return false; // our key opens it
+  if (!blob) return {}; // nothing on the server to lose
+  const opened = await km.restoreTakKeychain(await masterKey(rootStore), async () => blob);
+  if (opened) return opened; // our key opens it → merge into it
   const wraps = await http.getBackup();
   const clobber = wraps.passkeys.length > 0 || !!wraps.wrappedMaster;
-  report('clobber-check', { serverBytes: blob.length, opensWithOurKey: false, passkeys: wraps.passkeys.length, wrappedMaster: !!wraps.wrappedMaster, verdict: clobber });
-  return clobber;
+  report('clobber-check', {
+    serverBytes: blob.length,
+    opensWithOurKey: false,
+    passkeys: wraps.passkeys.length,
+    wrappedMaster: !!wraps.wrappedMaster,
+    verdict: clobber,
+  });
+  // Something can still produce the real key, so the snapshot is somebody's
+  // history — leave it. Otherwise NOTHING can ever open it again, so preserving
+  // it protects nobody: treat it as absent and let our keys take its place.
+  return clobber ? 'clobber' : {};
 }
 
 /**
@@ -260,7 +273,15 @@ async function pushTakKeychain(
   probeTopicIds: string[] = [],
 ): Promise<TakBackupOutcome> {
   try {
-    if (await uploadWouldClobber(client, rootStore)) return 'untrusted';
+    // MERGE, NEVER REPLACE. The row is one per user and the POST overwrites it
+    // whole, so a device that uploads only what it happens to hold DELETES every
+    // key it does not — and holding the account's real key makes that device look
+    // maximally trustworthy while it does so. That is not hypothetical: a browser
+    // that had just recovered wrote its 2 keys over the account's 6 and re-locked
+    // history the user could read minutes earlier.
+    const base = await readBackedUpKeychain(client, rootStore);
+    if (base === 'clobber') return 'untrusted';
+
     // Names and counts of what this device actually holds, logged BEFORE the
     // export so an empty result can be read as "no keys" or "keys the manifest
     // never listed" rather than guessed at. Isolated: a diagnostic that can fail
@@ -272,14 +293,20 @@ async function pushTakKeychain(
     }
     // `exportKeychain` drops orphan roots and THROWS when it cannot check one,
     // so an unverified root can never reach the account's single backup row.
-    const keychain = await tak.exportKeychain();
-    const keys = Object.keys(keychain);
-    report('export', { count: keys.length, keys });
+    const mine = await tak.exportKeychain();
+    const merged = { ...base, ...mine };
+    const keys = Object.keys(merged);
+    report('export', { mine: Object.keys(mine).length, backedUp: Object.keys(base).length, merged: keys.length });
     if (keys.length === 0) return 'empty';
-    await km.uploadTakKeychain(await masterKey(rootStore), keychain, (ciphertext) =>
+    if (keys.length === Object.keys(base).length) {
+      // Nothing of ours was missing. Re-uploading an identical map is pure churn.
+      report('already-covered', { count: keys.length });
+      return 'present';
+    }
+    await km.uploadTakKeychain(await masterKey(rootStore), merged, (ciphertext) =>
       client.post('/api/keys/tak-backup', { ciphertext }),
     );
-    report('uploaded', { count: keys.length });
+    report('uploaded', { was: Object.keys(base).length, now: keys.length });
     return 'uploaded';
   } catch (e) {
     report('failed', { error: String(e) });
@@ -335,7 +362,11 @@ export async function ensureTakKeychainBackup(
     return 'failed';
   }
   report('ensure', { hasServerBackup: !!existing, serverBytes: existing?.length ?? 0 });
-  if (existing) return 'present';
+  // Deliberately NOT "a row exists, so we are done". That short-circuit is a
+  // one-way door: once any device writes a partial snapshot, every device holding
+  // the missing keys sees a row and stays quiet, so the account can never climb
+  // back out. The uploader merges and reports 'present' by itself when it finds
+  // nothing to add — same cheap outcome, without the trap.
   return uploadTakKeychainNow(client, hostSecureStore, hostLocalStore);
 }
 
