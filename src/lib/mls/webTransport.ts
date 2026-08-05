@@ -118,7 +118,9 @@ function masterKey(): Promise<Uint8Array> {
 
 let _encStore: SecureKVStore | null = null;
 function encStore(): SecureKVStore {
-  if (!_encStore) _encStore = km.EncryptingKVStore.lazy(idbStore(), masterKey);
+  // The root store is passed so reads can fall back to the key this device used
+  // before it recovered — otherwise recovery silently empties its own history.
+  if (!_encStore) _encStore = km.EncryptingKVStore.lazy(idbStore(), masterKey, idbStore());
   return _encStore;
 }
 

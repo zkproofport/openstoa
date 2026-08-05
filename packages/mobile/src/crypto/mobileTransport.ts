@@ -103,7 +103,10 @@ function masterKey(rootStore: SecureKVStore): Promise<Uint8Array> {
 }
 function encrypting(raw: SecureKVStore | undefined, rootStore: SecureKVStore | undefined): SecureKVStore | undefined {
   if (!raw || !rootStore) return raw; // no root → no master_key → pass through (in-memory/plain)
-  return km.EncryptingKVStore.lazy(raw, () => masterKey(rootStore));
+  // rootStore is passed twice on purpose: once to load the live master_key, once
+  // so reads can fall back to the key used before recovery — otherwise recovery
+  // silently empties this device's own history.
+  return km.EncryptingKVStore.lazy(raw, () => masterKey(rootStore), rootStore);
 }
 
 let _store: MlsSessionStore | null = null;
