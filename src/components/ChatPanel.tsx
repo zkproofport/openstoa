@@ -887,7 +887,13 @@ export default function ChatPanel({
 
   async function handleSend() {
     const text = inputValue.trim();
-    if (!text || sending) return;
+    if (!text) return;
+    // Clear FIRST. Waiting for the server round-trip left the sent text sitting
+    // in the box, so the next keystrokes landed after it and a fast second
+    // message read as an edit of the first. The composer belongs to the user,
+    // not to the request.
+    setInputValue('');
+    inputRef.current?.focus();
     setSending(true);
     try {
       const sealed = await getMlsSessionStore().seal(topicId, text);
@@ -916,14 +922,26 @@ export default function ChatPanel({
             void getTakSessionStore().archiveOnSend(topicId, payload.id, text, visibilityRef.current).catch(() => {});
           }
         } catch {}
-        setInputValue('');
-        inputRef.current?.focus();
+      } else {
+        // The composer was cleared optimistically, so give the text back rather
+        // than dropping it — a failed send that also eats the message is worse
+        // than a slow one.
+        restoreUnsentText(text);
       }
     } catch {
-      // ignore
+      restoreUnsentText(text);
     } finally {
       setSending(false);
     }
+  }
+
+  /**
+   * Put a failed send back in the composer WITHOUT overwriting whatever the user
+   * has typed since. They kept typing while the request was in flight; replacing
+   * that with the old text would destroy newer input to report an older failure.
+   */
+  function restoreUnsentText(text: string) {
+    setInputValue((current) => (current.trim() ? `${text}\n${current}` : text));
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -1030,6 +1048,22 @@ export default function ChatPanel({
   // Auto-scroll only when the BOTTOM of the list moved (a new message), never
   // when older history prepended — and only if the user was already at the
   // bottom, so reading history is not interrupted by someone else typing.
+  // A device that joins the group AFTER the root was handed out receives
+  // nothing, and until now that lasted "until some other device happens to
+  // reopen the chat" — reproducibly minutes, or forever. Re-check on a slow
+  // timer while the room is open. `distributePublicRootWhenGroupChanged` is a
+  // no-op unless the MLS epoch actually advanced, so the steady-state cost is
+  // one commits-since GET, not a bundle per tick.
+  useEffect(() => {
+    if (isGuest || !isMember) return;
+    const id = setInterval(() => {
+      void getTakSessionStore()
+        .distributePublicRootWhenGroupChanged(topicId)
+        .catch(() => {});
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [isGuest, isMember, topicId]);
+
   useEffect(() => {
     messagesRef.current = messages;
     oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
@@ -1068,6 +1102,37 @@ export default function ChatPanel({
     [topicId],
   );
 
+  /**
+   * Pull any TAK bundles addressed to this device, decrypt whatever the archive
+   * now opens, and put back anything the archive is missing.
+   *
+   * Extracted so it can run again later, not only on entry. Bundles are PULLED
+   * over HTTP — nothing pushes them down the SSE stream — so a device that was
+   * still waiting for the root when it opened the room would never see the
+   * bundle that arrived a moment later. It sat locked until the user reopened
+   * the room, which is exactly what it looked like on a real phone.
+   */
+  const catchUpArchive = useCallback(async () => {
+    let recovered: Array<{ messageId: string; plaintext: string }> = [];
+    try {
+      recovered = await getTakSessionStore().backfill(topicId, visibilityRef.current);
+      if (mountedRef.current && recovered.length) {
+        const byId = new Map(recovered.map((r) => [r.messageId, r.plaintext]));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.undecryptable && byId.has(m.id)
+              ? { ...m, message: byId.get(m.id)!, undecryptable: false }
+              : m,
+          ),
+        );
+      }
+    } catch {}
+    // Close archive GAPS: `archiveOnSend` gets one attempt, at send time, and
+    // does nothing while the root is unverified. Anything this device can read
+    // is a chance to put one back.
+    void archiveGaps(recovered);
+  }, [topicId, archiveGaps]);
+
   const provisionArchiveAccess = useCallback(async () => {
     try {
       const tak = getTakSessionStore();
@@ -1087,13 +1152,18 @@ export default function ChatPanel({
           });
           return;
         }
-        const r = await fetch(`/api/topics/${topicId}/tak/holder`, {
+        await fetch(`/api/topics/${topicId}/tak/holder`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ deviceId, rootFingerprint }),
         });
-        if (r.ok) await tak.distributePublicRoot(topicId);
+        // Distribute whether or not we won the lease. Gating on the lease made
+        // delivery depend on ONE device being online at the right moment, and
+        // that is what left a device that joined a minute late with no root at
+        // all. Serving is safe from any holder of a verified root: a recipient
+        // rejects any bundle whose fingerprint is not the topic's.
+        await tak.distributePublicRootWhenGroupChanged(topicId);
       } else if (visibilityRef.current === 'private') {
         await tak.grantPrivateHistory(topicId);
       } else if (visibilityRef.current === 'secret' && roleRef.current === 'owner') {
@@ -1102,6 +1172,38 @@ export default function ChatPanel({
       }
     } catch {}
   }, [topicId]);
+
+  // The RECEIVING half of root delivery. Bundles are pulled, never pushed, and
+  // the pull used to happen once per room entry — so a device that was still
+  // waiting when it opened the room never saw the bundle created seconds later.
+  // Poll while this device cannot open the archive, and stop the moment it can:
+  // an unlocked device costs nothing, and a locked one is the only case where
+  // history is actually missing from the screen.
+  useEffect(() => {
+    if (isGuest || !isMember) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const state = await getTakSessionStore().archiveRootState(topicId, visibilityRef.current);
+        // null = a scoped tier with no topic-wide root; 'verified' = we can read.
+        if (state === null || state === 'verified') return true;
+        await catchUpArchive();
+        return false;
+      } catch {
+        return false;
+      }
+    };
+    const id = setInterval(() => {
+      void tick().then((done) => {
+        if (done && alive) clearInterval(id);
+      });
+    }, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isGuest, isMember, topicId, catchUpArchive]);
+
 
   useEffect(() => {
     if (isGuest || !isMember) return;
@@ -1158,28 +1260,7 @@ export default function ChatPanel({
       // Back-fill: fetch TAK bundles + archive, decrypt history MLS forward
       // secrecy locked out, and fill in any '[unable to decrypt]' rows. Entirely
       // best-effort — never blocks or breaks the live chat.
-      let recovered: Array<{ messageId: string; plaintext: string }> = [];
-      try {
-        recovered = await getTakSessionStore().backfill(topicId, visibilityRef.current);
-        if (mountedRef.current && recovered.length) {
-          const byId = new Map(recovered.map((r) => [r.messageId, r.plaintext]));
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.undecryptable && byId.has(m.id)
-                ? { ...m, message: byId.get(m.id)!, undecryptable: false }
-                : m,
-            ),
-          );
-        }
-      } catch {}
-
-      // Close archive GAPS. `archiveOnSend` gets one attempt, at send time, and
-      // silently does nothing while the root is unverified — offline, a server
-      // hiccup, or a device that has not received the topic root yet. Those
-      // messages then sit outside the archive forever and are invisible to every
-      // device that joins later, with nothing reporting a problem. Anything this
-      // device can read is a chance to put one back.
-      void archiveGaps(recovered);
+      await catchUpArchive();
 
       // Public holder upkeep (SI-6): claim the lease and, if we hold it,
       // distribute the archive root to every current member leaf so later
@@ -1582,7 +1663,7 @@ export default function ChatPanel({
             depend on the locale. The accessible name still says Send. */}
         <button
           onClick={handleSend}
-          disabled={!inputValue.trim() || !connected || sending}
+          disabled={!inputValue.trim() || !connected}
           aria-label={t('chat.send')}
           title={t('chat.send')}
           aria-busy={sending}
@@ -1591,8 +1672,8 @@ export default function ChatPanel({
             background: 'var(--accent)',
             color: 'var(--color-text-inverted)',
             border: 'none',
-            cursor: (!inputValue.trim() || !connected || sending) ? 'not-allowed' : 'pointer',
-            opacity: (!inputValue.trim() || !connected || sending) ? 0.4 : 1,
+            cursor: !inputValue.trim() || !connected ? 'not-allowed' : 'pointer',
+            opacity: !inputValue.trim() || !connected ? 0.4 : 1,
             transition: 'opacity 0.12s',
           }}
         >

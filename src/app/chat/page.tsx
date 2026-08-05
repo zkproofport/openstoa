@@ -31,13 +31,14 @@
  * SI-1: like `/dm`, this page reads routing metadata only (`GET /api/topics`,
  * `GET /api/dm`). No message body, no preview, no crypto.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BareChatShell from '@/components/BareChatShell';
 import ChatRoomList, { type ListTab, type RailTopic, type RailDm } from '@/components/ChatRoomList';
 import Spinner from '@/components/Spinner';
 import { sortDmChannels } from '@/lib/dm';
+import { sortConversationsByActivity } from '@/lib/chatSort';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export default function ChatListPage() {
@@ -95,6 +96,20 @@ export default function ChatListPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Newest activity first, by the SAME rule the mini-app uses. `RailTopic` has
+  // no createdAt, so a room nobody has spoken in falls back to its id — stable
+  // ordering rather than the shuffling a missing key would produce.
+  const sortedTopics = useMemo(
+    () =>
+      topics === null
+        ? null
+        : sortConversationsByActivity(
+            topics.map((topic) => ({ ...topic, createdAt: '' })),
+            (topic) => topic.lastChatAt,
+          ),
+    [topics],
+  );
 
   const openTopic = useCallback((topic: RailTopic) => router.push(`/chat/${topic.id}`), [router]);
   const openDm = useCallback((dm: RailDm) => router.push(`/dm/${dm.topicId}`), [router]);
@@ -178,7 +193,7 @@ export default function ChatListPage() {
         <ChatRoomList
           tab={tab}
           onTabChange={setTab}
-          topics={topics}
+          topics={sortedTopics}
           dms={dms}
           onOpenTopic={openTopic}
           onOpenDm={openDm}

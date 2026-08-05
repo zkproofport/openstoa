@@ -341,6 +341,10 @@ export class TakSessionStore {
   // Memo of "does this root open the topic's oldest archive row" — neither the
   // root nor the oldest row changes, so one answer per (topic, root) is final.
   private oldestRowProbe = new Map<string, boolean>();
+  // Epoch at which this device last handed the root out, per topic. A new leaf
+  // always advances the epoch, so this is what makes re-distribution fire once
+  // per real membership change instead of once per incoming event.
+  private lastDistributedEpoch = new Map<string, number>();
   // Leaves we've already granted to (avoid re-granting the same device).
   private grantedLeaves = new Map<string, Set<string>>();
 
@@ -627,6 +631,37 @@ export class TakSessionStore {
    * holding an orphan root could easily win the lease and push that root to
    * every member — overwriting the real one everywhere at once.
    */
+  /**
+   * Distribute the root ONLY when the group has changed since we last did.
+   *
+   * Distribution used to run just once, when a device entered the chat and won
+   * the holder lease. A device that joined the group a minute later got nothing
+   * — the distributor had already sent to the only leaf that existed then, and
+   * nothing re-ran. It stayed locked out of history until some other device
+   * happened to open the chat again. That was reproducible on a topic created
+   * minutes earlier, on fully fixed clients.
+   *
+   * A new leaf always advances the MLS epoch, so the epoch IS the "membership
+   * changed" signal. Keying on it lets callers fire this on every incoming
+   * event: unchanged epoch costs one sync and returns, while a real join
+   * triggers exactly one round of bundles instead of a duplicate per event.
+   */
+  async distributePublicRootWhenGroupChanged(topicId: string): Promise<number> {
+    await this.mls.sync(topicId);
+    let epoch: number;
+    try {
+      epoch = await this.mls.readState(topicId, async (s) => gc.currentEpoch(s));
+    } catch {
+      return 0; // no group state here yet — nothing to distribute from
+    }
+    if (this.lastDistributedEpoch.get(topicId) === epoch) return 0;
+    const n = await this.distributePublicRoot(topicId);
+    // Recorded even when nothing was sent: without a verified root this device
+    // cannot serve THIS epoch at all, and retrying every event would only spin.
+    this.lastDistributedEpoch.set(topicId, epoch);
+    return n;
+  }
+
   async distributePublicRoot(topicId: string): Promise<number> {
     // Catch up first so we see every current member's leaf — a holder whose
     // history decrypted from cache never MLS-opened, so its tree could be stale.

@@ -653,6 +653,75 @@ describe('public archive root — keychain backup integrity', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Root DELIVERY to devices that join after the hand-out
+// ---------------------------------------------------------------------------
+
+/**
+ * Distribution used to run once, when a device entered the chat and won the
+ * holder lease. A device that joined the group a minute later got nothing: the
+ * distributor had already served the only leaf that existed, and nothing re-ran.
+ * Reproduced on staging with a topic created minutes earlier and every other fix
+ * deployed — the newcomer sat on '[unable to decrypt]' until an unrelated device
+ * happened to reopen the room.
+ */
+describe('public root re-distribution on membership change', () => {
+  it('REGRESSION: a device that joins AFTER the hand-out still gets the root', async () => {
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'late-joiner';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'genesis');
+    await alice.tak.archiveOnSend(T, 'm-1', 'sent-before-bob-existed', 'public');
+
+    // Alice hands out while she is the only leaf — the state that stranded the
+    // newcomer, because this was the ONLY time distribution ran.
+    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(1);
+
+    const bob = makeClient(ds, tt, 'bob');
+    await join(ds, T, alice, bob);
+    expect(await bob.tak.archiveRootState(T, 'public')).toBe('waiting');
+
+    // The group changed, so this round reaches Bob's leaf too.
+    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBeGreaterThan(0);
+    await bob.tak.ingestBundles(T);
+
+    expect(await bob.tak.archiveRootState(T, 'public')).toBe('verified');
+    const history = await bob.tak.backfill(T, 'public');
+    expect(history.find((h) => h.messageId === 'm-1')?.plaintext).toBe('sent-before-bob-existed');
+  });
+
+  it('an unchanged group sends nothing, so a repeating caller cannot flood bundles', async () => {
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'quiet-group';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'g');
+    await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
+
+    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(1);
+    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
+    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
+  });
+
+  it('a device with no verified root distributes nothing and does not retry forever', async () => {
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'no-root-here';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'g');
+    await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
+
+    const bob = makeClient(ds, tt, 'bob');
+    await join(ds, T, alice, bob);
+
+    expect(await bob.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
+    // Second call is a no-op for the same epoch: spinning on every tick would
+    // cost a sync per event for a device that can never serve this epoch.
+    expect(await bob.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Archive GAPS — messages that were never archived at all
 // ---------------------------------------------------------------------------
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers, categories } from '@/lib/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { topics, topicMembers, categories, chatMessages } from '@/lib/db/schema';
+import { eq, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
 import { normaliseSearchQuery } from '@/lib/search';
@@ -333,10 +333,23 @@ export async function GET(request: NextRequest) {
       where: (t, { inArray, and: a, eq: e }) => a(inArray(t.id, topicIds), e(t.kind, 'topic')),
     });
 
+    // When each room last had CHAT activity — the key both clients order the
+    // conversation list by. Deliberately not `lastActivityAt`: the server bumps
+    // that on posts, so a room you were just talking in sorted wherever its last
+    // post happened to fall. A timestamp only; no ciphertext, no sender, no
+    // count, so the list page still fetches zero message content (SI-1).
+    const chatActivity = await db
+      .select({ topicId: chatMessages.topicId, lastChatAt: sql<string | null>`max(${chatMessages.createdAt})` })
+      .from(chatMessages)
+      .where(inArray(chatMessages.topicId, topicIds))
+      .groupBy(chatMessages.topicId);
+    const lastChatAtMap = Object.fromEntries(chatActivity.map((r) => [r.topicId, r.lastChatAt]));
+
     const userTopicsWithCategory = userTopics.map((t) => ({
       ...t,
       category: t.categoryId ? categoryMap[t.categoryId] ?? null : null,
       isBlinded: !!t.blindedAt,
+      lastChatAt: lastChatAtMap[t.id] ?? null,
     }));
 
     logger.info(ROUTE, 'Topics fetched', { userId: session.userId, count: userTopicsWithCategory.length });

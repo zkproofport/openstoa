@@ -32,6 +32,9 @@ export interface RailTopic {
   memberCount?: number;
   /** Topic-level activity timestamp from `GET /api/topics` — see `RoomRow`. */
   lastActivityAt?: string | null;
+  /** When this room last had CHAT activity, from `GET /api/topics`. This — not
+   *  `lastActivityAt`, which posts bump — is what the list is ordered by. */
+  lastChatAt?: string | null;
   /** Optional, and currently never sent by any route — see `RoomRow`. */
   unreadCount?: number;
 }

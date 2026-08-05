@@ -11,6 +11,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { sortConversationsByActivity } from '../../lib/chatSort';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -224,22 +225,17 @@ export function ChatListScreen() {
     })),
   });
 
-  // Sort topics by last message time (most recent first).
-  const sortedTopics = useMemo(() => {
-    return [...topics].sort((a, b) => {
-      const indexA = topics.indexOf(a);
-      const indexB = topics.indexOf(b);
-      const lastMsgA = chatQueries[indexA]?.data?.messages?.[0];
-      const lastMsgB = chatQueries[indexB]?.data?.messages?.[0];
-      if (!lastMsgA && !lastMsgB) {
-        // Fall back to topic creation time
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      }
-      if (!lastMsgA) return 1;
-      if (!lastMsgB) return -1;
-      return new Date(lastMsgB.createdAt).getTime() - new Date(lastMsgA.createdAt).getTime();
-    });
-  }, [topics, chatQueries]);
+  // Newest activity first. The rule itself lives in `lib/chatSort` because the
+  // web list had its own (none — it showed creation order), so the same account
+  // saw two different conversation orders depending on the device.
+  const sortedTopics = useMemo(
+    () =>
+      sortConversationsByActivity(
+        topics,
+        (topic) => (topic as { lastChatAt?: string | null }).lastChatAt,
+      ),
+    [topics],
+  );
 
   // Re-sync the last-message preview whenever the list regains focus. A
   // message the user just sent in a ChatRoom is persisted server-side but

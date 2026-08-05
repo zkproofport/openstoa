@@ -557,8 +557,16 @@ export function ChatRoomScreen() {
           await client.delete(`/api/topics/${topicId}/tak/holder?deviceId=${encodeURIComponent(deviceId)}`);
           return;
         }
-        await client.post(`/api/topics/${topicId}/tak/holder`, { deviceId, rootFingerprint }); // throws on 409 (not holder)
-        await tak.distributePublicRoot(topicId);
+        // 409 (someone else holds the lease) is not a reason to skip the rest.
+        await client
+          .post(`/api/topics/${topicId}/tak/holder`, { deviceId, rootFingerprint })
+          .catch(() => {});
+        // Distribute whether or not we won the lease. Gating on the lease made
+        // delivery depend on ONE device being online at the right moment, and
+        // that is what left a device that joined a minute late with no root at
+        // all. Serving is safe from any holder of a verified root: a recipient
+        // rejects any bundle whose fingerprint is not the topic's.
+        await tak.distributePublicRootWhenGroupChanged(topicId);
       } else if (visibilityRef.current === 'private') {
         // SI-6b: explicit per-leaf grant of the epochs we hold; no custodian.
         await tak.grantPrivateHistory(topicId);
@@ -639,6 +647,51 @@ export function ChatRoomScreen() {
   // ── Track last-seen timestamp per topic + drive SSE reconnect catchup ────
   // Update the cross-mount last-seen marker every time the bottom of the
   // merged list advances. This is what `?since=<iso>` keys off.
+  // The RECEIVING half of root delivery. Bundles are pulled, never pushed, and
+  // the pull used to happen once per room entry — so a device that was still
+  // waiting when it opened the room never saw the bundle created seconds later.
+  // Poll while this device cannot open the archive, and stop the moment it can.
+  useEffect(() => {
+    let alive = true;
+    const id = setInterval(() => {
+      void (async () => {
+        try {
+          const state = await tak.archiveRootState(topicId, visibilityRef.current);
+          // null = a scoped tier with no topic-wide root; 'verified' = readable.
+          if (state === null || state === 'verified') {
+            if (alive) clearInterval(id);
+            return;
+          }
+          const history = await tak.backfill(topicId, visibilityRef.current);
+          if (alive && history.length) {
+            setRecovered((prev) => {
+              const next = { ...prev };
+              for (const h of history) next[h.messageId] = h.plaintext;
+              return next;
+            });
+          }
+        } catch {}
+      })();
+    }, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [tak, topicId]);
+
+  // A device that joins the group AFTER the root was handed out receives
+  // nothing, and until now that lasted "until some other device happens to
+  // reopen the chat" — reproducibly minutes, or forever. Re-check on a slow
+  // timer while the room is open. `distributePublicRootWhenGroupChanged` is a
+  // no-op unless the MLS epoch actually advanced, so the steady-state cost is
+  // one commits-since GET, not a bundle per tick.
+  useEffect(() => {
+    const id = setInterval(() => {
+      void tak.distributePublicRootWhenGroupChanged(topicId).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [tak, topicId]);
+
   useEffect(() => {
     allMessagesRef.current = allMessages;
     if (allMessages.length === 0) return;
