@@ -237,9 +237,22 @@ async function readBackedUpKeychain(
  * Only key NAMES, counts and booleans are reported. No key material, no
  * ciphertext, no message content.
  */
-function report(step: string, detail: Record<string, unknown>): void {
+// The client to narrate through. `console.log` alone was useless here: a release
+// build runs Hermes, whose console output never reaches the native log, so a
+// device console capture showed 402 lines of native chatter and not one line of
+// ours. The server sink is the only channel that actually arrives.
+let _diagClient: OpenStoaClient | null = null;
+
+/** Remember the authenticated client so `report` has somewhere to send to. */
+function armDiagnostics(client: OpenStoaClient): void {
+  _diagClient = client;
+}
+
+export function report(step: string, detail: Record<string, unknown>): void {
   try {
     console.log('[TAKBACKUP]', step, JSON.stringify(detail));
+    // Fire-and-forget: diagnosing a failure must never cause one.
+    void _diagClient?.post('/api/diag/e2ee', { step, detail }).catch(() => {});
   } catch {
     // Diagnostics must never be the thing that breaks chat.
   }
@@ -321,6 +334,7 @@ export async function uploadTakKeychainNow(
   hostLocalStore?: HostSecureStore,
   probeTopicIds?: string[],
 ): Promise<TakBackupOutcome> {
+  armDiagnostics(client);
   const rootStore = adapt(hostSecureStore);
   if (!rootStore) {
     report('no-secure-store', {});
@@ -353,6 +367,7 @@ export async function ensureTakKeychainBackup(
   hostSecureStore: HostSecureStore,
   hostLocalStore?: HostSecureStore,
 ): Promise<TakBackupOutcome> {
+  armDiagnostics(client);
   let existing: string | null = null;
   try {
     existing = await keyBackupHttp(client).getTakBackup();
@@ -388,6 +403,7 @@ export function getTakSessionStore(
   hostSecureStore?: HostSecureStore,
   hostLocalStore?: HostSecureStore,
 ): TakSessionStore {
+  armDiagnostics(client);
   if (!_takStore) {
     // TAK material (root + per-epoch keys) is sensitive → host secure store
     // (Keychain/Keystore), encrypted at rest under the master_key; falls back to

@@ -53,7 +53,7 @@ import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
-import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls } from '../../crypto/mobileTransport';
+import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls, report } from '../../crypto/mobileTransport';
 import { mirrorTakToSharedKeychain } from '../../crypto/sharedKeychainNative';
 import type { Visibility } from '../../crypto/takSession';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
@@ -1061,6 +1061,23 @@ interface RowProps {
   onAuthorPress: (target: PeerProfileTarget) => void;
 }
 
+// One line per distinct author, not per row: this renders inside a list.
+const _ownershipReported = new Set<string>();
+function reportOwnershipMismatch(messageUserId: string | null | undefined, sessionUserId: string | null): void {
+  const key = `${messageUserId}|${sessionUserId}`;
+  if (_ownershipReported.has(key)) return;
+  _ownershipReported.add(key);
+  // Through the server sink, not console.log: Hermes console output never
+  // reaches a release build's device log, which is why the first attempt at
+  // this diagnostic produced nothing at all.
+  report('chat/ownership', {
+    message: messageUserId ?? null,
+    session: sessionUserId,
+    equal: messageUserId === sessionUserId,
+    sameIgnoringCase: (messageUserId ?? '').toLowerCase() === (sessionUserId ?? '').toLowerCase(),
+  });
+}
+
 function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
@@ -1093,6 +1110,11 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
     ) <= 60_000;
 
   const isOwn = item.userId === sessionUserId;
+  // Own messages render as someone else's on device, and the two candidate
+  // causes — a session with no userId, or ids that differ in shape — are
+  // indistinguishable from the outside. Log the comparison ONCE per mismatched
+  // author so the console names the cause instead of another guess.
+  reportOwnershipMismatch(item.userId, sessionUserId);
 
   return (
     <MessageBody

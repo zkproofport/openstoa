@@ -89,6 +89,9 @@ class MemoryTak implements TakTransport {
   bundles = new Map<string, StoredBundle[]>();
   fingerprints = new Map<string, string>();
   offline = false;
+  /** Topics this caller may no longer query — the real server answers 403 once
+   *  the user has left, permanently and only for that topic. */
+  unreachableTopics = new Set<string>();
   fingerprintReads = 0;
   fingerprintWrites = 0;
   private seq = 0;
@@ -129,6 +132,7 @@ class MemoryTak implements TakTransport {
   async getRootFingerprint(t: string): Promise<ArchiveRootIdentity> {
     this.fingerprintReads++;
     if (this.offline) throw new Error('network down');
+    if (this.unreachableTopics.has(t)) throw new Error('403: Not a member of this topic');
     return { fingerprint: this.fingerprints.get(t) ?? null, archiveCount: (this.archive.get(t) ?? []).length };
   }
   async setRootFingerprint(t: string, fingerprint: string): Promise<ArchiveRootClaim> {
@@ -602,7 +606,34 @@ describe('public archive root — keychain backup integrity', () => {
     expect(Object.keys(keychain).some((k) => k.startsWith(`tak.epoch.${BAD}.`))).toBe(true);
   });
 
-  it('aborts the export when the check cannot be completed, so no partial keychain is uploaded', async () => {
+  it('REGRESSION: an uncheckable root is skipped, and every OTHER key still exports', async () => {
+    // This used to throw and abort the whole export, on the reasoning that a
+    // partial keychain would overwrite a good backup. Uploads merge now, so the
+    // abort protected nothing and cost everything: on a real device a single
+    // topic the user had left answered 403 forever to the fingerprint check, and
+    // that one permanently-unanswerable key stopped all seven of that device's
+    // roots from ever reaching the backup.
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const REACHABLE = 'export-reachable';
+    const GONE = 'export-left-this-topic';
+    const alice = makeClient(ds, tt, 'alice');
+    for (const t of [REACHABLE, GONE]) {
+      await alice.mls.seal(t, 'g');
+      await alice.tak.archiveOnSend(t, 'm-1', 'x', 'public');
+    }
+    // Both roots verified while we could still ask.
+    expect(await alice.tak.archiveRootState(REACHABLE, 'public')).toBe('verified');
+    expect(await alice.tak.archiveRootState(GONE, 'public')).toBe('verified');
+
+    tt.unreachableTopics = new Set([GONE]);
+    const keychain = await alice.tak.exportKeychain();
+
+    expect(Object.keys(keychain)).toContain(`tak.root.${REACHABLE}`);
+    expect(Object.keys(keychain)).not.toContain(`tak.root.${GONE}`);
+  });
+
+  it('a fully unreachable server exports nothing rather than vouching for roots it cannot check', async () => {
     const ds = new MemoryDS();
     const tt = new MemoryTak();
     const T = 'export-offline';
@@ -611,9 +642,9 @@ describe('public archive root — keychain backup integrity', () => {
     await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
 
     tt.offline = true;
-    // Throwing is deliberate: the backup is one row per user, so silently
-    // uploading a keychain with roots missing would overwrite a good backup.
-    await expect(alice.tak.exportKeychain()).rejects.toThrow();
+    // No throw — but no unverified root either. The upload merges, so exporting
+    // nothing is a safe no-op, while exporting an unchecked root is not.
+    expect(await alice.tak.exportKeychain()).toEqual({});
   });
 });
 

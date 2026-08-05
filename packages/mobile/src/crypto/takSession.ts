@@ -252,15 +252,26 @@ export class TakSessionStore {
     for (const k of Object.keys(set)) {
       const v = await this.store.get(k);
       if (v == null) continue;
-      // An ORPHAN root must never reach the server backup. The backup is one row
-      // per user, so uploading one would replace the root in the user's own
-      // recovery snapshot — which is why a technically successful passkey
-      // recovery could still open nothing: the key was right, the root inside
-      // was not. `rootIsOrphan` THROWS when it cannot check, aborting the whole
-      // export so the caller skips the upload rather than overwriting a good
-      // backup with a partial keychain.
+      // An ORPHAN root must never reach the server backup: a recovery that hands
+      // back the wrong root opens nothing, and looks exactly like a working one.
+      //
+      // A key we cannot CHECK is skipped, not fatal. This used to abort the whole
+      // export, on the reasoning that a partial keychain would overwrite a good
+      // backup — but uploads merge now, so a skipped key costs nothing and an
+      // abort costs everything. It cost exactly that in practice: one topic the
+      // user had left answered 403 to the fingerprint check, and that single
+      // permanently-unanswerable key stopped every other key on the device from
+      // ever being backed up.
       const topicId = this.topicIdOfRootKey(k);
-      if (topicId !== null && (await this.rootIsOrphan(topicId, unb64(v)))) continue;
+      if (topicId !== null) {
+        let orphan: boolean;
+        try {
+          orphan = await this.rootIsOrphan(topicId, unb64(v));
+        } catch {
+          continue; // unverifiable → not ours to vouch for, but not a reason to stop
+        }
+        if (orphan) continue;
+      }
       out[k] = v;
     }
     return out;
