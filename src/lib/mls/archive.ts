@@ -463,3 +463,27 @@ export async function getHolder(executor: SqlExecutor, topicId: string): Promise
     leaseExpiresAt: row.holder_lease_expires_at ? new Date(row.holder_lease_expires_at).toISOString() : null,
   };
 }
+
+/**
+ * Expire the lease of a holder that has discovered it cannot serve the role —
+ * scoped to the caller's OWN device, so releasing is never a way to evict a
+ * rival. Without this a device that took the role while missing the root keeps
+ * it for the full lease, and since the holder is the party others receive FROM,
+ * every new device on the topic waits behind it.
+ *
+ * The row is kept (epoch_covered is succession state, not the holder's), only
+ * the lease is expired, so the next real holder inherits coverage as usual.
+ */
+export async function releaseHolder(
+  executor: SqlExecutor,
+  topicId: string,
+  userId: string,
+  deviceId: string,
+): Promise<boolean> {
+  const r = (await executor.execute(sql`
+    UPDATE archive_holders SET holder_lease_expires_at = now(), updated_at = now()
+    WHERE topic_id = ${topicId} AND holder_user_id = ${userId} AND holder_device_id = ${deviceId}
+    RETURNING topic_id
+  `)) as Rows<{ topic_id: string }>;
+  return r.rows.length > 0;
+}

@@ -245,6 +245,37 @@ describe('public archive root — orphan clobbering (the data-loss bug)', () => 
     const history = await alice.tak.backfill(T, 'public');
     expect(history.find((h) => h.messageId === 'm-1')?.plaintext).toBe('real');
   });
+
+  it('REGRESSION: a device still waiting for the root cannot name it, so it cannot take the holder role', async () => {
+    // The staging failure, reproduced: a topic with archived history whose root
+    // identity was never published, joined by a brand-new device. That device
+    // claimed the holder lease and locked itself out — the holder is who others
+    // receive the root FROM, so nothing would ever hand it one.
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'waiting-device-topic';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'genesis');
+    await alice.tak.archiveOnSend(T, 'm-1', 'history-that-must-survive', 'public');
+
+    const newDevice = makeClient(ds, tt, 'bob');
+    await join(ds, T, alice, newDevice);
+
+    // It has no root, and says so rather than offering one it does not have.
+    expect(await newDevice.tak.archiveRootState(T, 'public')).toBe('waiting');
+    expect(await newDevice.tak.publicRootFingerprint(T)).toBeNull();
+
+    // The device that actually holds the root can name it — this is the only
+    // device entitled to serve the role.
+    const real = await alice.tak.publicRootFingerprint(T);
+    expect(real).toBeTruthy();
+
+    // And once the root arrives the newcomer can name the SAME one, so it may
+    // then take over succession legitimately.
+    await alice.tak.distributePublicRoot(T);
+    await newDevice.tak.ingestBundles(T);
+    expect(await newDevice.tak.publicRootFingerprint(T)).toBe(real);
+  });
 });
 
 // ---------------------------------------------------------------------------

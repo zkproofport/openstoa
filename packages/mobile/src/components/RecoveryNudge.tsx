@@ -59,6 +59,14 @@ export function RecoveryNudge() {
     // No secure store means no master_key on this device at all — backup and
     // recovery are both unavailable here, so there is nothing to repair and
     // nothing worth prompting for.
+    // Logged unconditionally: "the repair never ran" and "it ran and found
+    // nothing" produced the same silence on device, and only one of them is a
+    // bug in this component.
+    console.log(
+      '[TAKBACKUP]',
+      'nudge/effect',
+      JSON.stringify({ ran: ran.current, authenticated, hasUserId: !!userId, hasSecureStore: !!secureStore, hasLocalStore: !!localStore }),
+    );
     if (ran.current || !authenticated || !userId || !secureStore) return;
     ran.current = true;
 

@@ -210,7 +210,42 @@ async function uploadWouldClobber(client: OpenStoaClient, rootStore: SecureKVSto
   if (!blob) return false; // nothing on the server to lose
   if (await km.restoreTakKeychain(await masterKey(rootStore), async () => blob)) return false; // our key opens it
   const wraps = await http.getBackup();
-  return wraps.passkeys.length > 0 || !!wraps.wrappedMaster;
+  const clobber = wraps.passkeys.length > 0 || !!wraps.wrappedMaster;
+  report('clobber-check', { serverBytes: blob.length, opensWithOurKey: false, passkeys: wraps.passkeys.length, wrappedMaster: !!wraps.wrappedMaster, verdict: clobber });
+  return clobber;
+}
+
+/**
+ * Why this path narrates itself: every failure inside it used to collapse into
+ * one swallowed `catch` returning 'failed', so on a real device a missing key,
+ * an expired session and a thrown fingerprint check were indistinguishable —
+ * and each wrong guess cost a full rebuild-and-reinstall cycle to disprove.
+ *
+ * Only key NAMES, counts and booleans are reported. No key material, no
+ * ciphertext, no message content.
+ */
+function report(step: string, detail: Record<string, unknown>): void {
+  try {
+    console.log('[TAKBACKUP]', step, JSON.stringify(detail));
+  } catch {
+    // Diagnostics must never be the thing that breaks chat.
+  }
+}
+
+/**
+ * Topic ids to probe for keys the manifest never recorded. `/api/topics` returns
+ * exactly the caller's joined topics when authenticated. Best-effort: a failure
+ * here narrows the diagnosis, it does not stop the backup.
+ */
+async function joinedTopicIds(client: OpenStoaClient): Promise<string[]> {
+  try {
+    const res = await client.get<{ topics?: { id: string }[] } | { id: string }[]>('/api/topics');
+    const list = Array.isArray(res) ? res : (res.topics ?? []);
+    return list.map((t) => t.id).filter(Boolean);
+  } catch (e) {
+    report('probe-topics-failed', { error: String(e) });
+    return [];
+  }
 }
 
 /**
@@ -222,18 +257,32 @@ async function pushTakKeychain(
   client: OpenStoaClient,
   rootStore: SecureKVStore,
   tak: TakSessionStore,
+  probeTopicIds: string[] = [],
 ): Promise<TakBackupOutcome> {
   try {
     if (await uploadWouldClobber(client, rootStore)) return 'untrusted';
+    // Names and counts of what this device actually holds, logged BEFORE the
+    // export so an empty result can be read as "no keys" or "keys the manifest
+    // never listed" rather than guessed at. Isolated: a diagnostic that can fail
+    // the upload it is diagnosing is worse than no diagnostic.
+    try {
+      report('diagnose', await tak.diagnoseKeychain(probeTopicIds));
+    } catch (e) {
+      report('diagnose-failed', { error: String(e) });
+    }
     // `exportKeychain` drops orphan roots and THROWS when it cannot check one,
     // so an unverified root can never reach the account's single backup row.
     const keychain = await tak.exportKeychain();
-    if (Object.keys(keychain).length === 0) return 'empty';
+    const keys = Object.keys(keychain);
+    report('export', { count: keys.length, keys });
+    if (keys.length === 0) return 'empty';
     await km.uploadTakKeychain(await masterKey(rootStore), keychain, (ciphertext) =>
       client.post('/api/keys/tak-backup', { ciphertext }),
     );
+    report('uploaded', { count: keys.length });
     return 'uploaded';
-  } catch {
+  } catch (e) {
+    report('failed', { error: String(e) });
     return 'failed';
   }
 }
@@ -243,10 +292,19 @@ export async function uploadTakKeychainNow(
   client: OpenStoaClient,
   hostSecureStore: HostSecureStore,
   hostLocalStore?: HostSecureStore,
+  probeTopicIds?: string[],
 ): Promise<TakBackupOutcome> {
   const rootStore = adapt(hostSecureStore);
-  if (!rootStore) return 'failed';
-  return pushTakKeychain(client, rootStore, getTakSessionStore(client, hostSecureStore, hostLocalStore));
+  if (!rootStore) {
+    report('no-secure-store', {});
+    return 'failed';
+  }
+  return pushTakKeychain(
+    client,
+    rootStore,
+    getTakSessionStore(client, hostSecureStore, hostLocalStore),
+    probeTopicIds ?? (await joinedTopicIds(client)),
+  );
 }
 
 /**
@@ -268,12 +326,16 @@ export async function ensureTakKeychainBackup(
   hostSecureStore: HostSecureStore,
   hostLocalStore?: HostSecureStore,
 ): Promise<TakBackupOutcome> {
+  let existing: string | null = null;
   try {
-    if (await keyBackupHttp(client).getTakBackup()) return 'present';
-  } catch {
+    existing = await keyBackupHttp(client).getTakBackup();
+  } catch (e) {
     // Claim nothing when the server cannot be read — never upload on a guess.
+    report('ensure/read-failed', { error: String(e) });
     return 'failed';
   }
+  report('ensure', { hasServerBackup: !!existing, serverBytes: existing?.length ?? 0 });
+  if (existing) return 'present';
   return uploadTakKeychainNow(client, hostSecureStore, hostLocalStore);
 }
 

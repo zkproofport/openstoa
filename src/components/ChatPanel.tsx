@@ -514,7 +514,12 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
             ? t('chat.lockedHistory.failed')
             : recoverable
               ? t('chat.lockedHistory.recoverable', { count: String(lockedCount) })
-              : t('chat.lockedHistory.noBackup', { count: String(lockedCount) })}
+              : state === 'ready'
+                ? // The account key is HERE and opens the archive — the archive
+                  // just does not reach back this far. Telling this user to "set
+                  // up recovery" blames them for a key they already have.
+                  t('chat.lockedHistory.notCovered', { count: String(lockedCount) })
+                : t('chat.lockedHistory.noBackup', { count: String(lockedCount) })}
       </span>
       {recoverable && outcome !== 'no-archive' ? (
         <button type="button" className="os-button os-button-primary" onClick={unlock} disabled={busy}>
@@ -1045,11 +1050,25 @@ export default function ChatPanel({
       const tak = getTakSessionStore();
       if (visibilityRef.current === 'public') {
         const deviceId = await tak.myDeviceId(topicId);
+        // Only a device that HOLDS the root may take the role, because the
+        // holder is who everyone else receives the root from. A device still
+        // waiting for it that claims anyway makes itself the one party nobody
+        // will ever send a bundle to — and blocks every newer device behind it.
+        const rootFingerprint = await tak.publicRootFingerprint(topicId);
+        if (!rootFingerprint) {
+          // Waiting for the root. If a previous visit already took the lease,
+          // hand it back now rather than idling on it for the full 15 minutes.
+          await fetch(`/api/topics/${topicId}/tak/holder?deviceId=${encodeURIComponent(deviceId)}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          return;
+        }
         const r = await fetch(`/api/topics/${topicId}/tak/holder`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceId }),
+          body: JSON.stringify({ deviceId, rootFingerprint }),
         });
         if (r.ok) await tak.distributePublicRoot(topicId);
       } else if (visibilityRef.current === 'private') {

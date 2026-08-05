@@ -9,6 +9,8 @@ import {
   getUserId,
   secondUserPost,
   secondUserGet,
+  secondUserDelete,
+  authDelete,
   getBaseUrl,
 } from './helpers';
 
@@ -28,6 +30,13 @@ const DB_URL = process.env.DATABASE_URL ?? null;
  */
 
 const B64 = (s: string) => Buffer.from(s).toString('base64');
+
+/**
+ * The archive-root identity this suite's public topic gets. The server compares
+ * it as an opaque string (C1) — deriving it from a real root is the client's job
+ * — so a fixed literal exercises the endpoint exactly as a real holder does.
+ */
+const HOLDER_ROOT_FP = 'e2e-holder-root-fingerprint';
 
 /** Mint a fresh, never-joined user for non-member authz checks. */
 async function freshUser(): Promise<{ token: string; userId: string }> {
@@ -221,12 +230,72 @@ describe.sequential('TAK back-fill — server Delivery Service', () => {
 
   // ── Holder: public-only, single-winner, coverage fence ───────────────────
   it('11. owner A claims the holder lease -> 200; B claim while valid -> 409', async () => {
-    const claim = await authPost(`/api/topics/${publicTopicId}/tak/holder`, { deviceId: 'a-device-1' });
+    // A names the root it holds. This topic has no published root yet, so A's
+    // fingerprint becomes the topic's — and B must then present the SAME one.
+    const claim = await authPost(`/api/topics/${publicTopicId}/tak/holder`, {
+      deviceId: 'a-device-1',
+      rootFingerprint: HOLDER_ROOT_FP,
+    });
     expect(claim.status).toBe(200);
     expect((await claim.json()).holder.holderUserId).toBeTruthy();
 
-    const contest = await secondUserPost(`/api/topics/${publicTopicId}/tak/holder`, { deviceId: 'b-device-1' });
+    const contest = await secondUserPost(`/api/topics/${publicTopicId}/tak/holder`, {
+      deviceId: 'b-device-1',
+      rootFingerprint: HOLDER_ROOT_FP,
+    });
     expect(contest.status).toBe(409);
+  });
+
+  it('11a. a claim with no rootFingerprint -> 400 (a device with no root cannot hold)', async () => {
+    const res = await authPost(`/api/topics/${publicTopicId}/tak/holder`, { deviceId: 'a-device-1' });
+    expect(res.status).toBe(400);
+  });
+
+  it('11b. a claim naming a DIFFERENT root -> 403 (would serve a key opening nothing)', async () => {
+    const res = await secondUserPost(`/api/topics/${publicTopicId}/tak/holder`, {
+      deviceId: 'b-device-1',
+      rootFingerprint: 'a-root-this-topic-never-had',
+    });
+    expect(res.status).toBe(403);
+    // The topic's published identity is unchanged by a rejected claim.
+    expect((await res.json()).fingerprint).toBe(HOLDER_ROOT_FP);
+  });
+
+  it('11c. DELETE releases only the caller OWN lease, and frees succession', async () => {
+    // B does not hold the lease, so its release is a no-op on A's.
+    const notMine = await secondUserDelete(
+      `/api/topics/${publicTopicId}/tak/holder?deviceId=${encodeURIComponent('a-device-1')}`,
+    );
+    expect(notMine.status).toBe(200);
+    expect((await notMine.json()).released).toBe(false);
+    expect((await (await authGet(`/api/topics/${publicTopicId}/tak/holder`)).json()).holder.holderDeviceId).toBe(
+      'a-device-1',
+    );
+
+    const mine = await authDelete(
+      `/api/topics/${publicTopicId}/tak/holder?deviceId=${encodeURIComponent('a-device-1')}`,
+    );
+    expect(mine.status).toBe(200);
+    expect((await mine.json()).released).toBe(true);
+
+    // Lease expired, so B can now take over — this is the unblocking that a
+    // stuck rootless holder previously made impossible.
+    const takeover = await secondUserPost(`/api/topics/${publicTopicId}/tak/holder`, {
+      deviceId: 'b-device-1',
+      rootFingerprint: HOLDER_ROOT_FP,
+    });
+    expect(takeover.status).toBe(200);
+
+    // Restore A as holder so the later coverage/GET cases see the same state.
+    await secondUserDelete(`/api/topics/${publicTopicId}/tak/holder?deviceId=${encodeURIComponent('b-device-1')}`);
+    await authPost(`/api/topics/${publicTopicId}/tak/holder`, {
+      deviceId: 'a-device-1',
+      rootFingerprint: HOLDER_ROOT_FP,
+    });
+  });
+
+  it('11d. DELETE without deviceId -> 400', async () => {
+    expect((await authDelete(`/api/topics/${publicTopicId}/tak/holder`)).status).toBe(400);
   });
 
   it('12. GET holder reflects A as holder', async () => {
@@ -264,10 +333,15 @@ describe.sequential('TAK back-fill — server Delivery Service', () => {
         [privId, getUserId()],
       );
 
-      const res = await authPost(`/api/topics/${privId}/tak/holder`, { deviceId: 'a-device-1' });
+      const res = await authPost(`/api/topics/${privId}/tak/holder`, {
+        deviceId: 'a-device-1',
+        rootFingerprint: HOLDER_ROOT_FP,
+      });
       expect(res.status).toBe(400);
       const get = await authGet(`/api/topics/${privId}/tak/holder`);
       expect(get.status).toBe(400);
+      const del = await authDelete(`/api/topics/${privId}/tak/holder?deviceId=a-device-1`);
+      expect(del.status).toBe(400);
     } finally {
       await client.query(`DELETE FROM topic_members WHERE topic_id = $1`, [privId]);
       await client.query(`DELETE FROM topics WHERE id = $1`, [privId]);

@@ -543,7 +543,18 @@ export function ChatRoomScreen() {
     try {
       if (visibilityRef.current === 'public') {
         const deviceId = await tak.myDeviceId(topicId);
-        await client.post(`/api/topics/${topicId}/tak/holder`, { deviceId }); // throws on 409 (not holder)
+        // Only a device that HOLDS the root may take the role, because the
+        // holder is who everyone else receives the root from. A device still
+        // waiting for it that claims anyway makes itself the one party nobody
+        // will ever send a bundle to — and blocks every newer device behind it.
+        const rootFingerprint = await tak.publicRootFingerprint(topicId);
+        if (!rootFingerprint) {
+          // Waiting for the root. If an earlier visit already took the lease,
+          // hand it back now rather than idling on it for the full 15 minutes.
+          await client.delete(`/api/topics/${topicId}/tak/holder?deviceId=${encodeURIComponent(deviceId)}`);
+          return;
+        }
+        await client.post(`/api/topics/${topicId}/tak/holder`, { deviceId, rootFingerprint }); // throws on 409 (not holder)
         await tak.distributePublicRoot(topicId);
       } else if (visibilityRef.current === 'private') {
         // SI-6b: explicit per-leaf grant of the epochs we hold; no custodian.

@@ -348,10 +348,40 @@ export function getDeviceMasterKey(): Promise<Uint8Array> {
  */
 export type DeviceKeyState = 'ready' | 'recoverable' | 'no-backup';
 
+/**
+ * Narrate the E2EE key path to somewhere READABLE.
+ *
+ * This path failed for days on a real phone while every layer reported the same
+ * thing: nothing. Its outcomes are single words ('no-backup', 'unavailable') and
+ * each one has several distinct causes, so on-device symptoms could not tell
+ * them apart — and the browser console is not reachable on someone else's phone.
+ * Mirroring to the server puts the answer in the same place as the request that
+ * produced it.
+ *
+ * Only counts, byte LENGTHS, booleans, key NAMES and error strings — never key
+ * material, ciphertext or message content. Fire-and-forget: diagnosing a failure
+ * must never cause one.
+ */
+function report(step: string, detail: Record<string, unknown>): void {
+  try {
+    console.log('[E2EE]', step, JSON.stringify(detail));
+    void fetch('/api/diag/e2ee', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step, detail }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* diagnostics are never allowed to break the flow they observe */
+  }
+}
+
 export async function getDeviceKeyState(): Promise<DeviceKeyState> {
   const http = keyBackupHttp();
   try {
     const blob = await http.getTakBackup();
+    report('state/blob', { bytes: blob?.length ?? 0 });
     // Nothing archived under any key: recovering a master_key would restore an
     // empty keychain, so there is genuinely nothing to offer.
     if (!blob) return 'no-backup';
@@ -363,16 +393,22 @@ export async function getDeviceKeyState(): Promise<DeviceKeyState> {
     // meant to detect. The real question is whether the key this device holds
     // can OPEN the account's archive.
     const opened = await km.restoreTakKeychain(await masterKey(), async () => blob);
-    if (opened) return 'ready';
+    if (opened) {
+      report('state/ready', { keys: Object.keys(opened).length });
+      return 'ready';
+    }
 
     // The archive exists but this device's key does not fit it — it belongs to
     // the account's real key. Offer recovery only if something can actually
     // produce that key.
     const wraps = await http.getBackup();
-    return wraps.passkeys.length > 0 || wraps.wrappedMaster ? 'recoverable' : 'no-backup';
-  } catch {
+    const state = wraps.passkeys.length > 0 || wraps.wrappedMaster ? 'recoverable' : 'no-backup';
+    report('state/wraps', { passkeys: wraps.passkeys.length, wrappedMaster: !!wraps.wrappedMaster, state });
+    return state;
+  } catch (e) {
     // Offline, or an endpoint failed: claim nothing. Callers may show this as
     // "no backup" but must never destroy anything on the strength of it.
+    report('state/threw', { error: String(e) });
     return 'no-backup';
   }
 }
@@ -404,11 +440,30 @@ export type RecoveryOutcome = 'restored' | 'no-archive' | 'unavailable';
 export async function recoverDeviceWithPasskey(): Promise<RecoveryOutcome> {
   const http = keyBackupHttp();
   const backup = await http.getBackup();
-  if (backup.passkeys.length === 0) return 'unavailable';
-  const { prfOutput } = await getPasskeyPrf();
+  if (backup.passkeys.length === 0) {
+    report('recover/no-wraps', { passkeys: 0, wrappedMaster: !!backup.wrappedMaster });
+    return 'unavailable';
+  }
+  let prfOutput: Uint8Array;
+  try {
+    ({ prfOutput } = await getPasskeyPrf());
+  } catch (e) {
+    // The most common real-world failure: the browser has no usable PRF (the
+    // extension is unsupported, or the gesture was lost). It looks identical to
+    // "no passkey registered" from the outside, and it is not.
+    report('recover/prf-failed', { passkeys: backup.passkeys.length, error: String(e) });
+    throw e;
+  }
   const mk = await km.recoverWithPasskey(prfOutput, () => http.getBackup());
-  if (!mk) return 'unavailable';
-  return (await recoverDevice(mk)) ? 'restored' : 'no-archive';
+  if (!mk) {
+    // PRF came back but unwrapped nothing: the wrap belongs to a different
+    // passkey (or a different account's master_key).
+    report('recover/unwrap-failed', { passkeys: backup.passkeys.length, prfBytes: prfOutput.length });
+    return 'unavailable';
+  }
+  const restored = await recoverDevice(mk);
+  report('recover/done', { restored, outcome: restored ? 'restored' : 'no-archive' });
+  return restored ? 'restored' : 'no-archive';
 }
 
 /** HTTP client for /api/keys/backup + /api/keys/tak-backup (cookie auth). */
@@ -458,7 +513,16 @@ export async function recoverDevice(recoveredMasterKey: Uint8Array): Promise<boo
   _store = null;
   _takStore = null; // rebuild stores under the recovered key
   const keychain = await km.restoreTakKeychain(recoveredMasterKey, () => keyBackupHttp().getTakBackup());
-  if (!keychain) return false;
+  if (!keychain) {
+    // The account's key is now on this device, but the server's keychain snapshot
+    // does not open with it — so the snapshot was sealed under a DIFFERENT key.
+    report('restore/keychain-unopenable', {});
+    return false;
+  }
+  const names = Object.keys(keychain);
+  // Names, not values: which topics' roots and which epochs came back is exactly
+  // what distinguishes "restored nothing" from "restored the wrong epochs".
+  report('restore/keychain', { count: names.length, keys: names });
   await getTakSessionStore().importKeychain(keychain);
   return true;
 }

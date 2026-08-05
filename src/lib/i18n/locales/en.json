@@ -557,6 +557,7 @@
     "lockedHistory": {
       "recoverable": "{{count}} earlier messages are locked on this device. Unlock them with your passkey.",
       "noBackup": "{{count}} earlier messages are locked on this device. They were sent before this device existed, and no recovery key is set up, so they cannot be opened here.",
+      "notCovered": "{{count}} earlier messages are locked on this device. Your account key is set up here, but the archived copies of these messages were never sealed under it — open chat on the device that has this history so it can share them.",
       "unlock": "Unlock history",
       "unlocking": "Unlocking…",
       "setUp": "Set up recovery",

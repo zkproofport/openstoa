@@ -4,7 +4,13 @@ import { db } from '@/lib/db';
 import { topicMembers, topics } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { claimOrRenewHolder, updateHolderCoverage, getHolder } from '@/lib/mls/archive';
+import {
+  claimOrRenewHolder,
+  updateHolderCoverage,
+  getHolder,
+  releaseHolder,
+  claimArchiveRootFingerprint,
+} from '@/lib/mls/archive';
 
 const ROUTE = '/api/topics/[topicId]/tak/holder';
 const LEASE_DEFAULT_SECONDS = 900; // 15 min — long enough to ride out brief offline blips
@@ -130,9 +136,17 @@ export async function GET(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [deviceId]
+ *             required: [deviceId, rootFingerprint]
  *             properties:
  *               deviceId: { type: string, description: the caller's device that will hold the chain }
+ *               rootFingerprint:
+ *                 type: string
+ *                 description: |
+ *                   Fingerprint of the archive root this device holds, proving it can actually serve
+ *                   the role. Publishes the topic's root identity when none is set yet, and must MATCH
+ *                   it thereafter (403 otherwise). A device still waiting for the root cannot produce
+ *                   this and must not claim — the holder is who others receive from, so claiming
+ *                   without the root locks the device (and every newer device) out of history.
  *               leaseSeconds:
  *                 type: integer
  *                 description: requested lease duration (default 900, max 3600). The device renews before expiry.
@@ -153,9 +167,9 @@ export async function GET(
  *                     epochCovered: { type: integer }
  *                     successionRank: { type: integer }
  *                     leaseExpiresAt: { type: string, format: date-time, nullable: true }
- *       400: { description: Missing deviceId or topic not public }
+ *       400: { description: Missing deviceId/rootFingerprint or topic not public }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { $ref: '#/components/responses/Forbidden' }
+ *       403: { description: Not a member, or rootFingerprint does not match the topic archive root }
  *       409: { description: Another device holds a valid lease (held-by-other) }
  */
 export async function POST(
@@ -172,9 +186,29 @@ export async function POST(
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    const { deviceId, leaseSeconds } = body as Record<string, unknown>;
+    const { deviceId, leaseSeconds, rootFingerprint } = body as Record<string, unknown>;
     if (typeof deviceId !== 'string' || deviceId.trim().length === 0) {
       return NextResponse.json({ error: 'deviceId is required' }, { status: 400 });
+    }
+    // PROOF OF POSSESSION, within what a crypto-free server can check (C1). The
+    // holder's only job is handing the root to new leaves, so a device that
+    // cannot name the root has nothing to serve — and taking the role anyway
+    // locks it out permanently, because the holder is who others receive FROM.
+    // The server compares opaque strings; deriving the fingerprint from a real
+    // root is the client's side of the bargain (takSession.publicRootFingerprint).
+    if (typeof rootFingerprint !== 'string' || rootFingerprint.trim().length === 0) {
+      return NextResponse.json({ error: 'rootFingerprint is required' }, { status: 400 });
+    }
+    const claim = await claimArchiveRootFingerprint(db, topicId, rootFingerprint);
+    if (!claim) return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    if (!claim.claimed) {
+      // A different root than the topic's. Serving from it would hand new
+      // members a key that opens nothing.
+      logger.warn(ROUTE, 'Holder claim rejected (root mismatch)', { topicId, userId: session.userId });
+      return NextResponse.json(
+        { error: 'rootFingerprint does not match this topic archive root', fingerprint: claim.fingerprint },
+        { status: 403 },
+      );
     }
     let lease = LEASE_DEFAULT_SECONDS;
     if (leaseSeconds !== undefined) {
@@ -202,6 +236,70 @@ export async function POST(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error in POST', { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/**
+ * @openapi
+ * /api/topics/{topicId}/tak/holder:
+ *   delete:
+ *     tags: [MLS]
+ *     summary: Release this device's archive-holder lease
+ *     description: |
+ *       Gives up the holder role for the caller's own device. Call this when a device discovers it
+ *       cannot serve the role after all — most often a device that claimed before learning it has no
+ *       archive root. The holder is the party other devices receive the root FROM, so a holder that
+ *       cannot serve blocks every newer device on the topic until its lease expires; releasing hands
+ *       succession over immediately. Scoped to the caller's own device, so this can never evict a
+ *       rival. `epochCovered` is preserved for the next holder. Public topics only.
+ *       **Membership required.**
+ *     operationId: releaseArchiveHolder
+ *     x-related-skills: [claim-archive-holder, get-archive-holder]
+ *     parameters:
+ *       - name: topicId
+ *         in: path
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - name: deviceId
+ *         in: query
+ *         required: true
+ *         schema: { type: string }
+ *         description: the caller's device that currently holds the lease
+ *     responses:
+ *       200:
+ *         description: Released, or a no-op when this device did not hold the lease
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 released: { type: boolean, description: true when this device's lease was the one expired }
+ *       400: { description: Missing deviceId or topic not public }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ topicId: string }> },
+): Promise<NextResponse> {
+  try {
+    const { topicId } = await params;
+    const auth = await requirePublicMember(request, topicId);
+    if ('error' in auth) return auth.error!;
+    const { session } = auth;
+
+    const deviceId = request.nextUrl.searchParams.get('deviceId');
+    if (!deviceId || deviceId.trim().length === 0) {
+      return NextResponse.json({ error: 'deviceId is required' }, { status: 400 });
+    }
+
+    const released = await releaseHolder(db, topicId, session.userId, deviceId);
+    logger.info(ROUTE, 'Holder lease release requested', { topicId, userId: session.userId, deviceId, released });
+    return NextResponse.json({ released });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

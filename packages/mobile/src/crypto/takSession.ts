@@ -267,6 +267,39 @@ export class TakSessionStore {
   }
 
   /**
+   * Why did the backup upload nothing? `exportKeychain` can only return what the
+   * manifest lists, the store cannot be enumerated, and every failure upstream
+   * collapses into one swallowed catch — so a device holding perfectly good keys
+   * and a device holding none look identical from the outside.
+   *
+   * Returns KEY NAMES and presence only, never key material, so callers may log
+   * it. `unlisted` is the interesting one: a root this device holds that the
+   * manifest never recorded is invisible to the export and always will be.
+   */
+  async diagnoseKeychain(probeTopicIds: string[] = []): Promise<{
+    manifest: string[];
+    present: string[];
+    dangling: string[];
+    unlisted: string[];
+  }> {
+    const raw = await this.store.get(this.manifestKey());
+    const manifest = raw ? Object.keys(JSON.parse(raw) as Record<string, true>) : [];
+    const present: string[] = [];
+    const dangling: string[] = [];
+    for (const k of manifest) ((await this.store.get(k)) == null ? dangling : present).push(k);
+    // Key names are deterministic, so a topic id is enough to ask "is there a
+    // root under here?" without enumeration. This is the ONLY way to see a key
+    // written before the manifest existed.
+    const unlisted: string[] = [];
+    for (const t of probeTopicIds) {
+      for (const k of [this.rootKey(t), this.orphanRootKey(t)]) {
+        if (!manifest.includes(k) && (await this.store.get(k)) != null) unlisted.push(k);
+      }
+    }
+    return { manifest, present, dangling, unlisted };
+  }
+
+  /**
    * Restore a keychain snapshot into the local store (recovery path). Writes each
    * key and rebuilds the manifest so a later export round-trips. Does NOT fire
    * onKeychainChange (restoring is not a new local change to re-upload).
@@ -430,6 +463,20 @@ export class TakSessionStore {
   async archiveRootState(topicId: string, visibility: Visibility): Promise<ArchiveRootState | null> {
     if (visibility !== 'public') return null;
     return (await this.resolvePublicRoot(topicId)).state;
+  }
+
+  /**
+   * The fingerprint of the VERIFIED public root this device holds, or null when
+   * it holds none. This is what a device presents to claim the archive-holder
+   * lease: the holder's whole job is handing the root to new leaves, so a device
+   * that cannot produce this fingerprint has nothing to serve and must not take
+   * the role. Claiming it anyway is self-locking — the holder is the one others
+   * receive FROM, so nobody will ever send it the root it is missing.
+   */
+  async publicRootFingerprint(topicId: string): Promise<string | null> {
+    const resolved = await this.resolvePublicRoot(topicId);
+    if (resolved.state !== 'verified' || !resolved.key) return null;
+    return tak.deriveRootFingerprint(resolved.key);
   }
 
   /** Derive + cache the current epoch's TAK (call as each epoch is processed). */

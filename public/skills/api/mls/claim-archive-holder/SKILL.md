@@ -26,6 +26,7 @@ topics only. **Membership required.**
 
 **Body (application/json):**
 - `deviceId` (string, required) — the caller's device that will hold the chain
+- `rootFingerprint` (string, required) — Fingerprint of the archive root this device holds, proving it can actually serve the role. Publishes the topic's root identity when none is set yet, and must MATCH it thereafter (403 otherwise). A device still waiting for the root cannot produce this and must not claim — the holder is who others receive from, so claiming without the root locks the device (and every newer device) out of history.
 - `leaseSeconds` (integer) — requested lease duration (default 900, max 3600). The device renews before expiry.
 
 **Returns:** { renewed, holder }
@@ -37,7 +38,7 @@ curl -s "$BASE/api/topics/:topicId/tak/holder" \
   -H "Authorization: Bearer $TOKEN" \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{"deviceId": "...", "leaseSeconds": 0}'
+  -d '{"deviceId": "...", "rootFingerprint": "...", "leaseSeconds": 0}'
 ```
 
 ## See also
