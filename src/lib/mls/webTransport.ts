@@ -258,8 +258,19 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
     // history the user could read minutes earlier.
     const base = await readBackedUpKeychain();
 
-    // `exportKeychain` drops orphan roots and THROWS when it cannot check one,
-    // so an unverified root can never reach the account's single backup row.
+    // What this device HOLDS, before the export decides what it may vouch for.
+    // 'already-covered' otherwise hides the one distinction that matters here:
+    // a device with nothing extra looks identical to a device holding the exact
+    // root that opens the still-locked rows but classified as an orphan, which
+    // the export deliberately drops. Names and presence only.
+    try {
+      report('diagnose', await getTakSessionStore().diagnoseKeychain(await joinedTopicIds()));
+    } catch (e) {
+      report('diagnose-failed', { error: String(e) });
+    }
+
+    // `exportKeychain` drops orphan roots and skips any it cannot check, so an
+    // unverified root can never reach the account's single backup row.
     const mine = await getTakSessionStore().exportKeychain();
     const merged = { ...base, ...mine };
     const count = Object.keys(merged).length;
@@ -298,6 +309,24 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
  * something CAN still produce the real key — so letting our keys replace it is
  * strictly better than preserving bytes nobody will ever read.
  */
+/**
+ * Topic ids to probe for keys the manifest never recorded, and for orphan roots
+ * this device holds read-only. `/api/topics` returns exactly the caller's joined
+ * topics. Best-effort: a failure narrows the diagnosis, it does not stop the
+ * backup.
+ */
+async function joinedTopicIds(): Promise<string[]> {
+  try {
+    const r = await fetch('/api/topics', { credentials: 'include' });
+    if (!r.ok) return [];
+    const body = (await r.json()) as { topics?: { id: string }[] } | { id: string }[];
+    const list = Array.isArray(body) ? body : (body.topics ?? []);
+    return list.map((t) => t.id).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 async function readBackedUpKeychain(): Promise<Record<string, string>> {
   const blob = await keyBackupHttp().getTakBackup();
   if (!blob) return {};
