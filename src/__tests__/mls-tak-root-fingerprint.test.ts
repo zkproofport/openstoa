@@ -92,6 +92,9 @@ class MemoryTak implements TakTransport {
   /** Topics this caller may no longer query — the real server answers 403 once
    *  the user has left, permanently and only for that topic. */
   unreachableTopics = new Set<string>();
+  /** The archive LIST endpoint is down. Separate from `offline`, which is about
+   *  the fingerprint endpoints — a caller can reach one and not the other. */
+  archiveReadThrows = false;
   fingerprintReads = 0;
   fingerprintWrites = 0;
   private seq = 0;
@@ -102,6 +105,7 @@ class MemoryTak implements TakTransport {
     this.archive.set(t, list);
   }
   async getArchive(t: string) {
+    if (this.archiveReadThrows) throw new Error('archive GET 503');
     // Insertion order is oldest-first and Array.prototype.sort is stable, so
     // rows sharing a millisecond keep their real order — which is what makes
     // "the oldest row" a meaningful oracle.
@@ -645,6 +649,104 @@ describe('public archive root — keychain backup integrity', () => {
     // No throw — but no unverified root either. The upload merges, so exporting
     // nothing is a safe no-op, while exporting an unchecked root is not.
     expect(await alice.tak.exportKeychain()).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Archive GAPS — messages that were never archived at all
+// ---------------------------------------------------------------------------
+
+/**
+ * `archiveOnSend` runs once, at send time, and writes nothing while the root is
+ * unverified — offline, a server hiccup, or a device that has not received the
+ * topic root yet. Nothing retried, so the message stayed out of the archive
+ * permanently and every later device was simply missing it, silently.
+ */
+describe('archive gap back-fill', () => {
+  async function topicWithGap() {
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'gap-topic';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'genesis');
+    // m-1 archives normally and establishes the topic root. m-2 is simply never
+    // archived — the END STATE is what matters here, and it is reached by every
+    // route that skips the one send-time attempt (offline, 5xx, a root that was
+    // not verified yet). Simulating one particular route would test the route,
+    // not the gap.
+    await alice.tak.archiveOnSend(T, 'm-1', 'first', 'public');
+    expect((await tt.getArchive(T)).map((r) => r.messageId)).toEqual(['m-1']);
+    return { tt, T, alice };
+  }
+
+  it('REGRESSION: a message that missed its one chance is archived later', async () => {
+    const { tt, T, alice } = await topicWithGap();
+
+    const added = await alice.tak.backfillMissingArchive(T, 'public', [
+      { messageId: 'm-1', plaintext: 'first' },
+      { messageId: 'm-2', plaintext: 'lost-to-the-gap' },
+    ]);
+
+    expect(added).toBe(1); // only the missing one
+    expect((await tt.getArchive(T)).map((r) => r.messageId).sort()).toEqual(['m-1', 'm-2']);
+  });
+
+  it('INTEGRITY: the back-filled row opens for a device that only has the root', async () => {
+    const { tt, T, alice } = await topicWithGap();
+    await alice.tak.backfillMissingArchive(T, 'public', [{ messageId: 'm-2', plaintext: 'lost-to-the-gap' }]);
+
+    const history = await alice.tak.backfill(T, 'public');
+    expect(history.find((h) => h.messageId === 'm-2')?.plaintext).toBe('lost-to-the-gap');
+  });
+
+  it('IDEMPOTENT: a second pass adds nothing, and concurrent members converge', async () => {
+    const { tt, T, alice } = await topicWithGap();
+    const readable = [{ messageId: 'm-2', plaintext: 'lost-to-the-gap' }];
+
+    expect(await alice.tak.backfillMissingArchive(T, 'public', readable)).toBe(1);
+    expect(await alice.tak.backfillMissingArchive(T, 'public', readable)).toBe(0);
+    expect((await tt.getArchive(T)).filter((r) => r.messageId === 'm-2')).toHaveLength(1);
+  });
+
+  it('BOUNDARY: an empty list is a no-op that never touches the server', async () => {
+    const { tt, T, alice } = await topicWithGap();
+    const before = tt.fingerprintReads;
+    expect(await alice.tak.backfillMissingArchive(T, 'public', [])).toBe(0);
+    expect(tt.fingerprintReads).toBe(before);
+  });
+
+  it('HOSTILE: an unverified root fills nothing — it would write rows nobody can open', async () => {
+    const ds = new MemoryDS();
+    const tt = new MemoryTak();
+    const T = 'gap-unverified';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'g');
+    await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
+
+    // A second device that has not received the root: state 'waiting', no key.
+    const newcomer = makeClient(ds, tt, 'bob');
+    await join(ds, T, alice, newcomer);
+    expect(await newcomer.tak.archiveRootState(T, 'public')).toBe('waiting');
+
+    expect(await newcomer.tak.backfillMissingArchive(T, 'public', [{ messageId: 'm-9', plaintext: 'nope' }])).toBe(0);
+    expect((await tt.getArchive(T)).map((r) => r.messageId)).toEqual(['m-1']);
+  });
+
+  it('EXTERNAL FAILURE: an unreadable archive fills nothing rather than re-uploading everything', async () => {
+    const { tt, T, alice } = await topicWithGap();
+    // Resolve the root while the server still answers, then lose it.
+    expect(await alice.tak.archiveRootState(T, 'public')).toBe('verified');
+    tt.archiveReadThrows = true;
+
+    expect(await alice.tak.backfillMissingArchive(T, 'public', [{ messageId: 'm-2', plaintext: 'x' }])).toBe(0);
+    tt.archiveReadThrows = false;
+    expect((await tt.getArchive(T)).map((r) => r.messageId)).toEqual(['m-1']);
+  });
+
+  it('EMPTY plaintext is skipped, so a placeholder never claims the row', async () => {
+    const { tt, T, alice } = await topicWithGap();
+    expect(await alice.tak.backfillMissingArchive(T, 'public', [{ messageId: 'm-2', plaintext: '' }])).toBe(0);
+    expect((await tt.getArchive(T)).map((r) => r.messageId)).toEqual(['m-1']);
   });
 });
 

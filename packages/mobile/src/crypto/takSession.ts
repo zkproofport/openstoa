@@ -816,4 +816,60 @@ export class TakSessionStore {
     }
     return out;
   }
+
+  /**
+   * Archive messages this device can read that never made it into the archive.
+   *
+   * `archiveOnSend` runs once, at send time, and does nothing when the root is
+   * not verified yet — offline, a server hiccup, or simply a device that has not
+   * received the topic root. There was no second chance: the message stayed out
+   * of the archive forever, so every device that joined later was missing it,
+   * and nothing anywhere reported a problem. A gap is silent in a way corruption
+   * is not.
+   *
+   * Idempotent and uncoordinated by design. `chat_archive` is unique on
+   * (topic_id, message_id) and the route ignores conflicts, so several members
+   * running this at once converge on one row instead of fighting. Best-effort:
+   * it returns how many rows it added and never throws into chat.
+   */
+  async backfillMissingArchive(
+    topicId: string,
+    visibility: Visibility,
+    readable: Array<{ messageId: string; plaintext: string }>,
+  ): Promise<number> {
+    if (readable.length === 0) return 0;
+    // Same gate as sending: only a VERIFIED root may seal. A device that would
+    // write rows nobody can open must not be the one to fill gaps.
+    const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+    if (!key) return 0;
+
+    let archived: Set<string>;
+    try {
+      archived = new Set((await this.transport.getArchive(topicId)).map((r) => r.messageId));
+    } catch {
+      // Never guess the archive is empty — that would re-upload everything on
+      // every transient failure.
+      return 0;
+    }
+
+    let added = 0;
+    for (const m of readable) {
+      if (archived.has(m.messageId)) continue;
+      // Skip anything we could not actually read. Sealing a placeholder would
+      // permanently occupy the one row that message gets.
+      if (!m.plaintext) continue;
+      try {
+        await this.transport.postArchive(
+          topicId,
+          m.messageId,
+          takVersion,
+          await tak.sealArchive(key, m.messageId, m.plaintext),
+        );
+        added++;
+      } catch {
+        // One failure must not abandon the rest; the next pass retries it.
+      }
+    }
+    return added;
+  }
 }

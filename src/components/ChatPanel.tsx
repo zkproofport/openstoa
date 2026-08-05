@@ -720,6 +720,9 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Mirror of `messages` for callbacks that must not re-subscribe every time a
+  // message arrives (the archive gap-filler reads the current rows once).
+  const messagesRef = useRef<ChatMessage[]>([]);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -1028,6 +1031,7 @@ export default function ChatPanel({
   // when older history prepended — and only if the user was already at the
   // bottom, so reading history is not interrupted by someone else typing.
   useEffect(() => {
+    messagesRef.current = messages;
     oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
     const bottomId = messages.length > 0 ? messages[messages.length - 1].id : null;
     if (bottomId === lastBottomIdRef.current) return;
@@ -1045,6 +1049,25 @@ export default function ChatPanel({
   // winner distributes the root to all leaves (SI-6). private: explicitly grant
   // the epochs we hold to new member leaves (SI-6b — no custodian/lease). secret:
   // nothing (the owner grants explicitly). Best-effort — never throws into chat.
+  // Runs AFTER `provisionArchiveAccess`, because that is where a device that was
+  // waiting finally adopts the topic root — and only a verified root may seal.
+  // Reads from the panel's own decrypted rows plus whatever the archive just
+  // gave back, so it never re-derives anything. Best-effort throughout.
+  const archiveGaps = useCallback(
+    async (fromArchive: Array<{ messageId: string; plaintext: string }>) => {
+      try {
+        const readable = [
+          ...messagesRef.current
+            .filter((m) => m.type === 'message' && !m.undecryptable && m.message)
+            .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
+          ...fromArchive,
+        ];
+        await getTakSessionStore().backfillMissingArchive(topicId, visibilityRef.current, readable);
+      } catch {}
+    },
+    [topicId],
+  );
+
   const provisionArchiveAccess = useCallback(async () => {
     try {
       const tak = getTakSessionStore();
@@ -1135,8 +1158,9 @@ export default function ChatPanel({
       // Back-fill: fetch TAK bundles + archive, decrypt history MLS forward
       // secrecy locked out, and fill in any '[unable to decrypt]' rows. Entirely
       // best-effort — never blocks or breaks the live chat.
+      let recovered: Array<{ messageId: string; plaintext: string }> = [];
       try {
-        const recovered = await getTakSessionStore().backfill(topicId, visibilityRef.current);
+        recovered = await getTakSessionStore().backfill(topicId, visibilityRef.current);
         if (mountedRef.current && recovered.length) {
           const byId = new Map(recovered.map((r) => [r.messageId, r.plaintext]));
           setMessages((prev) =>
@@ -1148,6 +1172,14 @@ export default function ChatPanel({
           );
         }
       } catch {}
+
+      // Close archive GAPS. `archiveOnSend` gets one attempt, at send time, and
+      // silently does nothing while the root is unverified — offline, a server
+      // hiccup, or a device that has not received the topic root yet. Those
+      // messages then sit outside the archive forever and are invisible to every
+      // device that joins later, with nothing reporting a problem. Anything this
+      // device can read is a chance to put one back.
+      void archiveGaps(recovered);
 
       // Public holder upkeep (SI-6): claim the lease and, if we hold it,
       // distribute the archive root to every current member leaf so later

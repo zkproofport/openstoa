@@ -401,6 +401,9 @@ export function ChatRoomScreen() {
   // keyed by message id; merged into the list below. Topic visibility selects
   // the TAK tier (public root vs scoped) — resolved once on mount.
   const [recovered, setRecovered] = useState<Record<string, string>>({});
+  // Mirror of the rendered list for the archive gap-filler, which reads the
+  // current rows once and must not re-run as messages arrive.
+  const allMessagesRef = useRef<ChatMessage[]>([]);
   const visibilityRef = useRef<Visibility>('public');
   // The caller's topic role — secret-tier history is granted only by the owner.
   const roleRef = useRef<string | null>(null);
@@ -577,8 +580,9 @@ export function ChatRoomScreen() {
         if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
         roleRef.current = tj?.currentUserRole ?? null;
       } catch {}
+      let history: Array<{ messageId: string; plaintext: string }> = [];
       try {
-        const history = await tak.backfill(topicId, visibilityRef.current);
+        history = await tak.backfill(topicId, visibilityRef.current);
         if (!cancelled && history.length) {
           setRecovered((prev) => {
             const next = { ...prev };
@@ -588,6 +592,21 @@ export function ChatRoomScreen() {
         }
       } catch {}
       if (!cancelled) await provisionArchiveAccess();
+      // Close archive GAPS, AFTER provisioning — that is where a device that was
+      // waiting finally adopts the topic root, and only a verified root may seal.
+      // `archiveOnSend` gets one attempt at send time and silently does nothing
+      // while the root is unverified, so those messages sit outside the archive
+      // forever and are invisible to every device that joins later. Anything this
+      // device can read is a chance to put one back. Best-effort.
+      if (!cancelled) {
+        const readable = [
+          ...allMessagesRef.current
+            .filter((m) => m.type === 'message' && m.message && m.message !== '[unable to decrypt]')
+            .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
+          ...history,
+        ];
+        void tak.backfillMissingArchive(topicId, visibilityRef.current, readable).catch(() => {});
+      }
       // Mirror this topic's TAK into the shared Keychain (design §13.6 A) AFTER
       // provisioning, so a device that only ever READS the topic still holds the
       // key its notification extension needs — the send path alone would leave
@@ -621,6 +640,7 @@ export function ChatRoomScreen() {
   // Update the cross-mount last-seen marker every time the bottom of the
   // merged list advances. This is what `?since=<iso>` keys off.
   useEffect(() => {
+    allMessagesRef.current = allMessages;
     if (allMessages.length === 0) return;
     const newest = allMessages[allMessages.length - 1];
     if (newest?.createdAt) setLastSeen(topicId, String(newest.createdAt));
