@@ -241,6 +241,18 @@ export type TakBackupOutcome = 'uploaded' | 'empty' | 'present' | 'untrusted' | 
  */
 export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
   try {
+    // What this device HOLDS — reported FIRST, ahead of every guard below.
+    // Placed after them it never ran on the device that mattered: a browser
+    // whose key cannot open the account backup returns 'untrusted' immediately,
+    // which is exactly the device whose contents are in question. A device that
+    // may not upload can still be the only one holding the root that opens the
+    // locked rows. Names and presence only.
+    try {
+      report('diagnose', await getTakSessionStore().diagnoseKeychain(await joinedTopicIds()));
+    } catch (e) {
+      report('diagnose-failed', { error: String(e) });
+    }
+
     // Do NOT overwrite the account's backup from a device whose master_key
     // is a throwaway. `POST /api/keys/tak-backup` upserts a single row per
     // user, so a second device that minted its own key would replace a
@@ -257,17 +269,6 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
     // that had just recovered wrote its 2 keys over the account's 6 and re-locked
     // history the user could read minutes earlier.
     const base = await readBackedUpKeychain();
-
-    // What this device HOLDS, before the export decides what it may vouch for.
-    // 'already-covered' otherwise hides the one distinction that matters here:
-    // a device with nothing extra looks identical to a device holding the exact
-    // root that opens the still-locked rows but classified as an orphan, which
-    // the export deliberately drops. Names and presence only.
-    try {
-      report('diagnose', await getTakSessionStore().diagnoseKeychain(await joinedTopicIds()));
-    } catch (e) {
-      report('diagnose-failed', { error: String(e) });
-    }
 
     // `exportKeychain` drops orphan roots and skips any it cannot check, so an
     // unverified root can never reach the account's single backup row.
