@@ -55,7 +55,7 @@ import type { ChatMessage } from '@openstoa/api-types';
 import { useChatSocket } from '../../api/chatSocket';
 import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls, report } from '../../crypto/mobileTransport';
 import { mirrorTakToSharedKeychain } from '../../crypto/sharedKeychainNative';
-import type { Visibility } from '../../crypto/takSession';
+import type { ArchiveRootState, Visibility } from '../../crypto/takSession';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -137,6 +137,13 @@ function makeStyles(colors: ThemeColors) {
     },
     emptyText: {
       fontSize: TYPE_SCALE.bodySmall,
+      color: colors.text.tertiary,
+    },
+    // Locked/loading rows read as status, not as content the user wrote.
+    lockedBody: {
+      fontSize: TYPE_SCALE.body,
+      lineHeight: 21,
+      fontStyle: 'italic',
       color: colors.text.tertiary,
     },
 
@@ -401,6 +408,9 @@ export function ChatRoomScreen() {
   // keyed by message id; merged into the list below. Topic visibility selects
   // the TAK tier (public root vs scoped) — resolved once on mount.
   const [recovered, setRecovered] = useState<Record<string, string>>({});
+  // Whether this device can open the topic archive yet. Drives the difference
+  // between "your history is on its way" and "something is wrong".
+  const [rootState, setRootState] = useState<ArchiveRootState | null>(null);
   // Mirror of the rendered list for the archive gap-filler, which reads the
   // current rows once and must not re-run as messages arrive.
   const allMessagesRef = useRef<ChatMessage[]>([]);
@@ -653,29 +663,45 @@ export function ChatRoomScreen() {
   // Poll while this device cannot open the archive, and stop the moment it can.
   useEffect(() => {
     let alive = true;
-    const id = setInterval(() => {
-      void (async () => {
-        try {
-          const state = await tak.archiveRootState(topicId, visibilityRef.current);
-          // null = a scoped tier with no topic-wide root; 'verified' = readable.
-          if (state === null || state === 'verified') {
-            if (alive) clearInterval(id);
-            return;
-          }
-          const history = await tak.backfill(topicId, visibilityRef.current);
-          if (alive && history.length) {
-            setRecovered((prev) => {
-              const next = { ...prev };
-              for (const h of history) next[h.messageId] = h.plaintext;
-              return next;
-            });
-          }
-        } catch {}
-      })();
-    }, 10_000);
+    // Backoff, starting FAST. A fixed slow interval meant a newcomer stared at
+    // padlocks for the whole period even when the key was already waiting.
+    let delay = 1_500;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = async (): Promise<boolean> => {
+      try {
+        const state = await tak.archiveRootState(topicId, visibilityRef.current);
+        if (alive) setRootState(state);
+        // null = a scoped tier with no topic-wide root; 'verified' = readable.
+        if (state === null || state === 'verified') return true;
+        const history = await tak.backfill(topicId, visibilityRef.current);
+        if (alive && history.length) {
+          setRecovered((prev) => {
+            const next = { ...prev };
+            for (const h of history) next[h.messageId] = h.plaintext;
+            return next;
+          });
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    };
+    const schedule = () => {
+      timer = setTimeout(() => {
+        void tick().then((done) => {
+          if (!alive || done) return;
+          delay = Math.min(delay * 2, 15_000);
+          schedule();
+        });
+      }, delay);
+    };
+    void tick().then((done) => {
+      if (!alive || done) return;
+      schedule();
+    });
     return () => {
       alive = false;
-      clearInterval(id);
+      clearTimeout(timer);
     };
   }, [tak, topicId]);
 
@@ -686,10 +712,29 @@ export function ChatRoomScreen() {
   // no-op unless the MLS epoch actually advanced, so the steady-state cost is
   // one commits-since GET, not a bundle per tick.
   useEffect(() => {
-    const id = setInterval(() => {
-      void tak.distributePublicRootWhenGroupChanged(topicId).catch(() => {});
-    }, 30_000);
-    return () => clearInterval(id);
+    // Backoff from a short first interval: a device that joins right after the
+    // hand-out is the case that matters, and making it wait a fixed half-minute
+    // is the whole complaint.
+    let delay = 3_000;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        void tak
+          .distributePublicRootWhenGroupChanged(topicId)
+          .catch(() => {})
+          .finally(() => {
+            if (!alive) return;
+            delay = Math.min(delay * 2, 60_000);
+            schedule();
+          });
+      }, delay);
+    };
+    schedule();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
   }, [tak, topicId]);
 
   useEffect(() => {
@@ -1026,6 +1071,7 @@ export function ChatRoomScreen() {
           renderItem={({ item, index }) => (
             <ChatMessageRow
               item={item}
+              syncing={rootState === 'waiting'}
               prevItem={index > 0 ? allMessages[index - 1] : undefined}
               styles={styles}
               navigation={navigation}
@@ -1132,6 +1178,9 @@ interface RowProps {
   client: ReturnType<typeof useOpenStoaClient>;
   onImagePress: (url: string) => void;
   onAuthorPress: (target: PeerProfileTarget) => void;
+  /** The room key has not reached this device YET — locked rows are loading,
+   *  not broken, and must not be dressed as a permanent failure. */
+  syncing?: boolean;
 }
 
 // One line per distinct author, not per row: this renders inside a list.
@@ -1151,7 +1200,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
   });
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -1192,6 +1241,7 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
   return (
     <MessageBody
       item={item}
+      syncing={syncing}
       sameAuthor={sameAuthor}
       isOwn={isOwn}
       styles={styles}
@@ -1231,8 +1281,14 @@ function isImageUrl(url: string): boolean {
   return false;
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress }: MessageBodyProps) {
-  const content: string = item.message ?? '';
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing }: MessageBodyProps) {
+  const rawContent: string = item.message ?? '';
+  const content: string =
+    rawContent === '[unable to decrypt]'
+      ? syncing
+        ? t('openstoa.chat.lockedMessageSyncing')
+        : t('openstoa.chat.lockedMessage')
+      : rawContent;
   const firstUrl = extractFirstUrl(content);
   const urlOnly = firstUrl !== null && isUrlOnly(content);
   // When the user pastes or uploads an image, the chat message body is just
@@ -1344,6 +1400,11 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
   }, [content]);
 
   const timeLabel = formatRelativeTime(item.createdAt);
+  // The decrypt sentinel is an INTERNAL marker; it used to reach the bubble
+  // verbatim as "[unable to decrypt]", which reads as corruption. While the
+  // room key is still on its way this is loading, not failure — say so, and
+  // never show the marker itself either way.
+  const locked = item.message === '[unable to decrypt]';
   const bodyStyle = isOwn ? styles.bubbleTextOwn : styles.bubbleTextOther;
   const linkStyle = isOwn ? styles.linkOwn : styles.linkOther;
 
@@ -1418,7 +1479,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
               isOwn ? styles.bubbleOwn : styles.bubbleOther,
             ]}
           >
-            <Text style={bodyStyle}>
+            <Text style={locked ? styles.lockedBody : bodyStyle}>
               {segments.map((seg, i) =>
                 seg.isUrl ? (
                   <Text

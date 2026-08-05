@@ -763,3 +763,26 @@ html:lang(ko) {
   border-radius: 4px;
   border: 1px solid var(--border);
 }
+
+/* Spinner for work the user is waiting on — currently the chat archive key
+   arriving on a device that just joined. Honours reduced-motion by holding
+   still rather than disappearing, so the "still working" signal survives. */
+@keyframes os-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.os-spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-default);
+  border-top-color: var(--color-text-secondary);
+  animation: os-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .os-spinner {
+    animation: none;
+  }
+}

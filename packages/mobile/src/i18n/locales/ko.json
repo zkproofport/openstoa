@@ -385,7 +385,9 @@
         "title": "채팅을 불러오지 못했어요"
       },
       "noMessagesYet": "아직 메시지가 없어요",
-      "encryptedMessage": "🔒 암호화된 메시지"
+      "encryptedMessage": "🔒 암호화된 메시지",
+      "lockedMessage": "암호화됨 — 이 기기에는 키가 없습니다",
+      "lockedMessageSyncing": "불러오는 중 — 방 키를 기다리고 있습니다"
     },
     "dm": {
       "title": "다이렉트 메시지",

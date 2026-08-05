@@ -15,7 +15,7 @@ import {
   type DeviceKeyState,
   type RecoveryOutcome,
 } from '@/lib/mls/webTransport';
-import type { Visibility } from '@/lib/mls/takSession';
+import type { ArchiveRootState, Visibility } from '@/lib/mls/takSession';
 import {
   DecryptOnce,
   fetchCatchup,
@@ -432,7 +432,17 @@ function E2eeBanner({ connected }: { connected?: boolean }) {
  * gesture in Safari through iOS 17.3, so recovery has to hang off a real tap —
  * hence a button rather than a silent effect on mount.
  */
-function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
+function Spinner() {
+  return <span className="os-spinner" aria-hidden="true" />;
+}
+
+function LockedHistoryNotice({
+  lockedCount,
+  rootState,
+}: {
+  lockedCount: number;
+  rootState: ArchiveRootState | null;
+}) {
   const { t } = useTranslation();
   const [state, setState] = useState<DeviceKeyState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -462,6 +472,35 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
   // silently hid the only route out. The key state now chooses WHICH remedy to
   // offer, never whether the user is told anything at all.
   if (lockedCount === 0) return null;
+
+  // STILL ARRIVING, not broken. A device that has just joined has no archive key
+  // yet and one is on its way to it. Offering "set up recovery" here blames the
+  // user for a normal thirty-second wait, and showing nothing at all leaves a
+  // column of padlocks with no explanation. Say what is happening.
+  if (rootState === 'waiting') {
+    return (
+      <div
+        role="status"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-3)',
+          margin: '0 0 var(--space-3)',
+          padding: 'var(--space-3)',
+          border: '1px solid var(--color-border-default)',
+          borderRadius: 'var(--radius-card)',
+          background: 'var(--color-bg-secondary)',
+          fontSize: 'var(--text-body-sm)',
+          color: 'var(--color-text-secondary)',
+        }}
+      >
+        <Spinner />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          {t('chat.lockedHistory.syncing', { count: String(lockedCount) })}
+        </span>
+      </div>
+    );
+  }
 
   const unlock = async () => {
     setBusy(true);
@@ -543,7 +582,21 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
   );
 }
 
-function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: boolean; roomy?: boolean; own?: boolean }) {
+function MessageRow({
+  msg,
+  grouped,
+  roomy,
+  own,
+  syncing,
+}: {
+  msg: ChatMessage;
+  grouped?: boolean;
+  roomy?: boolean;
+  own?: boolean;
+  /** The room key has not reached this device YET — locked rows are loading,
+   *  not broken, and must not be dressed as a permanent failure. */
+  syncing?: boolean;
+}) {
   const { t } = useTranslation();
   // System rows are about the room, not about a person — centered on both
   // surfaces so they never read as somebody's message.
@@ -586,8 +639,8 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
             padding: roomy ? '8px 12px' : '6px 10px',
           }}
         >
-          <span aria-hidden="true">🔒</span>
-          {t('chat.lockedMessage')}
+          {syncing ? <Spinner /> : <span aria-hidden="true">🔒</span>}
+          {t(syncing ? 'chat.lockedMessageSyncing' : 'chat.lockedMessage')}
         </span>
       </div>
     );
@@ -744,6 +797,9 @@ export default function ChatPanel({
   // Mirror of `messages` for callbacks that must not re-subscribe every time a
   // message arrives (the archive gap-filler reads the current rows once).
   const messagesRef = useRef<ChatMessage[]>([]);
+  // Whether this device can open the topic archive yet. Drives the difference
+  // between "your history is on its way" and "something is wrong".
+  const [rootState, setRootState] = useState<ArchiveRootState | null>(null);
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -1077,12 +1133,29 @@ export default function ChatPanel({
   // one commits-since GET, not a bundle per tick.
   useEffect(() => {
     if (isGuest || !isMember) return;
-    const id = setInterval(() => {
-      void getTakSessionStore()
-        .distributePublicRootWhenGroupChanged(topicId)
-        .catch(() => {});
-    }, 30_000);
-    return () => clearInterval(id);
+    // Backoff from a short first interval: a device that joins right after the
+    // hand-out is the case that matters, and making it wait a fixed half-minute
+    // is the whole complaint. Quiet rooms settle to one cheap check a minute.
+    let delay = 3_000;
+    let timer: ReturnType<typeof setTimeout>;
+    let alive = true;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        void getTakSessionStore()
+          .distributePublicRootWhenGroupChanged(topicId)
+          .catch(() => {})
+          .finally(() => {
+            if (!alive) return;
+            delay = Math.min(delay * 2, 60_000);
+            schedule();
+          });
+      }, delay);
+    };
+    schedule();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
   }, [isGuest, isMember, topicId]);
 
   useEffect(() => {
@@ -1209,6 +1282,7 @@ export default function ChatPanel({
     const tick = async () => {
       try {
         const state = await getTakSessionStore().archiveRootState(topicId, visibilityRef.current);
+        if (alive) setRootState(state);
         // null = a scoped tier with no topic-wide root; 'verified' = we can read.
         if (state === null || state === 'verified') return true;
         await catchUpArchive();
@@ -1217,14 +1291,29 @@ export default function ChatPanel({
         return false;
       }
     };
-    const id = setInterval(() => {
-      void tick().then((done) => {
-        if (done && alive) clearInterval(id);
-      });
-    }, 10_000);
+    // Backoff, starting FAST. A fixed slow interval meant a newcomer stared at
+    // padlocks for the whole period even when the key was already waiting; the
+    // common case now resolves in a couple of seconds, and a genuinely stuck one
+    // stops hammering.
+    let delay = 1_500;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        void tick().then((done) => {
+          if (!alive || done) return;
+          delay = Math.min(delay * 2, 15_000);
+          schedule();
+        });
+      }, delay);
+    };
+    // Ask once immediately so the banner reflects reality on first paint.
+    void tick().then((done) => {
+      if (!alive || done) return;
+      schedule();
+    });
     return () => {
       alive = false;
-      clearInterval(id);
+      clearTimeout(timer);
     };
   }, [isGuest, isMember, topicId, catchUpArchive]);
 
@@ -1563,6 +1652,7 @@ export default function ChatPanel({
             </button>
           )}
           <LockedHistoryNotice
+            rootState={rootState}
             lockedCount={messages.reduce((n, m) => (m.undecryptable ? n + 1 : n), 0)}
           />
           {messages.length === 0 ? (
@@ -1584,6 +1674,7 @@ export default function ChatPanel({
                 new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 60_000;
               return (
                 <MessageRow
+                  syncing={rootState === 'waiting'}
                   key={msg.id}
                   msg={msg}
                   grouped={grouped}

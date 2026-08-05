@@ -385,7 +385,9 @@
         "title": "Couldn't load chats"
       },
       "noMessagesYet": "No messages yet",
-      "encryptedMessage": "🔒 Encrypted message"
+      "encryptedMessage": "🔒 Encrypted message",
+      "lockedMessage": "Encrypted — this device has no key for it",
+      "lockedMessageSyncing": "Loading — waiting for the room key"
     },
     "dm": {
       "title": "Direct Messages",
