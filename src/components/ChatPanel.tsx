@@ -506,7 +506,14 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
       }}
     >
       <span style={{ flex: 1, minWidth: 0 }}>
-        {outcome === 'no-archive'
+        {state === null
+          ? // The probe has not answered yet. Naming a remedy now means naming
+            // the WRONG one about half the time: this rendered "no recovery key
+            // is set up" with a Set-up button, then flipped to "Unlock history"
+            // a moment later. Say what is true — these are locked — and let the
+            // remedy appear once it is known.
+            t('chat.lockedHistory.checking', { count: String(lockedCount) })
+          : outcome === 'no-archive'
           ? // The key came back but nothing on the server opens with it.
             // Retrying achieves nothing, so say what would.
             t('chat.lockedHistory.noArchive')
@@ -521,7 +528,7 @@ function LockedHistoryNotice({ lockedCount }: { lockedCount: number }) {
                   t('chat.lockedHistory.notCovered', { count: String(lockedCount) })
                 : t('chat.lockedHistory.noBackup', { count: String(lockedCount) })}
       </span>
-      {recoverable && outcome !== 'no-archive' ? (
+      {state === null ? null : recoverable && outcome !== 'no-archive' ? (
         <button type="button" className="os-button os-button-primary" onClick={unlock} disabled={busy}>
           {busy ? t('chat.lockedHistory.unlocking') : t('chat.lockedHistory.unlock')}
         </button>
@@ -707,6 +714,17 @@ function MessageRow({ msg, grouped, roomy, own }: { msg: ChatMessage; grouped?: 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/**
+ * Last painted messages per room, for the lifetime of the page.
+ *
+ * Re-entering a room re-fetched history and re-decrypted every row before it
+ * could show anything, so a room the user had just been reading opened on a
+ * blank pane. In-memory only, never persisted: the plaintext is already on
+ * screen in this same process, and writing it anywhere else would widen where
+ * decrypted content lives.
+ */
+const paintCache = new Map<string, ChatMessage[]>();
+
 export default function ChatPanel({
   topicId,
   isGuest,
@@ -719,7 +737,10 @@ export default function ChatPanel({
   title,
 }: ChatPanelProps) {
   const { t } = useTranslation();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Seeded from the last render of THIS room, so re-entering paints instantly
+  // instead of showing an empty pane while history refetches and re-decrypts.
+  // Live data replaces it as soon as it lands.
+  const [messages, setMessages] = useState<ChatMessage[]>(() => paintCache.get(topicId) ?? []);
   // Mirror of `messages` for callbacks that must not re-subscribe every time a
   // message arrives (the archive gap-filler reads the current rows once).
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -1066,6 +1087,9 @@ export default function ChatPanel({
 
   useEffect(() => {
     messagesRef.current = messages;
+    // Decrypted bodies live only in memory here — this is the same process that
+    // already holds them on screen, never storage.
+    if (messages.length) paintCache.set(topicId, messages);
     oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
     const bottomId = messages.length > 0 ? messages[messages.length - 1].id : null;
     if (bottomId === lastBottomIdRef.current) return;
@@ -1232,19 +1256,20 @@ export default function ChatPanel({
     (async () => {
       // Resolve the topic's visibility once → selects the TAK tier. Best-effort:
       // default 'public' if the lookup fails.
-      try {
-        const tr = await fetch(`/api/topics/${topicId}`, { credentials: 'include' });
-        if (tr.ok) {
-          const tj = await tr.json();
-          const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
-          if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
-          roleRef.current = (tj?.currentUserRole as string | null) ?? null;
-        }
-      } catch {}
-
-      const data = await fetch(`/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
+      // In PARALLEL. These were sequential, so the message list waited on a
+      // metadata lookup it does not depend on — the room painted a blank pane
+      // for one extra round trip on every single entry.
+      const [topicMeta, data] = await Promise.all([
+        fetch(`/api/topics/${topicId}`, { credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch(`/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
+      const v = (topicMeta?.topic?.visibility ?? topicMeta?.visibility) as Visibility | undefined;
+      if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
+      roleRef.current = (topicMeta?.currentUserRole as string | null) ?? null;
       if (!mountedRef.current || !Array.isArray(data?.messages)) return;
       const raws = data.messages as RawChatMessage[];
       // A full first page means older messages exist behind it; a short one
