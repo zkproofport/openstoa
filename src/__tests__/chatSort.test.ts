@@ -22,14 +22,26 @@ describe('sortConversationsByActivity', () => {
     expect(sortConversationsByActivity(rooms, (r) => last[r.id]).map((r) => r.id)).toEqual(['b', 'c', 'a']);
   });
 
-  it('a room nobody has spoken in sorts BELOW every room that has activity', () => {
-    // Even when it was created much more recently — a brand-new empty room
-    // jumping above a live conversation is the surprising outcome.
-    const rooms = [room('silent-but-new', '2026-08-05T23:00:00Z'), room('busy', '2020-01-01T00:00:00Z')];
+  it('a room you JUST created outranks older conversations', () => {
+    // The reason the rule changed: ranking every silent room below every
+    // spoken-in one buried a topic the moment it was made, under every old
+    // conversation — exactly where nobody looks for the thing they just created.
+    const rooms = [room('made-just-now', '2026-08-05T23:00:00Z'), room('busy', '2020-01-01T00:00:00Z')];
+    const last: Record<string, string> = { busy: '2026-08-01T00:00:00Z' };
+    expect(sortConversationsByActivity(rooms, (r) => last[r.id]).map((r) => r.id)).toEqual([
+      'made-just-now',
+      'busy',
+    ]);
+  });
+
+  it('an OLD room nobody ever used still sinks below an active one', () => {
+    // The same single axis, read the other way: creation time only wins while
+    // it is actually the most recent thing that happened.
+    const rooms = [room('stale-and-silent', '2020-01-01T00:00:00Z'), room('busy', '2019-01-01T00:00:00Z')];
     const last: Record<string, string> = { busy: '2026-08-01T00:00:00Z' };
     expect(sortConversationsByActivity(rooms, (r) => last[r.id]).map((r) => r.id)).toEqual([
       'busy',
-      'silent-but-new',
+      'stale-and-silent',
     ]);
   });
 

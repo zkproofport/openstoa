@@ -35,6 +35,8 @@ export interface RailTopic {
   /** When this room last had CHAT activity, from `GET /api/topics`. This — not
    *  `lastActivityAt`, which posts bump — is what the list is ordered by. */
   lastChatAt?: string | null;
+  /** Creation time, the ranking key for a room nobody has spoken in yet. */
+  createdAt?: string | null;
   /** Optional, and currently never sent by any route — see `RoomRow`. */
   unreadCount?: number;
 }

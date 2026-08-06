@@ -657,8 +657,11 @@ function MessageRow({
             padding: roomy ? '8px 12px' : '6px 10px',
           }}
         >
-          {syncing ? <Spinner size={16} /> : <span aria-hidden="true">🔒</span>}
-          {t(syncing ? 'chat.lockedMessageSyncing' : 'chat.lockedMessage')}
+          {/* While the banner above is already saying "history is arriving",
+              each row repeating that sentence turns the screen into a wall of
+              the same text. The row shows only that it is not readable yet. */}
+          {syncing ? <span aria-hidden="true">···</span> : <span aria-hidden="true">🔒</span>}
+          {syncing ? '' : t('chat.lockedMessage')}
         </span>
       </div>
     );
@@ -1028,18 +1031,23 @@ export default function ChatPanel({
     // this one by id below. Sealing alone takes an MLS lock plus a round trip,
     // so without this the bubble appears well after the composer has emptied.
     const pendingId = `pending-${crypto.randomUUID()}`;
-    applyIncoming([
-      {
-        id: pendingId,
-        topicId,
-        userId: myUserId ?? '',
-        nickname: '',
-        message: text,
-        type: 'message',
-        createdAt: new Date().toISOString(),
-        pending: true,
-      },
-    ]);
+    // NOT `applyIncoming`: that also advances the SSE catch-up cursor, and this
+    // row does not exist on the server. Moving the cursor to a provisional
+    // timestamp would make the next catch-up skip real messages.
+    setMessages((prev) =>
+      mergeChronological(prev, [
+        {
+          id: pendingId,
+          topicId,
+          userId: myUserId ?? '',
+          nickname: '',
+          message: text,
+          type: 'message',
+          createdAt: new Date().toISOString(),
+          pending: true,
+        },
+      ]),
+    );
     const markFailed = () =>
       setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, pending: false, failed: true, draft: text } : m)));
 
@@ -1063,9 +1071,11 @@ export default function ChatPanel({
             // Pre-seed the decrypt memo so the SSE echo of our own message never
             // reaches MLS at all (a sender cannot open its own message).
             decryptOnceRef.current.set(payload.id, own);
-            // Swap the provisional row for the real one in a single update, so
-            // the bubble never blinks out and back in.
-            setMessages((prev) => [...prev.filter((m) => m.id !== pendingId), own]);
+            // Drop the provisional row, then MERGE the real one. Appending it
+            // directly skipped `mergeChronological`, which is what dedupes by id
+            // and keeps the list in order — so the SSE echo of the same message
+            // arrived as a second bubble, and rapid sends piled up out of order.
+            setMessages((prev) => mergeChronological(prev.filter((m) => m.id !== pendingId), [own]));
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, text);
             // Re-encrypt for the archive so later members can read it (Phase 3).

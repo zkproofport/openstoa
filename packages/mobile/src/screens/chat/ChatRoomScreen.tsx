@@ -110,6 +110,16 @@ interface ChatPage {
 // later Phase 5 concern.
 const lastSeenByTopic = new Map<string, string>();
 
+/**
+ * TAK-recovered plaintext per room, for the life of the process.
+ *
+ * `recovered` reset to {} on every mount, so re-entering a room the user had
+ * just read redrew every pre-join row as locked and made them wait through the
+ * archive fetch again — the content was already decrypted moments earlier. In
+ * memory only: the same process is already holding it on screen.
+ */
+const recoveredByTopic = new Map<string, Record<string, string>>();
+
 function getLastSeen(topicId: string): string | undefined {
   return lastSeenByTopic.get(topicId);
 }
@@ -407,7 +417,9 @@ export function ChatRoomScreen() {
   // TAK back-fill: recovered plaintext for pre-join messages MLS can't decrypt,
   // keyed by message id; merged into the list below. Topic visibility selects
   // the TAK tier (public root vs scoped) — resolved once on mount.
-  const [recovered, setRecovered] = useState<Record<string, string>>({});
+  const [recovered, setRecovered] = useState<Record<string, string>>(
+    () => recoveredByTopic.get(topicId) ?? {},
+  );
   // Whether this device can open the topic archive yet. Drives the difference
   // between "your history is on its way" and "something is wrong".
   const [rootState, setRootState] = useState<ArchiveRootState | null>(null);
@@ -605,6 +617,7 @@ export function ChatRoomScreen() {
           setRecovered((prev) => {
             const next = { ...prev };
             for (const h of history) next[h.messageId] = h.plaintext;
+            recoveredByTopic.set(topicId, next);
             return next;
           });
         }
@@ -678,6 +691,7 @@ export function ChatRoomScreen() {
           setRecovered((prev) => {
             const next = { ...prev };
             for (const h of history) next[h.messageId] = h.plaintext;
+            recoveredByTopic.set(topicId, next);
             return next;
           });
         }
@@ -1286,10 +1300,13 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
   // reaching for it crashed every room that rendered a locked row.
   const { t } = useTranslation();
   const rawContent: string = item.message ?? '';
+  // While the room-key banner is already explaining the wait, repeating that
+  // sentence in every bubble fills the screen with the same line. A locked row
+  // says only that it is not readable yet.
   const content: string =
     rawContent === '[unable to decrypt]'
       ? syncing
-        ? t('openstoa.chat.lockedMessageSyncing')
+        ? '···'
         : t('openstoa.chat.lockedMessage')
       : rawContent;
   const firstUrl = extractFirstUrl(content);

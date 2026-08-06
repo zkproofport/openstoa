@@ -21,6 +21,8 @@ import { sortDmChannels } from '@/lib/dm';
 /** Minimum shape the list needs. Callers narrow to their own row types. */
 export interface ConversationTopic {
   id: string;
+  /** When the room was made — the ranking key for one nobody has spoken in. */
+  createdAt?: string | null;
   /** Latest CHAT activity, from `GET /api/topics`. Not `lastActivityAt`, which
    *  posts bump — see the route. */
   lastChatAt?: string | null;
@@ -83,11 +85,12 @@ export function useConversationList<T extends ConversationTopic, D>(options?: {
         }
         const [topicsData, dmsData] = await Promise.all([topicsRes.json(), dmsRes.json()]);
         const loaded: T[] = Array.isArray(topicsData?.topics) ? topicsData.topics : [];
-        // `createdAt: ''` because the row types carry no creation time — rooms
-        // nobody has spoken in keep their server order rather than shuffling.
+        // `createdAt` comes straight from the topic row, so a room just created
+        // ranks by "now" and lands at the top — where the person who made it is
+        // looking for it.
         setTopics(
           sortConversationsByActivity(
-            loaded.map((t) => ({ ...t, createdAt: '' })),
+            loaded.map((t) => ({ ...t, createdAt: t.createdAt ?? '' })),
             (t) => t.lastChatAt,
           ) as T[],
         );

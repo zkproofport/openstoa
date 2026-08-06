@@ -19,13 +19,18 @@ export interface SortableConversation {
 }
 
 /**
- * Newest activity first. A room with no messages falls back to when it was
- * created, and sorts BELOW every room that has been spoken in — a brand-new
- * empty room jumping above a live conversation is the surprising outcome, not
- * the useful one.
+ * Newest first, where "newest" means the last thing that HAPPENED in a room:
+ * its latest message, or — for a room nobody has spoken in — when it was
+ * created. One axis, so a topic created seconds ago lands at the top where the
+ * person who just created it expects to find it, while a room created last year
+ * and never used sinks to the bottom on its own.
  *
- * Pure and total: unparseable or missing timestamps are treated as "no
- * activity" rather than throwing, because one bad row must not blank the list.
+ * An earlier version ranked every silent room below every spoken-in one. That
+ * put a topic the user had just made underneath every old conversation, which
+ * is exactly where nobody looks for it.
+ *
+ * Pure and total: unparseable or missing timestamps sort last rather than
+ * throwing, because one bad row must not blank the list.
  */
 export function sortConversationsByActivity<T extends SortableConversation>(
   conversations: readonly T[],
@@ -36,20 +41,19 @@ export function sortConversationsByActivity<T extends SortableConversation>(
     const ms = new Date(value).getTime();
     return Number.isNaN(ms) ? NaN : ms;
   };
+  /** Last thing that happened here: a message if there is one, else creation. */
+  const rank = (c: T): number => {
+    const last = at(lastActivityAt(c));
+    if (!Number.isNaN(last)) return last;
+    return at(c.createdAt);
+  };
   return [...conversations].sort((a, b) => {
-    const lastA = at(lastActivityAt(a));
-    const lastB = at(lastActivityAt(b));
-    const hasA = !Number.isNaN(lastA);
-    const hasB = !Number.isNaN(lastB);
-    if (hasA && hasB) return lastB - lastA;
-    // Spoken-in rooms always outrank silent ones, whatever their creation dates.
-    if (hasA) return -1;
-    if (hasB) return 1;
-    const createdA = at(a.createdAt);
-    const createdB = at(b.createdAt);
-    if (Number.isNaN(createdA) && Number.isNaN(createdB)) return 0;
-    if (Number.isNaN(createdA)) return 1;
-    if (Number.isNaN(createdB)) return -1;
-    return createdB - createdA;
+    const rankA = rank(a);
+    const rankB = rank(b);
+    // A row with no usable timestamp at all sorts last rather than anywhere.
+    if (Number.isNaN(rankA) && Number.isNaN(rankB)) return 0;
+    if (Number.isNaN(rankA)) return 1;
+    if (Number.isNaN(rankB)) return -1;
+    return rankB - rankA;
   });
 }
