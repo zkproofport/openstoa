@@ -38,7 +38,7 @@ import BareChatShell from '@/components/BareChatShell';
 import ChatRoomList, { type ListTab, type RailTopic, type RailDm } from '@/components/ChatRoomList';
 import Spinner from '@/components/Spinner';
 import { sortDmChannels } from '@/lib/dm';
-import { sortConversationsByActivity } from '@/lib/chatSort';
+import { useConversationList } from '@/lib/useConversationList';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export default function ChatListPage() {
@@ -46,70 +46,38 @@ export default function ChatListPage() {
   const { t } = useTranslation();
 
   const [tab, setTab] = useState<ListTab>('topics');
-  const [topics, setTopics] = useState<RailTopic[] | null>(null);
-  const [dms, setDms] = useState<RailDm[] | null>(null);
-  const [loading, setLoading] = useState(true);
   // A 401 hands off to `router.replace('/')`, which is not instant. Without
   // this the page would drop out of `loading` and paint its tab chrome over
   // two empty lists for the duration of the navigation — an empty shell that
   // reads as "you have no conversations" to a reader who is really just
   // signed out.
   const [redirecting, setRedirecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // A session with a temp `anon_` nickname is rejected by /api/dm with 403 —
   // same as /dm. Surface the real remedy instead of a dead error string.
-  const [needsNickname, setNeedsNickname] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setNeedsNickname(false);
-    setRedirecting(false);
-    try {
-      // Both lists are fetched up front, not per tab: the tabs are a view
-      // switch over data the reader already asked for, and a fetch on every
-      // tab click would make switching back and forth flash a spinner.
-      const [topicsRes, dmsRes] = await Promise.all([fetch('/api/topics'), fetch('/api/dm')]);
-      if (topicsRes.status === 401 || dmsRes.status === 401) {
-        setRedirecting(true);
-        router.replace('/');
-        return;
-      }
-      if (topicsRes.status === 403 || dmsRes.status === 403) {
-        setNeedsNickname(true);
-        return;
-      }
-      if (!topicsRes.ok || !dmsRes.ok) throw new Error(t('chatListPage.loadError'));
-      const [topicsData, dmsData] = await Promise.all([topicsRes.json(), dmsRes.json()]);
-      setTopics(Array.isArray(topicsData?.topics) ? topicsData.topics : []);
-      setDms(sortDmChannels(Array.isArray(dmsData?.dms) ? dmsData.dms : []));
-    } catch (err) {
-      // An empty list here would read as "you have no conversations", which is
-      // both wrong and undebuggable — say it failed and offer a retry, the
-      // same call /dm makes.
-      setError(err instanceof Error ? err.message : t('chatListPage.loadError'));
-    } finally {
-      setLoading(false);
-    }
-  }, [router, t]);
+  // One hook, shared with the rail: the ordering rule alone was not enough —
+  // each list also kept its own fetch, which is how `/chat` ended up sorted and
+  // the rail did not.
+  const {
+    topics,
+    dms,
+    loading,
+    error: loadError,
+    unauthenticated,
+    needsNickname,
+    reload: load,
+  } = useConversationList<RailTopic, RailDm>();
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!unauthenticated) return;
+    setRedirecting(true);
+    router.replace('/');
+  }, [unauthenticated, router]);
 
-  // Newest activity first, by the SAME rule the mini-app uses. `RailTopic` has
-  // no createdAt, so a room nobody has spoken in falls back to its id — stable
-  // ordering rather than the shuffling a missing key would produce.
-  const sortedTopics = useMemo(
-    () =>
-      topics === null
-        ? null
-        : sortConversationsByActivity(
-            topics.map((topic) => ({ ...topic, createdAt: '' })),
-            (topic) => topic.lastChatAt,
-          ),
-    [topics],
-  );
+  // `null` means nothing failed; an EMPTY string means it failed with no cause
+  // worth showing, so the localised label stands in. A real cause is shown as
+  // itself — a reader who sees "network down" knows what to do about it.
+  const error = loadError === null ? null : loadError || t('chatListPage.loadError');
 
   const openTopic = useCallback((topic: RailTopic) => router.push(`/chat/${topic.id}`), [router]);
   const openDm = useCallback((dm: RailDm) => router.push(`/dm/${dm.topicId}`), [router]);
@@ -193,7 +161,7 @@ export default function ChatListPage() {
         <ChatRoomList
           tab={tab}
           onTabChange={setTab}
-          topics={sortedTopics}
+          topics={topics}
           dms={dms}
           onOpenTopic={openTopic}
           onOpenDm={openDm}

@@ -51,7 +51,7 @@ import Badge from './Badge';
 import ChatPanel from './ChatPanel';
 import TopicMuteToggle from './TopicMuteToggle';
 import Spinner from './Spinner';
-import { sortConversationsByActivity } from '@/lib/chatSort';
+import { useConversationList } from '@/lib/useConversationList';
 import TopicMembersList, { type TopicMember } from './TopicMembersList';
 import ChatRoomList, {
   rowStyle,
@@ -139,8 +139,6 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     if (openRequest.room) railRef.current?.focus();
   }, [openRequest]);
 
-  const [topics, setTopics] = useState<RailTopic[] | null>(null);
-  const [dms, setDms] = useState<RailDm[] | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
   const [candidates, setCandidates] = useState<DmCandidate[] | null>(null);
@@ -196,36 +194,9 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     };
   }, []);
 
-  const loadTopics = useCallback(() => {
-    setTopics(null);
-    fetch('/api/topics')
-      .then((r) => (r.ok ? r.json() : { topics: [] }))
-      // Newest activity first, by the SAME rule /chat and the mini-app use.
-      // The rail was left on server order — creation order — so the room the
-      // user was just talking in sat wherever it happened to fall.
-      .then((d) =>
-        setTopics(
-          sortConversationsByActivity(
-            (Array.isArray(d?.topics) ? (d.topics as RailTopic[]) : []).map((t) => ({ ...t, createdAt: '' })),
-            (t) => t.lastChatAt,
-          ),
-        ),
-      )
-      .catch(() => setTopics([]));
-  }, []);
-
-  const loadDms = useCallback(() => {
-    setDms(null);
-    fetch('/api/dm')
-      .then((r) => (r.ok ? r.json() : { dms: [] }))
-      .then((d) => setDms(Array.isArray(d?.dms) ? d.dms : []))
-      .catch(() => setDms([]));
-  }, []);
-
-  useEffect(() => {
-    loadTopics();
-    loadDms();
-  }, [loadTopics, loadDms]);
+  // The SAME hook `/chat` uses. Both lists used to fetch and order themselves,
+  // which is how the rail kept showing creation order after `/chat` was fixed.
+  const { topics, dms, reload: loadDms } = useConversationList<RailTopic, RailDm>();
 
   const openRoom = useCallback((r: RailRoom) => {
     setRoom(r);

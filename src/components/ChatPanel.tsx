@@ -178,6 +178,15 @@ interface ChatMessage {
    * text, server id) when the POST returns; removed if it never does.
    */
   pending?: boolean;
+  /**
+   * The send failed and the message is still sitting here, unsent. Kept ON
+   * SCREEN with a way to retry or discard: silently removing it and pushing the
+   * text back into the composer looked like the app had eaten the message, and
+   * left the user unsure whether it had gone out.
+   */
+  failed?: boolean;
+  /** Original text, so Retry can send exactly what the user wrote. */
+  draft?: string;
 }
 
 interface ChatPanelProps {
@@ -593,6 +602,8 @@ function MessageRow({
   roomy,
   own,
   syncing,
+  onRetry,
+  onDiscard,
 }: {
   msg: ChatMessage;
   grouped?: boolean;
@@ -601,6 +612,8 @@ function MessageRow({
   /** The room key has not reached this device YET — locked rows are loading,
    *  not broken, and must not be dressed as a permanent failure. */
   syncing?: boolean;
+  onRetry?: (msg: ChatMessage) => void;
+  onDiscard?: (msg: ChatMessage) => void;
 }) {
   const { t } = useTranslation();
   // System rows are about the room, not about a person — centered on both
@@ -662,6 +675,38 @@ function MessageRow({
   // Bubble treatment mirrors mobile (ChatRoomScreen `bubbleOwn`/`bubbleOther`):
   // own messages sit right in an accent bubble, everyone else left on a neutral
   // surface, with the tail corner squared off on the speaker's side.
+  // Retry / discard sit BESIDE the failed bubble, the way a phone messenger puts
+  // them: the message stays where the user left it, and both ways out are one
+  // tap away instead of the text silently reappearing in the composer.
+  const failedControls = msg.failed && (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--space-2)',
+        fontSize: 'var(--text-label)',
+        color: 'var(--color-status-danger, var(--color-text-tertiary))',
+        flexShrink: 0,
+      }}
+    >
+      <span aria-hidden="true">!</span>
+      <button
+        type="button"
+        onClick={() => onRetry?.(msg)}
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textDecoration: 'underline' }}
+      >
+        {t('chat.sendFailedRetry')}
+      </button>
+      <button
+        type="button"
+        onClick={() => onDiscard?.(msg)}
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--muted)', textDecoration: 'underline' }}
+      >
+        {t('chat.sendFailedDiscard')}
+      </button>
+    </span>
+  );
+
   const timestamp = !grouped && (
     <span style={{
       // Latin/numeric-only relative time — the label floor (12px), not the
@@ -715,6 +760,7 @@ function MessageRow({
         // The column's alignItems already packs the row to the correct edge.
         flexDirection: own ? 'row' : 'row-reverse',
       }}>
+        {failedControls}
         {timestamp}
         {!hideMessageText && (
           <span style={{
@@ -994,7 +1040,8 @@ export default function ChatPanel({
         pending: true,
       },
     ]);
-    const dropPending = () => setMessages((prev) => prev.filter((m) => m.id !== pendingId));
+    const markFailed = () =>
+      setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, pending: false, failed: true, draft: text } : m)));
 
     try {
       const sealed = await getMlsSessionStore().seal(topicId, text);
@@ -1026,28 +1073,29 @@ export default function ChatPanel({
           }
         } catch {}
       } else {
-        // The composer was cleared optimistically, so give the text back rather
-        // than dropping it — a failed send that also eats the message is worse
-        // than a slow one. The provisional bubble goes with it: leaving it up
-        // would claim the message was sent.
-        dropPending();
-        restoreUnsentText(text);
+        markFailed();
       }
     } catch {
-      dropPending();
-      restoreUnsentText(text);
+      markFailed();
     } finally {
       setSending(false);
     }
   }
 
-  /**
-   * Put a failed send back in the composer WITHOUT overwriting whatever the user
-   * has typed since. They kept typing while the request was in flight; replacing
-   * that with the old text would destroy newer input to report an older failure.
-   */
-  function restoreUnsentText(text: string) {
-    setInputValue((current) => (current.trim() ? `${text}\n${current}` : text));
+  /** Send it again, from the bubble. The failed row goes away and a fresh
+   *  optimistic one takes its place, so one retry cannot leave two. */
+  function retryFailed(msg: ChatMessage) {
+    const text = msg.draft ?? msg.message;
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    setInputValue(text);
+    // Next tick: handleSend reads `inputValue`, which has not committed yet.
+    setTimeout(() => {
+      void handleSend();
+    }, 0);
+  }
+
+  function discardFailed(msg: ChatMessage) {
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -1704,6 +1752,8 @@ export default function ChatPanel({
               return (
                 <MessageRow
                   syncing={rootState === 'waiting'}
+                  onRetry={retryFailed}
+                  onDiscard={discardFailed}
                   key={msg.id}
                   msg={msg}
                   grouped={grouped}

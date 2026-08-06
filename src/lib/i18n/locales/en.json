@@ -566,7 +566,9 @@
       "setUp": "Set up recovery",
       "failed": "Could not unlock. Try again, or use your recovery code in Settings.",
       "noArchive": "Your key was recovered, but the archive on the server cannot be opened with it — another device replaced it with its own copy. Open chat on the device that still has your history to re-upload it, then try again."
-    }
+    },
+    "sendFailedRetry": "Retry",
+    "sendFailedDiscard": "Delete"
   },
   "chatRail": {
     "backAriaLabel": "Back to chat list",
