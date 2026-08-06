@@ -1282,6 +1282,9 @@ function isImageUrl(url: string): boolean {
 }
 
 function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing }: MessageBodyProps) {
+  // Its OWN hook. `t` from the screen component is not in scope here, and
+  // reaching for it crashed every room that rendered a locked row.
+  const { t } = useTranslation();
   const rawContent: string = item.message ?? '';
   const content: string =
     rawContent === '[unable to decrypt]'

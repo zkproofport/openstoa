@@ -51,6 +51,7 @@ import Badge from './Badge';
 import ChatPanel from './ChatPanel';
 import TopicMuteToggle from './TopicMuteToggle';
 import Spinner from './Spinner';
+import { sortConversationsByActivity } from '@/lib/chatSort';
 import TopicMembersList, { type TopicMember } from './TopicMembersList';
 import ChatRoomList, {
   rowStyle,
@@ -199,7 +200,17 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     setTopics(null);
     fetch('/api/topics')
       .then((r) => (r.ok ? r.json() : { topics: [] }))
-      .then((d) => setTopics(Array.isArray(d?.topics) ? d.topics : []))
+      // Newest activity first, by the SAME rule /chat and the mini-app use.
+      // The rail was left on server order — creation order — so the room the
+      // user was just talking in sat wherever it happened to fall.
+      .then((d) =>
+        setTopics(
+          sortConversationsByActivity(
+            (Array.isArray(d?.topics) ? (d.topics as RailTopic[]) : []).map((t) => ({ ...t, createdAt: '' })),
+            (t) => t.lastChatAt,
+          ),
+        ),
+      )
       .catch(() => setTopics([]));
   }, []);
 

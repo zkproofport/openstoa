@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
+import Spinner from '@/components/Spinner';
 import LinkPreview from '@/components/LinkPreview';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
@@ -169,6 +170,14 @@ interface ChatMessage {
    * arrives; the renderer shows a locked placeholder, never raw English.
    */
   undecryptable?: boolean;
+  /**
+   * On screen, not yet acknowledged by the server. The bubble is drawn from the
+   * text the user typed the instant they hit send — waiting for the round trip
+   * meant the chat sat empty while the message was already gone from the
+   * composer, which reads as "did that send?". Replaced by the real row (same
+   * text, server id) when the POST returns; removed if it never does.
+   */
+  pending?: boolean;
 }
 
 interface ChatPanelProps {
@@ -432,10 +441,6 @@ function E2eeBanner({ connected }: { connected?: boolean }) {
  * gesture in Safari through iOS 17.3, so recovery has to hang off a real tap —
  * hence a button rather than a silent effect on mount.
  */
-function Spinner() {
-  return <span className="os-spinner" aria-hidden="true" />;
-}
-
 function LockedHistoryNotice({
   lockedCount,
   rootState,
@@ -494,7 +499,7 @@ function LockedHistoryNotice({
           color: 'var(--color-text-secondary)',
         }}
       >
-        <Spinner />
+        <Spinner size={16} />
         <span style={{ flex: 1, minWidth: 0 }}>
           {t('chat.lockedHistory.syncing', { count: String(lockedCount) })}
         </span>
@@ -639,7 +644,7 @@ function MessageRow({
             padding: roomy ? '8px 12px' : '6px 10px',
           }}
         >
-          {syncing ? <Spinner /> : <span aria-hidden="true">🔒</span>}
+          {syncing ? <Spinner size={16} /> : <span aria-hidden="true">🔒</span>}
           {t(syncing ? 'chat.lockedMessageSyncing' : 'chat.lockedMessage')}
         </span>
       </div>
@@ -972,6 +977,25 @@ export default function ChatPanel({
     setInputValue('');
     inputRef.current?.focus();
     setSending(true);
+
+    // Draw it NOW. The id is local and provisional; the server's row replaces
+    // this one by id below. Sealing alone takes an MLS lock plus a round trip,
+    // so without this the bubble appears well after the composer has emptied.
+    const pendingId = `pending-${crypto.randomUUID()}`;
+    applyIncoming([
+      {
+        id: pendingId,
+        topicId,
+        userId: myUserId ?? '',
+        nickname: '',
+        message: text,
+        type: 'message',
+        createdAt: new Date().toISOString(),
+        pending: true,
+      },
+    ]);
+    const dropPending = () => setMessages((prev) => prev.filter((m) => m.id !== pendingId));
+
     try {
       const sealed = await getMlsSessionStore().seal(topicId, text);
       rememberOwnPlaintext(sealed.ciphertext, text);
@@ -992,7 +1016,9 @@ export default function ChatPanel({
             // Pre-seed the decrypt memo so the SSE echo of our own message never
             // reaches MLS at all (a sender cannot open its own message).
             decryptOnceRef.current.set(payload.id, own);
-            applyIncoming([own]);
+            // Swap the provisional row for the real one in a single update, so
+            // the bubble never blinks out and back in.
+            setMessages((prev) => [...prev.filter((m) => m.id !== pendingId), own]);
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, text);
             // Re-encrypt for the archive so later members can read it (Phase 3).
@@ -1002,10 +1028,13 @@ export default function ChatPanel({
       } else {
         // The composer was cleared optimistically, so give the text back rather
         // than dropping it — a failed send that also eats the message is worse
-        // than a slow one.
+        // than a slow one. The provisional bubble goes with it: leaving it up
+        // would claim the message was sent.
+        dropPending();
         restoreUnsentText(text);
       }
     } catch {
+      dropPending();
       restoreUnsentText(text);
     } finally {
       setSending(false);

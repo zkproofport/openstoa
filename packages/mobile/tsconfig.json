@@ -3,7 +3,10 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2020", "DOM"],
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
@@ -12,7 +15,43 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["react", "react-native"]
+    "types": [
+      "react",
+      "react-native"
+    ],
+    "paths": {
+      "react-native": [
+        "../../../proofport-app/node_modules/react-native"
+      ],
+      "react-native/*": [
+        "../../../proofport-app/node_modules/react-native/*"
+      ],
+      "react-native-*": [
+        "../../../proofport-app/node_modules/react-native-*"
+      ],
+      "@react-navigation/*": [
+        "../../../proofport-app/node_modules/@react-navigation/*"
+      ],
+      "@openstoa/*": [
+        "../*/src"
+      ],
+      "react-i18next": [
+        "../../../proofport-app/node_modules/react-i18next"
+      ],
+      "i18next": [
+        "../../../proofport-app/node_modules/i18next"
+      ],
+      "react-native-vector-icons/*": [
+        "../../../proofport-app/node_modules/react-native-vector-icons/*"
+      ]
+    },
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../../proofport-app/node_modules/@types"
+    ]
   },
-  "include": ["index.ts", "src/**/*"]
+  "include": [
+    "index.ts",
+    "src/**/*"
+  ]
 }
