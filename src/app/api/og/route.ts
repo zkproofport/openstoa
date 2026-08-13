@@ -103,8 +103,22 @@ function extractFavicon(html: string, baseUrl: string): string | null {
 // `<head>` (or block the request entirely) when the UA looks like a generic
 // scraper, which is why the previous `OpenStoaBot/1.0` request returned no
 // og:image and the mobile chat preview never rendered.
-const BROWSER_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+/**
+ * How this fetcher identifies itself to the sites it previews.
+ *
+ * It used to claim to be Safari. That is worse than useless: sites cannot tell
+ * us apart from a person, cannot contact us, and cannot allow or refuse us on
+ * purpose — and the ones that gate browser-shaped requests from server IPs
+ * simply refuse. Reddit answered our Safari string with 403 and this one with
+ * 200, which is why link previews for reddit were blank.
+ *
+ * The shape is the one KakaoTalk uses, and for the same reason: the
+ * `facebookexternalhit` token is what unfurler allowlists were written against,
+ * so it is what gets a link preview served, while the rest of the string says
+ * who is actually asking and where to reach us. Kakao's own is
+ * `facebookexternalhit/1.1; kakaotalk-scrap/1.0; +https://devtalk.kakao.com/…`.
+ */
+const BROWSER_UA = 'facebookexternalhit/1.1; OpenStoaBot/1.0; +https://openstoa.xyz';
 
 function isYouTubeUrl(parsed: URL): boolean {
   const h = parsed.hostname;

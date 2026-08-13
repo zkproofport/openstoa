@@ -388,6 +388,8 @@
       "encryptedMessage": "🔒 암호화된 메시지",
       "lockedMessage": "암호화됨 — 이 기기에는 키가 없습니다",
       "lockedMessageSyncing": "불러오는 중 — 방 키를 기다리고 있습니다",
+      "copyMessage": "메시지 복사",
+      "copyLink": "링크 복사",
       "offline": {
         "body": "채팅 서버에 다시 연결하는 중입니다…",
         "dismiss": "닫기"

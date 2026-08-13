@@ -26,11 +26,25 @@ interface LinkPreviewProps {
    * practice.
    */
   compact?: boolean;
+  /**
+   * Called when there will be no card for this URL.
+   *
+   * The card REPLACES the link text — showing both is the noise every messenger
+   * avoids — so the row has to be told when the card is not coming, or a failed
+   * preview leaves the message with nothing at all.
+   */
+  onUnavailable?: () => void;
 }
 
-/** One row: a square thumbnail and two lines of text. */
-const COMPACT_HEIGHT = 72;
-const COMPACT_THUMB = 72;
+/*
+ * Card geometry, fixed for every state.
+ *
+ * The image block is 1.91:1 — the aspect `og:image` is authored for — and it is
+ * present whether or not an image came back, so loading, with-image and
+ * without-image are the same footprint and the list never moves under the
+ * reader. The body underneath is three fixed rows: title, description, domain.
+ */
+const CARD_IMAGE_ASPECT = '1.91 / 1';
 
 /**
  * URLs whose preview this page has already failed to fetch.
@@ -42,7 +56,7 @@ const COMPACT_THUMB = 72;
  */
 const failedUrls = new Set<string>();
 
-export default function LinkPreview({ url, compact }: LinkPreviewProps) {
+export default function LinkPreview({ url, compact, onUnavailable }: LinkPreviewProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<OGData | null>(null);
   const [loading, setLoading] = useState(() => !failedUrls.has(url));
@@ -90,6 +104,13 @@ export default function LinkPreview({ url, compact }: LinkPreviewProps) {
     return () => { cancelled = true; };
   }, [url]);
 
+  // Tell the row there will be no card, so it can put the link text back. A
+  // message must never end up with neither.
+  useEffect(() => {
+    if (failed) onUnavailable?.();
+  }, [failed, onUnavailable]);
+
+  if (compact && failed) return null;
   if (compact) {
     let host = '';
     try {
@@ -97,7 +118,12 @@ export default function LinkPreview({ url, compact }: LinkPreviewProps) {
     } catch {
       host = url;
     }
-    const thumb = !imgError && data?.image ? data.image : null;
+    const image = !imgError && data?.image ? data.image : null;
+    const skeleton = 'color-mix(in srgb, var(--foreground) 10%, transparent)';
+    /** One grey bar, for the loading state — same rows the real text occupies. */
+    const bar = (width: string) => (
+      <span style={{ display: 'block', height: 11, width, borderRadius: 3, background: skeleton }} />
+    );
     return (
       <a
         href={url}
@@ -105,69 +131,95 @@ export default function LinkPreview({ url, compact }: LinkPreviewProps) {
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
         style={{
-          display: 'flex',
-          alignItems: 'stretch',
-          // The whole point: one height, every state.
-          height: COMPACT_HEIGHT,
-          border: '1px solid var(--color-border-default)',
+          display: 'block',
           borderRadius: 'var(--radius-card)',
-          background: 'var(--color-bg-primary)',
+          background: 'var(--color-bg-tertiary)',
           overflow: 'hidden',
           textDecoration: 'none',
           color: 'inherit',
         }}
       >
-        {thumb && (
-          <img
-            src={thumb}
-            alt=""
-            onError={() => setImgError(true)}
-            style={{ width: COMPACT_THUMB, height: '100%', objectFit: 'cover', flexShrink: 0 }}
-          />
+        <span
+          style={{
+            display: 'block',
+            width: '100%',
+            aspectRatio: CARD_IMAGE_ASPECT,
+            background: skeleton,
+            // The block stays even with no image — dropping it would shrink the
+            // card the moment a preview without one resolved.
+            backgroundImage: image ? `url("${image}")` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+        {/* Hidden loader: `background-image` has no error event, so this is what
+            notices a dead image URL and falls back to the plain block. */}
+        {image && (
+          <img src={image} alt="" onError={() => setImgError(true)} style={{ display: 'none' }} />
         )}
         <span
           style={{
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'center',
-            gap: 2,
-            padding: '0 var(--space-3)',
+            gap: 4,
+            padding: 'var(--space-3)',
             minWidth: 0,
-            flex: 1,
           }}
         >
-          <span
-            style={{
-              fontSize: 'var(--text-caption)',
-              fontWeight: 600,
-              color: 'var(--foreground)',
-              // Two lines maximum, so a long title cannot outgrow the box.
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Loading and unavailable both keep the box and say what they are,
-                rather than leaving a labelled hole or removing it outright. */}
-            {loading ? '' : (data?.title ?? t('linkPreview.unavailable'))}
-          </span>
-          <span
-            style={{
-              fontSize: 'var(--text-label)',
-              color: 'var(--color-text-tertiary)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {data?.siteName ?? host}
-          </span>
+          {loading ? (
+            <>
+              {bar('70%')}
+              {bar('90%')}
+              {bar('35%')}
+            </>
+          ) : (
+            <>
+              <span
+                style={{
+                  fontSize: 'var(--text-body-sm)',
+                  fontWeight: 700,
+                  color: 'var(--foreground)',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 1,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {data?.title ?? host}
+              </span>
+              <span
+                style={{
+                  fontSize: 'var(--text-caption)',
+                  color: 'var(--color-text-secondary)',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  // Two lines are reserved whether or not there is a
+                  // description, so a site that omits one does not make a
+                  // shorter card than a site that has one.
+                  minHeight: 34,
+                }}
+              >
+                {data?.description ?? ''}
+              </span>
+              <span
+                style={{
+                  fontSize: 'var(--text-label)',
+                  color: 'var(--accent)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {host}
+              </span>
+            </>
+          )}
         </span>
       </a>
     );
   }
-
   if (loading) return null;
 
   if (failed || !data) return null;

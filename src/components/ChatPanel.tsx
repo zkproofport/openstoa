@@ -6,6 +6,7 @@ import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import LinkPreview from '@/components/LinkPreview';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '@/lib/chatStatus';
+import { copyTargets } from '@/lib/messageActions';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import Link from 'next/link';
@@ -538,6 +539,100 @@ function OfflineNotice({ connected }: { connected: boolean }) {
   );
 }
 
+/**
+ * Right-click menu for a message.
+ *
+ * It only appears when the browser's own menu has nothing better to offer:
+ * with text selected, or over a link or an image, the native menu is the one
+ * the reader wants (Copy, Open in new tab, Save image) and this one stays out
+ * of the way.
+ *
+ * Deliberately small. Copy is the whole feature. Delete is absent on purpose —
+ * this client can only forget a message locally, and a "Delete" that leaves the
+ * message on every other member's screen is a lie whichever way it is worded.
+ */
+function MessageMenu({
+  at,
+  targets,
+  onClose,
+}: {
+  at: { x: number; y: number };
+  targets: { message: string; link: string | null };
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Focus lands on the first item so the menu is operable from the keyboard
+    // for anyone who opened it with the context-menu key.
+    ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [onClose]);
+
+  const copy = (text: string) => {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+    onClose();
+  };
+
+  const item = (label: string, text: string) => (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={() => copy(text)}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        background: 'none',
+        border: 'none',
+        color: 'var(--foreground)',
+        fontSize: 'var(--text-body-sm)',
+        padding: 'var(--space-2) var(--space-4)',
+        cursor: 'pointer',
+        minHeight: 'var(--touch-target-min)',
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      data-testid="message-menu"
+      style={{
+        position: 'fixed',
+        // Kept inside the viewport: a bubble near the right or bottom edge
+        // would otherwise open a menu the reader cannot reach.
+        left: Math.min(at.x, window.innerWidth - 200),
+        top: Math.min(at.y, window.innerHeight - 100),
+        zIndex: 1000,
+        minWidth: 160,
+        padding: 'var(--space-2) 0',
+        background: 'var(--color-bg-primary)',
+        border: '1px solid var(--color-border-default)',
+        borderRadius: 'var(--radius-card)',
+      }}
+    >
+      {item(t('chat.copyMessage'), targets.message)}
+      {targets.link && item(t('chat.copyLink'), targets.link)}
+    </div>
+  );
+}
+
 // ─── Message row ──────────────────────────────────────────────────────────────
 
 /**
@@ -720,6 +815,33 @@ function MessageRow({
   onDiscard?: (msg: ChatMessage) => void;
 }) {
   const { t } = useTranslation();
+  /*
+   * Whether this row's link will get a card.
+   *
+   * Declared HERE, above the early returns below: a row that is undecryptable
+   * one moment and readable the next takes a different path through this
+   * function, and a hook further down would change the hook count between those
+   * two renders — which React treats as a crash, not a warning.
+   */
+  const [previewUnavailable, setPreviewUnavailable] = useState(false);
+  /** Where the reader right-clicked, or null when no menu is open. */
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+
+  /**
+   * Ours only when the browser's own menu would be less useful.
+   *
+   * With a selection live, or over a link or an image, the native menu carries
+   * Copy / Open in new tab / Save image — taking that away to offer a smaller
+   * menu is a downgrade, so we let it through.
+   */
+  const onContextMenu = (e: React.MouseEvent) => {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.toString().length > 0) return;
+    if ((e.target as Element).closest('a, img, button')) return;
+    e.preventDefault();
+    setMenuAt({ x: e.clientX, y: e.clientY });
+  };
+
   // System rows are about the room, not about a person — centered on both
   // surfaces so they never read as somebody's message.
   if (msg.type === 'join' || msg.type === 'leave') {
@@ -797,7 +919,13 @@ function MessageRow({
    * timestamp floating on its own. A message the user sent must never be able
    * to disappear because a third-party site refused us.
    */
-  const hideMessageText = inlineImage !== null;
+  /*
+   * The card replaces the link text — a card AND the raw URL above it is the
+   * duplication every messenger avoids. But only while a card is actually
+   * coming: `/api/og` answers 502 for anything that refuses server-side fetches,
+   * and a message must never be left with neither.
+   */
+  const hideMessageText = inlineImage !== null || (urlOnly && !previewUnavailable);
 
   // Bubble treatment mirrors mobile (ChatRoomScreen `bubbleOwn`/`bubbleOther`):
   // own messages sit right in an accent bubble, everyone else left on a neutral
@@ -849,14 +977,20 @@ function MessageRow({
   );
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: own ? 'flex-end' : 'flex-start',
-      lineHeight: roomy ? 1.5 : 1.4,
-      marginTop: grouped ? -2 : 0,
-      maxWidth: '100%',
-    }}>
+    <div
+      onContextMenu={onContextMenu}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: own ? 'flex-end' : 'flex-start',
+        lineHeight: roomy ? 1.5 : 1.4,
+        marginTop: grouped ? -2 : 0,
+        maxWidth: '100%',
+      }}
+    >
+      {menuAt && (
+        <MessageMenu at={menuAt} targets={copyTargets(msg.message ?? '')} onClose={() => setMenuAt(null)} />
+      )}
       {/* Author — other people only, first message of a group (mobile parity).
           Was 12/13px; a nickname can be short Korean text, so bumped to the
           caption step (13px) in both densities rather than dipping to the
@@ -907,6 +1041,12 @@ function MessageRow({
             padding: roomy ? '8px 12px' : '6px 10px',
             wordBreak: 'break-word' as const,
             minWidth: 0,
+            // Drag-selectable. It was not: the bubble inherited the panel's
+            // chrome treatment, so a reader could not select part of a message
+            // to quote it — the most basic thing you do with a chat message.
+            userSelect: 'text' as const,
+            WebkitUserSelect: 'text' as const,
+            cursor: 'text' as const,
           }}>
             {renderLinkedText(msg.message, own ? 'var(--color-text-inverted)' : 'var(--accent)')}
           </span>
@@ -938,7 +1078,7 @@ function MessageRow({
         <div style={{ marginTop: 6, marginBottom: 2, maxWidth: '85%' }}>
           {/* Fixed-height: a chat list is bottom-anchored, so a card that
               grows, shrinks or vanishes drags the whole conversation. */}
-          <LinkPreview url={firstUrl} compact />
+          <LinkPreview url={firstUrl} compact onUnavailable={() => setPreviewUnavailable(true)} />
         </div>
       )}
     </div>

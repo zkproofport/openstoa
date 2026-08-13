@@ -25,10 +25,12 @@ interface OGPreviewCardProps {
   /** Fixed-height single row — see `compactContainer`. Used by chat, where a
    *  card that changes height drags the whole conversation with it. */
   compact?: boolean;
-  /** Shown under the title when the fetch gave us no siteName. */
+  /** The domain, shown on the card's last line the way a messenger does. */
   host?: string;
-  /** Shown as the title when there is no preview to show. */
-  unavailableLabel?: string;
+  /** No answer yet — draw the same card with grey bars where the text goes. */
+  loading?: boolean;
+  /** Long-press — the card carries the message, so it opens the copy sheet. */
+  onLongPress?: () => void;
 }
 
 function makeStyles(colors: ThemeColors) {
@@ -78,9 +80,6 @@ function makeStyles(colors: ThemeColors) {
      * unavailable are three paints of the same box and nothing shifts.
      */
     compactContainer: {
-      flexDirection: 'row',
-      alignItems: 'stretch',
-      height: COMPACT_HEIGHT,
       borderWidth: 1,
       borderColor: colors.border.default,
       borderRadius: RADIUS.card,
@@ -88,16 +87,27 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 6,
       overflow: 'hidden',
     },
-    compactThumb: {
-      width: COMPACT_HEIGHT,
-      height: '100%',
+    compactImage: {
+      width: '100%',
+      // 1.91:1 — the aspect `og:image` is authored for. Present in every state,
+      // so a preview that resolves without an image does not shrink the card
+      // and drag the conversation with it.
+      aspectRatio: 1.91,
       backgroundColor: colors.background.tertiary,
     },
     compactBody: {
-      flex: 1,
-      justifyContent: 'center',
-      paddingHorizontal: 10,
-      gap: 2,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 3,
+    },
+    compactDomain: {
+      fontSize: TYPE_SCALE.label,
+      color: colors.brand.primary,
+    },
+    compactBar: {
+      height: 11,
+      borderRadius: RADIUS.control,
+      backgroundColor: colors.background.tertiary,
     },
     image: {
       width: '100%',
@@ -112,7 +122,7 @@ function makeStyles(colors: ThemeColors) {
 /** One row: a square thumbnail and two lines of text. */
 export const COMPACT_HEIGHT = 72;
 
-export function OGPreviewCard({ data, onPress, compact, host, unavailableLabel }: OGPreviewCardProps) {
+export function OGPreviewCard({ data, onPress, compact, host, loading, onLongPress }: OGPreviewCardProps) {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
   // Track image-load failure so we can collapse the (otherwise empty)
@@ -128,29 +138,45 @@ export function OGPreviewCard({ data, onPress, compact, host, unavailableLabel }
 
   if (compact) {
     return (
-      <TouchableOpacity style={styles.compactContainer} onPress={onPress} activeOpacity={0.75}>
-        {showImage ? (
-          <Image
-            source={{ uri: data.image! }}
-            style={styles.compactThumb}
-            resizeMode="cover"
-            onError={() => setImageFailed(true)}
-          />
-        ) : null}
+      <TouchableOpacity
+        style={styles.compactContainer}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={400}
+        activeOpacity={0.75}
+      >
+        <Image
+          source={showImage ? { uri: data.image! } : undefined}
+          style={styles.compactImage}
+          resizeMode="cover"
+          onError={() => setImageFailed(true)}
+        />
         <View style={styles.compactBody}>
-          {/* Loading shows the box with no title; unavailable says so. Neither
-              may leave a hole or remove the box — both would move the list. */}
-          <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
-            {data.title ?? unavailableLabel ?? ''}
-          </Text>
-          <Text style={styles.siteName} numberOfLines={1} ellipsizeMode="tail">
-            {data.siteName ?? host ?? ''}
-          </Text>
+          {loading ? (
+            <>
+              <View style={[styles.compactBar, { width: '70%' }]} />
+              <View style={[styles.compactBar, { width: '90%' }]} />
+              <View style={[styles.compactBar, { width: '35%' }]} />
+            </>
+          ) : (
+            <>
+              <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                {data.title ?? host ?? ''}
+              </Text>
+              {/* Two lines are reserved either way, so a site with no
+                  description makes the same card as one that has it. */}
+              <Text style={styles.description} numberOfLines={2} ellipsizeMode="tail">
+                {data.description ?? ''}
+              </Text>
+              <Text style={styles.compactDomain} numberOfLines={1} ellipsizeMode="tail">
+                {host ?? ''}
+              </Text>
+            </>
+          )}
         </View>
       </TouchableOpacity>
     );
   }
-
   return (
     <TouchableOpacity
       style={styles.container}

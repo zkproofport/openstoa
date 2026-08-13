@@ -548,6 +548,8 @@
     "loading": "Loading…",
     "connected": "Connected",
     "reconnecting": "Reconnecting",
+    "copyMessage": "Copy message",
+    "copyLink": "Copy link",
     "offline": {
       "body": "Reconnecting to the chat server…",
       "dismiss": "Dismiss"

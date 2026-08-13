@@ -8,6 +8,7 @@ import React, {
 import {
   ActionSheetIOS,
   ActivityIndicator,
+  Modal,
   Alert,
   FlatList,
   Image,
@@ -19,7 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
+import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
 // expo-image-picker is a native module — a top-level import instantiates
 // its native bridge at module-load time, which crashes ChatRoomScreen with
 // "Cannot find native module 'ExponentImagePicker'" on JS-only Metro
@@ -53,6 +54,7 @@ import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
+import { copyTargets } from '../../lib/messageActions';
 
 /**
  * A rendered row: the server's shape plus the two states that exist only on
@@ -268,6 +270,28 @@ function makeStyles(colors: ThemeColors) {
       marginRight: 4,
     },
     presenceDotOffline: { backgroundColor: colors.text.tertiary },
+    sheetBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.background.primary,
+      borderTopLeftRadius: RADIUS.modal,
+      borderTopRightRadius: RADIUS.modal,
+      paddingVertical: 8,
+      paddingBottom: 28,
+    },
+    sheetItem: {
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      minHeight: TOUCH_TARGET_MIN,
+      justifyContent: 'center',
+    },
+    sheetItemText: {
+      fontSize: TYPE_SCALE.body,
+      color: colors.text.primary,
+    },
     offlineBar: {
       position: 'absolute',
       left: 12,
@@ -505,6 +529,8 @@ export function ChatRoomScreen() {
   // in-app WebView, which renders the raw image at top + blank space
   // (the "white area" reported on staging).
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
+  /** The message a long-press opened the copy sheet for, or null. */
+  const [actionTarget, setActionTarget] = useState<{ message: string; link: string | null } | null>(null);
   // Peer profile card (author name tap on another member's message).
   // null = closed, same controlled-by-state pattern as the image viewer.
   const [profileTarget, setProfileTarget] = useState<PeerProfileTarget | null>(null);
@@ -1281,6 +1307,7 @@ export function ChatRoomScreen() {
               client={client}
               onImagePress={setImageViewerUrl}
               onAuthorPress={setProfileTarget}
+              onLongPress={(text) => setActionTarget(copyTargets(text))}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -1356,6 +1383,7 @@ export function ChatRoomScreen() {
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
+    <MessageActionSheet target={actionTarget} styles={styles} onClose={() => setActionTarget(null)} />
     <ImageViewerModal url={imageViewerUrl} onClose={() => setImageViewerUrl(null)} />
     <PeerProfileCard
       target={profileTarget}
@@ -1384,6 +1412,8 @@ interface RowProps {
   client: ReturnType<typeof useOpenStoaClient>;
   onImagePress: (url: string) => void;
   onAuthorPress: (target: PeerProfileTarget) => void;
+  /** Long-press on the bubble — opens the copy sheet with the message as sent. */
+  onLongPress: (text: string) => void;
   /** The room key has not reached this device YET — locked rows are loading,
    *  not broken, and must not be dressed as a permanent failure. */
   syncing?: boolean;
@@ -1406,7 +1436,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
   });
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -1452,6 +1482,7 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
       item={item}
       onRetry={onRetry}
       onDiscard={onDiscard}
+      onLongPress={onLongPress}
       syncing={syncing}
       sameAuthor={sameAuthor}
       isOwn={isOwn}
@@ -1514,6 +1545,51 @@ function OfflineNotice({ offline, styles }: { offline: boolean; styles: Styles }
 /** The preview slot before (or without) an answer — same box, no content. */
 const EMPTY_OG: OGData = { title: null, description: null, image: null, siteName: null, favicon: null };
 
+/**
+ * Long-press menu for a message.
+ *
+ * Copy is the whole feature. Delete is absent on purpose — this client can only
+ * forget a message locally, and a "Delete" that leaves it on every other
+ * member's screen is a lie whichever way it is worded.
+ *
+ * A plain Modal rather than ActionSheetIOS, so iOS and Android show the same
+ * thing and nothing new is added to the dependency list.
+ */
+function MessageActionSheet({
+  target,
+  styles,
+  onClose,
+}: {
+  target: { message: string; link: string | null } | null;
+  styles: Styles;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!target) return null;
+  const copy = (text: string) => {
+    // Same optional-require as the paste path above: the module is absent until
+    // a native rebuild ships, and a missing clipboard must not crash the room.
+    loadClipboard()?.setString(text);
+    onClose();
+  };
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={onClose}>
+        <View style={styles.sheet}>
+          <TouchableOpacity style={styles.sheetItem} onPress={() => copy(target.message)}>
+            <Text style={styles.sheetItemText}>{t('openstoa.chat.copyMessage')}</Text>
+          </TouchableOpacity>
+          {target.link ? (
+            <TouchableOpacity style={styles.sheetItem} onPress={() => copy(target.link!)}>
+              <Text style={styles.sheetItemText}>{t('openstoa.chat.copyLink')}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // MessageBody — handles URL detection, OG fetch, and link tapping
 // ---------------------------------------------------------------------------
@@ -1522,6 +1598,7 @@ interface MessageBodyProps {
   item: LocalMessage;
   onRetry: (msg: LocalMessage) => void;
   onDiscard: (msg: LocalMessage) => void;
+  onLongPress: (text: string) => void;
   sameAuthor: boolean;
   isOwn: boolean;
   styles: Styles;
@@ -1546,7 +1623,7 @@ function isImageUrl(url: string): boolean {
   return false;
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard }: MessageBodyProps) {
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress }: MessageBodyProps) {
   // Its OWN hook. `t` from the screen component is not in scope here, and
   // reaching for it crashed every room that rendered a locked row.
   const { t } = useTranslation();
@@ -1647,6 +1724,12 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
   });
 
   const hasOG = ogData != null && (ogData.title != null || ogData.image != null);
+  /*
+   * The card REPLACES the link text — showing both is the duplication every
+   * messenger avoids. But only while a card is actually coming: `/api/og`
+   * refuses some sites outright, and a message must never end up with neither.
+   */
+  const previewUnavailable = !ogPending && !hasOG;
   /** Domain, as the subtitle when the fetch gave us no site name. */
   const hostOf = (u: string): string => {
     try {
@@ -1753,6 +1836,8 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
             // Open in a local image viewer instead of the in-app WebView —
             // the WebView renders the raw image with a blank page below.
             onPress={() => onImagePress(imageUrl)}
+            onLongPress={() => onLongPress(rawContent)}
+            delayLongPress={400}
             style={isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther}
           >
             <Image
@@ -1768,9 +1853,16 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           </TouchableOpacity>
         ) : null}
 
-        {/* Bubble — hidden when URL-only + image rendered OR OG card present */}
-        {(!urlOnly || (!hasOG && !imageUrl)) && !imageUrl ? (
-          <View
+        {/* The bubble is hidden while the card carries the message: an inline
+            image, or a link preview that is on its way or already here. It
+            comes back only when there will be no card at all — the condition
+            used to be `!hasOG`, which put the raw URL on screen for the whole
+            fetch and then took it away, moving everything below it. */}
+        {(!urlOnly || previewUnavailable) && !imageUrl ? (
+          <TouchableOpacity
+            activeOpacity={1}
+            onLongPress={() => onLongPress(rawContent)}
+            delayLongPress={400}
             style={[
               styles.bubble,
               isOwn ? styles.bubbleOwn : styles.bubbleOther,
@@ -1791,7 +1883,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
                 ),
               )}
             </Text>
-          </View>
+          </TouchableOpacity>
         ) : null}
 
         {/* Timestamp right of bubble for other users */}
@@ -1804,14 +1896,15 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           the message has a link and never taller or shorter afterwards.
           Rendering it only once the fetch succeeded made the list jump when a
           card arrived, and jump again when one never did. */}
-      {firstUrl && !imageUrl ? (
+      {firstUrl && !imageUrl && !previewUnavailable ? (
         <View style={isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther}>
           <OGPreviewCard
+            onLongPress={() => onLongPress(rawContent)}
             url={firstUrl}
             data={hasOG ? ogData! : EMPTY_OG}
             compact
+            loading={ogPending}
             host={hostOf(firstUrl)}
-            unavailableLabel={ogPending ? '' : t('openstoa.chat.linkPreviewUnavailable')}
             onPress={() => openUrl(firstUrl)}
           />
         </View>
