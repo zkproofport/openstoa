@@ -213,28 +213,50 @@ describe('E2EE banner', () => {
 });
 
 describe('connection state', () => {
-  it('RACE: before the stream opens it reads Reconnecting, never blank', async () => {
+  /*
+   * The state used to be a WORD next to the encryption line. It changed width
+   * between "Connected" and "Reconnecting", wrapped that line to a second row
+   * at panel widths, and so pushed the whole message list down and back every
+   * time the stream blinked. It is now a fixed 6px dot and the word moved to
+   * the accessible name — same information, no geometry.
+   */
+  const stateName = (locale: typeof enLocale) => (word: string) =>
+    `${locale.chat.connectionStatusLabel}: ${word}`;
+
+  it('RACE: before the stream opens it says Reconnecting, never blank', async () => {
     await mount();
 
-    expect(connection()!.textContent?.trim()).toBe(enLocale.chat.reconnecting);
+    expect(connection()!.getAttribute('aria-label')).toBe(stateName(enLocale)(enLocale.chat.reconnecting));
   });
 
-  it('once the stream is live it reads Connected, as a visible word', async () => {
+  it('once the stream is live it says Connected', async () => {
     await mount();
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    expect(connection()!.textContent?.trim()).toBe(enLocale.chat.connected);
+    expect(connection()!.getAttribute('aria-label')).toBe(stateName(enLocale)(enLocale.chat.connected));
   });
 
-  it('a dropped transport flips the visible word back to Reconnecting', async () => {
+  it('a dropped transport flips it back to Reconnecting', async () => {
     await mount();
     await act(async () => FakeEventSource.last.open());
     await flush();
     await act(async () => FakeEventSource.last.fail());
     await flush();
 
-    expect(connection()!.textContent?.trim()).toBe(enLocale.chat.reconnecting);
+    expect(connection()!.getAttribute('aria-label')).toBe(stateName(enLocale)(enLocale.chat.reconnecting));
+  });
+
+  it('CONTRACT: it carries no TEXT, so its width cannot change with the state', async () => {
+    // This is the whole point of the change — assert the geometry, not just
+    // the wording, or the chip comes back the next time someone wants a label.
+    await mount();
+    const before = connection()!.textContent;
+    await act(async () => FakeEventSource.last.open());
+    await flush();
+
+    expect(before).toBe('');
+    expect(connection()!.textContent).toBe('');
   });
 
   it('A11Y: the state is an announced live region with a name', async () => {
@@ -242,7 +264,15 @@ describe('connection state', () => {
 
     expect(connection()!.getAttribute('aria-live')).toBe('polite');
     expect(connection()!.getAttribute('aria-atomic')).toBe('true');
-    expect(connection()!.getAttribute('aria-label')).toBe(enLocale.chat.connectionStatusLabel);
+    expect(connection()!.getAttribute('aria-label')).toContain(enLocale.chat.connectionStatusLabel);
+  });
+
+  it('A11Y: hovering shows the same word, for readers who are not using AT', async () => {
+    await mount();
+    await act(async () => FakeEventSource.last.open());
+    await flush();
+
+    expect(connection()!.getAttribute('title')).toBe(enLocale.chat.connected);
   });
 
   it('LOCALE ko: the connection word is Korean', async () => {
@@ -250,7 +280,7 @@ describe('connection state', () => {
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    expect(connection()!.textContent?.trim()).toBe(koLocale.chat.connected);
+    expect(connection()!.getAttribute('aria-label')).toBe(stateName(koLocale)(koLocale.chat.connected));
   });
 
   it('REGRESSION: the panel adds no second role="status" (lockedHistory.test.tsx depends on that selector)', async () => {

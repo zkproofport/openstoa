@@ -388,6 +388,13 @@
       "encryptedMessage": "🔒 Encrypted message",
       "lockedMessage": "Encrypted — this device has no key for it",
       "lockedMessageSyncing": "Loading — waiting for the room key",
+      "offline": {
+        "body": "Reconnecting to the chat server…",
+        "dismiss": "Dismiss"
+      },
+      "linkPreviewUnavailable": "Preview unavailable",
+      "sendFailedRetry": "Resend",
+      "sendFailedDiscard": "Delete",
       "lockedHistorySyncing": "Getting your chat history… earlier messages unlock once this device receives the room key."
     },
     "dm": {

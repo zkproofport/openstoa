@@ -14,19 +14,52 @@ interface OGData {
 
 interface LinkPreviewProps {
   url: string;
+  /**
+   * Fixed-height card, for surfaces where a change in height is felt: a
+   * bottom-anchored chat list scrolls on every content resize, so a preview
+   * that grows, shrinks or disappears drags the whole conversation with it.
+   *
+   * In this mode the slot occupies exactly `COMPACT_HEIGHT` from first paint
+   * until last, whatever happens to the fetch: loading, resolved and
+   * unavailable are three paints of the SAME box. Nothing moves, so the card
+   * simply appears — which is also what "show it cleanly, all at once" means in
+   * practice.
+   */
+  compact?: boolean;
 }
 
-export default function LinkPreview({ url }: LinkPreviewProps) {
+/** One row: a square thumbnail and two lines of text. */
+const COMPACT_HEIGHT = 72;
+const COMPACT_THUMB = 72;
+
+/**
+ * URLs whose preview this page has already failed to fetch.
+ *
+ * Not every site answers a server-side fetch — reddit, for one, refuses ours
+ * with a 502 — and without this the same doomed request went out again on every
+ * remount of the row, filling the console and the network tab. Once is enough
+ * to know; page-lifetime only, so a reload retries.
+ */
+const failedUrls = new Set<string>();
+
+export default function LinkPreview({ url, compact }: LinkPreviewProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<OGData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(() => !failedUrls.has(url));
+  const [failed, setFailed] = useState(() => failedUrls.has(url));
   const [imgError, setImgError] = useState(false);
   const [faviconError, setFaviconError] = useState(false);
   const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    // Already known not to answer — don't ask again, and don't flash a skeleton
+    // for a card that will never arrive.
+    if (failedUrls.has(url)) {
+      setLoading(false);
+      setFailed(true);
+      return;
+    }
     setLoading(true);
     setFailed(false);
     setData(null);
@@ -39,6 +72,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
         if (!cancelled) {
           // Must have at least a title to be worth showing
           if (!d.title) {
+            failedUrls.add(url);
             setFailed(true);
           } else {
             setData(d);
@@ -46,6 +80,7 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
         }
       })
       .catch(() => {
+        failedUrls.add(url);
         if (!cancelled) setFailed(true);
       })
       .finally(() => {
@@ -55,34 +90,85 @@ export default function LinkPreview({ url }: LinkPreviewProps) {
     return () => { cancelled = true; };
   }, [url]);
 
-  if (loading) {
+  if (compact) {
+    let host = '';
+    try {
+      host = new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      host = url;
+    }
+    const thumb = !imgError && data?.image ? data.image : null;
     return (
-      <div style={{
-        marginTop: 10,
-        borderRadius: 10,
-        border: '1px solid var(--color-border-default)',
-        background: 'var(--color-bg-primary)',
-        padding: '12px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        overflow: 'hidden',
-      }}>
-        {/* Skeleton */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ height: 12, width: '60%', background: 'var(--color-bg-tertiary)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
-          <div style={{ height: 10, width: '85%', background: 'var(--color-bg-secondary)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite 0.2s' }} />
-          <div style={{ height: 10, width: '40%', background: 'var(--color-bg-secondary)', borderRadius: 4, animation: 'skeletonPulse 1.4s ease-in-out infinite 0.4s' }} />
-        </div>
-        <style>{`
-          @keyframes skeletonPulse {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
-          }
-        `}</style>
-      </div>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          display: 'flex',
+          alignItems: 'stretch',
+          // The whole point: one height, every state.
+          height: COMPACT_HEIGHT,
+          border: '1px solid var(--color-border-default)',
+          borderRadius: 'var(--radius-card)',
+          background: 'var(--color-bg-primary)',
+          overflow: 'hidden',
+          textDecoration: 'none',
+          color: 'inherit',
+        }}
+      >
+        {thumb && (
+          <img
+            src={thumb}
+            alt=""
+            onError={() => setImgError(true)}
+            style={{ width: COMPACT_THUMB, height: '100%', objectFit: 'cover', flexShrink: 0 }}
+          />
+        )}
+        <span
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 2,
+            padding: '0 var(--space-3)',
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 'var(--text-caption)',
+              fontWeight: 600,
+              color: 'var(--foreground)',
+              // Two lines maximum, so a long title cannot outgrow the box.
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Loading and unavailable both keep the box and say what they are,
+                rather than leaving a labelled hole or removing it outright. */}
+            {loading ? '' : (data?.title ?? t('linkPreview.unavailable'))}
+          </span>
+          <span
+            style={{
+              fontSize: 'var(--text-label)',
+              color: 'var(--color-text-tertiary)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {data?.siteName ?? host}
+          </span>
+        </span>
+      </a>
     );
   }
+
+  if (loading) return null;
 
   if (failed || !data) return null;
 

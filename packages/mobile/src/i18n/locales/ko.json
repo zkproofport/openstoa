@@ -388,6 +388,13 @@
       "encryptedMessage": "🔒 암호화된 메시지",
       "lockedMessage": "암호화됨 — 이 기기에는 키가 없습니다",
       "lockedMessageSyncing": "불러오는 중 — 방 키를 기다리고 있습니다",
+      "offline": {
+        "body": "채팅 서버에 다시 연결하는 중입니다…",
+        "dismiss": "닫기"
+      },
+      "linkPreviewUnavailable": "미리보기를 가져올 수 없습니다",
+      "sendFailedRetry": "재전송",
+      "sendFailedDiscard": "삭제",
       "lockedHistorySyncing": "채팅 히스토리를 가져오는 중입니다… 이 기기가 방 키를 받으면 이전 메시지가 열립니다."
     },
     "dm": {

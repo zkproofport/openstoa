@@ -52,6 +52,17 @@ import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
+import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
+
+/**
+ * A rendered row: the server's shape plus the two states that exist only on
+ * this device. A provisional row is on screen before the server has seen it, so
+ * it carries a client-side id and must never be treated as a stored message —
+ * archiving one would POST a non-uuid messageId.
+ */
+type LocalMessage = ChatMessage & { pending?: boolean; failed?: boolean };
+
+
 import { useChatSocket } from '../../api/chatSocket';
 import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls, report } from '../../crypto/mobileTransport';
 import { mirrorTakToSharedKeychain } from '../../crypto/sharedKeychainNative';
@@ -148,6 +159,27 @@ function makeStyles(colors: ThemeColors) {
     emptyText: {
       fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
+    },
+    sendFailed: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingRight: 6,
+    },
+    sendFailedMark: {
+      color: colors.status.danger,
+      fontWeight: '700',
+      fontSize: TYPE_SCALE.caption,
+    },
+    sendFailedAction: {
+      color: colors.status.danger,
+      fontSize: TYPE_SCALE.label,
+      textDecorationLine: 'underline',
+    },
+    sendFailedDiscard: {
+      color: colors.text.tertiary,
+      fontSize: TYPE_SCALE.label,
+      textDecorationLine: 'underline',
     },
     syncingBanner: {
       flexDirection: 'row',
@@ -249,6 +281,33 @@ function makeStyles(colors: ThemeColors) {
       borderRadius: RADIUS.pill,
       backgroundColor: colors.status.success,
       marginRight: 4,
+    },
+    presenceDotOffline: { backgroundColor: colors.text.tertiary },
+    offlineBar: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      // Clear of the composer, which is pinned to the bottom of the screen.
+      bottom: 76,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: RADIUS.card,
+      backgroundColor: colors.background.tertiary,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    offlineBarText: {
+      flex: 1,
+      fontSize: TYPE_SCALE.bodySmall,
+      color: colors.text.primary,
+    },
+    offlineBarDismiss: {
+      fontSize: TYPE_SCALE.bodyLarge,
+      color: colors.text.tertiary,
+      lineHeight: 20,
     },
     presenceCount: {
       fontSize: TYPE_SCALE.caption,
@@ -438,9 +497,11 @@ export function ChatRoomScreen() {
   // Whether this device can open the topic archive yet. Drives the difference
   // between "your history is on its way" and "something is wrong".
   const [rootState, setRootState] = useState<ArchiveRootState | null>(null);
+  /** Whether the archive probe has answered YET — see `isSyncingHistory`. */
+  const [rootProbed, setRootProbed] = useState(false);
   // Mirror of the rendered list for the archive gap-filler, which reads the
   // current rows once and must not re-run as messages arrive.
-  const allMessagesRef = useRef<ChatMessage[]>([]);
+  const allMessagesRef = useRef<LocalMessage[]>([]);
   const visibilityRef = useRef<Visibility>('public');
   // The caller's topic role — secret-tier history is granted only by the owner.
   const roleRef = useRef<string | null>(null);
@@ -451,7 +512,7 @@ export function ChatRoomScreen() {
   // authenticates with (Profile → AI agent → API keys), not per-topic here
   // and not an account-wide profile setting either (retired 2026-07-30). The
   // former owner-only "Add AI agent" consent sheet was removed with that redesign.
-  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const listRef = useRef<FlatList<LocalMessage>>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -545,18 +606,18 @@ export function ChatRoomScreen() {
   // this connection are missing from `liveMessages`. On every transition
   // into the `open` state we ask the server for everything newer than the
   // last message we already have and merge it in.
-  const [catchupMessages, setCatchupMessages] = useState<ChatMessage[]>([]);
+  const [catchupMessages, setCatchupMessages] = useState<LocalMessage[]>([]);
   // Optimistically-echoed own messages (plaintext). An MLS sender can't decrypt
   // its own sealed message, so without this the SSE echo shows "[unable to
   // decrypt]". Spread FIRST in the merge so it wins the first-wins dedup.
-  const [sentMessages, setSentMessages] = useState<ChatMessage[]>([]);
+  const [sentMessages, setSentMessages] = useState<LocalMessage[]>([]);
 
   // ── Merge history + catchup + live, deduplicated, newest last ─────────────
-  const allMessages = useMemo<ChatMessage[]>(() => {
+  const allMessages = useMemo<LocalMessage[]>(() => {
     const historyMsgs = (data?.pages ?? []).flatMap((p) => p.messages);
 
     const seen = new Set<string>();
-    const merged: ChatMessage[] = [];
+    const merged: LocalMessage[] = [];
     for (const m of [...sentMessages, ...historyMsgs, ...catchupMessages, ...liveMessages]) {
       if (!seen.has(m.id)) {
         seen.add(m.id);
@@ -573,6 +634,29 @@ export function ChatRoomScreen() {
     );
     return merged;
   }, [data, sentMessages, catchupMessages, liveMessages, recovered]);
+
+  /** Rows on screen this device cannot open. */
+  const lockedCount = useMemo(
+    () => allMessages.reduce((n, m) => (m.message === '[unable to decrypt]' ? n + 1 : n), 0),
+    [allMessages],
+  );
+  /*
+   * "Still working on it": something is unreadable AND the archive key is
+   * either on its way (`waiting`) or not probed yet (`null`).
+   *
+   * `null` counts. Leaving it out is what ended the spinner before anything was
+   * decrypted — the probe had not answered, so the room briefly read as
+   * finished, showed placeholder rows, and only decrypted on the NEXT visit.
+   */
+  const syncing = isSyncingHistory({ lockedCount, rootState, rootProbed });
+  /*
+   * While the spinner is up, an unreadable row shows NOTHING rather than a
+   * placeholder. One spinner for the room, not a column of identical dots.
+   */
+  const visibleMessages = useMemo(
+    () => (syncing ? allMessages.filter((m) => m.message !== '[unable to decrypt]') : allMessages),
+    [allMessages, syncing],
+  );
 
   // ── TAK back-fill + public holder upkeep (Phase 3) ────────────────────────
   // On mount: resolve visibility, then back-fill (ingest bundles + decrypt the
@@ -647,7 +731,17 @@ export function ChatRoomScreen() {
       if (!cancelled) {
         const readable = [
           ...allMessagesRef.current
-            .filter((m) => m.type === 'message' && m.message && m.message !== '[unable to decrypt]')
+            // A provisional row has a client-side id, so archiving it would
+            // POST a non-uuid messageId — rejected once per unsent message on
+            // every pass. `archiveOnSend` covers it once the server assigns an
+            // id.
+            .filter(
+              (m) =>
+                m.type === 'message' &&
+                m.message &&
+                m.message !== '[unable to decrypt]' &&
+                !isProvisionalId(m.id),
+            )
             .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
           ...history,
         ];
@@ -722,6 +816,10 @@ export function ChatRoomScreen() {
         return state === 'verified';
       } catch {
         return false;
+      } finally {
+        // Settled either way. A failed probe is an ANSWER — it stops the
+        // spinner and lets the locked rows explain themselves.
+        if (alive) setRootProbed(true);
       }
     };
     const schedule = () => {
@@ -892,7 +990,11 @@ export function ChatRoomScreen() {
           <TopicMuteButton topicId={topicId} />
           {presence ? (
             <View style={styles.presenceBadge}>
-              <View style={styles.presenceDot} />
+              {/* Green while the stream is open, grey while it is not. This is
+                  where the connection state lives now that the bar above the
+                  list is gone: a dot is the same 7px either way, so it can
+                  never move the conversation. */}
+              <View style={[styles.presenceDot, status !== 'open' && styles.presenceDotOffline]} />
               <Text style={styles.presenceCount}>{presence.count}</Text>
             </View>
           ) : null}
@@ -954,34 +1056,80 @@ export function ChatRoomScreen() {
   }, [tak, topicId, host]);
 
   // ── Send message ──────────────────────────────────────────────────────────
-  const send = useAuthGuardedAction(async () => {
-    const text = draft.trim();
-    if (!text || sending || !topicId) return;
-    setSending(true);
-    setDraft('');
-    try {
-      const sealed = await mls.seal(topicId, text);
-      const pushArchive = await buildPushArchive(text);
-      const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
-        ciphertext: sealed.ciphertext,
-        epoch: sealed.epoch,
-        ...(pushArchive ? { pushArchive } : {}),
-      });
-      if (res?.message?.id) {
+  /**
+   * Put the message on screen FIRST, then send it.
+   *
+   * The composer clears and the bubble appears in the same frame, because that
+   * is the only thing the sender is waiting to see. Sealing and the round trip
+   * happen behind it. The button no longer reports progress: the outcome worth
+   * reporting is failure, and the row itself reports that, with retry and
+   * discard beside it.
+   */
+  const deliver = useCallback(
+    async (pendingId: string, text: string) => {
+      try {
+        const sealed = await mls.seal(topicId, text);
+        const pushArchive = await buildPushArchive(text);
+        const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
+          ciphertext: sealed.ciphertext,
+          epoch: sealed.epoch,
+          ...(pushArchive ? { pushArchive } : {}),
+        });
+        if (!res?.message?.id) throw new Error('no message id');
+        // Swap the provisional row for the stored one IN PLACE, so the bubble
+        // does not jump: same position, real id, no longer pending.
         setSentMessages((curr) =>
-          curr.some((m) => m.id === res.message.id) ? curr : [...curr, { ...res.message, message: text }],
+          curr.map((m) => (m.id === pendingId ? { ...res.message, message: text } : m)),
         );
         // Cache own plaintext so it survives a restart (sender can't self-decrypt).
         void mls.cachePlaintext(topicId, res.message.id, text);
         // Re-encrypt for the archive so later members can read it (Phase 3).
         void tak.archiveOnSend(topicId, res.message.id, text, visibilityRef.current).catch(() => {});
+      } catch {
+        // The text stays in the bubble, never back in the composer — the reader
+        // decides whether to resend or drop it.
+        setSentMessages((curr) =>
+          curr.map((m) => (m.id === pendingId ? { ...m, pending: false, failed: true } : m)),
+        );
       }
-    } catch {
-      setDraft(text);
-    } finally {
-      setSending(false);
-    }
+    },
+    [mls, tak, client, topicId, buildPushArchive],
+  );
+
+  const send = useAuthGuardedAction(async () => {
+    const text = draft.trim();
+    if (!text || !topicId) return;
+    setDraft('');
+    const pendingId = nextPendingId();
+    setSentMessages((curr) => [
+      ...curr,
+      {
+        id: pendingId,
+        message: text,
+        userId: sessionUserId ?? '',
+        nickname: '',
+        createdAt: new Date().toISOString(),
+        type: 'message',
+        pending: true,
+      } as LocalMessage,
+    ]);
+    await deliver(pendingId, text);
   });
+
+  /** Send it again under the SAME row, so the message keeps its place. */
+  const retryFailed = useCallback(
+    (msg: LocalMessage) => {
+      setSentMessages((curr) =>
+        curr.map((m) => (m.id === msg.id ? { ...m, failed: false, pending: true } : m)),
+      );
+      void deliver(msg.id, msg.message ?? '');
+    },
+    [deliver],
+  );
+
+  const discardFailed = useCallback((msg: LocalMessage) => {
+    setSentMessages((curr) => curr.filter((m) => m.id !== msg.id));
+  }, []);
 
   // ── Image attach helpers ──────────────────────────────────────────────────
   const uploadAndSend = useAuthGuardedAction(async (localUri: string) => {
@@ -1080,20 +1228,12 @@ export function ChatRoomScreen() {
       // 88-px gap above the keyboard (the bug user saw).
       keyboardVerticalOffset={0}
     >
-      {/* Connection status bar */}
-      {status === 'connecting' ? (
-        <View style={styles.statusBar}>
-          <ActivityIndicator size="small" color={colors.brand.primary} />
-          <Text style={styles.statusText}> Connecting…</Text>
-        </View>
-      ) : null}
-      {status === 'error' ? (
-        <View style={[styles.statusBar, styles.statusError]}>
-          <Text style={[styles.statusText, styles.statusErrorText]}>
-            Disconnected{error ? `: ${error}` : ''}
-          </Text>
-        </View>
-      ) : null}
+      {/* No connection bar here.
+          It appeared and disappeared above the list, so every blink of the
+          stream — a phone changing network, a screen waking — pushed the whole
+          conversation down and back. The live state is the coloured dot in the
+          header, which cannot change the layout, and a connection that stays
+          down for OFFLINE_NOTICE_AFTER_MS raises the dialog below. */}
 
       {/* Message list */}
       {isFirstLoad ? (
@@ -1104,13 +1244,15 @@ export function ChatRoomScreen() {
         <FlatList
           ref={listRef}
           style={{ flex: 1 }}
-          data={allMessages}
+          data={visibleMessages}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => (
             <ChatMessageRow
               item={item}
-              syncing={rootState === 'waiting'}
-              prevItem={index > 0 ? allMessages[index - 1] : undefined}
+              onRetry={retryFailed}
+              onDiscard={discardFailed}
+              syncing={syncing}
+              prevItem={index > 0 ? visibleMessages[index - 1] : undefined}
               styles={styles}
               navigation={navigation}
               client={client}
@@ -1139,7 +1281,7 @@ export function ChatRoomScreen() {
              * Without this banner the placeholders say nothing at all, which is
              * how the previous build read: dots, and no reason for them.
              */
-            rootState === 'waiting' ? (
+            syncing ? (
               <View style={styles.syncingBanner}>
                 <ActivityIndicator size="small" color={colors.brand.primary} />
                 <Text style={styles.syncingText}>{t('openstoa.chat.lockedHistorySyncing')}</Text>
@@ -1158,6 +1300,8 @@ export function ChatRoomScreen() {
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         />
       )}
+
+      <OfflineNotice offline={status !== 'open'} styles={styles} />
 
       {/* Input bar */}
       <View style={styles.inputRow}>
@@ -1179,26 +1323,25 @@ export function ChatRoomScreen() {
           placeholderTextColor={colors.text.tertiary}
           value={draft}
           onChangeText={setDraft}
-          editable={!sending}
+          // NOT disabled while sending. Toggling `editable` blurs the input,
+          // which drops the keyboard — and messages come in bursts of two or
+          // three, so the keyboard has to survive a send.
           multiline
           returnKeyType="default"
           onSubmitEditing={send}
           blurOnSubmit={false}
         />
         <TouchableOpacity
-          style={[
-            styles.sendButton,
-            (!draft.trim() || sending) && styles.sendButtonDisabled,
-          ]}
+          style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
           onPress={send}
-          disabled={!draft.trim() || sending}
+          disabled={!draft.trim()}
           activeOpacity={0.7}
         >
-          {sending ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.sendLabel}>{t('openstoa.chat.send')}</Text>
-          )}
+          {/* No busy state. The bubble is on screen the moment Send is pressed,
+              and the only outcome worth reporting is failure — which the row
+              itself reports. A spinner here asks the reader to wait for
+              something they already watched finish. */}
+          <Text style={styles.sendLabel}>{t('openstoa.chat.send')}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -1221,8 +1364,10 @@ export function ChatRoomScreen() {
 type Styles = ReturnType<typeof makeStyles>;
 
 interface RowProps {
-  item: ChatMessage;
-  prevItem?: ChatMessage;
+  item: LocalMessage;
+  prevItem?: LocalMessage;
+  onRetry: (msg: LocalMessage) => void;
+  onDiscard: (msg: LocalMessage) => void;
   styles: Styles;
   navigation: NativeStackNavigationProp<ChatStackParamList>;
   client: ReturnType<typeof useOpenStoaClient>;
@@ -1250,7 +1395,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
   });
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -1281,7 +1426,10 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
         new Date(prevItem!.createdAt).getTime(),
     ) <= 60_000;
 
-  const isOwn = item.userId === sessionUserId;
+  // A provisional row is mine by construction — it has not been near the server
+  // yet, so there is no userId to compare. Deciding by comparison alone put the
+  // bubble on the LEFT until the server answered, then slid it right.
+  const isOwn = item.pending || item.failed ? true : item.userId === sessionUserId;
   // Own messages render as someone else's on device, and the two candidate
   // causes — a session with no userId, or ids that differ in shape — are
   // indistinguishable from the outside. Log the comparison ONCE per mismatched
@@ -1291,6 +1439,8 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
   return (
     <MessageBody
       item={item}
+      onRetry={onRetry}
+      onDiscard={onDiscard}
       syncing={syncing}
       sameAuthor={sameAuthor}
       isOwn={isOwn}
@@ -1303,12 +1453,64 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
   );
 }
 
+/**
+ * Says the connection is down, once it has been down long enough to matter.
+ *
+ * A bar above the composer, not a dialog. The stream blinks routinely on a
+ * phone — a network handover, a screen wake — and the reader has nothing to
+ * decide when it does: the client reconnects on its own, and sending still
+ * works here, because a send is a plain HTTP request rather than part of the
+ * stream. Taking the screen to say so would interrupt without offering anything
+ * to do about it.
+ *
+ * It is absolutely positioned, so showing it moves nothing. The bar the old
+ * build put ABOVE the list pushed the whole conversation down and back on every
+ * blink.
+ */
+const OFFLINE_NOTICE_AFTER_MS = 10_000;
+
+function OfflineNotice({ offline, styles }: { offline: boolean; styles: Styles }) {
+  const { t } = useTranslation();
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!offline) {
+      // Reconnected: down immediately, and the clock restarts, so a later blip
+      // gets its own full ten seconds instead of inheriting these.
+      setShow(false);
+      return;
+    }
+    const timer = setTimeout(() => setShow(true), OFFLINE_NOTICE_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [offline]);
+
+  if (!show) return null;
+  return (
+    <View style={styles.offlineBar} accessibilityLiveRegion="polite" accessibilityRole="alert">
+      <Text style={styles.offlineBarText} numberOfLines={2}>
+        {t('openstoa.chat.offline.body')}
+      </Text>
+      <TouchableOpacity
+        onPress={() => setShow(false)}
+        accessibilityLabel={t('openstoa.chat.offline.dismiss')}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={styles.offlineBarDismiss}>×</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+/** The preview slot before (or without) an answer — same box, no content. */
+const EMPTY_OG: OGData = { title: null, description: null, image: null, siteName: null, favicon: null };
+
 // ---------------------------------------------------------------------------
 // MessageBody — handles URL detection, OG fetch, and link tapping
 // ---------------------------------------------------------------------------
 
 interface MessageBodyProps {
-  item: ChatMessage;
+  item: LocalMessage;
+  onRetry: (msg: LocalMessage) => void;
+  onDiscard: (msg: LocalMessage) => void;
   sameAuthor: boolean;
   isOwn: boolean;
   styles: Styles;
@@ -1316,6 +1518,8 @@ interface MessageBodyProps {
   client: ReturnType<typeof useOpenStoaClient>;
   onImagePress: (url: string) => void;
   onAuthorPress: (target: PeerProfileTarget) => void;
+  /** The room key has not reached this device YET — see `syncing` in the screen. */
+  syncing?: boolean;
 }
 
 // Image URLs: explicit extension OR a known image host. `media.zkproofport.app`
@@ -1331,7 +1535,7 @@ function isImageUrl(url: string): boolean {
   return false;
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing }: MessageBodyProps) {
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard }: MessageBodyProps) {
   // Its OWN hook. `t` from the screen component is not in scope here, and
   // reaching for it crashed every room that rendered a locked row.
   const { t } = useTranslation();
@@ -1339,12 +1543,11 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
   // While the room-key banner is already explaining the wait, repeating that
   // sentence in every bubble fills the screen with the same line. A locked row
   // says only that it is not readable yet.
+  // A locked row only ever reaches here once syncing has STOPPED — the list
+  // filters it out entirely while the spinner is up — so this is the real
+  // outcome, not a loading state.
   const content: string =
-    rawContent === '[unable to decrypt]'
-      ? syncing
-        ? '···'
-        : t('openstoa.chat.lockedMessage')
-      : rawContent;
+    rawContent === '[unable to decrypt]' ? t('openstoa.chat.lockedMessage') : rawContent;
   const firstUrl = extractFirstUrl(content);
   const urlOnly = firstUrl !== null && isUrlOnly(content);
   // When the user pastes or uploads an image, the chat message body is just
@@ -1352,10 +1555,9 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
   // Telegram/Slack instead of leaking the raw URL as text.
   const imageUrl = urlOnly && firstUrl && isImageUrl(firstUrl) ? firstUrl : null;
 
-  const { data: ogData } = useQuery<OGData | null>({
+  const { data: ogData, isPending: ogPending } = useQuery<OGData | null>({
     queryKey: ['og', firstUrl],
     queryFn: async () => {
-      console.log('[OG] queryFn start', { firstUrl, urlOnly, imageUrl });
       if (!firstUrl) return null;
       try {
         // YouTube short-circuit: hit the official oEmbed endpoint directly
@@ -1417,8 +1619,10 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
         }
         console.log('[OG] result', { firstUrl, hasTitle: !!res?.title, hasImage: !!res?.image, raw: res });
         return res;
-      } catch (e) {
-        console.log('[OG] error', { firstUrl, msg: e instanceof Error ? e.message : String(e) });
+      } catch {
+        // No card for this link. The message text is rendered either way, so a
+        // site that refuses server-side fetches (reddit answers ours with a
+        // 502) costs the preview, never the message.
         return null;
       }
     },
@@ -1426,9 +1630,20 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
     // image directly) — saves a wasted server hit per image message.
     enabled: firstUrl !== null && !imageUrl,
     staleTime: 60 * 60 * 1000, // 1 hour
+    // A link with no preview is the normal outcome for plenty of sites, not a
+    // transient error — retrying just repeats a request already answered.
+    retry: false,
   });
 
   const hasOG = ogData != null && (ogData.title != null || ogData.image != null);
+  /** Domain, as the subtitle when the fetch gave us no site name. */
+  const hostOf = (u: string): string => {
+    try {
+      return new URL(u).hostname.replace(/^www\./, '');
+    } catch {
+      return u;
+    }
+  };
 
   const openUrl = useCallback(
     (url: string) => navigation.navigate('InAppBrowser', { url }),
@@ -1499,6 +1714,21 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther,
         ]}
       >
+        {/* Send failed: an alert mark and both ways out, outside the bubble on
+            the reader's side. The text stays in the bubble rather than jumping
+            back into the composer, so nothing the user typed is ever lost. */}
+        {item.failed ? (
+          <View style={styles.sendFailed}>
+            <Text style={styles.sendFailedMark}>!</Text>
+            <TouchableOpacity onPress={() => onRetry(item)} activeOpacity={0.7}>
+              <Text style={styles.sendFailedAction}>{t('openstoa.chat.sendFailedRetry')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onDiscard(item)} activeOpacity={0.7}>
+              <Text style={styles.sendFailedDiscard}>{t('openstoa.chat.sendFailedDiscard')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* Timestamp left of bubble for own messages */}
         {isOwn && !sameAuthor ? (
           <Text style={[styles.bubbleTime, styles.bubbleTimeOwn]}>{timeLabel}</Text>
@@ -1559,12 +1789,18 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
         ) : null}
       </View>
 
-      {/* OG preview card */}
-      {hasOG && firstUrl ? (
+      {/* Link preview — a slot of FIXED height, present from the moment we know
+          the message has a link and never taller or shorter afterwards.
+          Rendering it only once the fetch succeeded made the list jump when a
+          card arrived, and jump again when one never did. */}
+      {firstUrl && !imageUrl ? (
         <View style={isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther}>
           <OGPreviewCard
             url={firstUrl}
-            data={ogData!}
+            data={hasOG ? ogData! : EMPTY_OG}
+            compact
+            host={hostOf(firstUrl)}
+            unavailableLabel={ogPending ? '' : t('openstoa.chat.linkPreviewUnavailable')}
             onPress={() => openUrl(firstUrl)}
           />
         </View>

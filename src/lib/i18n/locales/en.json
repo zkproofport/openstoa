@@ -548,6 +548,10 @@
     "loading": "Loading…",
     "connected": "Connected",
     "reconnecting": "Reconnecting",
+    "offline": {
+      "body": "Reconnecting to the chat server…",
+      "dismiss": "Dismiss"
+    },
     "e2ee": "End-to-end encrypted — the server cannot read this",
     "connectionStatusLabel": "Connection status",
     "encryptedPreview": "Encrypted message",
@@ -692,6 +696,7 @@
     "pending": "pending…"
   },
   "linkPreview": {
+    "unavailable": "Preview unavailable",
     "openInNewTab": "Open {{url}} in a new tab"
   },
   "poll": {

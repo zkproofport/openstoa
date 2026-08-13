@@ -5,6 +5,7 @@ import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import LinkPreview from '@/components/LinkPreview';
+import { isSyncingHistory, nextPendingId, isProvisionalId } from '@/lib/chatStatus';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import Link from 'next/link';
@@ -214,6 +215,9 @@ interface ChatPanelProps {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const panelStyle: React.CSSProperties = {
+  // Containing block for `OfflineNotice`, which overlays the bottom of the
+  // panel rather than taking a row above the list.
+  position: 'relative',
   background: 'var(--surface)',
   border: '1px solid var(--border)',
   borderRadius: 'var(--radius-card)',
@@ -222,6 +226,8 @@ const panelStyle: React.CSSProperties = {
 };
 
 const panelFullHeightStyle: React.CSSProperties = {
+  // Containing block for `OfflineNotice` — see `panelStyle`.
+  position: 'relative',
   background: 'transparent',
   border: 'none',
   borderRadius: 0,
@@ -405,33 +411,121 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
  * asserts on that selector being absent when no history is locked. A bare
  * `aria-live="polite"` container is announced identically by assistive tech.
  */
+/*
+ * The connection state used to ride on the right of this line. It moved to the
+ * header dot, because a chip that says "Connected" and then "Reconnecting"
+ * changes width, wraps to a second row at panel widths, and shifts the entire
+ * message list down and back every time the stream blinks. A colour in the
+ * header carries the same information without occupying a line that can grow.
+ *
+ * A connection that stays down is not a chip-sized problem anyway — after ten
+ * seconds the panel says so in a dialog (`OfflineNotice`), which is the only
+ * point at which the reader has to do something about it.
+ */
 function E2eeBanner({ connected }: { connected?: boolean }) {
   const { t } = useTranslation();
+  const state = connected ? t('chat.connected') : t('chat.reconnecting');
   return (
     <div style={e2eeStyle} data-testid="chat-e2ee-banner">
       <span aria-hidden="true">🔒</span>
       <span style={{ minWidth: 0 }}>{t('chat.e2ee')}</span>
       {connected !== undefined && (
         <span
-          style={connStyle}
+          data-testid="chat-connection-state"
           aria-live="polite"
           aria-atomic="true"
-          aria-label={t('chat.connectionStatusLabel')}
-          data-testid="chat-connection-state"
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 'var(--radius-pill)',
-              background: connected ? 'var(--color-status-success)' : 'var(--color-text-tertiary)',
-              flexShrink: 0,
-            }}
-          />
-          {connected ? t('chat.connected') : t('chat.reconnecting')}
-        </span>
+          aria-label={`${t('chat.connectionStatusLabel')}: ${state}`}
+          title={state}
+          style={{
+            // 6px, whatever it is saying. The word it replaces changed width
+            // between "Connected" and "Reconnecting", wrapped this line to two
+            // rows at panel widths, and shifted the whole conversation down and
+            // back on every blink of the stream.
+            width: 6,
+            height: 6,
+            borderRadius: 'var(--radius-pill)',
+            background: connected ? 'var(--color-status-success)' : 'var(--color-text-tertiary)',
+            flexShrink: 0,
+            marginLeft: 'auto',
+          }}
+        />
       )}
+    </div>
+  );
+}
+
+/**
+ * Says the connection is down, once it has been down long enough to matter.
+ *
+ * A bar at the bottom, not a dialog. The stream blinks routinely — a tab wakes,
+ * a phone changes network — and the reader has nothing to decide when it does:
+ * the client reconnects on its own. Blocking the panel to say so would
+ * interrupt without offering anything to do about it. It is still an
+ * `role="alert"`, so assistive tech announces it; it just does not take the
+ * screen.
+ *
+ * The old treatment was a status line ABOVE the list, which pushed the whole
+ * conversation down and back on every blink. This is `position: absolute`
+ * inside the panel: it overlays, so showing it moves nothing.
+ */
+const OFFLINE_NOTICE_AFTER_MS = 10_000;
+
+function OfflineNotice({ connected }: { connected: boolean }) {
+  const { t } = useTranslation();
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (connected) {
+      // Reconnected: down immediately, and the clock restarts, so a later blip
+      // gets its own full ten seconds rather than inheriting these.
+      setShow(false);
+      return;
+    }
+    const timer = setTimeout(() => setShow(true), OFFLINE_NOTICE_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [connected]);
+
+  if (!show) return null;
+  return (
+    <div
+      role="alert"
+      data-testid="chat-offline-notice"
+      style={{
+        position: 'absolute',
+        left: 'var(--space-3)',
+        right: 'var(--space-3)',
+        // Clear of the composer, which is pinned to the bottom of the panel.
+        bottom: 68,
+        zIndex: 20,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-3)',
+        padding: 'var(--space-3)',
+        borderRadius: 'var(--radius-card)',
+        background: 'var(--color-bg-tertiary)',
+        border: '1px solid var(--color-border-default)',
+        boxShadow: 'var(--shadow-card, none)',
+        fontSize: 'var(--text-body-sm)',
+        color: 'var(--foreground)',
+      }}
+    >
+      <span style={{ flex: 1, minWidth: 0 }}>{t('chat.offline.body')}</span>
+      <button
+        type="button"
+        onClick={() => setShow(false)}
+        aria-label={t('chat.offline.dismiss')}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'var(--muted)',
+          cursor: 'pointer',
+          padding: 0,
+          flexShrink: 0,
+          fontSize: 'var(--text-body)',
+          lineHeight: 1,
+        }}
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -453,10 +547,11 @@ function E2eeBanner({ connected }: { connected?: boolean }) {
  */
 function LockedHistoryNotice({
   lockedCount,
-  rootState,
+  syncing,
 }: {
   lockedCount: number;
-  rootState: ArchiveRootState | null;
+  /** The room is still working on these — see `syncing` in the panel below. */
+  syncing: boolean;
 }) {
   const { t } = useTranslation();
   const [state, setState] = useState<DeviceKeyState | null>(null);
@@ -492,7 +587,7 @@ function LockedHistoryNotice({
   // yet and one is on its way to it. Offering "set up recovery" here blames the
   // user for a normal thirty-second wait, and showing nothing at all leaves a
   // column of padlocks with no explanation. Say what is happening.
-  if (rootState === 'waiting') {
+  if (syncing) {
     return (
       <div
         role="status"
@@ -641,6 +736,17 @@ function MessageRow({
   // user's language, instead of leaking the internal marker; the banner above
   // the list carries the actual remedy so every locked row need not repeat it.
   if (msg.undecryptable) {
+    /*
+     * While the room is still syncing this row shows NOTHING — the single
+     * spinner above the list is the whole story. A per-row placeholder meant
+     * every unreadable message printed its own "···", so a room opened as a
+     * column of dots; and once the text was hidden the row collapsed to a bare
+     * timestamp, which reads as a bug rather than as waiting.
+     *
+     * Once syncing stops, a row that is STILL unreadable is a real outcome, and
+     * it says so with the padlock below.
+     */
+    if (syncing) return null;
     return (
       <div style={{ display: 'flex', justifyContent: own ? 'flex-end' : 'flex-start', padding: '2px 0' }}>
         <span
@@ -661,8 +767,8 @@ function MessageRow({
           {/* While the banner above is already saying "history is arriving",
               each row repeating that sentence turns the screen into a wall of
               the same text. The row shows only that it is not readable yet. */}
-          {syncing ? <span aria-hidden="true">···</span> : <span aria-hidden="true">🔒</span>}
-          {syncing ? '' : t('chat.lockedMessage')}
+          <span aria-hidden="true">🔒</span>
+          {t('chat.lockedMessage')}
         </span>
       </div>
     );
@@ -671,10 +777,19 @@ function MessageRow({
   const firstUrl = extractFirstUrl(msg.message);
   const urlOnly = firstUrl !== null && isUrlOnly(msg.message);
   const inlineImage = urlOnly && firstUrl && isImageUrl(firstUrl) ? firstUrl : null;
-  // When the message is JUST a URL we let the OG card (or inline image)
-  // carry it on its own — repeating the URL above the card is the same
-  // visual noise mobile already avoids.
-  const hideMessageText = urlOnly && (inlineImage !== null || firstUrl !== null);
+  /*
+   * The text is hidden ONLY when something else is guaranteed to carry the
+   * message: an inline image, which is the content itself.
+   *
+   * It used to be hidden for any link, on the theory that the OG card would
+   * carry it. The card is not guaranteed — `/api/og` answers 502 for anything
+   * that blocks server-side fetches (reddit, for one), and `LinkPreview`
+   * renders NOTHING when it fails. So a link-only message showed a skeleton,
+   * then vanished: the row was still there, with no bubble and no card, just a
+   * timestamp floating on its own. A message the user sent must never be able
+   * to disappear because a third-party site refused us.
+   */
+  const hideMessageText = inlineImage !== null;
 
   // Bubble treatment mirrors mobile (ChatRoomScreen `bubbleOwn`/`bubbleOther`):
   // own messages sit right in an accent bubble, everyone else left on a neutral
@@ -813,7 +928,9 @@ function MessageRow({
       )}
       {firstUrl && !inlineImage && (
         <div style={{ marginTop: 6, marginBottom: 2, maxWidth: '85%' }}>
-          <LinkPreview url={firstUrl} />
+          {/* Fixed-height: a chat list is bottom-anchored, so a card that
+              grows, shrinks or vanishes drags the whole conversation. */}
+          <LinkPreview url={firstUrl} compact />
         </div>
       )}
     </div>
@@ -832,6 +949,7 @@ function MessageRow({
  * decrypted content lives.
  */
 const paintCache = new Map<string, ChatMessage[]>();
+
 
 export default function ChatPanel({
   topicId,
@@ -855,6 +973,11 @@ export default function ChatPanel({
   // Whether this device can open the topic archive yet. Drives the difference
   // between "your history is on its way" and "something is wrong".
   const [rootState, setRootState] = useState<ArchiveRootState | null>(null);
+  /** How many rows on screen this device cannot open. */
+  const lockedCount = messages.reduce((n, m) => (m.undecryptable ? n + 1 : n), 0);
+  /** Whether the archive probe has answered YET — see `isSyncingHistory`. */
+  const [rootProbed, setRootProbed] = useState(false);
+  const syncing = isSyncingHistory({ lockedCount, rootState, rootProbed });
   const [presence, setPresence] = useState<{ users: PresenceUser[]; count: number }>({ users: [], count: 0 });
   const [connected, setConnected] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -1031,7 +1154,7 @@ export default function ChatPanel({
     // Draw it NOW. The id is local and provisional; the server's row replaces
     // this one by id below. Sealing alone takes an MLS lock plus a round trip,
     // so without this the bubble appears well after the composer has emptied.
-    const pendingId = `pending-${crypto.randomUUID()}`;
+    const pendingId = nextPendingId();
     // NOT `applyIncoming`: that also advances the SSE catch-up cursor, and this
     // row does not exist on the server. Moving the cursor to a provisional
     // timestamp would make the next catch-up skip real messages.
@@ -1277,7 +1400,12 @@ export default function ChatPanel({
       try {
         const readable = [
           ...messagesRef.current
-            .filter((m) => m.type === 'message' && !m.undecryptable && m.message)
+            // A provisional row has a client-side id and no server row behind
+            // it yet, so archiving it would POST a non-uuid messageId — which
+            // the archive route rejects, once per unsent message, on every
+            // pass. It gets archived by `archiveOnSend` the moment the server
+            // gives it a real id.
+            .filter((m) => m.type === 'message' && !m.undecryptable && m.message && !isProvisionalId(m.id))
             .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
           ...fromArchive,
         ];
@@ -1365,7 +1493,12 @@ export default function ChatPanel({
   // an unlocked device costs nothing, and a locked one is the only case where
   // history is actually missing from the screen.
   useEffect(() => {
-    if (isGuest || !isMember) return;
+    // Never probed, never will be — so nothing is pending and the spinner must
+    // not imply otherwise.
+    if (isGuest || !isMember) {
+      setRootProbed(true);
+      return;
+    }
     let alive = true;
     const tick = async () => {
       try {
@@ -1386,6 +1519,10 @@ export default function ChatPanel({
         return state === 'verified';
       } catch {
         return false;
+      } finally {
+        // Settled either way. A failed probe is an ANSWER — it must stop the
+        // spinner and let the locked rows explain themselves.
+        if (alive) setRootProbed(true);
       }
     };
     // Backoff, starting FAST. A fixed slow interval meant a newcomer stared at
@@ -1696,6 +1833,7 @@ export default function ChatPanel({
       {/* Persistent under whichever header is above it — the panel's own, or
           the rail's / the standalone page's when `hideHeader` is set. */}
       <E2eeBanner connected={connected} />
+      <OfflineNotice connected={connected} />
 
       {/* Messages — the only scroller once the panel fills its parent. */}
       <div
@@ -1748,10 +1886,7 @@ export default function ChatPanel({
               {loadingOlder ? t('chat.loading') : t('chat.loadEarlier')}
             </button>
           )}
-          <LockedHistoryNotice
-            rootState={rootState}
-            lockedCount={messages.reduce((n, m) => (m.undecryptable ? n + 1 : n), 0)}
-          />
+          <LockedHistoryNotice syncing={syncing} lockedCount={lockedCount} />
           {messages.length === 0 ? (
             <div style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
               {t('chat.noMessagesYet')}
@@ -1771,7 +1906,7 @@ export default function ChatPanel({
                 new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 60_000;
               return (
                 <MessageRow
-                  syncing={rootState === 'waiting'}
+                  syncing={syncing}
                   onRetry={retryFailed}
                   onDiscard={discardFailed}
                   key={msg.id}
@@ -1881,7 +2016,6 @@ export default function ChatPanel({
           disabled={!inputValue.trim() || !connected}
           aria-label={t('chat.send')}
           title={t('chat.send')}
-          aria-busy={sending}
           style={{
             ...composerIconButtonStyle,
             background: 'var(--accent)',
@@ -1892,14 +2026,15 @@ export default function ChatPanel({
             transition: 'opacity 0.12s',
           }}
         >
-          {sending ? (
-            <span style={{ fontSize: 'var(--text-body-sm)' }} aria-hidden="true">…</span>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <line x1="12" y1="19" x2="12" y2="5" />
-              <polyline points="5 12 12 5 19 12" />
-            </svg>
-          )}
+          {/* No busy state. The message is already on screen the instant it is
+              typed, and the only outcome worth reporting is failure — which the
+              row itself reports, with retry and discard beside it. A spinner
+              here says "wait" about something the reader has already seen
+              finish. */}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="12" y1="19" x2="12" y2="5" />
+            <polyline points="5 12 12 5 19 12" />
+          </svg>
         </button>
         </div>
       </div>
