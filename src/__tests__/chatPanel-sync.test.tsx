@@ -234,6 +234,11 @@ function loadOlderButton(): HTMLButtonElement | undefined {
   ) as HTMLButtonElement | undefined;
 }
 
+/** POSTs to the send endpoint — the URL has no query string. */
+function sendRequests(): string[] {
+  return requests.filter((u) => u === `/api/topics/${TOPIC}/chat`);
+}
+
 function chatRequests(kind: 'since' | 'before' | 'history'): string[] {
   return requests.filter((u) => {
     if (!u.startsWith(`/api/topics/${TOPIC}/chat?`)) return false;
@@ -631,6 +636,44 @@ describe('ChatPanel — decrypt failures and own messages', () => {
     });
     await flush();
     expect(bodyText().split('hello').length - 1).toBe(1);
+  });
+
+  it('REGRESSION: Enter that COMMITS a Korean composition is not a send', async () => {
+    /*
+     * Typing Korean leaves the last syllable in the IME buffer, and Enter first
+     * commits it: the browser fires keydown with `isComposing` set, then fires
+     * a SECOND Enter once the commit lands. Treating both as sends made every
+     * Korean message arrive as two — the real one, then a single stray letter,
+     * because the composer had been emptied and the IME wrote the committed
+     * jamo back into it. Reported from the app: "ㅇㅁㄹㅇ" arrived as "ㅇㅁㄹㅇ"
+     * and "ㅇ".
+     */
+    historyPage = [];
+    sendResponse = wire(11, { id: 'srv-ko', userId: ME, nickname: 'me' });
+    await mount();
+    await act(async () => FakeEventSource.last.open());
+    await flush();
+
+    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(input, 'ㅇㅁㄹㅇ');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const enter = (isComposing: boolean) =>
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, isComposing }),
+      );
+
+    await act(async () => void enter(true));
+    await flush();
+    expect(sendRequests()).toHaveLength(0);
+
+    // The second Enter, after the commit, is the real one.
+    await act(async () => void enter(false));
+    await flush();
+    expect(sendRequests()).toHaveLength(1);
   });
 
   it('a guest issues no chat request at all', async () => {

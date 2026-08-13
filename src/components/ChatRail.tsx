@@ -196,7 +196,13 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
 
   // The SAME hook `/chat` uses. Both lists used to fetch and order themselves,
   // which is how the rail kept showing creation order after `/chat` was fixed.
-  const { topics, dms, reload: loadDms } = useConversationList<RailTopic, RailDm>();
+  const {
+    topics,
+    dms,
+    error: listError,
+    needsNickname,
+    reload: loadDms,
+  } = useConversationList<RailTopic, RailDm>();
 
   const openRoom = useCallback((r: RailRoom) => {
     setRoom(r);
@@ -447,6 +453,9 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
           onTabChange={setTab}
           topics={topics}
           dms={dms}
+          needsNickname={needsNickname}
+          loadError={listError}
+          onRetry={loadDms}
           onOpenTopic={(topic) => openRoom({ kind: 'topic', topicId: topic.id, title: topic.title })}
           onOpenDm={(d) => openRoom({ kind: 'dm', topicId: d.topicId, title: d.peer.nickname, profileImage: d.peer.profileImage })}
         />

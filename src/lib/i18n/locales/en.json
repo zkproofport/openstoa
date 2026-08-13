@@ -596,6 +596,9 @@
     "dmsEmpty": "No direct messages yet.",
     "membersLoadError": "Could not load the member list.",
     "noMembersFound": "No members found.",
+    "needsNickname": "Set a nickname to use chat.",
+    "setNickname": "Go to profile",
+    "loadFailed": "Could not load your conversations.",
     "tryAgain": "Try again",
     "unreadCount": "{{count}} unread messages",
     "roles": {

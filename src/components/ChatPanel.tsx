@@ -1098,6 +1098,18 @@ function MessageRow({
  */
 const paintCache = new Map<string, ChatMessage[]>();
 
+/**
+ * The signed-in user's id, for the lifetime of the page.
+ *
+ * Which side a bubble sits on is decided by comparing against it, and it used
+ * to arrive from `/api/auth/session` a moment AFTER the first paint — so every
+ * message the reader had sent opened on the left, under someone else's name,
+ * and jumped to the right when the request came back. One fetch per page rather
+ * than per panel, and every panel after the first knows the answer before it
+ * draws anything.
+ */
+let cachedUserId: string | null = null;
+
 
 export default function ChatPanel({
   topicId,
@@ -1133,7 +1145,15 @@ export default function ChatPanel({
   const [uploading, setUploading] = useState(false);
   // Own-message alignment needs the caller's id. Same source the rest of the
   // web app uses for "is this me" checks (see topics/[topicId]/members).
-  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [myUserId, setMyUserId] = useState<string | null>(cachedUserId);
+  /*
+   * Whether the session lookup has ANSWERED — which is not the same as
+   * `myUserId === null`. A failed lookup also leaves it null, and gating the
+   * list on the value rather than on "have we asked yet" would spin forever on
+   * a session endpoint that is down. Seeded true when the id is already known,
+   * because then there is nothing to wait for.
+   */
+  const [sessionProbed, setSessionProbed] = useState(cachedUserId !== null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1419,6 +1439,23 @@ export default function ChatPanel({
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    /*
+     * An Enter that is COMMITTING an IME composition is not a send.
+     *
+     * Typing Korean (or Japanese, or Chinese) leaves the last syllable in the
+     * IME's buffer, and Enter first commits it — the browser fires keydown with
+     * `isComposing` set, then fires a SECOND Enter once the commit lands. The
+     * old code treated both as sends: the first sent the message and emptied
+     * the composer, the IME then wrote the committed jamo back into the empty
+     * box, and the second sent that as a message of its own. Every Korean
+     * message arrived as two, the second one a single stray letter.
+     *
+     * `keyCode === 229` is the same signal from browsers that do not set
+     * `isComposing` — it is the standard "the IME is handling this" code.
+     */
+    const composing =
+      (e.nativeEvent as KeyboardEvent).isComposing || (e.nativeEvent as KeyboardEvent).keyCode === 229;
+    if (composing) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -1430,8 +1467,16 @@ export default function ChatPanel({
     let alive = true;
     fetch('/api/auth/session')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d?.userId) setMyUserId(d.userId); })
-      .catch(() => {});
+      .then((d) => {
+        if (!d?.userId) return;
+        cachedUserId = d.userId;
+        if (alive) setMyUserId(d.userId);
+      })
+      .catch(() => {})
+      // Settled either way: an unanswered lookup must not hold the room shut.
+      .finally(() => {
+        if (alive) setSessionProbed(true);
+      });
     return () => { alive = false; };
   }, [isGuest]);
 
@@ -2091,7 +2136,14 @@ export default function ChatPanel({
               under the header said the same thing twice and pushed the first
               message up behind it. */}
           {!syncing && <LockedHistoryNotice syncing={false} lockedCount={lockedCount} />}
-          {syncing ? (
+          {!isGuest && isMember && !sessionProbed ? (
+            /* Which side a bubble belongs on is not yet knowable. Drawing now
+               would put the reader's own messages under someone else's name and
+               then move them across the panel a moment later. */
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
+              <Spinner size={20} />
+            </div>
+          ) : syncing ? (
             /* Every row is sealed until the key lands, so a list is the wrong
                thing to draw. One spinner, centred, and the messages when they
                are readable. */

@@ -81,6 +81,9 @@ export default function ChatRoomList({
   onTabChange,
   topics,
   dms,
+  needsNickname,
+  loadError,
+  onRetry,
   onOpenTopic,
   onOpenDm,
 }: {
@@ -88,6 +91,16 @@ export default function ChatRoomList({
   onTabChange: (tab: ListTab) => void;
   topics: RailTopic[] | null;
   dms: RailDm[] | null;
+  /**
+   * Why the lists are null, when they are null for a REASON.
+   *
+   * `null` alone means "still loading", and it used to mean that even after the
+   * server had answered 403 — so an account without a nickname sat on a spinner
+   * that would never stop. A list that cannot be loaded has to say so.
+   */
+  needsNickname?: boolean;
+  loadError?: string | null;
+  onRetry?: () => void;
   onOpenTopic: (topic: RailTopic) => void;
   onOpenDm: (dm: RailDm) => void;
 }) {
@@ -99,7 +112,23 @@ export default function ChatRoomList({
         <TabButton active={tab === 'dms'} onClick={() => onTabChange('dms')} label={t('chatRail.tabs.direct')} />
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        {tab === 'topics' ? <TopicList topics={topics} onOpen={onOpenTopic} /> : <DmList dms={dms} onOpen={onOpenDm} />}
+        {tab === 'topics' ? (
+          <TopicList
+            topics={topics}
+            onOpen={onOpenTopic}
+            needsNickname={needsNickname}
+            loadError={loadError}
+            onRetry={onRetry}
+          />
+        ) : (
+          <DmList
+            dms={dms}
+            onOpen={onOpenDm}
+            needsNickname={needsNickname}
+            loadError={loadError}
+            onRetry={onRetry}
+          />
+        )}
       </div>
     </>
   );
@@ -264,8 +293,69 @@ function RoomRow({
   );
 }
 
-function TopicList({ topics, onOpen }: { topics: RailTopic[] | null; onOpen: (t: RailTopic) => void }) {
+/** Said in place of a list that will not arrive, with the way out. */
+function ListNotice({ body, action }: { body: string; action?: React.ReactNode }) {
+  return (
+    <div style={emptyStateStyle}>
+      <p style={{ margin: '0 0 8px' }}>{body}</p>
+      {action}
+    </div>
+  );
+}
+
+function TopicList({
+  topics,
+  onOpen,
+  needsNickname,
+  loadError,
+  onRetry,
+}: {
+  topics: RailTopic[] | null;
+  onOpen: (t: RailTopic) => void;
+  needsNickname?: boolean;
+  loadError?: string | null;
+  onRetry?: () => void;
+}) {
   const { t } = useTranslation();
+  if (needsNickname) {
+    return (
+      <ListNotice
+        body={t('chatRail.needsNickname')}
+        action={
+          <Link href="/my" style={{ color: 'var(--accent)' }}>
+            {t('chatRail.setNickname')}
+          </Link>
+        }
+      />
+    );
+  }
+  if (loadError != null) {
+    return (
+      <ListNotice
+        body={loadError || t('chatRail.loadFailed')}
+        action={
+          onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{
+                background: 'none',
+                border: '1px solid var(--color-border-strong)',
+                borderRadius: 'var(--radius-pill)',
+                padding: '6px var(--space-4)',
+                color: 'var(--foreground)',
+                fontSize: 'var(--text-caption)',
+                cursor: 'pointer',
+                minHeight: 'var(--touch-target-min)',
+              }}
+            >
+              {t('chatRail.tryAgain')}
+            </button>
+          )
+        }
+      />
+    );
+  }
   if (topics === null) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
@@ -304,8 +394,35 @@ function TopicList({ topics, onOpen }: { topics: RailTopic[] | null; onOpen: (t:
   );
 }
 
-function DmList({ dms, onOpen }: { dms: RailDm[] | null; onOpen: (d: RailDm) => void }) {
+function DmList({
+  dms,
+  onOpen,
+  needsNickname,
+  loadError,
+  onRetry,
+}: {
+  dms: RailDm[] | null;
+  onOpen: (d: RailDm) => void;
+  needsNickname?: boolean;
+  loadError?: string | null;
+  onRetry?: () => void;
+}) {
   const { t } = useTranslation();
+  if (needsNickname) {
+    return (
+      <ListNotice
+        body={t('chatRail.needsNickname')}
+        action={
+          <Link href="/my" style={{ color: 'var(--accent)' }}>
+            {t('chatRail.setNickname')}
+          </Link>
+        }
+      />
+    );
+  }
+  if (loadError != null) {
+    return <ListNotice body={loadError || t('chatRail.loadFailed')} />;
+  }
   if (dms === null) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
