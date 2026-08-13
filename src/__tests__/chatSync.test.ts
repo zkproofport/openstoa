@@ -23,6 +23,7 @@ import {
   DecryptOnce,
   fetchCatchup,
   mergeChronological,
+  isOwnMessage,
   newestCreatedAt,
   sinceCursor,
   CATCHUP_MAX_PAGES,
@@ -252,5 +253,40 @@ describe('DecryptOnce — the one-shot MLS decrypt guard', () => {
     const memo = new DecryptOnce<string>();
     const factory = async () => '[unable to decrypt]';
     expect(await memo.get('m1', factory)).toBe('[unable to decrypt]');
+  });
+});
+
+describe('isOwnMessage', () => {
+  const ME = '0xme';
+
+  it('REGRESSION: a message being sent is MINE before the session id has loaded', () => {
+    // The optimistic row used to carry `myUserId` and be compared back against
+    // it. Before /api/auth/session resolved that was '', so the bubble rendered
+    // on the other side and jumped across when the server echo landed.
+    expect(isOwnMessage({userId: '', pending: true}, null)).toBe(true);
+  });
+
+  it('a FAILED send stays mine — it is still my message, just unsent', () => {
+    expect(isOwnMessage({userId: '', failed: true}, null)).toBe(true);
+  });
+
+  it('a server row is mine when the ids match', () => {
+    expect(isOwnMessage({userId: ME}, ME)).toBe(true);
+  });
+
+  it("someone else's message is never mine, pending flag absent", () => {
+    expect(isOwnMessage({userId: '0xsomeone'}, ME)).toBe(false);
+  });
+
+  it('with no session id, a server row is NOT claimed as mine', () => {
+    // Only rows this client composed may be assumed; guessing on the rest would
+    // put strangers' messages on the reader's side.
+    expect(isOwnMessage({userId: '0xsomeone'}, null)).toBe(false);
+    expect(isOwnMessage({userId: ME}, null)).toBe(false);
+  });
+
+  it('a missing userId is not mine unless this client composed it', () => {
+    expect(isOwnMessage({}, ME)).toBe(false);
+    expect(isOwnMessage({pending: true}, ME)).toBe(true);
   });
 });

@@ -21,6 +21,7 @@ import {
   DecryptOnce,
   fetchCatchup,
   mergeChronological,
+  isOwnMessage,
   newestCreatedAt,
   sinceCursor,
   CATCHUP_PAGE_LIMIT,
@@ -1369,11 +1370,20 @@ export default function ChatPanel({
     const tick = async () => {
       try {
         const state = await getTakSessionStore().archiveRootState(topicId, visibilityRef.current);
-        if (alive) setRootState(state);
-        // null = a scoped tier with no topic-wide root; 'verified' = we can read.
-        if (state === null || state === 'verified') return true;
+        // null = a scoped tier with no topic-wide root, so there is nothing to
+        // wait for and nothing to decrypt from an archive.
+        if (state === null) {
+          if (alive) setRootState(state);
+          return true;
+        }
+        // Decrypt BEFORE reporting the new state. The previous version stopped
+        // the moment the root became 'verified' — which is precisely the pass
+        // that can finally open the history — so the banner cleared over a room
+        // still full of locked rows, and nothing decrypted until the user left
+        // and came back.
         await catchUpArchive();
-        return false;
+        if (alive) setRootState(state);
+        return state === 'verified';
       } catch {
         return false;
       }
@@ -1768,7 +1778,7 @@ export default function ChatPanel({
                   msg={msg}
                   grouped={grouped}
                   roomy={roomy}
-                  own={myUserId != null && msg.userId === myUserId}
+                  own={isOwnMessage(msg, myUserId)}
                 />
               );
             })

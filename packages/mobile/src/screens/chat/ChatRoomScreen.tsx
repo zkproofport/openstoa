@@ -149,6 +149,21 @@ function makeStyles(colors: ThemeColors) {
       fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
+    syncingBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginBottom: 8,
+      borderRadius: RADIUS.card,
+      backgroundColor: colors.background.secondary,
+    },
+    syncingText: {
+      flex: 1,
+      fontSize: TYPE_SCALE.bodySmall,
+      color: colors.text.secondary,
+    },
     // Locked/loading rows read as status, not as content the user wrote.
     lockedBody: {
       fontSize: TYPE_SCALE.body,
@@ -683,9 +698,17 @@ export function ChatRoomScreen() {
     const tick = async (): Promise<boolean> => {
       try {
         const state = await tak.archiveRootState(topicId, visibilityRef.current);
-        if (alive) setRootState(state);
-        // null = a scoped tier with no topic-wide root; 'verified' = readable.
-        if (state === null || state === 'verified') return true;
+        // null = a scoped tier with no topic-wide root, so there is nothing to
+        // wait for and nothing to decrypt from an archive.
+        if (state === null) {
+          if (alive) setRootState(state);
+          return true;
+        }
+        // Decrypt BEFORE reporting the new state. The previous version stopped
+        // the moment the root became 'verified' — precisely the pass that can
+        // finally open the history — so the spinner ended over a room still
+        // showing placeholders, and nothing decrypted until the user left the
+        // room and came back.
         const history = await tak.backfill(topicId, visibilityRef.current);
         if (alive && history.length) {
           setRecovered((prev) => {
@@ -695,7 +718,8 @@ export function ChatRoomScreen() {
             return next;
           });
         }
-        return false;
+        if (alive) setRootState(state);
+        return state === 'verified';
       } catch {
         return false;
       }
@@ -1108,7 +1132,19 @@ export function ChatRoomScreen() {
           }}
           onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
           ListHeaderComponent={
-            isFetchingNextPage ? (
+            /*
+             * ONE explanation for the whole room. The rows below show a plain
+             * placeholder while this is up — repeating "waiting for the room
+             * key" in every bubble filled the screen with the same sentence.
+             * Without this banner the placeholders say nothing at all, which is
+             * how the previous build read: dots, and no reason for them.
+             */
+            rootState === 'waiting' ? (
+              <View style={styles.syncingBanner}>
+                <ActivityIndicator size="small" color={colors.brand.primary} />
+                <Text style={styles.syncingText}>{t('openstoa.chat.lockedHistorySyncing')}</Text>
+              </View>
+            ) : isFetchingNextPage ? (
               <View style={styles.loadingMore}>
                 <ActivityIndicator size="small" color={colors.brand.primary} />
               </View>

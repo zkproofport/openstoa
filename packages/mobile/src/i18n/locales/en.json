@@ -387,7 +387,8 @@
       "noMessagesYet": "No messages yet",
       "encryptedMessage": "🔒 Encrypted message",
       "lockedMessage": "Encrypted — this device has no key for it",
-      "lockedMessageSyncing": "Loading — waiting for the room key"
+      "lockedMessageSyncing": "Loading — waiting for the room key",
+      "lockedHistorySyncing": "Getting your chat history… earlier messages unlock once this device receives the room key."
     },
     "dm": {
       "title": "Direct Messages",

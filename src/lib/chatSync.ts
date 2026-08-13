@@ -209,3 +209,21 @@ export class DecryptOnce<T> {
     }
   }
 }
+
+/**
+ * Is this row the reader's own message?
+ *
+ * A message the reader is SENDING is theirs by construction, and saying so
+ * explicitly is the point: the optimistic row used to carry `myUserId` and be
+ * compared back against it, so before `/api/auth/session` resolved it carried
+ * `''`, failed the comparison, and rendered on the other side — then jumped
+ * across the moment the server echo arrived. Ownership of a message this client
+ * just composed must not depend on a network round trip.
+ */
+export function isOwnMessage(
+  message: {userId?: string; pending?: boolean; failed?: boolean},
+  myUserId: string | null,
+): boolean {
+  if (message.pending || message.failed) return true;
+  return myUserId != null && message.userId === myUserId;
+}
