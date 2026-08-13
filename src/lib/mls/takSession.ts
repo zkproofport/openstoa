@@ -481,6 +481,26 @@ export class TakSessionStore {
   }
 
   /**
+   * Drop a cached NOT-YET-SETTLED answer, so the next resolution asks the
+   * server again instead of repeating the last one.
+   *
+   * `resolvePublicRoot` holds a 'waiting' answer for UNSETTLED_ROOT_TTL_MS,
+   * which is right for casual callers and wrong for the one case that matters:
+   * a device sitting in an open room with locked history, polling precisely
+   * because it expects the answer to change. Its retries all landed inside the
+   * TTL and were answered from the cache without a request, so a bundle that
+   * arrived seconds after the device joined was not picked up until the user
+   * left the room and came back — which is exactly what it looked like.
+   *
+   * A 'verified' answer is never dropped: it cannot change (the fingerprint is
+   * write-once and ours matches it), so re-asking could only cost a request.
+   */
+  forgetUnsettledRoot(topicId: string): void {
+    const cached = this.rootResolutions.get(topicId);
+    if (cached && cached.res.state !== 'verified') this.rootResolutions.delete(topicId);
+  }
+
+  /**
    * The fingerprint of the VERIFIED public root this device holds, or null when
    * it holds none. This is what a device presents to claim the archive-holder
    * lease: the holder's whole job is handing the root to new leaves, so a device

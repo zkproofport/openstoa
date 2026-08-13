@@ -156,6 +156,15 @@ let beforePages: WireMessage[][];
 let sincePages: WireMessage[][];
 /** Payload the POST /chat endpoint echoes back. */
 let sendResponse: WireMessage | null;
+/**
+ * Held open to make the SSE echo beat the POST response.
+ *
+ * That order is not exotic — the server fans out to the stream from inside the
+ * request handler, so the echo can reach an already-open EventSource before
+ * `fetch` resolves in the sender's tab. It is also the order that produced a
+ * duplicate bubble in front of users.
+ */
+let sendGate: { promise: Promise<void>; release: () => void } | null;
 
 function json(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as unknown as Response;
@@ -177,6 +186,7 @@ function installFetch() {
         return json({ messages: historyPage, total: historyPage.length });
       }
       if (url === `/api/topics/${TOPIC}/chat`) {
+        if (sendGate) await sendGate.promise;
         return json({ message: sendResponse }, true, 201);
       }
       // tak/holder, push prefs, OG previews … — nothing the panel depends on.
@@ -245,6 +255,7 @@ beforeEach(() => {
   beforePages = [];
   sincePages = [];
   sendResponse = null;
+  sendGate = null;
   FakeEventSource.instances = [];
   scrollCalls = 0;
   vi.clearAllMocks();
@@ -565,6 +576,61 @@ describe('ChatPanel — decrypt failures and own messages', () => {
     expect(decryptCalls).not.toContain('own1');
     expect(bodyText().split('my own words').length - 1).toBe(1);
     expect(bodyText()).not.toContain(enLocale.chat.lockedMessage);
+  });
+
+  it('REGRESSION: the echo beating the POST response leaves ONE bubble, not two', async () => {
+    /*
+     * The provisional row and the server row used to be reconciled only in the
+     * POST-response handler, keyed on the provisional id. The SSE echo took a
+     * different path that knew nothing about the provisional row, so when it
+     * arrived first the same message was on screen twice until the response
+     * caught up — visible, and reported.
+     *
+     * The two paths share exactly one value before the id exists: the
+     * ciphertext this tab sealed. That is what they are matched on now.
+     */
+    historyPage = [];
+    let release!: () => void;
+    const promise = new Promise<void>((r) => {
+      release = r;
+    });
+    sendGate = { promise, release };
+    sendResponse = wire(9, {
+      id: 'srv-1',
+      userId: ME,
+      nickname: 'me',
+      sealed: { ciphertext: 'ct-own-hello', epoch: 0 },
+    });
+
+    await mount();
+    await act(async () => FakeEventSource.last.open());
+    await flush();
+
+    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(input, 'hello');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const send = container.querySelector(`button[aria-label="${enLocale.chat.send}"]`) as HTMLButtonElement;
+    await act(async () => {
+      send.click();
+    });
+    await flush();
+
+    // The echo lands while the POST is still in flight.
+    await act(async () => {
+      FakeEventSource.last.emit('message', sendResponse);
+    });
+    await flush();
+    expect(bodyText().split('hello').length - 1).toBe(1);
+
+    // …and the response, arriving second, must not add another.
+    await act(async () => {
+      release();
+    });
+    await flush();
+    expect(bodyText().split('hello').length - 1).toBe(1);
   });
 
   it('a guest issues no chat request at all', async () => {

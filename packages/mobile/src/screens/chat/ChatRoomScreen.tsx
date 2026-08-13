@@ -181,21 +181,6 @@ function makeStyles(colors: ThemeColors) {
       fontSize: TYPE_SCALE.label,
       textDecorationLine: 'underline',
     },
-    syncingBanner: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      marginBottom: 8,
-      borderRadius: RADIUS.card,
-      backgroundColor: colors.background.secondary,
-    },
-    syncingText: {
-      flex: 1,
-      fontSize: TYPE_SCALE.bodySmall,
-      color: colors.text.secondary,
-    },
     // Locked/loading rows read as status, not as content the user wrote.
     lockedBody: {
       fontSize: TYPE_SCALE.body,
@@ -791,6 +776,11 @@ export function ChatRoomScreen() {
     let timer: ReturnType<typeof setTimeout>;
     const tick = async (): Promise<boolean> => {
       try {
+        // Ask the SERVER, every tick. The resolver caches a 'waiting' answer for
+        // fifteen seconds, so without this the retries were answered from that
+        // cache and a bundle arriving moments after this device joined went
+        // unseen until the room was closed and reopened.
+        tak.forgetUnsettledRoot(topicId);
         const state = await tak.archiveRootState(topicId, visibilityRef.current);
         // null = a scoped tier with no topic-wide root, so there is nothing to
         // wait for and nothing to decrypt from an archive.
@@ -812,8 +802,34 @@ export function ChatRoomScreen() {
             return next;
           });
         }
-        if (alive) setRootState(state);
-        return state === 'verified';
+        /*
+         * Re-read AFTER back-filling, and report THAT.
+         *
+         * `state` above was read before `backfill` — and `backfill` is what
+         * ingests the bundle, adopts the root and decrypts. So the one pass that
+         * actually unlocks the room used to report the state from before it did
+         * so ('waiting'), leave the spinner up, and schedule another tick. The
+         * work had already succeeded; only the answer was stale.
+         */
+        const settled = (await tak.archiveRootState(topicId, visibilityRef.current)) ?? state;
+        /*
+         * Every tick, to the server sink — this path has now been diagnosed
+         * three times from screenshots, and a screenshot cannot say whether the
+         * bundle arrived, whether the root was adopted, or how many rows came
+         * back. Names and counts only, never key material or message content.
+         */
+        report('chat/root-tick', {
+          topicId,
+          before: state,
+          after: settled,
+          recovered: history.length,
+          locked: allMessagesRef.current.reduce(
+            (n, m) => (m.message === '[unable to decrypt]' ? n + 1 : n),
+            0,
+          ),
+        });
+        if (alive) setRootState(settled);
+        return settled === 'verified';
       } catch {
         return false;
       } finally {
@@ -826,7 +842,10 @@ export function ChatRoomScreen() {
       timer = setTimeout(() => {
         void tick().then((done) => {
           if (!alive || done) return;
-          delay = Math.min(delay * 2, 15_000);
+          // Capped low while the room is OPEN and its history is locked: the
+          // reader is looking at a spinner, and a fifteen-second gap between
+          // attempts is most of the time they are willing to wait.
+          delay = Math.min(delay * 2, 5_000);
           schedule();
         });
       }, delay);
@@ -1235,8 +1254,12 @@ export function ChatRoomScreen() {
           header, which cannot change the layout, and a connection that stays
           down for OFFLINE_NOTICE_AFTER_MS raises the dialog below. */}
 
-      {/* Message list */}
-      {isFirstLoad ? (
+      {/* Message list.
+          `syncing` counts as first load: on a device that has just joined,
+          every row is sealed until the room key lands, so a list is the wrong
+          thing to draw. One spinner in the middle, and the messages when they
+          are readable. */}
+      {isFirstLoad || syncing ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand.primary} />
         </View>
@@ -1274,19 +1297,7 @@ export function ChatRoomScreen() {
           }}
           onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
           ListHeaderComponent={
-            /*
-             * ONE explanation for the whole room. The rows below show a plain
-             * placeholder while this is up — repeating "waiting for the room
-             * key" in every bubble filled the screen with the same sentence.
-             * Without this banner the placeholders say nothing at all, which is
-             * how the previous build read: dots, and no reason for them.
-             */
-            syncing ? (
-              <View style={styles.syncingBanner}>
-                <ActivityIndicator size="small" color={colors.brand.primary} />
-                <Text style={styles.syncingText}>{t('openstoa.chat.lockedHistorySyncing')}</Text>
-              </View>
-            ) : isFetchingNextPage ? (
+            isFetchingNextPage ? (
               <View style={styles.loadingMore}>
                 <ActivityIndicator size="small" color={colors.brand.primary} />
               </View>

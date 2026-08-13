@@ -189,6 +189,14 @@ interface ChatMessage {
   failed?: boolean;
   /** Original text, so Retry can send exactly what the user wrote. */
   draft?: string;
+  /**
+   * The sealed body, carried straight through from the server row.
+   *
+   * It is what lets a provisional row recognise its own echo: this tab knows
+   * the ciphertext it sent, and the echo comes back carrying the same one, so
+   * the two can be matched before the server's id is known.
+   */
+  sealed?: { ciphertext: string; epoch: number } | null;
 }
 
 interface ChatPanelProps {
@@ -1075,7 +1083,32 @@ export default function ChatPanel({
    */
   const applyIncoming = useCallback((incoming: ChatMessage[]) => {
     if (incoming.length === 0) return;
-    setMessages((prev) => mergeChronological(prev, incoming));
+    setMessages((prev) => {
+      /*
+       * ACKNOWLEDGE IN PLACE.
+       *
+       * When one of these is the echo of a message this tab just sent, the row
+       * for it is already on screen — put the server's id ON that row instead
+       * of inserting a second one. Removing and re-inserting made the bubble
+       * disappear and come back somewhere else, and while the echo and the POST
+       * response raced, the same message was on screen twice.
+       *
+       * `createdAt` deliberately stays the client's. It is what the list is
+       * ordered by, so adopting the server's would slide an acknowledged bubble
+       * past its neighbours under the reader's eyes.
+       */
+      const acknowledged = new Set<string>();
+      const renamed = prev.map((row) => {
+        const mine = row.pending ? row.sealed?.ciphertext : undefined;
+        if (!mine) return row;
+        const echo = incoming.find((m) => m.sealed?.ciphertext === mine);
+        if (!echo) return row;
+        acknowledged.add(echo.id);
+        return { ...row, id: echo.id, pending: false };
+      });
+      const rest = acknowledged.size === 0 ? incoming : incoming.filter((m) => !acknowledged.has(m.id));
+      return mergeChronological(renamed, rest);
+    });
     const newest = newestCreatedAt(incoming);
     // Older pages must never rewind the catch-up cursor.
     if (newest && (!lastSeenIsoRef.current || new Date(newest) > new Date(lastSeenIsoRef.current))) {
@@ -1178,6 +1211,10 @@ export default function ChatPanel({
     try {
       const sealed = await getMlsSessionStore().seal(topicId, text);
       rememberOwnPlaintext(sealed.ciphertext, text);
+      // Stamp the row with what we just sealed. The echo can outrun the POST
+      // response, and this is the only thing the two have in common before the
+      // server assigns an id.
+      setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, sealed } : m)));
       const pushArchive = await buildPushArchive(text);
       const res = await fetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
@@ -1191,15 +1228,24 @@ export default function ChatPanel({
         try {
           const { message: payload } = await res.json();
           if (payload?.id) {
-            const own: ChatMessage = { ...payload, message: text };
             // Pre-seed the decrypt memo so the SSE echo of our own message never
             // reaches MLS at all (a sender cannot open its own message).
-            decryptOnceRef.current.set(payload.id, own);
-            // Drop the provisional row, then MERGE the real one. Appending it
-            // directly skipped `mergeChronological`, which is what dedupes by id
-            // and keeps the list in order — so the SSE echo of the same message
-            // arrived as a second bubble, and rapid sends piled up out of order.
-            setMessages((prev) => mergeChronological(prev.filter((m) => m.id !== pendingId), [own]));
+            decryptOnceRef.current.set(payload.id, { ...payload, message: text });
+            /*
+             * Rename the row that is already on screen — id only.
+             *
+             * It used to be removed and re-merged, which redrew the bubble from
+             * the server row: it vanished, came back at the position the
+             * SERVER's timestamp put it in, and while this raced the SSE echo
+             * the same message was on screen twice. Nothing about the row needs
+             * to change except the id it is filed under.
+             *
+             * If the echo got here first it has already done this, and there is
+             * nothing left matching the provisional id — so this is a no-op.
+             */
+            setMessages((prev) =>
+              prev.map((m) => (m.id === pendingId ? { ...m, id: payload.id, pending: false } : m)),
+            );
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, text);
             // Re-encrypt for the archive so later members can read it (Phase 3).
@@ -1502,6 +1548,10 @@ export default function ChatPanel({
     let alive = true;
     const tick = async () => {
       try {
+        // Ask the SERVER, every tick — the resolver caches a 'waiting' answer
+        // for fifteen seconds, and a device polling because it is waiting is
+        // exactly the caller that must not be answered from that cache.
+        getTakSessionStore().forgetUnsettledRoot(topicId);
         const state = await getTakSessionStore().archiveRootState(topicId, visibilityRef.current);
         // null = a scoped tier with no topic-wide root, so there is nothing to
         // wait for and nothing to decrypt from an archive.
@@ -1515,8 +1565,16 @@ export default function ChatPanel({
         // still full of locked rows, and nothing decrypted until the user left
         // and came back.
         await catchUpArchive();
-        if (alive) setRootState(state);
-        return state === 'verified';
+        /*
+         * Re-read AFTER catching up, and report THAT. `state` was read before
+         * the catch-up that ingests the bundle and adopts the root, so the pass
+         * that actually unlocked the room reported the state from before it did
+         * — spinner up, work already done.
+         */
+        const settled =
+          (await getTakSessionStore().archiveRootState(topicId, visibilityRef.current)) ?? state;
+        if (alive) setRootState(settled);
+        return settled === 'verified';
       } catch {
         return false;
       } finally {
@@ -1535,7 +1593,9 @@ export default function ChatPanel({
       timer = setTimeout(() => {
         void tick().then((done) => {
           if (!alive || done) return;
-          delay = Math.min(delay * 2, 15_000);
+          // Capped low while the room is open and its history is locked — the
+          // reader is watching a spinner.
+          delay = Math.min(delay * 2, 5_000);
           schedule();
         });
       }, delay);
@@ -1886,8 +1946,19 @@ export default function ChatPanel({
               {loadingOlder ? t('chat.loading') : t('chat.loadEarlier')}
             </button>
           )}
-          <LockedHistoryNotice syncing={syncing} lockedCount={lockedCount} />
-          {messages.length === 0 ? (
+          {/* Only when there is something WRONG. While the room key is still on
+              its way the centred spinner below is the whole story — a notice
+              under the header said the same thing twice and pushed the first
+              message up behind it. */}
+          {!syncing && <LockedHistoryNotice syncing={false} lockedCount={lockedCount} />}
+          {syncing ? (
+            /* Every row is sealed until the key lands, so a list is the wrong
+               thing to draw. One spinner, centred, and the messages when they
+               are readable. */
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
+              <Spinner size={20} />
+            </div>
+          ) : messages.length === 0 ? (
             <div style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
               {t('chat.noMessagesYet')}
             </div>
