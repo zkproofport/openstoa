@@ -384,7 +384,12 @@ export default function NewTopicPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {([
                 { value: 'public' as const, label: t('newTopicPage.visibility.public.label'), desc: t('newTopicPage.visibility.public.desc'), disabled: false },
-                { value: 'private' as const, label: t('newTopicPage.visibility.private.label'), desc: t('newTopicPage.visibility.private.desc'), disabled: true },
+                // Private is selectable now. Secret is not yet: it is the one
+                // tier whose confidentiality rests entirely on join control, and
+                // that path (expiring single-use invites only, no permanent
+                // code) has just changed — it opens once it has been exercised
+                // end to end.
+                { value: 'private' as const, label: t('newTopicPage.visibility.private.label'), desc: t('newTopicPage.visibility.private.desc'), disabled: false },
                 { value: 'secret' as const, label: t('newTopicPage.visibility.secret.label'), desc: t('newTopicPage.visibility.secret.desc'), disabled: true },
               ]).map((opt) => (
                 <label

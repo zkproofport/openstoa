@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topics, topicMembers, inviteTokens } from '@/lib/db/schema';
+import { resolveInviteExpiry } from '@/lib/inviteExpiry';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import crypto from 'crypto';
@@ -85,18 +86,52 @@ export async function POST(
       return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
     }
 
+    /*
+     * Who may hand out a way in.
+     *
+     * Any member could, which is defensible for a public topic and is not for
+     * the others: an invite bypasses visibility entirely, so on a secret topic
+     * one member could quietly admit anyone, past the very property that makes
+     * the tier a tier. Whoever runs the topic decides who joins it.
+     */
+    const canInvite = topic.visibility === 'public' || membership.role === 'owner' || membership.role === 'admin';
+    if (!canInvite) {
+      logger.warn(ROUTE, 'Member without invite rights attempted to generate a token', {
+        userId: session.userId,
+        topicId,
+        visibility: topic.visibility,
+        role: membership.role,
+      });
+      return NextResponse.json(
+        { error: 'Only the topic owner or an admin can invite to this topic' },
+        { status: 403 },
+      );
+    }
+
+    const body = await request.json().catch(() => ({}));
+    // The lifetime belongs to whoever runs the topic: they know whether this
+    // link goes to one person now or sits in a channel for a month.
+    const expiry = resolveInviteExpiry((body as { expiresInHours?: unknown })?.expiresInHours, new Date());
+    if (!expiry.ok) {
+      logger.warn(ROUTE, 'Invalid invite expiry', { userId: session.userId, topicId, error: expiry.error });
+      return NextResponse.json({ error: expiry.error }, { status: 400 });
+    }
+
     const token = crypto.randomBytes(8).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await db.insert(inviteTokens).values({
       topicId,
       token,
       createdBy: session.userId,
-      expiresAt,
+      expiresAt: expiry.expiresAt,
     });
 
-    logger.info(ROUTE, 'Invite token generated', { userId: session.userId, topicId });
-    return NextResponse.json({ token, expiresAt }, { status: 201 });
+    logger.info(ROUTE, 'Invite token generated', {
+      userId: session.userId,
+      topicId,
+      expiresAt: expiry.expiresAt.toISOString(),
+    });
+    return NextResponse.json({ token, expiresAt: expiry.expiresAt }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(ROUTE, 'Unhandled error', { error: message });

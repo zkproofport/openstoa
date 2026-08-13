@@ -342,6 +342,31 @@ export const takBundles = pgTable('tak_bundles', {
 // never forks. private/secret/AI topics have NO row here (SI-6b: no standing
 // custodian — a forward-rewrap custodian would be a member-held escrow that
 // defeats the per-epoch revocability those tiers depend on).
+/**
+ * The archive root this server holds — PUBLIC topics only.
+ *
+ * A public topic can be joined by anyone, so its history is not secret from the
+ * public, only from the operator. Paying for that with "history is unreadable
+ * unless another member is online AND has this chat room open" is a bad trade,
+ * and it is the failure that was reported: with every holder offline, a new
+ * member's history never arrived at all.
+ *
+ * Nothing about storage changes — the archive stays sealed exactly as before.
+ * What changes is that a copy of the key lives here, so a later joiner reads
+ * history at once.
+ *
+ * private, secret and DM have no row here. Their root never leaves members'
+ * devices, which is what keeps "the server cannot read this" true where the
+ * product says it, and they accept the documented limit (design SI-6/SI-6b):
+ * with every holder gone, that archive is unreadable by anyone.
+ */
+export const topicArchiveRoots = pgTable('topic_archive_roots', {
+  topicId: uuid('topic_id').primaryKey().references(() => topics.id, { onDelete: 'cascade' }),
+  rootKey: text('root_key').notNull(), // base64 archive root — PUBLIC topics only
+  depositedBy: text('deposited_by').references(() => users.id).notNull(), // audit only
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 export const archiveHolders = pgTable('archive_holders', {
   topicId: uuid('topic_id').primaryKey().references(() => topics.id),
   holderUserId: text('holder_user_id').references(() => users.id).notNull(),

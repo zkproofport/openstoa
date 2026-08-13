@@ -176,6 +176,13 @@
       "when": 1785420019948,
       "tag": "0024_public_archive_root_fingerprint",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786638813403,
+      "tag": "0025_normal_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

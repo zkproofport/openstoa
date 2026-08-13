@@ -245,7 +245,27 @@ export async function POST(
       return NextResponse.json({ error: 'Already a member of this topic' }, { status: 409 });
     }
 
-    // Invite code bypasses visibility restrictions (works for public, private, and secret)
+    /*
+     * A NON-public topic is joinable only by a single-use, expiring token.
+     *
+     * Every topic also carries a fixed `inviteCode` that never expires and can
+     * be used any number of times. On a public topic that is harmless — anyone
+     * may join anyway. On private, and above all on secret, it is a permanent
+     * skeleton key: the tier's whole meaning is that membership is controlled,
+     * and one leaked link would admit everyone who ever sees it, forever, with
+     * nothing to revoke. The expiring token is the way in for those tiers.
+     */
+    if (topic.visibility !== 'public' && !singleUseTokenId) {
+      logger.warn(ROUTE, 'Fixed invite code refused for a non-public topic', {
+        userId: session.userId,
+        topicId: topic.id,
+        visibility: topic.visibility,
+      });
+      // Deliberately the same shape as an unknown code: confirming that a
+      // secret topic exists behind this link is itself the leak.
+      return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 });
+    }
+
     await db.insert(topicMembers).values({
       topicId: topic.id,
       userId: session.userId,
