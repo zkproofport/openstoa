@@ -39,8 +39,8 @@ export default function DmListPage() {
   const [dms, setDms] = useState<DmChannel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // A session with a temp `anon_` nickname is rejected by /api/dm with 403.
-  // Surface the real remedy (set a nickname) instead of a dead error string.
+  // Kept as a safety net, not as a workflow — see /chat. The nickname gate
+  // that used to 403 this call is gone.
   const [needsNickname, setNeedsNickname] = useState(false);
 
   useEffect(() => {

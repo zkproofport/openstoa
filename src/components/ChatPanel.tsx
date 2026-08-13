@@ -7,6 +7,7 @@ import Spinner from '@/components/Spinner';
 import LinkPreview from '@/components/LinkPreview';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '@/lib/chatStatus';
 import { copyTargets } from '@/lib/messageActions';
+import { displayNickname } from '@/lib/defaultNickname';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import Link from 'next/link';
@@ -1006,7 +1007,7 @@ function MessageRow({
           marginBottom: 2,
           paddingLeft: 2,
         }}>
-          {msg.nickname}
+          {displayNickname(msg.nickname ?? '')}
           {msg.isAI && <Badge type="ai" />}
         </span>
       )}

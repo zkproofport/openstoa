@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isReservedNickname } from '@/lib/defaultNickname';
 import { getSession, createSession, setSessionCookie } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
@@ -91,6 +92,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    if (isReservedNickname(nickname)) {
+      // Held back for accounts this project runs. Compared case-insensitively,
+      // because `openstoa_admin` impersonates as well as `OpenStoa_Admin`.
+      return NextResponse.json(
+        { error: 'That name is reserved.' },
+        { status: 400 },
+      );
+    }
     if (!NICKNAME_REGEX.test(nickname)) {
       logger.warn(ROUTE, 'Nickname failed validation', { userId: session.userId, nickname });
       return NextResponse.json(

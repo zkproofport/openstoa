@@ -163,23 +163,17 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // /topics/* requires session WITH nickname (not a temp anon_ nickname)
-    // Skip nickname check for guest-accessible paths (they work without auth,
-    // so they should also work with a valid token that has no nickname yet)
-    if (!guestAccessible && (pathname.startsWith('/topics') || pathname === '/dm' || pathname.startsWith('/dm/') || pathname.startsWith('/api/topics') || pathname.startsWith('/api/dm') || pathname.startsWith('/api/posts') || pathname.startsWith('/api/comments') || pathname.startsWith('/api/tags') || pathname.startsWith('/api/bookmarks') || pathname.startsWith('/api/upload'))) {
-      const nickname = payload.nickname as string;
-      if (!nickname || nickname.startsWith('anon_')) {
-        if (isApiRoute(pathname)) {
-          return NextResponse.json(
-            { error: 'Nickname required. Set your nickname at /profile first.' },
-            { status: 403 },
-          );
-        }
-        const profileUrl = new URL('/profile', request.url);
-        profileUrl.searchParams.set('returnTo', pathname);
-        return NextResponse.redirect(profileUrl);
-      }
-    }
+    /*
+     * NO nickname gate.
+     *
+     * Every account is given a real, readable name the moment it is created
+     * (`defaultNickname`), so there is nothing to wait for. This used to redirect
+     * to /profile and answer 403 on /api/topics, /api/dm, /api/posts and the
+     * rest until the user picked a different one — which meant a brand-new
+     * account could sign in, open chat, and watch a spinner that would never
+     * resolve, because the request behind it was being refused. An anonymous
+     * community has no reason to hold writes behind a display name.
+     */
 
     return NextResponse.next();
   } catch {

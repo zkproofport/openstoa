@@ -55,6 +55,7 @@ import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
 import { copyTargets } from '../../lib/messageActions';
+import { displayNickname } from '../../lib/defaultNickname';
 
 /**
  * A rendered row: the server's shape plus the two states that exist only on
@@ -1796,7 +1797,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           accessibilityRole="button"
           accessibilityLabel={item.nickname}
         >
-          <Text style={styles.bubbleAuthor}>{item.nickname}</Text>
+          <Text style={styles.bubbleAuthor}>{displayNickname(item.nickname ?? '')}</Text>
           {item.isAI ? <Text style={styles.aiBadge}>AI</Text> : null}
         </TouchableOpacity>
       ) : null}

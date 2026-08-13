@@ -10,6 +10,7 @@
  * action are the whole page.
  */
 import { useState, useEffect, Suspense } from 'react';
+import { isDefaultNickname } from '@/lib/defaultNickname';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Avatar from '@/components/Avatar';
@@ -47,7 +48,7 @@ function ProfilePageInner() {
           router.replace('/');
           return;
         }
-        if (data.nickname && !data.nickname.startsWith('anon_')) {
+        if (data.nickname && !isDefaultNickname(data.nickname)) {
           router.replace(returnTo);
           return;
         }

@@ -231,29 +231,46 @@ export async function GET(req: NextRequest) {
     let html = '';
     let totalBytes = 0;
     /*
-     * How far in to look for the metadata.
+     * A SAFETY bound, not a search bound.
      *
-     * The cap used to be 100 KB, on the reasonable theory that a page's head
-     * comes first. Application shells break that theory: Google AdSense puts
-     * its <title> at byte 762,049 of a 931 KB document, behind the app's inline
-     * bundle, so we truncated before ever seeing it and returned a preview with
-     * no title at all — which the client then showed as no card.
+     * This endpoint fetches whatever URL a user pasted into a chat, so the
+     * response is hostile input: a 10 GB video, or a server that never stops
+     * sending, would otherwise accumulate in this instance's memory for the
+     * whole five-second timeout. That is the cheapest possible way to take the
+     * service down, and it is the only reason a limit exists here.
      *
-     * Reading to </head> is not the answer either: Next.js sites (including
-     * openstoa.xyz) emit their og:* tags AFTER </head>, via hydration scripts.
-     * So: stop as soon as the tags we came for are in hand, and otherwise read
-     * up to a cap generous enough to cover an application shell. The common
-     * page still costs one or two chunks, because its head arrives first.
+     * It used to be 100 KB, doing double duty as "far enough to find the
+     * metadata" — and it silently was not. Google AdSense puts its <title> at
+     * byte 762,049 of a 931 KB document, behind the application bundle, so we
+     * truncated before seeing it and returned a preview with no title, which
+     * the client showed as no card at all.
+     *
+     * The search now ends when the metadata is in hand (below) or when the
+     * response does. This number only decides how much of a hostile response we
+     * are willing to hold, and 4 MB is far past any real document while staying
+     * a bounded amount of memory per request.
      */
-    const MAX_BYTES = 1024 * 1024;
+    const MAX_BYTES = 4 * 1024 * 1024;
+
+    // Cheaper still: a server that declares an enormous body is refused before
+    // a single chunk is read.
+    const declared = Number(res.headers.get('content-length') ?? '0');
+    if (declared > MAX_BYTES) {
+      reader.cancel();
+      return NextResponse.json({ error: 'Document too large' }, { status: 502 });
+    }
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       totalBytes += value.length;
       html += new TextDecoder().decode(value);
-      // Everything worth reading is already here — the rest of a megabyte of
-      // application bundle has nothing to add.
+      /*
+       * Stop as soon as the tags we came for are in hand. Reading to </head>
+       * would not work: Next.js sites (openstoa.xyz among them) emit their og:*
+       * tags AFTER </head>, from hydration scripts — bailing there is what made
+       * our own pages return an empty preview once before.
+       */
       if (html.includes('og:image') && html.includes('og:title')) {
         reader.cancel();
         break;

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ensureUser } from '@/lib/ensureUser';
 import { ethers } from 'ethers';
 import { consumeChallenge, markPaymentTxUsed } from '@/lib/challenge';
 import { COMMUNITY_SCOPE } from '@/lib/proof';
@@ -327,25 +328,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create or get user
+    // Create or get user. `ensureUser` gives a new account a readable name and
+    // retries it on a unique clash — a name assembled from word lists can
+    // collide where the old nullifier-derived one could not, and a sign-in must
+    // not fail over a display name.
     const existingUser = await db.query.users.findFirst({
       where: eq(users.id, nullifier),
     });
-
     const needsNickname = !existingUser;
 
-    if (!existingUser) {
-      const tempNickname = `anon_${nullifier.slice(2, 10)}`;
-      await db.insert(users).values({
-        id: nullifier,
-        nickname: tempNickname,
-      });
-      logger.info(ROUTE, 'New user created', { challengeId, nullifier, tempNickname });
-    } else {
-      logger.info(ROUTE, 'Existing user found', { challengeId, nullifier });
-    }
-
-    const nickname = existingUser?.nickname ?? `anon_${nullifier.slice(2, 10)}`;
+    const { nickname, created } = await ensureUser(nullifier);
+    logger.info(ROUTE, created ? 'New user created' : 'Existing user found', {
+      challengeId,
+      nullifier,
+      nickname,
+    });
     const token = await createSession(nullifier, nickname, { isAI: true });
 
     logger.info(ROUTE, 'Session created, sending 200', { challengeId, nullifier, needsNickname });

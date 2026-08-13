@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isDefaultNickname } from '@/lib/defaultNickname';
 import { verifySession, setSessionCookie } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
@@ -47,7 +48,9 @@ export async function GET(request: NextRequest) {
 
   logger.info(ROUTE, 'Token valid, setting cookie and redirecting', { userId: session.userId });
 
-  const needsNickname = !session.nickname || session.nickname.startsWith('anon_');
+  // Nothing is refused on this basis any more — it only tells the client
+  // whether to offer a rename, so the generated name counts as "still default".
+  const needsNickname = !session.nickname || isDefaultNickname(session.nickname);
   const forwardedHost = request.headers.get('x-forwarded-host');
   const forwardedProto = request.headers.get('x-forwarded-proto') ?? 'https';
   const baseUrl = forwardedHost

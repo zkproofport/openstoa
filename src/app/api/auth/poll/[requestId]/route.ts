@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ensureUser } from '@/lib/ensureUser';
 import { pollProofResult } from '@/lib/relay';
 import {
   verifyProofFromRelay,
@@ -191,19 +192,16 @@ export async function GET(
 
     const needsNickname = !existingUser;
 
-    if (!existingUser) {
-      // Insert with a temporary nickname that must be changed
-      const tempNickname = `anon_${nullifier.slice(2, 10)}`;
-      await db.insert(users).values({
-        id: nullifier,
-        nickname: tempNickname,
-      });
-      logger.info(ROUTE, 'New user created', { requestId, nullifier, tempNickname });
-    } else {
-      logger.info(ROUTE, 'Existing user found', { requestId, nullifier });
-    }
-
-    const nickname = existingUser?.nickname ?? `anon_${nullifier.slice(2, 10)}`;
+    // A real, readable name from the first second — nothing about this account
+    // is "pending" and nothing is gated on changing it. `ensureUser` also
+    // retries the name on a unique clash, because a name assembled from word
+    // lists can collide where the old nullifier-derived one could not.
+    const { nickname, created } = await ensureUser(nullifier);
+    logger.info(ROUTE, created ? 'New user created' : 'Existing user found', {
+      requestId,
+      nullifier,
+      nickname,
+    });
     const token = await createSession(nullifier, nickname);
 
     logger.info(ROUTE, 'Session created, sending 200', { requestId, nullifier, needsNickname });

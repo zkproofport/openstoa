@@ -52,8 +52,9 @@ export default function ChatListPage() {
   // reads as "you have no conversations" to a reader who is really just
   // signed out.
   const [redirecting, setRedirecting] = useState(false);
-  // A session with a temp `anon_` nickname is rejected by /api/dm with 403 —
-  // same as /dm. Surface the real remedy instead of a dead error string.
+  // Kept as a safety net, not as a workflow: the nickname gate that used to
+  // 403 these calls is gone, so this should no longer fire. If some other rule
+  // ever answers 403 here, the reader gets a remedy instead of a dead string.
 
   // One hook, shared with the rail: the ordering rule alone was not enough —
   // each list also kept its own fetch, which is how `/chat` ended up sorted and

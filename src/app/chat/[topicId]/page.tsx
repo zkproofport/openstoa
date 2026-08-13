@@ -95,8 +95,9 @@ export default function TopicChatPage() {
         if (!alive) return;
         if (res.status === 401) { router.replace('/'); return; }
         if (res.status === 403) {
-          // /api/topics/{id} 403s a signed-in caller with an `anon_` nickname
-          // the same way /api/dm does — same remedy, same redirect target.
+          // Safety net only: the nickname gate that used to answer 403 here
+          // is gone, but a future rule might, and a dead error string is worse
+          // than an offered remedy.
           setNeedsNickname(true);
           return;
         }
