@@ -140,6 +140,12 @@ describe('TakSessionStore keychain snapshot (export/import + manifest + onChange
       postBundle: async () => {},
       getBundles: async () => [],
       ackBundles: async () => {},
+      async getServerRoot() {
+        return null;
+      },
+      async putServerRoot() {
+        return true;
+      },
       getRootFingerprint: async (t: string) => ({ fingerprint: fingerprints.get(t) ?? null, archiveCount: 0 }),
       setRootFingerprint: async (t: string, fingerprint: string) => {
         const cur = fingerprints.get(t);

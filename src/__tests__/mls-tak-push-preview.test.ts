@@ -72,6 +72,12 @@ class MemoryTak implements TakTransport {
   }
   async ackBundles() {}
   fingerprints = new Map<string, string>();
+  async getServerRoot(): Promise<Uint8Array | null> {
+    return null;
+  }
+  async putServerRoot(): Promise<boolean> {
+    return true;
+  }
   async getRootFingerprint(t: string) {
     return { fingerprint: this.fingerprints.get(t) ?? null, archiveCount: (this.archive.get(t) ?? []).length };
   }

@@ -49,7 +49,8 @@ export interface TierPolicy {
    * Whether a later joiner can be given history at all, and how much.
    *
    * `'all'` — the key opens everything, so they see everything.
-   * `'window'` — the inviter may share a bounded number of recent messages.
+   * `'window'` — the inviter may share the keys for a bounded number of recent
+   *   epochs. See `inviteHistoryEpochs` for why the bound is epochs.
    */
   historyForLaterJoiner: 'all' | 'window';
 }
@@ -130,22 +131,43 @@ export function isEndToEndEncrypted(tier: ChatTier): boolean {
   return !POLICIES[tier].serverHoldsKey;
 }
 
-/** How much history an invite may carry, when the inviter opts in. */
-export const INVITE_HISTORY_DEFAULT = 50;
-export const INVITE_HISTORY_MAX = 100;
+/**
+ * How much history an invite may carry, counted in EPOCHS.
+ *
+ * Not in messages, which is the unit WhatsApp uses and the one this nearly
+ * copied. Two things break when you count messages here:
+ *
+ *  - **The link size stops being bounded.** One key is 32 bytes — 43 base64
+ *    characters — and the keys are per epoch, so "the last 50 messages" is one
+ *    key in a quiet room and fifty in a room people keep joining. Same promise,
+ *    fifty times the link. A URL fragment gives out around 2 000 characters, so
+ *    the message count cannot be the thing that keeps a link usable.
+ *  - **The promise is unkeepable anyway.** Handing over the key for an epoch
+ *    opens EVERY message in that epoch. Share "the last 50" out of an epoch
+ *    holding five thousand and all five thousand are readable. The smallest
+ *    unit this system can actually disclose is an epoch.
+ *
+ * So the bound is epochs, and the interface says what that came to: the caller
+ * counts the messages those epochs contain and shows the reader a real number
+ * ("the last 342 messages, since 12 August") rather than a figure we cannot
+ * honour.
+ */
+export const INVITE_HISTORY_EPOCHS_DEFAULT = 3;
+/** 20 keys ≈ 880 characters of fragment — comfortably inside any client. */
+export const INVITE_HISTORY_EPOCHS_MAX = 20;
 
 /**
- * The number of recent messages an invite will actually carry.
+ * How many recent epochs an invite will carry the keys for.
  *
- * `'all'` tiers do not use this: their key opens everything, so there is
+ * `'all'` tiers do not use this: their single key opens everything, so there is
  * nothing to bound. For the rest, 0 is a real answer — an inviter who does not
  * want to share history says so by sharing none.
  */
-export function inviteHistoryCount(tier: ChatTier, requested: number | undefined): number {
+export function inviteHistoryEpochs(tier: ChatTier, requested: number | undefined): number {
   if (POLICIES[tier].historyForLaterJoiner === 'all') return 0;
-  if (requested === undefined) return INVITE_HISTORY_DEFAULT;
+  if (requested === undefined) return INVITE_HISTORY_EPOCHS_DEFAULT;
   if (!Number.isInteger(requested) || requested < 0) return 0;
-  return Math.min(requested, INVITE_HISTORY_MAX);
+  return Math.min(requested, INVITE_HISTORY_EPOCHS_MAX);
 }
 
 /**

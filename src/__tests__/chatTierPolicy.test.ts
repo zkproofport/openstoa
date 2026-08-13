@@ -5,10 +5,10 @@ import {
   tierPolicy,
   serverMayHoldKey,
   isEndToEndEncrypted,
-  inviteHistoryCount,
+  inviteHistoryEpochs,
   chatTierOf,
-  INVITE_HISTORY_DEFAULT,
-  INVITE_HISTORY_MAX,
+  INVITE_HISTORY_EPOCHS_DEFAULT,
+  INVITE_HISTORY_EPOCHS_MAX,
   type ChatTier,
 } from '@/lib/chatTierPolicy';
 
@@ -86,33 +86,45 @@ describe('tierPolicy', () => {
   });
 });
 
-describe('inviteHistoryCount', () => {
-  it('defaults to the WhatsApp-shaped window', () => {
-    expect(inviteHistoryCount('private', undefined)).toBe(INVITE_HISTORY_DEFAULT);
-    expect(inviteHistoryCount('secret', undefined)).toBe(INVITE_HISTORY_DEFAULT);
+describe('inviteHistoryEpochs', () => {
+  /*
+   * The bound is EPOCHS, not messages. Counting messages was the first attempt
+   * and it fails twice over: it does not bound the link (one key per epoch, so
+   * "the last 50 messages" is one key in a quiet room and fifty in a busy one),
+   * and it cannot be honoured (an epoch's key opens every message in that
+   * epoch, so sharing "50" out of an epoch holding 5 000 shares 5 000).
+   */
+  it('defaults to a small number of recent epochs', () => {
+    expect(inviteHistoryEpochs('private', undefined)).toBe(INVITE_HISTORY_EPOCHS_DEFAULT);
+    expect(inviteHistoryEpochs('secret', undefined)).toBe(INVITE_HISTORY_EPOCHS_DEFAULT);
   });
 
   it('an inviter may share nothing — 0 is a real answer, not a missing one', () => {
-    expect(inviteHistoryCount('secret', 0)).toBe(0);
+    expect(inviteHistoryEpochs('secret', 0)).toBe(0);
   });
 
-  it('BOUNDARY: the ceiling holds', () => {
-    expect(inviteHistoryCount('secret', INVITE_HISTORY_MAX)).toBe(INVITE_HISTORY_MAX);
-    expect(inviteHistoryCount('secret', INVITE_HISTORY_MAX + 1)).toBe(INVITE_HISTORY_MAX);
-    expect(inviteHistoryCount('secret', 1_000_000)).toBe(INVITE_HISTORY_MAX);
+  it('BOUNDARY: the ceiling holds, and it keeps the link usable', () => {
+    expect(inviteHistoryEpochs('secret', INVITE_HISTORY_EPOCHS_MAX)).toBe(INVITE_HISTORY_EPOCHS_MAX);
+    expect(inviteHistoryEpochs('secret', INVITE_HISTORY_EPOCHS_MAX + 1)).toBe(INVITE_HISTORY_EPOCHS_MAX);
+    expect(inviteHistoryEpochs('secret', 1_000_000)).toBe(INVITE_HISTORY_EPOCHS_MAX);
+  });
+
+  it('CONTRACT: the ceiling fits in a URL fragment', () => {
+    // 32-byte key → 43 base64 characters. A fragment gives out around 2 000,
+    // and this is the number that has to keep an invite link openable.
+    const KEY_CHARS = 44;
+    expect(INVITE_HISTORY_EPOCHS_MAX * KEY_CHARS).toBeLessThan(2000);
   });
 
   it('HOSTILE: a negative or fractional count shares nothing rather than guessing', () => {
     for (const bad of [-1, -1000, 1.5, NaN, Infinity]) {
-      expect(inviteHistoryCount('secret', bad as number), String(bad)).toBe(0);
+      expect(inviteHistoryEpochs('secret', bad as number), String(bad)).toBe(0);
     }
   });
 
   it('tiers whose key opens everything have no window to bound', () => {
-    // Asking for 50 messages of a topic-root tier is meaningless: the key that
-    // travels with the invite already opens all of it.
-    expect(inviteHistoryCount('public', 50)).toBe(0);
-    expect(inviteHistoryCount('dm', 50)).toBe(0);
+    expect(inviteHistoryEpochs('public', 5)).toBe(0);
+    expect(inviteHistoryEpochs('dm', 5)).toBe(0);
   });
 });
 

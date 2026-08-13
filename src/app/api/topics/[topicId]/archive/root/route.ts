@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers, topicArchiveRoots } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { topics, topicMembers, topicArchiveRoots, chatArchive } from '@/lib/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { chatTierOf, serverMayHoldKey } from '@/lib/chatTierPolicy';
 
@@ -163,6 +163,34 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const existing = await db.query.topicArchiveRoots.findFirst({
       where: eq(topicArchiveRoots.topicId, topicId),
     });
+
+    /*
+     * A root arriving AFTER the archive has rows cannot be the root those rows
+     * were sealed under, so accepting it would hand every later reader a key
+     * that opens nothing and quietly lose the history.
+     *
+     * The client used to guard this itself by decrypting the oldest row and
+     * checking. Doing it here is both simpler and stronger: it holds for every
+     * client, including one with a bug, and the row count is something the
+     * server can see without reading a single message.
+     */
+    if (!existing) {
+      const [{ count } = { count: 0 }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(chatArchive)
+        .where(eq(chatArchive.topicId, topicId));
+      if (count > 0) {
+        logger.warn(ROUTE, 'Refused a first root deposit for a topic that already has archive rows', {
+          topicId,
+          userId: session.userId,
+          archiveRows: count,
+        });
+        return NextResponse.json(
+          { error: 'This topic already has an archive; its root cannot be replaced' },
+          { status: 409 },
+        );
+      }
+    }
     if (existing) {
       // Idempotent for the same key so a client retry cannot fail; a conflict
       // for a different one, because the archive is already sealed under the

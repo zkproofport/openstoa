@@ -106,6 +106,22 @@ export interface TakTransport {
   ): Promise<void>;
   getBundles(topicId: string, deviceId: string): Promise<TakBundleRow[]>;
   ackBundles(topicId: string, deviceId: string, ids: string[]): Promise<void>;
+  /**
+   * The archive root the server holds for a PUBLIC topic, or null when none has
+   * been deposited yet.
+   *
+   * Only public topics keep a key there — see `chatTierPolicy` — and the route
+   * refuses every other tier, so a caller cannot accidentally hand over a key
+   * that was supposed to stay on devices.
+   */
+  getServerRoot(topicId: string): Promise<Uint8Array | null>;
+  /**
+   * Deposit the root for a PUBLIC topic. Write-once on the server: depositing
+   * the same key again succeeds, a different one is refused, and `false` comes
+   * back when somebody else got there first — the caller then reads theirs
+   * rather than keeping a key nothing was sealed under.
+   */
+  putServerRoot(topicId: string, root: Uint8Array): Promise<boolean>;
   /** Read the public archive root's published identity + archive row count. */
   getRootFingerprint(topicId: string): Promise<ArchiveRootIdentity>;
   /** Publish our root's fingerprint. COMPARE-AND-SET — never overwrites. */
@@ -393,36 +409,64 @@ export class TakSessionStore {
   }
 
   private async computePublicRoot(topicId: string): Promise<RootResolution> {
+    /*
+     * A public topic's archive root lives on the server, so this is three
+     * questions instead of the compare-and-set dance it replaced.
+     *
+     * The old version published a FINGERPRINT and had every device agree on
+     * which root was real: mint, claim, lose the race, adopt somebody else's,
+     * decide whether a root we already sealed under is an orphan. That
+     * machinery existed because no two devices could ask a common authority
+     * which key was the topic's. Now they can — the server holds it, deposits
+     * are write-once, and the race resolves in one round trip instead of a
+     * state machine.
+     *
+     * `waiting` and `orphan` cannot happen here any more: nobody waits for
+     * another member to hand a key over, and a key that lost the deposit race
+     * is dropped rather than kept. They remain in the type for the scoped tiers.
+     */
     const local = await this.getRoot(topicId);
-    let identity: ArchiveRootIdentity;
+    if (local) return { key: local, state: 'verified' };
+
+    let served: Uint8Array | null;
     try {
-      identity = await this.transport.getRootFingerprint(topicId);
+      served = await this.transport.getServerRoot(topicId);
     } catch {
-      // FAIL SAFE. A root minted without checking is the whole defect: it looks
-      // valid to this device forever and orphans everything sealed under it.
-      return { key: local, state: 'unverified' };
+      // FAIL SAFE. Minting without checking is the whole defect this replaced:
+      // it looks valid to this device forever and orphans everything sealed
+      // under it.
+      return { key: null, state: 'unverified' };
+    }
+    if (served) {
+      await this.setRoot(topicId, served);
+      return { key: served, state: 'verified' };
     }
 
-    if (identity.fingerprint) {
-      if (!local) return { key: null, state: 'waiting' };
-      const mine = await tak.deriveRootFingerprint(local);
-      return { key: local, state: mine === identity.fingerprint ? 'verified' : 'orphan' };
+    // Nothing there yet — this device mints the topic's root and deposits it.
+    const minted = tak.generatePublicRootKey();
+    let won: boolean;
+    try {
+      won = await this.transport.putServerRoot(topicId, minted);
+    } catch {
+      return { key: null, state: 'unverified' };
+    }
+    if (won) {
+      await this.setRoot(topicId, minted);
+      return { key: minted, state: 'verified' };
     }
 
-    // Nothing published yet.
-    if (!local) {
-      // Archive rows are permanent proof a root existed (unlike tak_bundles,
-      // which are deleted once delivered). Minting here is never safe.
-      if (identity.archiveCount > 0) return { key: null, state: 'waiting' };
-      return this.claimRoot(topicId, tak.generatePublicRootKey(), false);
+    // Somebody deposited first. Take theirs; the minted key sealed nothing, so
+    // dropping it costs nothing and keeping it would guarantee an orphan.
+    try {
+      const theirs = await this.transport.getServerRoot(topicId);
+      if (theirs) {
+        await this.setRoot(topicId, theirs);
+        return { key: theirs, state: 'verified' };
+      }
+    } catch {
+      /* fall through — unverified is the honest answer */
     }
-
-    if (identity.archiveCount > 0) {
-      const opens = await this.rootOpensOldestArchiveRow(topicId, local);
-      if (opens === null) return { key: local, state: 'unverified' }; // could not read the archive
-      if (!opens) return { key: local, state: 'orphan' };
-    }
-    return this.claimRoot(topicId, local, true);
+    return { key: null, state: 'unverified' };
   }
 
   /**
@@ -850,12 +894,25 @@ export class TakSessionStore {
   async backfill(topicId: string, visibility: Visibility): Promise<Array<{ messageId: string; plaintext: string }>> {
     await this.ingestBundles(topicId);
     const rows = await this.transport.getArchive(topicId);
-    // Public reads try the topic's root first, then any orphan root this device
-    // previously archived under — those rows are unreadable to everyone else,
-    // but there is no reason to hide them from the device that wrote them.
+    /*
+     * RESOLVE the public root, do not merely read the stored one.
+     *
+     * Reading storage alone meant a device that opened a room and called this
+     * first — before anything had asked `archiveRootState` — decrypted nothing
+     * and showed an empty conversation, because the root was sitting on the
+     * server unfetched. Resolving is idempotent and cached, so the common case
+     * where it is already local costs nothing.
+     *
+     * The orphan root comes second: rows this device sealed under a key that
+     * lost a deposit race are unreadable to everyone else, but there is no
+     * reason to hide them from the device that wrote them.
+     */
     const publicKeys =
       visibility === 'public'
-        ? ([await this.getRoot(topicId), await this.getOrphanRoot(topicId)].filter(Boolean) as Uint8Array[])
+        ? ([
+            (await this.resolvePublicRoot(topicId)).key,
+            await this.getOrphanRoot(topicId),
+          ].filter(Boolean) as Uint8Array[])
         : [];
     const out: Array<{ messageId: string; plaintext: string }> = [];
     for (const r of rows) {

@@ -137,6 +137,12 @@ function httpTak(token: string): TakTransport {
       if (!r.ok) throw new Error(`bundle GET ${r.status}`);
       return (await r.json()).bundles as TakBundleRow[];
     },
+    async getServerRoot() {
+      return null;
+    },
+    async putServerRoot() {
+      return true;
+    },
     async getRootFingerprint(topicId) {
       const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, { headers: h });
       // 400/404: no public archive root concept for this topic (private/secret).

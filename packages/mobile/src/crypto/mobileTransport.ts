@@ -22,6 +22,7 @@ import {
   type ArchiveRootClaim,
 } from './takSession';
 import * as km from './keyManager';
+import { b64, unb64 } from './keyBackup';
 
 function statusOf(e: unknown): number | null {
   const m = String(e instanceof Error ? e.message : e).match(/→ (\d{3}):/);
@@ -167,6 +168,32 @@ export function createTakTransport(client: OpenStoaClient): TakTransport {
     },
     async ackBundles(topicId, deviceId, ids) {
       await client.delete(`${base(topicId)}/tak/bundles`, { body: JSON.stringify({ deviceId, ids }) });
+    },
+    async getServerRoot(topicId) {
+      try {
+        const r = await client.get<{ rootKey?: string } | null>(`${base(topicId)}/archive/root`);
+        const k = r?.rootKey;
+        return typeof k === 'string' && k.length > 0 ? unb64(k) : null;
+      } catch (e) {
+        // 204 = nothing deposited yet; 403 = a tier that keeps its key on
+        // devices; 404 = topic gone. All three mean "the server has nothing for
+        // you", which is an answer, not a failure. Anything else propagates.
+        const st = statusOf(e);
+        if (st === 204 || st === 403 || st === 404) return null;
+        throw e;
+      }
+    },
+    async putServerRoot(topicId, root) {
+      try {
+        await client.put(`${base(topicId)}/archive/root`, { rootKey: b64(root) });
+        return true;
+      } catch (e) {
+        // 409 = somebody deposited a different key first. A normal race: the
+        // caller reads theirs rather than keeping a key nothing was sealed
+        // under.
+        if (statusOf(e) === 409) return false;
+        throw e;
+      }
     },
     async getRootFingerprint(topicId) {
       try {

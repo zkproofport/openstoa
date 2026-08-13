@@ -7,6 +7,7 @@
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
 import * as km from './keyManager';
+import { b64, unb64 } from './keyBackup';
 import { getPasskeyPrf } from '@/lib/passkeyPrf';
 
 function httpTransport(): MlsTransport {
@@ -189,6 +190,30 @@ function httpTakTransport(): TakTransport {
         body: JSON.stringify({ deviceId, ids }),
       });
       if (!r.ok) throw new Error(`bundle DELETE ${r.status}`);
+    },
+    async getServerRoot(topicId) {
+      const r = await fetch(`${base(topicId)}/archive/root`, { credentials: 'include' });
+      // 204 = nothing deposited yet; 403 = a tier that keeps its key on devices.
+      // Neither is a failure — both mean "the server has nothing for you", and
+      // throwing would turn an ordinary answer into a broken room.
+      if (r.status === 204 || r.status === 403 || r.status === 404) return null;
+      if (!r.ok) throw new Error(`archive root GET ${r.status}`);
+      const { rootKey } = await r.json();
+      return typeof rootKey === 'string' && rootKey.length > 0 ? unb64(rootKey) : null;
+    },
+    async putServerRoot(topicId, root) {
+      const r = await fetch(`${base(topicId)}/archive/root`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: json,
+        body: JSON.stringify({ rootKey: b64(root) }),
+      });
+      // 409 = somebody deposited a different key first. That is a normal race,
+      // not an error: the caller reads theirs instead of keeping a key that
+      // nothing was ever sealed under.
+      if (r.status === 409) return false;
+      if (!r.ok) throw new Error(`archive root PUT ${r.status}`);
+      return true;
     },
     async getRootFingerprint(topicId) {
       const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, { credentials: 'include' });

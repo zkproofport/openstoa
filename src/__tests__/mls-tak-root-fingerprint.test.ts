@@ -133,6 +133,37 @@ class MemoryTak implements TakTransport {
       if (b.recipientDeviceId === deviceId && ids.includes(b.id)) b.delivered = true;
     }
   }
+  /**
+   * The server-held archive root, modelled with the guarantees the real route
+   * actually gives — a double that just answers `null`/`true` would let every
+   * device mint its own root and would prove nothing.
+   *
+   *  - one row per topic, WRITE-ONCE: a different key is refused
+   *  - the same key again succeeds, so a client retry is safe
+   *  - a FIRST deposit is refused once the archive has rows, because a root
+   *    arriving after them cannot be the one they were sealed under
+   */
+  serverRoots = new Map<string, string>();
+  serverRootReads = 0;
+  serverRootWrites = 0;
+  async getServerRoot(t: string): Promise<Uint8Array | null> {
+    this.serverRootReads++;
+    if (this.offline) throw new Error('network down');
+    if (this.unreachableTopics.has(t)) throw new Error('403: Not a member of this topic');
+    const v = this.serverRoots.get(t);
+    return v ? unb64(v) : null;
+  }
+  async putServerRoot(t: string, root: Uint8Array): Promise<boolean> {
+    this.serverRootWrites++;
+    if (this.offline) throw new Error('network down');
+    if (this.unreachableTopics.has(t)) throw new Error('403: Not a member of this topic');
+    const incoming = b64(root);
+    const held = this.serverRoots.get(t);
+    if (held) return held === incoming;
+    if ((this.archive.get(t) ?? []).length > 0) return false;
+    this.serverRoots.set(t, incoming);
+    return true;
+  }
   async getRootFingerprint(t: string): Promise<ArchiveRootIdentity> {
     this.fingerprintReads++;
     if (this.offline) throw new Error('network down');
@@ -180,118 +211,58 @@ async function join(ds: MemoryDS, topic: string, host: { mls: MlsSessionStore },
 // THE REGRESSION: an orphan root must never erase real history
 // ---------------------------------------------------------------------------
 
-describe('public archive root — orphan clobbering (the data-loss bug)', () => {
-  it('a second device cannot mint a rival root, archive under it, or broadcast it over the real one', async () => {
+// ---------------------------------------------------------------------------
+// THE REGRESSION: an orphan root must never erase real history
+// ---------------------------------------------------------------------------
+
+describe('public archive root — one root per topic, decided by the server', () => {
+  it('REGRESSION: a second device adopts the topic root instead of minting a rival', async () => {
+    /*
+     * The data-loss bug in its original form: a device that had not yet been
+     * handed the root would mint its own, archive under it, and hand that
+     * orphan to everyone — making every previously archived row undecryptable
+     * for every member at once.
+     *
+     * The server now answers "here is this topic's root", so a device that
+     * lacks one asks rather than invents.
+     */
     const ds = new MemoryDS();
     const tt = new MemoryTak();
-    const T = 'clobber-topic';
-
-    // Alice is genesis: she mints the root, publishes its fingerprint, archives.
-    const alice = makeClient(ds, tt, 'alice');
-    await alice.mls.seal(T, 'genesis');
-    expect((await alice.tak.archiveOnSend(T, 'm-1', 'the-real-history', 'public')).archived).toBe(true);
-
-    // Bob joins and opens the chat BEFORE any TAK bundle reaches him. This is the
-    // exact moment the old code minted an orphan root.
-    const bob = makeClient(ds, tt, 'bob');
-    await join(ds, T, alice, bob);
-
-    // 1. Bob does not mint. He archives nothing rather than writing a row no one
-    //    can read, and says why.
-    const bobArchive = await bob.tak.archiveOnSend(T, 'm-2', 'bob-msg', 'public');
-    expect(bobArchive).toEqual({ archived: false, rootState: 'waiting' });
-    expect(await tt.getArchive(T)).toHaveLength(1); // only alice's row
-
-    // 2. Bob (who can easily win the 900s holder lease) broadcasts nothing.
-    expect(await bob.tak.distributePublicRoot(T)).toBe(0);
-
-    // 3. THE ASSERTION THAT FAILS AGAINST THE OLD CODE: after ingesting whatever
-    //    Bob sent, Alice's root — and therefore her history — is intact. Before
-    //    the fix, ingestBundles overwrote her root with Bob's orphan and this
-    //    returned undefined.
-    const history = await alice.tak.backfill(T, 'public');
-    expect(history.find((h) => h.messageId === 'm-1')?.plaintext).toBe('the-real-history');
-    expect(await alice.tak.archiveRootState(T, 'public')).toBe('verified');
-
-    // 4. Once Alice distributes, Bob adopts the real root and reads the history.
-    expect(await alice.tak.distributePublicRoot(T)).toBe(2);
-    const bobHistory = await bob.tak.backfill(T, 'public');
-    expect(bobHistory.find((h) => h.messageId === 'm-1')?.plaintext).toBe('the-real-history');
-    expect(await bob.tak.archiveRootState(T, 'public')).toBe('verified');
-    expect((await bob.tak.archiveOnSend(T, 'm-3', 'bob-can-archive-now', 'public')).archived).toBe(true);
-  });
-
-  it('ingestBundles rejects a root whose fingerprint does not match the published one', async () => {
-    const ds = new MemoryDS();
-    const tt = new MemoryTak();
-    const T = 'reject-topic';
-    const alice = makeClient(ds, tt, 'alice');
-    await alice.mls.seal(T, 'genesis');
-    await alice.tak.archiveOnSend(T, 'm-1', 'real', 'public');
-
-    const mallory = makeClient(ds, tt, 'mallory');
-    await join(ds, T, alice, mallory);
-
-    // Mallory hand-crafts a bundle carrying a root of her choosing, addressed to
-    // Alice's leaf (the HPKE wrap itself is valid — she IS a group member).
-    const rogueRoot = tak.generatePublicRootKey();
-    const aliceDev = await alice.tak.myDeviceId(T);
-    await mallory.mls.sync(T);
-    const leaves = await mallory.mls.readState(T, async (s) => tak.findRecipientLeaves(s, 'alice'));
-    for (const lf of leaves) {
-      const wrapped = await tak.wrapBundleToLeaf(lf.hpkePublicKey, { tier: 'public', rootKey: b64(rogueRoot) });
-      await tt.postBundle(T, 'alice', tak.leafDeviceId(lf.hpkePublicKey), btoa(JSON.stringify(wrapped)), 'full');
-    }
-    expect((await tt.getBundles(T, aliceDev)).length).toBeGreaterThan(0);
-
-    await alice.tak.ingestBundles(T);
-
-    // The rogue root was not stored, and it was acked so it is not re-fetched
-    // forever (a mismatch can never become valid: the fingerprint is write-once).
-    expect(await alice.tak.archiveRootState(T, 'public')).toBe('verified');
-    expect(await tt.getBundles(T, aliceDev)).toHaveLength(0);
-    const history = await alice.tak.backfill(T, 'public');
-    expect(history.find((h) => h.messageId === 'm-1')?.plaintext).toBe('real');
-  });
-
-  it('REGRESSION: a device still waiting for the root cannot name it, so it cannot take the holder role', async () => {
-    // The staging failure, reproduced: a topic with archived history whose root
-    // identity was never published, joined by a brand-new device. That device
-    // claimed the holder lease and locked itself out — the holder is who others
-    // receive the root FROM, so nothing would ever hand it one.
-    const ds = new MemoryDS();
-    const tt = new MemoryTak();
-    const T = 'waiting-device-topic';
+    const T = 'one-root-topic';
     const alice = makeClient(ds, tt, 'alice');
     await alice.mls.seal(T, 'genesis');
     await alice.tak.archiveOnSend(T, 'm-1', 'history-that-must-survive', 'public');
 
-    const newDevice = makeClient(ds, tt, 'bob');
-    await join(ds, T, alice, newDevice);
+    const bob = makeClient(ds, tt, 'bob');
+    await join(ds, T, alice, bob);
 
-    // It has no root, and says so rather than offering one it does not have.
-    expect(await newDevice.tak.archiveRootState(T, 'public')).toBe('waiting');
-    expect(await newDevice.tak.publicRootFingerprint(T)).toBeNull();
+    expect(await bob.tak.archiveRootState(T, 'public')).toBe('verified');
+    const recovered = await bob.tak.backfill(T, 'public');
+    expect(recovered).toEqual([{ messageId: 'm-1', plaintext: 'history-that-must-survive' }]);
+  });
 
-    // The device that actually holds the root can name it — this is the only
-    // device entitled to serve the role.
-    const real = await alice.tak.publicRootFingerprint(T);
-    expect(real).toBeTruthy();
+  it('CONTRACT: the deposit is write-once — a rival key cannot replace the real one', async () => {
+    const tt = new MemoryTak();
+    const T = 'write-once-topic';
+    const real = tak.generatePublicRootKey();
+    const rival = tak.generatePublicRootKey();
 
-    // And once the root arrives the newcomer can name the SAME one, so it may
-    // then take over succession legitimately.
-    await alice.tak.distributePublicRoot(T);
-    await newDevice.tak.ingestBundles(T);
-    expect(await newDevice.tak.publicRootFingerprint(T)).toBe(real);
+    expect(await tt.putServerRoot(T, real)).toBe(true);
+    expect(await tt.putServerRoot(T, rival)).toBe(false);
+    // Depositing the SAME key again succeeds, which is what makes a client
+    // retry safe rather than a coin flip.
+    expect(await tt.putServerRoot(T, real)).toBe(true);
+    expect(b64((await tt.getServerRoot(T))!)).toBe(b64(real));
   });
 });
 
-// ---------------------------------------------------------------------------
-// Genesis + compare-and-set race
-// ---------------------------------------------------------------------------
-
-describe('public archive root — genesis race (compare-and-set)', () => {
-  it('two devices racing the first root: one wins, the loser waits and never persists its own', async () => {
+describe('public archive root — genesis race', () => {
+  it('two devices racing the first root end up with the SAME one', async () => {
+    /*
+     * Both mint, both deposit, one wins. The loser must adopt the winner's key
+     * rather than keep its own: the key it minted sealed nothing, so dropping
+     * it costs nothing, and keeping it would guarantee rows nobody else reads.
+     */
     const ds = new MemoryDS();
     const tt = new MemoryTak();
     const T = 'race-topic';
@@ -300,205 +271,74 @@ describe('public archive root — genesis race (compare-and-set)', () => {
     await alice.mls.seal(T, 'genesis');
     await join(ds, T, alice, bob);
 
-    // Both resolve concurrently on a topic with no fingerprint and no rows.
     const [a, b] = await Promise.all([
       alice.tak.archiveRootState(T, 'public'),
       bob.tak.archiveRootState(T, 'public'),
     ]);
+    expect([a, b]).toEqual(['verified', 'verified']);
 
-    // Exactly one fingerprint exists, and exactly one device is verified.
-    expect(tt.fingerprints.size).toBe(1);
-    const states = [a, b];
-    expect(states.filter((s) => s === 'verified')).toHaveLength(1);
-    expect(states.filter((s) => s === 'waiting')).toHaveLength(1);
-
-    // The loser stored NOTHING: a just-minted root has sealed nothing, so keeping
-    // it would only create a guaranteed orphan.
-    const loser = a === 'waiting' ? alice : bob;
-    expect(loser.kv.map.get(`tak.root.${T}`)).toBeUndefined();
+    // The proof that matters is not the state string: it is that each can read
+    // what the other sealed.
+    await alice.tak.archiveOnSend(T, 'from-alice', 'alice wrote this', 'public');
+    await bob.tak.archiveOnSend(T, 'from-bob', 'bob wrote this', 'public');
+    const asBob = await bob.tak.backfill(T, 'public');
+    expect(asBob.map((r) => r.plaintext).sort()).toEqual(['alice wrote this', 'bob wrote this']);
   });
 
-  it('a holder that distributes and archives concurrently still uses ONE root', async () => {
+  it('exactly one key is ever stored for a topic', async () => {
     const ds = new MemoryDS();
     const tt = new MemoryTak();
-    const T = 'concurrent-topic';
+    const T = 'single-key-topic';
     const alice = makeClient(ds, tt, 'alice');
     await alice.mls.seal(T, 'genesis');
-
-    await Promise.all([
-      alice.tak.archiveOnSend(T, 'm-race', 'raced', 'public'),
-      alice.tak.distributePublicRoot(T),
-    ]);
-    expect(tt.fingerprints.size).toBe(1);
-    expect(tt.fingerprintWrites).toBe(1); // one claim, not one per caller
-
-    const bob = makeClient(ds, tt, 'bob');
-    await join(ds, T, alice, bob);
-    await alice.tak.distributePublicRoot(T);
-    const history = await bob.tak.backfill(T, 'public');
-    expect(history.find((h) => h.messageId === 'm-race')?.plaintext).toBe('raced');
-  });
-
-  it('a device that already holds the CORRECT root is a no-op — no re-store, no backup storm', async () => {
-    const ds = new MemoryDS();
-    const tt = new MemoryTak();
-    const T = 'noop-topic';
-    let aliceChanges = 0;
-    const alice = makeClient(ds, tt, 'alice', () => void aliceChanges++);
-    await alice.mls.seal(T, 'genesis');
+    await alice.tak.archiveRootState(T, 'public');
     await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
-
-    let bobChanges = 0;
-    const bob = makeClient(ds, tt, 'bob', () => void bobChanges++);
-    await join(ds, T, alice, bob);
-    await alice.tak.distributePublicRoot(T);
-    await bob.tak.ingestBundles(T);
-    const afterFirstIngest = bobChanges;
-    expect(afterFirstIngest).toBeGreaterThan(0); // adopting the root IS a change
-
-    // Re-deliver the SAME root repeatedly (every mount + join event does this).
-    for (let i = 0; i < 3; i++) {
-      await alice.tak.distributePublicRoot(T);
-      await bob.tak.ingestBundles(T);
-    }
-    expect(bobChanges).toBe(afterFirstIngest); // identical value → no write at all
-    expect(aliceChanges).toBeGreaterThan(0);
-
-    // And the holder never re-claims a fingerprint it already published.
-    const writesBefore = tt.fingerprintWrites;
-    await alice.tak.archiveOnSend(T, 'm-2', 'y', 'public');
-    expect(tt.fingerprintWrites).toBe(writesBefore);
+    await alice.tak.archiveRootState(T, 'public');
+    expect(tt.serverRoots.size).toBe(1);
   });
 });
 
-// ---------------------------------------------------------------------------
-// The retroactive case: rows exist, no fingerprint (every production topic today)
-// ---------------------------------------------------------------------------
-
-describe('public archive root — retroactive topics (rows, no fingerprint)', () => {
-  /**
-   * A topic as it exists in production RIGHT NOW: archive rows sealed under a
-   * root the owner holds locally, and no fingerprint anywhere. Built by writing
-   * the root + row directly rather than by calling the fixed code path, so the
-   * pre-fix world is reproduced honestly (no client-side cache, no claim).
-   */
-  async function legacyTopic(ds: MemoryDS, tt: MemoryTak, T: string) {
-    const owner = makeClient(ds, tt, 'owner');
-    await owner.mls.seal(T, 'genesis');
-    const realRoot = tak.generatePublicRootKey();
-    owner.kv.map.set(`tak.root.${T}`, b64(realRoot));
-    await tt.postArchive(T, 'm-old', 0, await tak.sealArchive(realRoot, 'm-old', 'pre-fingerprint-history'));
-    expect(tt.fingerprints.get(T)).toBeUndefined();
-    return owner;
-  }
-
-  it('a device with NO root must NOT mint one when archive rows already exist', async () => {
+describe('public archive root — a topic that already has an archive', () => {
+  it('REGRESSION: no root is minted over existing rows', async () => {
+    /*
+     * Archive rows are permanent proof that a root existed. Minting a fresh one
+     * over them would leave every row sealed under a key nobody has — the same
+     * silent loss the fingerprint check used to prevent, now enforced by the
+     * server, which can count rows without reading one.
+     */
     const ds = new MemoryDS();
     const tt = new MemoryTak();
-    const T = 'legacy-nomint';
-    const owner = await legacyTopic(ds, tt, T);
+    const T = 'retroactive-topic';
+    // Rows exist, but nothing was ever deposited — the state a topic archived
+    // before this mechanism existed would be in.
+    tt.archive.set(T, [
+      { messageId: 'old-1', takVersion: 0, ciphertext: 'unreadable', createdAt: new Date().toISOString() },
+    ]);
 
-    const newcomer = makeClient(ds, tt, 'newcomer');
-    await join(ds, T, owner, newcomer);
+    const device = makeClient(ds, tt, 'newcomer');
+    await device.mls.seal(T, 'genesis');
+    const state = await device.tak.archiveRootState(T, 'public');
 
-    // Rows are permanent proof a root exists — unlike tak_bundles, which are
-    // deleted on delivery. Minting here is what orphaned production topics.
-    expect(await newcomer.tak.archiveRootState(T, 'public')).toBe('waiting');
-    expect((await newcomer.tak.archiveOnSend(T, 'm-new', 'nope', 'public')).archived).toBe(false);
-    expect(tt.fingerprints.get(T)).toBeUndefined(); // it did not claim, either
+    expect(state).not.toBe('verified');
+    expect(tt.serverRoots.has(T)).toBe(false);
   });
 
-  it('the device holding the REAL root claims the fingerprint (it opens the oldest row)', async () => {
+  it('and nothing is archived under a root that was never established', async () => {
     const ds = new MemoryDS();
     const tt = new MemoryTak();
-    const T = 'legacy-claim';
-    const owner = await legacyTopic(ds, tt, T);
-
-    expect(await owner.tak.archiveRootState(T, 'public')).toBe('verified');
-    expect(tt.fingerprints.get(T)).toBeTruthy();
-    expect((await owner.tak.archiveOnSend(T, 'm-2', 'still-works', 'public')).archived).toBe(true);
-  });
-
-  it('a device holding an orphan root cannot claim it — it does not open the oldest row', async () => {
-    const ds = new MemoryDS();
-    const tt = new MemoryTak();
-    const T = 'legacy-orphan';
-    const owner = await legacyTopic(ds, tt, T);
-
-    // Simulate the damage already done in production: this device minted its own
-    // root before the fix and archived under it.
-    const orphaned = makeClient(ds, tt, 'orphaned');
-    await join(ds, T, owner, orphaned);
-    const orphanRoot = tak.generatePublicRootKey();
-    orphaned.kv.map.set(`tak.root.${T}`, b64(orphanRoot));
-    await tt.postArchive(T, 'm-orphan', 0, await tak.sealArchive(orphanRoot, 'm-orphan', 'only-i-can-read-this'));
-
-    expect(await orphaned.tak.archiveRootState(T, 'public')).toBe('orphan');
-    expect((await orphaned.tak.archiveOnSend(T, 'm-more', 'nope', 'public')).archived).toBe(false);
-    expect(await orphaned.tak.distributePublicRoot(T)).toBe(0);
-    expect(tt.fingerprints.get(T)).toBeUndefined(); // nothing published by an orphan
-
-    // READ-ONLY, not deleted: rows it sealed itself stay readable to it.
-    const own = await orphaned.tak.backfill(T, 'public');
-    expect(own.find((h) => h.messageId === 'm-orphan')?.plaintext).toBe('only-i-can-read-this');
-  });
-
-  it('repairs an orphaned device: it adopts a root that opens the oldest row while its own does not', async () => {
-    const ds = new MemoryDS();
-    const tt = new MemoryTak();
-    const T = 'legacy-repair';
-    const owner = await legacyTopic(ds, tt, T);
-
-    const orphaned = makeClient(ds, tt, 'orphaned');
-    await join(ds, T, owner, orphaned);
-    const orphanRoot = tak.generatePublicRootKey();
-    orphaned.kv.map.set(`tak.root.${T}`, b64(orphanRoot));
-    await tt.postArchive(T, 'm-orphan', 0, await tak.sealArchive(orphanRoot, 'm-orphan', 'my-orphan-row'));
-
-    // The real holder distributes while the topic still has no fingerprint.
-    await owner.mls.sync(T);
-    const leaves = await owner.mls.readState(T, async (s) => tak.findRecipientLeaves(s, 'orphaned'));
-    const realRoot = unb64(owner.kv.map.get(`tak.root.${T}`)!);
-    for (const lf of leaves) {
-      const wrapped = await tak.wrapBundleToLeaf(lf.hpkePublicKey, { tier: 'public', rootKey: b64(realRoot) });
-      await tt.postBundle(T, 'orphaned', tak.leafDeviceId(lf.hpkePublicKey), btoa(JSON.stringify(wrapped)), 'full');
-    }
-
-    const history = await orphaned.tak.backfill(T, 'public');
-    // It adopted the real root (reads the pre-fix history) AND kept the orphan
-    // read-only, so its own row survives the repair.
-    expect(history.find((h) => h.messageId === 'm-old')?.plaintext).toBe('pre-fingerprint-history');
-    expect(history.find((h) => h.messageId === 'm-orphan')?.plaintext).toBe('my-orphan-row');
-  });
-
-  it('does NOT adopt an incoming root that cannot open the oldest row either', async () => {
-    const ds = new MemoryDS();
-    const tt = new MemoryTak();
-    const T = 'legacy-no-adopt';
-    const owner = await legacyTopic(ds, tt, T);
-
-    const victim = makeClient(ds, tt, 'victim');
-    await join(ds, T, owner, victim);
-    const victimRoot = unb64(owner.kv.map.get(`tak.root.${T}`)!); // victim holds the REAL root
-    victim.kv.map.set(`tak.root.${T}`, b64(victimRoot));
-
-    // A third device pushes a root that opens nothing.
-    const junk = tak.generatePublicRootKey();
-    await owner.mls.sync(T);
-    const leaves = await owner.mls.readState(T, async (s) => tak.findRecipientLeaves(s, 'victim'));
-    for (const lf of leaves) {
-      const wrapped = await tak.wrapBundleToLeaf(lf.hpkePublicKey, { tier: 'public', rootKey: b64(junk) });
-      await tt.postBundle(T, 'victim', tak.leafDeviceId(lf.hpkePublicKey), btoa(JSON.stringify(wrapped)), 'full');
-    }
-
-    await victim.tak.ingestBundles(T);
-    expect(victim.kv.map.get(`tak.root.${T}`)).toBe(b64(victimRoot)); // untouched
+    const T = 'retroactive-no-write';
+    tt.archive.set(T, [
+      { messageId: 'old-1', takVersion: 0, ciphertext: 'unreadable', createdAt: new Date().toISOString() },
+    ]);
+    const device = makeClient(ds, tt, 'newcomer');
+    await device.mls.seal(T, 'genesis');
+    await device.tak.archiveOnSend(T, 'new-1', 'must not be written', 'public');
+    // Still just the pre-existing row: writing one nobody can open would be
+    // worse than writing none.
+    expect((tt.archive.get(T) ?? []).map((r) => r.messageId)).toEqual(['old-1']);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Fail-safe: never mint or archive on an unverifiable check
-// ---------------------------------------------------------------------------
 
 describe('public archive root — server unreachable (fail safe)', () => {
   it('does not mint a root, archive, or distribute while the check cannot be completed', async () => {
@@ -539,7 +379,13 @@ describe('public archive root — server unreachable (fail safe)', () => {
 // ---------------------------------------------------------------------------
 
 describe('public archive root — scope of the gate', () => {
-  it('a device waiting for the root still sends and receives live MLS messages', async () => {
+  it('a device that cannot reach the archive still sends and receives live MLS messages', async () => {
+    /*
+     * Nobody WAITS for a public root any more — the server answers — so the
+     * stall this once described is now "the archive is unreachable". The
+     * guarantee is the one that mattered either way: live chat does not depend
+     * on the archive, so a device that cannot read history can still talk.
+     */
     const ds = new MemoryDS();
     const tt = new MemoryTak();
     const T = 'live-topic';
@@ -549,16 +395,17 @@ describe('public archive root — scope of the gate', () => {
 
     const bob = makeClient(ds, tt, 'bob');
     await join(ds, T, alice, bob);
-    expect(await bob.tak.archiveRootState(T, 'public')).toBe('waiting');
+    tt.offline = true;
+    expect(await bob.tak.archiveRootState(T, 'public')).toBe('unverified');
 
-    // MLS application messages are independent of the archive root: Bob sends,
-    // Alice reads, and the archive append merely reports that it was skipped.
-    const msg = await bob.mls.seal(T, 'hello from a waiting device');
+    const msg = await bob.mls.seal(T, 'hello from an offline-archive device');
     await fanOutCommits(ds, T, [alice]);
-    expect(await alice.mls.open(T, msg)).toBe('hello from a waiting device');
+    expect(await alice.mls.open(T, msg)).toBe('hello from an offline-archive device');
+    // And it writes nothing rather than writing a row under a key it has not
+    // established.
     await expect(bob.tak.archiveOnSend(T, 'm-2', 'hello', 'public')).resolves.toEqual({
       archived: false,
-      rootState: 'waiting',
+      rootState: 'unverified',
     });
   });
 
@@ -664,8 +511,17 @@ describe('public archive root — keychain backup integrity', () => {
  * deployed — the newcomer sat on '[unable to decrypt]' until an unrelated device
  * happened to reopen the room.
  */
-describe('public root re-distribution on membership change', () => {
-  it('REGRESSION: a device that joins AFTER the hand-out still gets the root', async () => {
+describe('public root delivery to a later joiner', () => {
+  it('REGRESSION: a device that joins later needs NOBODY to hand it the root', async () => {
+    /*
+     * The reported failure, and the reason the mechanism changed: delivery ran
+     * only from a member who was online AND had that chat room open. With every
+     * holder away, a new member's history never arrived — not slowly, never.
+     * Server logs showed the joining device polling for bundles that were never
+     * posted.
+     *
+     * Nothing distributes anything here. Alice is not even consulted.
+     */
     const ds = new MemoryDS();
     const tt = new MemoryTak();
     const T = 'late-joiner';
@@ -673,52 +529,33 @@ describe('public root re-distribution on membership change', () => {
     await alice.mls.seal(T, 'genesis');
     await alice.tak.archiveOnSend(T, 'm-1', 'sent-before-bob-existed', 'public');
 
-    // Alice hands out while she is the only leaf — the state that stranded the
-    // newcomer, because this was the ONLY time distribution ran.
-    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(1);
-
     const bob = makeClient(ds, tt, 'bob');
     await join(ds, T, alice, bob);
-    expect(await bob.tak.archiveRootState(T, 'public')).toBe('waiting');
-
-    // The group changed, so this round reaches Bob's leaf too.
-    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBeGreaterThan(0);
-    await bob.tak.ingestBundles(T);
 
     expect(await bob.tak.archiveRootState(T, 'public')).toBe('verified');
     const history = await bob.tak.backfill(T, 'public');
     expect(history.find((h) => h.messageId === 'm-1')?.plaintext).toBe('sent-before-bob-existed');
+    // No bundle was posted to anyone: the old delivery path is not merely
+    // unnecessary here, it is unused.
+    expect([...tt.bundles.values()].flat()).toHaveLength(0);
   });
 
-  it('an unchanged group sends nothing, so a repeating caller cannot flood bundles', async () => {
+  it('a joiner reads history with every other member offline', async () => {
+    // The same claim stated as the failure it prevents. Alice's client is not
+    // called at all after she leaves.
     const ds = new MemoryDS();
     const tt = new MemoryTak();
-    const T = 'quiet-group';
+    const T = 'nobody-home';
     const alice = makeClient(ds, tt, 'alice');
-    await alice.mls.seal(T, 'g');
-    await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
-
-    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(1);
-    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
-    expect(await alice.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
-  });
-
-  it('a device with no verified root distributes nothing and does not retry forever', async () => {
-    const ds = new MemoryDS();
-    const tt = new MemoryTak();
-    const T = 'no-root-here';
-    const alice = makeClient(ds, tt, 'alice');
-    await alice.mls.seal(T, 'g');
-    await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
+    await alice.mls.seal(T, 'genesis');
+    await alice.tak.archiveOnSend(T, 'm-1', 'still-readable', 'public');
 
     const bob = makeClient(ds, tt, 'bob');
     await join(ds, T, alice, bob);
-
-    expect(await bob.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
-    // Second call is a no-op for the same epoch: spinning on every tick would
-    // cost a sync per event for a device that can never serve this epoch.
-    expect(await bob.tak.distributePublicRootWhenGroupChanged(T)).toBe(0);
+    const history = await bob.tak.backfill(T, 'public');
+    expect(history.map((h) => h.plaintext)).toEqual(['still-readable']);
   });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -792,12 +629,20 @@ describe('archive gap back-fill', () => {
     await alice.mls.seal(T, 'g');
     await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public');
 
-    // A second device that has not received the root: state 'waiting', no key.
+    // A device that cannot establish the root — the archive is unreachable, so
+    // it holds no key. ('waiting' was the old shape of this: a device that had
+    // not been HANDED the root. Nobody hands it over now, so the only way to
+    // lack one is not to have been able to ask.)
     const newcomer = makeClient(ds, tt, 'bob');
     await join(ds, T, alice, newcomer);
-    expect(await newcomer.tak.archiveRootState(T, 'public')).toBe('waiting');
+    tt.offline = true;
+    expect(await newcomer.tak.archiveRootState(T, 'public')).toBe('unverified');
 
+    // Still unreachable while the gap-filler runs: the point is that a device
+    // which has not established the root writes NOTHING, rather than rows only
+    // it could ever open.
     expect(await newcomer.tak.backfillMissingArchive(T, 'public', [{ messageId: 'm-9', plaintext: 'nope' }])).toBe(0);
+    tt.offline = false;
     expect((await tt.getArchive(T)).map((r) => r.messageId)).toEqual(['m-1']);
   });
 
