@@ -120,6 +120,9 @@ export default function LinkPreview({ url, compact, onUnavailable }: LinkPreview
     }
     const image = !imgError && data?.image ? data.image : null;
     const skeleton = 'color-mix(in srgb, var(--foreground) 10%, transparent)';
+    // No image block while loading: most links have no `og:image`, so
+    // reserving one would make the common card SHRINK when it resolves — and a
+    // card that shrinks pulls the whole conversation up with it.
     /** One grey bar, for the loading state — same rows the real text occupies. */
     const bar = (width: string) => (
       <span style={{ display: 'block', height: 11, width, borderRadius: 3, background: skeleton }} />
@@ -139,19 +142,27 @@ export default function LinkPreview({ url, compact, onUnavailable }: LinkPreview
           color: 'inherit',
         }}
       >
-        <span
-          style={{
-            display: 'block',
-            width: '100%',
-            aspectRatio: CARD_IMAGE_ASPECT,
-            background: skeleton,
-            // The block stays even with no image — dropping it would shrink the
-            // card the moment a preview without one resolved.
-            backgroundImage: image ? `url("${image}")` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        />
+        {/*
+          * The image block exists only when there IS an image.
+          *
+          * Reserving it either way left a large empty rectangle on every card
+          * for a page with no `og:image`, which reads as a picture that failed
+          * to load. KakaoTalk drops it: a link with no image is a compact card
+          * of title, description and domain, and that is what a reader expects.
+          */}
+        {image && (
+          <span
+            style={{
+              display: 'block',
+              width: '100%',
+              aspectRatio: CARD_IMAGE_ASPECT,
+              background: skeleton,
+              backgroundImage: `url("${image}")`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          />
+        )}
         {/* Hidden loader: `background-image` has no error event, so this is what
             notices a dead image URL and falls back to the plain block. */}
         {image && (

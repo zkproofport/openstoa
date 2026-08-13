@@ -145,12 +145,18 @@ export function OGPreviewCard({ data, onPress, compact, host, loading, onLongPre
         delayLongPress={400}
         activeOpacity={0.75}
       >
-        <Image
-          source={showImage ? { uri: data.image! } : undefined}
-          style={styles.compactImage}
-          resizeMode="cover"
-          onError={() => setImageFailed(true)}
-        />
+        {/* The image block exists only when there IS an image. Reserving it
+            either way left a large empty rectangle on every card for a page
+            with no `og:image`, which reads as a picture that failed to load.
+            KakaoTalk drops it, and so does this. */}
+        {showImage ? (
+          <Image
+            source={{ uri: data.image! }}
+            style={styles.compactImage}
+            resizeMode="cover"
+            onError={() => setImageFailed(true)}
+          />
+        ) : null}
         <View style={styles.compactBody}>
           {loading ? (
             <>

@@ -225,23 +225,39 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Only read first 100kb to avoid large payloads
     const reader = res.body?.getReader();
     if (!reader) throw new Error('No body');
 
     let html = '';
     let totalBytes = 0;
-    const MAX_BYTES = 100 * 1024;
+    /*
+     * How far in to look for the metadata.
+     *
+     * The cap used to be 100 KB, on the reasonable theory that a page's head
+     * comes first. Application shells break that theory: Google AdSense puts
+     * its <title> at byte 762,049 of a 931 KB document, behind the app's inline
+     * bundle, so we truncated before ever seeing it and returned a preview with
+     * no title at all — which the client then showed as no card.
+     *
+     * Reading to </head> is not the answer either: Next.js sites (including
+     * openstoa.xyz) emit their og:* tags AFTER </head>, via hydration scripts.
+     * So: stop as soon as the tags we came for are in hand, and otherwise read
+     * up to a cap generous enough to cover an application shell. The common
+     * page still costs one or two chunks, because its head arrives first.
+     */
+    const MAX_BYTES = 1024 * 1024;
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       totalBytes += value.length;
       html += new TextDecoder().decode(value);
-      // Read up to MAX_BYTES regardless of </head> position. Next.js sites
-      // (including openstoa.xyz) inline their metadata via post-hydration
-      // scripts that appear AFTER </head> — bailing on </head> made us
-      // skip those og:* tags and return an empty preview payload.
+      // Everything worth reading is already here — the rest of a megabyte of
+      // application bundle has nothing to add.
+      if (html.includes('og:image') && html.includes('og:title')) {
+        reader.cancel();
+        break;
+      }
       if (totalBytes > MAX_BYTES) {
         reader.cancel();
         break;

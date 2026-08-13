@@ -1075,7 +1075,22 @@ function MessageRow({
         </a>
       )}
       {firstUrl && !inlineImage && (
-        <div style={{ marginTop: 6, marginBottom: 2, maxWidth: '85%' }}>
+        <div
+          style={{
+            marginTop: 6,
+            marginBottom: 2,
+            /*
+             * An explicit WIDTH, not just a cap.
+             *
+             * This sits in a flex column aligned to one edge, so a block child
+             * shrinks to its content — and a card that is still loading has no
+             * content, so it collapsed to a sliver that `aspect-ratio` then
+             * stretched into a tall thin pill. The card has to know how wide it
+             * is before it knows what is in it.
+             */
+            width: 'min(320px, 85%)',
+          }}
+        >
           {/* Fixed-height: a chat list is bottom-anchored, so a card that
               grows, shrinks or vanishes drags the whole conversation. */}
           <LinkPreview url={firstUrl} compact onUnavailable={() => setPreviewUnavailable(true)} />
