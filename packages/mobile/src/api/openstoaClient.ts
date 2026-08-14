@@ -95,6 +95,35 @@ export class OpenStoaClient {
   }
 
   /**
+   * Forget a session the server has finally refused.
+   *
+   * `invalidateToken` alone only empties the in-memory cache, so the very
+   * next request reads the same rejected Bearer back out of host storage and
+   * is refused again — a sign-in prompt on every single call, with nothing
+   * the user does able to clear it. The host's own `logoutFromOpenStoa` is
+   * what actually drops the persisted token.
+   *
+   * Dropping to `'guest'` matters as much as clearing the token: the guest
+   * branch at the top of `request()` raises `GuestAuthRequiredError` before
+   * spending a round trip, so subsequent calls reach the sign-in sheet
+   * directly instead of each discovering the same 401 for themselves.
+   *
+   * Signing in again still works — the CTA calls `loginToOpenStoa` with
+   * `force: true`, which the host documents as bypassing the logged-out
+   * marker this sets.
+   */
+  private async dropDeadSession(): Promise<void> {
+    this.invalidateToken();
+    this.mode = 'guest';
+    try {
+      await this.host.logoutFromOpenStoa();
+    } catch {
+      // Best effort: the in-memory half is already cleared, and failing to
+      // reach host storage must not turn a refused request into a crash.
+    }
+  }
+
+  /**
    * Adopt a freshly-reissued JWT (e.g. from a nickname / profile update
    * response). Updates BOTH the in-memory cache AND the host-persisted
    * storage so the next request — and every subsequent app launch — uses
@@ -244,10 +273,43 @@ export class OpenStoaClient {
       if (this.mode !== 'authenticated' || !token) {
         throw new GuestAuthRequiredError(path);
       }
-      this.invalidateToken();
-      token = await this.resolveTokenAuthenticated(true);
-      headers.set('Authorization', `Bearer ${token}`);
+
+      /*
+       * A token the server refused. Try ONE refresh: an ordinary expiry is
+       * the common case and recovers without troubling anyone.
+       *
+       * If the refresh fails, or the refreshed token is refused too, the
+       * session is genuinely over — drop it and let the screen offer sign-in.
+       *
+       * What must NOT happen here is `resolveTokenAuthenticated(true)`. The
+       * host reads `force: true` as "the user tapped Sign in" and answers it
+       * by starting the OIDC proof flow — see the comment on
+       * `loginToOpenStoa` in the host: it withholds any proof flow until the
+       * user explicitly asks for one. A 401 is the server declining a
+       * credential, not a person asking to prove their organisation, and
+       * treating the two alike dropped someone into a domain-verification
+       * sheet just for opening the tab, and again for pressing Create on a
+       * filled-in form. It also cannot work: when the account behind the
+       * token is gone, no amount of re-authenticating produces an acceptable
+       * one.
+       */
+      let refreshed: string | null = null;
+      try {
+        refreshed = await this.refreshOnce(token);
+      } catch {
+        refreshed = null;
+      }
+      if (!refreshed) {
+        await this.dropDeadSession();
+        throw new GuestAuthRequiredError(path);
+      }
+
+      headers.set('Authorization', `Bearer ${refreshed}`);
       res = await fetch(url, { ...init, headers, credentials: 'omit' });
+      if (res.status === 401) {
+        await this.dropDeadSession();
+        throw new GuestAuthRequiredError(path);
+      }
     }
 
     if (!res.ok) {

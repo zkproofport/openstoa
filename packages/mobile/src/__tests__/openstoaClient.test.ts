@@ -15,8 +15,10 @@ interface FakeHostOpts {
 function makeFakeHost(opts: FakeHostOpts = {}): HostApi & {
   __getTokenMock: ReturnType<typeof vi.fn>;
   __loginMock: ReturnType<typeof vi.fn>;
+  __logoutMock: ReturnType<typeof vi.fn>;
 } {
   const getOpenStoaToken = vi.fn(async () => opts.initialToken ?? null);
+  const logoutFromOpenStoa = vi.fn(async () => {});
   const loginToOpenStoa = vi.fn(async () => {
     return (
       opts.loginResult ?? {
@@ -35,7 +37,7 @@ function makeFakeHost(opts: FakeHostOpts = {}): HostApi & {
     getEnvironment: () => env,
     getOpenStoaToken,
     loginToOpenStoa,
-    logoutFromOpenStoa: vi.fn(async () => {}),
+    logoutFromOpenStoa,
     generateProof: vi.fn(),
     exitToHost: vi.fn(),
     showError: vi.fn(),
@@ -47,6 +49,7 @@ function makeFakeHost(opts: FakeHostOpts = {}): HostApi & {
   return Object.assign(host, {
     __getTokenMock: getOpenStoaToken,
     __loginMock: loginToOpenStoa,
+    __logoutMock: logoutFromOpenStoa,
   });
 }
 
@@ -252,35 +255,105 @@ describe('OpenStoaClient — guest mode + auth-mode + 401 recovery', () => {
     expect(host.__loginMock).not.toHaveBeenCalled();
   });
 
-  // ── Matrix row 8: authenticated mode + 401 → invalidate, login, retry ──
-  it('authenticated mode + 401 invalidates token, calls loginToOpenStoa({force:true}), and retries', async () => {
-    const host = makeFakeHost({
-      initialToken: 'stale.jwt.token',
-      loginResult: {
-        token: 'fresh.jwt.token',
-        userId: 'nullifier-1',
-        needsNickname: false,
-      },
-    });
+  /*
+   * ── Matrix row 8: authenticated mode + 401 ──
+   *
+   * This block used to assert that a 401 calls `loginToOpenStoa({force:true})`
+   * and retries. That WAS the bug. The host reads `force: true` as "the user
+   * tapped Sign in" and answers it by starting the OIDC proof flow — its own
+   * comment says it withholds any proof flow until the user asks. So a person
+   * whose session had ended got a domain-verification sheet for opening the
+   * tab, and again for pressing Create on a filled-in form.
+   *
+   * The contract now: refresh once, because an ordinary expiry should recover
+   * without troubling anyone; and if the credential is genuinely finished,
+   * drop it and let the screen offer sign-in. Never start a proof flow that
+   * nobody asked for.
+   */
+  it('401 then a successful refresh recovers silently, without any login flow', async () => {
+    const host = makeFakeHost({ initialToken: 'expired.jwt.token' });
     const client = new OpenStoaClient({ host });
     client.setMode('authenticated');
     const { calls } = installFetchQueue([
-      { status: 401, bodyText: '{"error":"Invalid session"}' },
+      { status: 401, bodyText: '{"error":"Not authenticated"}' },
+      { status: 200, body: { token: 'fresh.jwt.token', expiresAt: Date.now() + 60_000 } },
       { status: 200, body: { ok: true } },
     ]);
 
     const out = await client.get<{ ok: boolean }>('/api/topics/abc');
     expect(out).toEqual({ ok: true });
 
-    // Exactly two requests — the first with the stale token, the second with
-    // the fresh token after host login.
-    expect(calls).toHaveLength(2);
-    expect(calls[0].headers['authorization']).toBe('Bearer stale.jwt.token');
-    expect(calls[1].headers['authorization']).toBe('Bearer fresh.jwt.token');
+    // The refused call, the refresh, then the retry carrying the new token.
+    expect(calls).toHaveLength(3);
+    expect(calls[0].headers['authorization']).toBe('Bearer expired.jwt.token');
+    expect(calls[1].url).toContain('/api/auth/refresh');
+    expect(calls[2].headers['authorization']).toBe('Bearer fresh.jwt.token');
 
-    // loginToOpenStoa called once with force=true (recovery path).
-    expect(host.__loginMock).toHaveBeenCalledTimes(1);
-    expect(host.__loginMock).toHaveBeenCalledWith({ force: true });
+    // The user saw nothing: no sign-in, and above all no proof request.
+    expect(host.__loginMock).not.toHaveBeenCalled();
+  });
+
+  it('401 with a refresh that also fails ends at sign-in, not at a proof request', async () => {
+    const host = makeFakeHost({ initialToken: 'dead.jwt.token' });
+    const client = new OpenStoaClient({ host });
+    client.setMode('authenticated');
+    installFetchQueue([
+      { status: 401, bodyText: '{"error":"Not authenticated"}' },
+      { status: 401, bodyText: '{"error":"Not authenticated"}' }, // the refresh
+    ]);
+
+    await expect(client.get('/api/topics/abc')).rejects.toBeInstanceOf(GuestAuthRequiredError);
+
+    // The whole point: the host is never asked to run a login — and therefore
+    // never raises the OIDC sheet — as a reaction to the server saying no.
+    expect(host.__loginMock).not.toHaveBeenCalled();
+  });
+
+  it('a refreshed token that is ALSO refused ends the session rather than looping', async () => {
+    // Reachable when the account behind the token no longer exists: refresh
+    // hands back a well-formed token for an identity the server will keep
+    // rejecting. Retrying can never succeed, so it must not be attempted.
+    const host = makeFakeHost({ initialToken: 'orphan.jwt.token' });
+    const client = new OpenStoaClient({ host });
+    client.setMode('authenticated');
+    const { calls } = installFetchQueue([
+      { status: 401, bodyText: '{"error":"Not authenticated"}' },
+      { status: 200, body: { token: 'still.orphaned.token', expiresAt: Date.now() + 60_000 } },
+      { status: 401, bodyText: '{"error":"Not authenticated"}' },
+    ]);
+
+    await expect(client.get('/api/topics/abc')).rejects.toBeInstanceOf(GuestAuthRequiredError);
+
+    expect(calls).toHaveLength(3); // refused, refresh, refused again — and stop
+    expect(host.__loginMock).not.toHaveBeenCalled();
+  });
+
+  it('a dead session is cleared from host storage, so the next call does not repeat it', async () => {
+    // Clearing only the in-memory cache would leave the rejected Bearer in
+    // host storage, and every later request would read it back and be refused
+    // again — a sign-in prompt per call that nothing the user does clears.
+    const host = makeFakeHost({ initialToken: 'dead.jwt.token' });
+    const client = new OpenStoaClient({ host });
+    client.setMode('authenticated');
+    installFetchQueue([
+      { status: 401, bodyText: '{"error":"Not authenticated"}' },
+      { status: 401, bodyText: '{"error":"Not authenticated"}' },
+    ]);
+
+    await expect(client.get('/api/topics/abc')).rejects.toBeInstanceOf(GuestAuthRequiredError);
+
+    expect(host.__logoutMock).toHaveBeenCalledTimes(1);
+
+    // And a follow-up call that NEEDS a session short-circuits at the guest
+    // branch — no second round trip spent rediscovering the same 401. It has
+    // to be an auth-only path: reading a topic stays guest-readable, and
+    // still answering those is the point of dropping to guest rather than
+    // into an error state.
+    const { calls: laterCalls } = installFetchQueue([{ status: 200, body: { ok: true } }]);
+    await expect(
+      client.post('/api/topics/abc/posts', { title: 't', content: 'c' }),
+    ).rejects.toBeInstanceOf(GuestAuthRequiredError);
+    expect(laterCalls).toHaveLength(0);
   });
 
   it('authenticated mode + 200 first try uses cached host token and does NOT call loginToOpenStoa', async () => {
