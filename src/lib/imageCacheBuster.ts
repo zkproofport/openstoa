@@ -12,10 +12,22 @@ export const R2_HOSTS = [
   'cdn.zkproofport.app',
 ];
 
+/**
+ * A root-relative media URL never contains a hostname to match against
+ * `R2_HOSTS` — but it's still the exact same "an R2-backed image whose edge
+ * cache the app may need to bust" case `R2_HOSTS` exists to catch, just
+ * served through the app's own `GET /api/media/{key}` route (M-6,
+ * docs/design/media-bucket-privatisation.md) instead of a bare CDN domain.
+ * Checked separately from `R2_HOSTS` rather than folded into that list —
+ * it's a path shape, not a host.
+ */
+const RELATIVE_MEDIA_PREFIX = '/api/media/';
+
 export function withImageVersion<T extends string | null | undefined>(url: T): T {
   if (!url) return url;
   if (typeof url !== 'string') return url;
-  if (!R2_HOSTS.some((h) => url.includes(h))) return url as T;
+  const isOurMedia = R2_HOSTS.some((h) => url.includes(h)) || url.startsWith(RELATIVE_MEDIA_PREFIX);
+  if (!isOurMedia) return url as T;
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${VERSION}` as T;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authPatch, publicGet, getBaseUrl, getAuthToken, getCdnOrigin, imgSrcs, isKnownMediaHost, R2_HOSTS } from './helpers';
+import { authGet, authPost, authPatch, publicGet, getBaseUrl, getAuthToken, getCdnOrigin, imgSrcs, isKnownMediaHost, R2_HOSTS, resolveMediaUrl } from './helpers';
 
 // 1x1 red PNG buffer — small enough to inline.
 function tinyPngBuffer(): Buffer {
@@ -234,11 +234,14 @@ describe.sequential('Post rich content E2E', () => {
     // base64 data URI must NOT remain
     expect(returned).not.toContain('data:image/png;base64,');
     // …and what replaced it must be a real object on THIS environment's CDN,
-    // still inside the <img> tag — not merely "some URL somewhere".
+    // still inside the <img> tag — not merely "some URL somewhere". M-6:
+    // `srcs[0]` is root-relative on a flipped environment, which `new URL()`
+    // cannot parse without a base — resolve against the app origin first
+    // rather than assuming it's already absolute.
     const srcs = imgSrcs(returned);
     expect(srcs).toHaveLength(1);
-    const uploaded = new URL(srcs[0]);
-    expect(uploaded.origin).toBe(cdnOrigin);
+    const uploaded = new URL(srcs[0], getBaseUrl());
+    expect(uploaded.origin).toBe(srcs[0].startsWith('/') ? new URL(getBaseUrl()).origin : cdnOrigin);
     expect(uploaded.pathname.length).toBeGreaterThan(1);
     expect((await fetch(uploaded.href)).status).toBe(200);
   });
@@ -368,18 +371,34 @@ describe.sequential('Post rich content E2E', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(typeof json.publicUrl).toBe('string');
-    const url = new URL(json.publicUrl);
-    // On the object store, not served back off the app origin. A deployed
-    // environment must be one of the app's own R2 hosts over https, so cache
-    // busting applies to it; a local stack serves from the MinIO that dev.sh
-    // starts, whose address is the developer's LAN IP over http and cannot be
-    // enumerated in advance.
-    expect(isKnownMediaHost(url.hostname), `${url.hostname} is neither an R2 host nor a local one`).toBe(true);
-    if (R2_HOSTS.includes(url.hostname)) expect(url.protocol).toBe('https:');
-    expect(url.origin).not.toBe(new URL(getBaseUrl()).origin);
-    expect(url.origin).toBe(cdnOrigin);
-    // The returned URL should be fetchable.
-    const cdn = await fetch(json.publicUrl);
+    // M-6 (docs/design/media-bucket-privatisation.md): `R2_PUBLIC_URL` is
+    // root-relative on a flipped environment, so `publicUrl` is now the SAME
+    // origin as the app — the opposite of what this test asserted before
+    // M-6 ("served off a separate CDN host, never the app origin"). Whether
+    // THIS target has flipped is a separate, later per-environment step, so
+    // prove whichever shape it actually returned rather than assuming one.
+    if (json.publicUrl.startsWith('/')) {
+      expect(json.publicUrl.startsWith('/api/media/'), `${json.publicUrl} is relative but not under /api/media/`).toBe(true);
+      expect(new URL(json.publicUrl, getBaseUrl()).origin).toBe(new URL(getBaseUrl()).origin);
+    } else {
+      const url = new URL(json.publicUrl);
+      // On the object store, not served back off the app origin. A deployed
+      // environment must be one of the app's own R2 hosts over https, so cache
+      // busting applies to it; a local stack serves from the MinIO that dev.sh
+      // starts, whose address is the developer's LAN IP over http and cannot be
+      // enumerated in advance.
+      expect(isKnownMediaHost(url.hostname), `${url.hostname} is neither an R2 host nor a local one`).toBe(true);
+      if (R2_HOSTS.includes(url.hostname)) expect(url.protocol).toBe('https:');
+      expect(url.origin).not.toBe(new URL(getBaseUrl()).origin);
+      expect(url.origin).toBe(cdnOrigin);
+    }
+    // No topicId was sent (genuinely no topic for this standalone upload
+    // check), so this key is `user-upload`-classified — M-5's gate (real
+    // now that `/api/media` enforces it instead of a public bucket bypassing
+    // it) allows only the uploader to read it back.
+    const cdn = await fetch(resolveMediaUrl(json.publicUrl, getBaseUrl())!, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
     expect(cdn.status).toBe(200);
   });
 

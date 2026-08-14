@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken, getCdnOrigin, requireObjectStorage } from './helpers';
+import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken, getCdnOrigin, requireObjectStorage, resolveMediaUrl } from './helpers';
 
 // Every case in this file uploads. Without object storage they each fail on
 // their own 500, which reads like the upload route is broken rather than like
@@ -33,8 +33,20 @@ function tinyPngDataUri(): string {
  * POST /api/upload as multipart/form-data — mirrors the mobile client's
  * `uploadFile` and the production multipart route added in f4a6877.
  * Returns the public CDN URL.
+ *
+ * `topicId` matters for M-5's gate, not just for filing: `uploadObjectKey`
+ * classifies a key `topic-post` only when a topicId was actually given at
+ * upload time — an object uploaded with none is `user-upload` (uploader-only
+ * readable) FOREVER, even if its URL is later attached to a public post's
+ * `media.images[]`. Per the real client contract (`POST /api/upload`'s own
+ * JSDoc, `AGENTS.md`): "send topicId whenever you have one." Every caller
+ * below that immediately attaches the result to a post inside `topicId` now
+ * does — matching real client behaviour and what each test already asserted
+ * ("should be reachable", "still reachable") before M-5's gate made the
+ * omission observable. `uploadPng('x.png')` with no topicId stays the
+ * deliberate case: an in-progress draft with genuinely no topic yet.
  */
-async function uploadPng(filename: string): Promise<string> {
+async function uploadPng(filename: string, topicId?: string): Promise<string> {
   const form = new FormData();
   // Wrap the Buffer in a plain Uint8Array so undici's Blob constructor sees an
   // ArrayBufferView (Buffer in @types/node@22 has a wider buffer type that no
@@ -43,6 +55,7 @@ async function uploadPng(filename: string): Promise<string> {
   const blob = new Blob([bytes], { type: 'image/png' });
   form.append('file', blob, filename);
   form.append('purpose', 'post');
+  if (topicId) form.append('topicId', topicId);
   const res = await fetch(`${getBaseUrl()}/api/upload`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${getAuthToken()}` },
@@ -64,10 +77,22 @@ async function uploadPng(filename: string): Promise<string> {
  * even after R2 has dropped the underlying key. Adding a unique `?_cb=…`
  * query forces a fresh origin lookup, which surfaces the 404 we actually
  * want to assert on.
+ *
+ * `authenticated`: pass true for a `user-upload`-classified object (no
+ * topicId at upload time) — M-5's gate answers a GUEST 401 unconditionally
+ * for those, before it ever checks whether the object still exists, so an
+ * unauthenticated poll can never observe a 404 for one. `topic-post` objects
+ * in a public topic don't need this (guests are gate-allowed either way).
  */
-async function fetchUncached(url: string): Promise<Response> {
-  const sep = url.includes('?') ? '&' : '?';
-  return fetch(`${url}${sep}_cb=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+async function fetchUncached(url: string, authenticated = false): Promise<Response> {
+  // M-6: `url` is whatever `uploadPng` returned — root-relative on any
+  // environment that has flipped `R2_PUBLIC_URL` (docs/design/
+  // media-bucket-privatisation.md). `resolveMediaUrl` is a no-op on an
+  // already-absolute URL, so resolving unconditionally is correct either way.
+  const resolved = resolveMediaUrl(url, getBaseUrl())!;
+  const sep = resolved.includes('?') ? '&' : '?';
+  const cacheBusted = `${resolved}${sep}_cb=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return fetch(cacheBusted, authenticated ? { headers: { Authorization: `Bearer ${getAuthToken()}` } } : undefined);
 }
 
 describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
@@ -97,14 +122,35 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
 
   it('POST /api/upload (multipart) returns publicUrl that serves the file', async () => {
     const publicUrl = await uploadPng('round-trip.png');
-    // Served from the environment's OWN object store, discovered rather than
-    // written down: an https CDN on a deployed target, the MinIO that dev.sh
-    // starts on a developer machine.
-    const cdnOrigin = await getCdnOrigin();
-    expect(publicUrl.startsWith(`${cdnOrigin}/`), `${publicUrl} is not served from ${cdnOrigin}`).toBe(true);
     expect(publicUrl.endsWith('/round-trip.png')).toBe(true);
 
-    const getRes = await fetch(publicUrl);
+    // M-6 (docs/design/media-bucket-privatisation.md): the code now mints a
+    // root-relative `R2_PUBLIC_URL` (`/api/media`), but flipping any GIVEN
+    // environment's own env var to that value is a separate, later step per
+    // environment — this test's target may or may not have flipped yet, so
+    // it proves BOTH shapes resolve and fetch correctly rather than assuming
+    // one. `resolveMediaUrl` is the mini-app's REAL `absolutizeMediaUrl`
+    // (re-exported in helpers.ts, not a copy) — a no-op on an already-absolute
+    // URL, so calling it unconditionally is correct either way.
+    const isRelative = publicUrl.startsWith('/');
+    if (isRelative) {
+      expect(publicUrl.startsWith('/api/media/'), `${publicUrl} is relative but not under /api/media/`).toBe(true);
+    } else {
+      const cdnOrigin = await getCdnOrigin();
+      expect(publicUrl.startsWith(`${cdnOrigin}/`), `${publicUrl} is not served from ${cdnOrigin}`).toBe(true);
+    }
+
+    const resolved = resolveMediaUrl(publicUrl, getBaseUrl());
+    expect(resolved).toBe(isRelative ? `${getBaseUrl()}${publicUrl}` : publicUrl);
+
+    // No topicId was given (genuinely no topic yet), so this key is
+    // `user-upload`-classified — M-5's gate (unchanged by M-6) allows only
+    // the uploader to read it until it's filed under a topic. Under the OLD
+    // public bucket this "just worked" for anyone because there was no gate
+    // at all; now that `/api/media` is a real enforcement point, "the
+    // uploader reads back what they just uploaded" needs their own
+    // credential, same as any other authenticated read.
+    const getRes = await fetch(resolved!, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
     expect(getRes.status).toBe(200);
     const buf = Buffer.from(await getRes.arrayBuffer());
     expect(buf.length).toBeGreaterThan(0);
@@ -135,7 +181,7 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
   // ── Test 2: Upload → POST with media.images → image stays reachable ────────
 
   it('upload → POST /api/topics/:id/posts with media.images preserves the URL', async () => {
-    const publicUrl = await uploadPng('attach-to-post.png');
+    const publicUrl = await uploadPng('attach-to-post.png', topicId);
 
     const postRes = await authPost(`/api/topics/${topicId}/posts`, {
       title: `Attach-to-post ${Date.now()}`,
@@ -152,7 +198,11 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     expect(detail.post.media?.images).toEqual([publicUrl]);
 
     // The CDN object should still be reachable while the post exists.
-    const cdnRes = await fetch(publicUrl);
+    // `media.images` above already proves the stored value round-trips
+    // through the server UNCHANGED — relative in, relative out — so this
+    // confirms the same value the API actually returns to a client is what
+    // resolves and fetches, not a separately-reconstructed URL.
+    const cdnRes = await fetch(resolveMediaUrl(publicUrl, getBaseUrl())!);
     expect(cdnRes.status).toBe(200);
   });
 
@@ -170,20 +220,28 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     const detail = await (await authGet(`/api/posts/${postId}`)).json();
     const returned: string = detail.post.content;
     expect(returned).not.toContain('data:image');
+    // M-6: the inserted `<img src>` is whatever `uploadToR2` returned —
+    // root-relative (`/api/media/...`) on a flipped environment, so the CDN
+    // ORIGIN never appears as a literal prefix inside the HTML at all in
+    // that case. Match either shape rather than assuming the origin-prefixed
+    // one.
     const cdnOrigin = await getCdnOrigin();
     const cdnMatch = returned.match(
-      new RegExp(`${escapeRegExp(cdnOrigin)}[^"'\\s]+\\.(?:png|jpg|jpeg|webp|gif)`, 'i'),
+      new RegExp(
+        `(?:${escapeRegExp(cdnOrigin)}|/api/media)[^"'\\s]+\\.(?:png|jpg|jpeg|webp|gif)`,
+        'i',
+      ),
     );
     expect(cdnMatch).not.toBeNull();
-    const cdnRes = await fetch(cdnMatch![0]);
+    const cdnRes = await fetch(resolveMediaUrl(cdnMatch![0], getBaseUrl())!);
     expect(cdnRes.status).toBe(200);
   });
 
   // ── Test 4: PATCH with image swap deletes the orphan ───────────────────────
 
   it('PATCH media.images swap deletes the dropped R2 object', async () => {
-    const oldUrl = await uploadPng('patch-old.png');
-    const newUrl = await uploadPng('patch-new.png');
+    const oldUrl = await uploadPng('patch-old.png', topicId);
+    const newUrl = await uploadPng('patch-new.png', topicId);
 
     const postRes = await authPost(`/api/topics/${topicId}/posts`, {
       title: `Orphan-on-patch ${Date.now()}`,
@@ -218,8 +276,8 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
   // ── Test 5: DELETE post wipes all attached images ──────────────────────────
 
   it('DELETE post wipes all attached R2 images', async () => {
-    const url1 = await uploadPng('on-delete-1.png');
-    const url2 = await uploadPng('on-delete-2.png');
+    const url1 = await uploadPng('on-delete-1.png', topicId);
+    const url2 = await uploadPng('on-delete-2.png', topicId);
 
     const postRes = await authPost(`/api/topics/${topicId}/posts`, {
       title: `Orphan-on-delete ${Date.now()}`,
@@ -257,12 +315,19 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     expect(summary.attempted).toBe(1);
     expect(summary.deleted).toBe(1);
 
+    // No topicId (draft-cancel — genuinely no topic yet), so this key is
+    // `user-upload`-classified — poll AS THE OWNER: an unauthenticated poll
+    // always gets 401 from M-5's gate before it ever checks whether the
+    // object still exists, so it could never observe the 404 this test is
+    // actually trying to prove. Authenticated as the owner, the gate always
+    // allows (owner short-circuit), so the only reachable outcome once truly
+    // deleted is 404 — never 403.
     let status = 200;
-    for (let i = 0; i < 10 && status !== 404 && status !== 403; i++) {
+    for (let i = 0; i < 10 && status !== 404; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      status = (await fetchUncached(url)).status;
+      status = (await fetchUncached(url, true)).status;
     }
-    expect([403, 404]).toContain(status);
+    expect(status).toBe(404);
   });
 
   it("DELETE /api/upload skips URLs not owned by the caller", async () => {

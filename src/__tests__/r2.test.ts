@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 const mockSend = vi.fn().mockResolvedValue({});
 
@@ -69,6 +69,51 @@ describe('uploadToR2', () => {
     // it keeps a `users/{id}/profile/` key and is untouched by a topic sweep.
     const avatarUrl = await upload3(Buffer.from('x'), 'image/png', 'u1', 'avatar', 'avatar.png');
     expect(avatarUrl).toContain('/users/u1/profile/');
+  });
+});
+
+// M-6 (docs/design/media-bucket-privatisation.md, candidate B): `uploadToR2`
+// builds `${config.R2_PUBLIC_URL}/${key}` (see the file above) — this proves
+// that claim rather than trusting it. R2_PUBLIC_URL is root-relative
+// (`/api/media`) in real deployments now, so a new upload must mint a
+// relative URL with NO code change to `uploadToR2` itself.
+describe('root-relative R2_PUBLIC_URL (M-6)', () => {
+  const savedPublicUrl = process.env.R2_PUBLIC_URL;
+
+  beforeEach(() => {
+    process.env.R2_PUBLIC_URL = '/api/media';
+  });
+
+  afterEach(() => {
+    process.env.R2_PUBLIC_URL = savedPublicUrl;
+  });
+
+  it('mints a root-relative publicUrl — no scheme, no host', async () => {
+    const { uploadToR2 } = await import('@/lib/r2');
+    const TOPIC = '11111111-2222-4333-8444-555555555555';
+
+    const url = await uploadToR2(Buffer.from('x'), 'image/png', 'u1', 'post', 'photo.jpg', TOPIC);
+
+    // `uploadObjectKey` inserts a random UUID between the folder and
+    // filename (`.../posts/{unique}/photo.jpg`) — match that shape rather
+    // than a fixed string.
+    expect(url).toMatch(
+      new RegExp(`^/api/media/topics/${TOPIC}/posts/[0-9a-f-]+/photo\\.jpg$`),
+    );
+    expect(url).not.toMatch(/^https?:\/\//);
+  });
+
+  it('the relative shape still round-trips through parseMediaObjectKey once the /api/media prefix is stripped', async () => {
+    const { uploadToR2, parseMediaObjectKey } = await import('@/lib/r2');
+    const TOPIC = '11111111-2222-4333-8444-555555555555';
+
+    const url = await uploadToR2(Buffer.from('x'), 'image/png', 'u1', 'post', 'photo.jpg', TOPIC);
+    // The M-5 route receives this as its catch-all `key` segments — exactly
+    // what's left after the Next.js route's own `/api/media/` prefix, which
+    // `url` already starts with here (relative == same-origin == the route's
+    // own base path, not something a caller strips manually in production).
+    const objectKey = url.replace(/^\/api\/media\//, '');
+    expect(parseMediaObjectKey(objectKey.split('/'))).toEqual({ kind: 'topic-post', topicId: TOPIC });
   });
 });
 

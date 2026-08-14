@@ -66,6 +66,7 @@ import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { PostBodyWithOg } from '../../components/PostBodyWithOg';
 import { MediaGallery } from '../../components/MediaGallery';
 import { PollEditor, type PollEditorValue } from '../../components/PollEditor';
+import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'PostCreate'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'PostCreate'>;
@@ -1000,7 +1001,10 @@ function PostCreateScreenAuthed() {
               <View style={styles.imageStrip}>
                 {images.map((uri, i) => (
                   <View key={uri} style={styles.imageThumbWrap}>
-                    <Image source={{ uri }} style={styles.imageThumb} />
+                    <Image
+                      source={{ uri: absolutizeMediaUrl(uri, client.getBaseUrl()) ?? undefined }}
+                      style={styles.imageThumb}
+                    />
                     <TouchableOpacity
                       style={styles.imageRemoveBtn}
                       onPress={() => removeImage(i)}

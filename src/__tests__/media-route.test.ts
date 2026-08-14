@@ -249,3 +249,47 @@ describe('authorization — user-upload (no topic yet: draft cover / bare agent 
     expect(mocks.topicsFindFirst).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * M-6 (docs/design/media-bucket-privatisation.md, candidate B): R2_PUBLIC_URL
+ * becomes root-relative (`/api/media`). `gateUserUpload` reconstructs
+ * `${tryGetR2PublicUrl()}/${objectKey}` and compares it against `topics.image`
+ * by exact string match — every case above already proves that comparison
+ * works for an ABSOLUTE base (`PUBLIC_BASE`); this proves the identical logic
+ * holds for a RELATIVE one too, since the match is opaque string equality and
+ * was never supposed to care about URL shape. Only `topics.image` needs to be
+ * stored relative to match — nothing else about the gate changes.
+ */
+describe('authorization — user-upload, RELATIVE R2_PUBLIC_URL (M-6)', () => {
+  const RELATIVE_BASE = '/api/media';
+  const key = () => uploadObjectKey('post', USER, null, 'draft.png').split('/');
+
+  it('a relative topic.image still matches the reconstructed relative URL — guest reads a public cover', async () => {
+    mocks.getSession.mockResolvedValue(null);
+    mocks.tryGetR2PublicUrl.mockReturnValue(RELATIVE_BASE);
+    mocks.topicsFindFirst.mockResolvedValue({ id: OTHER_TOPIC, visibility: 'public' });
+    const res = await GET(req(), { params: params(key()) });
+    expect(res.status).toBe(200);
+    // The DB query itself only matches by exact string — this proves the
+    // route actually built a RELATIVE candidate URL to look up, not that the
+    // mock happened to return a topic regardless of what was asked.
+    expect(mocks.topicsFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('a relative base still gates a secret-topic cover correctly (403 for a non-member)', async () => {
+    mocks.getSession.mockResolvedValue({ userId: OTHER_USER });
+    mocks.tryGetR2PublicUrl.mockReturnValue(RELATIVE_BASE);
+    mocks.topicsFindFirst.mockResolvedValue({ id: OTHER_TOPIC, visibility: 'secret' });
+    mocks.topicMembersFindFirst.mockResolvedValue(undefined);
+    const res = await GET(req(), { params: params(key()) });
+    expect(res.status).toBe(403);
+  });
+
+  it('the uploader\'s own-draft short-circuit is unaffected by the base being relative', async () => {
+    mocks.getSession.mockResolvedValue({ userId: USER });
+    mocks.tryGetR2PublicUrl.mockReturnValue(RELATIVE_BASE);
+    const res = await GET(req(), { params: params(key()) });
+    expect(res.status).toBe(200);
+    expect(mocks.topicsFindFirst).not.toHaveBeenCalled();
+  });
+});

@@ -599,11 +599,16 @@ export async function POST(
         mediaParseError = `Too many videos (max ${MAX_VIDEOS})`;
         return null;
       }
-      // Image URLs must look like http(s) — guards against
-      // `javascript:` / `data:` / arbitrary strings making it past the
-      // composer into the DB. Mobile uploads always come back as R2
-      // https URLs so this never trips for legit flows.
-      const badImage = images.find((u) => !/^https?:\/\//i.test(u));
+      // Image URLs must look like http(s) OR our own root-relative media
+      // path — guards against `javascript:` / `data:` / arbitrary strings
+      // making it past the composer into the DB. `POST /api/upload` returns
+      // `/api/media/...` now (M-6, docs/design/media-bucket-privatisation.md),
+      // not an absolute R2 URL — this regex was still `^https?://`-only and
+      // rejected every real upload's URL with a 400 until caught by the E2E
+      // suite against a live, flipped environment (never caught by reading
+      // alone: nothing else in this route validates URL shape, so nothing
+      // hinted this check even existed here).
+      const badImage = images.find((u) => !/^(https?:\/\/|\/api\/media\/)/i.test(u));
       if (badImage) {
         mediaParseError = `Invalid image URL: ${badImage}`;
         return null;

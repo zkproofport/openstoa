@@ -380,6 +380,16 @@ async function probeObjectStorage(): Promise<StorageProbe> {
   }
 
   const { publicUrl } = (await res.json()) as { publicUrl: string };
+  // M-6 (docs/design/media-bucket-privatisation.md): `R2_PUBLIC_URL` is now
+  // root-relative (`/api/media`) in every real deployment, so `publicUrl`
+  // itself carries no hostname to validate — `new URL(publicUrl)` with no
+  // base throws on a relative string. A relative URL trivially IS "our own
+  // media": it can only ever resolve against the app's own origin, which is
+  // exactly what R2_HOSTS/isKnownMediaHost exists to establish for the
+  // absolute case. `BASE_URL` (this env's own target) is the origin for it.
+  if (publicUrl.startsWith('/')) {
+    return { ok: true, origin: new URL(BASE_URL).origin };
+  }
   if (!isKnownMediaHost(new URL(publicUrl).hostname)) {
     throw new Error(
       `POST /api/upload returned ${publicUrl}, whose host is neither one of the app's known R2 hosts ` +
@@ -401,6 +411,21 @@ export async function requireObjectStorage(): Promise<string> {
   if (!result.ok) throw new ObjectStorageUnavailable(BASE_URL, result.serverMessage);
   return result.origin;
 }
+
+/**
+ * Resolve a `publicUrl` returned by `POST /api/upload` into something
+ * directly `fetch()`-able (M-6, docs/design/media-bucket-privatisation.md).
+ * Node's `fetch` throws on a bare relative string with no base, exactly the
+ * shape every real deployment now returns — this is the SAME resolution a
+ * browser does for free (same-origin) and the mini-app does explicitly.
+ *
+ * Deliberately re-exports the mini-app's REAL `absolutizeMediaUrl`, not a
+ * reimplementation — an E2E test asserting "the mobile helper produces a URL
+ * that actually resolves" is only meaningful if it runs the actual shipped
+ * function against a real server, not a copy that could silently drift from
+ * it.
+ */
+export { absolutizeMediaUrl as resolveMediaUrl } from '../../../packages/mobile/src/utils/absolutizeMediaUrl';
 
 /** The origin `POST /api/upload` serves media from in THIS environment. */
 export async function getCdnOrigin(): Promise<string> {
@@ -439,6 +464,44 @@ export function isKnownMediaHost(hostname: string): boolean {
 /** Every `<img src="...">` value in an HTML fragment, in document order. */
 export function imgSrcs(html: string): string[] {
   return [...html.matchAll(/<img[^>]+src="([^"]*)"/g)].map((m) => m[1]);
+}
+
+/**
+ * The `content` of a `<meta property="$key" content="...">` (or
+ * `name="$key"`, or attributes in the reverse order — Next's own renderer
+ * emits `property` first, but this stays permissive so a future change to
+ * how Next serializes the tag doesn't quietly break every metadata E2E
+ * assertion). Mirrors the dual-pattern approach `extractMeta` in
+ * `src/app/api/og/route.ts` already uses for the SAME reason, on the OTHER
+ * side of OG handling (that one scrapes third-party pages; this one reads
+ * back what our OWN `generateMetadata` rendered).
+ *
+ * Returns `null` when the tag is absent — never throws, so a test asserting
+ * "this tag is missing" reads as a clean `null` check rather than a caught
+ * exception.
+ */
+export function metaContent(html: string, key: string): string | null {
+  for (const attr of ['property', 'name']) {
+    const forward = new RegExp(`<meta[^>]+${attr}=["']${key}["'][^>]+content=["']([^"']*)["']`, 'i');
+    const reverse = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+${attr}=["']${key}["']`, 'i');
+    const m = html.match(forward) ?? html.match(reverse);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/** The `<title>...</title>` text, or `null` if the tag is absent/empty. */
+export function pageTitle(html: string): string | null {
+  const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  return m ? m[1] : null;
+}
+
+/** The `href` of `<link rel="canonical" href="...">`, in either attribute order. */
+export function canonicalLink(html: string): string | null {
+  const forward = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']*)["']/i);
+  if (forward) return forward[1];
+  const reverse = html.match(/<link[^>]+href=["']([^"']*)["'][^>]+rel=["']canonical["']/i);
+  return reverse ? reverse[1] : null;
 }
 
 /** Known R2 media hosts, re-exported so tests assert against the app's own list. */

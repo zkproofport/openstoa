@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, publicGet, getCdnOrigin, imgSrcs } from './helpers';
+import { authGet, authPost, publicGet, getCdnOrigin, getBaseUrl, imgSrcs } from './helpers';
 
 let topicId: string;
 let categoryId: string;
@@ -128,8 +128,10 @@ describe.sequential('Content & Media handling', () => {
     expect(returnedContent).not.toContain('data:image');
     const srcs = imgSrcs(returnedContent);
     expect(srcs).toHaveLength(1);
-    const uploaded = new URL(srcs[0]);
-    expect(uploaded.origin).toBe(cdnOrigin);
+    // M-6: `srcs[0]` is root-relative on a flipped environment — resolve
+    // against the app origin before parsing rather than assuming absolute.
+    const uploaded = new URL(srcs[0], getBaseUrl());
+    expect(uploaded.origin).toBe(srcs[0].startsWith('/') ? new URL(getBaseUrl()).origin : cdnOrigin);
     expect(uploaded.pathname.length).toBeGreaterThan(1);
     expectNoMedia(detailJson.post);
   });

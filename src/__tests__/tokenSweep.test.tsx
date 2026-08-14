@@ -95,8 +95,13 @@ const COLOR_SWEPT_FILES = [
   'src/app/topics/[topicId]/join/page.tsx',
   'src/app/topics/join/[inviteCode]/page.tsx',
   'src/app/topics/[topicId]/members/page.tsx',
+  // Dynamic-OG split: `page.tsx` is now a thin server wrapper (`generateMetadata`
+  // + render the client component below) with no colors of its own — swept
+  // trivially. The actual swept markup lives in the `*Client.tsx` file next to it.
   'src/app/topics/[topicId]/page.tsx',
+  'src/app/topics/[topicId]/TopicPageClient.tsx',
   'src/app/topics/[topicId]/posts/[postId]/page.tsx',
+  'src/app/topics/[topicId]/posts/[postId]/PostDetailClient.tsx',
   'src/app/topics/explore/page.tsx',
   'src/app/topics/new/page.tsx',
   'src/app/topics/page.tsx',
@@ -186,8 +191,8 @@ const ALLOWLIST: Array<{ file: string; value: string; reason: string }> = [
   { file: 'src/components/AiAgentSettings.tsx', value: 'rgba(0,0,0,0.4)', reason: 'API-key reveal panel — deliberately near-black so a shoulder-surfed key stays low-contrast.' },
 
   // ── 2. Drop shadows ──
-  { file: 'src/app/topics/[topicId]/page.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Tag-suggestion dropdown shadow.' },
-  { file: 'src/app/topics/[topicId]/posts/[postId]/page.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Comment overflow-menu drop shadow.' },
+  { file: 'src/app/topics/[topicId]/TopicPageClient.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Tag-suggestion dropdown shadow.' },
+  { file: 'src/app/topics/[topicId]/posts/[postId]/PostDetailClient.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Comment overflow-menu drop shadow.' },
   { file: 'src/components/TagInput.tsx', value: 'rgba(0,0,0,0.4)', reason: 'Tag autocomplete shadow.' },
   { file: 'src/components/MentionInput.tsx', value: 'rgba(0,0,0,0.5)', reason: 'Mention autocomplete shadow.' },
   { file: 'src/components/post/ReactionRow.tsx', value: 'rgba(0,0,0,0.5)', reason: 'Emoji picker popover drop shadow.' },

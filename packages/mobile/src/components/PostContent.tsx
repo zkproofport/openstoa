@@ -3,6 +3,7 @@ import { Linking, Text, useWindowDimensions, View } from 'react-native';
 import RenderHtml, { defaultSystemFonts } from 'react-native-render-html';
 import { useThemeColors } from '../theme/ThemeContext';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
+import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 
 export interface PostContentProps {
   /** HTML-formatted post body. Mirrors the web's `post.content` field which
@@ -143,6 +144,7 @@ function autoLinkUrls(html: string): string {
 export function PostContent({ content, maxLines, omitImages, onPressLink }: PostContentProps) {
   const { colors } = useThemeColors();
   const { width } = useWindowDimensions();
+  const client = useOpenStoaClient();
 
   // Plain text path: detect "no HTML tags" and render via native `<Text>`
   // instead of react-native-render-html. This is the only way to keep
@@ -277,7 +279,11 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
   const inner = (
     <RenderHtml
       contentWidth={width - 32}
-      source={{ html: processedContent }}
+      // `baseUrl` resolves relative `<img src="/api/media/...">` tags
+      // against the app's own origin — RN has no page origin to resolve a
+      // relative URL against the way a browser does. Verified against the
+      // library's real `IMGRenderer`/`useNormalizedUrl` source, not just docs.
+      source={{ html: processedContent, baseUrl: client.getBaseUrl() }}
       baseStyle={baseStyle}
       tagsStyles={tagsStyles}
       renderersProps={renderersProps}

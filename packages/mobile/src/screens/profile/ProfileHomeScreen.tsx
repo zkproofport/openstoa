@@ -25,6 +25,7 @@ import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { PostCard } from '../../components/PostCard';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
+import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
@@ -808,7 +809,7 @@ export function ProfileHomeScreen() {
               >
                 {profileImage ? (
                   <Image
-                    source={{ uri: profileImage }}
+                    source={{ uri: absolutizeMediaUrl(profileImage, client.getBaseUrl()) ?? undefined }}
                     style={styles.avatarImage}
                     resizeMode="cover"
                   />

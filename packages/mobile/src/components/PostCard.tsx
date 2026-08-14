@@ -19,6 +19,7 @@ import { useOpenStoaSession } from '../stores/sessionStore';
 import { usePostMutations } from '../hooks/usePostMutations';
 import { useAuthGuardedAction, useRequireAuth } from '../auth';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
+import { absolutizeMediaUrl } from '../utils/absolutizeMediaUrl';
 
 // Lazy clipboard load — same pattern as ChatRoomScreen
 type ClipboardModule = typeof import('@react-native-clipboard/clipboard').default;
@@ -543,7 +544,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
         <View style={styles.authorRow}>
           {post.authorProfileImage ? (
             <Image
-              source={{ uri: post.authorProfileImage }}
+              source={{ uri: absolutizeMediaUrl(post.authorProfileImage, client.getBaseUrl()) ?? undefined }}
               style={styles.authorAvatar}
               resizeMode="cover"
             />

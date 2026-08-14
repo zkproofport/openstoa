@@ -38,6 +38,7 @@ import { LANGUAGE_LABELS, SUPPORTED_LANGUAGES } from '../../i18n/language';
 import { useLanguage } from '../../i18n/useLanguage';
 import { buildDocsUrl } from '../../lib/docsLink';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
+import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
 
 const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
 
@@ -567,7 +568,7 @@ export function EditProfileScreen() {
   const domainBadge = domainBadgeQuery.data;
   // Cache-bust on every fetch so a fresh upload renders immediately instead
   // of the host's Image cache serving the stale URL from before the update.
-  const rawProfileImage = profileImageQuery.data?.profileImage ?? null;
+  const rawProfileImage = absolutizeMediaUrl(profileImageQuery.data?.profileImage ?? null, client.getBaseUrl());
   const profileImageUrl = rawProfileImage
     ? `${rawProfileImage}${rawProfileImage.includes('?') ? '&' : '?'}t=${profileImageQuery.dataUpdatedAt}`
     : null;

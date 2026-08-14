@@ -17,6 +17,8 @@ import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { VideoEmbed } from './VideoEmbed';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
+import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
+import { absolutizeMediaUrl } from '../utils/absolutizeMediaUrl';
 
 export interface MediaGalleryProps {
   images?: string[];
@@ -165,7 +167,7 @@ function makeStyles(colors: ThemeColors) {
  * shows a "+N" badge for the rest — keeps long lists snappy.
  */
 export function MediaGallery({
-  images,
+  images: imagesProp,
   videos,
   mode = 'detail',
   horizontalPadding = 32,
@@ -174,6 +176,15 @@ export function MediaGallery({
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const client = useOpenStoaClient();
+  // Resolved once here so every render site below (`hasImages`, both
+  // carousels, the page counter/dots, and the lightbox) sees the same
+  // already-absolute list — one shadowed `images` beats each call site
+  // remembering to absolutize on its own.
+  const images = useMemo(
+    () => (imagesProp ?? []).map((u) => absolutizeMediaUrl(u, client.getBaseUrl()) ?? u),
+    [imagesProp, client],
+  );
 
   const itemWidth = Math.max(0, windowWidth - horizontalPadding);
   const imageHeight = Math.round(itemWidth * (10 / 16));

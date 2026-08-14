@@ -81,10 +81,18 @@ async function uploadImage(
  * (`uploadObjectKey`'s two roots), regardless of how many path segments the
  * configured base has, so anchor on that instead of assuming a fixed prefix
  * length.
+ *
+ * M-6 (docs/design/media-bucket-privatisation.md): on a flipped environment
+ * `publicUrl` is root-relative (`/api/media/...`), which never starts with
+ * `cdnOrigin` (an absolute origin, from `getCdnOrigin()`'s own same-origin
+ * fallback for that case — see helpers.ts). The membership check below
+ * accepts either shape; the key-extraction regex itself was always
+ * shape-agnostic (it matches on `topics/`/`users/`, not on a prefix length).
  */
 function keyOf(publicUrl: string, cdnOrigin: string): string {
-  if (!publicUrl.startsWith(cdnOrigin)) {
-    throw new Error(`${publicUrl} is not served from ${cdnOrigin} — CONTRACT broken`);
+  const isOwnMedia = publicUrl.startsWith(cdnOrigin) || publicUrl.startsWith('/api/media/');
+  if (!isOwnMedia) {
+    throw new Error(`${publicUrl} is not served from ${cdnOrigin} (nor a relative /api/media/ URL) — CONTRACT broken`);
   }
   const match = publicUrl.match(/(topics|users)\/.+$/);
   if (!match) {

@@ -9,7 +9,12 @@ declare module 'react-native-render-html' {
 
   export interface RenderHtmlProps {
     contentWidth?: number;
-    source: { html: string } | { uri: string };
+    // `baseUrl` resolves relative `src`/`href` attributes (our own
+    // `/api/media/...` image URLs) against the app's origin — verified
+    // against the real installed package (`IMGRenderer.tsx` /
+    // `useNormalizedUrl.ts`, v6.3.4 in `proofport-app/node_modules/`),
+    // not just its docs.
+    source: { html: string; baseUrl?: string } | { uri: string; baseUrl?: string };
     baseStyle?: StyleProp<TextStyle>;
     tagsStyles?: Record<string, StyleProp<TextStyle | ViewStyle>>;
     renderersProps?: Record<string, unknown>;

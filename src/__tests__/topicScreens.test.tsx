@@ -534,9 +534,14 @@ describe('post detail — the body is the page, not a card', () => {
 
 // ─── Source contracts — what a render assertion cannot see ───────────────────
 
+// These two hold all the markup/styling that used to live directly in
+// `page.tsx` — the dynamic-OG split (per-post/per-topic `generateMetadata`)
+// moved each `page.tsx` down to a thin server wrapper that renders one of
+// these and carries no JSX of its own, so the source-text scans below must
+// target the file that actually contains what they're checking.
 const FILES = [
-  'src/app/topics/[topicId]/page.tsx',
-  'src/app/topics/[topicId]/posts/[postId]/page.tsx',
+  'src/app/topics/[topicId]/TopicPageClient.tsx',
+  'src/app/topics/[topicId]/posts/[postId]/PostDetailClient.tsx',
 ] as const;
 
 const source = (f: string) => readFileSync(join(process.cwd(), f), 'utf-8');

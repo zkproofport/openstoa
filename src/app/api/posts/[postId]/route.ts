@@ -738,7 +738,10 @@ export async function PATCH(
           mediaErr = `Too many videos (max ${MAX_VIDEOS})`;
           return null;
         }
-        const badImage = images.find((u) => !/^https?:\/\//i.test(u));
+        // M-6 (docs/design/media-bucket-privatisation.md): `POST /api/upload`
+        // returns `/api/media/...` now, not an absolute R2 URL — see the
+        // matching comment in `topics/[topicId]/posts/route.ts`.
+        const badImage = images.find((u) => !/^(https?:\/\/|\/api\/media\/)/i.test(u));
         if (badImage) {
           mediaErr = `Invalid image URL: ${badImage}`;
           return null;

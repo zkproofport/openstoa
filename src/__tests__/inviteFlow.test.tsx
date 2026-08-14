@@ -306,7 +306,10 @@ describe('InviteDialog', () => {
 
 describe('the pages that offer an invite', () => {
   const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
-  const TOPIC_PAGE = 'src/app/topics/[topicId]/page.tsx';
+  // `page.tsx` is now a thin server wrapper (`generateMetadata` for the
+  // dynamic-OG split) — the actual JSX these source-text scans check for
+  // lives in `TopicPageClient.tsx`.
+  const TOPIC_PAGE = 'src/app/topics/[topicId]/TopicPageClient.tsx';
   const MEMBERS_PAGE = 'src/app/topics/[topicId]/members/page.tsx';
 
   it('CONTRACT-INVOCATION: neither page copies a link of its own any more', () => {
