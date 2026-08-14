@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { randomBytes } from 'crypto';
 import {
   getBaseUrl,
   getAuthToken,
   getUserId,
   getSecondUserToken,
+  freshSyntheticIp,
 } from './helpers';
 import { uploadObjectKey } from '@/lib/r2';
 import { MEDIA_READ_RATE } from '@/lib/mediaRateLimit';
@@ -25,9 +25,11 @@ import { MEDIA_READ_RATE } from '@/lib/mediaRateLimit';
  *
  * Every case here uses its OWN dedicated synthetic `X-Forwarded-For` value
  * (or the real per-suite session), freshly generated with real entropy —
- * see `freshSyntheticIp` — so this file cannot interfere with, or BE
- * interfered with by, any other test in the same Redis instance, including
- * a PRIOR run of this exact file.
+ * `freshSyntheticIp` (`./helpers.ts`, shared with every anonymous `public*`
+ * request across the whole E2E suite — see its doc comment there for why
+ * every anonymous E2E request needs one) — so this file cannot interfere
+ * with, or BE interfered with by, any other test in the same Redis
+ * instance, including a PRIOR run of this exact file.
  *
  * That last case is not hypothetical — it is what broke the first version
  * of test 5. It derived its synthetic IP from a few digits of `Date.now()`
@@ -79,20 +81,6 @@ import { MEDIA_READ_RATE } from '@/lib/mediaRateLimit';
  */
 
 const BASE_URL = getBaseUrl();
-
-/**
- * A fresh, high-entropy, IP-shaped synthetic identity — 8 random hex groups
- * joined like an IPv6 address (~2^128 space), so two calls (even in the same
- * process, even seconds apart across separate invocations of this file)
- * cannot plausibly collide. Always passes `anonymousMediaIdentity`'s
- * `IP_SHAPED_RE` check and is always a REAL value sent as `X-Forwarded-For`,
- * so it never falls back to the shared `'unknown'` sentinel bucket that
- * OTHER anonymous E2E requests (ones that set no header at all) land in —
- * this identity is never shared with anything this test didn't create.
- */
-function freshSyntheticIp(): string {
-  return Array.from({ length: 8 }, () => randomBytes(2).toString('hex')).join(':');
-}
 
 function syntheticAvatarKey(uploaderId: string, tag: string): string[] {
   // Deterministic per-tag UUID-shaped id — no real upload needed. Avatars

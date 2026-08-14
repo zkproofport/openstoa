@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken, getCdnOrigin, requireObjectStorage, resolveMediaUrl } from './helpers';
+import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken, getCdnOrigin, requireObjectStorage, resolveMediaUrl, freshSyntheticIp } from './helpers';
 
 // Every case in this file uploads. Without object storage they each fail on
 // their own 500, which reads like the upload route is broken rather than like
@@ -92,7 +92,15 @@ async function fetchUncached(url: string, authenticated = false): Promise<Respon
   const resolved = resolveMediaUrl(url, getBaseUrl())!;
   const sep = resolved.includes('?') ? '&' : '?';
   const cacheBusted = `${resolved}${sep}_cb=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return fetch(cacheBusted, authenticated ? { headers: { Authorization: `Bearer ${getAuthToken()}` } } : undefined);
+  // M-7: this bypasses `helpers.ts`'s `public*` wrappers (which attach a
+  // fresh `X-Forwarded-For` by default — see `freshSyntheticIp`'s doc
+  // comment there) because a cache-busted CDN URL isn't a `${BASE_URL}${path}`
+  // call. Attach the same default explicitly so an anonymous call here can
+  // never land in the shared `'unknown'` rate-limit bucket other files'
+  // guest reads also avoid.
+  const headers: Record<string, string> = { 'X-Forwarded-For': freshSyntheticIp() };
+  if (authenticated) headers.Authorization = `Bearer ${getAuthToken()}`;
+  return fetch(cacheBusted, { headers });
 }
 
 describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
@@ -202,7 +210,14 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     // through the server UNCHANGED — relative in, relative out — so this
     // confirms the same value the API actually returns to a client is what
     // resolves and fetches, not a separately-reconstructed URL.
-    const cdnRes = await fetch(resolveMediaUrl(publicUrl, getBaseUrl())!);
+    // M-7: an anonymous read of the app's own media route — attach the same
+    // fresh-per-call `X-Forwarded-For` `helpers.ts`'s `public*` wrappers use
+    // by default (this is a direct `fetch`, not a `${BASE_URL}${path}` call,
+    // so it doesn't go through them) so it never lands in the shared
+    // `'unknown'` rate-limit bucket. See `freshSyntheticIp`'s doc comment.
+    const cdnRes = await fetch(resolveMediaUrl(publicUrl, getBaseUrl())!, {
+      headers: { 'X-Forwarded-For': freshSyntheticIp() },
+    });
     expect(cdnRes.status).toBe(200);
   });
 
@@ -233,7 +248,10 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
       ),
     );
     expect(cdnMatch).not.toBeNull();
-    const cdnRes = await fetch(resolveMediaUrl(cdnMatch![0], getBaseUrl())!);
+    // M-7: same reasoning as the previous test — see that comment.
+    const cdnRes = await fetch(resolveMediaUrl(cdnMatch![0], getBaseUrl())!, {
+      headers: { 'X-Forwarded-For': freshSyntheticIp() },
+    });
     expect(cdnRes.status).toBe(200);
   });
 

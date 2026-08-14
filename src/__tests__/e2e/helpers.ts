@@ -1,11 +1,58 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { randomBytes } from 'crypto';
 import { R2_HOSTS } from '@/lib/imageCacheBuster';
 
 const BASE_URL = process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app';
 
 export function getBaseUrl(): string {
   return BASE_URL;
+}
+
+/**
+ * A fresh, high-entropy, IP-shaped synthetic identity — 8 random hex groups
+ * joined like an IPv6 address (`randomBytes(2)` × 8, ~2^128 space), sent as
+ * `X-Forwarded-For` on every `public*` request below (M-7,
+ * `src/lib/mediaRateLimit.ts`).
+ *
+ * WHY EVERY ANONYMOUS E2E REQUEST NEEDS ITS OWN IDENTITY, LOCALLY, EVEN
+ * THOUGH PRODUCTION NEEDS NONE OF THIS:
+ *
+ * `GET /api/media/{key}` (and any future anonymous-capable rate-limited
+ * route) keys its budget on `X-Forwarded-For` when there's no session. A
+ * request that sends NO such header collapses into `mediaRateLimit.ts`'s
+ * shared `'unknown'` bucket — which is the correct, DELIBERATE behavior for
+ * production (Cloud Run's own frontend always sets a real client IP there;
+ * `'unknown'` is reachable only when nothing upstream can supply one, i.e.
+ * never, in a real deployment) but is exactly the wrong shape for an E2E
+ * suite: dozens of unrelated test files, each simulating a DIFFERENT
+ * anonymous visitor, would otherwise all fall into that ONE shared bucket
+ * and silently spend each other's budget. That is precisely what broke
+ * `media-rate-limit.test.ts`'s own boundary test the first time — not
+ * because of THIS mechanism (that test builds its identity explicitly, for
+ * a different reason — see its own file), but as a preview of the exact
+ * failure mode this default closes off: an unrelated file's guest reads,
+ * run first, exhausting a bucket a LATER file's guest read would otherwise
+ * have inherited.
+ *
+ * Attaching a real, freshly-random `X-Forwarded-For` to every `public*`
+ * call means:
+ *   - No anonymous E2E request ever lands in `'unknown'`, so that bucket
+ *     stays exactly as unreachable in the E2E suite as it is in production.
+ *   - No two `public*` calls — even in the same test, even in the same
+ *     file, even in two back-to-back full-suite runs — can ever share a
+ *     rate-limit identity BY ACCIDENT, because each gets its own 2^128-space
+ *     draw. A test whose whole point IS accumulating one identity's spend
+ *     (`media-rate-limit.test.ts`) does not go through `public*` at all —
+ *     it builds its own explicit, intentionally-reused header, which this
+ *     default does not touch or interfere with.
+ *   - A test asserting an anonymous caller gets REFUSED (401/403/429) keeps
+ *     getting refused for the real reason (visibility, or genuinely being
+ *     over budget) — this only removes accidental cross-file budget
+ *     inheritance, never exempts anyone from the limit itself.
+ */
+export function freshSyntheticIp(): string {
+  return Array.from({ length: 8 }, () => randomBytes(2).toString('hex')).join(':');
 }
 
 export function getAuthToken(): string {
@@ -146,32 +193,36 @@ export async function authPatch(path: string, body?: unknown): Promise<Response>
   });
 }
 
-/** Make an unauthenticated GET request */
+/** Make an unauthenticated GET request. Carries a fresh synthetic
+ *  `X-Forwarded-For` by default — see `freshSyntheticIp`'s doc comment. */
 export async function publicGet(path: string): Promise<Response> {
-  return fetch(`${BASE_URL}${path}`);
+  return fetch(`${BASE_URL}${path}`, { headers: { 'X-Forwarded-For': freshSyntheticIp() } });
 }
 
-/** Make an unauthenticated POST request */
+/** Make an unauthenticated POST request. Carries a fresh synthetic
+ *  `X-Forwarded-For` by default — see `freshSyntheticIp`'s doc comment. */
 export async function publicPost(path: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': freshSyntheticIp() },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
 
-/** Make an unauthenticated PUT request */
+/** Make an unauthenticated PUT request. Carries a fresh synthetic
+ *  `X-Forwarded-For` by default — see `freshSyntheticIp`'s doc comment. */
 export async function publicPut(path: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': freshSyntheticIp() },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
 
-/** Make an unauthenticated DELETE request */
+/** Make an unauthenticated DELETE request. Carries a fresh synthetic
+ *  `X-Forwarded-For` by default — see `freshSyntheticIp`'s doc comment. */
 export async function publicDelete(path: string): Promise<Response> {
-  return fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+  return fetch(`${BASE_URL}${path}`, { method: 'DELETE', headers: { 'X-Forwarded-For': freshSyntheticIp() } });
 }
 
 // ── Admin user helpers (uses proof-gated login cache — admin role) ──
@@ -275,11 +326,12 @@ export async function adminGet(path: string): Promise<Response> {
   });
 }
 
-/** Make an unauthenticated PATCH request */
+/** Make an unauthenticated PATCH request. Carries a fresh synthetic
+ *  `X-Forwarded-For` by default — see `freshSyntheticIp`'s doc comment. */
 export async function publicPatch(path: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': freshSyntheticIp() },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
