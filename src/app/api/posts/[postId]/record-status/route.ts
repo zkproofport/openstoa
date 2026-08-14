@@ -3,6 +3,7 @@ import { getSession } from '@/lib/session';
 import { checkRecordPolicy } from '@/lib/record';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/posts/[postId]/record-status';
 
@@ -54,6 +55,9 @@ export async function GET(
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
     const result = await checkRecordPolicy(postId, session.userId);
     logger.info(ROUTE, 'Record status fetched', {
       userId: session.userId,

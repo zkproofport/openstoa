@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/topics/[topicId]/chat/presence';
 
@@ -75,6 +76,9 @@ export async function GET(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     const membership = await db.query.topicMembers.findFirst({
       where: and(

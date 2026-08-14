@@ -5,6 +5,7 @@ import { posts, topicMembers, users, tags, postTags, votes, topics } from '@/lib
 import { eq, and, desc, sql, inArray, ilike, or } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { normaliseSearchQuery } from '@/lib/search';
 import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
@@ -201,6 +202,9 @@ export async function GET(
   try {
     const session = await getSession(request);
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     // --- Guest (unauthenticated) access ---
     if (!session) {
@@ -504,6 +508,9 @@ export async function POST(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     // Check membership
     const membership = await db.query.topicMembers.findFirst({

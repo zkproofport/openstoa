@@ -97,4 +97,52 @@ describe('pollProofResult', () => {
     expect(mockSDKInstance.pollResult).toHaveBeenCalledWith('req-123');
     expect(result).toMatchObject({ status: 'completed', proof: '0x...' });
   });
+
+  /**
+   * The typed-error wrapper closing the auth/poll route's residual leak:
+   * the SDK's ONLY signal for "the relay genuinely has no record of this
+   * request" is throwing the exact literal 'Request not found or expired'
+   * (verified against the installed package). Everything else the SDK
+   * throws carries the relay's own (potentially arbitrary) response text.
+   */
+  it('converts the SDK\'s exact "not found or expired" message into RelayRequestNotFoundError', async () => {
+    mockSDKInstance.pollResult.mockRejectedValue(new Error('Request not found or expired'));
+    const { pollProofResult, RelayRequestNotFoundError } = await import('@/lib/relay');
+
+    await expect(pollProofResult('gone-123')).rejects.toBeInstanceOf(RelayRequestNotFoundError);
+  });
+
+  it('does NOT convert a message that merely CONTAINS "not found" — only an exact match qualifies', async () => {
+    // Regression guard for the bug this replaces: a substring test would have
+    // wrongly classified this as "not found" and (worse) echoed the whole
+    // upstream-controlled text to the client.
+    mockSDKInstance.pollResult.mockRejectedValue(
+      new Error('upstream service https://internal-relay-7.corp:9443/health not found, connection refused'),
+    );
+    const { pollProofResult, RelayRequestNotFoundError } = await import('@/lib/relay');
+
+    await expect(pollProofResult('req-x')).rejects.not.toBeInstanceOf(RelayRequestNotFoundError);
+  });
+
+  it('does NOT convert a message that merely CONTAINS "expired" — only an exact match qualifies', async () => {
+    mockSDKInstance.pollResult.mockRejectedValue(new Error('TLS certificate for relay.internal expired 2026-01-01'));
+    const { pollProofResult, RelayRequestNotFoundError } = await import('@/lib/relay');
+
+    await expect(pollProofResult('req-y')).rejects.not.toBeInstanceOf(RelayRequestNotFoundError);
+  });
+
+  it('passes through any other error unchanged — no message rewriting, no swallowing', async () => {
+    const original = new Error('relay says: db pool exhausted at proofport-relay/src/index.ts:88');
+    mockSDKInstance.pollResult.mockRejectedValue(original);
+    const { pollProofResult } = await import('@/lib/relay');
+
+    await expect(pollProofResult('req-z')).rejects.toBe(original);
+  });
+
+  it('passes through a non-Error thrown value unchanged', async () => {
+    mockSDKInstance.pollResult.mockRejectedValue('a raw string throw');
+    const { pollProofResult } = await import('@/lib/relay');
+
+    await expect(pollProofResult('req-w')).rejects.toBe('a raw string throw');
+  });
 });

@@ -5,6 +5,7 @@ import { comments, posts, topicMembers } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/comments/[commentId]';
 
@@ -63,6 +64,9 @@ export async function DELETE(
     }
 
     const { commentId } = await params;
+    if (!isValidUUID(commentId)) {
+      return NextResponse.json({ error: 'Invalid commentId' }, { status: 400 });
+    }
 
     logger.info(ROUTE, 'Deleting comment', { userId: session.userId, commentId });
 

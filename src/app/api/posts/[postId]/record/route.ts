@@ -5,6 +5,7 @@ import { posts, records, users } from '@/lib/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import {
   checkRecordPolicy,
   computeContentHash,
@@ -88,6 +89,9 @@ export async function POST(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     logger.info(ROUTE, 'Checking record policy', { userId: session.userId, postId });
 

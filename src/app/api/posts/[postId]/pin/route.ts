@@ -5,6 +5,7 @@ import { posts, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/posts/[postId]/pin';
 
@@ -56,6 +57,9 @@ export async function POST(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     // Get the post
     const post = await db.query.posts.findFirst({

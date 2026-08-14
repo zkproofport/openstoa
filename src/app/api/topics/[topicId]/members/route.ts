@@ -9,6 +9,7 @@ import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/topics/[topicId]/members';
 
@@ -168,6 +169,9 @@ export async function GET(
   }
 
   const { topicId } = await params;
+  if (!isValidUUID(topicId)) {
+    return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+  }
   const url = new URL(request.url);
   const q = url.searchParams.get('q')?.trim() ?? '';
 
@@ -248,6 +252,9 @@ export async function PATCH(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const body = await request.json();
     const { userId, role } = body;
 
@@ -329,6 +336,9 @@ export async function DELETE(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     // Profile-level AI capability (design §7): membership removal is gated by
     // the topic/leave capability for isAI callers. Humans unaffected.

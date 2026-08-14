@@ -29,6 +29,7 @@ import { chatMedia, topicMembers, topics } from '@/lib/db/schema';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { checkRateLimit, decodeBase64Strict, type RateLimit } from '@/lib/mls/http';
 import { deleteR2Object, getR2Object, putR2Object } from '@/lib/r2';
 import {
@@ -109,6 +110,9 @@ async function requireMember(request: NextRequest, topicId: string) {
 export async function POST(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const gate = await requireMember(request, topicId);
     if (gate.error) return gate.error;
     const session = gate.session!;
@@ -213,6 +217,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 export async function GET(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const key = new URL(request.url).searchParams.get('key');
     // Membership first, key second: answering 400 to a non-member would tell
     // them whether a key is well-formed for this topic before establishing that
@@ -290,6 +297,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const key = new URL(request.url).searchParams.get('key');
     const gate = await requireMember(request, topicId);
     if (gate.error) return gate.error;
@@ -333,6 +343,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const key = new URL(request.url).searchParams.get('key');
     const gate = await requireMember(request, topicId);
     if (gate.error) return gate.error;

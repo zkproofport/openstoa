@@ -5,6 +5,7 @@ import { topics, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/topics/[topicId]/blind';
 
@@ -26,6 +27,9 @@ export async function POST(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     const topic = await db.query.topics.findFirst({
       where: eq(topics.id, topicId),

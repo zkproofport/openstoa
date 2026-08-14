@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { isValidUUID } from '@/lib/uuid';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topicMembers, users } from '@/lib/db/schema';
@@ -67,6 +68,12 @@ export async function GET(
   }
 
   const { topicId } = await params;
+  if (!isValidUUID(topicId)) {
+    return new Response(JSON.stringify({ error: 'Invalid topicId' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   const membership = await db.query.topicMembers.findFirst({
     where: and(

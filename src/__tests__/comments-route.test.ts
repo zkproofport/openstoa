@@ -64,7 +64,7 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue(null);
 
-    const res = await runRoute('post-1', { content: 'hi' });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { content: 'hi' });
     expect(res.status).toBe(401);
   });
 
@@ -74,7 +74,7 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue(undefined);
 
-    const res = await runRoute('missing', { content: 'hi' });
+    const res = await runRoute('77777777-7777-7777-7777-777777777777', { content: 'hi' });
     expect(res.status).toBe(404);
   });
 
@@ -82,10 +82,10 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue(undefined);
 
-    const res = await runRoute('post-1', { content: 'hi' });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { content: 'hi' });
     expect(res.status).toBe(403);
   });
 
@@ -93,10 +93,10 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({} as never);
 
-    const res = await runRoute('post-1', {});
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', {});
     expect(res.status).toBe(400);
   });
 
@@ -104,11 +104,11 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({} as never);
 
     const tooLong = 'a'.repeat(10_001);
-    const res = await runRoute('post-1', { content: tooLong });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { content: tooLong });
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toMatch(/comment/i);
@@ -118,13 +118,13 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({} as never);
     vi.mocked(db.query.topics.findFirst).mockResolvedValue({ proofType: 'none' } as never);
     vi.mocked(db.query.users.findFirst).mockResolvedValue({ nickname: 'alice', profileImage: null } as never);
 
     const atCap = 'a'.repeat(10_000);
-    const res = await runRoute('post-1', { content: atCap });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { content: atCap });
     expect(res.status).toBe(201);
   });
 
@@ -133,14 +133,14 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-X', topicId: 'topic-X' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '55555555-5555-5555-5555-555555555555', topicId: 'topic-X' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({} as never);
     vi.mocked(db.query.topics.findFirst).mockResolvedValue({ proofType: 'none' } as never);
     vi.mocked(db.query.users.findFirst).mockResolvedValue({ nickname: 'alice', profileImage: null } as never);
     const { updateTopicScore } = await import('@/lib/topicScore');
     vi.mocked(updateTopicScore).mockClear();
 
-    const res = await runRoute('post-X', { content: 'hi' });
+    const res = await runRoute('55555555-5555-5555-5555-555555555555', { content: 'hi' });
     expect(res.status).toBe(201);
     expect(updateTopicScore).toHaveBeenCalledWith('topic-X');
   });
@@ -149,14 +149,14 @@ describe('POST /api/posts/[postId]/comments', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({} as never);
     vi.mocked(db.query.topics.findFirst).mockResolvedValue({ proofType: 'none' } as never);
     vi.mocked(db.query.users.findFirst).mockResolvedValue({ nickname: 'alice', profileImage: null } as never);
     const { updateTopicScore } = await import('@/lib/topicScore');
     vi.mocked(updateTopicScore).mockRejectedValueOnce(new Error('boom'));
 
-    const res = await runRoute('post-1', { content: 'hi' });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { content: 'hi' });
     expect(res.status).toBe(201);
   });
 });

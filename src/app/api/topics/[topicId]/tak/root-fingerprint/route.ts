@@ -5,6 +5,7 @@ import { topicMembers, topics } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { checkRateLimit, decodeBase64Strict, MLS_RATE_TAK } from '@/lib/mls/http';
 import { getArchiveRootIdentity, claimArchiveRootFingerprint } from '@/lib/mls/archive';
 
@@ -104,6 +105,9 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requirePublicMember(request, topicId);
     if ('error' in auth) return auth.error!;
 
@@ -181,6 +185,9 @@ export async function PUT(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requirePublicMember(request, topicId);
     if ('error' in auth) return auth.error!;
     const { session } = auth;

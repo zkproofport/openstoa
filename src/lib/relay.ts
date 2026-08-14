@@ -88,11 +88,58 @@ export async function createRelayProofRequest(
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }
 
+/**
+ * Thrown when the relay genuinely has no record of `requestId` (expired or
+ * never existed) — a real, expected 404 condition, not a leak.
+ *
+ * WHY THIS EXISTS: `@zkproofport-app/sdk`'s `pollResult` is a plain
+ * `throw new Error(...)` interface with no typed/discriminated error and no
+ * HTTP status attached to the thrown value (verified against the installed
+ * package — see `node_modules/@zkproofport-app/sdk/dist/index.js`). For a
+ * real relay 404 it throws the exact literal `'Request not found or
+ * expired'` — a fixed string the SDK owns, never derived from upstream
+ * content. For every OTHER relay failure it throws
+ * `new Error(error.error || 'Poll failed: HTTP ' + status)`, where
+ * `error.error` is the relay's OWN response body verbatim — arbitrary,
+ * upstream-controlled text.
+ *
+ * The route used to do `message.includes('not found') ||
+ * message.includes('expired')` and echo the caught `message` straight to
+ * the client on a match. That is wrong twice over: (1) it also matches the
+ * SECOND, arbitrary-text case whenever the relay's own error happens to
+ * contain either substring, and (2) even on a genuine match it echoes
+ * whatever else that text carries, not just the safe fixed phrase — the
+ * same class of leak this file's error-leak sweep closed everywhere else,
+ * just reached through a keyword gate instead of a bare catch-all.
+ *
+ * This wrapper does the ONE comparison that is actually safe — an EXACT
+ * match against the SDK's own fixed literal, not a substring test — and
+ * converts it to a typed error the route can `instanceof`-check. Anything
+ * else (including the arbitrary-text case) passes through unchanged and
+ * falls into the route's normal `unhandledRouteError` catch-all, which logs
+ * the full text server-side and never puts it in the response.
+ */
+export class RelayRequestNotFoundError extends Error {
+  constructor() {
+    super('Request not found or expired');
+    this.name = 'RelayRequestNotFoundError';
+  }
+}
+
+const SDK_NOT_FOUND_MESSAGE = 'Request not found or expired';
+
 export async function pollProofResult(
   requestId: string,
 ): Promise<RelayProofResult> {
   const sdk = createSDK();
-  return sdk.pollResult(requestId);
+  try {
+    return await sdk.pollResult(requestId);
+  } catch (error) {
+    if (error instanceof Error && error.message === SDK_NOT_FOUND_MESSAGE) {
+      throw new RelayRequestNotFoundError();
+    }
+    throw error;
+  }
 }
 
 export { createSDK };

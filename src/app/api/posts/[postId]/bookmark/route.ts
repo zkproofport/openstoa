@@ -5,6 +5,7 @@ import { bookmarks, posts } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/posts/[postId]/bookmark';
 
@@ -87,6 +88,9 @@ export async function GET(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     logger.info(ROUTE, 'Checking bookmark status', { userId: session.userId, postId });
 
@@ -116,6 +120,9 @@ export async function POST(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     logger.info(ROUTE, 'Toggling bookmark', { userId: session.userId, postId });
 

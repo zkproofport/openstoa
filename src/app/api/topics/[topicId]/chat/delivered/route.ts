@@ -5,6 +5,7 @@ import { topicMembers, chatDeliveryCursors } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { scheduleDeliverySweep } from '@/lib/chatDeliveryPurge';
 
@@ -113,6 +114,9 @@ export async function POST(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     const membership = await db.query.topicMembers.findFirst({
       where: and(

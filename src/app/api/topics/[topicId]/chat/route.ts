@@ -6,6 +6,7 @@ import { eq, and, desc, count, gt, gte, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { historyGrantDenial, resolveEnforcedHistoryGrant } from '@/lib/historyGrant';
 import { resolveHistoryWindow } from '@/lib/mls/historyWindow';
@@ -152,6 +153,9 @@ export async function GET(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     const membership = await db.query.topicMembers.findFirst({
       where: and(
@@ -419,6 +423,9 @@ export async function POST(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     const membership = await db.query.topicMembers.findFirst({
       where: and(

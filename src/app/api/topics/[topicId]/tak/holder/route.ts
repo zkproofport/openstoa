@@ -5,6 +5,7 @@ import { topicMembers, topics } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import {
   claimOrRenewHolder,
   updateHolderCoverage,
@@ -98,6 +99,9 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requirePublicMember(request, topicId);
     if ('error' in auth) return auth.error!;
 
@@ -177,6 +181,9 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requirePublicMember(request, topicId);
     if ('error' in auth) return auth.error!;
     const { session, rank } = auth;
@@ -282,6 +289,9 @@ export async function DELETE(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requirePublicMember(request, topicId);
     if ('error' in auth) return auth.error!;
     const { session } = auth;
@@ -350,6 +360,9 @@ export async function PATCH(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requirePublicMember(request, topicId);
     if ('error' in auth) return auth.error!;
     const { session } = auth;

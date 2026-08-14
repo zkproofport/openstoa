@@ -5,6 +5,7 @@ import { mlsGroups, topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { decodeBase64Strict, MLS_CIPHERSUITE, MLS_MAX_GROUP_INFO_BYTES } from '@/lib/mls/http';
 
 const ROUTE = '/api/topics/[topicId]/mls/group-info';
@@ -59,6 +60,9 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
@@ -130,6 +134,9 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await memberSession(request, topicId);
     if ('error' in auth) return auth.error!;
 

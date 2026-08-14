@@ -353,6 +353,39 @@ design (e.g. a public "share this post" link that should render for a logged-out
 that's a real use case only Candidate C serves — worth re-opening the recommendation if
 that requirement shows up.
 
+## Two things Candidate B leaves for whoever comes next
+
+Neither is a reason not to do it. Both are cheap now and expensive to discover later.
+
+**`og:image` must be absolute, and stored values will not be.** A crawler does not resolve a
+relative path against our host — it needs a fully-qualified URL in the meta tag. Once media
+URLs are stored as `/api/media/...`, any code that emits `og:image` has to absolutize them
+server-side against the request's own origin. Skip it and the card ships with no image and no
+error: the page renders, the tag is present, the crawler fetches nothing.
+
+This breaks nothing today, which is exactly why it is worth writing down. There is no per-post
+OG image in the app right now — the only `generateMetadata` is in `src/app/layout.tsx` and
+serves one static site-wide default. (`src/app/api/og/route.ts` runs the other direction: it
+scrapes OG tags out of links pasted INTO posts and chat.) The trap is waiting for whoever
+builds per-post cards.
+
+Note what the gate does for those cards when they exist: a crawler is a session-less guest, and
+`/api/media` already allows guests for public-topic objects, so a public post's card renders.
+Private and secret posts return 401/403 to a crawler and therefore have no preview — which is
+the promise being kept, not a regression to fix. The same reasoning covers search and AI
+crawlers: `robots.ts` and `sitemap.ts` exist, public content stays fetchable, non-public content
+stays out.
+
+**Image traffic moves from the edge to the app.** Today a public bucket serves images from
+Cloudflare's edge and the app is not in the path. Under Candidate B every image is an app route,
+so the origin is Cloud Run. M-5's headers absorb most of it — `public, max-age=31536000,
+immutable` for genuinely public objects, `private, ...` otherwise — so repeat views and CDN hits
+never reach the app. Cold requests do, and a crawler is by definition always cold.
+
+Before production traffic arrives, put Cloudflare caching in front of `/api/media` on the app
+hostname so the public objects are edge-served again. Until then the cost is real but bounded,
+and it is the price of the bucket being private at all.
+
 ## Sources
 
 - [React Native — Image (`source.headers`)](https://reactnative.dev/docs/image)

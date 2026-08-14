@@ -44,8 +44,8 @@ describe('GET /api/posts/[postId]/bookmark', () => {
 
     const { GET } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await GET(
-      makeGetRequest('post-1'),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makeGetRequest('11111111-1111-1111-1111-111111111111'),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(401);
@@ -62,8 +62,8 @@ describe('GET /api/posts/[postId]/bookmark', () => {
 
     const { GET } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await GET(
-      makeGetRequest('post-1'),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makeGetRequest('11111111-1111-1111-1111-111111111111'),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(200);
@@ -78,14 +78,14 @@ describe('GET /api/posts/[postId]/bookmark', () => {
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue({
       userId: 'user-1',
-      postId: 'post-1',
+      postId: '11111111-1111-1111-1111-111111111111',
       createdAt: new Date(),
     } as never);
 
     const { GET } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await GET(
-      makeGetRequest('post-1'),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makeGetRequest('11111111-1111-1111-1111-111111111111'),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(200);
@@ -105,8 +105,8 @@ describe('POST /api/posts/[postId]/bookmark', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await POST(
-      makePostRequest('post-1'),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makePostRequest('11111111-1111-1111-1111-111111111111'),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(401);
@@ -119,14 +119,14 @@ describe('POST /api/posts/[postId]/bookmark', () => {
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({ topicId: 'topic-1', userId: 'user-1', role: 'member' } as never);
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue(undefined);
 
     const { POST } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await POST(
-      makePostRequest('post-1'),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makePostRequest('11111111-1111-1111-1111-111111111111'),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(200);
@@ -139,18 +139,18 @@ describe('POST /api/posts/[postId]/bookmark', () => {
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
 
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.topicMembers.findFirst).mockResolvedValue({ topicId: 'topic-1', userId: 'user-1', role: 'member' } as never);
     vi.mocked(db.query.bookmarks.findFirst).mockResolvedValue({
       userId: 'user-1',
-      postId: 'post-1',
+      postId: '11111111-1111-1111-1111-111111111111',
       createdAt: new Date(),
     } as never);
 
     const { POST } = await import('@/app/api/posts/[postId]/bookmark/route');
     const res = await POST(
-      makePostRequest('post-1'),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makePostRequest('11111111-1111-1111-1111-111111111111'),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(200);

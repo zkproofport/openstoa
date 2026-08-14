@@ -15,6 +15,7 @@ import {
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { buildProofRequirement } from '@/lib/proof-guides';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteR2Prefix, topicObjectPrefix } from '@/lib/r2';
@@ -81,6 +82,9 @@ export async function GET(
   try {
     const session = await getSession(request);
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     // --- Guest (unauthenticated) access ---
     if (!session) {
@@ -281,6 +285,9 @@ export async function PATCH(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     const topic = await db.query.topics.findFirst({
       where: eq(topics.id, topicId),
@@ -413,6 +420,9 @@ export async function DELETE(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     const topic = await db.query.topics.findFirst({
       where: eq(topics.id, topicId),

@@ -7,6 +7,7 @@ import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/topics/[topicId]/leave';
 
@@ -83,6 +84,9 @@ export async function POST(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     // Profile-level AI capability (design §7), same gate the kick path uses:
     // leaving is a membership change whoever performs it. Humans unaffected.

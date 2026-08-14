@@ -5,6 +5,7 @@ import { pollVotes, pollOptions } from '@/lib/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { getPollByPostId, loadPollsForPosts } from '@/lib/polls';
 
 const ROUTE = '/api/posts/[postId]/poll/vote';
@@ -62,6 +63,9 @@ export async function POST(
   { params }: { params: Promise<{ postId: string }> },
 ) {
   const { postId } = await params;
+  if (!isValidUUID(postId)) {
+    return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+  }
   try {
     const session = await getSession(request);
     if (!session) {
@@ -131,6 +135,9 @@ export async function DELETE(
   { params }: { params: Promise<{ postId: string }> },
 ) {
   const { postId } = await params;
+  if (!isValidUUID(postId)) {
+    return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+  }
   try {
     const session = await getSession(request);
     if (!session) {

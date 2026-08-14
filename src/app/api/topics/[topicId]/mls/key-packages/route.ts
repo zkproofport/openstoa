@@ -5,6 +5,7 @@ import { deviceKeyPackages, topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import {
   decodeBase64Strict,
   checkRateLimit,
@@ -80,6 +81,9 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requireMember(request, topicId);
     if ('error' in auth) return auth.error!;
     const { session } = auth;
@@ -179,6 +183,9 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const auth = await requireMember(request, topicId);
     if ('error' in auth) return auth.error!;
 

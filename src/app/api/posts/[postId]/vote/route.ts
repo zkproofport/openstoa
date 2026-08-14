@@ -5,6 +5,7 @@ import { votes, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { updatePostScore } from '@/lib/postScore';
 import { updateTopicScore } from '@/lib/topicScore';
 
@@ -76,6 +77,9 @@ export async function POST(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     const body = await request.json();
     const { value } = body;

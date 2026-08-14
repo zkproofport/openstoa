@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureUser } from '@/lib/ensureUser';
-import { pollProofResult } from '@/lib/relay';
+import { pollProofResult, RelayRequestNotFoundError } from '@/lib/relay';
 import {
   verifyProofFromRelay,
   extractNullifier,
@@ -230,10 +230,9 @@ export async function GET(
     setSessionCookie(response, token);
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('not found') || message.includes('expired')) {
-      logger.warn(ROUTE, 'Request not found or expired', { error: message });
-      return NextResponse.json({ error: message }, { status: 404 });
+    if (error instanceof RelayRequestNotFoundError) {
+      logger.warn(ROUTE, 'Request not found or expired', { requestId: (await params).requestId });
+      return NextResponse.json({ error: 'Request not found or expired' }, { status: 404 });
     }
     return unhandledRouteError(ROUTE, 'GET', error);
   }

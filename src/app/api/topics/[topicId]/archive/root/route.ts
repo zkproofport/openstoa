@@ -5,6 +5,7 @@ import { topics, topicMembers, topicArchiveRoots, chatArchive } from '@/lib/db/s
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { chatTierOf, serverMayHoldKey } from '@/lib/chatTierPolicy';
 
 const ROUTE = '/api/topics/[topicId]/archive/root';
@@ -70,6 +71,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const loaded = await loadPublicTopic(topicId);
     if ('error' in loaded) {
       logger.warn(ROUTE, 'Root read refused', { topicId, userId: session.userId, reason: loaded.error });
@@ -138,6 +142,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const loaded = await loadPublicTopic(topicId);
     if ('error' in loaded) {
       logger.warn(ROUTE, 'Root deposit refused', { topicId, userId: session.userId, reason: loaded.error });

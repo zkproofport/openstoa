@@ -5,6 +5,7 @@ import { posts, records, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { isContentHashMatch } from '@/lib/record';
 import { txExplorerUrl } from '@/lib/explorer';
 
@@ -87,6 +88,9 @@ export async function GET(
     const session = await getSession(request);
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     logger.info(ROUTE, 'Fetching records for post', { postId, userId: session?.userId ?? null });
 

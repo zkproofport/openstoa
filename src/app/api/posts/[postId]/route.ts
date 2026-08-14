@@ -5,6 +5,7 @@ import { posts, comments, topicMembers, users, postTags, tags, votes, topics, re
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteOrphanedR2Urls } from '@/lib/r2';
 import { requireAiCapability } from '@/lib/aiPermissions';
@@ -188,6 +189,9 @@ export async function GET(
   try {
     const session = await getSession(request);
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     // --- Guest (unauthenticated) access ---
     if (!session) {
@@ -489,6 +493,9 @@ export async function DELETE(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     // Profile-level AI capability (design §7): an isAI caller must hold the
     // post/delete capability in its owner's profile. Humans unaffected.
@@ -593,6 +600,9 @@ export async function PATCH(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     // Profile-level AI capability (design §7): an isAI editor must hold the
     // post/write capability in its owner's profile. Humans unaffected.

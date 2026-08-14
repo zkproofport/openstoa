@@ -5,6 +5,7 @@ import { reactions, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { updateTopicScore } from '@/lib/topicScore';
 
 const ROUTE = '/api/posts/[postId]/reactions';
@@ -99,6 +100,9 @@ export async function GET(
   try {
     const session = await getSession(request);
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     // Get reaction counts grouped by emoji, and whether current user reacted.
     // Guests (no session) always get userReacted: false.
@@ -142,6 +146,9 @@ export async function POST(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
     const body = await request.json();
     const { emoji } = body;
 

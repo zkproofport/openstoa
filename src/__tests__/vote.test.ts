@@ -55,8 +55,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('test-post-id', { value: 1 }),
-      { params: Promise.resolve({ postId: 'test-post-id' }) },
+      makeRequest('99999999-9999-9999-9999-999999999999', { value: 1 }),
+      { params: Promise.resolve({ postId: '99999999-9999-9999-9999-999999999999' }) },
     );
 
     expect(res.status).toBe(401);
@@ -70,8 +70,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('test-post-id', { value: 0 }),
-      { params: Promise.resolve({ postId: 'test-post-id' }) },
+      makeRequest('99999999-9999-9999-9999-999999999999', { value: 0 }),
+      { params: Promise.resolve({ postId: '99999999-9999-9999-9999-999999999999' }) },
     );
 
     expect(res.status).toBe(400);
@@ -85,8 +85,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('test-post-id', { value: 2 }),
-      { params: Promise.resolve({ postId: 'test-post-id' }) },
+      makeRequest('99999999-9999-9999-9999-999999999999', { value: 2 }),
+      { params: Promise.resolve({ postId: '99999999-9999-9999-9999-999999999999' }) },
     );
 
     expect(res.status).toBe(400);
@@ -100,8 +100,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('test-post-id', { value: 'up' }),
-      { params: Promise.resolve({ postId: 'test-post-id' }) },
+      makeRequest('99999999-9999-9999-9999-999999999999', { value: 'up' }),
+      { params: Promise.resolve({ postId: '99999999-9999-9999-9999-999999999999' }) },
     );
 
     expect(res.status).toBe(400);
@@ -118,8 +118,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('nonexistent-post', { value: 1 }),
-      { params: Promise.resolve({ postId: 'nonexistent-post' }) },
+      makeRequest('88888888-8888-8888-8888-888888888888', { value: 1 }),
+      { params: Promise.resolve({ postId: '88888888-8888-8888-8888-888888888888' }) },
     );
 
     expect(res.status).toBe(404);
@@ -136,7 +136,7 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({
-      id: 'post-1',
+      id: '11111111-1111-1111-1111-111111111111',
       topicId: 'topic-1',
       upvoteCount: 0,
     } as never);
@@ -154,8 +154,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('post-1', { value: 1 }),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makeRequest('11111111-1111-1111-1111-111111111111', { value: 1 }),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(200);
@@ -167,7 +167,7 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({
-      id: 'post-1',
+      id: '11111111-1111-1111-1111-111111111111',
       topicId: 'topic-1',
       upvoteCount: 0,
     } as never);
@@ -180,8 +180,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('post-1', { value: 1 }),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makeRequest('11111111-1111-1111-1111-111111111111', { value: 1 }),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(200);
@@ -203,7 +203,7 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({
-      id: 'post-1', topicId: 'topic-1', upvoteCount: 0,
+      id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1', upvoteCount: 0,
     } as never);
     vi.mocked(db.query.votes.findFirst).mockResolvedValue(undefined);
 
@@ -214,14 +214,14 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('post-1', { value: 1 }),
-      { params: Promise.resolve({ postId: 'post-1' }) },
+      makeRequest('11111111-1111-1111-1111-111111111111', { value: 1 }),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
     );
 
     expect(res.status).toBe(200);
     // Fire-and-forget but called synchronously inside the handler before
     // the response is returned, so the spy should already be hit.
-    expect(updatePostScore).toHaveBeenCalledWith('post-1');
+    expect(updatePostScore).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111');
     expect(updateTopicScore).toHaveBeenCalledWith('topic-1');
   });
 
@@ -231,7 +231,7 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({
-      id: 'post-2', topicId: 'topic-2', upvoteCount: 1,
+      id: '22222222-2222-2222-2222-222222222222', topicId: 'topic-2', upvoteCount: 1,
     } as never);
     vi.mocked(db.query.votes.findFirst).mockResolvedValue({ value: 1 } as never);
 
@@ -242,12 +242,12 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('post-2', { value: 1 }),
-      { params: Promise.resolve({ postId: 'post-2' }) },
+      makeRequest('22222222-2222-2222-2222-222222222222', { value: 1 }),
+      { params: Promise.resolve({ postId: '22222222-2222-2222-2222-222222222222' }) },
     );
 
     expect(res.status).toBe(200);
-    expect(updatePostScore).toHaveBeenCalledWith('post-2');
+    expect(updatePostScore).toHaveBeenCalledWith('22222222-2222-2222-2222-222222222222');
     expect(updateTopicScore).toHaveBeenCalledWith('topic-2');
   });
 
@@ -257,7 +257,7 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({
-      id: 'post-3', topicId: 'topic-3', upvoteCount: 1,
+      id: '33333333-3333-3333-3333-333333333333', topicId: 'topic-3', upvoteCount: 1,
     } as never);
     vi.mocked(db.query.votes.findFirst).mockResolvedValue({ value: 1 } as never);
 
@@ -268,12 +268,12 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('post-3', { value: -1 }),
-      { params: Promise.resolve({ postId: 'post-3' }) },
+      makeRequest('33333333-3333-3333-3333-333333333333', { value: -1 }),
+      { params: Promise.resolve({ postId: '33333333-3333-3333-3333-333333333333' }) },
     );
 
     expect(res.status).toBe(200);
-    expect(updatePostScore).toHaveBeenCalledWith('post-3');
+    expect(updatePostScore).toHaveBeenCalledWith('33333333-3333-3333-3333-333333333333');
     expect(updateTopicScore).toHaveBeenCalledWith('topic-3');
   });
 
@@ -283,7 +283,7 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue({
-      id: 'post-4', topicId: 'topic-4', upvoteCount: 0,
+      id: '44444444-4444-4444-4444-444444444444', topicId: 'topic-4', upvoteCount: 0,
     } as never);
     vi.mocked(db.query.votes.findFirst).mockResolvedValue(undefined);
 
@@ -292,8 +292,8 @@ describe('POST /api/posts/[postId]/vote', () => {
 
     const { POST } = await import('@/app/api/posts/[postId]/vote/route');
     const res = await POST(
-      makeRequest('post-4', { value: 1 }),
-      { params: Promise.resolve({ postId: 'post-4' }) },
+      makeRequest('44444444-4444-4444-4444-444444444444', { value: 1 }),
+      { params: Promise.resolve({ postId: '44444444-4444-4444-4444-444444444444' }) },
     );
 
     // The user-facing vote action must still succeed even if score

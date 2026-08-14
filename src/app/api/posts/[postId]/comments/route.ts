@@ -7,6 +7,7 @@ import { getUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-
 import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 import { updateTopicScore } from '@/lib/topicScore';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { hasNulByte } from '@/lib/textGuard';
@@ -73,6 +74,9 @@ export async function POST(
     }
 
     const { postId } = await params;
+    if (!isValidUUID(postId)) {
+      return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
 
     logger.info(ROUTE, 'Creating comment', { userId: session.userId, postId });
 

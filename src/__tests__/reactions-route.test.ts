@@ -57,21 +57,21 @@ describe('POST /api/posts/[postId]/reactions', () => {
   it('returns 401 when not authenticated', async () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue(null);
-    const res = await runRoute('post-1', { emoji: '🔥' });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { emoji: '🔥' });
     expect(res.status).toBe(401);
   });
 
   it('returns 400 for an unsupported emoji (only the curated 6 are allowed)', async () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
-    const res = await runRoute('post-1', { emoji: '💩' });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { emoji: '💩' });
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when emoji is missing', async () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
-    const res = await runRoute('post-1', {});
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', {});
     expect(res.status).toBe(400);
   });
 
@@ -80,7 +80,7 @@ describe('POST /api/posts/[postId]/reactions', () => {
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
     vi.mocked(db.query.posts.findFirst).mockResolvedValue(undefined);
-    const res = await runRoute('missing', { emoji: '🔥' });
+    const res = await runRoute('77777777-7777-7777-7777-777777777777', { emoji: '🔥' });
     expect(res.status).toBe(404);
   });
 
@@ -88,12 +88,12 @@ describe('POST /api/posts/[postId]/reactions', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-X', topicId: 'topic-X' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '55555555-5555-5555-5555-555555555555', topicId: 'topic-X' } as never);
     vi.mocked(db.query.reactions.findFirst).mockResolvedValue(undefined);
     const { updateTopicScore } = await import('@/lib/topicScore');
     vi.mocked(updateTopicScore).mockClear();
 
-    const res = await runRoute('post-X', { emoji: '🔥' });
+    const res = await runRoute('55555555-5555-5555-5555-555555555555', { emoji: '🔥' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ added: true });
     expect(updateTopicScore).toHaveBeenCalledWith('topic-X');
@@ -105,12 +105,12 @@ describe('POST /api/posts/[postId]/reactions', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-Y', topicId: 'topic-Y' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '66666666-6666-6666-6666-666666666666', topicId: 'topic-Y' } as never);
     vi.mocked(db.query.reactions.findFirst).mockResolvedValue({ emoji: '🔥' } as never);
     const { updateTopicScore } = await import('@/lib/topicScore');
     vi.mocked(updateTopicScore).mockClear();
 
-    const res = await runRoute('post-Y', { emoji: '🔥' });
+    const res = await runRoute('66666666-6666-6666-6666-666666666666', { emoji: '🔥' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ added: false });
     expect(updateTopicScore).toHaveBeenCalledWith('topic-Y');
@@ -120,12 +120,12 @@ describe('POST /api/posts/[postId]/reactions', () => {
     const { getSession } = await import('@/lib/session');
     vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
     const { db } = await import('@/lib/db');
-    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: 'post-1', topicId: 'topic-1' } as never);
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', topicId: 'topic-1' } as never);
     vi.mocked(db.query.reactions.findFirst).mockResolvedValue(undefined);
     const { updateTopicScore } = await import('@/lib/topicScore');
     vi.mocked(updateTopicScore).mockRejectedValueOnce(new Error('boom'));
 
-    const res = await runRoute('post-1', { emoji: '🔥' });
+    const res = await runRoute('11111111-1111-1111-1111-111111111111', { emoji: '🔥' });
     expect(res.status).toBe(200);
   });
 });

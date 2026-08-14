@@ -5,6 +5,7 @@ import { joinRequests, topicMembers, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { isValidUUID } from '@/lib/uuid';
 
 const ROUTE = '/api/topics/[topicId]/requests';
 
@@ -110,6 +111,9 @@ export async function GET(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
 
     // Check caller is owner or admin
     const membership = await db.query.topicMembers.findFirst({
@@ -163,6 +167,9 @@ export async function PATCH(
     }
 
     const { topicId } = await params;
+    if (!isValidUUID(topicId)) {
+      return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
+    }
     const body = await request.json();
     const { requestId, action } = body;
 
