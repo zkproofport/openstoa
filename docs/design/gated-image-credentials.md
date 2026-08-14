@@ -8,7 +8,12 @@ Related: [`media-bucket-privatisation.md`](./media-bucket-privatisation.md) — 
 established the fact this one leans on repeatedly: `setSessionCookie()`
 (`src/lib/session.ts:107-115`) sets no `domain` option, so the session cookie is
 **host-only**, and host-only cookies never cross a registrable-domain boundary. Todo M-6
-in the project tracker.
+in the project tracker — implemented and merged (`aaa0588`): candidate B, root-relative
+`R2_PUBLIC_URL`, mini-app absolutization across all real render sites.
+
+Pre-flight: [`media-bucket-flip-checklist.md`](./media-bucket-flip-checklist.md) — the
+conditions to verify before the bucket itself goes private, now that this doc's
+recommendation is implemented and the gate has a credential to check.
 
 ## The problem
 

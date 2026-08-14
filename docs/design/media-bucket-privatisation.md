@@ -6,7 +6,12 @@ Follow-up: [`gated-image-credentials.md`](./gated-image-credentials.md) — even
 bucket is private, `GET /api/media/{key}`'s session-based gate has no credential to check
 on two real surfaces (the mini-app's cookie-less client, and the second of the two live
 web hosts) until that's separately fixed. That doc builds directly on the host-only-cookie
-fact established below.
+fact established below. Both are implemented (M-6, merged `aaa0588`).
+
+Pre-flight: [`media-bucket-flip-checklist.md`](./media-bucket-flip-checklist.md) — the
+conditions to verify (not assume) before actually removing the bucket's public/anonymous
+access, the step this doc's Plan A/B analysis was building toward. Reuses the R2 Custom
+Domain disconnect/reconnect mechanism established in Plan A below for the rollback section.
 
 ## The problem
 
