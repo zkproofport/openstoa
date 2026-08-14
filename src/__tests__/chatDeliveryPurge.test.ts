@@ -212,6 +212,35 @@ async function seedMessage(
   return (res as unknown as { rows: Array<{ id: string }> }).rows[0].id;
 }
 
+/**
+ * R-3b: like `seedMessage`, but leaves `created_at` to the column's OWN
+ * `defaultNow()` instead of a JS-literal timestamp — the same thing the real
+ * message-send route does (`POST /api/topics/{topicId}/chat` never puts
+ * `createdAt` in its `.values()`). This is the only way to seed a row with
+ * genuine microsecond precision in a test: every other helper here passes a
+ * JS `Date` through `.toISOString()` first, which is ALREADY floored to the
+ * millisecond and therefore cannot reproduce the bug the SQL fix targets.
+ *
+ * Returns `createdAt` read back through the same driver path a route uses
+ * (`node-postgres` parses `timestamptz` into a JS `Date`, which itself can
+ * only hold millisecond precision) — i.e. exactly the wire value a real
+ * client would receive, NOT the raw microsecond value actually stored.
+ */
+async function seedMessageWithRealNow(topicId: string): Promise<{ id: string; createdAt: Date }> {
+  const res = await db.execute(sql`
+    INSERT INTO chat_messages (topic_id, user_id, ciphertext, epoch, type)
+    VALUES (${topicId}, ${USER_A}, ${Buffer.from('sealed')}, 1, 'message')
+    RETURNING id, created_at
+  `);
+  // `db.execute` (raw SQL, unlike the schema-typed query builder) hands back
+  // whatever the driver gives for this column as-is — here that is a string,
+  // not an already-parsed Date — so it is normalized explicitly rather than
+  // assumed, the same normalization any real caller reading this value would
+  // have to do.
+  const row = (res as unknown as { rows: Array<{ id: string; created_at: string | Date }> }).rows[0];
+  return { id: row.id, createdAt: new Date(row.created_at) };
+}
+
 async function seedArchive(topicId: string, messageId: string): Promise<void> {
   await db.execute(sql`
     INSERT INTO chat_archive (topic_id, message_id, tak_version, ciphertext)
@@ -346,6 +375,47 @@ describe('purgeDeliveredCiphertext — who blocks it, in SQL', () => {
     await seedCursor(TOPIC, 'dev-1', USER_A, { deliveredThrough: createdAt });
 
     expect(await purgeDeliveredCiphertext(db, TOPIC, NOW)).toBe(1);
+  });
+
+  it('R-3b REGRESSION: acking through the EXACT wire value a real client received releases the message, even though the stored row has real microsecond precision', async () => {
+    /*
+     * The test above ("cursor exactly AT the message instant") does NOT
+     * exercise this bug: `seedMessage` puts `createdAt` in via
+     * `.toISOString()`, which is already millisecond-floored, so its
+     * "exact" comparison was never actually testing against a value with
+     * real sub-millisecond residue. `seedMessageWithRealNow` lets Postgres's
+     * own `now()` set `created_at` — the same code path the real
+     * message-send route uses — so the column genuinely carries whatever
+     * microseconds the database clock had at insert time.
+     */
+    const seeded = await seedMessageWithRealNow(TOPIC);
+    await seedArchive(TOPIC, seeded.id);
+    // `seeded.createdAt` is a JS Date read back through node-postgres, i.e.
+    // the millisecond-floored value ANY client would ever see on the wire —
+    // never the raw microsecond value actually in the column. Acking exactly
+    // that (nothing added) is what a correctly-behaving real client sends.
+    await seedCursor(TOPIC, 'dev-1', USER_A, { deliveredThrough: seeded.createdAt });
+
+    expect(await purgeDeliveredCiphertext(db, TOPIC, NOW)).toBe(1);
+    expect(await ciphertextOf(seeded.id)).toBeNull();
+  });
+
+  it('R-3b GUARD INTEGRITY: a device genuinely one millisecond short still blocks it, even against a real microsecond-precision message', async () => {
+    /*
+     * The fix must only cancel the SUB-millisecond artefact, never widen the
+     * guard beyond it. This is the mutation this test exists to catch: if the
+     * comparison were loosened by rounding instead of truncating (or by any
+     * amount bigger than "less than 1ms"), this device — which has NOT
+     * actually fetched the message, and legitimately falls short by a whole
+     * millisecond, not a microsecond residue — would wrongly stop blocking.
+     */
+    const seeded = await seedMessageWithRealNow(TOPIC);
+    await seedArchive(TOPIC, seeded.id);
+    const oneMsShort = new Date(seeded.createdAt.getTime() - 1);
+    await seedCursor(TOPIC, 'dev-1', USER_A, { deliveredThrough: oneMsShort });
+
+    expect(await purgeDeliveredCiphertext(db, TOPIC, NOW)).toBe(0);
+    expect(await ciphertextOf(seeded.id)).not.toBeNull();
   });
 
   it('INTEGRITY: a device that joined after the message does not block it', async () => {
