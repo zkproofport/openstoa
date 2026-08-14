@@ -50,6 +50,7 @@ import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { getR2ObjectWithMeta, parseMediaObjectKey, tryGetR2PublicUrl } from '@/lib/r2';
+import { MEDIA_READ_RATE, checkMediaReadRateLimit, resolveMediaIdentity } from '@/lib/mediaRateLimit';
 
 const ROUTE = '/api/media/[...key]';
 
@@ -198,6 +199,21 @@ async function gateUserUpload(
  *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         $ref: '#/components/responses/NotFound'
+ *       429:
+ *         description: |
+ *           Rate limited (M-7). Keyed per caller — the session's `userId` when signed in, else
+ *           the caller's IP — at 300 requests per 60-second window, an abuse ceiling sized well
+ *           above real page-view cost (not traffic shaping; a normal client never trips it). The
+ *           response carries a `Retry-After: 60` header. An agent fetching many images in a tight
+ *           loop should add a short delay rather than retry immediately.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Too many requests
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
   try {
@@ -209,6 +225,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     const objectKey = segments.join('/');
     const session = await getSession(request);
+
+    // M-7: rate limit BEFORE the visibility gate's own DB round trips (and
+    // before the R2 fetch) — the whole point is to bound what this route
+    // can cost per caller, including the gate's own work. A request that
+    // will go on to fail the gate still counts against the budget; skipping
+    // the counter for denied requests would make "probe many private
+    // objects" free.
+    const identity = resolveMediaIdentity(request, session?.userId ?? null);
+    if (!(await checkMediaReadRateLimit(identity))) {
+      logger.warn(ROUTE, 'Media read rate limit exceeded', { identity, hasSession: !!session });
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(MEDIA_READ_RATE.windowSec) } },
+      );
+    }
 
     let cachePublic = true;
     if (parsed.kind === 'topic-post' || parsed.kind === 'topic-image') {

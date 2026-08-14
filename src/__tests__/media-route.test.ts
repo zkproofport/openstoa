@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => ({
   topicMembersFindFirst: vi.fn(),
   getR2ObjectWithMeta: vi.fn(),
   tryGetR2PublicUrl: vi.fn(),
+  checkMediaReadRateLimit: vi.fn(),
+  resolveMediaIdentity: vi.fn(),
 }));
 
 vi.mock('@/lib/session', () => ({ getSession: mocks.getSession }));
@@ -57,6 +59,19 @@ vi.mock('@/lib/r2', async () => {
     tryGetR2PublicUrl: mocks.tryGetR2PublicUrl,
   };
 });
+// M-7 (src/lib/mediaRateLimit.ts): mocked out, same rationale as DB/R2 above
+// — this file proves HTTP wiring and authorization, not that Redis itself
+// works (that's `src/__tests__/mediaRateLimit.test.ts` + the real-container
+// E2E). Real behavior: always within budget, so it never interferes with
+// the authorization assertions below.
+vi.mock('@/lib/mediaRateLimit', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/mediaRateLimit')>('@/lib/mediaRateLimit');
+  return {
+    ...actual,
+    checkMediaReadRateLimit: mocks.checkMediaReadRateLimit,
+    resolveMediaIdentity: mocks.resolveMediaIdentity,
+  };
+});
 
 import { GET } from '@/app/api/media/[...key]/route';
 import { uploadObjectKey } from '@/lib/r2';
@@ -70,6 +85,11 @@ beforeEach(() => {
   mocks.getSession.mockResolvedValue(null);
   mocks.tryGetR2PublicUrl.mockReturnValue(PUBLIC_BASE);
   mocks.getR2ObjectWithMeta.mockResolvedValue(OBJECT);
+  // M-7: always within budget by default — this file's own requests are
+  // never about rate limiting (see the dedicated `checkMediaReadRateLimit
+  // is consulted` describe block below for the one test that overrides this).
+  mocks.checkMediaReadRateLimit.mockResolvedValue(true);
+  mocks.resolveMediaIdentity.mockReturnValue('test-identity');
 });
 
 describe('hostile / malformed keys', () => {
@@ -291,5 +311,53 @@ describe('authorization — user-upload, RELATIVE R2_PUBLIC_URL (M-6)', () => {
     const res = await GET(req(), { params: params(key()) });
     expect(res.status).toBe(200);
     expect(mocks.topicsFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+// ─── M-7: rate limiting is actually consulted ──────────────────────────────
+//
+// Full arithmetic (keying, boundary values, fail-open) lives in
+// `src/__tests__/mediaRateLimit.test.ts` — this is a CONTRACT test: it
+// proves the route calls `resolveMediaIdentity` + `checkMediaReadRateLimit`
+// on every request, and that a denial short-circuits BEFORE the R2 fetch
+// (and before it, so a future refactor that reorders or drops the call is
+// caught here rather than shipping silently).
+describe('M-7: media read rate limiting is consulted on every request', () => {
+  const key = () => uploadObjectKey('avatar', USER, null, 'a.jpg').split('/');
+
+  it('CONTRACT: a public-topic-shaped request still calls resolveMediaIdentity + checkMediaReadRateLimit', async () => {
+    const res = await GET(req(), { params: params(key()) });
+    expect(res.status).toBe(200);
+    expect(mocks.resolveMediaIdentity).toHaveBeenCalledTimes(1);
+    expect(mocks.checkMediaReadRateLimit).toHaveBeenCalledTimes(1);
+    expect(mocks.checkMediaReadRateLimit).toHaveBeenCalledWith('test-identity');
+  });
+
+  it('RESULT INTEGRITY: over budget -> 429 with a Retry-After header, and R2 is never touched', async () => {
+    mocks.checkMediaReadRateLimit.mockResolvedValue(false);
+    const res = await GET(req(), { params: params(key()) });
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
+    expect(mocks.getR2ObjectWithMeta).not.toHaveBeenCalled();
+  });
+
+  it('a rate-limit denial happens BEFORE the topic-visibility gate\'s DB lookup', async () => {
+    mocks.checkMediaReadRateLimit.mockResolvedValue(false);
+    const gatedKey = uploadObjectKey('post', USER, TOPIC, 'a.jpg').split('/');
+    const res = await GET(req(), { params: params(gatedKey) });
+    expect(res.status).toBe(429);
+    expect(mocks.topicsFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('a request that will fail the visibility gate still counts against the rate limit (probing is not free)', async () => {
+    mocks.getSession.mockResolvedValue(null);
+    mocks.topicsFindFirst.mockResolvedValue({ id: TOPIC, visibility: 'secret' });
+    const gatedKey = uploadObjectKey('post', USER, TOPIC, 'a.jpg').split('/');
+    const res = await GET(req(), { params: params(gatedKey) });
+    expect(res.status).toBe(401); // guest, secret topic
+    // The rate limiter was still consulted for this denied request.
+    expect(mocks.checkMediaReadRateLimit).toHaveBeenCalledTimes(1);
   });
 });

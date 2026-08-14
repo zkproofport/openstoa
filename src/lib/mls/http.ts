@@ -6,7 +6,7 @@
  * can still force epoch churn; size/rate caps do NOT stop that — a dedicated
  * committer-rate policy is a Phase 2/3 follow-up, tracked separately.
  */
-import { getRedis } from '@/lib/redis';
+import { incrementRateWindow } from '@/lib/redisRateLimit';
 
 // The single MLS ciphersuite for the whole system — RFC 9420 §17.1 MTI, fixed
 // in Phase 0 (G6). Stored on each mls_groups row for forward compatibility.
@@ -65,12 +65,7 @@ export async function checkRateLimit(
   userId: string,
   limit: RateLimit,
 ): Promise<boolean> {
-  const redis = getRedis();
-  const key = `mls:rate:${action}:${userId}`;
-  const n = await redis.incr(key);
-  if (n === 1) {
-    await redis.expire(key, limit.windowSec);
-  }
+  const n = await incrementRateWindow(`mls:rate:${action}:${userId}`, limit.windowSec);
   return n <= limit.max;
 }
 
