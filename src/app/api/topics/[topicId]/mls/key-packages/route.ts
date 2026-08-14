@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { deviceKeyPackages, topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import {
   decodeBase64Strict,
   checkRateLimit,
@@ -121,9 +122,7 @@ export async function POST(
     logger.info(ROUTE, 'KeyPackage published', { userId: session.userId, topicId, deviceId, id: inserted.id });
     return NextResponse.json({ id: inserted.id }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -203,8 +202,6 @@ export async function GET(
       isLastResort: consumed.isLastResort,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

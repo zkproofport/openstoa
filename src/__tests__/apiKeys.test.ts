@@ -364,6 +364,11 @@ describe('getSession — API-key path (authz / hostile / integrity)', () => {
   });
 
   it('a non-osk bearer token falls through to JWT verification (unaffected by API-key path)', async () => {
+    // S-2: verifySession now confirms the JWT's userId still resolves to a
+    // real `users` row (see src/lib/session.ts) — this test's user must
+    // "exist" for that new check, same as every other still-valid-session
+    // fixture in this file.
+    mocks.usersFindFirst.mockResolvedValue({ id: 'human-1', nickname: 'human_nick' });
     const { getSession, createSession } = await import('@/lib/session');
     const jwt = await createSession('human-1', 'human_nick');
     const session = await getSession(fakeRequest(jwt));

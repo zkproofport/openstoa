@@ -5,6 +5,7 @@ import { topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/topics/[topicId]/chat/presence';
 
@@ -101,8 +102,6 @@ export async function GET(
     logger.info(ROUTE, 'Presence fetched', { userId: session.userId, topicId, count: presenceUsers.length });
     return NextResponse.json({ users: presenceUsers, count: presenceUsers.length });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

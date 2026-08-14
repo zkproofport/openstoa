@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import {
   createApiKey,
   listApiKeys,
@@ -114,9 +115,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json({ rawKey: result.rawKey, key: toApiKeyMeta(result.row) }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -158,8 +157,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const rows = await listApiKeys(db, session.userId);
     return NextResponse.json({ apiKeys: rows.map(toApiKeyMeta), allowedCmd: ALLOWED_CMDS });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

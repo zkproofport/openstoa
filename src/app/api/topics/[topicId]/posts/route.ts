@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, topicMembers, users, tags, postTags, votes, topics } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray, ilike, or } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { normaliseSearchQuery } from '@/lib/search';
 import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
@@ -448,9 +449,7 @@ export async function GET(
     logger.info(ROUTE, 'Posts fetched', { userId: session.userId, topicId, count: topicPosts.length });
     return NextResponse.json({ posts: postsWithReactions });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -696,8 +695,6 @@ export async function POST(
     await attachPollsToPosts([responsePost], session.userId);
     return NextResponse.json({ post: responsePost }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, comments, topicMembers, users, postTags, tags, votes, topics, records, bookmarks, polls, pollOptions, pollVotes } from '@/lib/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteOrphanedR2Urls } from '@/lib/r2';
 import { requireAiCapability } from '@/lib/aiPermissions';
@@ -471,9 +472,7 @@ export async function GET(
     await attachPollsToPosts([authPost], session.userId);
     return NextResponse.json({ post: authPost, comments: commentsWithBadges });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -577,9 +576,7 @@ export async function DELETE(
     logger.info(ROUTE, 'Post soft-deleted', { userId: session.userId, postId });
     return NextResponse.json({ id: postId, isDeleted: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }
 
@@ -895,8 +892,6 @@ export async function PATCH(
     logger.info(ROUTE, 'Post edited', { userId: session.userId, postId });
     return NextResponse.json({ post: updatedPost });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }

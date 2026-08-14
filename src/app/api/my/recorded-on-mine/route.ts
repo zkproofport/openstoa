@@ -9,6 +9,7 @@ import { attachPollsToPosts } from '@/lib/polls';
 import { attachTagsToPosts } from '@/lib/postTags';
 import { normaliseSearchQuery } from '@/lib/search';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/my/recorded-on-mine';
 
@@ -133,8 +134,6 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ posts: postsWithReactions });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

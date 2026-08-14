@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { mlsGroups, topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { decodeBase64Strict, MLS_CIPHERSUITE, MLS_MAX_GROUP_INFO_BYTES } from '@/lib/mls/http';
 
 const ROUTE = '/api/topics/[topicId]/mls/group-info';
@@ -82,9 +83,7 @@ export async function GET(
       ciphersuite: group.ciphersuite,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -166,8 +165,6 @@ export async function POST(
     logger.info(ROUTE, 'Genesis group-info register', { topicId, created });
     return NextResponse.json({ created }, { status: created ? 201 : 200 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

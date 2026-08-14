@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { topicMembers, chatDeliveryCursors } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { scheduleDeliverySweep } from '@/lib/chatDeliveryPurge';
 
@@ -230,8 +231,6 @@ export async function POST(
     });
     return NextResponse.json({ deliveredThrough: stored });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

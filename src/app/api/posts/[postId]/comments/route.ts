@@ -6,6 +6,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { getUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { updateTopicScore } from '@/lib/topicScore';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { hasNulByte } from '@/lib/textGuard';
@@ -174,8 +175,6 @@ export async function POST(
       comment: { ...comment, authorNickname: author?.nickname ?? 'anon', authorProfileImage: author?.profileImage ?? null, badges },
     }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

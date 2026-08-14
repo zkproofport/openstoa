@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { pollVotes, pollOptions } from '@/lib/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { getPollByPostId, loadPollsForPosts } from '@/lib/polls';
 
 const ROUTE = '/api/posts/[postId]/poll/vote';
@@ -121,9 +122,7 @@ export async function POST(
     const fresh = await loadPollsForPosts([postId], session.userId);
     return NextResponse.json({ poll: fresh.get(postId) ?? null });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message, postId });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error, 500, { postId });
   }
 }
 
@@ -150,8 +149,6 @@ export async function DELETE(
     const fresh = await loadPollsForPosts([postId], session.userId);
     return NextResponse.json({ poll: fresh.get(postId) ?? null });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message, postId });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error, 500, { postId });
   }
 }

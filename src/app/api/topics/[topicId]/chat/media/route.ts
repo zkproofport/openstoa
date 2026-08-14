@@ -28,6 +28,7 @@ import { db } from '@/lib/db';
 import { chatMedia, topicMembers, topics } from '@/lib/db/schema';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { checkRateLimit, decodeBase64Strict, type RateLimit } from '@/lib/mls/http';
 import { deleteR2Object, getR2Object, putR2Object } from '@/lib/r2';
 import {
@@ -204,9 +205,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     return NextResponse.json({ key });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -268,9 +267,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -321,9 +318,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // error: there is nothing to claim and nothing that will delete it.
     return NextResponse.json({ claimed: claimed.length > 0 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }
 
@@ -368,8 +363,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
     return NextResponse.json({ deleted });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

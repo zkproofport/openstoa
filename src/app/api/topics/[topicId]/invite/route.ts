@@ -5,6 +5,7 @@ import { topics, topicMembers, inviteTokens } from '@/lib/db/schema';
 import { resolveInviteExpiry } from '@/lib/inviteExpiry';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import crypto from 'crypto';
 
 const ROUTE = '/api/topics/[topicId]/invite';
@@ -133,8 +134,6 @@ export async function POST(
     });
     return NextResponse.json({ token, expiresAt: expiry.expiresAt }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

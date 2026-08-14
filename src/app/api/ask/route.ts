@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { getAskSystemPrompt } from '@/lib/askSystemPrompt';
 
 const ROUTE = '/api/ask';
@@ -175,9 +176,7 @@ async function _disabledOriginalPost(request: NextRequest) {
       }
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 /* eslint-enable @typescript-eslint/no-unused-vars */

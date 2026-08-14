@@ -14,6 +14,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/auth/poll/[requestId]';
 
@@ -234,7 +235,6 @@ export async function GET(
       logger.warn(ROUTE, 'Request not found or expired', { error: message });
       return NextResponse.json({ error: message }, { status: 404 });
     }
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

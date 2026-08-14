@@ -5,6 +5,7 @@ import { chatMessages, topicMembers, users } from '@/lib/db/schema';
 import { eq, and, desc, count, gt, gte, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { historyGrantDenial, resolveEnforcedHistoryGrant } from '@/lib/historyGrant';
 import { resolveHistoryWindow } from '@/lib/mls/historyWindow';
@@ -310,9 +311,7 @@ export async function GET(
     });
     return NextResponse.json({ messages, total });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -573,8 +572,6 @@ export async function POST(
     logger.info(ROUTE, 'Message sent and published', { userId: session.userId, topicId, messageId: inserted.id });
     return NextResponse.json({ message: payload }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

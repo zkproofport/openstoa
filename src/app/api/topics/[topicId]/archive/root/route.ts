@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { topics, topicMembers, topicArchiveRoots, chatArchive } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { chatTierOf, serverMayHoldKey } from '@/lib/chatTierPolicy';
 
 const ROUTE = '/api/topics/[topicId]/archive/root';
@@ -93,9 +94,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ rootKey: row.rootKey });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -209,8 +208,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     logger.info(ROUTE, 'Archive root deposited', { topicId, userId: session.userId });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PUT', error);
   }
 }

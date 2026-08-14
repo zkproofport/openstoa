@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { checkRecordPolicy } from '@/lib/record';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/posts/[postId]/record-status';
 
@@ -64,8 +65,6 @@ export async function GET(
       reason: result.reason ?? null,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

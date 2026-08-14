@@ -17,6 +17,7 @@ import { buildProofRequirement } from '@/lib/proof-guides';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/topics/[topicId]/join';
 
@@ -383,8 +384,6 @@ export async function POST(
     logger.info(ROUTE, 'User joined topic successfully', { userId: session.userId, topicId });
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

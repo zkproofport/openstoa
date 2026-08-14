@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import {
   decodeBase64Strict,
   checkRateLimit,
@@ -133,9 +134,7 @@ export async function POST(
     scheduleDeliverySweep(db, topicId, new Date());
     return NextResponse.json({ stored }, { status: stored ? 201 : 200 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -279,8 +278,6 @@ export async function GET(
       })),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

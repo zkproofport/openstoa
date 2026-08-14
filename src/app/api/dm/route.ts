@@ -5,6 +5,7 @@ import { topics, topicMembers, users } from '@/lib/db/schema';
 import { eq, and, ne, inArray, desc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { canonicalDmPair } from '@/lib/dm';
 
@@ -191,9 +192,7 @@ export async function GET(request: NextRequest) {
     logger.info(ROUTE, 'DM list fetched', { userId: session.userId, count: dms.length });
     return NextResponse.json({ dms });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -287,8 +286,6 @@ export async function POST(request: NextRequest) {
     logger.info(ROUTE, 'DM created', { userId: session.userId, peerId, topicId: created.id });
     return NextResponse.json({ topicId: created.id }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

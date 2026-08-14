@@ -127,6 +127,17 @@ export interface PurgeDecisionInput {
  * predicates in it, and a statement cannot be interrogated about WHY it spared
  * a row. Every rule the query implements is decided here as well, and the tests
  * hold the two to the same answers.
+ *
+ * R-3b NOTE on `createdAt.getTime()` vs the SQL's `m.created_at`: this
+ * function is safe from the millisecond/microsecond mismatch the SQL had to
+ * be fixed for, but not because it does anything extra — a JS `Date` cannot
+ * represent sub-millisecond time AT ALL, so `createdAt` here has already lost
+ * whatever microsecond residue Postgres's real `now()` produced by the time
+ * any caller (a route, or this file's own tests) constructs a `Date` from it.
+ * The SQL doesn't get that for free: it compares the raw `timestamptz` column
+ * value directly, at its native microsecond resolution, which is what let the
+ * two diverge — a case only the SQL, not this function, could get wrong. See
+ * `purgeDeliveredCiphertext` below.
  */
 export function isPurgeable(input: PurgeDecisionInput): boolean {
   const { createdAt, hasArchiveRow, devices, now } = input;
@@ -183,6 +194,25 @@ export async function purgeDeliveredCiphertext(
 ): Promise<number> {
   const graceFloor = floorIso(now, opts?.graceDays ?? DELIVERY_GRACE_DAYS);
   const staleFloor = floorIso(now, opts?.staleDays ?? DEVICE_STALE_DAYS);
+  /*
+   * R-3b: compare delivered_through vs. created_at at MILLISECOND resolution,
+   * not the column's native microsecond resolution.
+   *
+   * created_at is set by Postgres's own now() (the schema's defaultNow()) and
+   * keeps real microseconds. delivered_through is always written from a JS
+   * Date (see the ack route), which cannot represent anything finer than a
+   * millisecond in the first place — and a client can only ever have
+   * RECEIVED created_at at millisecond resolution too (JSON round-trips a
+   * Date through toISOString(), 3 fractional digits). So an honest ack of
+   * "delivered through exactly this message" lands up to 999us BEFORE the
+   * raw column value; without the trunc that reads as "still owed" forever —
+   * the newest acked message in an otherwise-idle room never clears.
+   *
+   * Truncating BOTH sides is defensive, not load-bearing: delivered_through
+   * is already millisecond-exact by construction, but doing it makes the
+   * comparison manifestly same-resolution instead of relying on that
+   * invariant holding forever at every future write site.
+   */
   const res = (await executor.execute(sql`
     UPDATE chat_messages m
     SET ciphertext = NULL
@@ -202,7 +232,7 @@ export async function purgeDeliveredCiphertext(
           WHERE c.topic_id = m.topic_id
             AND c.first_seen_at <= m.created_at
             AND c.last_seen_at >= ${staleFloor}::timestamptz
-            AND c.delivered_through < m.created_at
+            AND date_trunc('milliseconds', c.delivered_through) < date_trunc('milliseconds', m.created_at)
         )
       )
     RETURNING m.id

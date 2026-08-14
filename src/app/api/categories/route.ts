@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { categories, users } from '@/lib/db/schema';
 import { asc, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/categories';
 
@@ -85,9 +86,7 @@ export async function POST(request: NextRequest) {
     logger.info(ROUTE, 'Category created', { id: category.id, name });
     return NextResponse.json({ category }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Error creating category', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'Error creating category', error);
   }
 }
 
@@ -102,8 +101,6 @@ export async function GET() {
     logger.info(ROUTE, 'Categories fetched', { count: result.length });
     return NextResponse.json({ categories: result });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { topics, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/topics/[topicId]/blind';
 
@@ -64,8 +65,6 @@ export async function POST(
     logger.info(ROUTE, 'Topic blinded', { userId: session.userId, topicId, blindedBy });
     return NextResponse.json({ success: true, blinded: true, blindedBy });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

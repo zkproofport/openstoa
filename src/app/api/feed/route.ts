@@ -9,6 +9,7 @@ import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts } from '@/lib/polls';
 import { attachTagsToPosts } from '@/lib/postTags';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { normaliseSearchQuery } from '@/lib/search';
 
 const ROUTE = '/api/feed';
@@ -321,9 +322,7 @@ export async function GET(request: NextRequest) {
     logger.info(ROUTE, 'Authenticated feed fetched', { userId: session.userId, count: feedPosts.length });
     return NextResponse.json({ posts: authPostsWithReactions });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 

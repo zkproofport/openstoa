@@ -5,6 +5,7 @@ import { topics, topicMembers, categories, chatMessages } from '@/lib/db/schema'
 import { eq, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { normaliseSearchQuery } from '@/lib/search';
 import {
   extractScope,
@@ -373,9 +374,7 @@ export async function GET(request: NextRequest) {
     logger.info(ROUTE, 'Topics fetched', { userId: session.userId, count: userTopicsWithCategory.length });
     return NextResponse.json({ topics: userTopicsWithCategory });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -606,8 +605,6 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

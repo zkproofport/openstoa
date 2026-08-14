@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/topics/[topicId]/leave';
 
@@ -145,8 +146,6 @@ export async function POST(
     logger.info(ROUTE, 'Member left topic', { topicId, userId: session.userId });
     return NextResponse.json({ success: true, left: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

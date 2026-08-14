@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { joinRequests, topicMembers, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/topics/[topicId]/requests';
 
@@ -146,9 +147,7 @@ export async function GET(
     logger.info(ROUTE, 'Join requests fetched', { topicId, count: requests.length });
     return NextResponse.json({ requests });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -224,8 +223,6 @@ export async function PATCH(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }

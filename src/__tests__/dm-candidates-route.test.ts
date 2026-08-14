@@ -164,11 +164,18 @@ describe('GET /api/dm/candidates — response shaping', () => {
     });
   });
 
-  it('500 with a message when the query throws', async () => {
+  it('500 with a generic message (never the raw driver error) when the query throws', async () => {
+    // This test used to assert the raw 'db down' message reached the client
+    // — that was encoding the exact leak the error-leak sweep closes (see
+    // src/lib/apiError.ts). The real message must still be recoverable
+    // server-side, just not in the response body.
     mocks.buildQuery.mockRejectedValue(new Error('db down'));
     const res = await GET(req());
     expect(res.status).toBe(500);
-    expect((await res.json()).error).toBe('db down');
+    const body = await res.json();
+    expect(body.error).toBe('Internal server error');
+    expect(body.error).not.toContain('db down');
+    expect(typeof body.errorId).toBe('string');
   });
 });
 

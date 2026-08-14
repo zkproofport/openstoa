@@ -5,6 +5,7 @@ import { topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { parseCommitFraming, MlsFramingError } from '@/lib/mls/framing';
 import { scheduleDeviceJoinRecord } from '@/lib/mls/deviceJoins';
 import { applyCommitCas, getCommitsSince } from '@/lib/mls/commits';
@@ -206,9 +207,7 @@ export async function POST(
     logger.info(ROUTE, 'Commit accepted', { userId: session.userId, topicId, epoch: result.newEpoch });
     return NextResponse.json({ epoch: result.newEpoch }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -279,8 +278,6 @@ export async function GET(
       })),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

@@ -5,6 +5,7 @@ import { posts, votes, users, tags, postTags } from '@/lib/db/schema';
 import { eq, and, desc, ilike, or, inArray } from 'drizzle-orm';
 import { normaliseSearchQuery } from '@/lib/search';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/my/likes';
 
@@ -114,8 +115,6 @@ export async function GET(request: NextRequest) {
     logger.info(ROUTE, 'Liked posts fetched', { userId: session.userId, count: likedPosts.length });
     return NextResponse.json({ posts: likedPosts });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

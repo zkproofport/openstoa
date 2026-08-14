@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { decodeBase64Strict, checkRateLimit, type RateLimit } from '@/lib/mls/http';
 import { upsertTakBackup, getTakBackup, TAK_KEY_BACKUP_MAX_BYTES } from '@/lib/keyBackupStore';
 
@@ -28,9 +29,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const row = await getTakBackup(db, session.userId);
     return NextResponse.json({ ciphertext: row ? row.ciphertext.toString('base64') : null });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -64,8 +63,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     logger.info(ROUTE, 'TAK keychain backup stored', { userId: session.userId, bytes: bytes.length });
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

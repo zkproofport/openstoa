@@ -37,9 +37,21 @@ interface Candidate {
   sharedTopics: Array<{ id: string; title: string }>;
 }
 
-/** Nicknames are UNIQUE — keep them collision-free across runs. */
+/**
+ * Nicknames are UNIQUE — keep them collision-free across runs.
+ *
+ * The timestamp segment is DECIMAL, not base36, on purpose: this file's own
+ * hostile-search test probes literal `b_c` (an unescaped `_` would wrongly
+ * act as a SQL single-char wildcard). `uniq('e2e_cand_bob')` puts an
+ * underscore right before this segment — a base36 timestamp can start with
+ * any of [0-9a-z], so it can coincidentally spell "...bob_c..." and make
+ * `bob`'s OWN generated nickname contain the literal probe substring,
+ * failing "not toContain(bob.userId)" for a reason that has nothing to do
+ * with escaping. Decimal digits can never be 'c' (or any letter), which
+ * removes that whole coincidence class at both underscore boundaries.
+ */
 function uniq(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}_${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 async function devLogin(nickname: string): Promise<DevUser> {

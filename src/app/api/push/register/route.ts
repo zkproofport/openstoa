@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { checkRateLimit, type RateLimit } from '@/lib/mls/http';
 import {
   upsertToken,
@@ -76,9 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json({ ok: true, platform }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -99,8 +98,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     const removed = await deleteToken(db, session.userId, routingHandle);
     return NextResponse.json({ removed });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

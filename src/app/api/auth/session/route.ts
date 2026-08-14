@@ -4,6 +4,7 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/auth/session';
 
@@ -60,8 +61,6 @@ export async function GET(request: NextRequest) {
       ...(session.isAI ? { isAI: true } : {}),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { comments, posts, topicMembers } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/comments/[commentId]';
 
@@ -140,8 +141,6 @@ export async function DELETE(
     logger.info(ROUTE, 'Comment soft-deleted', { userId: session.userId, commentId, deletedBy });
     return NextResponse.json({ success: true, deletedBy });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

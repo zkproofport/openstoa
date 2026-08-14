@@ -185,20 +185,19 @@ async function selectCiphertext(messageId: string): Promise<Buffer | null> {
 }
 
 const hoursBefore = (iso: string, hours: number) => new Date(new Date(iso).getTime() - hours * 3_600_000);
-/**
- * A "definitely delivered" watermark for a message.
- *
- * NOT the message's own `createdAt`. Postgres timestamptz has microsecond
- * resolution; `createdAt` round-trips through JSON at millisecond resolution
- * (`Date#toJSON`), so the value a client ever sees is the FLOOR of the true
- * column value. Acking exactly that floor back can still land microseconds
- * BEFORE the true `created_at`, which the inclusive `delivered_through <
- * created_at` guard reads as "still owed" — not a bug in the guard (no real
- * client can ever observe more precision than the wire format gives it
- * either), but it means "delivered through X" must never be tested with X's
- * own timestamp verbatim. A few ms of slack clears it unambiguously.
+/*
+ * R-3b (fixed): this file used to add a few ms of slack before acking
+ * through a message's own `createdAt`, because `chat_delivery_cursors` was
+ * compared against `chat_messages.created_at` at the column's native
+ * microsecond resolution while a client can only ever observe (and echo
+ * back) the millisecond floor of it. `purgeDeliveredCiphertext`
+ * (src/lib/chatDeliveryPurge.ts) now compares both sides at millisecond
+ * resolution instead, so every case below acks with the message's `createdAt`
+ * VERBATIM — exactly what a real client sends — with no artificial buffer.
+ * See the regression test in src/__tests__/chatDeliveryPurge.test.ts
+ * ('R-3b REGRESSION: acking through the EXACT wire value...') for the
+ * SQL-level proof against a row seeded with genuine microsecond precision.
  */
-const msAfter = (iso: string, ms = 5) => new Date(new Date(iso).getTime() + ms);
 
 describe.sequential('Chat delivery purge (R-1) — real HTTP against the running container', () => {
   beforeAll(async () => {
@@ -247,14 +246,15 @@ describe.sequential('Chat delivery purge (R-1) — real HTTP against the running
     // control message only — the target is still outstanding for B.
     await insertCursor(topicId, DEVICE_B, bId, {
       firstSeenAt: hoursBefore(control.createdAt, 1),
-      deliveredThrough: msAfter(control.createdAt),
+      deliveredThrough: new Date(control.createdAt),
     });
 
     // The one HTTP call that may trigger a sweep for this topic — matches the
-    // DB state (idempotent GREATEST), so it also IS the trigger.
+    // DB state (idempotent GREATEST), so it also IS the trigger. Acks with
+    // `control.createdAt` VERBATIM — exactly what a real client received.
     const ack = await secondUserPost(`/api/topics/${topicId}/chat/delivered`, {
       deviceId: DEVICE_B,
-      through: msAfter(control.createdAt).toISOString(),
+      through: control.createdAt,
     });
     expect(ack.status).toBe(200);
 
@@ -283,9 +283,10 @@ describe.sequential('Chat delivery purge (R-1) — real HTTP against the running
     const before = await findMessage(topicId, target.id, anchor.createdAt);
     expect(before.sealed).not.toBeNull();
 
+    // Acks with `target.createdAt` VERBATIM — exactly what a real client received.
     const ack = await secondUserPost(`/api/topics/${topicId}/chat/delivered`, {
       deviceId: DEVICE_B,
-      through: msAfter(target.createdAt).toISOString(),
+      through: target.createdAt,
     });
     expect(ack.status).toBe(200);
 
@@ -317,10 +318,11 @@ describe.sequential('Chat delivery purge (R-1) — real HTTP against the running
     await deleteArchive(topicId, target.id); // ...then lost, per the file header's failure mode
 
     // B is fully delivered for BOTH messages — the ONLY thing standing between
-    // `target` and deletion is the missing archive row.
+    // `target` and deletion is the missing archive row. Acks with
+    // `target.createdAt` VERBATIM — exactly what a real client received.
     const ack = await secondUserPost(`/api/topics/${topicId}/chat/delivered`, {
       deviceId: DEVICE_B,
-      through: msAfter(target.createdAt).toISOString(),
+      through: target.createdAt,
     });
     expect(ack.status).toBe(200);
 
@@ -384,9 +386,10 @@ describe.sequential('Chat delivery purge (R-1) — real HTTP against the running
       deliveredThrough: hoursBefore(target.createdAt, 1),
     });
 
+    // Acks with `target.createdAt` VERBATIM — exactly what a real client received.
     const ack = await secondUserPost(`/api/topics/${topicId}/chat/delivered`, {
       deviceId: DEVICE_B,
-      through: msAfter(target.createdAt).toISOString(),
+      through: target.createdAt,
     });
     expect(ack.status).toBe(200);
 

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/profile/image';
 
@@ -112,9 +113,7 @@ export async function GET(request: NextRequest) {
     const profileImage = rows[0]?.profileImage ?? null;
     return NextResponse.json({ profileImage });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -148,9 +147,7 @@ export async function PUT(request: NextRequest) {
     logger.info(ROUTE, 'Profile image updated', { userId: session.userId });
     return NextResponse.json({ success: true, profileImage: imageUrl });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PUT', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PUT', error);
   }
 }
 
@@ -170,8 +167,6 @@ export async function DELETE(request: NextRequest) {
     logger.info(ROUTE, 'Profile image removed', { userId: session.userId });
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

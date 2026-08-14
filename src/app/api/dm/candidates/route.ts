@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { getBatchUserBadges } from '@/lib/verification-cache';
 import { normaliseSearchQuery } from '@/lib/search';
@@ -194,8 +195,6 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ candidates });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

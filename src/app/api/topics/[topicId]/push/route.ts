@@ -14,6 +14,7 @@ import { db } from '@/lib/db';
 import { topics, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { checkRateLimit, type RateLimit } from '@/lib/mls/http';
 import {
   isUuid,
@@ -132,9 +133,7 @@ export async function GET(
       willNotify: globalEnabled && !muted,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -251,8 +250,6 @@ export async function PATCH(
       willNotify: globalEnabled && !result.muted,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }

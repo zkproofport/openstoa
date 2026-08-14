@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { topicMembers, topics } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import {
   claimOrRenewHolder,
   updateHolderCoverage,
@@ -103,9 +104,7 @@ export async function GET(
     const holder = await getHolder(db, topicId);
     return NextResponse.json({ holder });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -234,9 +233,7 @@ export async function POST(
     });
     return NextResponse.json({ renewed: result.renewed, holder: result.state });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -298,9 +295,7 @@ export async function DELETE(
     logger.info(ROUTE, 'Holder lease release requested', { topicId, userId: session.userId, deviceId, released });
     return NextResponse.json({ released });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }
 
@@ -386,8 +381,6 @@ export async function PATCH(
     }
     return NextResponse.json({ epochCovered: result.epochCovered, currentEpoch: result.currentEpoch });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }

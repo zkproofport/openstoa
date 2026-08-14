@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { revokeApiKey, updateApiKey, toApiKeyMeta, ApiKeyValidationError, requireNonApiKeySession } from '@/lib/apiKeys';
 
 const ROUTE = '/api/profile/api-keys/[keyId]';
@@ -96,9 +97,7 @@ export async function PATCH(
     logger.info(ROUTE, 'API key scope updated', { userId: session.userId, keyId, cmd: updated.cmd, historyGrant: updated.historyGrant });
     return NextResponse.json({ key: toApiKeyMeta(updated) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }
 
@@ -158,8 +157,6 @@ export async function DELETE(
     logger.info(ROUTE, 'API key revoked', { userId: session.userId, keyId });
     return NextResponse.json({ revoked: true, id: keyId });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { checkRateLimit, type RateLimit } from '@/lib/mls/http';
 import {
   getPushPreferences,
@@ -73,9 +74,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const prefs = await getPushPreferences(db, session.userId);
     return NextResponse.json(prefs);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -159,8 +158,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json({ enabled: stored, mutedTopicIds });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }

@@ -5,6 +5,7 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/auth/dev-login';
 
@@ -40,8 +41,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ userId, nickname, token, isAI });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'Error', error);
   }
 }

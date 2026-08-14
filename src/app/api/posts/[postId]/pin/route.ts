@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { posts, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/posts/[postId]/pin';
 
@@ -86,8 +87,6 @@ export async function POST(
     logger.info(ROUTE, 'Post pin toggled', { userId: session.userId, postId, isPinned: newIsPinned });
     return NextResponse.json({ isPinned: newIsPinned });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

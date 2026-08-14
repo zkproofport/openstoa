@@ -14,6 +14,7 @@ import {
 } from '@/lib/db/schema';
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { buildProofRequirement } from '@/lib/proof-guides';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteR2Prefix, topicObjectPrefix } from '@/lib/r2';
@@ -208,9 +209,7 @@ export async function GET(
       proofRequirement,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -355,9 +354,7 @@ export async function PATCH(
     logger.info(ROUTE, 'Topic updated', { userId: session.userId, topicId, fields: Object.keys(updateData) });
     return NextResponse.json({ topic: updated });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }
 
@@ -506,8 +503,6 @@ export async function DELETE(
     });
     return NextResponse.json({ deleted: true, topicId, deletedPostCount: postIds.length });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

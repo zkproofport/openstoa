@@ -5,6 +5,7 @@ import { topics, topicMembers, inviteTokens } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/topics/join/[inviteCode]';
 
@@ -184,9 +185,7 @@ export async function GET(
       isMember: !!membership,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -288,8 +287,6 @@ export async function POST(
     logger.info(ROUTE, 'User joined topic via invite code', { userId: session.userId, topicId: topic.id, visibility: topic.visibility, singleUse: !!singleUseTokenId });
     return NextResponse.json({ success: true, topicId: topic.id }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { checkRateLimit, type RateLimit } from '@/lib/mls/http';
 
 const ROUTE = '/api/diag/e2ee';
@@ -59,8 +60,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     logger.info(ROUTE, 'E2EE diagnostic', { userId: session.userId, step, detail: serialized });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

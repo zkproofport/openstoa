@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { reactions, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { updateTopicScore } from '@/lib/topicScore';
 
 const ROUTE = '/api/posts/[postId]/reactions';
@@ -124,9 +125,7 @@ export async function GET(
     logger.info(ROUTE, 'Reactions fetched', { postId, count: rows.length, guest: !session });
     return NextResponse.json({ reactions: rows });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -208,8 +207,6 @@ export async function POST(
       return NextResponse.json({ added: true });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

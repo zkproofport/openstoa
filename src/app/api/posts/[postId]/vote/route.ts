@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { votes, posts } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { updatePostScore } from '@/lib/postScore';
 import { updateTopicScore } from '@/lib/topicScore';
 
@@ -198,8 +199,6 @@ export async function POST(
       return NextResponse.json({ vote: { value }, upvoteCount: updatedPost.upvoteCount });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

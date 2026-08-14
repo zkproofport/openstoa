@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRelayProofRequest, type ExtendedCircuitType } from '@/lib/relay';
 import { COMMUNITY_SCOPE } from '@/lib/proof';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/auth/proof-request';
 
@@ -95,8 +96,6 @@ export async function POST(request: NextRequest) {
       circuitType,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Failed to create relay proof request', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'Failed to create relay proof request', error);
   }
 }

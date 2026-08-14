@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { bookmarks, posts } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/posts/[postId]/bookmark';
 
@@ -98,9 +99,7 @@ export async function GET(
 
     return NextResponse.json({ bookmarked: !!existing });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -158,8 +157,6 @@ export async function POST(
       return NextResponse.json({ bookmarked: true });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }

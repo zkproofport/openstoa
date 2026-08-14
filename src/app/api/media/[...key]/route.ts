@@ -48,6 +48,7 @@ import { db } from '@/lib/db';
 import { topics, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { getR2ObjectWithMeta, parseMediaObjectKey, tryGetR2PublicUrl } from '@/lib/r2';
 
 const ROUTE = '/api/media/[...key]';
@@ -260,8 +261,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }

@@ -8,6 +8,7 @@ import { topics } from '@/lib/db/schema';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/topics/[topicId]/members';
 
@@ -312,9 +313,7 @@ export async function PATCH(
     logger.info(ROUTE, 'Member role updated', { topicId, targetUserId: userId, newRole: role, byUserId: session.userId });
     return NextResponse.json({ success: true, role });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in PATCH', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PATCH', error);
   }
 }
 
@@ -395,8 +394,6 @@ export async function DELETE(
     logger.info(ROUTE, 'Member kicked', { topicId, kickedUserId: userId, byUserId: session.userId });
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

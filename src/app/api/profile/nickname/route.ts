@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 
 const ROUTE = '/api/profile/nickname';
@@ -140,8 +141,6 @@ export async function PUT(request: NextRequest) {
     setSessionCookie(response, token);
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'PUT', error);
   }
 }

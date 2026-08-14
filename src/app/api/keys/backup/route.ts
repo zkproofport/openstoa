@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { unhandledRouteError } from '@/lib/apiError';
 import { decodeBase64Strict, checkRateLimit, type RateLimit } from '@/lib/mls/http';
 import {
   upsertKeyBackup,
@@ -49,9 +50,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       passkeys: passkeys.map((p) => ({ credentialId: p.credentialId, prfWrapped: p.prfWrapped.toString('base64') })),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in GET', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'GET', error);
   }
 }
 
@@ -117,9 +116,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ error: "type must be 'recovery' or 'passkey'" }, { status: 400 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in POST', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
 
@@ -141,8 +138,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     const removed = await deletePasskeyWrap(db, session.userId, credentialId);
     return NextResponse.json({ removed });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(ROUTE, 'Unhandled error in DELETE', { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return unhandledRouteError(ROUTE, 'DELETE', error);
   }
 }

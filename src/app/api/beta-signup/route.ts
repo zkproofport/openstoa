@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { unhandledRouteError } from '@/lib/apiError';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const SUPPORT_EMAIL = 'support@zkproofport.app';
 const FROM_EMAIL = 'OpenStoa <noreply@zkproofport.app>';
+const ROUTE = '/api/beta-signup';
 
 /**
  * @openapi
@@ -101,9 +103,8 @@ Please register this email as a tester on the corresponding platform (App Store 
       subject: `[Beta Invite] ${trimmedEmail} — ${resolvedPlatform}`,
       html: htmlBody,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to send email';
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error) {
+    return unhandledRouteError(ROUTE, 'POST', error);
   }
 
   return NextResponse.json({ success: true }, { status: 200 });
