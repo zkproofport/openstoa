@@ -11,6 +11,7 @@ import { requireAiCapability } from '@/lib/aiPermissions';
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { attachPollsToPosts } from '@/lib/polls';
 import { isSupportedVideoUrl } from '@/lib/videoUrls';
+import { hasNulByte } from '@/lib/textGuard';
 type Badge = { type: string; label: string };
 
 const ROUTE = '/api/posts/[postId]';
@@ -377,12 +378,18 @@ export async function GET(
     });
 
     if (!membership) {
-      // Public topics: allow reading for non-members
+      /*
+       * Same rule as the topic's post LIST: public and private are readable by
+       * any signed-in user, `secret` is members-only. A detail page that 403s
+       * on a post whose list row was just shown is the drift this mirrors away.
+       */
       const topicCheck = await db.query.topics.findFirst({
         where: eq(topics.id, post.topicId),
         columns: { visibility: true },
       });
-      if (!topicCheck || topicCheck.visibility !== 'public') {
+      const readableToSignedIn =
+        topicCheck?.visibility === 'public' || topicCheck?.visibility === 'private';
+      if (!topicCheck || !readableToSignedIn) {
         logger.warn(ROUTE, 'User is not a member of the post topic', { userId: session.userId, postId, topicId: post.topicId });
         return NextResponse.json(
           { error: 'Not a member of this topic' },
@@ -674,6 +681,10 @@ export async function PATCH(
       if (title.length > 200) {
         return NextResponse.json({ error: 'Title must be 200 characters or less' }, { status: 400 });
       }
+      // Postgres text storage cannot hold a NUL byte (see src/lib/textGuard.ts).
+      if (hasNulByte(title)) {
+        return NextResponse.json({ error: 'Title must not contain a NUL byte' }, { status: 400 });
+      }
       updateData.title = title;
     }
 
@@ -687,8 +698,12 @@ export async function PATCH(
           { status: 400 },
         );
       }
+      if (hasNulByte(content)) {
+        return NextResponse.json({ error: 'Content must not contain a NUL byte' }, { status: 400 });
+      }
       // Extract base64 images from content and upload to R2
-      updateData.content = await extractAndUploadBase64Images(content, session.userId);
+      // Filed under the post's OWN topic, so a topic deletion sweeps it (M-3).
+      updateData.content = await extractAndUploadBase64Images(content, session.userId, post.topicId);
     }
 
     const MAX_IMAGES = 10;

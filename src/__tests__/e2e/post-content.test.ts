@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authGet, authPost, authPatch, publicGet, getBaseUrl, getAuthToken, getCdnOrigin, imgSrcs, R2_HOSTS } from './helpers';
+import { authGet, authPost, authPatch, publicGet, getBaseUrl, getAuthToken, getCdnOrigin, imgSrcs, isKnownMediaHost, R2_HOSTS } from './helpers';
 
 // 1x1 red PNG buffer — small enough to inline.
 function tinyPngBuffer(): Buffer {
@@ -369,10 +369,13 @@ describe.sequential('Post rich content E2E', () => {
     const json = await res.json();
     expect(typeof json.publicUrl).toBe('string');
     const url = new URL(json.publicUrl);
-    // On the CDN, not served back off the app origin, and on a host the app
-    // itself recognises as R2 (so cache busting applies to it too).
-    expect(url.protocol).toBe('https:');
-    expect(R2_HOSTS).toContain(url.hostname);
+    // On the object store, not served back off the app origin. A deployed
+    // environment must be one of the app's own R2 hosts over https, so cache
+    // busting applies to it; a local stack serves from the MinIO that dev.sh
+    // starts, whose address is the developer's LAN IP over http and cannot be
+    // enumerated in advance.
+    expect(isKnownMediaHost(url.hostname), `${url.hostname} is neither an R2 host nor a local one`).toBe(true);
+    if (R2_HOSTS.includes(url.hostname)) expect(url.protocol).toBe('https:');
     expect(url.origin).not.toBe(new URL(getBaseUrl()).origin);
     expect(url.origin).toBe(cdnOrigin);
     // The returned URL should be fetchable.

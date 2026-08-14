@@ -208,6 +208,7 @@ const API_TAG_DESCRIPTIONS: Record<string, string> = {
   Account: 'Delete account.',
   Profile: 'Nickname, avatar, badges.',
   Upload: 'Media upload + draft cleanup.',
+  Media: 'Gated read path for uploaded images (post images, topic covers, avatars) — the URLs `Upload` mints.',
   Topics: 'Topic CRUD + invite + listing.',
   Members: 'List members, change role, remove.',
   JoinRequests: 'Approve/reject pending join requests.',
@@ -642,7 +643,7 @@ function splitAgentsMdByH2(content: string): H2Section[] {
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
 
 const TAG_ORDER = [
-  'Health', 'Auth', 'Account', 'Profile', 'Upload', 'Categories',
+  'Health', 'Auth', 'Account', 'Profile', 'Upload', 'Media', 'Categories',
   'Topics', 'Members', 'JoinRequests', 'Posts', 'Comments', 'Votes',
   'Reactions', 'Bookmarks', 'Pins', 'Records', 'Tags', 'Chat', 'Push', 'AI',
   'Feed', 'MyActivity', 'OG', 'Polls', 'Notes', 'Documentation', 'Other',

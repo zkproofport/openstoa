@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { uploadToR2, deleteFromR2ByUrl, type UploadPurpose } from '@/lib/r2';
+import { db } from '@/lib/db';
+import { topicMembers } from '@/lib/db/schema';
+import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ROUTE = '/api/upload';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // HEIC/HEIF container brands at bytes 4..12 of an ISO BMFF file. iPhone
 // Photos can hand the mobile picker raw HEIC bytes even when the picker
@@ -73,7 +77,19 @@ function loadHeicConvert(): HeicConvertFn | null {
  *               purpose:
  *                 type: string
  *                 enum: [post, topic, avatar]
- *                 description: "Upload purpose for path organization (default: post)"
+ *                 description: "What the image is for (default: post). Decides which folder it lands in."
+ *               topicId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: >-
+ *                   The topic this image belongs to. **Send it whenever you have one.** Objects
+ *                   are stored partitioned by topic (`topics/{topicId}/…`), and deleting a topic
+ *                   deletes everything under that prefix — so an image uploaded WITHOUT a topicId
+ *                   survives the deletion of the topic it was posted in, forever. You must be a
+ *                   member of the topic: a topicId you are not in is refused with 403, and a
+ *                   malformed one with 400 (it is never silently ignored). Omit it only when there
+ *                   is genuinely no topic yet — a profile picture (`purpose=avatar`), or the image
+ *                   for a topic you have not created yet.
  *     responses:
  *       200:
  *         description: File uploaded successfully
@@ -86,9 +102,11 @@ function loadHeicConvert(): HeicConvertFn | null {
  *                   type: string
  *                   description: Permanent public URL for the uploaded file
  *       400:
- *         description: Invalid request (missing file, wrong MIME type, or file too large)
+ *         description: Invalid request (missing file, wrong MIME type, file too large, or malformed topicId)
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: The caller is not a member of the topic named in `topicId`
  */
 export async function POST(request: NextRequest) {
   logger.info(ROUTE, 'POST request received');
@@ -132,6 +150,44 @@ export async function POST(request: NextRequest) {
       typeof purposeField === 'string' && VALID_PURPOSES.includes(purposeField as UploadPurpose)
         ? (purposeField as UploadPurpose)
         : 'post';
+
+    /*
+     * WHICH TOPIC this object belongs to, so it lands under `topics/{id}/` and
+     * a topic deletion can reach it with one prefix sweep. Optional, because
+     * two real callers have no topic to name: the topic-CREATION image (the
+     * topic does not exist yet) and an agent uploading before it has chosen
+     * where to post. Those go under `users/{id}/uploads/` and are outside the
+     * sweep — stated in AGENTS.md rather than hidden.
+     *
+     * MEMBERSHIP IS CHECKED, not trusted. Without it any signed-in account
+     * could file objects under any topic's prefix: junk another topic's
+     * storage, and have it deleted by a topic deletion they do not control.
+     * A bad topicId is refused (400/403) rather than silently downgraded to the
+     * user path — a caller that names a topic is making a claim, and a claim
+     * that is wrong should be corrected, not quietly reinterpreted.
+     */
+    const topicIdField = formData.get('topicId');
+    let resolvedTopicId: string | null = null;
+    if (typeof topicIdField === 'string' && topicIdField.length > 0) {
+      if (!UUID_RE.test(topicIdField)) {
+        logger.warn(ROUTE, 'Malformed topicId', { userId: session.userId, topicId: topicIdField });
+        return NextResponse.json({ error: 'topicId must be a uuid' }, { status: 400 });
+      }
+      const membership = await db.query.topicMembers.findFirst({
+        where: and(
+          eq(topicMembers.topicId, topicIdField),
+          eq(topicMembers.userId, session.userId),
+        ),
+      });
+      if (!membership) {
+        logger.warn(ROUTE, 'Upload into a topic the caller is not in', {
+          userId: session.userId,
+          topicId: topicIdField,
+        });
+        return NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 });
+      }
+      resolvedTopicId = topicIdField;
+    }
 
     let buffer: Buffer = Buffer.from(await file.arrayBuffer());
     let filename = file.name || undefined;
@@ -181,11 +237,12 @@ export async function POST(request: NextRequest) {
       userId: session.userId,
       contentType,
       purpose: resolvedPurpose,
+      topicId: resolvedTopicId,
       size: buffer.length,
       filename,
     });
 
-    const publicUrl = await uploadToR2(buffer, contentType, session.userId, resolvedPurpose, filename);
+    const publicUrl = await uploadToR2(buffer, contentType, session.userId, resolvedPurpose, filename, resolvedTopicId);
 
     logger.info(ROUTE, 'Upload complete', { userId: session.userId, publicUrl });
     return NextResponse.json({ publicUrl });

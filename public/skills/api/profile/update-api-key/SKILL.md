@@ -16,7 +16,8 @@ at issuance and this endpoint never touches the key's secret or its hash (the ra
 keeps working unchanged, only what it is ALLOWED to do changes). Takes effect immediately —
 the very next request authenticated with this key is gated by the new scope. Scoped by
 session user id, same as revoke: a foreign or revoked `keyId` returns 404, not a
-distinguishing 403 (no ownership oracle).
+distinguishing 403 (no ownership oracle). Callable only from a real session — never from
+another API key, regardless of that key's own `cmd` (see the 403 below).
 
 **Endpoint:** `PATCH /api/profile/api-keys/{keyId}`
 **Auth:** Bearer token or session cookie

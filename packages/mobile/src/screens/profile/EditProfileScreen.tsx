@@ -396,7 +396,7 @@ export function EditProfileScreen() {
     if (result.canceled || !result.assets[0]) return;
     setImageUploading(true);
     try {
-      const publicUrl = await client.uploadFile(result.assets[0].uri);
+      const publicUrl = await client.uploadFile(result.assets[0].uri, { purpose: 'avatar' });
       await client.put('/api/profile/image', { imageUrl: publicUrl });
       void queryClient.invalidateQueries({ queryKey: ['profile', 'image'] });
       void queryClient.invalidateQueries({ queryKey: ['session'] });

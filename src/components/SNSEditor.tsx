@@ -23,6 +23,13 @@ interface SNSEditorProps {
   /** Initial state to hydrate the editor from (used for the edit form so
    *  the user sees the post's current body/media). */
   initialState?: SNSEditorState;
+  /**
+   * The topic being composed in. Sent with each upload so the image is filed
+   * under `topics/{id}/` and a topic deletion reaches it (M-3). Omitted only
+   * where there is genuinely no topic yet — the object then lands under the
+   * uploader and survives the topic's deletion.
+   */
+  topicId?: string;
 }
 
 // ─── Video URL Validation ──────────────────────────────────────────────────
@@ -106,6 +113,7 @@ export default function SNSEditor({
   maxImages = 10,
   maxVideos = 3,
   initialState,
+  topicId,
 }: SNSEditorProps) {
   const { t } = useTranslation();
   const effectivePlaceholder = placeholder ?? t('snsEditor.placeholder');
@@ -177,6 +185,8 @@ export default function SNSEditor({
       const form = new FormData();
       form.append('file', file, file.name);
       form.append('purpose', 'post');
+      // Files the object under the topic, so deleting the topic deletes it.
+      if (topicId) form.append('topicId', topicId);
 
       const res = await fetch('/api/upload', {
         method: 'POST',

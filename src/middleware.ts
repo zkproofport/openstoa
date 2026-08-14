@@ -56,6 +56,10 @@ const GUEST_ACCESSIBLE_PREFIXES = [
   '/api/categories', // GET /api/categories
   '/api/feed',     // GET /api/feed (cross-topic feed)
   '/api/stats',    // GET /api/stats (community stats)
+  '/api/media/',   // GET /api/media/[...key] (M-5) — the route itself decides
+                   // guest/member/owner per object; middleware must not 401
+                   // a guest before the route gets a chance to allow public
+                   // topic images and avatars through.
 ];
 
 function isPublicPath(pathname: string): boolean {

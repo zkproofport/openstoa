@@ -50,6 +50,74 @@ export function sharedTakKey(topicId: string, takVersion: number): string {
 }
 
 /**
+ * Storage entry name for the session the iOS extension fetches ATTACHMENTS with
+ * (P-1). Mirrors `TakKeychain.pushSessionAccount` in the NSE.
+ *
+ * Per TOPIC, for the same reason the TAK is: the host owns ONE APNs token while
+ * the mini-app may hold several session nullifiers, and the push carries none.
+ * An entry written under a topic is by construction a session that is a member
+ * of it, so the extension picks the right one without knowing which nullifier
+ * the push was routed to (§13.6).
+ */
+export function sharedPushSessionKey(topicId: string): string {
+  return `openstoa.push.session.${topicId}`;
+}
+
+/**
+ * Mirror the credential the iOS Notification Service Extension needs to FETCH an
+ * attachment (P-1).
+ *
+ * A message preview needs only a key, because the ciphertext rides in the push.
+ * A picture does not fit in a push, so the extension has to go and get it — and
+ * the read route is membership-gated, correctly, since a public object URL would
+ * be an unauthenticated handle outliving every membership check. The extension
+ * cannot ask this process for a token (different process, app not running), so
+ * the token has to be sitting in shared storage before the push arrives, exactly
+ * like the TAK beside it.
+ *
+ * What is stored is a bearer token, which is more sensitive than the TAK only in
+ * that it is not topic-scoped. It goes to the SAME access group — scoped by the
+ * app identifier prefix, so only this app's own binaries can read it — under the
+ * same `AFTER_FIRST_UNLOCK` protection, and is overwritten on every visit to the
+ * room, so a stale one is replaced rather than accumulating. A stale entry is not
+ * a failure mode worth guarding: the fetch 401s and the recipient gets the
+ * caption without the thumbnail.
+ *
+ * iOS only. Android's handler shows text and never fetches (see
+ * `OpenStoaPushHandler`), so mirroring a token there would store a credential
+ * for a caller that does not exist.
+ */
+export async function mirrorPushSessionWith(
+  store: SecureStoreLike | null,
+  platformOS: string,
+  topicId: string,
+  baseUrl: string,
+  token: string,
+): Promise<boolean> {
+  if (typeof topicId !== 'string' || topicId.length === 0) return false;
+  if (typeof token !== 'string' || token.length === 0) return false;
+  // Absolute http(s) only. The extension re-checks this before sending the
+  // token anywhere, but a value that could never be usable should not be
+  // written in the first place.
+  if (typeof baseUrl !== 'string' || !/^https?:\/\/[^/\s]+/i.test(baseUrl)) return false;
+  if (platformOS !== 'ios') return false;
+  if (!store || typeof store.setItemAsync !== 'function') return false; // stale host binary
+  try {
+    await store.setItemAsync(
+      sharedPushSessionKey(topicId),
+      JSON.stringify({ baseUrl, token }),
+      {
+        keychainAccessGroup: SHARED_KEYCHAIN_ACCESS_GROUP,
+        keychainAccessible: store.AFTER_FIRST_UNLOCK ?? undefined,
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The slice of `expo-secure-store` we use. Declared structurally rather than
  * imported: the package is a HOST dependency, not one of this package's own.
  */

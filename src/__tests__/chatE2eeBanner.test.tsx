@@ -142,7 +142,24 @@ function composerInput(): HTMLInputElement {
   return container.querySelector('input[type="text"]') as HTMLInputElement;
 }
 
+/**
+ * What `GET /api/topics/{id}` answers for the room under test — the two fields
+ * the banner derives its tier from. Public by default, because that is the tier
+ * whose claim is most easily got wrong; a case that needs another tier sets
+ * this before mounting.
+ */
+let topicMeta: { visibility?: string; kind?: string } = { visibility: 'public' };
+
+/**
+ * When set, the topic lookup does not answer until this resolves — the only way
+ * to observe the frame BEFORE the tier is known, which is where a banner could
+ * flash a promise it has to withdraw.
+ */
+let topicMetaGate: Promise<void> | null = null;
+
 beforeEach(() => {
+  topicMeta = { visibility: 'public' };
+  topicMetaGate = null;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -154,7 +171,8 @@ beforeEach(() => {
       const url = String(input);
       if (url === '/api/auth/session') return json({ userId: 'me' });
       if (url === `/api/topics/${TOPIC}`) {
-        return json({ topic: { visibility: 'public' }, currentUserRole: 'member' });
+        if (topicMetaGate) await topicMetaGate;
+        return json({ topic: topicMeta, currentUserRole: 'member' });
       }
       if (url.startsWith(`/api/topics/${TOPIC}/chat`)) return json({ messages: [], total: 0 });
       return json({ error: 'not found' }, false, 404);
@@ -171,29 +189,115 @@ afterEach(async () => {
 });
 
 describe('E2EE banner', () => {
-  it('CONTRACT: the banner is present and its copy comes from the en dictionary', async () => {
+  /*
+   * This panel is mounted over a PUBLIC topic (see the fetch stub above), and
+   * public is the one tier whose archive key the server holds. The banner used
+   * to say "the server cannot read this" in every room, which was false here —
+   * so the cases below assert the tier-appropriate claim AND the absence of the
+   * encryption promise. A regression that restores the old single string fails
+   * both halves.
+   */
+  it('CONTRACT: a PUBLIC room says the service can read it — and never claims e2ee', async () => {
     await mount();
 
     expect(banner()).not.toBeNull();
-    expect(banner()!.textContent).toContain(enLocale.chat.e2ee);
-    // The claim itself, not a paraphrase: the server must be named as unable
-    // to read the contents.
-    expect(enLocale.chat.e2ee.toLowerCase()).toContain('server');
+    expect(banner()!.textContent).toContain(enLocale.chat.tierClaim.serverReadable);
+    expect(banner()!.textContent).not.toContain(enLocale.chat.tierClaim.e2ee);
+    // The claim itself, not a paraphrase: the service must be named as able to
+    // read this tier's history.
+    expect(enLocale.chat.tierClaim.serverReadable.toLowerCase()).toContain('service');
+    expect(banner()!.getAttribute('data-claim')).toBe('serverReadable');
   });
 
   it('LOCALE ko: the same banner renders the Korean string, not the English one', async () => {
     await mount({}, 'ko');
 
-    expect(banner()!.textContent).toContain(koLocale.chat.e2ee);
-    expect(banner()!.textContent).not.toContain(enLocale.chat.e2ee);
+    expect(banner()!.textContent).toContain(koLocale.chat.tierClaim.serverReadable);
+    expect(banner()!.textContent).not.toContain(enLocale.chat.tierClaim.serverReadable);
   });
 
-  it('AUTHZ guest: the encryption claim still shows, but there is no connection state', async () => {
+  it('AUTHZ guest: the claim still shows, but there is no connection state', async () => {
+    // A guest is deciding whether to join; what the service can read is exactly
+    // the thing they are deciding about.
     await mount({ isGuest: true, isMember: false });
 
     expect(banner()).not.toBeNull();
-    expect(banner()!.textContent).toContain(enLocale.chat.e2ee);
+    expect(banner()!.textContent).toContain(enLocale.chat.tierClaim.serverReadable);
+    expect(banner()!.textContent).not.toContain(enLocale.chat.tierClaim.e2ee);
     expect(connection()).toBeNull();
+  });
+
+  it('a PRIVATE room does claim end-to-end encryption — the promise is real there', async () => {
+    topicMeta = { visibility: 'private' };
+    await mount();
+
+    expect(banner()!.getAttribute('data-claim')).toBe('e2ee');
+    expect(banner()!.textContent).toContain(enLocale.chat.tierClaim.e2ee);
+    expect(banner()!.textContent).not.toContain(enLocale.chat.tierClaim.serverReadable);
+  });
+
+  it('a SECRET room claims it too', async () => {
+    topicMeta = { visibility: 'secret' };
+    await mount();
+
+    expect(banner()!.getAttribute('data-claim')).toBe('e2ee');
+  });
+
+  it('a DM claims it whatever visibility its row carries', async () => {
+    // A DM is a two-member topic with `kind='dm'`; its `visibility` column is
+    // not the thing that decides its tier, and reading it would be the bug.
+    topicMeta = { visibility: 'public', kind: 'dm' };
+    await mount();
+
+    expect(banner()!.getAttribute('data-claim')).toBe('e2ee');
+  });
+
+  it('RACE: before the topic lookup answers, the banner promises the LEAST', async () => {
+    /*
+     * The lookup is a fetch; the first frame paints without it. A panel that
+     * defaulted to "end-to-end encrypted" would flash a promise it might then
+     * have to withdraw — so the default is the tier that claims least, and a
+     * private room is only upgraded once the answer is in.
+     */
+    topicMeta = { visibility: 'private' };
+    let answer: () => void = () => {};
+    topicMetaGate = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+
+    await act(async () => {
+      root.render(
+        <I18nProvider initialLocale="en">
+          <ChatPanel topicId={TOPIC} isGuest={false} isMember />
+        </I18nProvider>,
+      );
+    });
+    // The lookup is still in flight here — this is the frame a real reader sees
+    // on a slow network.
+    expect(banner()!.getAttribute('data-claim')).toBe('serverReadable');
+
+    await act(async () => {
+      answer();
+    });
+    await flush();
+    expect(banner()!.getAttribute('data-claim')).toBe('e2ee');
+  });
+
+  it('HOSTILE: an unrecognised visibility never buys the encryption promise', async () => {
+    for (const bad of ['PRIVATE', 'sekret', '', '{}']) {
+      topicMeta = { visibility: bad };
+      await mount();
+      expect(banner()!.getAttribute('data-claim'), bad).toBe('serverReadable');
+      await act(async () => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('CONTRACT: the banner links to the page that explains the tiers', async () => {
+    await mount();
+    const link = banner()!.querySelector('a');
+    expect(link?.getAttribute('href')).toBe('/docs/tiers');
+    expect(link?.textContent).toBe(enLocale.chat.tierClaim.learnMore);
   });
 
   it('AUTHZ non-member: same as guest — claim shown, no connection state', async () => {

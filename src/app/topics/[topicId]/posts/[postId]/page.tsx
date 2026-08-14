@@ -711,6 +711,7 @@ export default function PostPage() {
                 }}
               />
               <SNSEditor
+                topicId={topicId}
                 placeholder="Write your post..."
                 onChange={setEditorState}
                 minHeight={180}

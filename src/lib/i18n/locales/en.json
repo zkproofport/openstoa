@@ -349,6 +349,7 @@
     "openConversationFailed": "Failed to open conversation",
     "updateRoleFailed": "Failed to update role",
     "kickFailed": "Failed to kick member",
+    "kickPartial": "Removed from the topic. {{count}} of their devices could not be removed from the encrypted chat, so those devices can still read messages sent from now on. This affects devices that joined before devices could be identified.",
     "transferFailed": "Failed to transfer ownership",
     "backToTopics": "Back to topics",
     "copied": "Copied!",
@@ -369,7 +370,15 @@
     "kick": "Kick",
     "makeAdmin": "Make Admin",
     "removeAdmin": "Remove Admin",
-    "transfer": "Transfer"
+    "transfer": "Transfer",
+    "leave": "Leave topic",
+    "leaveConfirm": "Leave this topic?",
+    "leaveExplain": "You will lose access to the chat and its history on this device. You can rejoin later, but past messages will not come back unless the topic keeps them.",
+    "leaveOwnerBlocked": "Transfer ownership before leaving.",
+    "leaveFailed": "Failed to leave topic",
+    "leaving": "Leaving…",
+    "left": "You left the topic",
+    "requestsRetired": "Topics are invite-only now, so no new join requests arrive. Anything still listed here was sent before that change and can still be approved."
   },
   "newTopicPage": {
     "createFailed": "Failed to create topic",
@@ -392,7 +401,7 @@
       },
       "private": {
         "label": "Private",
-        "desc": "Visible to all, requires approval to join"
+        "desc": "Listed, and anyone signed in can read posts — chat is invite-only"
       },
       "secret": {
         "label": "Secret",
@@ -437,7 +446,31 @@
     },
     "privacyBody": "Proof verification is privacy-preserving. Only a hashed verification status is cached for 30 days — no email, domain, or country is stored in the database. Members who already verified within 30 days can join without re-proving.",
     "creating": "Creating...",
-    "createTopic": "Create Topic"
+    "createTopic": "Create Topic",
+    "archiveRetention": {
+      "label": "Chat history",
+      "hint": "How long this topic keeps its encrypted chat archive. Choose once — it cannot be changed later.",
+      "cost": "A shorter window means less to catch up on: anything older is deleted for everyone, so a member who joins later sees less.",
+      "options": {
+        "unlimited": {
+          "label": "Keep forever",
+          "desc": "Nothing is deleted. A member who joins later can read the whole conversation."
+        },
+        "year1": {
+          "label": "1 year",
+          "desc": "Messages older than a year are deleted."
+        },
+        "days90": {
+          "label": "90 days",
+          "desc": "Messages older than 90 days are deleted."
+        },
+        "days30": {
+          "label": "30 days",
+          "desc": "Messages older than 30 days are deleted. A later joiner sees the last month only."
+        }
+      }
+    },
+    "tiersLink": "How the four kinds of room differ →"
   },
   "topicPage": {
     "topicNotFound": "Topic not found",
@@ -445,7 +478,7 @@
     "topicsBreadcrumb": "Topics",
     "privateTopic": {
       "title": "Private Topic",
-      "body": "This is a private topic. Sign in and join to view posts."
+      "body": "This is a private topic. Sign in to read its posts; joining the chat needs an invite link."
     },
     "guestBanner": "Sign in to participate in discussions.",
     "blindedByAdmin": "This topic has been hidden by admin.",
@@ -483,6 +516,14 @@
       "posting": "Posting...",
       "post": "Post",
       "writePost": "Write Post"
+    },
+    "archiveRetention": {
+      "unlimited": "Chat history: kept forever",
+      "year1": "Chat history: 1 year",
+      "days90": "Chat history: 90 days",
+      "days30": "Chat history: 30 days",
+      "titleUnlimited": "This topic keeps its chat archive indefinitely, so a member who joins later can read the whole conversation.",
+      "titleWindowed": "Chat older than this window is deleted for everyone, so a member who joins later sees only what is left."
     }
   },
   "sidebar": {
@@ -574,7 +615,30 @@
       "noArchive": "Your key was recovered, but the archive on the server cannot be opened with it — another device replaced it with its own copy. Open chat on the device that still has your history to re-upload it, then try again."
     },
     "sendFailedRetry": "Retry",
-    "sendFailedDiscard": "Delete"
+    "sendFailedDiscard": "Delete",
+    "media": {
+      "decrypting": "Decrypting image…",
+      "locked": "Encrypted image — this device has no key for it yet",
+      "fetchFailed": "Could not load this image.",
+      "decryptFailed": "This image could not be decrypted.",
+      "alt": "Encrypted image",
+      "error": {
+        "empty": "That file is empty.",
+        "too-large": "Images must be 10MB or smaller.",
+        "unsupported-type": "That image type is not supported. Use JPEG, PNG, GIF, WebP or BMP.",
+        "heic-unsupported": "HEIC photos cannot be sent to an encrypted chat. Save the photo as JPEG and try again.",
+        "no-key": "Waiting for this room's key. Try again in a moment.",
+        "upload-failed": "The image could not be uploaded. Try again.",
+        "send-failed": "The image was not sent. Try again."
+      },
+      "expired": "This image expired before it could be sent. Send it again.",
+      "reload": "Reload"
+    },
+    "tierClaim": {
+      "e2ee": "New messages and images in this room are end-to-end encrypted. The service cannot read them.",
+      "serverReadable": "New messages and images in this room are encrypted in transit and at rest, but this is a public topic: the service holds a key to its history and can read it.",
+      "learnMore": "What this means"
+    }
   },
   "chatRail": {
     "backAriaLabel": "Back to chat list",
@@ -867,5 +931,123 @@
     "cta": "Set up recovery",
     "dismiss": "Not now",
     "dismissAria": "Dismiss the chat recovery reminder"
+  },
+  "tiersPage": {
+    "metaTitle": "Topic types — OpenStoa",
+    "title": "The four kinds of room",
+    "intro": "Every topic is one of four kinds, and the kind decides who gets in, who can read what, and whether we can read your chat. This page says exactly what each one does. Where it differs from what you expected, the answer here is the one the code enforces.",
+    "backToDocs": "← Docs",
+    "table": {
+      "caption": "What each kind of room does",
+      "tier": "Room",
+      "find": "Who can find it",
+      "join": "How you get in",
+      "posts": "Who can read posts",
+      "chat": "Who can read chat",
+      "history": "What a later member sees",
+      "operator": "Can we read your chat"
+    },
+    "tiers": {
+      "public": {
+        "name": "Public",
+        "summary": "Open to everyone, and the one kind whose chat history we can read."
+      },
+      "private": {
+        "name": "Private",
+        "summary": "Anyone can see it exists and read its posts; getting into the conversation needs an invite link."
+      },
+      "secret": {
+        "name": "Secret",
+        "summary": "Invisible unless someone sends you the link."
+      },
+      "dm": {
+        "name": "Direct message",
+        "summary": "Just the two of you."
+      }
+    },
+    "find": {
+      "anyone": "Anyone, signed in or not",
+      "listed": "Anyone, in the topic list",
+      "hidden": "Nobody — it is hidden from every list",
+      "participants": "Only the two of you"
+    },
+    "join": {
+      "open": "Join instantly",
+      "invite": "Invite link only",
+      "accept": "When the other person accepts"
+    },
+    "posts": {
+      "anyone": "Anyone, signed in or not",
+      "members": "Members only",
+      "none": "There are no posts",
+      "signedIn": "Anyone signed in, member or not"
+    },
+    "chatAccess": "Members only, in every kind of room",
+    "chatAccessDm": "Only the two of you",
+    "history": {
+      "all": "Everything said before they arrived",
+      "window": "Only what the person who invited them chose to share — a recent slice, not the whole history",
+      "dm": "Nobody joins later"
+    },
+    "operator": {
+      "yes": "Yes",
+      "no": "No",
+      "yesDetail": "We hold a key to this room's history so that anyone who joins later can read it. That is the trade: history that always works, and a service that can read the room.",
+      "noDetail": "We move the messages without being able to open them. Nobody at OpenStoa can read this room."
+    },
+    "sections": {
+      "historyTitle": "What you see when you join a room that has been talking for a while",
+      "historyBody": "In a public room you see everything, because we hold the key and hand it over the moment you arrive. In a private or secret room we cannot do that, so history only reaches you if the person inviting you chooses to include a recent slice with the invite — and it is a slice, not the whole conversation. In a direct message the question never comes up: nobody joins later. Whatever history does reach you arrives with its pictures: an image is sealed with the same key as the message it came in, so there is nothing extra to share and nothing that can be shared by mistake.",
+      "retentionTitle": "How long chat is kept",
+      "retentionBody": "Whoever creates a topic chooses how long its chat history is kept: forever, a year, 90 days, or 30 days. Once a message falls outside that window it is deleted for everyone, so a member who joins later sees less.",
+      "retentionCeiling": "Treat the window as a ceiling, not a deletion deadline. Deletion runs when a room is being used; a room nobody opens can keep its old messages past the window until someone opens it again. If you need a guaranteed deletion date, this is not it yet.",
+      "devicesTitle": "Your history lives on your devices",
+      "devicesBody": "Your chat history is encrypted with keys held by the devices you use — a browser profile and the app are two different devices, even on the same machine. Adding a new one is fine: it restores your history from your own backup.",
+      "devicesWarning": "But if you lose every device you have used and you did not save a recovery code, that history is gone. Not withheld — gone. Nobody, including us, can bring it back, because nobody else ever had the key. Save your recovery code.",
+      "mediaTitle": "Images",
+      "mediaBody": "Images you send now are encrypted the same way messages are. Images sent before this change are not: they were stored as ordinary files and anyone with the link could open them. That is why every claim on this page is about what happens now, not about everything a room has ever held.",
+      "postsVsChatTitle": "Private topics: posts are open, the conversation is not",
+      "postsVsChatBody": "A private topic is listed and anyone signed in can read its posts — what is private is the chat. You get into that with an invite link, and the same link is what carries the keys for the slice of history the inviter chose to share. A secret topic goes further: it is hidden from every list, and its posts are members-only too."
+    }
+  },
+  "invite": {
+    "title": "Invite someone",
+    "historyHeading": "Chat history to share",
+    "historyNone": "Share no history",
+    "historySessions": "The last {{count}} sessions",
+    "historyLoading": "Working out what this link would carry…",
+    "historySummary": "This link carries the last {{messages}} messages, since {{date}}.",
+    "historySummaryNoDate": "This link carries the last {{messages}} messages.",
+    "historyEmptySummary": "The last {{sessions}} sessions have no messages in them, so this link carries no history.",
+    "historyNoneSummary": "This link carries no chat history. They will see messages sent after they join.",
+    "historyUnavailable": "You hold none of this topic's history yet, so this link cannot carry any.",
+    "historyPublic": "Anyone who joins this topic can read its chat history, so the link carries no keys.",
+    "keysWarning": "Anyone who opens this link can read those messages. The invite can be revoked; the keys cannot.",
+    "copyLink": "Copy invite link",
+    "copied": "Copied — copy again",
+    "minting": "Creating…",
+    "mintFailed": "Could not create an invite link",
+    "singleUse": "Single use — the first person to open it gets in.",
+    "singleUseExpires": "Single use, expires {{date}} — the first person to open it gets in.",
+    "close": "Close"
+  },
+  "inviteJoin": {
+    "guestTitle": "You have been invited",
+    "guestBody": "Sign in to see the topic and join. The invite stays valid while you do.",
+    "signIn": "Sign in to continue",
+    "invalidTitle": "This invite no longer works",
+    "invalidBody": "Invite links are single use and expire. Ask whoever sent it for a new one.",
+    "invitedLabel": "You have been invited to",
+    "memberLabel": "You are already in",
+    "joinedLabel": "You joined",
+    "join": "Join topic",
+    "joining": "Joining…",
+    "joinFailed": "Could not join this topic",
+    "openTopic": "Open topic",
+    "browseTopics": "Browse all topics",
+    "historyImported": "Chat history unlocked: {{count}} sessions of past messages.",
+    "historyAlready": "You already had the chat history this link carries.",
+    "historyWrongTopic": "This link carried history keys for a different topic, so they were not used. Ask for a fresh invite if you need the history.",
+    "historyNone": "This invite carried no chat history. You will see messages sent from now on."
   }
 }

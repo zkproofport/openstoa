@@ -29,6 +29,7 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
     },
     joinTopic: rec('joinTopic'),
     sendChat: rec('sendChat'),
+    sendMedia: rec('sendMedia'),
     readChat: rec('readChat'),
     startDm: rec('startDm'),
     listDms: rec('listDms'),
@@ -215,6 +216,30 @@ describe('Commands dispatch → SDK', () => {
     expect(order).toEqual(['joinTopic', 'sendChat']);
     expect(calls.find((c) => c.method === 'sendChat')?.args).toEqual(['t1', 'hello']);
     expect(r).toEqual({ messageId: 'msg-123' });
+  });
+
+  it('chat send-media joins first, decodes base64, and reports what was sent', async () => {
+    const { cmds, calls } = build({
+      sendMedia: () => ({ messageId: 'msg-9', envelope: { v: 1, key: 'topics/t1/chat/u/aa.bin', mediaId: 'aa', takVersion: 0, mime: 'image/png', size: 3 } }),
+    });
+    // "AQID" is bytes [1,2,3] — the SDK must receive BYTES, not the string.
+    const r = await cmds.chatSendMedia('t1', { base64: 'AQID', mime: 'image/png' });
+
+    const order = calls.map((c) => c.method).filter((m) => m === 'joinTopic' || m === 'sendMedia');
+    expect(order).toEqual(['joinTopic', 'sendMedia']);
+    const [topicId, input] = calls.find((c) => c.method === 'sendMedia')!.args as [string, { bytes: Uint8Array; mime: string }];
+    expect(topicId).toBe('t1');
+    expect(Array.from(input.bytes)).toEqual([1, 2, 3]);
+    expect(input.mime).toBe('image/png');
+    expect(r).toEqual({ messageId: 'msg-9', key: 'topics/t1/chat/u/aa.bin', mime: 'image/png', size: 3 });
+  });
+
+  it('chat send-media refuses missing or undecodable input before touching the network', async () => {
+    // An agent that sends junk should be told, not have it uploaded and fail later.
+    const { cmds, calls } = build({ sendMedia: () => ({ messageId: 'x', envelope: {} }) });
+    await expect(cmds.chatSendMedia('t1', { base64: '', mime: 'image/png' })).rejects.toThrow(/base64 image data is required/);
+    await expect(cmds.chatSendMedia('t1', { base64: 'AQID', mime: '' })).rejects.toThrow(/mime is required/);
+    expect(calls.some((c) => c.method === 'sendMedia')).toBe(false);
   });
 
   it('chat read joins first, then reads', async () => {

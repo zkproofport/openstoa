@@ -63,6 +63,20 @@ export const topics = pgTable('topics', {
   // root instead of overwriting the archive's identity. Public tier only;
   // private/secret/DM topics are per-epoch (§5.2) and leave this NULL forever.
   archiveRootFingerprint: text('archive_root_fingerprint'),
+  // How long this topic's chat ARCHIVE (`chat_archive.ciphertext`) is kept, in
+  // days — 0 means "kept indefinitely". Chosen by the admin when the topic is
+  // created and not editable afterwards, because shortening a window is a
+  // destructive act on other members' history, not a preference.
+  //
+  // The allowed values are a closed set (`src/lib/archiveRetention.ts`), and 0
+  // is the default so every row that predates this column keeps exactly the
+  // behaviour it had. It matters most for `public`: that is the one tier where
+  // the server also holds the archive root, so an unbounded window there means
+  // operator-readable data accumulating with no end date.
+  //
+  // NOT the delivery queue: `chat_messages.ciphertext` has its own, separate
+  // rule (drop on delivery) and is untouched by this column.
+  chatArchiveRetentionDays: integer('chat_archive_retention_days').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   score: real('score').notNull().default(0),
@@ -377,6 +391,87 @@ export const archiveHolders = pgTable('archive_holders', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * When a device JOINED a topic, and which account owns it (D-1).
+ *
+ * The server has no other way to know either. The ratchet tree is client-side
+ * and the server runs no MLS crypto, so before this table a device only became
+ * visible when it first acknowledged delivery — which is too late for two
+ * things: a device added and not yet opened is owed messages it will not be
+ * credited for, and an abandoned leaf cannot be told from a quiet one.
+ *
+ * Written from the External Commit that performs the join, which the server
+ * already stores. That commit is a PublicMessage whose content is not
+ * encrypted, so this is a structural read of bytes already on disk — no crypto,
+ * and nothing a member can forge: the commit IS the act of joining, so claiming
+ * a device joined means actually adding it. See
+ * `docs/design/device-join-signal.md`.
+ *
+ * `leaf_identity` is the credential verbatim; `user_id` is the account derived
+ * from it, and is NULL when the credential does not name one (an agent leaf
+ * minted as a bare `sdk-<uuid>` before that convention). A null therefore means
+ * "nobody could name this leaf", never "not looked up yet" — the distinction an
+ * eviction path depends on, since guessing an owner would remove an innocent
+ * member.
+ *
+ * Keyed by (topic, device). A device that clears its storage and re-joins mints
+ * a NEW leaf key and so takes a new row rather than colliding — measured, not
+ * assumed, because a collision in a fire-and-forget insert would fail silently.
+ */
+export const mlsDeviceJoins = pgTable('mls_device_joins', {
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
+  deviceId: text('device_id').notNull(), // base64 leaf HPKE key — same id the cursor uses
+  leafIdentity: text('leaf_identity'), // credential verbatim; NULL if unreadable
+  userId: text('user_id'), // derived; NULL = unattributable, deliberately no FK
+  joinedEpoch: bigint('joined_epoch', { mode: 'number' }).notNull(),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.topicId, table.deviceId] }),
+  topicIdx: index('mls_device_joins_topic_idx').on(table.topicId),
+}));
+
+/**
+ * Per-DEVICE delivery high-water mark, so the live copy can stop being storage.
+ *
+ * `chat_messages.ciphertext` is a delivery QUEUE — every mainstream messenger
+ * deletes a message's ciphertext once it has been delivered — and this table is
+ * what makes "delivered" answerable. One row per (topic, device), holding the
+ * newest message that device has fetched.
+ *
+ * Per DEVICE and not per user, because a user acking on the web must not
+ * release a message their phone has never seen. Chrome, Safari and the app are
+ * three separate leaves with three separate key stores even on one machine, and
+ * a message dropped before the phone syncs is dropped for the phone.
+ *
+ * `first_seen_at` is what makes a LATER joiner not owed the live copy: MLS gives
+ * a newly-added leaf no past-epoch secrets, so those rows are undecryptable to
+ * it whether or not the server still holds them — it reads them from
+ * `chat_archive` instead. `last_seen_at` is the staleness input: a device whose
+ * user cleared their browser data abandons a leaf that never acks again, and
+ * without a way to stop counting it "everyone has it" would never be true and
+ * nothing would ever be purged.
+ *
+ * `user_id` binds a device id to the account that first claimed it. The id is
+ * client-supplied (it is the MLS leaf id), so without the binding one member
+ * could ack on behalf of another member's device and hurry a purge along.
+ */
+export const chatDeliveryCursors = pgTable('chat_delivery_cursors', {
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
+  deviceId: text('device_id').notNull(), // MLS leaf id — NOT a user id
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // Newest message this device has fetched. INCLUSIVE: a message at exactly
+  // this instant is delivered.
+  deliveredThrough: timestamp('delivered_through', { withTimezone: true }).notNull(),
+  // When this device first appeared in the topic. A message older than this was
+  // never owed to it.
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.topicId, table.deviceId] }),
+  // Supports the purge's per-topic scan over every device owed a message.
+  topicIdx: index('chat_delivery_topic_idx').on(table.topicId),
+}));
+
 // archive store (Phase 3) — past messages re-encrypted under a TAK so a newly
 // joined member can read history that MLS forward secrecy would otherwise lock
 // out. The CLIENT (never the server — SI-1) re-encrypts the plaintext under the
@@ -393,6 +488,48 @@ export const chatArchive = pgTable('chat_archive', {
 }, (table) => ({
   topicMsgIdx: uniqueIndex('chat_archive_topic_msg_idx').on(table.topicId, table.messageId),
   topicCreatedIdx: index('chat_archive_topic_created_idx').on(table.topicId, table.createdAt),
+}));
+
+/**
+ * INDEX of encrypted chat attachments (R-3) — the server's only handle on them.
+ *
+ * An attachment's object key lives inside the MLS-sealed message body, so the
+ * server cannot read which object a message named. Without this table nothing
+ * can ever find an attachment again: retention purges `chat_archive` rows and
+ * leaves the pictures in storage forever (a deletion guarantee that is not
+ * one), and an upload whose message POST never landed is stranded with nothing
+ * referencing it.
+ *
+ * SI-1: every column here is bookkeeping the server ALREADY has. There is no
+ * key material, no plaintext, no filename, no mime type, no size, and — by
+ * deliberate omission — NO message id. Linking an object to the message that
+ * carries it would hand the operator a map of which messages contain pictures,
+ * which is exactly the metadata the sealed envelope exists to withhold. The
+ * lifecycle is driven by `claimed_at` instead, which says only "the client that
+ * uploaded this went on to send something".
+ *
+ * `uploader_id` is already the third segment of `object_key` (see
+ * `chatMediaObjectKey`), so storing it adds nothing the row did not already
+ * contain, and it makes the delete-authorization check a column comparison
+ * rather than string surgery.
+ */
+export const chatMedia = pgTable('chat_media', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  // R2 object key: `chat/{topicId}/{uploaderId}/{mediaId}.bin`. Unique because
+  // one object is one row — a second insert for the same key is a bug, not a
+  // second attachment.
+  objectKey: text('object_key').notNull(),
+  uploaderId: text('uploader_id').references(() => users.id).notNull(),
+  // Set once the uploader's message actually went out. NULL means the upload
+  // may be stranded, and after a grace window the collector takes it.
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  objectKeyIdx: uniqueIndex('chat_media_object_key_idx').on(table.objectKey),
+  // Both sweeps read (topic, created_at): retention by the topic's window, and
+  // the unclaimed collector by the grace window.
+  topicCreatedIdx: index('chat_media_topic_created_idx').on(table.topicId, table.createdAt),
 }));
 
 // RETIRED (2026-07-30, design §7 consolidation onto API keys) — account-wide AI

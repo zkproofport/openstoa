@@ -183,6 +183,34 @@
       "when": 1786638813403,
       "tag": "0025_normal_ender_wiggin",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786643991868,
+      "tag": "0026_big_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1786646193604,
+      "tag": "0027_concerned_leo",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786651682721,
+      "tag": "0028_premium_crystal",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786654413466,
+      "tag": "0029_nervous_rawhide_kid",
+      "breakpoints": true
     }
   ]
 }

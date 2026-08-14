@@ -177,15 +177,31 @@
         "all": "All"
       },
       "invite": {
-        "cta": "Join with invite code",
-        "hint": "Enter invite code",
+        "cta": "Join with an invite",
+        "hint": "Paste the invite link or code",
         "join": "Join",
         "share": "Invite",
         "shareSubject": "Join this topic on OpenStoa",
-        "shareBody": "Use this invite code to join: {{code}}",
+        "shareBody": "Join this topic on OpenStoa: {{link}}",
         "joinFailedTitle": "Couldn't join",
         "alreadyMember": "You're already a member of this topic.",
-        "invalidCode": "That invite code is invalid or expired."
+        "invalidCode": "That invite code is invalid or expired.",
+        "shareTitle": "Invite someone",
+        "shareCta": "Share link",
+        "joinedTitle": "Joined",
+        "historyHeading": "Chat history to share",
+        "historyNone": "Share no history",
+        "historySessions": "The last {{count}} sessions",
+        "historyLoading": "Working out what this link would carry…",
+        "historySummary": "This link carries the last {{messages}} messages, since {{date}}.",
+        "historySummaryNoDate": "This link carries the last {{messages}} messages.",
+        "historyEmptySummary": "The last {{sessions}} sessions have no messages in them, so this link carries no history.",
+        "historyNoneSummary": "This link carries no chat history. They will see messages sent after they join.",
+        "historyUnavailable": "You hold none of this topic's history yet, so this link cannot carry any.",
+        "historyPublic": "Anyone who joins this topic can read its chat history, so the link carries no keys.",
+        "keysWarning": "Anyone who opens this link can read those messages. The invite can be revoked; the keys cannot.",
+        "historyImported": "Chat history unlocked: {{count}} sessions of past messages.",
+        "historyWrongTopic": "This link carried history keys for a different topic, so they were not used."
       }
     },
     "topicDetail": {
@@ -204,7 +220,19 @@
         "popular": "Popular",
         "recorded": "Recorded",
         "pinned": "Pinned"
-      }
+      },
+      "archiveRetention": {
+        "unlimited": "Chat history: kept forever",
+        "year1": "Chat history: 1 year",
+        "days90": "Chat history: 90 days",
+        "days30": "Chat history: 30 days",
+        "noteUnlimited": "This topic keeps its chat archive indefinitely, so a member who joins later can read the whole conversation.",
+        "noteWindowed": "Chat older than this window is deleted for everyone, so a member who joins later sees only what is left."
+      },
+      "leave": "Leave topic",
+      "leaveConfirmTitle": "Leave this topic?",
+      "leaveConfirmMessage": "You will lose access to the chat and its history on this device. You can rejoin later, but past messages will not come back unless the topic keeps them.",
+      "leaveFailedTitle": "Could not leave topic"
     },
     "members": {
       "title": "Members",
@@ -218,6 +246,8 @@
       "demote": "Remove admin",
       "kick": "Remove from topic",
       "kickConfirm": "Remove this member from the topic?",
+      "kickPartialTitle": "Removed, with a warning",
+      "kickPartial": "Removed from the topic. {{count}} of their devices could not be removed from the encrypted chat, so those devices can still read messages sent from now on. This affects devices that joined before devices could be identified.",
       "transfer": "Transfer ownership",
       "transferConfirm": "Transfer ownership to {{nickname}}? You will become an admin.",
       "actionsForMember": "{{nickname}}",
@@ -229,7 +259,8 @@
       "empty": "No pending requests",
       "approve": "Approve",
       "reject": "Reject",
-      "actionFailed": "Action failed"
+      "actionFailed": "Action failed",
+      "retired": "Topics are invite-only now, so no new join requests arrive. Anything still listed here was sent before that change and can still be approved."
     },
     "topicEdit": {
       "title": "Edit topic",
@@ -262,7 +293,7 @@
         "public": "Public",
         "publicDesc": "Anyone can find and join",
         "private": "Private",
-        "privateDesc": "Visible to all, requires approval",
+        "privateDesc": "Listed, posts readable when signed in — chat is invite-only",
         "secret": "Secret",
         "secretDesc": "Hidden, invite code only"
       },
@@ -275,7 +306,31 @@
       "countryCodes": "ISO country codes (comma-separated)",
       "requiredDomain": "Domain restriction (optional)",
       "domainHint": "Leave empty to allow any organization",
-      "createFailed": "Create failed"
+      "createFailed": "Create failed",
+      "archiveRetention": {
+        "label": "Chat history",
+        "hint": "How long this topic keeps its encrypted chat archive. Choose once — it cannot be changed later.",
+        "cost": "A shorter window means less to catch up on: anything older is deleted for everyone, so a member who joins later sees less.",
+        "options": {
+          "unlimited": {
+            "label": "Keep forever",
+            "desc": "Nothing is deleted. A member who joins later can read the whole conversation."
+          },
+          "year1": {
+            "label": "1 year",
+            "desc": "Messages older than a year are deleted."
+          },
+          "days90": {
+            "label": "90 days",
+            "desc": "Messages older than 90 days are deleted."
+          },
+          "days30": {
+            "label": "30 days",
+            "desc": "Messages older than 30 days are deleted. A later joiner sees the last month only."
+          }
+        }
+      },
+      "tiersLink": "How the four kinds of room differ →"
     },
     "postCreate": {
       "title": "Title",
@@ -397,7 +452,31 @@
       "linkPreviewUnavailable": "Preview unavailable",
       "sendFailedRetry": "Resend",
       "sendFailedDiscard": "Delete",
-      "lockedHistorySyncing": "Getting your chat history… earlier messages unlock once this device receives the room key."
+      "lockedHistorySyncing": "Getting your chat history… earlier messages unlock once this device receives the room key.",
+      "media": {
+        "title": "Image",
+        "decrypting": "Decrypting image…",
+        "locked": "Encrypted image — this device has no key for it yet",
+        "fetchFailed": "Could not load this image.",
+        "decryptFailed": "This image could not be decrypted.",
+        "alt": "Encrypted image",
+        "error": {
+          "empty": "That file is empty.",
+          "too-large": "Images must be 10MB or smaller.",
+          "unsupported-type": "That image type is not supported. Use JPEG, PNG, GIF, WebP or BMP.",
+          "heic-unsupported": "HEIC photos cannot be sent to an encrypted chat. Save the photo as JPEG and try again.",
+          "no-key": "Waiting for this room's key. Try again in a moment.",
+          "upload-failed": "The image could not be uploaded. Try again.",
+          "send-failed": "The image was not sent. Try again."
+        },
+        "expired": "This image expired before it could be sent. Send it again.",
+        "reload": "Reload"
+      },
+      "tierClaim": {
+        "e2ee": "New messages and images in this room are end-to-end encrypted. The service cannot read them.",
+        "serverReadable": "New messages and images in this room are encrypted in transit and at rest, but this is a public topic: the service holds a key to its history and can read it.",
+        "learnMore": "What this means"
+      }
     },
     "dm": {
       "title": "Direct Messages",

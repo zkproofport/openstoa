@@ -122,6 +122,8 @@ describe('POST /api/upload', () => {
       'user-42',
       'avatar',
       'avatar.png',
+      // No topicId sent: an avatar belongs to the person, not to a room.
+      null,
     );
   });
 
@@ -145,6 +147,7 @@ describe('POST /api/upload', () => {
       'user-1',
       'post',
       'img.png',
+      null,
     );
   });
 });

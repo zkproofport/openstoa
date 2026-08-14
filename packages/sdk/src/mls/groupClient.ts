@@ -23,6 +23,7 @@ import * as tsmls from 'ts-mls';
 // package's `./*.js` exports subpath. Needed to rehydrate persisted state (see
 // deserializeState) — decodeGroupState omits the (function-bearing) clientConfig.
 import { defaultClientConfig } from 'ts-mls/clientConfig.js';
+import { leafBelongsTo } from './leafIdentity';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function T(): any {
   return tsmls;
@@ -210,17 +211,52 @@ export function currentEpoch(state: GroupState): number {
  * server-supplied value.
  */
 export function findLeafIndexByIdentity(state: GroupState, identity: string): number | null {
+  for (const leaf of leafIdentities(state)) {
+    if (leaf.identity === identity) return leaf.leafIndex;
+  }
+  return null;
+}
+
+/**
+ * Every occupied leaf, as `{ leafIndex, identity }`, read from the local
+ * validated ratchet tree.
+ *
+ * The tree is the device roster. There is no server-side table of a member's
+ * devices and there should not be one: a join-time snapshot goes stale the
+ * moment someone adds a phone, while the tree is by construction what the group
+ * currently is.
+ */
+export function leafIdentities(state: GroupState): Array<{ leafIndex: number; identity: string }> {
   const tree = state.ratchetTree as Array<
     { nodeType?: string; leaf?: { credential?: { credentialType?: string; identity?: Uint8Array } } } | undefined
   >;
+  const out: Array<{ leafIndex: number; identity: string }> = [];
   for (let i = 0; i < tree.length; i++) {
     const node = tree[i];
     if (!node || node.nodeType !== 'leaf' || !node.leaf) continue;
     const cred = node.leaf.credential;
     if (!cred || cred.credentialType !== 'basic' || !cred.identity) continue;
-    if (dec.decode(cred.identity) === identity) return i / 2; // node index → leaf index
+    out.push({ leafIndex: i / 2, identity: dec.decode(cred.identity) }); // node index → leaf index
   }
-  return null;
+  return out;
+}
+
+/**
+ * Every leaf belonging to `userId` — an account has one leaf PER DEVICE, and
+ * removing a person means removing all of them.
+ *
+ * Missing one is not a partial success: the account keeps a live device in the
+ * group, keeps deriving every future epoch key, and keeps reading. That is the
+ * difference between being removed and appearing to have been removed.
+ *
+ * Leaves whose credential predates the `<userId>:<deviceId>` format are
+ * attributed to nobody rather than guessed at — see `leafIdentity.ts` for why
+ * that direction is the safe one.
+ */
+export function findLeafIndicesByUser(state: GroupState, userId: string): number[] {
+  return leafIdentities(state)
+    .filter((l) => leafBelongsTo(l.identity, userId))
+    .map((l) => l.leafIndex);
 }
 
 /**
@@ -238,11 +274,35 @@ export async function removeMember(
   state: GroupState,
   leafIndex: number,
 ): Promise<{ state: GroupState; commitB64: string; groupInfoB64: string }> {
+  return removeMembers(state, [leafIndex]);
+}
+
+/**
+ * Remove SEVERAL leaves in ONE Commit.
+ *
+ * This is the shape removal actually needs, because an account owns a leaf per
+ * device and all of them go together. Doing it as one Commit per leaf would be
+ * wrong in three ways: each Commit advances the epoch, so each has to win its
+ * own epoch-CAS race against every other member; a failure halfway through
+ * leaves the account still in the group on its remaining devices; and the group
+ * would see N system events for one removal.
+ *
+ * Duplicate indices are collapsed and the order is normalised, so a caller that
+ * assembles the list from several lookups cannot produce a malformed Commit.
+ * An empty list is refused rather than turned into an empty Commit, which would
+ * burn an epoch to say nothing.
+ */
+export async function removeMembers(
+  state: GroupState,
+  leafIndices: number[],
+): Promise<{ state: GroupState; commitB64: string; groupInfoB64: string }> {
+  const targets = [...new Set(leafIndices)].sort((a, b) => a - b);
+  if (targets.length === 0) throw new Error('removeMembers: no leaves to remove');
   const cs = await impl();
-  const proposal = { proposalType: 'remove', remove: { removed: leafIndex } };
+  const extraProposals = targets.map((removed) => ({ proposalType: 'remove', remove: { removed } }));
   const res = await T().createCommit(
     { state, cipherSuite: cs, pskIndex: T().emptyPskIndex },
-    { extraProposals: [proposal], ratchetTreeExtension: true },
+    { extraProposals, ratchetTreeExtension: true },
   );
   const commitB64 = b64(T().encodeMlsMessage(res.commit));
   return { state: res.newState, commitB64, groupInfoB64: await exportGroupInfo(res.newState) };

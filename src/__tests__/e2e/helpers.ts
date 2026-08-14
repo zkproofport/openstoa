@@ -380,11 +380,12 @@ async function probeObjectStorage(): Promise<StorageProbe> {
   }
 
   const { publicUrl } = (await res.json()) as { publicUrl: string };
-  if (!R2_HOSTS.includes(new URL(publicUrl).hostname)) {
+  if (!isKnownMediaHost(new URL(publicUrl).hostname)) {
     throw new Error(
-      `POST /api/upload returned ${publicUrl}, whose host is not one of the app's known R2 hosts ` +
-        `(${R2_HOSTS.join(', ')}) — either R2_PUBLIC_URL is misconfigured or R2_HOSTS in ` +
-        `src/lib/imageCacheBuster.ts is missing this host (which would also break cache busting).`,
+      `POST /api/upload returned ${publicUrl}, whose host is neither one of the app's known R2 hosts ` +
+        `(${R2_HOSTS.join(', ')}) nor a local address — either R2_PUBLIC_URL is misconfigured or ` +
+        `R2_HOSTS in src/lib/imageCacheBuster.ts is missing this host (which would also break ` +
+        `cache busting).`,
     );
   }
   return { ok: true, origin: new URL(publicUrl).origin };
@@ -404,6 +405,35 @@ export async function requireObjectStorage(): Promise<string> {
 /** The origin `POST /api/upload` serves media from in THIS environment. */
 export async function getCdnOrigin(): Promise<string> {
   return requireObjectStorage();
+}
+
+/**
+ * A media host this machine is serving itself — the dev stack's MinIO, reached
+ * over the LAN IP `scripts/dev.sh` detects (or loopback when it cannot).
+ *
+ * Deliberately a host-CLASS test rather than a list: the local address is the
+ * developer's own LAN IP and cannot be written down in advance. A public host
+ * that is not ours is neither in `R2_HOSTS` nor private, so a genuinely
+ * misconfigured `R2_PUBLIC_URL` still fails.
+ */
+function isLocalMediaHost(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname === '::1' || hostname === '[::1]') return true;
+  if (hostname.endsWith('.local')) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
+  if (!v4) return false;
+  const [a, b] = [Number(v4[1]), Number(v4[2])];
+  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
+}
+
+/**
+ * Where media is allowed to come from in THIS environment: the deployment's
+ * CDN, or the local object store when the stack is running one.
+ *
+ * Both are "the app's own storage" — the distinction the assertion is really
+ * making — and only one of them can be enumerated statically.
+ */
+export function isKnownMediaHost(hostname: string): boolean {
+  return R2_HOSTS.includes(hostname) || isLocalMediaHost(hostname);
 }
 
 /** Every `<img src="...">` value in an HTML fragment, in document order. */

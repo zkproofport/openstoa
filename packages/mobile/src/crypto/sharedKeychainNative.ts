@@ -5,7 +5,12 @@
  * the host bridge.
  */
 import { Platform } from 'react-native';
-import { loadSecureStore, mirrorTakWith, type TakMirrorHost } from './sharedKeychain';
+import {
+  loadSecureStore,
+  mirrorPushSessionWith,
+  mirrorTakWith,
+  type TakMirrorHost,
+} from './sharedKeychain';
 
 /**
  * Mirror one TAK to wherever this platform's background push handler can read
@@ -25,4 +30,20 @@ export function mirrorTakToSharedKeychain(
   host?: TakMirrorHost | null,
 ): Promise<boolean> {
   return mirrorTakWith(loadSecureStore(), Platform.OS, topicId, takVersion, takB64, host);
+}
+
+/**
+ * Mirror the session the iOS Notification Service Extension fetches ATTACHMENTS
+ * with (P-1) — a key alone previews a message, but a picture has to be
+ * downloaded through the membership-gated route.
+ *
+ * iOS only, and false rather than throwing on every unavailable path: the worst
+ * outcome is a notification that says "📷 Photo" without the thumbnail.
+ */
+export function mirrorPushSessionToSharedKeychain(
+  topicId: string,
+  baseUrl: string,
+  token: string,
+): Promise<boolean> {
+  return mirrorPushSessionWith(loadSecureStore(), Platform.OS, topicId, baseUrl, token);
 }

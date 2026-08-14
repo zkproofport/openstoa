@@ -148,6 +148,8 @@ function wire(n: number, over: Partial<WireMessage> = {}): WireMessage {
 
 /** Requests the component issued, in order. */
 let requests: string[];
+/** Bodies of the POSTs it issued — the delivery ack is asserted on these. */
+let postBodies: Array<{ url: string; body: string }> = [];
 /** Newest-first history page returned for the initial `?limit=50` fetch. */
 let historyPage: WireMessage[];
 /** Queue of `?before=` pages (newest-first each), consumed in order. */
@@ -173,9 +175,10 @@ function json(body: unknown, ok = true, status = 200) {
 function installFetch() {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requests.push(url);
+      if (typeof init?.body === 'string') postBodies.push({ url, body: init.body });
       if (url === '/api/auth/session') return json({ userId: ME });
       if (url === `/api/topics/${TOPIC}`) {
         return json({ topic: { visibility: 'public' }, currentUserRole: 'member' });
@@ -188,6 +191,9 @@ function installFetch() {
       if (url === `/api/topics/${TOPIC}/chat`) {
         if (sendGate) await sendGate.promise;
         return json({ message: sendResponse }, true, 201);
+      }
+      if (url === `/api/topics/${TOPIC}/chat/delivered`) {
+        return json({ deliveredThrough: new Date().toISOString() });
       }
       // tak/holder, push prefs, OG previews … — nothing the panel depends on.
       return json({ error: 'not found' }, false, 404);
@@ -256,6 +262,7 @@ beforeEach(() => {
   decryptCalls = [];
   undecryptable = new Set();
   requests = [];
+  postBodies = [];
   historyPage = [];
   beforePages = [];
   sincePages = [];
@@ -688,4 +695,319 @@ describe('ChatPanel — decrypt failures and own messages', () => {
     expect(chatRequests('history')).toHaveLength(0);
     expect(FakeEventSource.instances).toHaveLength(0);
   });
+});
+
+/**
+ * The delivery cursor (R-1). The server keeps a message's live ciphertext only
+ * until every device that was in the group at send time has fetched it, so the
+ * panel has to say what it now holds — and has to render the rows whose live
+ * copy is already gone.
+ *
+ * Edge-case matrix rows: contract (every arrival path acks) · integrity (the
+ * NEWEST instant, and never a rewind on an older page) · boundary (an empty
+ * page acks nothing) · ext-failure (a refused ack leaves the history on screen)
+ * · empty (a purged row consults the local cache before claiming to be locked).
+ */
+describe('delivery acknowledgement and purged rows', () => {
+  function acks(): Array<{ deviceId: string; through: string }> {
+    return postBodies
+      .filter((r) => r.url === `/api/topics/${TOPIC}/chat/delivered`)
+      .map((r) => JSON.parse(r.body));
+  }
+
+  it('CONTRACT: the initial history load acks the newest row for this device', async () => {
+    historyPage = [wire(3), wire(2), wire(1)]; // newest-first, as the server sends
+    await mount();
+
+    const sent = acks();
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent[sent.length - 1].deviceId).toBe('device-1');
+    expect(sent[sent.length - 1].through).toBe(wire(3).createdAt);
+  });
+
+  it('CONTRACT: a message arriving over SSE is acked too', async () => {
+    historyPage = [];
+    await mount();
+    const before = acks().length;
+
+    await act(async () => {
+      FakeEventSource.last.open();
+      FakeEventSource.last.emit('message', wire(9));
+    });
+    await flush();
+
+    const sent = acks();
+    expect(sent.length).toBeGreaterThan(before);
+    expect(sent[sent.length - 1].through).toBe(wire(9).createdAt);
+  });
+
+  it('INTEGRITY: an older history page never rewinds the mark', async () => {
+    // `?before=` pages are older by construction. Acking their newest row would
+    // move the server's high-water mark BACKWARDS and re-block messages this
+    // device has already taken delivery of.
+    historyPage = Array.from({ length: 50 }, (_, i) => wire(100 - i));
+    await mount();
+    const newestSoFar = acks()[acks().length - 1].through;
+
+    beforePages = [[wire(20), wire(19)]];
+    await act(async () => void loadOlderButton()?.click());
+    await flush();
+
+    for (const a of acks()) {
+      expect(new Date(a.through).getTime()).toBeLessThanOrEqual(new Date(newestSoFar).getTime());
+    }
+  });
+
+  it('BOUNDARY: an empty topic acks nothing', async () => {
+    historyPage = [];
+    await mount();
+    expect(acks()).toHaveLength(0);
+  });
+
+  it('EXT-FAILURE: a refused ack leaves the history on screen', async () => {
+    // The rows are already rendered by then; a failed acknowledgement costs
+    // some server storage and must cost nothing else.
+    historyPage = [wire(1)];
+    const original = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/chat/delivered')) throw new Error('offline');
+        return (original as typeof fetch)(input, init);
+      }),
+    );
+    await mount();
+    expect(bodyText()).toContain('plain(ct-m1)');
+  });
+
+
+  it("the sender's own message is never sent through the decrypt path", async () => {
+    historyPage = [];
+    sendResponse = wire(5, { id: 'own1', userId: ME, nickname: 'me' });
+    await mount();
+    await act(async () => FakeEventSource.last.open());
+    await flush();
+
+    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    )!.set!;
+    await act(async () => {
+      setter.call(input, 'my own words');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // The send control is an icon button — its name lives in `aria-label`, so
+    // the composer's width no longer depends on the locale's word for "send"
+    // (see chatE2eeBanner.test.tsx).
+    const send = container.querySelector(
+      `button[aria-label="${enLocale.chat.send}"]`,
+    ) as HTMLButtonElement;
+    await act(async () => {
+      send.click();
+    });
+    await flush();
+
+    // The SSE echo of our own message arrives with the same id.
+    await act(async () => {
+      FakeEventSource.last.emit('message', sendResponse);
+    });
+    await flush();
+
+    expect(decryptCalls).not.toContain('own1');
+    expect(bodyText().split('my own words').length - 1).toBe(1);
+    expect(bodyText()).not.toContain(enLocale.chat.lockedMessage);
+  });
+
+  it('REGRESSION: the echo beating the POST response leaves ONE bubble, not two', async () => {
+    /*
+     * The provisional row and the server row used to be reconciled only in the
+     * POST-response handler, keyed on the provisional id. The SSE echo took a
+     * different path that knew nothing about the provisional row, so when it
+     * arrived first the same message was on screen twice until the response
+     * caught up — visible, and reported.
+     *
+     * The two paths share exactly one value before the id exists: the
+     * ciphertext this tab sealed. That is what they are matched on now.
+     */
+    historyPage = [];
+    let release!: () => void;
+    const promise = new Promise<void>((r) => {
+      release = r;
+    });
+    sendGate = { promise, release };
+    sendResponse = wire(9, {
+      id: 'srv-1',
+      userId: ME,
+      nickname: 'me',
+      sealed: { ciphertext: 'ct-own-hello', epoch: 0 },
+    });
+
+    await mount();
+    await act(async () => FakeEventSource.last.open());
+    await flush();
+
+    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(input, 'hello');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const send = container.querySelector(`button[aria-label="${enLocale.chat.send}"]`) as HTMLButtonElement;
+    await act(async () => {
+      send.click();
+    });
+    await flush();
+
+    // The echo lands while the POST is still in flight.
+    await act(async () => {
+      FakeEventSource.last.emit('message', sendResponse);
+    });
+    await flush();
+    expect(bodyText().split('hello').length - 1).toBe(1);
+
+    // …and the response, arriving second, must not add another.
+    await act(async () => {
+      release();
+    });
+    await flush();
+    expect(bodyText().split('hello').length - 1).toBe(1);
+  });
+
+  it('REGRESSION: Enter that COMMITS a Korean composition is not a send', async () => {
+    /*
+     * Typing Korean leaves the last syllable in the IME buffer, and Enter first
+     * commits it: the browser fires keydown with `isComposing` set, then fires
+     * a SECOND Enter once the commit lands. Treating both as sends made every
+     * Korean message arrive as two — the real one, then a single stray letter,
+     * because the composer had been emptied and the IME wrote the committed
+     * jamo back into it. Reported from the app: "ㅇㅁㄹㅇ" arrived as "ㅇㅁㄹㅇ"
+     * and "ㅇ".
+     */
+    historyPage = [];
+    sendResponse = wire(11, { id: 'srv-ko', userId: ME, nickname: 'me' });
+    await mount();
+    await act(async () => FakeEventSource.last.open());
+    await flush();
+
+    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(input, 'ㅇㅁㄹㅇ');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const enter = (isComposing: boolean) =>
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, isComposing }),
+      );
+
+    await act(async () => void enter(true));
+    await flush();
+    expect(sendRequests()).toHaveLength(0);
+
+    // The second Enter, after the commit, is the real one.
+    await act(async () => void enter(false));
+    await flush();
+    expect(sendRequests()).toHaveLength(1);
+  });
+
+  it('a guest issues no chat request at all', async () => {
+    await mount({ isGuest: true, isMember: false });
+    expect(chatRequests('history')).toHaveLength(0);
+    expect(FakeEventSource.instances).toHaveLength(0);
+    expect(bodyText()).toContain('Join this topic to view chat');
+  });
+
+  it('a non-member issues no chat request at all', async () => {
+    await mount({ isGuest: false, isMember: false });
+    expect(chatRequests('history')).toHaveLength(0);
+    expect(FakeEventSource.instances).toHaveLength(0);
+  });
+});
+
+/**
+ * The delivery cursor (R-1). The server keeps a message's live ciphertext only
+ * until every device that was in the group at send time has fetched it, so the
+ * panel has to say what it now holds — and has to render the rows whose live
+ * copy is already gone.
+ *
+ * Edge-case matrix rows: contract (every arrival path acks) · integrity (the
+ * NEWEST instant, and never a rewind on an older page) · boundary (an empty
+ * page acks nothing) · ext-failure (a refused ack leaves the history on screen)
+ * · empty (a purged row consults the local cache before claiming to be locked).
+ */
+describe('delivery acknowledgement and purged rows', () => {
+  function acks(): Array<{ deviceId: string; through: string }> {
+    return postBodies
+      .filter((r) => r.url === `/api/topics/${TOPIC}/chat/delivered`)
+      .map((r) => JSON.parse(r.body));
+  }
+
+  it('CONTRACT: the initial history load acks the newest row for this device', async () => {
+    historyPage = [wire(3), wire(2), wire(1)]; // newest-first, as the server sends
+    await mount();
+
+    const sent = acks();
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent[sent.length - 1].deviceId).toBe('device-1');
+    expect(sent[sent.length - 1].through).toBe(wire(3).createdAt);
+  });
+
+  it('CONTRACT: a message arriving over SSE is acked too', async () => {
+    historyPage = [];
+    await mount();
+    const before = acks().length;
+
+    await act(async () => {
+      FakeEventSource.last.open();
+      FakeEventSource.last.emit('message', wire(9));
+    });
+    await flush();
+
+    const sent = acks();
+    expect(sent.length).toBeGreaterThan(before);
+    expect(sent[sent.length - 1].through).toBe(wire(9).createdAt);
+  });
+
+  it('INTEGRITY: an older history page never rewinds the mark', async () => {
+    // `?before=` pages are older by construction. Acking their newest row would
+    // move the server's high-water mark BACKWARDS and re-block messages this
+    // device has already taken delivery of.
+    historyPage = Array.from({ length: 50 }, (_, i) => wire(100 - i));
+    await mount();
+    const newestSoFar = acks()[acks().length - 1].through;
+
+    beforePages = [[wire(20), wire(19)]];
+    await act(async () => void loadOlderButton()?.click());
+    await flush();
+
+    for (const a of acks()) {
+      expect(new Date(a.through).getTime()).toBeLessThanOrEqual(new Date(newestSoFar).getTime());
+    }
+  });
+
+  it('BOUNDARY: an empty topic acks nothing', async () => {
+    historyPage = [];
+    await mount();
+    expect(acks()).toHaveLength(0);
+  });
+
+  it('EXT-FAILURE: a refused ack leaves the history on screen', async () => {
+    // The rows are already rendered by then; a failed acknowledgement costs
+    // some server storage and must cost nothing else.
+    historyPage = [wire(1)];
+    const original = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/chat/delivered')) throw new Error('offline');
+        return (original as typeof fetch)(input, init);
+      }),
+    );
+    await mount();
+    expect(bodyText()).toContain('plain(ct-m1)');
+  });
+
+
 });

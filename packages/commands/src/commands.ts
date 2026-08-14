@@ -392,6 +392,40 @@ export class Commands {
     return { messageId };
   }
 
+  /**
+   * Seal + send one IMAGE, end-to-end encrypted.
+   *
+   * Base64 in, because this op is reached through MCP and a CLI — neither can
+   * carry raw bytes — and decoded here so the SDK still seals real bytes rather
+   * than a string it has to guess the encoding of.
+   *
+   * The refusals are the shared ones every client applies (`chatMedia.ts`), and
+   * they are worth knowing before calling: the MIME allowlist is checked against
+   * the DECLARED type, HEIC is refused outright at the sender (the server can no
+   * longer transcode what it cannot read), and the size cap is on the sealed
+   * bytes. A topic this account is not a member of fails at the upload, not
+   * silently.
+   */
+  async chatSendMedia(
+    topicId: string,
+    input: { base64: string; mime: string },
+  ): Promise<{ messageId: string; key: string; mime: string; size: number }> {
+    this.requireAuth();
+    if (!input?.base64) throw new Error('chat send-media: base64 image data is required');
+    if (!input?.mime) throw new Error('chat send-media: mime is required');
+    let bytes: Uint8Array;
+    try {
+      const bin = atob(input.base64);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } catch {
+      throw new Error('chat send-media: base64 is not decodable');
+    }
+    await this.chat.joinTopic(topicId);
+    const { messageId, envelope } = await this.chat.sendMedia(topicId, { bytes, mime: input.mime });
+    return { messageId, key: envelope.key, mime: envelope.mime, size: envelope.size };
+  }
+
   /** Read + MLS-decrypt history. Joins/syncs first so a fresh process can decrypt. */
   async chatRead(topicId: string, opts: { limit?: number; since?: string; before?: string } = {}): Promise<ChatMessage[]> {
     this.requireAuth();

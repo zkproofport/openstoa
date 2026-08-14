@@ -101,6 +101,16 @@ describe('validateCreateApiKeyInput — name (boundary / empty / hostile)', () =
     const n = validateCreateApiKeyInput({ name: '내 에이전트 🔑', cmd: [], historyGrant: 'none' });
     expect(n.name).toBe('내 에이전트 🔑');
   });
+  it('rejects a NUL byte anywhere in name — Postgres text cannot store it (would otherwise reach the driver as a raw 500)', () => {
+    const NUL = String.fromCharCode(0);
+    expect(() => validateCreateApiKeyInput({ name: NUL + 'agent', cmd: [], historyGrant: 'none' })).toThrow(/NUL byte/);
+    expect(() => validateCreateApiKeyInput({ name: 'agent' + NUL, cmd: [], historyGrant: 'none' })).toThrow(/NUL byte/);
+    expect(() => validateCreateApiKeyInput({ name: 'ag' + NUL + 'ent', cmd: [], historyGrant: 'none' })).toThrow(ApiKeyValidationError);
+  });
+  it('other control characters (tab, newline) are still accepted verbatim in name — only NUL is special-cased', () => {
+    const n = validateCreateApiKeyInput({ name: 'line1\nline2\ttabbed', cmd: [], historyGrant: 'none' });
+    expect(n.name).toBe('line1\nline2\ttabbed');
+  });
 });
 
 describe('validateCreateApiKeyInput — cmd allowlist (boundary / empty / hostile)', () => {

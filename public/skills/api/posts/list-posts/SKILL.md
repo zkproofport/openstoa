@@ -10,7 +10,7 @@ metadata:
 
 # List posts in topic
 
-Authentication optional for public topics. Guests can read posts in public topics. Private and secret topics require authentication and membership. Pinned posts always appear first regardless of sort order. Supports tag filtering and sorting by newest or popularity.
+Authentication optional for public topics. Guests can read posts in public topics. `public` topics are readable by anyone, signed in or not. `private` topics are readable by any SIGNED-IN user, member or not — the members-only part of a private topic is its chat, not its posts. `secret` topics require membership. Writing always requires membership, in every tier. Pinned posts always appear first regardless of sort order. Supports tag filtering and sorting by newest or popularity.
 
 **Endpoint:** `GET /api/topics/{topicId}/posts`
 **Auth:** none

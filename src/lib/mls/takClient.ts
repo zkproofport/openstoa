@@ -49,7 +49,14 @@ function randomBytes(n: number): Uint8Array {
 
 const TAK_LABEL = 'openstoa-tak/v1';
 const ARCHIVE_LABEL = 'openstoa-archive/v1';
-const TAK_LEN = 32;
+/**
+ * A TAK is 32 bytes. Exported because callers outside this module need to
+ * REJECT a value that is not one — an epoch key arriving in an invite link
+ * has been through a channel we do not control, and length is the only
+ * check available for a symmetric key before it either opens something or
+ * does not.
+ */
+export const TAK_LEN = 32;
 const ARCHIVE_KEY_LEN = 16; // matches the suite AEAD (AES-128-GCM)
 
 /**
@@ -141,34 +148,84 @@ async function archiveKey(tak: Uint8Array, messageId: string): Promise<Uint8Arra
 }
 
 /**
- * Encrypt a message body for the archive under a TAK/root. Returns base64 of
+ * Encrypt raw bytes under a TAK/root, bound to `contextId`. Returns
  * nonce‖ciphertext. AEAD runs through the ciphersuite provider (subtle on web,
  * noble on mobile) so it matches the live-message path on every platform.
  */
-export async function sealArchive(tak: Uint8Array, messageId: string, plaintext: string): Promise<string> {
+async function sealBytes(tak: Uint8Array, contextId: string, plaintext: Uint8Array): Promise<Uint8Array> {
   const cs = await gc.ciphersuiteImpl();
-  const key = await archiveKey(tak, messageId);
+  const key = await archiveKey(tak, contextId);
   const nonce = randomBytes(cs.hpke.nonceLength);
-  const ct = await cs.hpke.encryptAead(key, nonce, undefined, enc.encode(plaintext));
+  const ct = await cs.hpke.encryptAead(key, nonce, undefined, plaintext);
   const out = new Uint8Array(nonce.length + ct.length);
   out.set(nonce, 0);
   out.set(ct, nonce.length);
-  return b64(out);
+  return out;
+}
+
+/** Inverse of sealBytes. Null on any failure — wrong key, truncation, tampering. */
+async function openBytes(tak: Uint8Array, contextId: string, sealed: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const cs = await gc.ciphersuiteImpl();
+    const key = await archiveKey(tak, contextId);
+    const nonce = sealed.slice(0, cs.hpke.nonceLength);
+    const ct = sealed.slice(cs.hpke.nonceLength);
+    return await cs.hpke.decryptAead(key, nonce, undefined, ct);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Encrypt a message body for the archive under a TAK/root. Returns base64 of
+ * nonce‖ciphertext.
+ */
+export async function sealArchive(tak: Uint8Array, messageId: string, plaintext: string): Promise<string> {
+  return b64(await sealBytes(tak, messageId, enc.encode(plaintext)));
 }
 
 /** Decrypt an archive body sealed by sealArchive. Returns null on failure. */
 export async function openArchive(tak: Uint8Array, messageId: string, sealedB64: string): Promise<string | null> {
+  let raw: Uint8Array;
   try {
-    const cs = await gc.ciphersuiteImpl();
-    const key = await archiveKey(tak, messageId);
-    const raw = unb64(sealedB64);
-    const nonce = raw.slice(0, cs.hpke.nonceLength);
-    const ct = raw.slice(cs.hpke.nonceLength);
-    const pt = await cs.hpke.decryptAead(key, nonce, undefined, ct);
-    return dec.decode(pt);
+    raw = unb64(sealedB64);
   } catch {
-    return null;
+    return null; // not even base64 — nothing to open
   }
+  const pt = await openBytes(tak, messageId, raw);
+  return pt == null ? null : dec.decode(pt);
+}
+
+/**
+ * AEAD context for an attached FILE, as opposed to a message body.
+ *
+ * Media is sealed before the POST that mints a message id (the bytes have to be
+ * uploaded first, so the body can reference them), so it cannot bind to that id
+ * the way `sealArchive` does. It binds to a client-generated `mediaId` instead,
+ * and the `media:` prefix keeps that namespace disjoint from message ids — the
+ * two must never derive the same per-object key from the same TAK.
+ */
+function mediaContextId(mediaId: string): string {
+  return `media:${mediaId}`;
+}
+
+/**
+ * Encrypt an attached file under the topic's TAK/root (R-3).
+ *
+ * Chat attachments used to be uploaded as PLAINTEXT to a public CDN URL, with
+ * only the URL string sealed — so the message was end-to-end encrypted and the
+ * picture in it was not, readable by the operator and by anyone holding the
+ * link. This is the same key and the same derivation the archive already uses,
+ * so a member who can read a topic's history can read its pictures, and nobody
+ * else can — including the server, which only ever sees this output.
+ */
+export function sealMediaBytes(tak: Uint8Array, mediaId: string, plaintext: Uint8Array): Promise<Uint8Array> {
+  return sealBytes(tak, mediaContextId(mediaId), plaintext);
+}
+
+/** Decrypt an attachment sealed by sealMediaBytes. Null on wrong key or tampering. */
+export function openMediaBytes(tak: Uint8Array, mediaId: string, sealed: Uint8Array): Promise<Uint8Array | null> {
+  return openBytes(tak, mediaContextId(mediaId), sealed);
 }
 
 /**

@@ -17,7 +17,8 @@ Uploads an image file directly to the CDN via the server. Send the file as multi
 
 **Body (multipart/form-data):**
 - `file` (string, required) — Image file to upload (image/* MIME types only, max 10MB)
-- `purpose` (enum<post|topic|avatar>) — Upload purpose for path organization (default: post)
+- `purpose` (enum<post|topic|avatar>) — What the image is for (default: post). Decides which folder it lands in.
+- `topicId` (string) — The topic this image belongs to. **Send it whenever you have one.** Objects are stored partitioned by topic (`topics/{topicId}/…`), and deleting a topic deletes everything under that prefix — so an image uploaded WITHOUT a topicId survives the deletion of the topic it was posted in, forever. You must be a member of the topic: a topicId you are not in is refused with 403, and a malformed one with 400 (it is never silently ignored). Omit it only when there is genuinely no topic yet — a profile picture (`purpose=avatar`), or the image for a topic you have not created yet.
 
 **Returns:** { publicUrl }
 - `publicUrl` (string) — Permanent public URL for the uploaded file

@@ -1,0 +1,1 @@
+ALTER TABLE "topics" ADD COLUMN "chat_archive_retention_days" integer DEFAULT 0 NOT NULL;

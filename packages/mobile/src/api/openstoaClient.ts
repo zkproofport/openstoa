@@ -117,6 +117,20 @@ export class OpenStoaClient {
   }
 
   /**
+   * The credential the iOS Notification Service Extension needs to fetch an
+   * encrypted attachment for a push preview (P-1), or null when there is none.
+   *
+   * Deliberately built on `tryGetToken`: mirroring a credential is background
+   * bookkeeping and must never be the thing that drives a login prompt. A guest,
+   * or anyone whose token cannot be refreshed silently, simply mirrors nothing
+   * and gets a caption without a thumbnail.
+   */
+  async pushSessionCredential(): Promise<{ baseUrl: string; token: string } | null> {
+    const token = await this.tryGetToken();
+    return token ? { baseUrl: this.baseUrl, token } : null;
+  }
+
+  /**
    * In guest mode this is a read-only attempt: if no token is on hand,
    * return null instead of triggering host login. Authenticated mode
    * keeps the original behaviour (refresh on expiry, host login on miss).
@@ -274,12 +288,60 @@ export class OpenStoaClient {
   }
 
   /**
+   * Store an END-TO-END ENCRYPTED chat attachment (R-3) and return its object
+   * key. `ciphertextB64` is AEAD output sealed under the topic's TAK — the
+   * server stores it as opaque bytes and can never open it.
+   *
+   * Deliberately NOT `uploadFile`: that one hands the plaintext file to
+   * `/api/upload`, which stores it at a public unauthenticated URL. It is still
+   * the right call for post images and avatars, which are public by intent.
+   */
+  async uploadChatMedia(topicId: string, mediaId: string, ciphertextB64: string): Promise<string> {
+    const { key } = await this.post<{ key: string }>(`/api/topics/${topicId}/chat/media`, {
+      mediaId,
+      ciphertext: ciphertextB64,
+    });
+    return key;
+  }
+
+  /** Fetch an encrypted attachment's ciphertext (base64) for local decryption. */
+  async fetchChatMedia(topicId: string, key: string): Promise<string> {
+    const { ciphertext } = await this.get<{ ciphertext: string }>(
+      `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`,
+    );
+    return ciphertext;
+  }
+
+  /** Delete an encrypted attachment — used when its message failed to send. */
+  async deleteChatMedia(topicId: string, key: string): Promise<void> {
+    await this.delete(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`);
+  }
+
+  /**
+   * Tell the server the message referencing this attachment went out, so the
+   * unclaimed-object collector leaves it alone (M-1).
+   */
+  async claimChatMedia(topicId: string, key: string): Promise<void> {
+    await this.patch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`);
+  }
+
+  /**
    * Upload a local file URI (or data URI) as multipart/form-data to
    * POST /api/upload and return the public URL string.
    * Always requires an authenticated session — surfaces
    * `GuestAuthRequiredError` for guests.
    */
-  async uploadFile(localUri: string): Promise<string> {
+  async uploadFile(
+    localUri: string,
+    /**
+     * The topic this image belongs to. Sent so the object is filed under
+     * `topics/{id}/` and a topic deletion sweeps it away with everything else
+     * (M-3). Omit ONLY where there is no topic — a profile picture, or an image
+     * chosen while a topic is still being created; those land under the
+     * uploader and outlive any topic deletion, by construction.
+     */
+    opts: { topicId?: string; purpose?: 'post' | 'topic' | 'avatar' } = {},
+  ): Promise<string> {
     if (this.mode === 'guest') {
       throw new GuestAuthRequiredError('/api/upload');
     }
@@ -290,6 +352,8 @@ export class OpenStoaClient {
       name: 'chat-image.jpg',
       type: 'image/jpeg',
     } as unknown as Blob);
+    if (opts.purpose) formData.append('purpose', opts.purpose);
+    if (opts.topicId) formData.append('topicId', opts.topicId);
     const res = await fetch(`${this.baseUrl}/api/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },

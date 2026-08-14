@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import { revokeApiKey, updateApiKey, toApiKeyMeta, ApiKeyValidationError } from '@/lib/apiKeys';
+import { revokeApiKey, updateApiKey, toApiKeyMeta, ApiKeyValidationError, requireNonApiKeySession } from '@/lib/apiKeys';
 
 const ROUTE = '/api/profile/api-keys/[keyId]';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,7 +20,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *       keeps working unchanged, only what it is ALLOWED to do changes). Takes effect immediately —
  *       the very next request authenticated with this key is gated by the new scope. Scoped by
  *       session user id, same as revoke: a foreign or revoked `keyId` returns 404, not a
- *       distinguishing 403 (no ownership oracle).
+ *       distinguishing 403 (no ownership oracle). Callable only from a real session — never from
+ *       another API key, regardless of that key's own `cmd` (see the 403 below).
  *     operationId: updateApiKey
  *     x-related-skills: [create-api-key, list-api-keys, revoke-api-key]
  *     parameters:
@@ -53,6 +54,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *               properties: { key: { type: object, description: Metadata for the updated key (id, name, prefix, cmd, historyGrant, isAI, timestamps). } }
  *       400: { description: Invalid cmd (unknown/too many) or historyGrant scope }
  *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
  *       404: { description: Key not found, not owned by the caller, or already revoked }
  */
 export async function PATCH(
@@ -64,6 +66,8 @@ export async function PATCH(
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    const keyGate = requireNonApiKeySession(session);
+    if (keyGate) return keyGate;
 
     const { keyId } = await params;
     if (!UUID_RE.test(keyId)) {
@@ -108,7 +112,9 @@ export async function PATCH(
  *       Revokes one of the caller's OWN API keys — a caller can never revoke another user's key
  *       (scoped by session user id, so a foreign or unknown `keyId` returns 404 either way, not a
  *       distinguishing 403). Revocation takes effect immediately: the next request made with this
- *       key gets 401. Idempotent — revoking an already-revoked key also returns 404.
+ *       key gets 401. Idempotent — revoking an already-revoked key also returns 404. Callable only
+ *       from a real session — never from another API key, regardless of that key's own `cmd` (see
+ *       the 403 below): a delegated credential can never revoke a sibling key, including itself.
  *     operationId: revokeApiKey
  *     x-related-skills: [create-api-key, list-api-keys]
  *     parameters:
@@ -124,6 +130,7 @@ export async function PATCH(
  *             schema: { type: object, properties: { revoked: { type: boolean }, id: { type: string, format: uuid } } }
  *       400: { description: Invalid keyId }
  *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
  *       404: { description: Key not found, not owned by the caller, or already revoked }
  */
 export async function DELETE(
@@ -135,6 +142,8 @@ export async function DELETE(
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    const keyGate = requireNonApiKeySession(session);
+    if (keyGate) return keyGate;
 
     const { keyId } = await params;
     if (!UUID_RE.test(keyId)) {

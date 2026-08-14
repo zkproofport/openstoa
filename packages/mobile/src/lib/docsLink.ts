@@ -20,6 +20,15 @@
 /** Path of the guide page on the OpenStoa web app. */
 export const DOCS_PATH = '/docs';
 
+/**
+ * Path of the page explaining what each kind of room does.
+ *
+ * The mini-app links out to it rather than carrying the explanation twice: the
+ * table is derived from the shared tier policy on the web side, and a second
+ * hand-written copy in the app is exactly how the two would come to disagree.
+ */
+export const TIERS_PATH = '/docs/tiers';
+
 /** Guards against a pathological host value being string-processed. */
 const MAX_BASE_URL_LENGTH = 2048;
 
@@ -65,4 +74,14 @@ export function normalizeBaseUrl(raw: unknown): string | null {
 export function buildDocsUrl(baseUrl: unknown): string | null {
   const base = normalizeBaseUrl(baseUrl);
   return base === null ? null : `${base}${DOCS_PATH}`;
+}
+
+/**
+ * Builds the absolute URL of the room-types page, or null when the base URL is
+ * unusable. Same null-rather-than-guess contract as `buildDocsUrl`: a caller
+ * hides the affordance instead of opening a broken WebView.
+ */
+export function buildTiersUrl(baseUrl: unknown): string | null {
+  const base = normalizeBaseUrl(baseUrl);
+  return base === null ? null : `${base}${TIERS_PATH}`;
 }

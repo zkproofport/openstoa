@@ -120,7 +120,14 @@ export class EncryptingKVStore implements SecureKVStore {
       inner,
       getMasterKey().then((mk) => kb.deriveLocalStoreKey(mk)),
       rootStore
-        ? loadRetiredMasterKey(rootStore).then((mk) => (mk ? kb.deriveLocalStoreKey(mk) : null))
+        ? loadRetiredMasterKey(rootStore)
+            .then((mk) => (mk ? kb.deriveLocalStoreKey(mk) : null))
+            // A read that the live key opens on the first try never awaits this
+            // promise, so a rejection here would go unobserved — and an unobserved
+            // rejection terminates a process with no handler installed. The
+            // fallback is an optimisation on top of a working read, so a root
+            // store that throws degrades to "no fallback", never to a crash.
+            .catch(() => null)
         : Promise.resolve(null),
     );
   }

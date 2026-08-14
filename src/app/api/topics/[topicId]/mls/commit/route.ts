@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { parseCommitFraming, MlsFramingError } from '@/lib/mls/framing';
+import { scheduleDeviceJoinRecord } from '@/lib/mls/deviceJoins';
 import { applyCommitCas, getCommitsSince } from '@/lib/mls/commits';
 import {
   decodeBase64Strict,
@@ -161,6 +162,32 @@ export async function POST(
       }
       // fork / group-mismatch → conflict; client rebases and retries (SI-2 liveness).
       return NextResponse.json({ error: `Commit rejected: ${result.reason}` }, { status: 409 });
+    }
+
+    /*
+     * A device that just JOINED is recorded here and nowhere else (D-1).
+     *
+     * Only an ACCEPTED commit counts — a rejected one added nobody — which is
+     * why this sits after the CAS rather than beside the parse. Fire-and-forget:
+     * the commit is already applied, and losing this bookkeeping degrades to
+     * discovering the device at its first acknowledgement, which is exactly the
+     * behaviour that predates this table.
+     */
+    // `newEpoch` is optional on the result type. An accepted commit always has
+    // one, but recording a join under a GUESSED epoch would place the device in
+    // a window it cannot read, so an absent value skips rather than defaults.
+    if (result.newEpoch !== undefined) {
+      // The helper is documented not to throw, and guards its own async path.
+      // This catches the synchronous half anyway: the Commit is already applied
+      // and cannot be un-applied, so letting a bookkeeping throw reach the outer
+      // handler would answer an ACCEPTED commit with 500 — and the client would
+      // retry it into a 409 against the epoch its own commit just produced.
+      try {
+        scheduleDeviceJoinRecord(db, topicId, commitBytes, result.newEpoch);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        logger.error(ROUTE, 'Device join bookkeeping threw; commit stands', { topicId, error: message });
+      }
     }
 
     // Fan-out is OUTSIDE the transaction (G7): a crash here leaves consistent

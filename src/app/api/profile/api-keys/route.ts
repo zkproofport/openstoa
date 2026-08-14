@@ -7,6 +7,7 @@ import {
   listApiKeys,
   toApiKeyMeta,
   ApiKeyValidationError,
+  requireNonApiKeySession,
 } from '@/lib/apiKeys';
 import { ALLOWED_CMDS } from '@/lib/aiPermissions';
 
@@ -25,7 +26,10 @@ const ROUTE = '/api/profile/api-keys';
  *       fresh profile `ai_permissions` lookup), so a key can be narrower than the account's own AI
  *       permissions. **The raw key is returned in this response ONLY — it is never shown again and
  *       the server stores only its SHA-256 hash.** Save it immediately; there is no recovery path,
- *       only revoke-and-reissue.
+ *       only revoke-and-reissue. **Key MANAGEMENT (this endpoint, and list/edit/revoke below) is an
+ *       account-owner action — it can only be called from a real session (cookie or a bare JWT),
+ *       never from another API key.** A key can never mint, list, re-scope, or revoke a sibling key,
+ *       regardless of its own `cmd` — this closes off a leaked narrow key widening itself.
  *     operationId: createApiKey
  *     x-related-skills: [list-api-keys, revoke-api-key, get-ai-permissions]
  *     requestBody:
@@ -72,6 +76,7 @@ const ROUTE = '/api/profile/api-keys';
  *                   description: Metadata for the created key (id, name, prefix, cmd, historyGrant, isAI, createdAt). Never includes the raw key or its hash.
  *       400: { description: Invalid name, cmd (unknown/too many), or historyGrant scope }
  *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -79,6 +84,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    const keyGate = requireNonApiKeySession(session);
+    if (keyGate) return keyGate;
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
@@ -137,6 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  *                   type: array
  *                   items: { type: object }
  *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -144,6 +152,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!session) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    const keyGate = requireNonApiKeySession(session);
+    if (keyGate) return keyGate;
 
     const rows = await listApiKeys(db, session.userId);
     return NextResponse.json({ apiKeys: rows.map(toApiKeyMeta), allowedCmd: ALLOWED_CMDS });

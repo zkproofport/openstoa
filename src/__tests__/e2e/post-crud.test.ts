@@ -19,6 +19,10 @@ let categoryId: string;
 let publicTopicId: string;
 let postId: string;
 let userBPostId: string;
+let privateTopicId: string;
+let privatePostId: string;
+let secretTopicId: string;
+let secretPostId: string;
 
 describe.sequential('Post CRUD + Permission', () => {
   // ── Setup ──────────────────────────────────────────────────────────────
@@ -101,6 +105,23 @@ describe.sequential('Post CRUD + Permission', () => {
     expect(json.error).toBeTruthy();
   });
 
+  it('4b. Create post: a NUL byte in title or content is rejected with a clean 400 (Postgres text cannot store it)', async () => {
+    const NUL = String.fromCharCode(0);
+    const withNulTitle = await authPost(`/api/topics/${publicTopicId}/posts`, {
+      title: `bad${NUL}title`,
+      content: 'valid content',
+    });
+    expect(withNulTitle.status).toBe(400);
+    expect((await withNulTitle.json()).error).toBe('Title must not contain a NUL byte');
+
+    const withNulContent = await authPost(`/api/topics/${publicTopicId}/posts`, {
+      title: `E2E NUL content ${Date.now()}`,
+      content: `bad${NUL}content`,
+    });
+    expect(withNulContent.status).toBe(400);
+    expect((await withNulContent.json()).error).toBe('Content must not contain a NUL byte');
+  });
+
   // ── Read ───────────────────────────────────────────────────────────────
 
   it('5. Guest reads post in public topic -> 200', async () => {
@@ -113,12 +134,10 @@ describe.sequential('Post CRUD + Permission', () => {
     expect(post.content).toBeTruthy();
   });
 
-  it('6. Requesting posts from non-existent topic returns 404', async () => {
-    // NOTE: Private/secret topics cannot be created via the API (returns 400),
-    // so we cannot test non-member read denial on a real private topic.
-    // Instead, this test verifies that the server returns 404 for a topic
-    // that does not exist, confirming the server does not silently return
-    // empty data for invalid topic IDs.
+  it('6. Requesting posts from non-existent topic returns 404 (guest)', async () => {
+    // Confirms the server returns 404 for a topic that does not exist,
+    // rather than silently returning empty data for an invalid topic id.
+    // Non-member read authz on real private/secret topics is 6b-6f below.
     const fakeTopicId = '00000000-0000-0000-0000-000000000000';
     const res = await publicGet(`/api/topics/${fakeTopicId}/posts`);
     expect(res.status).toBe(404);
@@ -126,7 +145,82 @@ describe.sequential('Post CRUD + Permission', () => {
     expect(json.error).toBeTruthy();
   });
 
-  it.todo('6b. Non-member reads posts in private/secret topic -> 403 (needs API support for creating private topics)');
+  // 6b: real private/secret topics via POST /api/topics — private/secret
+  // creation works fine over the API (VALID_VISIBILITIES in
+  // src/app/api/topics/route.ts includes both; media-gate.test.ts already
+  // creates both this way). GET /api/topics/{topicId}/posts documents its
+  // own rule in its OpenAPI block: `public` is open to anyone, `secret` is
+  // members-only, but `private` gates only the topic's CHAT — its post list
+  // is readable by any SIGNED-IN user, member or not. So "non-member" does
+  // NOT mean one status code here; it means four distinct combinations.
+  it('6b. setup: User A creates a private topic + a secret topic, each with one post', async () => {
+    const privateRes = await authPost('/api/topics', {
+      title: `E2E CRUD Private ${Date.now()}`,
+      description: 'Private topic for post read-authz tests',
+      visibility: 'private',
+      categoryId,
+    });
+    expect(privateRes.status).toBe(201);
+    privateTopicId = (await privateRes.json()).topic.id;
+    const privatePostRes = await authPost(`/api/topics/${privateTopicId}/posts`, {
+      title: `E2E CRUD Private Post ${Date.now()}`,
+      content: 'Content in a private topic.',
+    });
+    expect(privatePostRes.status).toBe(201);
+    privatePostId = (await privatePostRes.json()).post.id;
+
+    const secretRes = await authPost('/api/topics', {
+      title: `E2E CRUD Secret ${Date.now()}`,
+      description: 'Secret topic for post read-authz tests',
+      visibility: 'secret',
+      categoryId,
+    });
+    expect(secretRes.status).toBe(201);
+    secretTopicId = (await secretRes.json()).topic.id;
+    const secretPostRes = await authPost(`/api/topics/${secretTopicId}/posts`, {
+      title: `E2E CRUD Secret Post ${Date.now()}`,
+      content: 'Content in a secret topic.',
+    });
+    expect(secretPostRes.status).toBe(201);
+    secretPostId = (await secretPostRes.json()).post.id;
+
+    // Sanity check on the fixture itself: the owner (a real member) can see
+    // the secret post. Without this, 6f's 403 would be indistinguishable from
+    // a setup bug (e.g. the post never actually landed in that topic).
+    const ownerRead = await authGet(`/api/topics/${secretTopicId}/posts`);
+    expect(ownerRead.status).toBe(200);
+    const ownerIds = (await ownerRead.json()).posts.map((p: { id: string }) => p.id);
+    expect(ownerIds).toContain(secretPostId);
+  });
+
+  it('6c. Guest reads posts in a PRIVATE topic -> 401', async () => {
+    const res = await publicGet(`/api/topics/${privateTopicId}/posts`);
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('6d. Guest reads posts in a SECRET topic -> 401 (not 404 — same 401 as private; the route never gets far enough to distinguish visibility for a guest, unlike GET /api/topics/{topicId} which 404s secret topics to hide their existence)', async () => {
+    const res = await publicGet(`/api/topics/${secretTopicId}/posts`);
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
+
+  it('6e. Signed-in NON-MEMBER reads posts in a PRIVATE topic -> 200, sees the post (private gates the topic\'s CHAT, not its posts — src/app/api/topics/[topicId]/posts/route.ts\'s own comment on this branch)', async () => {
+    const res = await secondUserGet(`/api/topics/${privateTopicId}/posts`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids = json.posts.map((p: { id: string }) => p.id);
+    expect(ids).toContain(privatePostId);
+  });
+
+  it('6f. Signed-in NON-MEMBER reads posts in a SECRET topic -> 403 (reveals existence via 403, unlike GET /api/topics/{topicId} which 404s a secret topic for a non-member)', async () => {
+    const res = await secondUserGet(`/api/topics/${secretTopicId}/posts`);
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+  });
 
   // ── Update ─────────────────────────────────────────────────────────────
 
@@ -274,5 +368,16 @@ describe.sequential('Post CRUD + Permission', () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBeTruthy();
+  });
+
+  it('14b. Edit post: a NUL byte in title or content is rejected with a clean 400', async () => {
+    const NUL = String.fromCharCode(0);
+    const withNulTitle = await authPatch(`/api/posts/${postId}`, { title: `bad${NUL}title` });
+    expect(withNulTitle.status).toBe(400);
+    expect((await withNulTitle.json()).error).toBe('Title must not contain a NUL byte');
+
+    const withNulContent = await authPatch(`/api/posts/${postId}`, { content: `bad${NUL}content` });
+    expect(withNulContent.status).toBe(400);
+    expect((await withNulContent.json()).error).toBe('Content must not contain a NUL byte');
   });
 });

@@ -38,6 +38,9 @@ ZK-gated community. Pick a sub-skill below; full guide at [/AGENTS.md](AGENTS.md
 ### upload
 [Upload image file](skills/api/upload/upload-image/SKILL.md) · [Delete uploaded images (draft cleanup)](skills/api/upload/delete-uploaded-images/SKILL.md)
 
+### media
+[Fetch a plaintext post, topic-cover, or profile image by its storage key](skills/api/media/get-media/SKILL.md)
+
 ### categories
 [List all categories](skills/api/categories/list-categories/SKILL.md)
 
@@ -45,7 +48,7 @@ ZK-gated community. Pick a sub-skill below; full guide at [/AGENTS.md](AGENTS.md
 [Generate a single-use invite token](skills/api/topics/generate-invite-token/SKILL.md) · [Join or request to join topic](skills/api/topics/join-topic/SKILL.md) · [Get topic detail](skills/api/topics/get-topic/SKILL.md) · [Edit topic](skills/api/topics/edit-topic/SKILL.md) · [Delete topic](skills/api/topics/delete-topic/SKILL.md) · [Lookup topic by invite code](skills/api/topics/lookup-invite-code/SKILL.md) · [Join topic via invite code](skills/api/topics/join-by-invite-code/SKILL.md) · [List topics](skills/api/topics/list-topics/SKILL.md) · [Create topic](skills/api/topics/create-topic/SKILL.md)
 
 ### members
-[List topic members](skills/api/members/list-members/SKILL.md) · [Change member role](skills/api/members/change-member-role/SKILL.md) · [Remove member from topic](skills/api/members/remove-member/SKILL.md)
+[Leave a topic](skills/api/members/leave-topic/SKILL.md) · [List topic members](skills/api/members/list-members/SKILL.md) · [Change member role](skills/api/members/change-member-role/SKILL.md) · [Remove member from topic](skills/api/members/remove-member/SKILL.md)
 
 ### join-requests
 [List join requests](skills/api/join-requests/list-join-requests/SKILL.md) · [Approve or reject join request](skills/api/join-requests/handle-join-request/SKILL.md)
@@ -75,7 +78,7 @@ ZK-gated community. Pick a sub-skill below; full guide at [/AGENTS.md](AGENTS.md
 [Search and list tags](skills/api/tags/list-tags/SKILL.md)
 
 ### chat
-[Fetch the server-held archive root (public topics only)](skills/api/chat/get-topics-by-topicId-archive-root/SKILL.md) · [Deposit the archive root (public topics only)](skills/api/chat/put-topics-by-topicId-archive-root/SKILL.md) · [Get current chat presence](skills/api/chat/get-chat-presence/SKILL.md) · [Get chat history](skills/api/chat/get-chat-history/SKILL.md) · [Send a chat message (end-to-end encrypted)](skills/api/chat/send-chat-message/SKILL.md) · [Subscribe to real-time chat via SSE](skills/api/chat/subscribe-chat-sse/SKILL.md)
+[Fetch the server-held archive root (public topics only)](skills/api/chat/get-topics-by-topicId-archive-root/SKILL.md) · [Deposit the archive root (public topics only)](skills/api/chat/put-topics-by-topicId-archive-root/SKILL.md) · [Acknowledge chat messages as delivered to this device](skills/api/chat/ack-chat-delivery/SKILL.md) · [Get current chat presence](skills/api/chat/get-chat-presence/SKILL.md) · [Get chat history](skills/api/chat/get-chat-history/SKILL.md) · [Send a chat message (end-to-end encrypted)](skills/api/chat/send-chat-message/SKILL.md) · [Subscribe to real-time chat via SSE](skills/api/chat/subscribe-chat-sse/SKILL.md)
 
 ### push
 [Read your push notification preferences](skills/api/push/get-push-preferences/SKILL.md) · [Turn push notifications on or off globally](skills/api/push/update-push-preferences/SKILL.md) · [Read your notification setting for one topic](skills/api/push/get-topic-push-preference/SKILL.md) · [Mute or unmute one topic](skills/api/push/update-topic-push-preference/SKILL.md)

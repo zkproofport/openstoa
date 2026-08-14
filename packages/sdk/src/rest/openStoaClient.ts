@@ -302,6 +302,73 @@ export class OpenStoaClient {
   // chat (E2EE ciphertext transport only — plaintext never crosses this)
   // -------------------------------------------------------------------------
   readonly chat = {
+    /**
+     * GET /api/topics/{id}/chat/media — one encrypted attachment's CIPHERTEXT.
+     *
+     * Membership-gated on the server and opaque to it: the bytes are sealed
+     * under the topic's TAK, so this only moves ciphertext (SI-1). The caller
+     * decrypts with `takSession.openMedia`.
+     *
+     * `key` comes from the sealed message envelope — never constructed here.
+     * The server re-checks that the key belongs to the topic in the URL, so a
+     * member of one topic cannot use this to fetch another's object.
+     */
+    /**
+     * POST /api/topics/{id}/chat/media — store one attachment's CIPHERTEXT and
+     * get back the object key to name in the sealed message.
+     *
+     * The key is minted SERVER-side from ids (topic, uploader, mediaId), never
+     * from anything the caller supplies: the filename never reaches it, and a
+     * caller cannot choose where its object lands. Row is written unclaimed and
+     * collected in an hour if the message never goes out.
+     */
+    uploadMedia: async (topicId: string, mediaId: string, ciphertextB64: string): Promise<string> => {
+      const { key } = await this.request<{ key: string }>(`/api/topics/${topicId}/chat/media`, {
+        method: 'POST',
+        body: { mediaId, ciphertext: ciphertextB64 },
+      });
+      return key;
+    },
+    /**
+     * DELETE /api/topics/{id}/chat/media — drop an UNCLAIMED object whose
+     * message never went out. Uploader-scoped on the server, so this can only
+     * ever remove your own orphan. Best-effort: a failed cleanup is one object
+     * the hourly collector takes instead, which is strictly better than a
+     * caller that thinks its picture was sent.
+     */
+    discardMedia: async (topicId: string, key: string): Promise<void> => {
+      await this.request<Response>(`/api/topics/${topicId}/chat/media`, {
+        method: 'DELETE',
+        query: { key },
+        raw: true,
+      });
+    },
+    media: async (topicId: string, key: string): Promise<Uint8Array | null> => {
+      const res = await this.request<Response>(
+        `/api/topics/${topicId}/chat/media`,
+        { query: { key }, raw: true },
+      );
+      // 404 = collected or never uploaded; 403 = not a member / foreign key.
+      // Neither is an exception: the caller renders "unavailable", it does not
+      // abort the whole history read over one missing picture.
+      if (res.status === 404 || res.status === 403) return null;
+      if (!res.ok) throw new Error(`chat media GET ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    },
+    /**
+     * POST /api/topics/{id}/chat/delivered — move THIS DEVICE's delivery mark.
+     *
+     * The server keeps a message's live ciphertext only until every device that
+     * was in the group when it was sent has fetched it, so a client that never
+     * calls this pins its ciphertext until the 30-day grace cap. Best-effort by
+     * design: reclaiming server storage must never fail somebody's read.
+     */
+    delivered: async (topicId: string, deviceId: string, through: string): Promise<void> => {
+      await this.request(`/api/topics/${topicId}/chat/delivered`, {
+        method: 'POST',
+        body: { deviceId, through },
+      });
+    },
     /** GET /api/topics/{id}/chat — history (sealed bodies + system rows). */
     history: (topicId: string, opts: { limit?: number; since?: string; before?: string } = {}): Promise<{ messages: ChatMessageRow[]; total: number }> =>
       this.request(`/api/topics/${topicId}/chat`, { query: { limit: opts.limit, since: opts.since, before: opts.before } }),

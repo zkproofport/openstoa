@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { getMlsSessionStore } from '@/lib/mls/webTransport';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import SNSEditor from '@/components/SNSEditor';
@@ -15,7 +16,9 @@ import ImageLightbox from '@/components/ImageLightbox';
 import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
 import PollRenderer from '@/components/PollRenderer';
 import MediaGallery from '@/components/post/MediaGallery';
+import ArchiveRetentionNotice from '@/components/ArchiveRetentionNotice';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import InviteDialog from '@/components/InviteDialog';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -32,6 +35,8 @@ interface Topic {
   createdAt: string;
   blindedAt?: string | null;
   blindedBy?: string | null;
+  // Absent on an older payload, which means unlimited — see ArchiveRetentionNotice.
+  chatArchiveRetentionDays?: number;
 }
 
 interface Reaction {
@@ -184,8 +189,11 @@ export default function TopicPage() {
    *  composer only handles brand-new posts, but the snapshot pattern
    *  matches the mobile screen and survives future edit reuse). */
   const initialImagesRef = useRef<string[]>([]);
-  const [copied, setCopied] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
@@ -367,22 +375,49 @@ export default function TopicPage() {
     loadPosts(0, true, activeTag, sortBy);
   }
 
-  async function handleCopyInvite() {
-    const url = `${window.location.origin}/topics/${topicId}/join`;
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = url;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+
+  /**
+   * Leave the topic.
+   *
+   * Two-step, like the kick and transfer controls on the members page: the
+   * first press asks, the second acts. Leaving costs this device its view of
+   * the chat history, so it should not be one stray tap away.
+   *
+   * The local group state goes too. Nobody else can reach into this device to
+   * delete it, and holding a live ratchet for a room you left is exactly what a
+   * later compromise of this device would open. Best-effort: the membership row
+   * is what gates access, so a storage failure must not block the exit.
+   */
+  async function handleLeave() {
+    if (!confirmLeave) {
+      setConfirmLeave(true);
+      return;
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setLeaving(true);
+    try {
+      const res = await fetch(`/api/topics/${topicId}/leave`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 409 is the owner case and deserves the instruction, not the generic
+        // failure — "failed to leave" tells an owner nothing about what to do.
+        throw new Error(
+          res.status === 409
+            ? t('membersPage.leaveOwnerBlocked')
+            : (data.error ?? t('membersPage.leaveFailed')),
+        );
+      }
+      try {
+        await getMlsSessionStore().forgetTopic(topicId);
+      } catch {
+        /* the membership row is gone either way */
+      }
+      router.push('/topics/explore');
+    } catch (err) {
+      setLeaveError(err instanceof Error ? err.message : t('membersPage.leaveFailed'));
+      setConfirmLeave(false);
+    } finally {
+      setLeaving(false);
+    }
   }
 
   function isComposerEmpty(): boolean {
@@ -744,6 +779,13 @@ export default function TopicPage() {
             </span>
           )}
 
+          {/* Members live with the window; the admin who chose it does not have
+              to tell them. Shown to members only — it describes the chat room,
+              which is members-only in every tier. */}
+          {!isGuest && topic.isMember && (
+            <ArchiveRetentionNotice days={topic.chatArchiveRetentionDays} />
+          )}
+
           <div
             style={{
               display: 'flex',
@@ -771,16 +813,19 @@ export default function TopicPage() {
                 {t('topicPage.manage')}
               </Link>
             )}
-            {!isGuest && topic.isMember && (
+            {/* Who sees an Invite button.
+                On a non-public topic the invite route answers 403 to anyone
+                but the owner or an admin, so showing the control to a plain
+                member offers an action that always fails — the same reasoning
+                as the missing Leave button below. */}
+            {!isGuest && topic.isMember &&
+              (topic.visibility === 'public' || currentUserRole === 'owner' || currentUserRole === 'admin') && (
               <button
                 type="button"
-                onClick={handleCopyInvite}
+                onClick={() => setInviteOpen(true)}
                 className="os-button"
-                style={copied
-                  ? { color: 'var(--color-brand-accent)', borderColor: 'var(--color-brand-accent)' }
-                  : undefined}
               >
-                {copied ? t('membersPage.copied') : t('membersPage.invite')}
+                {t('membersPage.invite')}
               </button>
             )}
             {!isGuest && !topic.isMember && (
@@ -788,7 +833,43 @@ export default function TopicPage() {
                 {t('explorePage.join')}
               </Link>
             )}
+            {/* The owner has no leave button: leaving would strand a topic
+                nobody can administer, and the route refuses it anyway. Showing
+                a control that always fails is worse than not showing it. */}
+            {!isGuest && topic.isMember && topic.creatorId !== sessionUserId && (
+              <button
+                type="button"
+                onClick={handleLeave}
+                onBlur={() => setConfirmLeave(false)}
+                disabled={leaving}
+                className="os-button"
+                style={confirmLeave ? { color: 'var(--color-status-danger)', borderColor: 'var(--color-status-danger)' } : undefined}
+                title={confirmLeave ? t('membersPage.leaveExplain') : undefined}
+              >
+                {leaving
+                  ? t('membersPage.leaving')
+                  : confirmLeave
+                    ? t('membersPage.leaveConfirm')
+                    : t('membersPage.leave')}
+              </button>
+            )}
           </div>
+          {/* Surfaced inline rather than in an alert(): the owner case is an
+              instruction ("transfer ownership first"), and an instruction the
+              user has to dismiss before they can act on it is worse than one
+              they can read while they act. */}
+          {leaveError && (
+            <p
+              role="alert"
+              style={{
+                margin: 'var(--space-2) 0 0',
+                color: 'var(--color-status-danger)',
+                fontSize: 'var(--text-body-sm)',
+              }}
+            >
+              {leaveError}
+            </p>
+          )}
         </div>
       </header>
 
@@ -1066,6 +1147,7 @@ export default function TopicPage() {
                     }}
                   />
                   <SNSEditor
+                    topicId={topicId}
                     placeholder={t('topicPage.composer.writePostPlaceholder')}
                     onChange={(state) => {
                       setPostContent(state.content);
@@ -1348,6 +1430,12 @@ export default function TopicPage() {
           <PlusIcon />
         </button>
       )}
+      <InviteDialog
+        topicId={topicId}
+        visibility={topic?.visibility}
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+      />
     </CommunityLayout>
   );
 }

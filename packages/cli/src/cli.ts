@@ -34,9 +34,12 @@ export const DEVICE_LOGIN_DISABLED =
   'Interactive Google login is temporarily unavailable (the ZKProofport prover service is offline). ' +
   'Use a scoped API key instead: set OPENSTOA_API_KEY (or --api-key <key>, or ~/.openstoa/credentials), ' +
   'or adopt an existing Bearer with `openstoa login --token <jwt>`.\n' +
-  'To get your first key: sign in to the OpenStoa web site with the ZKProofport mobile app, ' +
-  'then open /my → AI agents → create an API key. From an already-authenticated session you can also run ' +
-  '`openstoa apikey create --name <label>`.';
+  'A key is minted by the account owner, in a browser: sign in to the OpenStoa web site with the ' +
+  'ZKProofport mobile app, then open /my → AI agents → create an API key — that is the normal way to ' +
+  'get one, not a workaround. `openstoa apikey create --name <label>` (and the rest of `apikey`) is for ' +
+  'that same account-owner session to run — it always fails with 403 when the CLI is authenticated via ' +
+  'OPENSTOA_API_KEY, including to manage that very key. An agent running only with OPENSTOA_API_KEY should ' +
+  'ask its account owner to mint or rotate a key, not attempt `apikey` itself.';
 
 interface GlobalOpts {
   baseUrl?: string;
@@ -169,7 +172,11 @@ export function buildProgram(
     .option('--visibility <v>', 'public | private | secret', 'public')
     .option('--category-id <id>')
     .option('--proof-type <type>')
-    .action((opts: { title: string; description?: string; visibility?: string; categoryId?: string; proofType?: string }) =>
+    .option(
+      '--chat-archive-retention-days <days>',
+      'how long chat history is kept: 0 (forever, default) | 365 | 90 | 30. Set once, at creation',
+    )
+    .action((opts: { title: string; description?: string; visibility?: string; categoryId?: string; proofType?: string; chatArchiveRetentionDays?: string }) =>
       run(
         (c) =>
           c.topicCreate({
@@ -178,6 +185,12 @@ export function buildProgram(
             visibility: opts.visibility as 'public' | 'private' | 'secret' | undefined,
             categoryId: opts.categoryId,
             proofType: opts.proofType,
+            // Commander hands over a string; the route accepts only a number and
+            // refuses "30", so parse here rather than letting the server 400 on
+            // a flag the user typed correctly.
+            ...(opts.chatArchiveRetentionDays !== undefined && {
+              chatArchiveRetentionDays: Number(opts.chatArchiveRetentionDays) as 0 | 365 | 90 | 30,
+            }),
           }),
         fmt.fmtTopic,
       ),
@@ -272,6 +285,31 @@ export function buildProgram(
 
   // ── chat (E2EE) ─────────────────────────────────────────────────────────
   const chat = program.command('chat').description('E2EE chat (MLS keys held locally in the vault)');
+  chat
+    .command('send-media <topicId> <file>')
+    .description('send an image, end-to-end encrypted (png/jpeg/gif/webp; HEIC is refused — convert first)')
+    .option('--mime <type>', 'override the type inferred from the file extension')
+    .action((topicId: string, file: string, opts: { mime?: string }) =>
+      run(
+        async (c) => {
+          // Read here rather than in the shared op: the op is also reached over
+          // MCP, where there is no filesystem to read from.
+          const { readFileSync } = await import('node:fs');
+          const bytes = readFileSync(file);
+          const ext = file.toLowerCase().split('.').pop() ?? '';
+          const inferred =
+            ext === 'png' ? 'image/png'
+            : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+            : ext === 'gif' ? 'image/gif'
+            : ext === 'webp' ? 'image/webp'
+            : '';
+          const mime = opts.mime ?? inferred;
+          if (!mime) throw new Error(`cannot infer image type from "${file}" — pass --mime`);
+          return c.chatSendMedia(topicId, { base64: bytes.toString('base64'), mime });
+        },
+        (r) => `Sent ${r.mime} (${r.size} bytes) as message ${r.messageId}`,
+      ),
+    );
   chat.command('join <topicId>').description('join the topic chat (MLS self-join)').action((topicId: string) => run((c) => c.chatJoin(topicId), (r) => `Joined chat ${r.topicId} as device ${r.deviceId}`));
   chat
     .command('send <topicId> <text...>')
@@ -317,7 +355,10 @@ export function buildProgram(
     .action((nickname: string) => run((c) => c.profileSetNickname(nickname), (r) => `Nickname set to ${r.nickname}`));
 
   // ── API keys (scoped credential — skip interactive login) ────────────────
-  const apikey = program.command('apikey').description('durable API key management (Bearer auth without login)');
+  // Account-owner-only: every subcommand below 403s when this CLI invocation
+  // is itself authenticated via OPENSTOA_API_KEY. Requires a real session
+  // (`openstoa login --token <jwt>`) — see requireNonApiKeySession server-side.
+  const apikey = program.command('apikey').description('durable API key management — for the account owner to run from their own real session; an agent running on OPENSTOA_API_KEY gets 403 and should ask its owner instead');
   apikey
     .command('create')
     .description('issue a new scoped key — the raw key is shown ONCE, save it now')

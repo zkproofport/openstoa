@@ -8,6 +8,7 @@ import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 import { updateTopicScore } from '@/lib/topicScore';
 import { requireAiCapability } from '@/lib/aiPermissions';
+import { hasNulByte } from '@/lib/textGuard';
 
 const ROUTE = '/api/posts/[postId]/comments';
 
@@ -126,6 +127,11 @@ export async function POST(
         { error: `Comment must be ${MAX_COMMENT_LENGTH} characters or less` },
         { status: 400 },
       );
+    }
+    // Postgres text storage cannot hold a NUL byte (see src/lib/textGuard.ts)
+    // — reject before it ever reaches the insert, same rule as apiKeys.name.
+    if (hasNulByte(content)) {
+      return NextResponse.json({ error: 'Comment must not contain a NUL byte' }, { status: 400 });
     }
 
     const [comment] = await db

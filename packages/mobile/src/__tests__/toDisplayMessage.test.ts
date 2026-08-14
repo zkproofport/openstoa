@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { ChatMessage } from '@openstoa/api-types';
 import type { MlsSessionStore } from '../crypto/mlsSession';
 import { toDisplayMessageMls } from '../crypto/mobileTransport';
@@ -153,11 +154,152 @@ describe('toDisplayMessageMls — contract invocation and pass-through', () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it('a message row with no sealed body becomes empty text, not the placeholder', async () => {
-    const { store, openCached } = makeStore();
+  it('a message row with no sealed body asks the CACHE, then reports it as unreadable', async () => {
+    /*
+     * This used to assert `openCached` was NOT called, which was right while a
+     * missing sealed body could only mean a malformed row. Since R-1 it also
+     * means the server has reclaimed the live copy after every device fetched
+     * it — and the plaintext may still be cached on THIS device from when it
+     * was delivered. Not asking would turn a user's own readable history into
+     * placeholders after one restart.
+     *
+     * It then asserted `message: ''`, which PINNED A DEFECT rather than a
+     * contract: an empty body matches none of the three things the screen keys
+     * off the placeholder for, so a purged row rendered as an empty bubble and
+     * the archive back-fill skipped it forever. See the purged-row block below.
+     */
+    // A cache MISS: the row was purged and this device does not hold it either.
     const bare = row({ sealed: null as never });
-    await expect(toDisplayMessageMls(store, 't-1', bare)).resolves.toMatchObject({ message: '' });
+    const { store, openCached } = makeStore({ nullOn: new Set([bare.id]) });
+    await expect(toDisplayMessageMls(store, 't-1', bare)).resolves.toMatchObject({ message: PLACEHOLDER });
+    expect(openCached).toHaveBeenCalledWith('t-1', bare.id, { ciphertext: '', epoch: 0 });
+  });
+
+  it('a purged row whose plaintext IS still cached comes back readable', async () => {
+    const store = {
+      openCached: vi.fn(async () => 'still here from when it was delivered'),
+      open: vi.fn(),
+    } as unknown as MlsSessionStore;
+    await expect(
+      toDisplayMessageMls(store, 't-1', row({ sealed: null as never })),
+    ).resolves.toMatchObject({ message: 'still here from when it was delivered' });
+  });
+
+  it('EMPTY: a purged row is never handed back as an empty message', async () => {
+    // The distinction that matters to the user: "" renders as a bubble with
+    // nothing in it, which claims the sender sent nothing. The placeholder
+    // says the message exists and this device cannot read it — which is true,
+    // and is also what makes the row eligible for the archive pass.
+    const store = {
+      openCached: vi.fn(async () => null),
+      open: vi.fn(),
+    } as unknown as MlsSessionStore;
+    const out = await toDisplayMessageMls(store, 't-1', row({ sealed: null as never }));
+    expect(out.message).not.toBe('');
+    expect(out.message).toBe(PLACEHOLDER);
+  });
+
+  it('EMPTY: a row with neither a sealed body NOR an id says so too', async () => {
+    // Nothing to ask the cache with, so no lookup happens — but the row still
+    // has to carry a body the screen can classify, or it lands as an empty
+    // bubble by a different route.
+    const { store, openCached, open } = makeStore();
+    const out = await toDisplayMessageMls(store, 't-1', row({ id: undefined as never, sealed: null as never }));
+    expect(out.message).toBe(PLACEHOLDER);
     expect(openCached).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('a THROWING cache on the purged path also reports unreadable, not empty', async () => {
+    const store = {
+      openCached: vi.fn(async () => {
+        throw new Error('keystore unavailable');
+      }),
+      open: vi.fn(),
+    } as unknown as MlsSessionStore;
+    await expect(
+      toDisplayMessageMls(store, 't-1', row({ sealed: null as never })),
+    ).resolves.toMatchObject({ message: PLACEHOLDER });
+  });
+
+  it('INTEGRITY: a purged ATTACHMENT keeps its envelope verbatim, so it still renders as a picture', async () => {
+    // A purged row is resolved from the archive, and what the archive holds for
+    // an attachment is the ENVELOPE, not a caption. The screen re-parses the
+    // body on every render, so the picture comes back only if this function
+    // hands the envelope through byte for byte — one stray trim or fallback
+    // and the row degrades to unreadable text with the object key showing.
+    const envelope =
+      'openstoa:media:v1:{"v":1,"mediaId":"0968a49ae20ba82b3224d8360ec8f836",' +
+      '"key":"topics/t-1/chat/0xabc/0968a49ae20ba82b3224d8360ec8f836.bin",' +
+      '"mime":"image/jpeg","size":2048,"takVersion":3}';
+    const store = {
+      openCached: vi.fn(async () => envelope),
+      open: vi.fn(),
+    } as unknown as MlsSessionStore;
+    const out = await toDisplayMessageMls(store, 't-1', row({ sealed: null as never }));
+    expect(out.message).toBe(envelope);
+  });
+});
+
+/**
+ * THE THREE STATES A PURGED ROW CAN BE IN, and why they must not collapse.
+ *
+ * R-1 lets the server drop the live ciphertext once every device that was owed
+ * the message has fetched it. After that the row arrives with `sealed: null`,
+ * and what the user should see depends entirely on what THIS device can still
+ * reach — which is three different answers, not two:
+ *
+ *   1. readable from this device's own cache      → the text, no placeholder
+ *   2. not cached, but the archive can supply it  → the text, after the pass
+ *   3. not cached and no key for that epoch       → genuinely locked
+ *
+ * (2) is the one that is easy to get wrong, because at THIS layer it is
+ * indistinguishable from (3) — both are "no readable body right now". The
+ * screen tells them apart by what the archive pass does next, and the pass only
+ * looks at rows carrying the placeholder. So the placeholder is not a cosmetic
+ * choice here; it is the handle the resolution machinery grabs the row by.
+ */
+describe('toDisplayMessageMls — a purged row stays visible to the machinery that resolves it', () => {
+  const purged = () => row({ sealed: null as never });
+
+  it('STATE 1 — cached: resolves with no placeholder at all', async () => {
+    const store = { openCached: vi.fn(async () => 'the original text'), open: vi.fn() } as unknown as MlsSessionStore;
+    const out = await toDisplayMessageMls(store, 't-1', purged());
+    expect(out.message).toBe('the original text');
+    expect(out.message).not.toBe(PLACEHOLDER);
+  });
+
+  it('STATES 2 and 3 — uncached: the placeholder, which is what the back-fill and the sync filter both match on', async () => {
+    const store = { openCached: vi.fn(async () => null), open: vi.fn() } as unknown as MlsSessionStore;
+    const out = await toDisplayMessageMls(store, 't-1', purged());
+    expect(out.message).toBe(PLACEHOLDER);
+  });
+
+  it('CONTRACT: the sentinel this function emits is the one ChatRoomScreen resolves, counts and hides on', async () => {
+    /*
+     * One value, asserted across the two files that have to agree on it rather
+     * than trusted. If either side is reworded, a purged row silently stops
+     * being resolvable and renders as a permanent placeholder — the failure
+     * this whole block exists to prevent, in its other direction.
+     *
+     * The two sides are spelled differently on purpose, and the assertions
+     * follow that: `mobileTransport` now exports UNREADABLE_BODY, so the value
+     * is pinned at its DEFINITION (one place, where a reword would happen);
+     * `ChatRoomScreen` still writes the literal at each of its call sites, so
+     * those are counted. When the screen adopts the constant too, the count
+     * below stops meaning anything and should be replaced by an import check —
+     * it will go red and say so, which is the point.
+     */
+    const screen = readFileSync(
+      new URL('../screens/chat/ChatRoomScreen.tsx', import.meta.url),
+      'utf8',
+    );
+    // The back-fill merge, the locked count and the still-syncing filter.
+    const matches = screen.match(/'\[unable to decrypt\]'/g) ?? [];
+    expect(matches.length, 'ChatRoomScreen must still key off this exact sentinel').toBeGreaterThanOrEqual(3);
+
+    const transport = readFileSync(new URL('../crypto/mobileTransport.ts', import.meta.url), 'utf8');
+    expect(transport).toContain(`UNREADABLE_BODY = '${PLACEHOLDER}'`);
   });
 
   it('integrity: UTF-8 plaintext (Korean, emoji) is returned verbatim', async () => {

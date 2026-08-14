@@ -10,10 +10,16 @@ metadata:
 
 # Join or request to join topic
 
-Requests to join a topic. Response depends on `visibility` and `proofType`:
+Joins a topic. Response depends on `visibility` and `proofType`:
  - `public`: joins immediately (201).
- - `private`: creates a pending join request; an owner/admin must approve (202).
- - `secret`: not joinable here — use `POST /api/topics/join/{inviteCode}` instead.
+ - `private`: **not joinable here (403)** — invite only. Use
+ `POST /api/topics/join/{inviteCode}`. The approval flow this route used to offer
+ (202 + a pending request) has been removed: a private topic's invite link is also
+ what carries its chat-history keys, so an approved member would arrive without them.
+ - `secret`: not joinable here (403) — same invite route.
+
+Join requests created before that change are still listed and approvable by an
+owner/admin at `GET`/`PATCH /api/topics/{topicId}/requests`; no new ones are created.
 
 Some topics gate membership on a ZK proof. The required circuit depends on the topic's
 `proofType` field:

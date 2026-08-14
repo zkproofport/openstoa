@@ -28,7 +28,10 @@
  *                         'a bounded historyGrant still reads…' (every grant shape)
  *   hostile input       → 'hostile and multi-script names round-trip…',
  *                         'hostile cmd entries are rejected outright…',
- *                         'malformed osk_ bearer tokens are 401, never 500…'
+ *                         'malformed osk_ bearer tokens are 401, never 500…',
+ *                         'hostile: a leaked key cannot mint a wider (or even same-scope) sibling…',
+ *                         'hostile: a leaked key cannot enumerate its owner's sibling keys',
+ *                         'hostile: a leaked key cannot widen or narrow itself, or a sibling…'
  *   empty / whitespace  → 'name length boundary…' (empty, whitespace-only,
  *     / null / undefined     missing, null and non-string are five separate
  *                         assertions), 'cmd count and type boundary…' (undefined
@@ -43,23 +46,39 @@
  *                         'historyGrant is ENFORCED…' (the SECOND scope axis: a key
  *                         can hold chat/read and still be refused the past),
  *                         'the grant gates HISTORY only…' (it must not leak into
- *                         send/write or ungated reads)
+ *                         send/write or ungated reads),
+ *                         'hostile: a leaked key cannot mint / enumerate / widen /
+ *                         revoke…' (key MANAGEMENT is reachable only from a real
+ *                         session, never a delegated key — see below),
+ *                         'the account owner (a real session, not an API key) is
+ *                         completely unaffected…' (the positive-direction pin)
  *   race / fire-and-forget → 'concurrent revoke…', 'concurrent re-scope…',
  *                         'lastUsedAt starts null and is bumped by use…'
- *   contract invocation → 'GET list advertises the server's own ALLOWED_CMDS…'
+ *                         (an API-key session's key-management gate is a
+ *                         synchronous check on the already-resolved session
+ *                         object, no db read — N/A for a race case of its own,
+ *                         see the gate's own comment for why)
+ *   contract invocation → 'GET list advertises the server's own ALLOWED_CMDS…',
+ *                         '403 wins over 400: an API-key session hitting a
+ *                         malformed body / non-uuid keyId…' (the gate must run
+ *                         BEFORE any parsing, same place unit tests spy it)
  *   result integrity    → 'list is newest-first and every issued key is distinct',
- *                         'the raw key is returned EXACTLY once…'
+ *                         'the raw key is returned EXACTLY once…',
+ *                         'result integrity: the 403 for an API-key session is
+ *                         identical whether the targeted keyId exists…' (no new
+ *                         ownership oracle introduced by the new gate)
  *   external dependency → N/A: the API-key path touches only Postgres, which the
  *                         container under test owns. No R2 / RPC / prover.
  *
- * Some cases are `it.skip` with the gap named in the title — they assert the
- * SECURE behavior and are one word away from running once the gap is closed.
- * See the report accompanying this change.
- *
- * The historyGrant-enforcement gap is CLOSED (2026-08-04): the case that named
+ * The historyGrant-enforcement gap was CLOSED (2026-08-04): the case that named
  * it now runs, alongside three siblings covering the bounded shapes, in-place
  * re-scoping of the grant, and the non-history surfaces it must NOT touch.
  * `createKey`'s default grant is `full` for the reason documented on it.
+ *
+ * The api-keys-management-is-not-capability-gated gap was CLOSED (2026-08-14):
+ * key management (create/list/edit/revoke) now requires a real session — never
+ * an API key, regardless of that key's own `cmd`. See `requireNonApiKeySession`
+ * (`src/lib/apiKeys.ts`) and the 'hostile: a leaked key cannot…' cases above.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ALLOWED_CMDS } from '@/lib/aiPermissions';
@@ -772,13 +791,20 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     expect(await probe('chatRead', rawKey)).toBe(200);
   });
 
-  it.skip('SKIPPED [KNOWN GAP: a NUL byte in `name` reaches Postgres and surfaces as 500 with a raw driver message instead of 400 — validateCreateApiKeyInput does not reject control characters]', async () => {
-    // Reproduced against the local container: POST with name "a\u0000b" answers
-    // 500 {"error":"invalid byte sequence for encoding \"UTF8\": 0x00"}. The
-    // fix belongs in validateCreateApiKeyInput (src/lib/apiKeys.ts), which is
-    // where every other name rule lives; this case asserts the intended result.
-    const res = await postKey(owner.token, { name: 'a\u0000b', cmd: [], historyGrant: 'none' });
-    expect(res.status).toBe(400);
+  it('a NUL byte in `name` is rejected with a clean 400, not a raw driver 500', async () => {
+    // Previously reproduced against the local container: POST with name
+    // "a\u0000b" answered 500 {"error":"invalid byte sequence for encoding
+    // \"UTF8\": 0x00"} — a raw Postgres driver message leaking to the client
+    // AND the wrong status code. Fixed in validateCreateApiKeyInput
+    // (src/lib/apiKeys.ts) via the shared hasNulByte guard (src/lib/textGuard.ts).
+    for (const name of ['a\u0000b', '\u0000leading', 'trailing\u0000', '\u0000']) {
+      const res = await postKey(owner.token, { name, cmd: [], historyGrant: 'none' });
+      expect(res.status, `name contains NUL byte, must be 400`).toBe(400);
+      const body = await res.json();
+      // Clean, structured error body — never the raw Postgres driver text.
+      expect(body.error).toBe('name must not contain a NUL byte');
+      expect(body.error).not.toMatch(/invalid byte sequence|UTF8|0x00/i);
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -798,7 +824,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
   });
 
   it("a foreign keyId is indistinguishable from an unknown one — no ownership oracle, and the victim's key keeps working", async () => {
-    const { rawKey, key } = await createKey(owner.token, ['/openstoa/chat/read'], 'none', `victim_${rnd()}`);
+    const { rawKey, key } = await createKey(owner.token, ['/openstoa/chat/read'], 'full', `victim_${rnd()}`);
     const unknownId = '00000000-0000-0000-0000-00000000dead';
 
     // Same status AND same body for "exists but not yours" vs "does not exist".
@@ -821,17 +847,105 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     expect((await listKeys(owner.token)).apiKeys.find((k) => k.id === key.id)?.revokedAt).toBeNull();
   });
 
-  it.skip('SKIPPED [KNOWN GAP: the api-keys endpoints themselves are not capability-gated, so an empty-cmd key can mint a wider key and read the owner\'s key list — `cmd` is not a containment boundary for a leaked key]', async () => {
-    // Reproduced against the local container: an `osk_` key with cmd: [] gets
-    // 201 from POST /api/profile/api-keys with any scope it likes, and 200 from
-    // GET. Neither route calls requireAiCapability, so key management is
-    // reachable by any credential that authenticates — including the narrow
-    // agent key whose whole purpose is to be narrow. Closing this needs a
-    // decision (deny isAI sessions outright, or add a /openstoa/key/manage
-    // ability); this case asserts the deny-outright reading.
+  // GAP CLOSED (2026-08-14): `cmd` is now a real containment boundary for a
+  // leaked key. Key MANAGEMENT (create/list/edit/revoke) is an account-owner
+  // action reachable only from a real session (cookie or a bare JWT) — never
+  // from an API key, regardless of that key's own `cmd`. Adding a
+  // `/openstoa/key/manage` cmd instead was considered and rejected: even with
+  // subset-of-own-cmd containment on mint, a leaked key holding that ability
+  // could mint unlimited same-scope sibling keys as a persistence backdoor —
+  // revoking the original would not cut off access. See `requireNonApiKeySession`
+  // (`src/lib/apiKeys.ts`) for the gate all four handlers now call first, before
+  // any body or keyId parsing.
+
+  it("hostile: a leaked key cannot mint a wider (or even same-scope) sibling — 403 regardless of its own cmd", async () => {
+    // Empty-cmd key: the narrowest possible leak.
+    const { rawKey: narrow } = await createKey(owner.token, []);
+    const mintAttempt = await postKey(narrow, { name: `escalate_${rnd()}`, cmd: ['/openstoa/post/write'], historyGrant: 'full' });
+    expect(mintAttempt.status).toBe(403);
+    expect((await mintAttempt.json()).error).toMatch(/API keys cannot manage API keys/i);
+
+    // Boundary: a key holding EVERY cmd is denied identically — cmd content
+    // never grants key-management, there is no cmd that would let it through.
+    const { rawKey: wide } = await createKey(owner.token, [...ALLOWED_CMDS]);
+    const wideMintAttempt = await postKey(wide, { name: `escalate2_${rnd()}`, cmd: ['/openstoa/post/write'], historyGrant: 'full' });
+    expect(wideMintAttempt.status).toBe(403);
+
+    // Neither attempt actually created anything — the owner's key list is
+    // unaffected by either call.
+    const names = (await listKeys(owner.token)).apiKeys.map((k) => k.name);
+    expect(names.some((n) => n.startsWith('escalate_'))).toBe(false);
+    expect(names.some((n) => n.startsWith('escalate2_'))).toBe(false);
+  });
+
+  it('hostile: a leaked key cannot enumerate its owner\'s sibling keys', async () => {
+    const { rawKey } = await createKey(owner.token, [], 'full', `sibling_${rnd()}`);
+    const res = await resilientFetch(`${BASE}/api/profile/api-keys`, { headers: bearer(rawKey) });
+    expect(res.status).toBe(403);
+  });
+
+  it("hostile: a leaked key cannot widen or narrow itself, or a sibling, via PATCH — nor revoke either via DELETE", async () => {
+    const { rawKey, key } = await createKey(owner.token, ['/openstoa/chat/read'], 'full', `self_${rnd()}`);
+    const sibling = await createKey(owner.token, ['/openstoa/chat/read'], 'full', `sibling2_${rnd()}`);
+
+    // Targeting itself…
+    expect((await patchKey(rawKey, key.id, { cmd: ['/openstoa/post/write'], historyGrant: 'full' })).status).toBe(403);
+    expect((await revokeKey(rawKey, key.id)).status).toBe(403);
+    // …and targeting a sibling key it did not mint.
+    expect((await patchKey(rawKey, sibling.key.id, { cmd: [], historyGrant: 'none' })).status).toBe(403);
+    expect((await revokeKey(rawKey, sibling.key.id)).status).toBe(403);
+
+    // Nothing moved: both keys keep their original scope and stay active.
+    expect(await probe('chatRead', rawKey)).toBe(200);
+    expect(await probe('chatRead', sibling.rawKey)).toBe(200);
+    const row = (await listKeys(owner.token)).apiKeys.find((k) => k.id === key.id);
+    expect(row?.cmd).toEqual(['/openstoa/chat/read']);
+    expect(row?.revokedAt).toBeNull();
+  });
+
+  it('403 wins over 400: an API-key session hitting a malformed body / non-uuid keyId still gets 403, never 400 — no validator probing surface for a denied credential', async () => {
     const { rawKey } = await createKey(owner.token, []);
-    expect((await postKey(rawKey, { name: `escalate_${rnd()}`, cmd: ['/openstoa/post/write'], historyGrant: 'full' })).status).toBe(403);
-    expect((await resilientFetch(`${BASE}/api/profile/api-keys`, { headers: bearer(rawKey) })).status).toBe(403);
+    // POST with a body that would otherwise fail validation (unknown cmd).
+    const badPost = await postKey(rawKey, { name: 'x', cmd: ['/root/x'], historyGrant: 'none' });
+    expect(badPost.status).toBe(403);
+    // PATCH/DELETE with a keyId shape that would otherwise be a 400.
+    expect((await patchKey(rawKey, 'not-a-uuid', { cmd: [], historyGrant: 'none' })).status).toBe(403);
+    expect((await revokeKey(rawKey, 'not-a-uuid')).status).toBe(403);
+  });
+
+  it('result integrity: the 403 for an API-key session is identical whether the targeted keyId exists, belongs to the caller, or belongs to a stranger — no new oracle', async () => {
+    const { rawKey, key } = await createKey(owner.token, [], 'full', `oracle_${rnd()}`);
+    // A real keyId minted by a totally different ACCOUNT — not just a sibling
+    // under the same owner, and not just a nonexistent uuid.
+    const strangerKey = await createKey(stranger.token, [], 'full', `oracle_stranger_${rnd()}`);
+    const unknownId = '00000000-0000-0000-0000-00000000dead';
+
+    const own = await patchKey(rawKey, key.id, { cmd: [], historyGrant: 'none' });
+    const foreign = await patchKey(rawKey, strangerKey.key.id, { cmd: [], historyGrant: 'none' });
+    const unknown = await patchKey(rawKey, unknownId, { cmd: [], historyGrant: 'none' });
+    expect(own.status).toBe(403);
+    expect(foreign.status).toBe(403);
+    expect(unknown.status).toBe(403);
+    const [ownBody, foreignBody, unknownBody] = await Promise.all([own.text(), foreign.text(), unknown.text()]);
+    expect(ownBody).toBe(foreignBody);
+    expect(ownBody).toBe(unknownBody);
+
+    // None of the three attempts touched the stranger's key: 403 (not 401)
+    // on an unrelated probe proves the key is still active, just scope-less.
+    expect(await probe('chatRead', strangerKey.rawKey)).toBe(403);
+    const strangerRow = (await listKeys(stranger.token)).apiKeys.find((k) => k.id === strangerKey.key.id);
+    expect(strangerRow?.revokedAt).toBeNull();
+  });
+
+  it('the account owner (a real session, not an API key) is completely unaffected: create/list/edit/revoke all still work', async () => {
+    // Regression guard for the gate above: it must key off `apiKeyId`
+    // presence, never `isAI` — `owner.token` here is a bare dev-login JWT
+    // (isAI defaults false), exercised throughout every other case in this
+    // file, so this case only pins the boundary explicitly.
+    const { key } = await createKey(owner.token, [], 'none', `ownercheck_${rnd()}`);
+    expect((await listKeys(owner.token)).apiKeys.some((k) => k.id === key.id)).toBe(true);
+    expect((await patchKey(owner.token, key.id, { cmd: ['/openstoa/chat/read'], historyGrant: 'full' })).status).toBe(200);
+    expect((await revokeKey(owner.token, key.id)).status).toBe(200);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -887,8 +1001,8 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
   });
 
   it('revoking one key does not disturb the account\'s other keys', async () => {
-    const keep = await createKey(owner.token, ['/openstoa/chat/read'], 'none', `keep_${rnd()}`);
-    const drop = await createKey(owner.token, ['/openstoa/chat/read'], 'none', `drop_${rnd()}`);
+    const keep = await createKey(owner.token, ['/openstoa/chat/read'], 'full', `keep_${rnd()}`);
+    const drop = await createKey(owner.token, ['/openstoa/chat/read'], 'full', `drop_${rnd()}`);
 
     expect((await revokeKey(owner.token, drop.key.id)).status).toBe(200);
     expect(await probe('chatRead', drop.rawKey)).toBe(401);

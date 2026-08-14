@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { topics, topicMembers, joinRequests } from '@/lib/db/schema';
+import { topics, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import {
   extractScope,
@@ -27,10 +27,16 @@ const ROUTE = '/api/topics/[topicId]/join';
  *     tags: [Topics]
  *     summary: Join or request to join topic
  *     description: |
- *       Requests to join a topic. Response depends on `visibility` and `proofType`:
+ *       Joins a topic. Response depends on `visibility` and `proofType`:
  *         - `public`: joins immediately (201).
- *         - `private`: creates a pending join request; an owner/admin must approve (202).
- *         - `secret`: not joinable here — use `POST /api/topics/join/{inviteCode}` instead.
+ *         - `private`: **not joinable here (403)** — invite only. Use
+ *           `POST /api/topics/join/{inviteCode}`. The approval flow this route used to offer
+ *           (202 + a pending request) has been removed: a private topic's invite link is also
+ *           what carries its chat-history keys, so an approved member would arrive without them.
+ *         - `secret`: not joinable here (403) — same invite route.
+ *
+ *       Join requests created before that change are still listed and approvable by an
+ *       owner/admin at `GET`/`PATCH /api/topics/{topicId}/requests`; no new ones are created.
  *
  *       Some topics gate membership on a ZK proof. The required circuit depends on the topic's
  *       `proofType` field:
@@ -95,24 +101,6 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                   type: boolean
  *                   example: true
  *                   description: Join success indicator
- *       202:
- *         description: Join request created for private topic (pending approval)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                   description: Request creation success
- *                 status:
- *                   type: string
- *                   example: pending
- *                   description: Join request status
- *                 message:
- *                   type: string
- *                   description: Human-readable status message
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       402:
@@ -164,13 +152,16 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                       type: object
  *                       description: Endpoints for proof generation (mobile relay + agent challenge/prove/join flow)
  *       403:
- *         description: Secret topic (use invite code) or country not in allowed list
+ *         description: >-
+ *           Invite-only topic (`private` or `secret` — join via
+ *           `POST /api/topics/join/{inviteCode}`), or the caller's country is not in the
+ *           topic's allowed list.
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error403'
  *       409:
- *         description: Already a member or join request already pending
+ *         description: Already a member of this topic
  *         content:
  *           application/json:
  *             schema:
@@ -351,49 +342,27 @@ export async function POST(
       }
     }
 
-    // Handle join based on visibility
-    if (topic.visibility === 'secret') {
-      logger.warn(ROUTE, 'Direct join attempt on secret topic', { userId: session.userId, topicId });
+    /*
+     * Only a PUBLIC topic can be joined through this route. `private` and
+     * `secret` are both invite-only: the invite link is the credential, and for
+     * `private` it is also what carries the chat history keys in its fragment
+     * (design §"The decision") — an approval flow admits a member the inviter
+     * never handed keys to, which is why it is gone rather than merely unused.
+     *
+     * ALLOWLIST, not a blocklist: anything that is not exactly 'public' needs an
+     * invite. A row carrying an unexpected visibility (a bad write, a future
+     * tier added without touching this branch) must fail CLOSED rather than
+     * fall through to the instant-join path below.
+     */
+    if (topic.visibility !== 'public') {
+      logger.warn(ROUTE, 'Direct join attempt on invite-only topic', {
+        userId: session.userId,
+        topicId,
+        visibility: topic.visibility,
+      });
       return NextResponse.json(
         { error: 'This topic requires an invite code' },
         { status: 403 },
-      );
-    }
-
-    if (topic.visibility === 'private') {
-      // Check for existing join request
-      const existingRequest = await db.query.joinRequests.findFirst({
-        where: and(eq(joinRequests.topicId, topicId), eq(joinRequests.userId, session.userId)),
-      });
-
-      if (existingRequest) {
-        if (existingRequest.status === 'pending') {
-          logger.warn(ROUTE, 'Duplicate join request', { userId: session.userId, topicId });
-          return NextResponse.json(
-            { error: 'Join request already pending' },
-            { status: 409 },
-          );
-        }
-        if (existingRequest.status === 'rejected') {
-          logger.warn(ROUTE, 'Previously rejected join request', { userId: session.userId, topicId });
-          return NextResponse.json(
-            { error: 'Join request was rejected' },
-            { status: 403 },
-          );
-        }
-      }
-
-      // Create pending join request
-      await db.insert(joinRequests).values({
-        topicId,
-        userId: session.userId,
-        status: 'pending',
-      });
-
-      logger.info(ROUTE, 'Join request submitted for private topic', { userId: session.userId, topicId });
-      return NextResponse.json(
-        { success: true, status: 'pending', message: 'Join request submitted' },
-        { status: 202 },
       );
     }
 

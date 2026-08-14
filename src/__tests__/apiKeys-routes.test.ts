@@ -75,11 +75,48 @@ beforeEach(() => {
   mocks.incr.mockResolvedValue(1);
 });
 
+// A session authenticated via `Authorization: Bearer osk_...` — carries
+// `apiKeyId` (set only by `getApiKeySession`, src/lib/session.ts). Key
+// MANAGEMENT must be unreachable from this shape regardless of the key's own
+// `cmd` — see `requireNonApiKeySession` (src/lib/apiKeys.ts).
+const apiKeyEmptyCmd = { userId: 'human1', nickname: 'h', isAI: true, apiKeyId: 'k-empty', apiKeyCmd: [] };
+const apiKeyFullCmd = {
+  userId: 'human1',
+  nickname: 'h',
+  isAI: true,
+  apiKeyId: 'k-full',
+  apiKeyCmd: [
+    '/openstoa/topic/join', '/openstoa/post/write', '/openstoa/comment/write',
+    '/openstoa/chat/read', '/openstoa/chat/send', '/openstoa/profile/edit',
+  ],
+};
+
 describe('POST /api/profile/api-keys (authz / contract / integrity)', () => {
   it('401 when unauthenticated', async () => {
     mocks.getSession.mockResolvedValue(null);
     const res = await keysPOST(req({ name: 'k', cmd: [], historyGrant: 'none' }));
     expect(res.status).toBe(401);
+  });
+  it('403 for an API-key session with an EMPTY cmd — a leaked narrow key cannot mint at all', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyEmptyCmd);
+    const res = await keysPOST(req({ name: 'escalate', cmd: ['/openstoa/post/write'], historyGrant: 'full' }));
+    expect(res.status).toBe(403);
+    // Contract invocation: the gate must short-circuit BEFORE the route ever
+    // calls createApiKey — a removed gate call would let this mock resolve
+    // and the assertion above would flip to 201.
+    expect(mocks.createApiKey).not.toHaveBeenCalled();
+  });
+  it('403 for an API-key session holding a WIDE set of cmds — cmd content is irrelevant to this gate (boundary)', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyFullCmd);
+    const res = await keysPOST(req({ name: 'escalate', cmd: ['/openstoa/post/write'], historyGrant: 'full' }));
+    expect(res.status).toBe(403);
+    expect(mocks.createApiKey).not.toHaveBeenCalled();
+  });
+  it('403 wins over 400: a malformed body is still 403, never a 400 from the validator (no probing surface for a denied credential)', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyEmptyCmd);
+    const res = await keysPOST({ json: async () => { throw new Error('bad'); }, cookies: { get: () => undefined }, headers: { get: () => null } } as never);
+    expect(res.status).toBe(403);
+    expect(mocks.createApiKey).not.toHaveBeenCalled();
   });
   it('201 returns the raw key ONCE plus metadata — never the hash', async () => {
     mocks.getSession.mockResolvedValue(human);
@@ -120,6 +157,18 @@ describe('GET /api/profile/api-keys (authz / integrity)', () => {
     const res = await keysGET(req(null));
     expect(res.status).toBe(401);
   });
+  it('403 for an API-key session — a leaked narrow key cannot enumerate its owner\'s other keys', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyEmptyCmd);
+    const res = await keysGET(req(null));
+    expect(res.status).toBe(403);
+    expect(mocks.listApiKeys).not.toHaveBeenCalled();
+  });
+  it('403 for an API-key session holding a WIDE set of cmds too (boundary: cmd content is irrelevant)', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyFullCmd);
+    const res = await keysGET(req(null));
+    expect(res.status).toBe(403);
+    expect(mocks.listApiKeys).not.toHaveBeenCalled();
+  });
   it('200 lists metadata only for the caller — never a hash', async () => {
     mocks.getSession.mockResolvedValue(human);
     mocks.listApiKeys.mockResolvedValue([
@@ -140,6 +189,18 @@ describe('DELETE /api/profile/api-keys/{keyId} (authz / boundary / race)', () =>
     mocks.getSession.mockResolvedValue(null);
     const res = await keysDELETE(req(null), { params: kParams() });
     expect(res.status).toBe(401);
+  });
+  it('403 for an API-key session — including revoking a key it minted itself', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyEmptyCmd);
+    const res = await keysDELETE(req(null), { params: kParams() });
+    expect(res.status).toBe(403);
+    expect(mocks.revokeApiKey).not.toHaveBeenCalled();
+  });
+  it('403 wins over 400: an invalid (non-uuid) keyId from an API-key session is still 403, not 400 — the gate never reaches keyId parsing', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyEmptyCmd);
+    const res = await keysDELETE(req(null), { params: Promise.resolve({ keyId: 'not-a-uuid' }) });
+    expect(res.status).toBe(403);
+    expect(mocks.revokeApiKey).not.toHaveBeenCalled();
   });
   it('400 when keyId is not a uuid', async () => {
     mocks.getSession.mockResolvedValue(human);
@@ -207,6 +268,18 @@ describe('PATCH /api/profile/api-keys/{keyId} (edit scope — authz / boundary /
     mocks.getSession.mockResolvedValue(null);
     const res = await keysPATCH(req({ cmd: [], historyGrant: 'none' }), { params: kParams() });
     expect(res.status).toBe(401);
+  });
+  it('403 for an API-key session — including trying to widen (or narrow) itself in place', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyEmptyCmd);
+    const res = await keysPATCH(req({ cmd: ['/openstoa/post/write'], historyGrant: 'full' }), { params: kParams() });
+    expect(res.status).toBe(403);
+    expect(mocks.updateApiKey).not.toHaveBeenCalled();
+  });
+  it('403 wins over 400: an invalid body from an API-key session is still 403, not 400 — the gate never reaches body parsing', async () => {
+    mocks.getSession.mockResolvedValue(apiKeyEmptyCmd);
+    const res = await keysPATCH({ json: async () => { throw new Error('bad'); }, cookies: { get: () => undefined }, headers: { get: () => null } } as never, { params: kParams() });
+    expect(res.status).toBe(403);
+    expect(mocks.updateApiKey).not.toHaveBeenCalled();
   });
   it('400 when keyId is not a uuid', async () => {
     mocks.getSession.mockResolvedValue(human);

@@ -11,7 +11,6 @@ import {
   ActionSheetIOS,
   Platform,
   Pressable,
-  Share,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -29,6 +28,9 @@ import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
+import { archiveRetentionKey, isUnlimitedRetention } from '../../lib/archiveRetention';
+import { getMlsSessionStore } from '../../crypto/mobileTransport';
+import { InviteShareModal } from '../../components/InviteShareModal';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicDetail'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicDetail'>;
@@ -45,11 +47,6 @@ interface TopicDetailResponse {
 interface PostsPageResponse {
   posts: Post[];
   nextCursor?: string | null;
-}
-
-interface InviteTokenResponse {
-  token: string;
-  expiresAt: string;
 }
 
 type SortKey = 'new' | 'popular' | 'recorded' | 'pinned';
@@ -122,6 +119,12 @@ function makeStyles(colors: ThemeColors) {
     topicMetaText: {
       fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
+    },
+    retentionNote: {
+      fontSize: TYPE_SCALE.caption,
+      color: colors.text.tertiary,
+      lineHeight: 18,
+      marginTop: 4,
     },
     badge: {
       backgroundColor: colors.brand.primaryMuted,
@@ -221,6 +224,7 @@ export function TopicDetailScreen() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('new');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState('');
@@ -306,6 +310,54 @@ export function TopicDetailScreen() {
     },
   });
 
+  /**
+   * Leave the topic.
+   *
+   * The MLS leaf is NOT evicted from here — the server holds no keys and cannot
+   * commit (SI-1), so the next member to open the chat reconciles the tree
+   * against the membership list and removes it. What this device can do is stop
+   * holding the keys for a room it left, which `forgetTopic` does: nobody else
+   * can reach in and delete them, and a live ratchet for a room you are no
+   * longer in is exactly what a later compromise of this phone would open.
+   */
+  const leaveMutation = useMutation({
+    mutationFn: async () => {
+      await client.post(`/api/topics/${topicId}/leave`);
+      try {
+        await getMlsSessionStore(client, host.secureStore, host.localStore).forgetTopic(topicId);
+      } catch {
+        // The membership row is what gates access, and it is already gone.
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
+      queryClient.invalidateQueries({ queryKey: ['topics'] });
+      // Without this the topic keeps rendering a chat preview on the chat tab
+      // for a room the user can no longer open.
+      queryClient.invalidateQueries({ queryKey: ['my-topics'] });
+      navigation.goBack();
+    },
+    onError: (err: Error) => {
+      Alert.alert(t('openstoa.topicDetail.leaveFailedTitle'), err.message);
+    },
+  });
+
+  /** Ask before leaving — it costs this device its view of the history. */
+  const confirmLeave = useCallback(() => {
+    Alert.alert(
+      t('openstoa.topicDetail.leaveConfirmTitle'),
+      t('openstoa.topicDetail.leaveConfirmMessage'),
+      [
+        { text: t('openstoa.common.cancel'), style: 'cancel' },
+        {
+          text: t('openstoa.topicDetail.leave'),
+          style: 'destructive',
+          onPress: () => leaveMutation.mutate(),
+        },
+      ],
+    );
+  }, [leaveMutation, t]);
+
   const pinMutation = useMutation({
     mutationFn: async (postId: string) => {
       return client.post(`/api/posts/${postId}/pin`);
@@ -315,25 +367,6 @@ export function TopicDetailScreen() {
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.topicDetail.pinFailed'), err.message);
-    },
-  });
-
-  const inviteMutation = useMutation({
-    mutationFn: async () => {
-      return client.post<InviteTokenResponse>(`/api/topics/${topicId}/invite`);
-    },
-    onSuccess: async (res) => {
-      try {
-        await Share.share({
-          message: t('openstoa.topics.invite.shareBody', { code: res.token }),
-          title: t('openstoa.topics.invite.shareSubject'),
-        });
-      } catch {
-        // user cancelled share — silent
-      }
-    },
-    onError: (err: Error) => {
-      Alert.alert(t('openstoa.topics.invite.joinFailedTitle'), err.message);
     },
   });
 
@@ -352,7 +385,7 @@ export function TopicDetailScreen() {
 
   const headerActionItems = useMemo(() => {
     if (!isMember) return [];
-    const items: { label: string; action: () => void }[] = [];
+    const items: { label: string; action: () => void; destructive?: boolean }[] = [];
     items.push({
       label: t('openstoa.topicDetail.members'),
       action: () => navigation.navigate('TopicMembers', { topicId }),
@@ -363,23 +396,44 @@ export function TopicDetailScreen() {
         action: () => navigation.navigate('TopicRequests', { topicId }),
       });
     }
+    // Only owner/admin may invite to a non-public topic — the route refuses
+    // everyone else, and an action that always fails is worse than an absent
+    // one (same rule as the missing Leave action below).
+    if (topic?.visibility === 'public' || isOwnerOrAdmin) {
     items.push({
       label: t('openstoa.topicDetail.invite'),
-      action: () => inviteMutation.mutate(),
+      // Opens the share sheet through the dialog rather than straight away:
+      // the invite-only tiers hand over chat history in the link's fragment,
+      // and that choice is made before the link exists.
+      action: () => setInviteOpen(true),
     });
+    }
     if (isOwner) {
       items.push({
         label: t('openstoa.topicDetail.settings'),
         action: () => navigation.navigate('TopicEdit', { topicId }),
       });
     }
+    // The owner gets no leave action: leaving would strand a topic nobody can
+    // administer, and the route refuses it (409). An action that always fails
+    // is worse than an absent one — mirrors the web topic header.
+    if (!isOwner) {
+      items.push({
+        label: t('openstoa.topicDetail.leave'),
+        action: confirmLeave,
+        destructive: true,
+      });
+    }
     return items;
-  }, [isMember, isOwner, isOwnerOrAdmin, navigation, t, topicId, inviteMutation]);
+  }, [isMember, isOwner, isOwnerOrAdmin, navigation, t, topicId, confirmLeave, topic?.visibility]);
 
   const showActionsSheet = useCallback(() => {
     if (headerActionItems.length === 0) return;
     const labels = [...headerActionItems.map((i) => i.label), t('openstoa.common.cancel')];
     const cancelButtonIndex = labels.length - 1;
+    // Red on iOS for anything that takes something away. -1 means "none",
+    // which is what ActionSheetIOS expects when nothing is destructive.
+    const destructiveButtonIndex = headerActionItems.findIndex((i) => i.destructive);
 
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -387,6 +441,7 @@ export function TopicDetailScreen() {
           title: t('openstoa.topicDetail.actions'),
           options: labels,
           cancelButtonIndex,
+          destructiveButtonIndex,
         },
         (idx) => {
           if (idx >= 0 && idx < headerActionItems.length) {
@@ -396,11 +451,26 @@ export function TopicDetailScreen() {
       );
     } else {
       Alert.alert(t('openstoa.topicDetail.actions'), undefined, [
-        ...headerActionItems.map((i) => ({ text: i.label, onPress: i.action })),
+        ...headerActionItems.map((i) => ({
+          text: i.label,
+          onPress: i.action,
+          style: i.destructive ? ('destructive' as const) : undefined,
+        })),
         { text: t('openstoa.common.cancel'), style: 'cancel' as const },
       ]);
     }
   }, [headerActionItems, t]);
+
+  // Declared BEFORE the header effect that lists it as a dependency. A `const`
+  // is in its temporal dead zone until this line runs, and the effect's dep
+  // array is built during render — so with the declaration further down, the
+  // array read an uninitialised binding every render (TS2448/TS2454). Whether
+  // that throws or merely reads `undefined` depends on how the bundler lowers
+  // block scoping, and neither is something to leave to the bundler.
+  const onRefresh = useCallback(() => {
+    topicQuery.refetch();
+    postsQuery.refetch();
+  }, [topicQuery, postsQuery]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -462,11 +532,6 @@ export function TopicDetailScreen() {
       (p) => (p as Post & { isPinned?: boolean }).isPinned === true,
     );
   }
-
-  const onRefresh = useCallback(() => {
-    topicQuery.refetch();
-    postsQuery.refetch();
-  }, [topicQuery, postsQuery]);
 
   const isRefreshing =
     (topicQuery.isFetching && !topicQuery.isLoading) ||
@@ -548,6 +613,29 @@ export function TopicDetailScreen() {
             </View>
           ) : null}
         </View>
+        {/* Members live with the window the admin chose at creation, so the room
+            says what it is. Absent means unlimited — a topic that predates the
+            setting deletes nothing. Members only: the chat it describes is
+            members-only in every tier. */}
+        {isMember ? (
+          <View style={styles.topicMeta}>
+            <Feather name="clock" size={14} color={colors.text.tertiary} />
+            <Text style={styles.topicMetaText}>
+              {t(
+                `openstoa.topicDetail.archiveRetention.${archiveRetentionKey(
+                  topic.chatArchiveRetentionDays ?? 0,
+                )}`,
+              )}
+            </Text>
+          </View>
+        ) : null}
+        {isMember ? (
+          <Text style={styles.retentionNote}>
+            {isUnlimitedRetention(topic.chatArchiveRetentionDays ?? 0)
+              ? t('openstoa.topicDetail.archiveRetention.noteUnlimited')
+              : t('openstoa.topicDetail.archiveRetention.noteWindowed')}
+          </Text>
+        ) : null}
         {isMember ? null : (
           <TouchableOpacity
             style={[styles.actionButton, joinMutation.isPending && styles.actionButtonDisabled]}
@@ -641,6 +729,12 @@ export function TopicDetailScreen() {
           <Feather name="edit-2" size={22} color={colors.text.inverted} />
         </TouchableOpacity>
       ) : null}
+      <InviteShareModal
+        visible={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        topicId={topicId}
+        visibility={topic.visibility}
+      />
     </View>
   );
 }

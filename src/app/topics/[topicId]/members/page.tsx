@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { getMlsSessionStore } from '@/lib/mls/webTransport';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import Avatar from '@/components/Avatar';
@@ -11,6 +12,7 @@ import UserCard from '@/components/UserCard';
 import { useChatRail } from '@/lib/chatRailContext';
 import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import InviteDialog from '@/components/InviteDialog';
 
 interface Member {
   userId: string;
@@ -78,7 +80,7 @@ export default function MembersPage() {
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestActionLoading, setRequestActionLoading] = useState<string | null>(null);
-  const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   // userId whose DM is being started — drives the button's pending look.
   const [dmLoading, setDmLoading] = useState<string | null>(null);
   // The actual in-flight guard. It must be a ref, not the state above: React
@@ -90,6 +92,21 @@ export default function MembersPage() {
   // use, matching the pattern the rest of this file already leans on
   // (inline text, not a blocking browser dialog).
   const [dmError, setDmError] = useState<string | null>(null);
+  /*
+   * How many leaves a kick could NOT remove, or null when the last kick was
+   * clean. Not an error — the removal succeeded and the account is out of the
+   * topic. It is a warning that the CRYPTO did not fully catch up, so the
+   * admin knows those devices can still read what is sent from here on.
+   *
+   * THIS IS PERMANENT, not a placeholder until attribution improves. The
+   * planned server-assisted attribution (A-3 part 2) reads a device→account
+   * binding that is only written when a device READS chat, so an agent that
+   * joined and never read still has no binding and stays unattributable. That
+   * work shrinks the population; this notice is what tells the truth about
+   * whatever is left. Deleting it would restore the original defect — a
+   * removal reported as complete when it was not.
+   */
+  const [kickNotice, setKickNotice] = useState<number | null>(null);
   // The single app-wide chat rail (present whenever this page renders inside
   // `CommunityLayout`, which it always does — see the fallback note in
   // `handleStartDm` for the one case it wouldn't be).
@@ -124,17 +141,24 @@ export default function MembersPage() {
     }
   }
 
-  async function loadMembers() {
+  /** Returns the freshly-loaded members so a caller can act on them without
+   *  waiting a render for the state to land — the kick path needs the list to
+   *  reconcile the MLS tree, and reading `members` there would give it the
+   *  PREVIOUS list, which still contains the person just removed. */
+  async function loadMembers(): Promise<Member[]> {
     try {
       const res = await fetch(`/api/topics/${topicId}/members`);
       if (!res.ok) throw new Error(t('membersPage.loadMembersFailed'));
       const data = await res.json();
-      setMembers(data.members ?? []);
+      const loaded: Member[] = data.members ?? [];
+      setMembers(loaded);
       if (data.currentUserRole) {
         setCurrentUserRole(data.currentUserRole);
       }
+      return loaded;
     } catch (err) {
       setError(err instanceof Error ? err.message : t('membersPage.loadMembersFailed'));
+      return [];
     } finally {
       setLoading(false);
     }
@@ -277,7 +301,40 @@ export default function MembersPage() {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? t('membersPage.kickFailed'));
       }
-      await loadMembers();
+      const remaining = await loadMembers();
+      /*
+       * Evict the kicked account's leaves NOW rather than waiting for someone
+       * to open the chat. The membership row already gates the API, but until
+       * the tree catches up the removed devices keep deriving every new epoch
+       * key and can still read anything they receive.
+       *
+       * Best-effort on purpose: if this admin closes the tab, or loses the
+       * epoch-CAS race, the next member to open the room reconciles instead.
+       * Correctness does not rest on this call finishing.
+       *
+       * The RESULT is not best-effort. `reconcileMembership` reports leaves it
+       * could not attribute to any account — credentials predating
+       * `<userId>:<deviceId>`, which it refuses to evict because removing a
+       * leaf it cannot name risks removing a current member. Discarding that
+       * count told the admin "removed" when devices were still in the group and
+       * still deriving every future epoch key. An incomplete removal somebody
+       * knows about is a limitation; an incomplete removal nobody is told about
+       * is a false assurance in a security control, which is worse.
+       */
+      if (remaining.length > 0) {
+        void getMlsSessionStore()
+          .reconcileMembership(topicId, remaining.map((m) => m.userId))
+          .then(({ unattributable }) => {
+            if (unattributable > 0) setKickNotice(unattributable);
+          })
+          .catch(() => {
+            /*
+             * A failed sweep is not a false assurance — the next member to open
+             * the room reconciles. Silence is correct here; it is only the
+             * SUCCESSFUL-but-partial case that must be surfaced.
+             */
+          });
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
     } finally {
@@ -368,18 +425,19 @@ export default function MembersPage() {
               {members.length} {members.length === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}
             </p>
           </div>
-          {/* Invite button */}
+          {/* Invite button.
+              Opens the dialog rather than copying a link straight out: this
+              used to copy `/topics/{id}/join`, which mints no token — and that
+              route answers 403 to private and secret, the two tiers whose
+              members actually need an invite. The dialog is also where the
+              inviter decides how much chat history rides along. */}
+          {(topic.visibility === 'public' || currentUserRole === 'owner' || currentUserRole === 'admin') && (
           <button
-            onClick={async () => {
-              const url = `${window.location.origin}/topics/${topicId}/join`;
-              await navigator.clipboard.writeText(url);
-              setInviteCopied(true);
-              setTimeout(() => setInviteCopied(false), 2000);
-            }}
+            onClick={() => setInviteOpen(true)}
             style={{
-              background: inviteCopied ? 'color-mix(in srgb, var(--color-brand-accent) 12%, transparent)' : 'var(--color-bg-tertiary)',
-              color: inviteCopied ? 'var(--color-brand-accent)' : 'var(--color-text-tertiary)',
-              border: `1px solid ${inviteCopied ? 'color-mix(in srgb, var(--color-brand-accent) 30%, transparent)' : 'var(--color-bg-tertiary)'}`,
+              background: 'var(--color-bg-tertiary)',
+              color: 'var(--color-text-tertiary)',
+              border: '1px solid var(--color-bg-tertiary)',
               borderRadius: 'var(--radius-control)',
               padding: '8px 14px',
               fontSize: 'var(--text-body-sm)',
@@ -391,9 +449,46 @@ export default function MembersPage() {
               minHeight: 'var(--touch-target-min)',
             }}
           >
-            {inviteCopied ? t('membersPage.copied') : t('membersPage.invite')}
+            {t('membersPage.invite')}
           </button>
+          )}
         </div>
+
+        {/*
+          A kick that removed the account but could not remove all of its
+          devices from the encrypted group. Deliberately NOT styled as an error:
+          the removal worked and the account is out. What the admin needs to
+          know is the part that did not happen, because those devices can still
+          read messages sent from here on.
+        */}
+        {kickNotice !== null && (
+          <div
+            role="status"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-3)',
+              padding: '10px 14px',
+              marginBottom: 'var(--space-4)',
+              background: 'color-mix(in srgb, var(--color-status-warning) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-status-warning) 20%, transparent)',
+              borderRadius: 'var(--radius-control)',
+              color: 'var(--color-status-warning)',
+              fontSize: 'var(--text-caption)',
+            }}
+          >
+            <span>{t('membersPage.kickPartial', { count: kickNotice })}</span>
+            <button
+              type="button"
+              onClick={() => setKickNotice(null)}
+              aria-label={t('membersPage.dismiss')}
+              style={{ background: 'none', border: 'none', color: 'var(--color-status-warning)', cursor: 'pointer', fontSize: 'var(--text-body)', lineHeight: 1, padding: 0 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* In-page DM-start failure — replaces the old alert() dialog. */}
         {dmError && (
@@ -466,6 +561,24 @@ export default function MembersPage() {
               <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
                 <Spinner />
               </div>
+            )}
+            {/* Why this queue only ever shrinks. Topics became invite-only, so
+                nothing adds to it — but the rows that were already here are
+                still approvable, and an owner who is not told that would
+                reasonably assume the people in them had been dropped. */}
+            {!requestsLoading && (
+              <p style={{
+                margin: '0 0 var(--space-4)',
+                padding: 'var(--space-3) var(--space-4)',
+                color: 'var(--muted)',
+                background: 'var(--color-bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-card)',
+                fontSize: 'var(--text-body-sm)',
+                lineHeight: 1.6,
+              }}>
+                {t('membersPage.requestsRetired')}
+              </p>
             )}
             {!requestsLoading && requests.length === 0 && (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--muted)', fontSize: 'var(--text-body-sm)' }}>
@@ -749,6 +862,12 @@ export default function MembersPage() {
           ))}
         </div>}
       </div>
+      <InviteDialog
+        topicId={topicId}
+        visibility={topic.visibility}
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+      />
     </CommunityLayout>
   );
 }

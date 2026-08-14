@@ -119,6 +119,17 @@ function makeStyles(colors: ThemeColors) {
       fontSize: TYPE_SCALE.bodySmall,
       color: colors.text.tertiary,
     },
+    retiredNotice: {
+      margin: 16,
+      padding: 12,
+      fontSize: TYPE_SCALE.caption,
+      lineHeight: 18,
+      color: colors.text.tertiary,
+      backgroundColor: colors.background.secondary,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      borderRadius: RADIUS.card,
+    },
   });
 }
 
@@ -205,6 +216,12 @@ export function TopicRequestsScreen() {
       data={requests}
       keyExtractor={(r) => r.id}
       renderItem={renderItem}
+      /* Why this queue only ever shrinks. Topics became invite-only, so nothing
+         adds to it — but the rows already here are still approvable, and an
+         owner who is not told that would assume those people were dropped. */
+      ListHeaderComponent={
+        <Text style={styles.retiredNotice}>{t('openstoa.requests.retired')}</Text>
+      }
       refreshControl={
         <RefreshControl
           refreshing={requestsQuery.isRefetching}

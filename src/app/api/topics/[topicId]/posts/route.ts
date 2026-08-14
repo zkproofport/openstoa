@@ -14,6 +14,7 @@ import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts, createPollForPost } from '@/lib/polls';
 import { isSupportedVideoUrl } from '@/lib/videoUrls';
+import { hasNulByte } from '@/lib/textGuard';
 
 const ROUTE = '/api/topics/[topicId]/posts';
 
@@ -60,7 +61,10 @@ async function attachTagsToPosts<T extends { id: string; tags?: { name: string; 
  *     summary: List posts in topic
  *     description: >-
  *       Authentication optional for public topics. Guests can read posts in public topics.
- *       Private and secret topics require authentication and membership.
+ *       `public` topics are readable by anyone, signed in or not. `private` topics are readable
+ *       by any SIGNED-IN user, member or not — the members-only part of a private topic is its
+ *       chat, not its posts. `secret` topics require membership. Writing always requires
+ *       membership, in every tier.
  *       Pinned posts always appear first regardless of sort order.
  *       Supports tag filtering and sorting by newest or popularity.
  *     operationId: listPosts
@@ -314,12 +318,24 @@ export async function GET(
     });
 
     if (!membership) {
-      // Public topics: allow reading for non-members (write still requires membership)
+      /*
+       * Public AND private topics are readable by any signed-in user; writing
+       * still requires membership (the POST handler below re-checks). This is
+       * the line that makes `private` mean "the CONVERSATION is members-only",
+       * not "the topic is hidden": posts stay open, chat does not — the chat
+       * route answers 403 to a non-member in every tier, and that distinction
+       * is what the whole tier design rests on.
+       *
+       * `secret` stays members-only here, and guests are handled above: signing
+       * in is the price of reading a private topic's posts.
+       */
       const topicCheck = await db.query.topics.findFirst({
         where: eq(topics.id, topicId),
         columns: { visibility: true },
       });
-      if (!topicCheck || topicCheck.visibility !== 'public') {
+      const readableToSignedIn =
+        topicCheck?.visibility === 'public' || topicCheck?.visibility === 'private';
+      if (!topicCheck || !readableToSignedIn) {
         logger.warn(ROUTE, 'User is not a member of this topic', { userId: session.userId, topicId });
         return NextResponse.json(
           { error: 'Not a member of this topic' },
@@ -524,6 +540,11 @@ export async function POST(
     if (title.length > 200) {
       return NextResponse.json({ error: 'Title must be 200 characters or less' }, { status: 400 });
     }
+    // Postgres text storage cannot hold a NUL byte (see src/lib/textGuard.ts)
+    // — reject before it ever reaches the insert, same rule as apiKeys.name.
+    if (hasNulByte(title)) {
+      return NextResponse.json({ error: 'Title must not contain a NUL byte' }, { status: 400 });
+    }
     if (!content || typeof content !== 'string') {
       logger.warn(ROUTE, 'Missing content', { userId: session.userId, topicId });
       return NextResponse.json({ error: 'Content is required' }, { status: 400 });
@@ -538,9 +559,12 @@ export async function POST(
         { status: 400 },
       );
     }
+    if (hasNulByte(content)) {
+      return NextResponse.json({ error: 'Content must not contain a NUL byte' }, { status: 400 });
+    }
 
     // Extract base64 images from content and upload to R2
-    const processedContent = await extractAndUploadBase64Images(content, session.userId);
+    const processedContent = await extractAndUploadBase64Images(content, session.userId, topicId);
 
     // Server-side caps mirror the mobile composer so an AI / CLI / direct
     // API client can't bypass them. Returning 400 with a specific error

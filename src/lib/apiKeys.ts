@@ -15,10 +15,12 @@
  */
 import { randomBytes, createHash } from 'crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { NextResponse } from 'next/server';
 import { db as sharedDb } from '@/lib/db';
 import { apiKeys } from '@/lib/db/schema';
 import { ALLOWED_CMDS } from '@/lib/aiPermissions';
 import { isValidTakScope } from '@/lib/mls/http';
+import { hasNulByte } from '@/lib/textGuard';
 
 type DB = typeof sharedDb;
 
@@ -145,6 +147,13 @@ export function validateCreateApiKeyInput(input: CreateApiKeyInput): NormalizedA
   if (name.length > MAX_NAME_LEN) {
     throw new ApiKeyValidationError('name is too long');
   }
+  if (hasNulByte(name)) {
+    // Postgres text storage cannot hold a NUL byte at all (see textGuard.ts)
+    // — without this check the insert reaches the driver and comes back as
+    // a raw "invalid byte sequence for encoding "UTF8": 0x00" 500, which is
+    // both a wrong status code and an information disclosure.
+    throw new ApiKeyValidationError('name must not contain a NUL byte');
+  }
 
   const scoped = validateCmdAndHistoryGrant(cmd, historyGrant);
 
@@ -184,6 +193,59 @@ export function isApiKeyToken(token: unknown): token is string {
 function generateRawKey(): { raw: string; prefix: string } {
   const raw = API_KEY_PREFIX + randomBytes(API_KEY_RANDOM_BYTES).toString('hex');
   return { raw, prefix: raw.slice(0, DISPLAY_PREFIX_LEN) };
+}
+
+/**
+ * Route guard for every `/api/profile/api-keys*` handler (create/list/edit/
+ * revoke). Key MANAGEMENT is an account-owner action — it belongs to a real
+ * session (cookie, or a bare JWT such as `verify/ai`/dev-login), never to a
+ * delegated API-key credential.
+ *
+ * Without this gate, an API key authenticates exactly like a session (see
+ * `getApiKeySession` in `src/lib/session.ts`), and none of the four handlers
+ * checked anything beyond "is there a session" — so a key with `cmd: []`
+ * could still POST here to mint a NEW key with any scope it liked (including
+ * every cmd, `isAI` aside), GET here to enumerate every sibling key's
+ * metadata, and PATCH/DELETE a sibling key it never created. `cmd` is
+ * supposed to be a containment boundary for a leaked key; none of that was
+ * actually contained.
+ *
+ * Deliberately NOT solved by adding a `/openstoa/key/manage` cmd entry: that
+ * would only move the boundary (a key holding that one ability would still
+ * be able to mint itself a superset, or a key even wider than the account
+ * intends for delegation) rather than close it. Key management stays an
+ * action a delegated credential can never take, at any scope — the account
+ * owner re-scopes or revokes keys from a real session instead.
+ *
+ * Checked by credential SHAPE (`session.apiKeyId` presence — set only by
+ * `getApiKeySession` for an `Authorization: Bearer osk_...` request), not by
+ * `isAI` — a human's own account-owner session may legitimately carry
+ * `isAI: true` (e.g. a dev-login test fixture) and must still be able to
+ * manage its own keys. Returns a 403 NextResponse if the caller authenticated
+ * via an API key, else null so the route continues. Runs before any
+ * body/keyId parsing, mirroring the existing "401 wins over 400" ordering —
+ * a delegated key must not be able to probe validation shapes on an endpoint
+ * it can never use either.
+ *
+ * This is not a gap an agent works around — an API key is a credential the
+ * account owner hands to an agent to CALL the API with, not to manage
+ * credentials with. The owner mints, re-scopes, and revokes keys from their
+ * own signed-in session (browser, or a real session token); the agent is a
+ * consumer of the key it was given. The error body says exactly that, in the
+ * same flat `{ error: string }` shape every other 403 in this codebase uses
+ * (see e.g. `'Only topic owner or admin can pin posts'`,
+ * `'Not a member of this topic'`) — plain enough that an agent reading the
+ * response knows to stop retrying and tell its owner, not guess at a
+ * workaround.
+ */
+export function requireNonApiKeySession(session: { apiKeyId?: string }): NextResponse | null {
+  if (session.apiKeyId) {
+    return NextResponse.json(
+      { error: 'API keys cannot manage API keys — ask your account owner to create, edit, or revoke keys from a signed-in session' },
+      { status: 403 },
+    );
+  }
+  return null;
 }
 
 /**

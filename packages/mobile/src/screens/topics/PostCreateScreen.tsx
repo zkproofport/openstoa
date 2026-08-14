@@ -753,7 +753,7 @@ function PostCreateScreenAuthed() {
       // Parallel upload — every R2 put is independent. Order is preserved
       // by `Promise.all` so the resulting strip matches the picker order.
       const urls = await Promise.all(
-        normalizedUris.map((uri) => client.uploadFile(uri)),
+        normalizedUris.map((uri) => client.uploadFile(uri, { purpose: 'post', topicId })),
       );
       setImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
     } catch (err: unknown) {

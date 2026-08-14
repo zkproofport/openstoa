@@ -14,6 +14,9 @@ import { storeArchiveRow, getArchiveSince, type ArchiveCursor } from '@/lib/mls/
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { historyGrantDenial, resolveEnforcedHistoryGrant } from '@/lib/historyGrant';
 import { getArchiveWindowed, isUnboundedWindow, resolveHistoryWindow } from '@/lib/mls/historyWindow';
+import { scheduleArchiveSweep } from '@/lib/archiveRetentionSweep';
+import { scheduleDeliverySweep } from '@/lib/chatDeliveryPurge';
+import { scheduleChatMediaSweep } from '@/lib/chatMediaSweep';
 
 const ROUTE = '/api/topics/[topicId]/archive';
 const ARCHIVE_PAGE_DEFAULT = 200;
@@ -114,6 +117,20 @@ export async function POST(
 
     const stored = await storeArchiveRow(db, topicId, messageId, takVersion, archiveBytes);
     logger.info(ROUTE, 'Archive row ingest', { topicId, userId: session.userId, messageId, takVersion, stored });
+
+    // Enforce the topic's retention window as the archive grows. Fire-and-forget
+    // and self-throttled (src/lib/archiveRetentionSweep.ts) — Cloud Run has no
+    // reliable in-process cron, so the write path is where the window is kept.
+    // A purge that fails must never fail the upload that triggered it.
+    scheduleArchiveSweep(db, topicId, new Date());
+    // Its attachments expire on the same window, but they are OBJECTS and the
+    // statement above can only reach rows (M-1, src/lib/chatMediaSweep.ts).
+    scheduleChatMediaSweep(db, topicId, new Date());
+    // An archive row just landed, which is one of exactly two moments a
+    // message can become purgeable from the LIVE queue (the other is a delivery
+    // cursor moving). The archive copy is the precondition, so this is the
+    // earliest honest moment to ask (R-1, src/lib/chatDeliveryPurge.ts).
+    scheduleDeliverySweep(db, topicId, new Date());
     return NextResponse.json({ stored }, { status: stored ? 201 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -212,6 +229,12 @@ export async function GET(
       logger.warn(ROUTE, 'AI caller has no history grant', { topicId, userId: auth.session.userId });
       return grantDenied;
     }
+
+    // The read path sweeps too, so a room that is only ever read still honours
+    // its window — an archive nobody adds to is exactly the archive most likely
+    // to sit past its expiry. Same fire-and-forget, same per-topic throttle.
+    scheduleArchiveSweep(db, topicId, new Date());
+    scheduleChatMediaSweep(db, topicId, new Date());
 
     const sp = new URL(request.url).searchParams;
     const since = sp.get('since');

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ProofGate from '@/components/ProofGate';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { splitTemplate } from '@/lib/i18n';
+import { safeReturnTo, withHash } from '@/lib/returnTo';
 
 /**
  * Inline-code substitutions for `landingPage.agent.pathB.desc`. Kept next to
@@ -422,7 +423,9 @@ function LandingPageInner() {
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get('returnTo') ?? '/topics';
+  // Sanitised, because `returnTo` is a query parameter and `router.push` will
+  // follow an absolute URL off-site. See `lib/returnTo.ts`.
+  const returnTo = safeReturnTo(searchParams.get('returnTo'));
   const [stage, setStage] = useState<Stage>('idle');
   const badgeRef = useRef<HTMLDivElement>(null);
 
@@ -489,7 +492,22 @@ function LandingPageInner() {
             <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 600, margin: 0, color: '#f0f0f8' }}>{t('landingPage.proving.title')}</h2>
             <p style={{ fontSize: 15, color: '#999', margin: 0 }}>{t('landingPage.proving.subtitle')}</p>
             <ProofGate circuitType="oidc_domain_attestation" mode="login" qrSize={240} label={t('landingPage.proving.scanLabel')}
-              onLogin={({ needsNickname }) => { setStage('completed'); setTimeout(() => router.push(needsNickname ? `/profile?returnTo=${encodeURIComponent(returnTo)}` : returnTo), 600); }}
+              onLogin={({ needsNickname }) => {
+                setStage('completed');
+                /*
+                 * The fragment is carried across by hand.
+                 *
+                 * An invite link's chat-history keys ride in it, the browser
+                 * kept them across the middleware redirect that landed us here,
+                 * and `router.push(returnTo)` would navigate to exactly the
+                 * string it was given — dropping them. The user would then join
+                 * the topic and find an empty room, with nothing anywhere
+                 * saying why.
+                 */
+                const dest = needsNickname ? `/profile?returnTo=${encodeURIComponent(returnTo)}` : returnTo;
+                const withKeys = withHash(dest, window.location.hash);
+                setTimeout(() => router.push(withKeys), 600);
+              }}
               onCancel={reset} />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 4 }}>
               <p style={{ fontSize: 12, color: '#666', margin: 0 }}>{t('landingPage.proving.noAppYet')}</p>

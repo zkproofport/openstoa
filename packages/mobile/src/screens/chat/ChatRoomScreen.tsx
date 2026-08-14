@@ -55,7 +55,30 @@ import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
 import { copyTargets } from '../../lib/messageActions';
+import {
+  ChatMediaError,
+  addFailedMedia,
+  base64ToBytes,
+  buildChatMediaBody,
+  bytesToBase64,
+  isFailedMediaExpired,
+  parseFailedMedia,
+  removeFailedMedia,
+  serializeFailedMedia,
+  chatMediaDataUri,
+  loadEncryptedChatMedia,
+  parseChatMediaBody,
+  resolveChatMediaMime,
+  sendEncryptedChatMedia,
+  type ChatMediaEnvelope,
+  type ChatMediaLoad,
+  type PersistedFailedMedia,
+} from '../../lib/chatMedia';
 import { displayNickname } from '../../lib/defaultNickname';
+import { MessageFailedControls } from '../../components/MessageFailedControls';
+import { chatTierOf } from '../../lib/chatTierPolicy';
+import { chatClaimKey } from '../../lib/chatTierExplainer';
+import { buildTiersUrl } from '../../lib/docsLink';
 
 /**
  * A rendered row: the server's shape plus the two states that exist only on
@@ -63,12 +86,32 @@ import { displayNickname } from '../../lib/defaultNickname';
  * it carries a client-side id and must never be treated as a stored message —
  * archiving one would POST a non-uuid messageId.
  */
-type LocalMessage = ChatMessage & { pending?: boolean; failed?: boolean };
+type LocalMessage = ChatMessage & {
+  pending?: boolean;
+  failed?: boolean;
+  /**
+   * For a failed ATTACHMENT: the object key its envelope names.
+   *
+   * Retry re-sends this exact object instead of re-reading a photo the user
+   * would otherwise have to find in the picker again — which on a phone is the
+   * expensive half of the whole flow.
+   */
+  mediaKey?: string;
+  /**
+   * The attachment's bytes are gone — the collector took them before the app
+   * came back. Retry is replaced by an explanation; the row still SHOWS,
+   * because silence is the defect this path exists to fix.
+   */
+  mediaExpired?: boolean;
+};
 
 
 import { useChatSocket } from '../../api/chatSocket';
-import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls, report } from '../../crypto/mobileTransport';
-import { mirrorTakToSharedKeychain } from '../../crypto/sharedKeychainNative';
+import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls, ackDeliveryMls, report } from '../../crypto/mobileTransport';
+import {
+  mirrorPushSessionToSharedKeychain,
+  mirrorTakToSharedKeychain,
+} from '../../crypto/sharedKeychainNative';
 import type { ArchiveRootState, Visibility } from '../../crypto/takSession';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
@@ -152,6 +195,39 @@ function setLastSeen(topicId: string, iso: string): void {
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     flex: { flex: 1, backgroundColor: colors.background.primary },
+
+    // The tier claim, directly under the stack header. Same strip as the web
+    // banner: one line that says what this room is, in the tone of what it is.
+    tierBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      backgroundColor: colors.brand.primaryMuted,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.default,
+    },
+    // A room the service can read is not a reassurance — different tone, so the
+    // difference registers before the sentence is read.
+    tierBannerReadable: {
+      backgroundColor: colors.background.tertiary,
+    },
+    tierBannerText: {
+      flex: 1,
+      fontSize: TYPE_SCALE.caption,
+      lineHeight: 18,
+      color: colors.brand.accent,
+    },
+    tierBannerTextReadable: {
+      color: colors.status.warning,
+    },
+    tierBannerLink: {
+      fontSize: TYPE_SCALE.caption,
+      lineHeight: 18,
+      textDecorationLine: 'underline',
+      color: colors.text.secondary,
+    },
 
     center: {
       flex: 1,
@@ -498,6 +574,77 @@ export function ChatRoomScreen() {
   // restored, no re-join). Singleton: first caller (here or chatSocket) wins.
   const mls = getMlsSessionStore(client, host.secureStore, host.localStore);
   const tak = getTakSessionStore(client, host.secureStore, host.localStore);
+
+  /*
+   * Failed attachments outlive the process.
+   *
+   * A phone app is killed by the OS routinely, so a row that lives only in
+   * React state is lost far more often here than on the web — and the user did
+   * nothing to cause it. What is stored is a REFERENCE (the sealed body and the
+   * object key), never the picture; the bytes stay where they were uploaded.
+   * The host's non-secure KV is the right home: this is bulk state, not a key.
+   */
+  const failedMediaStoreKey = `openstoa.failedMedia.${topicId}`;
+  const readFailedMedia = useCallback(async (): Promise<PersistedFailedMedia[]> => {
+    try {
+      const raw = await host.localStore?.getItem(failedMediaStoreKey);
+      return parseFailedMedia(raw ?? null, Date.now());
+    } catch {
+      return [];
+    }
+  }, [host, failedMediaStoreKey]);
+  const writeFailedMedia = useCallback(
+    async (list: readonly PersistedFailedMedia[]) => {
+      try {
+        await host.localStore?.setItem(failedMediaStoreKey, serializeFailedMedia(list));
+      } catch {
+        /* storage refused — the row still shows for this session */
+      }
+    },
+    [host, failedMediaStoreKey],
+  );
+  const forgetFailedMedia = useCallback(
+    async (rowId: string) => writeFailedMedia(removeFailedMedia(await readFailedMedia(), rowId)),
+    [readFailedMedia, writeFailedMedia],
+  );
+
+  /* Put back what the last run could not send. */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const rows = await readFailedMedia();
+      if (cancelled || rows.length === 0) return;
+      const now = Date.now();
+      setSentMessages((curr) => {
+        const known = new Set(curr.map((m) => m.id));
+        const restored = rows
+          .filter((r) => !known.has(r.rowId))
+          .map(
+            (r) =>
+              ({
+                id: r.rowId,
+                message: r.body,
+                // A failed row is this client's by construction, so ownership
+                // does not wait on the session lookup.
+                userId: '',
+                nickname: '',
+                createdAt: new Date(r.createdAt).toISOString(),
+                type: 'message',
+                failed: true,
+                mediaKey: r.key,
+                // Only a HINT here — retry probes the object for real.
+                mediaExpired: isFailedMediaExpired(r, now),
+              }) as LocalMessage,
+          );
+        return restored.length === 0 ? curr : [...curr, ...restored];
+      });
+      // Persist what the parse kept, so pruned rows are not re-read forever.
+      await writeFailedMedia(rows);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [readFailedMedia, writeFailedMedia]);
   // TAK back-fill: recovered plaintext for pre-join messages MLS can't decrypt,
   // keyed by message id; merged into the list below. Topic visibility selects
   // the TAK tier (public root vs scoped) — resolved once on mount.
@@ -513,6 +660,20 @@ export function ChatRoomScreen() {
   // current rows once and must not re-run as messages arrive.
   const allMessagesRef = useRef<LocalMessage[]>([]);
   const visibilityRef = useRef<Visibility>('public');
+  // Same value as the ref, as state: an attachment row decrypts in an effect,
+  // so the tier has to reach it as a PROP that changes when the lookup lands.
+  const [visibility, setVisibility] = useState<Visibility>('public');
+  /*
+   * Which claim this room may make. `public` until the visibility lookup lands,
+   * which is the tier that promises the LEAST — a room can be upgraded to "the
+   * service cannot read this" once that is known to be true, but never
+   * downgraded from a promise already made on screen.
+   *
+   * `kind` comes from the route, so a DM is a DM on the first frame.
+   */
+  const tier = chatTierOf(visibility, kind === 'dm');
+  const claim = chatClaimKey(tier);
+  const tiersUrl = buildTiersUrl(host.getEnvironment().openstoaBaseUrl);
   // The caller's topic role — secret-tier history is granted only by the owner.
   const roleRef = useRef<string | null>(null);
   const { colors } = useThemeColors();
@@ -594,6 +755,9 @@ export function ChatRoomScreen() {
       const decrypted = await Promise.all(
         res.messages.map((m) => toDisplayMessageMls(mls, topicId, m)),
       );
+      // The live copy is a delivery queue (R-1): tell the server what this
+      // device now holds so it can release its own. Never throws.
+      ackDeliveryMls(client, topicId, decrypted);
       return {
         messages: decrypted,
         nextCursor: res.messages.length === 50 && oldest ? oldest.id : undefined,
@@ -718,7 +882,10 @@ export function ChatRoomScreen() {
       try {
         const tj = await client.get<{ topic?: { visibility?: string }; visibility?: string; currentUserRole?: string | null }>(`/api/topics/${topicId}`);
         const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
-        if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
+        if (v === 'public' || v === 'private' || v === 'secret') {
+          visibilityRef.current = v;
+          setVisibility(v);
+        }
         roleRef.current = tj?.currentUserRole ?? null;
       } catch {}
       let history: Array<{ messageId: string; plaintext: string }> = [];
@@ -734,6 +901,24 @@ export function ChatRoomScreen() {
         }
       } catch {}
       if (!cancelled) await provisionArchiveAccess();
+      // Make removals real. A kick, a leave and an account deletion all end as
+      // a missing membership row; the ratchet tree only catches up when some
+      // member's client commits the Remove. Doing it on entry rather than in
+      // the acting admin's request keeps the group correct when that admin
+      // backgrounds the app mid-kick — any member repairs it on their next
+      // visit. Best-effort and silent: a failure means the next one tries.
+      if (!cancelled) {
+        try {
+          const { members } = await client.get<{ members: Array<{ userId?: string }> }>(
+            `/api/topics/${topicId}/members`,
+          );
+          const ids = (members ?? []).map((m) => m.userId).filter((id): id is string => !!id);
+          // An EMPTY list is refused rather than acted on: far likelier a shape
+          // we failed to read than a topic with no members, and acting on it
+          // would evict everyone.
+          if (ids.length > 0) await mls.reconcileMembership(topicId, ids);
+        } catch {}
+      }
       // Close archive GAPS, AFTER provisioning — that is where a device that was
       // waiting finally adopts the topic root, and only a verified root may seal.
       // `archiveOnSend` gets one attempt at send time and silently does nothing
@@ -766,12 +951,23 @@ export function ChatRoomScreen() {
       if (!cancelled) {
         const ref = await tak.takForPush(topicId, visibilityRef.current);
         if (ref) void mirrorTakToSharedKeychain(topicId, ref.takVersion, ref.takB64, host).catch(() => {});
+        /*
+         * The key alone previews a MESSAGE. An ATTACHMENT does not fit in a
+         * push, so the iOS extension has to fetch it through the
+         * membership-gated route — and it cannot ask this process for a token
+         * (different process, app not running). Mirrored here, beside the key,
+         * so a device that only ever READS a topic still has both by the time a
+         * picture arrives (P-1). Best-effort and iOS-only; without it the
+         * notification says "📷 Photo" with no thumbnail.
+         */
+        const cred = await client.pushSessionCredential().catch(() => null);
+        if (cred) void mirrorPushSessionToSharedKeychain(topicId, cred.baseUrl, cred.token).catch(() => {});
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [client, tak, topicId, provisionArchiveAccess, host]);
+  }, [client, tak, mls, topicId, provisionArchiveAccess, host]);
 
   // A new member joined (live SSE) → if we hold the public lease, push them the
   // archive root so they can back-fill (membership-change distribution, SI-6).
@@ -951,6 +1147,7 @@ export function ChatRoomScreen() {
           res.messages.map((m) => toDisplayMessageMls(mls, topicId, m)),
         );
         if (cancelled) return;
+        ackDeliveryMls(client, topicId, decrypted);
         setCatchupMessages((curr) => {
           const ids = new Set(curr.map((m) => m.id));
           const next = [...curr];
@@ -1115,6 +1312,23 @@ export function ChatRoomScreen() {
     async (pendingId: string, text: string) => {
       try {
         const sealed = await mls.seal(topicId, text);
+        /*
+         * An attachment gets a push preview like anything else (P-1).
+         *
+         * It used to be omitted here, because the preview is a copy of the BODY
+         * and an attachment's body is an envelope — so the notification read as
+         * a line of JSON. That removed the preview instead of teaching the
+         * handler to read it, and it did not even work: the SDK sends the copy
+         * for attachments too, so agent-sent pictures produced exactly the JSON
+         * notification this omission was avoiding. The handlers now parse the
+         * envelope and show a caption (iOS additionally fetches and attaches the
+         * picture) — see `proofport-app/ios/OpenStoaNSE/ChatMediaEnvelope.swift`
+         * and `OpenStoaPushHandler.kt`, both pinned to `chatMedia.ts` by
+         * `nativeChatMediaConstants.test.ts`.
+         *
+         * `media` is still parsed here: the claim call below needs its key.
+         */
+        const media = parseChatMediaBody(text);
         const pushArchive = await buildPushArchive(text);
         const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
           ciphertext: sealed.ciphertext,
@@ -1127,10 +1341,15 @@ export function ChatRoomScreen() {
         setSentMessages((curr) =>
           curr.map((m) => (m.id === pendingId ? { ...res.message, message: text } : m)),
         );
+        // The message is out, so the failed row it may have come from is done.
+        void forgetFailedMedia(pendingId);
         // Cache own plaintext so it survives a restart (sender can't self-decrypt).
         void mls.cachePlaintext(topicId, res.message.id, text);
         // Re-encrypt for the archive so later members can read it (Phase 3).
         void tak.archiveOnSend(topicId, res.message.id, text, visibilityRef.current).catch(() => {});
+        // Only NOW is the object referenced by a real message, so only now may
+        // the unclaimed collector leave it alone.
+        if (media) void client.claimChatMedia(topicId, media.key).catch(() => {});
       } catch {
         // The text stays in the bubble, never back in the composer — the reader
         // decides whether to resend or drop it.
@@ -1139,7 +1358,7 @@ export function ChatRoomScreen() {
         );
       }
     },
-    [mls, tak, client, topicId, buildPushArchive],
+    [mls, tak, client, topicId, buildPushArchive, forgetFailedMedia],
   );
 
   const send = useAuthGuardedAction(async () => {
@@ -1168,40 +1387,156 @@ export function ChatRoomScreen() {
       setSentMessages((curr) =>
         curr.map((m) => (m.id === msg.id ? { ...m, failed: false, pending: true } : m)),
       );
-      void deliver(msg.id, msg.message ?? '');
+      const envelope = parseChatMediaBody(msg.message ?? '');
+      if (!envelope) {
+        void deliver(msg.id, msg.message ?? '');
+        return;
+      }
+      /*
+       * A restored row can outlive its bytes: an unclaimed attachment is
+       * collected an hour after upload. Re-sending regardless would post a
+       * message pointing at nothing, so this asks first. Checked rather than
+       * inferred from the row's age — the collector is request-triggered, so an
+       * object may well outlive the window.
+       */
+      void (async () => {
+        try {
+          await client.fetchChatMedia(topicId, envelope.key);
+        } catch {
+          setSentMessages((curr) =>
+            curr.map((m) =>
+              m.id === msg.id ? { ...m, pending: false, failed: true, mediaExpired: true } : m,
+            ),
+          );
+          return;
+        }
+        await deliver(msg.id, msg.message ?? '');
+      })();
     },
-    [deliver],
+    [deliver, client, topicId],
   );
 
-  const discardFailed = useCallback((msg: LocalMessage) => {
-    setSentMessages((curr) => curr.filter((m) => m.id !== msg.id));
-  }, []);
+  const discardFailed = useCallback(
+    (msg: LocalMessage) => {
+      setSentMessages((curr) => curr.filter((m) => m.id !== msg.id));
+      /*
+       * Dropping the row is not enough for an attachment: its bytes are on the
+       * server and nothing else will ever name them. The M-1 collector would
+       * take it after the grace window, but an hour of paid storage for a
+       * message the user just cancelled is a leak with a timer.
+       */
+      if (msg.mediaKey) void client.deleteChatMedia(topicId, msg.mediaKey).catch(() => {});
+      void forgetFailedMedia(msg.id);
+    },
+    [client, topicId, forgetFailedMedia],
+  );
 
   // ── Image attach helpers ──────────────────────────────────────────────────
-  const uploadAndSend = useAuthGuardedAction(async (localUri: string) => {
+  /**
+   * Attach an image — encrypted end to end (R-3).
+   *
+   * It used to hand the raw file to `/api/upload`, which stored it at a public
+   * unauthenticated URL and sealed only that URL string: the message was
+   * encrypted and the picture inside it was not. Now the bytes are sealed on
+   * this device under the topic's TAK and only the ciphertext leaves it.
+   *
+   * Takes base64, not a URI, because encryption needs the BYTES — the picker
+   * and the clipboard both hand us base64 already, so nothing extra is read.
+   */
+  const uploadAndSend = useAuthGuardedAction(async (input: { base64: string; mime: string; filename?: string }) => {
     if (!topicId) return;
     setUploading(true);
     try {
-      const publicUrl = await client.uploadFile(localUri);
-      const sealed = await mls.seal(topicId, publicUrl);
-      const pushArchive = await buildPushArchive(publicUrl);
-      const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
-        ciphertext: sealed.ciphertext,
-        epoch: sealed.epoch,
-        ...(pushArchive ? { pushArchive } : {}),
-      });
-      if (res?.message?.id) {
-        setSentMessages((curr) =>
-          curr.some((m) => m.id === res.message.id) ? curr : [...curr, { ...res.message, message: publicUrl }],
-        );
-        // Cache own plaintext so it survives a restart (sender can't self-decrypt).
-        void mls.cachePlaintext(topicId, res.message.id, publicUrl);
-        // Re-encrypt for the archive so later members can read it (Phase 3).
-        void tak.archiveOnSend(topicId, res.message.id, publicUrl, visibilityRef.current).catch(() => {});
-      }
+      const bytes = base64ToBytes(input.base64);
+      /*
+       * The BYTES decide the type. `asset.mimeType` is optional on the picker
+       * and the clipboard's data URI can be anything, so trusting either one
+       * risks shipping a PNG labelled JPEG — which the reader then renders as
+       * the type it was told, not the type it is.
+       */
+      const mime = resolveChatMediaMime(bytes, input.mime, input.filename);
+      if (!mime) throw new ChatMediaError('unsupported-type');
+      await sendEncryptedChatMedia(
+        { bytes, mime },
+        {
+          seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, visibilityRef.current),
+          upload: (ciphertextB64, mediaId) => client.uploadChatMedia(topicId, mediaId, ciphertextB64),
+          send: async (body) => {
+            const sealed = await mls.seal(topicId, body);
+            /*
+             * No push preview for an attachment: the preview is a copy of the
+             * BODY, and this body is an envelope, so the recipient's
+             * notification would read as a line of JSON.
+             */
+            const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
+              ciphertext: sealed.ciphertext,
+              epoch: sealed.epoch,
+            });
+            if (!res?.message?.id) return;
+            setSentMessages((curr) =>
+              curr.some((m) => m.id === res.message.id) ? curr : [...curr, { ...res.message, message: body }],
+            );
+            // Cache own plaintext so it survives a restart (sender can't self-decrypt).
+            void mls.cachePlaintext(topicId, res.message.id, body);
+            // Re-encrypt the ENVELOPE for the archive so later members can read
+            // it (Phase 3) — the bytes it points at use the same key.
+            void tak.archiveOnSend(topicId, res.message.id, body, visibilityRef.current).catch(() => {});
+          },
+          discard: (key) => client.deleteChatMedia(topicId, key),
+          claim: (key) => client.claimChatMedia(topicId, key),
+          // The bytes stay put when only the SEND fails, so the failed row can
+          // retry them. Re-picking a photo costs more on a phone than anywhere
+          // else, and a dropped connection mid-send is the COMMON failure here.
+          retainForRetry: true,
+        },
+      );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert('Upload failed', msg);
+      /*
+       * WHERE the failure is reported depends on whether a message exists yet.
+       *
+       * Before the bytes are stored — an unsupported file, no room key, a
+       * refused upload — there is nothing in the conversation to attach the
+       * failure to, so it is an alert next to the action that caused it.
+       *
+       * Once the object is stored the failure is about a MESSAGE, and it takes
+       * a row in the conversation with Retry and Discard, exactly as a failed
+       * text does. Same line the web draws.
+       */
+      const stored = err instanceof ChatMediaError && err.reason === 'send-failed' ? err.envelope : undefined;
+      if (stored) {
+        const rowId = nextPendingId();
+        const body = buildChatMediaBody(stored);
+        // Written BEFORE the row is drawn: the OS can kill this process between
+        // the two, and losing it there is precisely what this fixes.
+        void (async () => {
+          await writeFailedMedia(
+            addFailedMedia(await readFailedMedia(), { rowId, body, key: stored.key, createdAt: Date.now() }),
+          );
+        })();
+        setSentMessages((curr) => [
+          ...curr,
+          {
+            id: rowId,
+            message: body,
+            userId: sessionUserId ?? '',
+            nickname: '',
+            createdAt: new Date().toISOString(),
+            type: 'message',
+            failed: true,
+            mediaKey: stored.key,
+          } as LocalMessage,
+        ]);
+        return;
+      }
+      // One sentence per reason. "Upload failed: <stack noise>" told the sender
+      // nothing about which of six things went wrong.
+      const message =
+        err instanceof ChatMediaError
+          ? t(`openstoa.chat.media.error.${err.reason}`)
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      Alert.alert(t('openstoa.chat.media.title'), message);
     } finally {
       setUploading(false);
     }
@@ -1219,10 +1554,30 @@ export function ChatRoomScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
       allowsEditing: false,
+      // The bytes, not just a URI: the file is encrypted on this device now,
+      // and RN has no dependable way to read a file:// URI into memory.
+      base64: true,
+      // iOS hands over the ORIGINAL representation by default, which for a
+      // photo taken on any recent iPhone is HEIC — a format no browser can
+      // decode. The old flow survived that because the server transcoded it;
+      // an encrypted upload cannot be transcoded by anyone but the sender, so
+      // ask the picker for a compatible representation up front. Guarded: the
+      // enum is iOS-only and absent on older picker versions.
+      ...(ImagePicker.UIImagePickerPreferredAssetRepresentationMode
+        ? {
+            preferredAssetRepresentationMode:
+              ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+          }
+        : {}),
     });
     if (result.canceled || !result.assets[0]) return;
-    await uploadAndSend(result.assets[0].uri);
-  }, [uploadAndSend]);
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.error.empty'));
+      return;
+    }
+    await uploadAndSend({ base64: asset.base64, mime: asset.mimeType ?? '', filename: asset.fileName ?? undefined });
+  }, [uploadAndSend, t]);
 
   const pasteFromClipboard = useCallback(async () => {
     const Clipboard = loadClipboard();
@@ -1235,9 +1590,16 @@ export function ChatRoomScreen() {
       Alert.alert('No image in clipboard');
       return;
     }
+    // `data:<mime>;base64,<payload>` — split rather than re-read: the payload
+    // is already the bytes the encrypt step needs.
     const dataUri = await Clipboard.getImage();
-    await uploadAndSend(dataUri);
-  }, [uploadAndSend]);
+    const match = /^data:([^;,]+);base64,(.*)$/s.exec(dataUri ?? '');
+    if (!match) {
+      Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.error.unsupported-type'));
+      return;
+    }
+    await uploadAndSend({ base64: match[2], mime: match[1] });
+  }, [uploadAndSend, t]);
 
   const openAttachSheet = useCallback(() => {
     if (Platform.OS === 'ios') {
@@ -1274,6 +1636,37 @@ export function ChatRoomScreen() {
       // 88-px gap above the keyboard (the bug user saw).
       keyboardVerticalOffset={0}
     >
+      {/* What this room is, said in the room. The mini-app had no such line at
+          all: the one property that distinguishes this chat from every other
+          one was invisible here, and in a public topic the opposite property —
+          that the service CAN read it — was invisible too.
+
+          PRESENT TENSE ("new messages and images are…"): images sent before the
+          encrypted-attachment change are still plaintext objects, so a claim
+          about the room would be false about its own history. */}
+      <View
+        style={[styles.tierBanner, claim === 'serverReadable' && styles.tierBannerReadable]}
+        accessibilityRole="summary"
+        testID="chat-tier-banner"
+      >
+        <Text
+          style={[styles.tierBannerText, claim === 'serverReadable' && styles.tierBannerTextReadable]}
+        >
+          {t(`openstoa.chat.tierClaim.${claim}`)}
+        </Text>
+        {tiersUrl ? (
+          <Text
+            style={styles.tierBannerLink}
+            accessibilityRole="link"
+            // In-app WebView, never Linking.openURL — the mini-app keeps its
+            // own back stack (project-wide rule for every http(s) link).
+            onPress={() => navigation.navigate('InAppBrowser', { url: tiersUrl })}
+          >
+            {t('openstoa.chat.tierClaim.learnMore')}
+          </Text>
+        ) : null}
+      </View>
+
       {/* No connection bar here.
           It appeared and disappeared above the list, so every blink of the
           stream — a phone changing network, a screen waking — pushed the whole
@@ -1309,6 +1702,8 @@ export function ChatRoomScreen() {
               onImagePress={setImageViewerUrl}
               onAuthorPress={setProfileTarget}
               onLongPress={(text) => setActionTarget(copyTargets(text))}
+              topicId={topicId}
+              visibility={visibility}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -1413,6 +1808,10 @@ interface RowProps {
   client: ReturnType<typeof useOpenStoaClient>;
   onImagePress: (url: string) => void;
   onAuthorPress: (target: PeerProfileTarget) => void;
+  /** The room this row belongs to — an encrypted attachment is fetched per topic. */
+  topicId: string;
+  /** Tier, which selects the TAK an attachment was sealed under. */
+  visibility: Visibility;
   /** Long-press on the bubble — opens the copy sheet with the message as sent. */
   onLongPress: (text: string) => void;
   /** The room key has not reached this device YET — locked rows are loading,
@@ -1437,7 +1836,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
   });
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress, topicId, visibility }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -1492,6 +1891,8 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
       client={client}
       onImagePress={onImagePress}
       onAuthorPress={onAuthorPress}
+      topicId={topicId}
+      visibility={visibility}
     />
   );
 }
@@ -1607,6 +2008,10 @@ interface MessageBodyProps {
   client: ReturnType<typeof useOpenStoaClient>;
   onImagePress: (url: string) => void;
   onAuthorPress: (target: PeerProfileTarget) => void;
+  /** The room this row belongs to — an encrypted attachment is fetched per topic. */
+  topicId: string;
+  /** Tier, which selects the TAK an attachment was sealed under. */
+  visibility: Visibility;
   /** The room key has not reached this device YET — see `syncing` in the screen. */
   syncing?: boolean;
 }
@@ -1624,7 +2029,112 @@ function isImageUrl(url: string): boolean {
   return false;
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress }: MessageBodyProps) {
+/**
+ * One end-to-end encrypted attachment: fetch the ciphertext, decrypt it on the
+ * device, show the picture.
+ *
+ * Three failures, three sentences. They mean different things to the reader —
+ * "the key has not reached this device yet, it may still arrive", "the fetch
+ * failed, try again", and "these bytes are not what the message says they are,
+ * retrying will not help" — and one placeholder for all three says none of it.
+ */
+function EncryptedAttachment({
+  envelope,
+  topicId,
+  visibility,
+  client,
+  styles,
+  isOwn,
+}: {
+  envelope: ChatMediaEnvelope;
+  topicId: string;
+  visibility: Visibility;
+  client: ReturnType<typeof useOpenStoaClient>;
+  styles: Styles;
+  isOwn: boolean;
+}) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<ChatMediaLoad | null>(null);
+  const [dataUri, setDataUri] = useState<string | null>(null);
+  /** Bumped by the retry button; re-runs the effect without remounting the row. */
+  const [attempt, setAttempt] = useState(0);
+  const { key, mediaId, takVersion, mime, size } = envelope;
+
+  useEffect(() => {
+    let cancelled = false;
+    setState(null);
+    setDataUri(null);
+    void (async () => {
+      const tak = getTakSessionStore(client);
+      const res = await loadEncryptedChatMedia(
+        { v: 1, key, mediaId, takVersion, mime, size },
+        {
+          fetchCiphertext: async (objectKey) => base64ToBytes(await client.fetchChatMedia(topicId, objectKey)),
+          open: (id, version, ciphertext) => tak.openMedia(topicId, id, version, ciphertext, visibility),
+        },
+      );
+      if (cancelled) return;
+      if (res.status === 'ok') setDataUri(chatMediaDataUri(res.bytes, res.mime));
+      setState(res);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, topicId, visibility, key, mediaId, takVersion, mime, size, attempt]);
+
+  const wrap = isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther;
+
+  if (state === null) {
+    return (
+      <View style={wrap}>
+        <Text style={styles.lockedBody}>{t('openstoa.chat.media.decrypting')}</Text>
+      </View>
+    );
+  }
+  if (state.status === 'locked') {
+    return (
+      <View style={wrap}>
+        <Text style={styles.lockedBody}>🔒 {t('openstoa.chat.media.locked')}</Text>
+      </View>
+    );
+  }
+  if (state.status === 'fetch-failed') {
+    return (
+      <View style={wrap}>
+        <Text style={styles.lockedBody}>{t('openstoa.chat.media.fetchFailed')}</Text>
+        {/* RELOAD, not "Retry": the failed ROW has a Retry of its own, and two
+            identical labels on one row are indistinguishable to a reader. */}
+        <TouchableOpacity onPress={() => setAttempt((a) => a + 1)}>
+          <Text style={styles.sendFailedAction}>{t('openstoa.chat.media.reload')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  if (state.status === 'decrypt-failed') {
+    return (
+      <View style={wrap}>
+        <Text style={styles.lockedBody}>{t('openstoa.chat.media.decryptFailed')}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={wrap}>
+      <Image
+        source={{ uri: dataUri ?? undefined }}
+        accessibilityLabel={t('openstoa.chat.media.alt')}
+        style={{
+          width: 220,
+          height: 220,
+          borderRadius: RADIUS.card,
+          backgroundColor: 'rgba(255,255,255,0.05)',
+        }}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
+
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress, topicId, visibility }: MessageBodyProps) {
   // Its OWN hook. `t` from the screen component is not in scope here, and
   // reaching for it crashed every room that rendered a locked row.
   const { t } = useTranslation();
@@ -1637,6 +2147,12 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
   // outcome, not a loading state.
   const content: string =
     rawContent === '[unable to decrypt]' ? t('openstoa.chat.lockedMessage') : rawContent;
+  /*
+   * An encrypted attachment, or null for an ordinary message. Memoised so the
+   * attachment's decrypt effect does not re-run on every unrelated re-render of
+   * the room.
+   */
+  const mediaEnvelope = useMemo(() => parseChatMediaBody(rawContent), [rawContent]);
   const firstUrl = extractFirstUrl(content);
   const urlOnly = firstUrl !== null && isUrlOnly(content);
   // When the user pastes or uploads an image, the chat message body is just
@@ -1813,15 +2329,13 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
             the reader's side. The text stays in the bubble rather than jumping
             back into the composer, so nothing the user typed is ever lost. */}
         {item.failed ? (
-          <View style={styles.sendFailed}>
-            <Text style={styles.sendFailedMark}>!</Text>
-            <TouchableOpacity onPress={() => onRetry(item)} activeOpacity={0.7}>
-              <Text style={styles.sendFailedAction}>{t('openstoa.chat.sendFailedRetry')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => onDiscard(item)} activeOpacity={0.7}>
-              <Text style={styles.sendFailedDiscard}>{t('openstoa.chat.sendFailedDiscard')}</Text>
-            </TouchableOpacity>
-          </View>
+          <MessageFailedControls
+            expired={item.mediaExpired}
+            onRetry={() => onRetry(item)}
+            onDiscard={() => onDiscard(item)}
+            t={t}
+            styles={styles}
+          />
         ) : null}
 
         {/* Timestamp left of bubble for own messages */}
@@ -1829,9 +2343,22 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           <Text style={[styles.bubbleTime, styles.bubbleTimeOwn]}>{timeLabel}</Text>
         ) : null}
 
-        {/* Inline image — when the message is just an image URL render
-            the picture in place of the text bubble (Telegram-style). */}
-        {imageUrl ? (
+        {/* Encrypted attachment (R-3) — decrypted on this device. */}
+        {mediaEnvelope ? (
+          <EncryptedAttachment
+            envelope={mediaEnvelope}
+            topicId={topicId}
+            visibility={visibility}
+            client={client}
+            styles={styles}
+            isOwn={isOwn}
+          />
+        ) : null}
+
+        {/* Inline image — a message sent BEFORE R-3, whose body really is a
+            public URL. Kept so pictures already in rooms keep rendering; new
+            sends never take this path. */}
+        {!mediaEnvelope && imageUrl ? (
           <TouchableOpacity
             activeOpacity={0.85}
             // Open in a local image viewer instead of the in-app WebView —
@@ -1859,7 +2386,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
             comes back only when there will be no card at all — the condition
             used to be `!hasOG`, which put the raw URL on screen for the whole
             fetch and then took it away, moving everything below it. */}
-        {(!urlOnly || previewUnavailable) && !imageUrl ? (
+        {(!urlOnly || previewUnavailable) && !imageUrl && !mediaEnvelope ? (
           <TouchableOpacity
             activeOpacity={1}
             onLongPress={() => onLongPress(rawContent)}
@@ -1897,7 +2424,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           the message has a link and never taller or shorter afterwards.
           Rendering it only once the fetch succeeded made the list jump when a
           card arrived, and jump again when one never did. */}
-      {firstUrl && !imageUrl && !previewUnavailable ? (
+      {firstUrl && !imageUrl && !mediaEnvelope && !previewUnavailable ? (
         <View style={isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther}>
           <OGPreviewCard
             onLongPress={() => onLongPress(rawContent)}

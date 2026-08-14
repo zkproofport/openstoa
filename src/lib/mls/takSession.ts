@@ -566,6 +566,80 @@ export class TakSessionStore {
     await this.setEpochTak(topicId, epoch, t);
   }
 
+  /**
+   * The epoch TAKs to put in an invite link, newest-first up to `maxEpochs`.
+   *
+   * This is the whole of history sharing for `private` and `secret`: the keys
+   * ride in the link's fragment, which never reaches the server, so the topic
+   * hands over its past without the operator ever holding a key. There is no
+   * server-side grant to revoke afterwards, which is exactly why the count is
+   * bounded and why the caller shows the inviter what it comes to in messages.
+   *
+   * Only epochs this device actually HOLDS are returned. An inviter cannot
+   * share what they were never given — a member who joined last week cannot
+   * hand over the month before it, and that ceiling is a property of the
+   * keychain rather than a rule anyone has to enforce.
+   *
+   * The current epoch is cached first, or the newest thing on offer would be
+   * the one the inviter is standing in and has not written down yet.
+   */
+  async exportInviteHistory(topicId: string, maxEpochs: number): Promise<Record<number, string>> {
+    if (!Number.isInteger(maxEpochs) || maxEpochs <= 0) return {};
+    await this.cacheCurrentEpochTak(topicId).catch(() => {});
+
+    const current = await this.mls
+      .readState(topicId, async (s) => gc.currentEpoch(s))
+      .catch(() => null);
+    if (current === null) return {};
+
+    const out: Record<number, string> = {};
+    // Walk BACKWARDS from the current epoch and stop at the count, so what is
+    // shared is always the most recent history rather than the oldest.
+    for (let e = current; e >= 0 && Object.keys(out).length < maxEpochs; e--) {
+      const t = await this.getEpochTak(topicId, e);
+      // A gap is skipped, not treated as the end: a device can hold epoch 9 and
+      // 7 but not 8, and stopping at the hole would silently share less than
+      // the inviter chose.
+      if (t) out[e] = b64(t);
+    }
+    return out;
+  }
+
+  /**
+   * Take epoch TAKs out of an invite link and into this device's keychain.
+   *
+   * Returns how many were NEW, because that is what the caller can honestly
+   * tell the user: re-opening the same link is not an error and shares nothing
+   * further, and saying "3 more epochs" when the answer is zero is a lie the
+   * second time someone taps a link.
+   *
+   * An epoch already held is never overwritten. The key in hand was derived
+   * from the group's own secret and is therefore right; one arriving in a URL
+   * has been through a channel we do not control, and letting it replace a
+   * working key is how a bad link makes readable history unreadable.
+   */
+  async importInviteHistory(topicId: string, taks: Record<number, string>): Promise<number> {
+    let added = 0;
+    for (const [k, v] of Object.entries(taks)) {
+      const epoch = Number(k);
+      if (!Number.isInteger(epoch) || epoch < 0) continue;
+      if (await this.getEpochTak(topicId, epoch)) continue;
+      let bytes: Uint8Array;
+      try {
+        bytes = unb64(v);
+      } catch {
+        continue;
+      }
+      // Length is the only check available here — an epoch key is symmetric, so
+      // there is nothing to verify it against until it either opens an archive
+      // row or does not. A wrong-sized value is provably not a key, though.
+      if (bytes.length !== tak.TAK_LEN) continue;
+      await this.setEpochTak(topicId, epoch, bytes);
+      added++;
+    }
+    return added;
+  }
+
   /** This device's TAK address for a topic = its own MLS leaf key id. */
   async myDeviceId(topicId: string): Promise<string> {
     return this.mls.readState(topicId, async (s) => {
@@ -621,6 +695,84 @@ export class TakSessionStore {
     if (!key) return { archived: false, rootState };
     await this.transport.postArchive(topicId, messageId, takVersion, await tak.sealArchive(key, messageId, plaintext));
     return { archived: true, rootState };
+  }
+
+  /**
+   * Encrypt an attached FILE for a topic (R-3), under the same key and the same
+   * derivation `archiveOnSend` uses for the message body.
+   *
+   * Returns null when this device holds no key it may seal under — a public
+   * topic whose root is not verified yet. Sending the picture in the clear
+   * instead is exactly the defect this closes, so the caller must surface the
+   * failure rather than fall back.
+   */
+  async sealMedia(
+    topicId: string,
+    mediaId: string,
+    plaintext: Uint8Array,
+    visibility: Visibility,
+  ): Promise<{ ciphertext: Uint8Array; takVersion: number } | null> {
+    const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+    if (!key) return null;
+    return { ciphertext: await tak.sealMediaBytes(key, mediaId, plaintext), takVersion };
+  }
+
+  /**
+   * Decrypt an attachment sealed by `sealMedia`.
+   *
+   * The two failures are deliberately distinguished, because they mean opposite
+   * things to the reader: `no-key` is "this device was not in the room yet, the
+   * key may still arrive" — the same archive-locked state history has — while
+   * `decrypt` is "the bytes are not what the message says they are", which no
+   * amount of waiting fixes. Key selection mirrors `backfill`: a public topic
+   * tries the resolved root and then this device's orphan root, a scoped tier
+   * uses the epoch TAK the envelope names.
+   */
+  async openMedia(
+    topicId: string,
+    mediaId: string,
+    takVersion: number,
+    sealed: Uint8Array,
+    visibility: Visibility,
+  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: 'no-key' | 'decrypt' }> {
+    const candidates =
+      visibility === 'public'
+        ? ([(await this.resolvePublicRoot(topicId)).key, await this.getOrphanRoot(topicId)].filter(Boolean) as Uint8Array[])
+        : ([await this.epochTakForRead(topicId, takVersion)].filter(Boolean) as Uint8Array[]);
+    if (candidates.length === 0) return { ok: false, reason: 'no-key' };
+    for (const key of candidates) {
+      const pt = await tak.openMediaBytes(key, mediaId, sealed);
+      if (pt != null) return { ok: true, bytes: pt };
+    }
+    return { ok: false, reason: 'decrypt' };
+  }
+
+  /**
+   * The epoch TAK for READING, deriving the CURRENT one if it is not cached.
+   *
+   * Caching alone was not enough, and only a two-device round trip showed why:
+   * a device caches an epoch TAK when it SENDS (that is what `currentArchiveKey`
+   * does) or when it is granted one. A member who joined and has not yet sent
+   * anything has neither — so an attachment posted in the epoch they are sitting
+   * in came back `no-key`, and the reader was told "this device has no key for
+   * it" about a message they were perfectly entitled to read.
+   *
+   * Deriving is only possible for the CURRENT epoch (MLS discards past key
+   * schedules), which is exactly the case that was broken; older epochs still
+   * depend on the cache or a grant, as they must.
+   */
+  private async epochTakForRead(topicId: string, takVersion: number): Promise<Uint8Array | null> {
+    const cached = await this.getEpochTak(topicId, takVersion);
+    if (cached) return cached;
+    try {
+      const epoch = await this.mls.readState(topicId, async (s) => gc.currentEpoch(s));
+      if (epoch !== takVersion) return null; // a past epoch: cache or grant only
+      const derived = await this.mls.readState(topicId, (s) => tak.deriveEpochTak(s, topicId, epoch));
+      await this.setEpochTak(topicId, epoch, derived);
+      return derived;
+    } catch {
+      return null; // no group state here yet
+    }
   }
 
   /**

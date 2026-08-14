@@ -52,6 +52,7 @@ function mockCommands(overrides: Record<string, (...a: unknown[]) => unknown> = 
     uploadImage: make('uploadImage'),
     chatJoin: make('chatJoin'),
     chatSend: make('chatSend'),
+    chatSendMedia: make('chatSendMedia'),
     chatRead: make('chatRead'),
     dmStart: make('dmStart'),
     dmList: make('dmList'),
@@ -93,6 +94,7 @@ describe('MCP tools → command core', () => {
       'openstoa_upload_image',
       'openstoa_chat_join',
       'openstoa_chat_send',
+      'openstoa_chat_send_media',
       'openstoa_chat_read',
       'openstoa_dm_start',
       'openstoa_dm_list',
@@ -170,6 +172,27 @@ describe('MCP tools → command core', () => {
     expect(calls.find((c) => c.method === 'chatSend')?.args).toEqual(['t1', '안녕 🔐']);
     expect(res.isError).toBeFalsy();
     expect(JSON.parse(res.content[0].text)).toEqual({ messageId: 'm1' });
+  });
+
+  it('chat_send_media passes base64 + mime straight through to the shared op', async () => {
+    // The tool must not re-implement any of the media rules — allowlist, HEIC
+    // refusal and size cap all live in the shared helper, so an agent cannot
+    // send something a person's client would have refused.
+    const { host, handlers } = fakeHost();
+    const { cmds, calls } = mockCommands({
+      chatSendMedia: () => ({ messageId: 'm2', key: 'topics/t1/chat/u/aa.bin', mime: 'image/png', size: 3 }),
+    });
+    registerTools(host, cmds);
+    const res = await handlers.get('openstoa_chat_send_media')!({
+      topicId: 't1',
+      base64: 'AQID',
+      mime: 'image/png',
+    });
+    expect(calls.find((c) => c.method === 'chatSendMedia')?.args).toEqual([
+      't1',
+      { base64: 'AQID', mime: 'image/png' },
+    ]);
+    expect(res.isError).toBeFalsy();
   });
 
   it('topic_create forwards all fields', async () => {

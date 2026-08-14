@@ -1,16 +1,40 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import LinkPreview from '@/components/LinkPreview';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '@/lib/chatStatus';
 import { copyTargets } from '@/lib/messageActions';
+import {
+  ChatMediaError,
+  addFailedMedia,
+  base64ToBytes,
+  buildChatMediaBody,
+  isFailedMediaExpired,
+  isHeicBytes,
+  loadEncryptedChatMedia,
+  parseFailedMedia,
+  removeFailedMedia,
+  serializeFailedMedia,
+  resolveChatMediaMime,
+  parseChatMediaBody,
+  sendEncryptedChatMedia,
+  type ChatMediaEnvelope,
+  type ChatMediaLoad,
+  type ChatMediaSendFailure,
+  type PersistedFailedMedia,
+} from '@/lib/chatMedia';
+import { convertHeicToJpeg } from '@/lib/chatMediaHeic';
+import { ackDelivery } from '@/lib/chatDeliveryAck';
+import { httpAckPost } from '@/lib/chatDeliveryAckHttp';
 import { displayNickname } from '@/lib/defaultNickname';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import Link from 'next/link';
+import { chatTierOf, type ChatTier } from '@/lib/chatTierPolicy';
+import { chatClaimKey } from '@/lib/chatTierExplainer';
 import {
   getMlsSessionStore,
   getTakSessionStore,
@@ -78,11 +102,42 @@ async function toDisplayMessage(
           text = '';
         }
       }
-      // Sealed body, no plaintext: the message is LOCKED for this device, not
-      // blank. Flagged so the renderer can say that honestly and back-fill can
-      // find these rows later.
-      if (text === '') return { ...(raw as ChatMessage), message: '', undecryptable: true };
+    } else if (raw.id) {
+      /*
+       * NO sealed body at all: the server has reclaimed the live copy now that
+       * every device owed the message has acknowledged it (R-1).
+       *
+       * The plaintext may still be on THIS device from when it WAS delivered,
+       * and `openCached` looks in the message cache before it looks at the
+       * sealed body — so an empty one is enough to ask "do we already have
+       * this?". Without it a purge would turn a user's own readable history
+       * into a screen of locked placeholders after one reload.
+       */
+      try {
+        text =
+          (await getMlsSessionStore().openCached(topicId, raw.id, { ciphertext: '', epoch: 0 })) ?? '';
+      } catch {
+        text = '';
+      }
     }
+    /*
+     * No plaintext from any source: LOCKED for this device, not blank.
+     *
+     * This check sits outside the sealed-body branch on purpose. It used to be
+     * inside it, so a purged row — which has no sealed body by definition —
+     * fell straight past it and returned `message: ''` with no flag: an EMPTY
+     * BUBBLE, claiming the sender sent nothing. It is also the flag the archive
+     * pass matches on (`catchUpArchive`) and the one the room hides while
+     * history is still arriving (`isSyncingHistory`), so a row that skips it is
+     * not merely mislabelled — it is invisible to the machinery that would have
+     * resolved it, and stays blank forever.
+     *
+     * "Purged" and "locked" share one flag because the DEVICE cannot tell them
+     * apart: both arrive as no readable body. What separates them is what
+     * happens next — the archive resolves the first and leaves the second —
+     * and that is precisely why the row has to be visible to that pass.
+     */
+    if (text === '') return { ...(raw as ChatMessage), message: '', undecryptable: true };
     return { ...(raw as ChatMessage), message: text };
   }
   return raw as ChatMessage;
@@ -191,6 +246,20 @@ interface ChatMessage {
   failed?: boolean;
   /** Original text, so Retry can send exactly what the user wrote. */
   draft?: string;
+  /**
+   * For a failed ATTACHMENT: the object key its envelope names.
+   *
+   * The bytes are already stored by the time a send can fail, so Retry re-sends
+   * this exact object rather than re-reading a file the user may no longer have
+   * selected, and Discard deletes it rather than stranding it.
+   */
+  mediaKey?: string;
+  /**
+   * The attachment's bytes are gone — the collector took them before the user
+   * came back. Retry is replaced by an explanation; the row still SHOWS,
+   * because silence is the defect this whole path exists to fix.
+   */
+  mediaExpired?: boolean;
   /**
    * The sealed body, carried straight through from the server row.
    *
@@ -432,13 +501,50 @@ function PresenceDots({ users, max = 5 }: { users: PresenceUser[]; max?: number 
  * seconds the panel says so in a dialog (`OfflineNotice`), which is the only
  * point at which the reader has to do something about it.
  */
-function E2eeBanner({ connected }: { connected?: boolean }) {
+/*
+ * PER TIER, and derived — never a fixed sentence.
+ *
+ * A `public` topic's archive root is held by the SERVER, so that a member who
+ * joins later reads history without waiting on anyone. That is a deliberate
+ * trade, and it means the old single claim ("the server cannot read this") was
+ * false in exactly the tier most people are in. `chatClaimKey` computes which
+ * sentence applies from `serverMayHoldKey`, so the banner cannot drift from the
+ * policy: change the policy and the copy follows, or the test fails.
+ *
+ * PRESENT TENSE, deliberately: "new messages and images ARE encrypted". Images
+ * sent before R-3 are still plaintext objects at public URLs, so a claim about
+ * the ROOM would be false about its own history while a claim about what
+ * happens NOW is true. Do not widen it.
+ */
+function E2eeBanner({ connected, tier }: { connected?: boolean; tier: ChatTier }) {
   const { t } = useTranslation();
   const state = connected ? t('chat.connected') : t('chat.reconnecting');
+  const claim = chatClaimKey(tier);
   return (
-    <div style={e2eeStyle} data-testid="chat-e2ee-banner">
-      <span aria-hidden="true">🔒</span>
-      <span style={{ minWidth: 0 }}>{t('chat.e2ee')}</span>
+    <div
+      style={{
+        ...e2eeStyle,
+        // A tier the service can read is not an accent-coloured reassurance.
+        // Same strip, warning tone, so the difference is visible before the
+        // sentence is read.
+        ...(claim === 'serverReadable'
+          ? {
+              color: 'var(--color-status-warning)',
+              background: 'color-mix(in srgb, var(--color-status-warning) 10%, transparent)',
+            }
+          : null),
+      }}
+      data-testid="chat-e2ee-banner"
+      data-claim={claim}
+    >
+      <span aria-hidden="true">{claim === 'e2ee' ? '🔒' : 'ℹ️'}</span>
+      <span style={{ minWidth: 0 }}>{t(`chat.tierClaim.${claim}`)}</span>
+      <Link
+        href="/docs/tiers"
+        style={{ color: 'inherit', textDecoration: 'underline', flexShrink: 0 }}
+      >
+        {t('chat.tierClaim.learnMore')}
+      </Link>
       {connected !== undefined && (
         <span
           data-testid="chat-connection-state"
@@ -796,6 +902,143 @@ function LockedHistoryNotice({
   );
 }
 
+/**
+ * One end-to-end encrypted attachment: fetch the ciphertext, decrypt it here,
+ * show the picture.
+ *
+ * The three failures get three different messages rather than one placeholder.
+ * They mean genuinely different things — "the key has not reached this device
+ * yet, it may still arrive", "the network or the object failed, try again", and
+ * "these bytes are not what the message says they are, trying again will not
+ * help" — and a reader who is shown the same dots for all three has been told
+ * nothing about which one they are in.
+ */
+function ChatMediaAttachment({
+  envelope,
+  topicId,
+  visibility,
+  roomy,
+}: {
+  envelope: ChatMediaEnvelope;
+  topicId: string;
+  visibility: Visibility;
+  roomy?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<ChatMediaLoad | null>(null);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  /** Bumped by the retry button; re-runs the effect without remounting the row. */
+  const [attempt, setAttempt] = useState(0);
+  const { key, mediaId, takVersion, mime } = envelope;
+
+  useEffect(() => {
+    let cancelled = false;
+    let created: string | null = null;
+    setState(null);
+    setObjectUrl(null);
+    void (async () => {
+      const res = await loadEncryptedChatMedia(
+        { v: 1, key, mediaId, takVersion, mime, size: envelope.size },
+        {
+          fetchCiphertext: async (objectKey) => {
+            const r = await fetch(
+              `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(objectKey)}`,
+              { credentials: 'include' },
+            );
+            if (!r.ok) throw new Error(`fetch failed (${r.status})`);
+            const { ciphertext } = (await r.json()) as { ciphertext?: string };
+            if (!ciphertext) throw new Error('empty attachment');
+            return base64ToBytes(ciphertext);
+          },
+          open: (id, version, ciphertext) =>
+            getTakSessionStore().openMedia(topicId, id, version, ciphertext, visibility),
+        },
+      );
+      if (cancelled) return;
+      if (res.status === 'ok') {
+        created = URL.createObjectURL(new Blob([res.bytes as BlobPart], { type: res.mime }));
+        setObjectUrl(created);
+      }
+      setState(res);
+    })();
+    return () => {
+      cancelled = true;
+      // Revoke on unmount, not on every render: the <img> is still reading it.
+      if (created) URL.revokeObjectURL(created);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicId, visibility, key, mediaId, takVersion, mime, attempt]);
+
+  const noticeStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
+    marginTop: 4,
+    maxWidth: '85%',
+    fontSize: roomy ? 14 : 13,
+    color: 'var(--color-text-tertiary)',
+    border: '1px dashed var(--color-border-default)',
+    borderRadius: 'var(--radius-card)',
+    padding: roomy ? '8px 12px' : '6px 10px',
+  } as const;
+
+  if (state === null) {
+    return <div style={noticeStyle}>{t('chat.media.decrypting')}</div>;
+  }
+  if (state.status === 'locked') {
+    return (
+      <div style={noticeStyle}>
+        <span aria-hidden="true">🔒</span>
+        {t('chat.media.locked')}
+      </div>
+    );
+  }
+  if (state.status === 'fetch-failed') {
+    return (
+      <div style={noticeStyle}>
+        <span>{t('chat.media.fetchFailed')}</span>
+        {/*
+          RELOAD, not "Retry" — a failed row renders its own Retry beside
+          Discard, and two identical labels on one row cannot be told apart by a
+          reader any more than they could by a test. This one re-fetches a
+          picture; that one re-sends a message.
+        */}
+        <button
+          type="button"
+          onClick={() => setAttempt((a) => a + 1)}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+        >
+          {t('chat.media.reload')}
+        </button>
+      </div>
+    );
+  }
+  if (state.status === 'decrypt-failed') {
+    return <div style={noticeStyle}>{t('chat.media.decryptFailed')}</div>;
+  }
+  return (
+    <a
+      href={objectUrl ?? undefined}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      style={{ display: 'block', marginTop: 4, maxWidth: '85%' }}
+    >
+      <img
+        src={objectUrl ?? undefined}
+        alt={t('chat.media.alt')}
+        style={{
+          maxWidth: '100%',
+          maxHeight: roomy ? 380 : 240,
+          borderRadius: 'var(--radius-card)',
+          border: '1px solid var(--border)',
+          display: 'block',
+        }}
+      />
+    </a>
+  );
+}
+
 function MessageRow({
   msg,
   grouped,
@@ -804,11 +1047,15 @@ function MessageRow({
   syncing,
   onRetry,
   onDiscard,
+  topicId,
+  visibility,
 }: {
   msg: ChatMessage;
   grouped?: boolean;
   roomy?: boolean;
   own?: boolean;
+  topicId: string;
+  visibility: Visibility;
   /** The room key has not reached this device YET — locked rows are loading,
    *  not broken, and must not be dressed as a permanent failure. */
   syncing?: boolean;
@@ -827,6 +1074,14 @@ function MessageRow({
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
   /** Where the reader right-clicked, or null when no menu is open. */
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  /*
+   * An encrypted attachment, or null for an ordinary message.
+   *
+   * Parsed HERE, above the early returns, for the same reason `previewUnavailable`
+   * is — and memoised so the attachment's decrypt effect does not re-run on
+   * every unrelated re-render of the room.
+   */
+  const mediaEnvelope = useMemo(() => parseChatMediaBody(msg.message), [msg.message]);
 
   /**
    * Ours only when the browser's own menu would be less useful.
@@ -836,6 +1091,10 @@ function MessageRow({
    * menu is a downgrade, so we let it through.
    */
   const onContextMenu = (e: React.MouseEvent) => {
+    // An attachment row has no text to copy — only the envelope, which is
+    // machinery. The browser's own menu (Save image, Copy image) is the useful
+    // one here, so let it through.
+    if (mediaEnvelope) return;
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed && selection.toString().length > 0) return;
     if ((e.target as Element).closest('a, img, button')) return;
@@ -926,7 +1185,9 @@ function MessageRow({
    * coming: `/api/og` answers 502 for anything that refuses server-side fetches,
    * and a message must never be left with neither.
    */
-  const hideMessageText = inlineImage !== null || (urlOnly && !previewUnavailable);
+  // An attachment's body is an envelope, so there is never text to show — and
+  // showing it would put a line of JSON in the conversation.
+  const hideMessageText = mediaEnvelope !== null || inlineImage !== null || (urlOnly && !previewUnavailable);
 
   // Bubble treatment mirrors mobile (ChatRoomScreen `bubbleOwn`/`bubbleOther`):
   // own messages sit right in an accent bubble, everyone else left on a neutral
@@ -946,13 +1207,23 @@ function MessageRow({
       }}
     >
       <span aria-hidden="true">!</span>
-      <button
-        type="button"
-        onClick={() => onRetry?.(msg)}
-        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textDecoration: 'underline' }}
-      >
-        {t('chat.sendFailedRetry')}
-      </button>
+      {/*
+        An attachment whose bytes the collector already took cannot be retried:
+        re-sending would post a message pointing at nothing, and every reader
+        would see a permanently broken picture. It says so, and offers only the
+        way out that works.
+      */}
+      {msg.mediaExpired ? (
+        <span>{t('chat.media.expired')}</span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onRetry?.(msg)}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textDecoration: 'underline' }}
+        >
+          {t('chat.sendFailedRetry')}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onDiscard?.(msg)}
@@ -1054,7 +1325,20 @@ function MessageRow({
         )}
       </div>
 
-      {inlineImage && (
+      {mediaEnvelope && (
+        <ChatMediaAttachment
+          envelope={mediaEnvelope}
+          topicId={topicId}
+          visibility={visibility}
+          roomy={roomy}
+        />
+      )}
+      {/*
+       * The plaintext image path stays for messages sent BEFORE R-3: their body
+       * really is a public URL, and dropping the renderer would blank out every
+       * picture already in every room. New sends never take it.
+       */}
+      {!mediaEnvelope && inlineImage && (
         <a
           href={inlineImage}
           target="_blank"
@@ -1075,7 +1359,7 @@ function MessageRow({
           />
         </a>
       )}
-      {firstUrl && !inlineImage && (
+      {firstUrl && !inlineImage && !mediaEnvelope && (
         <div
           style={{
             marginTop: 6,
@@ -1159,6 +1443,82 @@ export default function ChatPanel({
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  /** Why the last attachment did not go out, or null. Cleared on the next try. */
+  const [mediaError, setMediaError] = useState<ChatMediaSendFailure | null>(null);
+
+  /*
+   * Failed attachments outlive the tab.
+   *
+   * They used to live only in component state, so a reload lost the row and the
+   * user was left with nothing — no picture, no error, and the uploaded bytes
+   * collected within the hour. Storing a REFERENCE (the sealed body and the
+   * object key, never the picture) is what lets the row still be there when
+   * they come back. Rules — cap, retry window, TTL, validation — live in
+   * `chatMedia.ts` so both clients keep the same ones.
+   */
+  const failedMediaStorageKey = `openstoa.failedMedia.${topicId}`;
+  const readFailedMedia = useCallback((): PersistedFailedMedia[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return parseFailedMedia(window.localStorage.getItem(failedMediaStorageKey), Date.now());
+    } catch {
+      // Private mode, quota, a corrupt entry: a failed row is worth less than
+      // the room it is in.
+      return [];
+    }
+  }, [failedMediaStorageKey]);
+  const writeFailedMedia = useCallback(
+    (list: readonly PersistedFailedMedia[]) => {
+      if (typeof window === 'undefined') return;
+      try {
+        window.localStorage.setItem(failedMediaStorageKey, serializeFailedMedia(list));
+      } catch {
+        /* storage refused — the row still shows for this session */
+      }
+    },
+    [failedMediaStorageKey],
+  );
+  const forgetFailedMedia = useCallback(
+    (rowId: string) => writeFailedMedia(removeFailedMedia(readFailedMedia(), rowId)),
+    [readFailedMedia, writeFailedMedia],
+  );
+
+  /*
+   * Put back what the last session could not send.
+   *
+   * Returned as rows rather than pushed from an effect of its own: entering a
+   * room CLEARS the message list (a previous room's messages must not carry
+   * across), and that clear runs after any effect declared above it — so a
+   * separate restore effect was wiped by it every time. Seeding the clear is
+   * the one place where "start the room with these rows" is unambiguous.
+   *
+   * These rows come from storage, not the server; the server never saw these
+   * messages, which is the whole reason they are here.
+   */
+  const restoredFailedRows = useCallback((): ChatMessage[] => {
+    const rows = readFailedMedia();
+    if (rows.length === 0) return [];
+    const now = Date.now();
+    // Persist what the parse kept, so rows it dropped (TTL, corrupt, over the
+    // cap) are not re-read forever.
+    writeFailedMedia(rows);
+    return rows.map((r) => ({
+      id: r.rowId,
+      topicId,
+      // `isOwnMessage` treats a failed row as this client's by construction, so
+      // ownership does not wait on `/api/auth/session`.
+      userId: '',
+      nickname: '',
+      message: r.body,
+      type: 'message' as const,
+      createdAt: new Date(r.createdAt).toISOString(),
+      failed: true,
+      draft: r.body,
+      mediaKey: r.key,
+      // Only a HINT here — the retry probes the object for real.
+      mediaExpired: isFailedMediaExpired(r, now),
+    }));
+  }, [topicId, readFailedMedia, writeFailedMedia]);
   // Own-message alignment needs the caller's id. Same source the rest of the
   // web app uses for "is this me" checks (see topics/[topicId]/members).
   const [myUserId, setMyUserId] = useState<string | null>(cachedUserId);
@@ -1213,6 +1573,20 @@ export default function ChatPanel({
   // Topic visibility drives the TAK tier (public root vs scoped per-epoch).
   // Resolved once per topic in the history effect; defaults to public.
   const visibilityRef = useRef<Visibility>('public');
+  // Same value as the ref, as state: an attachment row decrypts in an effect,
+  // so it needs the tier as a PROP that changes when the lookup lands. A ref
+  // read during render would pin the first row to the default forever.
+  const [visibility, setVisibility] = useState<Visibility>('public');
+  // A DM is a different KIND of room, not a visibility, so the banner needs both
+  // to name the tier. Defaults false; resolved by the same topic lookup.
+  const [isDm, setIsDm] = useState(false);
+  /*
+   * The tier the banner speaks for. Until the lookup lands this is `public` —
+   * the tier that promises the LEAST — so a room can only ever be upgraded to
+   * "the service cannot read this" once we know it is true, never downgraded
+   * from a promise we already made on screen.
+   */
+  const tier: ChatTier = chatTierOf(visibility, isDm);
   // The caller's topic role — secret-tier history is granted only by the owner.
   const roleRef = useRef<string | null>(null);
   // Plaintext of messages sent from THIS panel, keyed by the sealed ciphertext
@@ -1290,7 +1664,21 @@ export default function ChatPanel({
     if (newest && (!lastSeenIsoRef.current || new Date(newest) > new Date(lastSeenIsoRef.current))) {
       lastSeenIsoRef.current = newest;
     }
-  }, []);
+    /*
+     * Tell the server what this DEVICE now holds (R-1).
+     *
+     * Here rather than in each caller because this is the one point every path
+     * converges on — the SSE stream, the reconnect catch-up and the `?before=`
+     * history pages all end here — and the server's copy should be released
+     * once, from wherever the rows arrived. Never throws (see
+     * `chatDeliveryAck`), so a failed acknowledgement costs some server storage
+     * and nothing else.
+     */
+    void ackDelivery(topicId, incoming, {
+      deviceId: () => getTakSessionStore().myDeviceId(topicId),
+      post: httpAckPost,
+    });
+  }, [topicId]);
 
   // Seal the push-preview copy (design §13.6 strategy A) so the recipient's iOS
   // NSE has something it can decrypt without consuming an MLS ratchet key. Sent
@@ -1302,52 +1690,172 @@ export default function ChatPanel({
     return seal ? { ct: seal.ct, takVersion: seal.takVersion } : undefined;
   }, [topicId]);
 
-  // Uploads via /api/upload and posts the returned URL as a chat message.
-  // The message body is the bare URL — MessageRow's isImageUrl detection
-  // renders it inline, matching the mobile chat UX.
+  /**
+   * Attach an image — encrypted end to end (R-3).
+   *
+   * It used to POST the raw file to `/api/upload`, which stored it at a public
+   * unauthenticated URL and sealed only that URL string. The message was
+   * encrypted; the picture in it was not. Now the file is encrypted on this
+   * device under the topic's TAK, the CIPHERTEXT is uploaded, and the sealed
+   * body carries only a reference — so a secret topic's images are as private
+   * as its words, and the operator holds bytes it cannot open.
+   *
+   * `sendEncryptedChatMedia` owns the ordering, including deleting the uploaded
+   * object if the message POST fails.
+   */
   const sendImage = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/')) return;
     setUploading(true);
+    setMediaError(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const up = await fetch('/api/upload', { method: 'POST', body: fd });
-      if (!up.ok) throw new Error('upload failed');
-      // The endpoint returns `{ publicUrl: ... }` (see app/api/upload/route.ts).
-      const { publicUrl } = await up.json();
-      if (!publicUrl) throw new Error('no url');
-      const sealed = await getMlsSessionStore().seal(topicId, publicUrl);
-      rememberOwnPlaintext(sealed.ciphertext, publicUrl);
-      const pushArchive = await buildPushArchive(publicUrl);
-      const res = await fetch(`/api/topics/${topicId}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
-      });
-      // Optimistic local echo (sender can't decrypt its own MLS message).
-      if (res.ok) {
-        try {
-          const { message: payload } = await res.json();
-          if (payload?.id) {
-            const own: ChatMessage = { ...payload, message: publicUrl };
+      const picked = new Uint8Array(await file.arrayBuffer());
+      /*
+       * An iPhone photo becomes a JPEG HERE, in the tab, before anything is
+       * sealed.
+       *
+       * This is the last point at which the plaintext exists: once `sealMedia`
+       * runs, the bytes are opaque to everything downstream, so a HEIC that no
+       * browser can render would stay unrenderable forever. Converting first
+       * means the ciphertext carries a JPEG and the server still sees only
+       * bytes it cannot read.
+       *
+       * A conversion that cannot happen is a REFUSAL, never a send of the
+       * original — an unviewable picture and an unencrypted one are both worse
+       * than a clear "no".
+       */
+      let bytes = picked;
+      if (isHeicBytes(bytes)) {
+        const jpeg = await convertHeicToJpeg(bytes);
+        if (!jpeg) throw new ChatMediaError('heic-unsupported');
+        bytes = jpeg;
+      }
+      /*
+       * The BYTES decide the type, not `file.type` — and after a conversion
+       * they are the CONVERTED bytes, so the type, the size cap and everything
+       * downstream describe what is actually being sent.
+       *
+       * This used to be `if (!file.type.startsWith('image/')) return;` — a
+       * silent return, and browsers report an empty `file.type` routinely (an
+       * extension they do not know, some drag-and-drop sources, some pickers).
+       * A real photo could therefore vanish with no upload, no error and no
+       * bubble: the sender was simply told nothing. Everything from here on
+       * reports, including "this is not an image I can send".
+       */
+      const mime = resolveChatMediaMime(bytes, bytes === picked ? file.type : 'image/jpeg', file.name);
+      if (!mime) throw new ChatMediaError('unsupported-type');
+      await sendEncryptedChatMedia(
+        { bytes, mime },
+        {
+          seal: (mediaId, plain) =>
+            getTakSessionStore().sealMedia(topicId, mediaId, plain, visibilityRef.current),
+          upload: async (ciphertextB64, mediaId) => {
+            const res = await fetch(`/api/topics/${topicId}/chat/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ mediaId, ciphertext: ciphertextB64 }),
+            });
+            if (!res.ok) throw new Error(`upload failed (${res.status})`);
+            const { key } = (await res.json()) as { key?: string };
+            if (!key) throw new Error('upload returned no key');
+            return key;
+          },
+          send: async (body) => {
+            const sealed = await getMlsSessionStore().seal(topicId, body);
+            rememberOwnPlaintext(sealed.ciphertext, body);
+            /*
+             * An attachment gets the push preview too (P-1).
+             *
+             * It was omitted here because the preview is a copy of the BODY and
+             * this body is an envelope, so the notification read as a line of
+             * JSON. That removed the preview rather than teaching the recipient's
+             * handler to read it. Both handlers now parse the envelope — iOS
+             * fetches the object and shows the picture, Android shows a caption
+             * — and neither can render an envelope as text.
+             */
+            const pushArchive = await buildPushArchive(body);
+            const res = await fetch(`/api/topics/${topicId}/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
+            });
+            if (!res.ok) throw new Error(`send failed (${res.status})`);
+            const { message: payload } = await res.json();
+            if (!payload?.id) return;
+            const own: ChatMessage = { ...payload, message: body };
             // Pre-seed the decrypt memo so the SSE echo of our own message never
             // reaches MLS at all (a sender cannot open its own message).
             decryptOnceRef.current.set(payload.id, own);
             applyIncoming([own]);
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
-            void getMlsSessionStore().cachePlaintext(topicId, payload.id, publicUrl);
-            // Re-encrypt for the archive so later members can read it (Phase 3).
-            // Fire-and-forget: an archive failure must never break sending.
-            void getTakSessionStore().archiveOnSend(topicId, payload.id, publicUrl, visibilityRef.current).catch(() => {});
-          }
-        } catch {}
+            void getMlsSessionStore().cachePlaintext(topicId, payload.id, body);
+            // Re-encrypt the ENVELOPE for the archive so later members can read
+            // it (Phase 3). The bytes it points at are sealed under the same
+            // key, so a member who gets the archive gets the picture too.
+            void getTakSessionStore().archiveOnSend(topicId, payload.id, body, visibilityRef.current).catch(() => {});
+          },
+          discard: async (key) => {
+            await fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
+              method: 'DELETE',
+              credentials: 'include',
+            });
+          },
+          claim: async (key) => {
+            await fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
+              method: 'PATCH',
+              credentials: 'include',
+            });
+          },
+          // The bytes stay put when only the SEND fails, so the failed row
+          // below can retry them. See `retainForRetry`.
+          retainForRetry: true,
+        },
+      );
+    } catch (err) {
+      /*
+       * WHERE a failure is reported depends on whether a message exists yet.
+       *
+       * Before the bytes are on the server — an unsupported file, no room key,
+       * a refused upload — there is no message to attach the failure to, so it
+       * belongs in the composer, next to the control that started it.
+       *
+       * Once the object is stored, the failure is about a MESSAGE, and people
+       * watch the conversation rather than the input box. It gets a row there,
+       * with Retry and Discard, exactly as a failed text message does. The
+       * inconsistency was itself a bug: a failed text was recoverable in place
+       * while a failed picture vanished and had to be found on disk again.
+       */
+      const stored = err instanceof ChatMediaError && err.reason === 'send-failed' ? err.envelope : undefined;
+      if (stored) {
+        const body = buildChatMediaBody(stored);
+        const rowId = nextPendingId();
+        // Written BEFORE the row is drawn: a crash between the two would
+        // otherwise lose exactly what this is here to keep.
+        writeFailedMedia(
+          addFailedMedia(readFailedMedia(), { rowId, body, key: stored.key, createdAt: Date.now() }),
+        );
+        setMessages((prev) =>
+          mergeChronological(prev, [
+            {
+              id: rowId,
+              topicId,
+              userId: myUserId ?? '',
+              nickname: '',
+              message: body,
+              type: 'message',
+              createdAt: new Date().toISOString(),
+              failed: true,
+              draft: body,
+              mediaKey: stored.key,
+            },
+          ]),
+        );
+      } else {
+        setMediaError(err instanceof ChatMediaError ? err.reason : 'send-failed');
       }
-    } catch {
-      // best-effort; the user can retry
     } finally {
       setUploading(false);
     }
-  }, [topicId, buildPushArchive, rememberOwnPlaintext]);
+  }, [topicId, rememberOwnPlaintext, applyIncoming, myUserId, buildPushArchive]);
 
   async function handleSend() {
     const text = inputValue.trim();
@@ -1441,6 +1949,19 @@ export default function ChatPanel({
   /** Send it again, from the bubble. The failed row goes away and a fresh
    *  optimistic one takes its place, so one retry cannot leave two. */
   function retryFailed(msg: ChatMessage) {
+    /*
+     * An attachment retries ITSELF — it never goes back through the composer.
+     *
+     * The object is already stored, so this re-sends the same envelope rather
+     * than re-uploading: the user cannot be asked to find the file again, and
+     * on the failure this was built for (an MLS epoch conflict) the retry
+     * succeeds as soon as the group settles, with no new bytes anywhere.
+     */
+    const envelope = parseChatMediaBody(msg.draft ?? msg.message);
+    if (envelope) {
+      void resendAttachment(msg.id, envelope);
+      return;
+    }
     const text = msg.draft ?? msg.message;
     setMessages((prev) => prev.filter((m) => m.id !== msg.id));
     setInputValue(text);
@@ -1450,8 +1971,92 @@ export default function ChatPanel({
     }, 0);
   }
 
+  /**
+   * Re-send a stored attachment under its existing row.
+   *
+   * The row keeps its place in the conversation while this runs, so a retry
+   * does not make the picture jump to the bottom — the message was sent when
+   * the user sent it, not when the network finally cooperated.
+   */
+  async function resendAttachment(rowId: string, envelope: ChatMediaEnvelope) {
+    const body = buildChatMediaBody(envelope);
+    setMessages((prev) => prev.map((m) => (m.id === rowId ? { ...m, failed: false, pending: true } : m)));
+    /*
+     * Does the object still exist?
+     *
+     * A row restored from storage can outlive its bytes: an unclaimed
+     * attachment is collected an hour after upload. Re-sending regardless would
+     * post a message pointing at nothing — every reader would see a permanently
+     * broken picture — so this asks first and says so plainly instead. Checked
+     * rather than assumed from the row's age, because the collector is
+     * request-triggered and an object may well outlive the window.
+     */
+    try {
+      const probe = await fetch(
+        `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`,
+        { credentials: 'include' },
+      );
+      if (probe.status === 404) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === rowId ? { ...m, pending: false, failed: true, mediaExpired: true } : m)),
+        );
+        return;
+      }
+    } catch {
+      // The probe itself failed — that is a network problem, not an expiry.
+      // Fall through and let the send report it.
+    }
+    try {
+      const sealed = await getMlsSessionStore().seal(topicId, body);
+      rememberOwnPlaintext(sealed.ciphertext, body);
+      // A retry is a send: it carries the push preview like the first attempt
+      // did, or a picture that failed once would be the only one that never
+      // notifies anybody.
+      const pushArchive = await buildPushArchive(body);
+      const res = await fetch(`/api/topics/${topicId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
+      });
+      if (!res.ok) throw new Error(`send failed (${res.status})`);
+      const { message: payload } = await res.json();
+      setMessages((prev) => prev.filter((m) => m.id !== rowId));
+      forgetFailedMedia(rowId);
+      if (!payload?.id) return;
+      const own: ChatMessage = { ...payload, message: body };
+      decryptOnceRef.current.set(payload.id, own);
+      applyIncoming([own]);
+      void getMlsSessionStore().cachePlaintext(topicId, payload.id, body);
+      void getTakSessionStore().archiveOnSend(topicId, payload.id, body, visibilityRef.current).catch(() => {});
+      // Only NOW is the object referenced by a real message.
+      void fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+      }).catch(() => {});
+    } catch {
+      // Back to failed, same row, same place. The object is still there.
+      setMessages((prev) =>
+        prev.map((m) => (m.id === rowId ? { ...m, pending: false, failed: true } : m)),
+      );
+    }
+  }
+
   function discardFailed(msg: ChatMessage) {
     setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    forgetFailedMedia(msg.id);
+    /*
+     * Deleting the row is not enough for an attachment: its bytes are on the
+     * server, and nothing else will ever mention them. Abandoning a failed send
+     * must not leave one behind — the M-1 collector would eventually take it,
+     * but an hour of paid-for storage for a message the user just cancelled is
+     * not a design, it is a leak with a timer.
+     */
+    if (msg.mediaKey) {
+      void fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(msg.mediaKey)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      }).catch(() => {});
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -1672,6 +2277,30 @@ export default function ChatPanel({
    * bundle that arrived a moment later. It sat locked until the user reopened
    * the room, which is exactly what it looked like on a real phone.
    */
+  /**
+   * Bring the ratchet tree back in line with who the topic's members actually
+   * are, evicting the leaves of anyone who left or was removed.
+   *
+   * Best-effort and silent: an unreachable member list, or a lost epoch-CAS
+   * race, means the next member to open the room repairs it instead. A DM needs
+   * no special case — both parties are members, so it finds nothing to do.
+   */
+  const reconcileGroupMembership = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/topics/${topicId}/members`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { members?: Array<{ userId?: string }> };
+      const ids = (data.members ?? []).map((m) => m.userId).filter((id): id is string => !!id);
+      // An EMPTY list is refused rather than acted on. It is far more likely to
+      // be a response shape we failed to read than a topic that genuinely has
+      // no members, and acting on it would evict everyone.
+      if (ids.length === 0) return;
+      await getMlsSessionStore().reconcileMembership(topicId, ids);
+    } catch {
+      /* the next member to open the room tries again */
+    }
+  }, [topicId]);
+
   const catchUpArchive = useCallback(async () => {
     let recovered: Array<{ messageId: string; plaintext: string }> = [];
     try {
@@ -1821,7 +2450,8 @@ export default function ChatPanel({
     // Switching topics must not carry ANY of the previous room across: its
     // messages, its decrypt memo (ids are unique per message, but a stale memo
     // just wastes memory), its catch-up cursor, or its paging cursor.
-    setMessages([]);
+    // Not empty: a room opens holding whatever the last session failed to send.
+    setMessages(restoredFailedRows());
     setHasMoreHistory(false);
     hasMoreHistoryRef.current = false;
     loadingOlderRef.current = false;
@@ -1852,7 +2482,13 @@ export default function ChatPanel({
           .catch(() => null),
       ]);
       const v = (topicMeta?.topic?.visibility ?? topicMeta?.visibility) as Visibility | undefined;
-      if (v === 'public' || v === 'private' || v === 'secret') visibilityRef.current = v;
+      if (v === 'public' || v === 'private' || v === 'secret') {
+        visibilityRef.current = v;
+        setVisibility(v);
+      }
+      // `kind` decides the tier alongside visibility: a DM carries whatever
+      // visibility its row happens to have, and the banner must not read it.
+      setIsDm((topicMeta?.topic?.kind ?? topicMeta?.kind) === 'dm');
       roleRef.current = (topicMeta?.currentUserRole as string | null) ?? null;
       if (!mountedRef.current || !Array.isArray(data?.messages)) return;
       const raws = data.messages as RawChatMessage[];
@@ -1876,6 +2512,13 @@ export default function ChatPanel({
       // joiners can read history. Single-winner on the server; idempotent for
       // recipients. Custodian-free tiers (private/secret) skip this by design.
       void provisionArchiveAccess();
+
+      // Make removals real. A kick, a leave and an account deletion all end as
+      // a missing membership row; the ratchet tree only catches up when some
+      // member's client commits the Remove. Doing it here rather than in the
+      // acting admin's request is what keeps the group correct when that admin
+      // closes the tab mid-kick — any member repairs it on their next visit.
+      void reconcileGroupMembership();
     })();
 
     /**
@@ -1987,7 +2630,7 @@ export default function ChatPanel({
         esRef.current = null;
       }
     };
-  }, [topicId, isGuest, isMember, provisionArchiveAccess, ingest, applyIncoming]);
+  }, [topicId, isGuest, isMember, provisionArchiveAccess, ingest, applyIncoming, restoredFailedRows]);
 
   // Root chrome: card by default, flex column when it has to fill its parent.
   const rootStyle = fullHeight
@@ -2058,7 +2701,7 @@ export default function ChatPanel({
         )}
         {/* No `connected` here: there is no stream for a non-member, but the
             encryption claim is exactly what they are deciding to join. */}
-        <E2eeBanner />
+        <E2eeBanner tier={tier} />
         <div style={{
           padding: '20px var(--space-4)',
           textAlign: 'center',
@@ -2093,7 +2736,7 @@ export default function ChatPanel({
 
       {/* Persistent under whichever header is above it — the panel's own, or
           the rail's / the standalone page's when `hideHeader` is set. */}
-      <E2eeBanner connected={connected} />
+      <E2eeBanner connected={connected} tier={tier} />
       <OfflineNotice connected={connected} />
 
       {/* Messages — the only scroller once the panel fills its parent. */}
@@ -2193,6 +2836,8 @@ export default function ChatPanel({
                   grouped={grouped}
                   roomy={roomy}
                   own={isOwnMessage(msg, myUserId)}
+                  topicId={topicId}
+                  visibility={visibility}
                 />
               );
             })
@@ -2205,6 +2850,30 @@ export default function ChatPanel({
         borderTop: '1px solid var(--border)',
         flexShrink: 0,
       }}>
+      {mediaError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-2)',
+            padding: roomy ? '8px 20px' : '6px 10px',
+            fontSize: 'var(--text-label)',
+            color: 'var(--color-status-danger, var(--color-text-tertiary))',
+            background: 'var(--color-bg-secondary)',
+          }}
+        >
+          <span>{t(`chat.media.error.${mediaError}`)}</span>
+          <button
+            type="button"
+            onClick={() => setMediaError(null)}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textDecoration: 'underline' }}
+          >
+            {t('chat.offline.dismiss')}
+          </button>
+        </div>
+      )}
       <div style={{
         display: 'flex',
         alignItems: 'center',

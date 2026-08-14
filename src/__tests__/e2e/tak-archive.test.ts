@@ -1,23 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { Client } from 'pg';
 import {
   authGet,
   authPost,
   authPatch,
   publicGet,
   getSecondUserToken,
-  getUserId,
   secondUserPost,
   secondUserGet,
   secondUserDelete,
   authDelete,
   getBaseUrl,
 } from './helpers';
-
-// Local-only DB handle for setup the public API can't do (creating a non-public
-// topic — POST /api/topics is public-only in this environment). Gated: when no
-// DATABASE_URL is available the SI-6b route-gate check is skipped cleanly.
-const DB_URL = process.env.DATABASE_URL ?? null;
 
 /**
  * Phase 3 E2E (Stage A — server DS): TAK back-fill over a real HTTP server.
@@ -317,22 +310,20 @@ describe.sequential('TAK back-fill — server Delivery Service', () => {
     expect(cov.status).toBe(404);
   });
 
-  it.skipIf(!DB_URL)('14. SI-6b: holder ops on a private topic -> 400 (custodian-free)', async () => {
-    // POST /api/topics is public-only here, so seed a private topic directly and
-    // make A a member, then hit the real holder endpoint over HTTP.
-    const client = new Client({ connectionString: DB_URL! });
-    await client.connect();
-    const privId = crypto.randomUUID();
-    try {
-      await client.query(
-        `INSERT INTO topics (id, title, creator_id, invite_code, visibility) VALUES ($1, $2, $3, $4, 'private')`,
-        [privId, 'E2E TAK private', getUserId(), `tak-priv-${privId.slice(0, 8)}`],
-      );
-      await client.query(
-        `INSERT INTO topic_members (topic_id, user_id, role) VALUES ($1, $2, 'owner')`,
-        [privId, getUserId()],
-      );
+  it('14. SI-6b: holder ops on a private topic -> 400 (custodian-free)', async () => {
+    // Real fixture over HTTP: POST /api/topics accepts visibility: 'private'
+    // (VALID_VISIBILITIES in src/app/api/topics/route.ts) and auto-adds the
+    // creator as owner, so no direct DB seeding is needed here.
+    const createRes = await authPost('/api/topics', {
+      title: `E2E TAK private ${Date.now()}`,
+      description: 'SI-6b custodian-free check',
+      visibility: 'private',
+      categoryId,
+    });
+    expect(createRes.status).toBe(201);
+    const privId = (await createRes.json()).topic.id as string;
 
+    try {
       const res = await authPost(`/api/topics/${privId}/tak/holder`, {
         deviceId: 'a-device-1',
         rootFingerprint: HOLDER_ROOT_FP,
@@ -343,9 +334,7 @@ describe.sequential('TAK back-fill — server Delivery Service', () => {
       const del = await authDelete(`/api/topics/${privId}/tak/holder?deviceId=a-device-1`);
       expect(del.status).toBe(400);
     } finally {
-      await client.query(`DELETE FROM topic_members WHERE topic_id = $1`, [privId]);
-      await client.query(`DELETE FROM topics WHERE id = $1`, [privId]);
-      await client.end();
+      await authDelete(`/api/topics/${privId}`);
     }
   });
 });

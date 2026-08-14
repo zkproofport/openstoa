@@ -141,3 +141,122 @@ export function parseCommitFraming(input: Buffer | Uint8Array): CommitFraming {
 
   return { version, wireFormat, groupId, epoch, contentType };
 }
+
+/**
+ * The device id of the leaf a Commit ADDS, or null when the Commit does not
+ * name one.
+ *
+ * This is the server's only unforgeable evidence that a device joined a topic
+ * and when (`docs/design/device-join-signal.md`). It matters because a member
+ * cannot fabricate another device's join without actually performing it —
+ * unlike a client-reported join, which is a claim.
+ *
+ * It works for exactly one shape, and that is the shape that matters: a device
+ * joining is an EXTERNAL Commit, which ts-mls frames as a PublicMessage whose
+ * content is not encrypted. An ordinary member Commit is a PrivateMessage and
+ * its proposals and path are sealed — so this returns null there rather than
+ * reading whatever bytes sit at the offset. A wrong device id is worse than no
+ * device id: it would be owed messages forever and never ack.
+ *
+ * Layout after the `content_type` byte this file already walks to (RFC 9420
+ * §12.4, verified empirically against ts-mls, same as the header parse above):
+ *
+ *   Commit { ProposalOrRef proposals<V>; optional<UpdatePath> path; }
+ *   UpdatePath { LeafNode leaf_node; UpdatePathNode nodes<V>; }
+ *   LeafNode  { HPKEPublicKey encryption_key<V>; ... }
+ *
+ * so the key is the first field reachable past the proposal vector and the
+ * one-byte `optional` presence flag. Returned base64-encoded, which is exactly
+ * `takClient.leafDeviceId` — the id the delivery cursor and the TAK bundle
+ * routes already key on, so a join row and an ack row name the same device.
+ *
+ * NEVER throws: every malformed, truncated or unexpected input is null. This
+ * runs on the commit path, and a parse failure must not be able to refuse a
+ * member's Commit.
+ */
+/** RFC 9420 §5.3 CredentialType. `basic` carries a raw identity string. */
+const CREDENTIAL_BASIC = 1;
+
+/** What a join Commit says about the device it adds. */
+export interface JoinerLeaf {
+  /** base64 of the leaf HPKE public key — the same id `leafDeviceId` produces. */
+  deviceId: string;
+  /**
+   * The leaf's credential, verbatim: `<userId>:<deviceId>` for an attributable
+   * device, and a bare handle for one that predates that convention (an agent
+   * leaf minted as `sdk-<uuid>`, for instance).
+   *
+   * Returned RAW rather than split, because naming a leaf is `leafIdentity`'s
+   * rule and not this parser's, and because a caller that stores the raw string
+   * can tell "nobody could name this leaf" from "not looked up yet". Null when
+   * the credential is not a `basic` one, which is the only kind this system
+   * mints — anything else is not ours to interpret.
+   */
+  identity: string | null;
+}
+
+/**
+ * The device a Commit ADDS: its leaf key, and the credential naming it.
+ *
+ * Same walk and the same one shape as `parseJoinerLeafKey` — an External Commit,
+ * framed as a PublicMessage, whose content is not encrypted. See that function
+ * for why an ordinary Commit yields null instead of a guess.
+ *
+ * The credential is read because a device id alone cannot answer "whose device
+ * is this?", and two callers need that: the delivery obligation has to bind a
+ * device to an account, and inactive-leaf eviction has to know which account a
+ * stale leaf belonged to. Both are in `docs/design/device-join-signal.md`.
+ */
+export function parseJoinerLeaf(input: Buffer | Uint8Array): JoinerLeaf | null {
+  try {
+    const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
+    const off = joinerLeafOffset(buf);
+    if (off === null) return null;
+
+    const { value: keyLen, next: keyStart } = readVarint(buf, off);
+    const keyEnd = keyStart + keyLen;
+    if (keyLen === 0 || keyEnd > buf.length) return null;
+    const deviceId = Buffer.from(buf.subarray(keyStart, keyEnd)).toString('base64');
+
+    // LeafNode continues: signature_key<V>, then Credential.
+    let p = skipOpaque(buf, keyEnd);
+    if (p + 2 > buf.length) return { deviceId, identity: null };
+    const credentialType = buf.readUInt16BE(p);
+    p += 2;
+    if (credentialType !== CREDENTIAL_BASIC) return { deviceId, identity: null };
+    const { value: idLen, next: idStart } = readVarint(buf, p);
+    const idEnd = idStart + idLen;
+    // A truncated identity is no identity: half a credential names the wrong
+    // account as readily as the right one.
+    if (idLen === 0 || idEnd > buf.length) return { deviceId, identity: null };
+    return { deviceId, identity: buf.subarray(idStart, idEnd).toString('utf8') };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Offset of the joining leaf's `encryption_key<V>` in a PublicMessage Commit
+ * that carries an UpdatePath, or null when there is none to read.
+ */
+function joinerLeafOffset(buf: Buffer): number | null {
+  const framing = parseCommitFraming(buf);
+  if (framing.wireFormat !== WIRE_PUBLIC_MESSAGE) return null;
+
+  const { next: afterGidLen, value: gidLen } = readVarint(buf, 4);
+  let off = afterGidLen + gidLen + 8; // + epoch uint64
+  const senderType = buf[off];
+  off += 1;
+  if (senderType === SENDER_MEMBER || senderType === SENDER_EXTERNAL) off += 4;
+  off = skipOpaque(buf, off); // authenticated_data<V>
+  off += 1; // content_type, already asserted COMMIT by parseCommitFraming
+  off = skipOpaque(buf, off); // proposals<V>
+  if (off >= buf.length) return null;
+  const hasPath = buf[off];
+  off += 1;
+  return hasPath === 1 ? off : null;
+}
+
+export function parseJoinerLeafKey(input: Buffer | Uint8Array): string | null {
+  return parseJoinerLeaf(input)?.deviceId ?? null;
+}

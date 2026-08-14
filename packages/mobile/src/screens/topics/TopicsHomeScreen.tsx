@@ -16,6 +16,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
 import type { Topic } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { useHost } from '@openstoa/miniapp-bridge';
+import { getTakSessionStore } from '../../crypto/mobileTransport';
+import { parseInviteLink, readInviteHistory } from '../../lib/inviteLink';
 import { useAuthGuardedAction } from '../../auth';
 import { TopicCard } from '../../components/TopicCard';
 import { SortPills } from '../../components/SortPills';
@@ -129,6 +132,7 @@ export function TopicsHomeScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const client = useOpenStoaClient();
+  const host = useHost();
   // Auth-guarded header actions — opens the SignInSheet for guests, then
   // navigates / opens the modal automatically after sign-in.
   const openInvitePrompt = useAuthGuardedAction(() => setInviteOpen(true));
@@ -168,12 +172,51 @@ export function TopicsHomeScreen() {
     staleTime: 5 * 60_000,
   });
 
+  /**
+   * Join by whatever was pasted — a bare code or a whole invite link.
+   *
+   * The link matters because of what is attached to it: for a private or
+   * secret topic the chat-history keys ride in the FRAGMENT, which never
+   * reaches the server. Posting only the code would join the topic and throw
+   * the keys away silently, so the fragment is kept here and imported once
+   * membership is real. Nothing about the fragment is sent or logged.
+   */
   const inviteJoinMutation = useMutation({
-    mutationFn: async (code: string) => {
-      return client.post<InviteJoinResponse>(`/api/topics/join/${encodeURIComponent(code)}`);
+    mutationFn: async (pasted: string) => {
+      const invite = parseInviteLink(pasted);
+      if (!invite) throw new Error(t('openstoa.topics.invite.invalidCode'));
+      const res = await client.post<InviteJoinResponse>(
+        `/api/topics/join/${encodeURIComponent(invite.code)}`,
+      );
+      // Only after the join. A link whose token expired can still carry a
+      // perfectly good fragment, and importing from it would put keys for a
+      // topic this device is not in — and cannot leave — into its keychain.
+      const read = readInviteHistory(invite.fragment, res.topicId);
+      let history: 'none' | 'wrong-topic' | 'already' | number = 'none';
+      if (read.status === 'wrong-topic') {
+        history = 'wrong-topic';
+      } else if (read.status === 'ok') {
+        const added = await getTakSessionStore(client, host.secureStore, host.localStore)
+          .importInviteHistory(res.topicId, read.taks)
+          .catch(() => 0);
+        // Zero is what re-opening the same link looks like, not a failure.
+        history = added > 0 ? added : 'already';
+      }
+      return { ...res, history };
     },
     onSuccess: (res) => {
       setInviteOpen(false);
+      if (typeof res.history === 'number') {
+        Alert.alert(
+          t('openstoa.topics.invite.joinedTitle'),
+          t('openstoa.topics.invite.historyImported', { count: res.history }),
+        );
+      } else if (res.history === 'wrong-topic') {
+        Alert.alert(
+          t('openstoa.topics.invite.joinedTitle'),
+          t('openstoa.topics.invite.historyWrongTopic'),
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['topics'] });
       // ChatListScreen reads `['my-topics']` to know which topics to render
       // chat previews for; without this the newly-joined topic is missing
@@ -337,7 +380,11 @@ export function TopicsHomeScreen() {
       <InvitePromptModal
         visible={inviteOpen}
         onClose={() => setInviteOpen(false)}
-        onSubmit={(code) => inviteJoinMutation.mutateAsync(code).catch(() => undefined)}
+        onSubmit={async (pasted) => {
+          // Swallowed here because the mutation's onError already surfaces it;
+          // the modal only needs to know when the attempt is over.
+          await inviteJoinMutation.mutateAsync(pasted).catch(() => undefined);
+        }}
         submitting={inviteJoinMutation.isPending}
       />
     </View>

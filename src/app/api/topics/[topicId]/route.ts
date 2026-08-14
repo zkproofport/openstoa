@@ -8,6 +8,7 @@ import {
   posts,
   comments,
   records,
+  chatMedia,
   chatMessages,
   joinRequests,
 } from '@/lib/db/schema';
@@ -15,6 +16,8 @@ import { eq, and, count, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { buildProofRequirement } from '@/lib/proof-guides';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
+import { deleteR2Prefix, topicObjectPrefix } from '@/lib/r2';
+import { hasNulByte } from '@/lib/textGuard';
 
 const ROUTE = '/api/topics/[topicId]';
 
@@ -312,11 +315,19 @@ export async function PATCH(
       if (typeof title !== 'string' || !title.trim()) {
         return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 });
       }
+      // Postgres text storage cannot hold a NUL byte (see src/lib/textGuard.ts).
+      if (hasNulByte(title)) {
+        return NextResponse.json({ error: 'Title must not contain a NUL byte' }, { status: 400 });
+      }
       updateData.title = title.trim();
     }
 
     if (hasDescription) {
-      updateData.description = description ? String(description).trim() : null;
+      const normalizedDescription = description ? String(description).trim() : null;
+      if (normalizedDescription && hasNulByte(normalizedDescription)) {
+        return NextResponse.json({ error: 'Description must not contain a NUL byte' }, { status: 400 });
+      }
+      updateData.description = normalizedDescription;
     }
 
     if (hasImage) {
@@ -326,6 +337,7 @@ export async function PATCH(
         imageValue = await extractAndUploadBase64Images(
           `<img src="${imageValue}">`,
           session.userId,
+          topicId,
         );
         // Extract the URL from the processed HTML
         const urlMatch = imageValue.match(/src="([^"]+)"/);
@@ -455,13 +467,43 @@ export async function DELETE(
         await tx.delete(posts).where(eq(posts.topicId, topicId));
       }
       await tx.delete(chatMessages).where(eq(chatMessages.topicId, topicId));
+      // The attachment INDEX (M-1) goes with the topic; the objects it points
+      // at are removed by the prefix sweep below, which needs no index at all.
+      await tx.delete(chatMedia).where(eq(chatMedia.topicId, topicId));
       await tx.delete(joinRequests).where(eq(joinRequests.topicId, topicId));
       await tx.delete(topicMembers).where(eq(topicMembers.topicId, topicId));
       // inviteTokens cascade-delete with the topic.
       await tx.delete(topics).where(eq(topics.id, topicId));
     });
 
-    logger.info(ROUTE, 'Topic deleted', { userId: session.userId, topicId, deletedPostCount: postIds.length });
+    /*
+     * The topic's OBJECTS. Rows are gone above; storage is a separate world and
+     * the transaction cannot reach into it.
+     *
+     * ONE prefix now covers all of them — chat attachments, post images and the
+     * topic's own picture — because the key layout is partitioned by topic
+     * (`src/lib/r2.ts`). It used to sweep only `chat/{topicId}/`, so every post
+     * image in the topic survived its own topic's deletion, scattered under the
+     * uploader folders no prefix reached: not a leak of a few bytes, a permanent
+     * one of every picture anyone ever posted here.
+     *
+     * Two classes are still NOT reached, and both are visible in the key:
+     * objects uploaded before this layout (`posts/{userId}/...`), and objects
+     * uploaded with no topic to name (`users/{userId}/uploads/...`, e.g. the
+     * image chosen while the topic was still being created). Documented in
+     * AGENTS.md rather than papered over.
+     *
+     * Best-effort by design: the topic IS deleted, and failing the response now
+     * would tell the owner otherwise.
+     */
+    const deletedObjects = await deleteR2Prefix(topicObjectPrefix(topicId));
+
+    logger.info(ROUTE, 'Topic deleted', {
+      userId: session.userId,
+      topicId,
+      deletedPostCount: postIds.length,
+      deletedChatObjects: deletedObjects,
+    });
     return NextResponse.json({ deleted: true, topicId, deletedPostCount: postIds.length });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

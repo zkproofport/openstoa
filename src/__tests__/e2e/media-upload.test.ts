@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken, requireObjectStorage } from './helpers';
+import { authGet, authPost, authPatch, authDelete, getBaseUrl, getAuthToken, getCdnOrigin, requireObjectStorage } from './helpers';
 
 // Every case in this file uploads. Without object storage they each fail on
 // their own 500, which reads like the upload route is broken rather than like
@@ -10,6 +10,11 @@ beforeAll(async () => {
 
 let categoryId: string;
 let topicId: string;
+
+/** Literal-match a discovered origin (it carries `.` and `:`) inside a RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /** 1x1 red PNG buffer (binary, not base64 — used for multipart bodies) */
 function tinyPngBuffer(): Buffer {
@@ -92,7 +97,12 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
 
   it('POST /api/upload (multipart) returns publicUrl that serves the file', async () => {
     const publicUrl = await uploadPng('round-trip.png');
-    expect(publicUrl).toMatch(/^https:\/\/[^/]+\/.+\/round-trip\.png$/);
+    // Served from the environment's OWN object store, discovered rather than
+    // written down: an https CDN on a deployed target, the MinIO that dev.sh
+    // starts on a developer machine.
+    const cdnOrigin = await getCdnOrigin();
+    expect(publicUrl.startsWith(`${cdnOrigin}/`), `${publicUrl} is not served from ${cdnOrigin}`).toBe(true);
+    expect(publicUrl.endsWith('/round-trip.png')).toBe(true);
 
     const getRes = await fetch(publicUrl);
     expect(getRes.status).toBe(200);
@@ -160,7 +170,10 @@ describe.sequential('Media upload E2E (multipart + R2 orphan cleanup)', () => {
     const detail = await (await authGet(`/api/posts/${postId}`)).json();
     const returned: string = detail.post.content;
     expect(returned).not.toContain('data:image');
-    const cdnMatch = returned.match(/https:\/\/[^"'\s]+\.(?:png|jpg|jpeg|webp|gif)/i);
+    const cdnOrigin = await getCdnOrigin();
+    const cdnMatch = returned.match(
+      new RegExp(`${escapeRegExp(cdnOrigin)}[^"'\\s]+\\.(?:png|jpg|jpeg|webp|gif)`, 'i'),
+    );
     expect(cdnMatch).not.toBeNull();
     const cdnRes = await fetch(cdnMatch![0]);
     expect(cdnRes.status).toBe(200);

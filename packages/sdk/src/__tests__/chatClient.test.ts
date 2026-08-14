@@ -14,6 +14,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { ChatClient } from '../chatClient';
 import { OpenStoaClient } from '../rest/openStoaClient';
+import { MlsSessionStore, EncryptingKVStore, groupClient as gc, keyManager } from '../mls';
+import { mlsTransport } from '../rest/transports';
+import { createFileVaultStore } from '../keystore';
 
 // --- in-memory Delivery Service (crypto-free, like the real server) ----------
 
@@ -34,7 +37,23 @@ function makeDs() {
   const commits = new Map<string, CommitRow[]>();
   const chat = new Map<string, StoredMsg[]>();
   const archive = new Map<string, ArchiveRow[]>();
+  // Delivery acks the SDK sent, per topic, plus a switch to make the endpoint
+  // fail so "a failed ack never breaks a read" can be asserted.
+  const delivered = new Map<string, Array<{ deviceId: string; through: string }>>();
+  let deliveredFails = false;
   const bundles = new Map<string, BundleRow[]>();
+  /*
+   * The server-held public archive root, and its published identity. Both are
+   * WRITE-ONCE on the real server, and the client depends on that: a second
+   * depositor is told it lost (409 / claimed:false) and adopts the winner's key
+   * rather than keeping one nothing was sealed under. A mock that let the second
+   * write through would make the client look correct while the real server
+   * rejected it.
+   */
+  /** Attachment ciphertext by object key, plus whether its message went out. */
+  const objects = new Map<string, { b64: string; claimed: boolean }>();
+  const serverRoot = new Map<string, string>();
+  const rootFingerprint = new Map<string, string>();
   const dmChannels = new Map<string, { topicId: string; a: string; b: string }>(); // key = canonical pair
   let seq = 0;
   const tokenUser: Record<string, string> = {}; // Bearer token → userId
@@ -64,6 +83,22 @@ function makeDs() {
       const tok = 'tok-' + uid;
       tokenUser[tok] = uid;
       return json(200, { userId: uid, nickname: body?.nickname ?? 'dev', token: tok });
+    }
+    /*
+     * Who the caller is. Modelled on the real route deliberately: it NEVER 401s
+     * — a guest gets `{ authenticated: false }` — so a client must treat a
+     * missing `userId` as the normal unauthenticated answer rather than an
+     * error.
+     *
+     * This route was absent from the harness while the client already called
+     * it, which meant the leaf-identity wiring below silently did nothing and
+     * the test passed anyway. A mock that is more permissive than the server
+     * certifies broken code as working; one that simply 404s an endpoint the
+     * client depends on hides the dependency altogether.
+     */
+    if (p === '/api/auth/session') {
+      if (!token) return json(200, { authenticated: false });
+      return json(200, { userId, nickname: 'dev' });
     }
     // topic detail (visibility lookup)
     if ((m = p.match(/^\/api\/topics\/([^/]+)$/)) && method === 'GET') {
@@ -168,6 +203,20 @@ function makeDs() {
         });
       }
     }
+    // delivery acks — the live copy is a QUEUE, so the server is told what has
+    // landed. Recorded rather than acted on: what matters here is that the SDK
+    // sends it, for the right device and the right instant.
+    if ((m = p.match(/^\/api\/topics\/([^/]+)\/chat\/delivered$/))) {
+      const t = m[1];
+      if (method === 'POST') {
+        if (deliveredFails) return json(500, { error: 'nope' });
+        (delivered.get(t) ?? delivered.set(t, []).get(t)!).push({
+          deviceId: body.deviceId,
+          through: body.through,
+        });
+        return json(200, { deliveredThrough: body.through });
+      }
+    }
     // TAK archive
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/archive$/))) {
       const t = m[1];
@@ -181,6 +230,61 @@ function makeDs() {
         return json(200, { ok: true });
       }
       if (method === 'GET') return json(200, { archive: archive.get(t) ?? [] });
+    }
+    // encrypted chat attachments — ciphertext in, ciphertext out
+    if ((m = p.match(/^\/api\/topics\/([^/]+)\/chat\/media$/))) {
+      const t = m[1];
+      if (method === 'POST') {
+        // The server mints the key from ids — the caller never chooses it.
+        const key = `topics/${t}/chat/${userId}/${body.mediaId}.bin`;
+        objects.set(key, { b64: body.ciphertext, claimed: false });
+        return json(201, { key });
+      }
+      if (method === 'GET') {
+        const key = u.searchParams.get('key') ?? '';
+        const obj = objects.get(key);
+        if (!obj) return json(404, { error: 'not found' });
+        // Real route streams bytes; the client reads arrayBuffer().
+        const bin = atob(obj.b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Response(bytes, { status: 200 }) as unknown as Response;
+      }
+      if (method === 'DELETE') {
+        objects.delete(u.searchParams.get('key') ?? '');
+        return json(200, { ok: true });
+      }
+    }
+    // public archive root (public tier only — the server holds this one key)
+    if ((m = p.match(/^\/api\/topics\/([^/]+)\/archive\/root$/))) {
+      const t = m[1];
+      if (method === 'GET') {
+        const k = serverRoot.get(t);
+        // 204, not 404: "nothing deposited yet" is an ordinary answer.
+        return k ? json(200, { rootKey: k }) : json(204, {});
+      }
+      if (method === 'PUT') {
+        const existing = serverRoot.get(t);
+        if (existing && existing !== body.rootKey) return json(409, { error: 'root already deposited' });
+        serverRoot.set(t, body.rootKey);
+        return json(200, { ok: true });
+      }
+    }
+    // the root's published identity — COMPARE-AND-SET, first writer wins
+    if ((m = p.match(/^\/api\/topics\/([^/]+)\/tak\/root-fingerprint$/))) {
+      const t = m[1];
+      if (method === 'GET') {
+        return json(200, {
+          fingerprint: rootFingerprint.get(t) ?? null,
+          archiveCount: (archive.get(t) ?? []).length,
+        });
+      }
+      if (method === 'PUT') {
+        const existing = rootFingerprint.get(t);
+        if (!existing) rootFingerprint.set(t, body.fingerprint);
+        const winner = rootFingerprint.get(t)!;
+        return json(200, { fingerprint: winner, claimed: winner === body.fingerprint });
+      }
     }
     // TAK bundles
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/tak\/bundles$/))) {
@@ -208,7 +312,15 @@ function makeDs() {
     return json(404, { error: `unhandled ${method} ${p}` });
   }) as unknown as typeof fetch;
 
-  return { fetchImpl, chat, archive };
+  return {
+    fetchImpl,
+    chat,
+    archive,
+    delivered,
+    setDeliveredFails: (v: boolean) => {
+      deliveredFails = v;
+    },
+  };
 }
 
 let rootA: string;
@@ -259,7 +371,22 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     expect(history.find((h) => h.id === msgId)?.text).toBe('my own words');
   });
 
-  it('forward secrecy: B reads a pre-join message only after the public TAK root is distributed', async () => {
+  it('PUBLIC tier: B reads a pre-join message from the SERVER-HELD root, with nobody else online', async () => {
+    /*
+     * REWRITTEN when the SDK's TAK stack was brought level with the web and
+     * mini-app copies. It previously asserted that B could read pre-join
+     * history ONLY AFTER another member distributed the root to its leaf —
+     * which is the model the design explicitly replaced
+     * (`docs/design/openstoa-chat-history-decision.md`): making history depend
+     * on some other member being awake at the right moment is a property no
+     * reader can predict, and it left rooms whose history never opened at all.
+     *
+     * For `public` — and ONLY public — the server holds the archive root, so a
+     * later joiner reads everything the moment it arrives. The old assertion
+     * described an SDK that had fallen behind that decision, not a guarantee
+     * anyone wanted; the security property it looked like it was protecting
+     * (MLS forward secrecy) is asserted separately below and is unchanged.
+     */
     const { fetchImpl } = makeDs();
     const T = 'topic-fs';
     const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
@@ -270,16 +397,108 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
     await b.joinTopic(T);
 
-    // Before any TAK grant, B's backfill yields nothing it can decrypt.
-    expect(await b.backfill(T)).toHaveLength(0);
+    // FORWARD SECRECY, unchanged: MLS alone gives B nothing for a message sent
+    // before it joined — the epoch key it would need was never its to have.
+    const live = await b.readChat(T);
+    expect(live.find((r) => r.id === preJoinId)?.text ?? null).toBeNull();
 
-    // A distributes the public archive root to every member leaf (incl. B).
-    const sent = await a.distributePublicArchive(T);
-    expect(sent).toBeGreaterThanOrEqual(1);
-
-    // Now B back-fills and reads the pre-join message.
+    // …and the archive opens anyway, because THIS tier's root is on the server.
+    // No distribution call, no other member online: that is the trade `public`
+    // makes, and the reason its banner does not claim the service cannot read.
     const history = await b.backfill(T);
     expect(history.find((h) => h.messageId === preJoinId)?.plaintext).toBe('secret-before-B');
+  });
+
+  it('AGENT ROUND TRIP: A sends an image, B reads the PICTURE — not the envelope', async () => {
+    /*
+     * The gap this closes: an agent used to receive the literal envelope
+     * `openstoa:media:v1:{…}` as message text where a person saw a photo. The
+     * bytes were reachable — nothing on the agent path fetched or opened them.
+     *
+     * PUBLIC tier on purpose. It is the one where the key comes from the
+     * SERVER-held root rather than a per-epoch TAK, so it is the tier a
+     * media path would silently fail in if it were built on epoch keys alone —
+     * which is why "every tier or none" was the acceptance criterion.
+     */
+    const { fetchImpl } = makeDs();
+    const T = '11111111-2222-4333-8444-555555555501';
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    await a.joinTopic(T);
+    // B is in the room BEFORE the picture is sent, so this is the LIVE read
+    // path. The later-joiner path is history and is asserted below.
+    const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
+    await b.joinTopic(T);
+
+    // A 1x1 PNG — real magic bytes, so the shared MIME/HEIC guards see a real image.
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    ]);
+    const { messageId, envelope } = await a.sendMedia(T, { bytes: png, mime: 'image/png' });
+
+    // The KEY is server-minted and topic-partitioned (M-3), never client-chosen.
+    expect(envelope.key.startsWith(`topics/${T}/chat/`)).toBe(true);
+    expect(envelope.mime).toBe('image/png');
+
+    const rows = await b.readChat(T);
+    const row = rows.find((r) => r.id === messageId);
+    expect(row, 'the attachment message is in history').toBeTruthy();
+
+    // The envelope must NOT leak through as prose…
+    expect(row!.text).toBeNull();
+    // …and the picture arrives, byte for byte.
+    expect(row!.media?.status).toBe('ok');
+    expect(row!.media?.mime).toBe('image/png');
+    expect(Array.from(row!.media?.bytes ?? [])).toEqual(Array.from(png));
+  });
+
+  it('an attachment whose object is gone reads as unavailable, not as a crash', async () => {
+    // One collected picture must not abort a whole history read — the other
+    // rows still have to come back.
+    const { fetchImpl } = makeDs();
+    const T = '11111111-2222-4333-8444-555555555502';
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    await a.joinTopic(T);
+    await a.sendChat(T, 'a message that is just words');
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
+    const { messageId, envelope } = await a.sendMedia(T, { bytes: png, mime: 'image/png' });
+
+    // The object disappears (retention, orphan collection, a topic sweep).
+    await a.rest.chat.discardMedia(T, envelope.key);
+
+    const rows = await a.readChat(T);
+    expect(rows.find((r) => r.id === messageId)?.media?.status).toBe('unavailable');
+    expect(rows.find((r) => r.text === 'a message that is just words')).toBeTruthy();
+  });
+
+  it('HISTORY: a LATER joiner reads the picture from the archive, not the envelope', async () => {
+    /*
+     * The path an agent actually uses, and the one that would have been left
+     * behind if only `readChat` were wired: an agent almost always arrives
+     * AFTER the conversation, so its pictures come from the archive rather than
+     * from a live row. Public tier again — the key is the server-held root.
+     */
+    const { fetchImpl } = makeDs();
+    const T = '11111111-2222-4333-8444-555555555503';
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    await a.joinTopic(T);
+
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x11, 0x22, 0x33, 0x44]);
+    const { messageId } = await a.sendMedia(T, { bytes: png, mime: 'image/png' });
+
+    // B arrives afterwards: MLS gives it nothing for that row…
+    const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
+    await b.joinTopic(T);
+    expect((await b.readChat(T)).find((r) => r.id === messageId)?.text ?? null).toBeNull();
+
+    // …and the archive hands over the PICTURE, decrypted, not the envelope.
+    const history = await b.backfill(T);
+    const row = history.find((h) => h.messageId === messageId);
+    expect(row, 'the attachment is in history').toBeTruthy();
+    expect(row!.media?.status).toBe('ok');
+    expect(Array.from(row!.media?.bytes ?? [])).toEqual(Array.from(png));
+    // The envelope must not survive as prose in history either.
+    expect(row!.plaintext).toBe('');
   });
 
   it('DM: startDm is idempotent per pair, and A↔B round-trip works over the DM topicId', async () => {
@@ -317,5 +536,301 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     await a.joinTopic(T);
     const id = await a.sendChat(T, 'via injected client');
     expect(id).toBeTruthy();
+  });
+});
+
+/**
+ * An agent has to be REMOVABLE, not just readable.
+ *
+ * The SDK minted its leaf as a bare `sdk-<uuid>`. `userIdOfLeaf` returns null
+ * for that by design — a leaf nobody can name belongs to somebody, and guessing
+ * would evict an innocent member — so `reconcileMembership`, the only kick path
+ * any product surface calls, counted it as unattributable and left it in the
+ * tree. Deleting the membership row closed the API and did nothing to the
+ * crypto: the agent kept deriving every future epoch key.
+ *
+ * These tests are about the CALLER wiring, not the port. Byte-identity with the
+ * web copy is asserted elsewhere; passing a user-id provider is what actually
+ * mints `<userId>:<deviceId>`, and without it every test below still compiles
+ * and returns `removed: 0`.
+ *
+ * EDGE-CASE MATRIX (CLAUDE.md) → coverage
+ *   contract    → 'a member can remove the agent BY ACCOUNT'
+ *   integrity   → 'the identity is minted once and survives a restart'
+ *   hostile     → 'a legacy bare leaf is left alone, and counted'
+ *   empty/null  → 'an unauthenticated client falls back to the bare device id'
+ *   boundary    → 'removing an account with no leaves burns no epoch'
+ *   authz       → N/A: removal is an MLS Commit any member may make; the server
+ *                 gate is a separate layer and is unchanged here.
+ *   race        → N/A: epoch-CAS retry is covered by src/__tests__/mls-removal.
+ *   UTF-8/large → N/A: an identity is a uuid and an account id.
+ */
+describe('readChat acknowledges delivery (R-1)', () => {
+  /*
+   * The live `ciphertext` column is a delivery QUEUE: the server drops a
+   * message's copy once every device that was in the group at send time has
+   * fetched it. An SDK that never acknowledges is the reason its own ciphertext
+   * sits on the server for the full 30-day grace cap, so the ack belongs in the
+   * read path rather than in every caller's memory.
+   */
+  it('CONTRACT: a read acks the NEWEST row, for THIS device', async () => {
+    const { fetchImpl, delivered } = makeDs();
+    const T = 'topic-ack';
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
+    await a.joinTopic(T);
+    await b.joinTopic(T);
+    await a.sendChat(T, 'first');
+    await a.sendChat(T, 'second');
+
+    const rows = await b.readChat(T);
+    const acks = delivered.get(T) ?? [];
+    expect(acks.length).toBeGreaterThan(0);
+
+    const last = acks[acks.length - 1];
+    // The newest row it just returned — every earlier one came back with it.
+    const newest = rows.reduce((n, r) => (Date.parse(r.createdAt) > Date.parse(n.createdAt) ? r : n), rows[0]);
+    expect(last.through).toBe(newest.createdAt);
+    // Per DEVICE: the leaf id, not the user. B must not release A's copy.
+    expect(last.deviceId).toBeTruthy();
+    expect(last.deviceId).not.toBe('tok-B');
+  });
+
+  it('INTEGRITY: a row this client could NOT read is never acked', async () => {
+    /*
+     * The hazard one layer over from the web client's `claimable`: `readChat`
+     * degrades an undecryptable body to `text: null` instead of throwing, so a
+     * locked row arrives beside readable ones. Acking it would tell the server
+     * "delivered" for ciphertext this device cannot open, and the purge then
+     * drops the only copy — from under the device still waiting for its key.
+     *
+     * The genuinely locked case is a device that joined AFTER the message: MLS
+     * gives a later leaf no past-epoch secret, so it cannot open that row and
+     * has to get it from the archive. (A SENDER is not the case to use here —
+     * `sendChat` caches its own plaintext, so it reads its own message back.)
+     */
+    const { fetchImpl, delivered } = makeDs();
+    const T = 'topic-ack-locked';
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    await a.joinTopic(T);
+    await a.sendChat(T, 'sent before the latecomer arrived');
+
+    const late = new ChatClient({ baseUrl: 'http://ds', token: 'tok-C', vaultRoot: rootB, deviceId: 'dev-C', fetch: fetchImpl });
+    await late.joinTopic(T);
+
+    const rows = await late.readChat(T);
+    const locked = rows.filter((r) => r.type === 'message' && r.text === null);
+    expect(locked.length).toBeGreaterThan(0);
+    // Nothing readable arrived, so nothing may be claimed.
+    expect(delivered.get(T) ?? []).toEqual([]);
+  });
+
+  it('EMPTY: reading an empty room acks nothing', async () => {
+    // There is no instant to claim, and claiming `now` would release messages
+    // that arrive in the same millisecond.
+    const { fetchImpl, delivered } = makeDs();
+    const T = 'topic-ack-empty';
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    await a.joinTopic(T);
+
+    expect(await a.readChat(T)).toEqual([]);
+    expect(delivered.get(T) ?? []).toEqual([]);
+  });
+
+  it('EXT-FAILURE: a failed ack never turns a successful read into an error', async () => {
+    /*
+     * The messages are already in hand by then. Throwing would lose a history
+     * the caller has, to save some server storage — exactly the wrong trade.
+     */
+    const { fetchImpl, setDeliveredFails } = makeDs();
+    const T = 'topic-ack-fail';
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+    const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
+    await a.joinTopic(T);
+    await b.joinTopic(T);
+    const id = await a.sendChat(T, 'still readable');
+
+    setDeliveredFails(true);
+    const rows = await b.readChat(T);
+    expect(rows.find((r) => r.id === id)?.text).toBe('still readable');
+  });
+});
+
+describe('an agent leaf is attributable, so an admin can actually remove it', () => {
+  /** A member's client, built the way the web builds one. */
+  function memberStore(fetchImpl: typeof fetch, root: string, userId: string, deviceId: string) {
+    const rest = new OpenStoaClient({ baseUrl: 'http://ds', token: userId, fetch: fetchImpl });
+    const raw = createFileVaultStore({ root: root + '/vault', namespace: 'member' });
+    const enc = EncryptingKVStore.lazy(raw, async () => new Uint8Array(32));
+    return new MlsSessionStore(mlsTransport(rest), deviceId, enc, enc, async () => userId);
+  }
+
+  /**
+   * How many leaves the tree ACTUALLY has right now.
+   *
+   * `readState` deliberately does not catch up — it hands back whatever this
+   * device last saw — so counting through it compares two stale reads and is
+   * true regardless of what happened. `reconcileMembership` catches up before
+   * it reads the tree, and passing every current member means it removes
+   * nothing and burns no epoch while doing so.
+   */
+  async function leafCount(member: MlsSessionStore, topicId: string, memberIds: string[]) {
+    await member.reconcileMembership(topicId, memberIds);
+    return (await member.readState(topicId, async (st) => gc.leafIdentities(st))).length;
+  }
+
+  it('CONTRACT: a member can remove the agent BY ACCOUNT', async () => {
+    const { fetchImpl } = makeDs();
+    const T = 'topic-kick';
+    const member = memberStore(fetchImpl, rootA, 'tok-M', 'web-M');
+    await member.readState(T, async () => null); // genesis
+
+    const agent = new ChatClient({
+      baseUrl: 'http://ds', token: 'tok-agent', vaultRoot: rootB, deviceId: 'sdk-agent', fetch: fetchImpl,
+    });
+    await agent.joinTopic(T);
+
+    // The agent's account is 'tok-agent' (the DS maps an unregistered token to
+    // itself). Removing it must find the leaf — that is the whole fix.
+    const before = await member.readState(T, async (st) => gc.currentEpoch(st));
+    const res = await member.removeUser(T, 'tok-agent');
+    expect(res.removed, 'the agent leaf was not found — its credential is unattributable').toBe(1);
+    expect(res.epoch, 'a real removal must advance the epoch').toBeGreaterThan(before);
+  });
+
+  it('CONTRACT: reconcileMembership evicts the agent when it is no longer a member', async () => {
+    // The path a kick actually takes: the members list no longer contains the
+    // agent, and ANY member's client repairs the tree on its next visit.
+    const { fetchImpl } = makeDs();
+    const T = 'topic-reconcile';
+    const member = memberStore(fetchImpl, rootA, 'tok-M', 'web-M');
+    await member.readState(T, async () => null);
+
+    const agent = new ChatClient({
+      baseUrl: 'http://ds', token: 'tok-agent', vaultRoot: rootB, deviceId: 'sdk-agent', fetch: fetchImpl,
+    });
+    await agent.joinTopic(T);
+
+    const res = await member.reconcileMembership(T, ['tok-M']); // agent dropped
+    expect(res.removed).toBe(1);
+    expect(res.unattributable, 'the agent leaf should be nameable, not skipped').toBe(0);
+  });
+
+  it('INTEGRITY: the identity is minted once and survives a restart', async () => {
+    /*
+     * Changing it later would orphan the stored group state (the state key is
+     * derived from it) and re-join as a fresh leaf, so a device that already has
+     * an identity keeps it. A second client over the SAME vault must therefore
+     * present the SAME leaf — otherwise every restart leaves a stray behind.
+     */
+    const { fetchImpl } = makeDs();
+    const T = 'topic-restart';
+    const member = memberStore(fetchImpl, rootA, 'tok-M', 'web-M');
+    await member.readState(T, async () => null);
+
+    const first = new ChatClient({
+      baseUrl: 'http://ds', token: 'tok-agent', vaultRoot: rootB, deviceId: 'sdk-agent', fetch: fetchImpl,
+    });
+    await first.joinTopic(T);
+    const leavesAfterFirst = await leafCount(member, T, ['tok-M', 'tok-agent']);
+
+    const second = new ChatClient({
+      baseUrl: 'http://ds', token: 'tok-agent', vaultRoot: rootB, deviceId: 'sdk-agent', fetch: fetchImpl,
+    });
+    await second.joinTopic(T);
+    expect(await leafCount(member, T, ['tok-M', 'tok-agent']), 'a restart added a second leaf').toBe(
+      leavesAfterFirst,
+    );
+  });
+
+  it('HOSTILE: a legacy bare leaf is left in place, and counted rather than hidden', async () => {
+    /*
+     * The pre-fix credential form. Evicting a leaf we cannot name risks evicting
+     * a current member, so reconcile leaves it — and REPORTS it, so a caller can
+     * surface the gap instead of claiming a clean sweep that was not clean.
+     * Agents that joined before this fix are exactly this case: `bootstrap`
+     * persists the first identity and never changes it.
+     */
+    const { fetchImpl } = makeDs();
+    const T = 'topic-legacy';
+    const member = memberStore(fetchImpl, rootA, 'tok-M', 'web-M');
+    await member.readState(T, async () => null);
+
+    // No user-id provider → a bare device id, which is the legacy shape.
+    const rest = new OpenStoaClient({ baseUrl: 'http://ds', token: 'tok-old', fetch: fetchImpl });
+    const raw = createFileVaultStore({ root: rootB + '/vault', namespace: 'legacy' });
+    const enc = EncryptingKVStore.lazy(raw, async () => new Uint8Array(32));
+    const legacy = new MlsSessionStore(mlsTransport(rest), 'sdk-legacy-uuid', enc, enc);
+    await legacy.readState(T, async () => null);
+
+    const res = await member.reconcileMembership(T, ['tok-M']);
+    expect(res.unattributable, 'an unnameable leaf must be counted').toBe(1);
+    expect(res.removed, 'an unnameable leaf must NOT be evicted on a guess').toBe(0);
+  });
+
+  it('EMPTY: an unauthenticated client falls back to the bare device id and still chats', async () => {
+    /*
+     * A failed session lookup must not invent a user id, and must not break
+     * chat. Only attribution is lost — which is the correct trade, because a
+     * wrong user id would evict somebody else.
+     */
+    const { fetchImpl } = makeDs();
+    const T = 'topic-guest';
+    const guest = new ChatClient({
+      baseUrl: 'http://ds', vaultRoot: rootB, deviceId: 'sdk-guest', fetch: fetchImpl,
+    });
+    await guest.joinTopic(T);
+    const id = await guest.sendChat(T, 'still works without a session');
+    expect(id).toBeTruthy();
+  });
+
+  it('CALLER WIRING: a recovered ChatClient still holds its pre-recovery MLS leaf', async () => {
+    /*
+     * The port is not the fix; the caller engaging it is. `EncryptingKVStore`
+     * only falls back to the pre-recovery key when it is given a ROOT store, and
+     * the SDK was not giving it one — the same shape as the leaf-identity gap,
+     * where ported code sat present and unused behind a green twin test.
+     *
+     * Driven end to end rather than by inspecting the constructor: seal a leaf,
+     * recover onto a different master key the way the recovery flow does, then
+     * reopen. A client that cannot read its own sealed state does not error —
+     * `get` reports an unopenable value as ABSENT — it silently bootstraps a
+     * FRESH leaf, which is visible in the tree as an extra member and, in
+     * production, as a device that lost all of its history.
+     */
+    const { fetchImpl } = makeDs();
+    const T = 'topic-recovered';
+    const member = memberStore(fetchImpl, rootA, 'tok-M', 'web-M');
+    await member.readState(T, async () => null);
+
+    const agent = new ChatClient({
+      baseUrl: 'http://ds', token: 'tok-agent', vaultRoot: rootB, deviceId: 'sdk-agent', fetch: fetchImpl,
+    });
+    await agent.joinTopic(T);
+    const leavesBefore = await leafCount(member, T, ['tok-M', 'tok-agent']);
+
+    // Recover onto a different master_key, in the same vault this client uses.
+    const globalStore = createFileVaultStore({ root: rootB + '/vault', namespace: undefined });
+    await keyManager.installMasterKey(globalStore, new Uint8Array(32).fill(11));
+
+    const recovered = new ChatClient({
+      baseUrl: 'http://ds', token: 'tok-agent', vaultRoot: rootB, deviceId: 'sdk-agent', fetch: fetchImpl,
+    });
+    await recovered.joinTopic(T);
+
+    expect(
+      await leafCount(member, T, ['tok-M', 'tok-agent']),
+      'recovery lost the sealed MLS state and re-joined as a new leaf',
+    ).toBe(leavesBefore);
+  });
+
+  it('BOUNDARY: removing an account with no leaves burns no epoch', async () => {
+    const { fetchImpl } = makeDs();
+    const T = 'topic-noop';
+    const member = memberStore(fetchImpl, rootA, 'tok-M', 'web-M');
+    const before = await member.readState(T, async (st) => gc.currentEpoch(st));
+    const res = await member.removeUser(T, 'tok-nobody');
+    expect(res.removed).toBe(0);
+    expect(res.epoch, 'a no-op removal must not advance the epoch').toBe(before);
   });
 });

@@ -73,7 +73,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   // );
   host.tool(
     'openstoa_login',
-    'Adopt an externally-obtained Bearer token (e.g. an isAI verify token minted elsewhere) as this session. Normally you do NOT need this: set a scoped API key as OPENSTOA_API_KEY and every tool is authenticated at startup. Interactive Google device-flow login is temporarily unavailable (the ZKProofport prover service is offline). To get a first API key, a human signs in on the OpenStoa web site and mints one at /my → AI agents; after that, openstoa_apikey_create issues more. dev-login is intentionally not exposed here.',
+    'Adopt an externally-obtained Bearer token (e.g. an isAI verify token minted elsewhere) as this session. Normally you do NOT need this: set a scoped API key as OPENSTOA_API_KEY and every tool is authenticated at startup. Interactive Google device-flow login is temporarily unavailable (the ZKProofport prover service is offline). Your API key is minted by your account owner in a browser at /my → AI agents, and handed to you as OPENSTOA_API_KEY — that is the normal flow, not a workaround. Key management (openstoa_apikey_create/_list/_update/_revoke) is for the account owner to run from their own session, so it always 403s for an OPENSTOA_API_KEY-authenticated session, including to manage its own key: if you need a new or wider key, or the one you have stopped working, ask your account owner to mint or rotate it and hand you the result. dev-login is intentionally not exposed here.',
     { token: z.string() },
     wrap((a) => commands.login({ token: a.token as string })),
   );
@@ -91,6 +91,12 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       visibility: z.enum(['public', 'private', 'secret']).optional(),
       categoryId: z.string().optional(),
       proofType: z.string().optional(),
+      chatArchiveRetentionDays: z
+        .union([z.literal(0), z.literal(365), z.literal(90), z.literal(30)])
+        .optional()
+        .describe(
+          'How long the topic keeps its encrypted chat archive, in days: 0 (default) forever, or 365 / 90 / 30. Set once, at creation — it cannot be changed later. A shorter window means whoever joins later reads less back from the archive.',
+        ),
     },
     wrap((a) =>
       commands.topicCreate({
@@ -99,6 +105,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
         visibility: a.visibility as 'public' | 'private' | 'secret' | undefined,
         categoryId: a.categoryId as string | undefined,
         proofType: a.proofType as string | undefined,
+        chatArchiveRetentionDays: a.chatArchiveRetentionDays as 0 | 365 | 90 | 30 | undefined,
       }),
     ),
   );
@@ -157,8 +164,19 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   host.tool('openstoa_chat_join', 'Join a topic chat (MLS self-join; keys held locally in the vault).', { topicId: z.string() }, wrap((a) => commands.chatJoin(a.topicId as string)));
   host.tool('openstoa_chat_send', 'Seal + send one E2EE chat message.', { topicId: z.string(), text: z.string() }, wrap((a) => commands.chatSend(a.topicId as string, a.text as string)));
   host.tool(
+    'openstoa_chat_send_media',
+    'Send an IMAGE to a topic chat, end-to-end encrypted. `base64` is the raw file bytes base64-encoded; `mime` must be one of image/png, image/jpeg, image/gif, image/webp. HEIC is REFUSED at the sender — convert to JPEG first, because the server cannot transcode what it cannot read. Size cap applies to the sealed bytes (~10MB). The picture is sealed on THIS machine under the topic key; only ciphertext leaves. Other members — human or agent — see the image, not a link.',
+    { topicId: z.string(), base64: z.string(), mime: z.string() },
+    wrap((a) =>
+      commands.chatSendMedia(a.topicId as string, {
+        base64: a.base64 as string,
+        mime: a.mime as string,
+      }),
+    ),
+  );
+  host.tool(
     'openstoa_chat_read',
-    'Read + MLS-decrypt chat history. Undecryptable rows surface with text=null.',
+    'Read + MLS-decrypt chat history. Undecryptable rows surface with text=null. ATTACHMENTS: a row carrying an image has text=null and a `media` object — the envelope is never returned as text, so do not parse message text as JSON. `media.status` is one of: `ok` (bytes present, with `media.mime`), `locked` (this agent holds no key for it YET — a history grant may still arrive, so retry later rather than treating it as permanent), `unavailable` (the object was deleted by retention or never uploaded — it will not come back), `decrypt-failed` (the bytes are not what the envelope says — retrying will not help). History (`before`/`since` paging) returns attachments the same way, which is the path an agent usually gets pictures from, since it normally joins after the conversation.',
     { topicId: z.string(), limit: z.number().optional(), since: z.string().optional(), before: z.string().optional() },
     wrap((a) => commands.chatRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })),
   );
@@ -202,9 +220,14 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   host.tool('openstoa_profile_set_nickname', 'Set / replace your nickname.', { nickname: z.string() }, wrap((a) => commands.profileSetNickname(a.nickname as string)));
 
   // ── API keys (durable, scoped credential — no interactive login needed) ────
+  // NOTE: all four apikey_* tools are for the ACCOUNT OWNER to run from their
+  // own real session (e.g. this server started with openstoa_login, not
+  // OPENSTOA_API_KEY). They 403 when this server's own session is itself an
+  // API key — that is not a gap to route around, it means the calling agent
+  // should ask its owner to run the command and hand back the result.
   host.tool(
     'openstoa_apikey_create',
-    'Issue a new scoped API key. The returned rawKey is shown ONCE — save it (e.g. as OPENSTOA_API_KEY) immediately; it cannot be retrieved again.',
+    'Issue a new scoped API key. The returned rawKey is shown ONCE — save it (e.g. as OPENSTOA_API_KEY) immediately; it cannot be retrieved again. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key — an agent needing a new key should ask its owner to mint one and hand it over, not attempt this call.',
     {
       name: z.string(),
       cmd: z.array(z.string()).optional(),
@@ -220,10 +243,10 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       }),
     ),
   );
-  host.tool('openstoa_apikey_list', 'List your API keys (metadata only — never the raw key).', {}, wrap(() => commands.apiKeyList()));
+  host.tool('openstoa_apikey_list', 'List your API keys (metadata only — never the raw key). ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key.', {}, wrap(() => commands.apiKeyList()));
   host.tool(
     'openstoa_apikey_update',
-    'Re-scope an existing API key in place, so its holder keeps the same secret. cmd and historyGrant REPLACE the stored scope — send the full intended scope, not a delta.',
+    'Re-scope an existing API key in place, so its holder keeps the same secret. cmd and historyGrant REPLACE the stored scope — send the full intended scope, not a delta. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key, even to re-scope itself — ask the owner to widen or narrow it instead.',
     { id: z.string(), cmd: z.array(z.string()), historyGrant: z.string() },
     wrap((a) =>
       commands.apiKeyUpdate(a.id as string, {
@@ -232,5 +255,5 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       }),
     ),
   );
-  host.tool('openstoa_apikey_revoke', 'Revoke an API key — takes effect immediately.', { id: z.string() }, wrap((a) => commands.apiKeyRevoke(a.id as string)));
+  host.tool('openstoa_apikey_revoke', 'Revoke an API key — takes effect immediately. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key, even to revoke itself — ask the owner to revoke it if it leaked.', { id: z.string() }, wrap((a) => commands.apiKeyRevoke(a.id as string)));
 }

@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
+import { useHost } from '@openstoa/miniapp-bridge';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -24,6 +25,8 @@ import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { PeerProfileCard } from '../../components/PeerProfileCard';
 import type { PeerBadge, PeerProfileTarget } from '../../lib/peerProfile';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
+import { getMlsSessionStore } from '../../crypto/mobileTransport';
+import { reconcileAfterKick } from './reconcileAfterKick';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicMembers'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicMembers'>;
@@ -119,6 +122,7 @@ export function TopicMembersScreen() {
   const navigation = useNavigation<Nav>();
   const { topicId } = route.params;
   const client = useOpenStoaClient();
+  const host = useHost();
   const queryClient = useQueryClient();
   const sessionUserId = useOpenStoaSession((s: { userId: string | null }) => s.userId);
   const { colors } = useThemeColors();
@@ -208,8 +212,15 @@ export function TopicMembersScreen() {
         headers: { 'Content-Type': 'application/json' },
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'members'] });
+      // See reconcileAfterKick.ts for what this does and why it is
+      // best-effort on the sweep but never on the reported count.
+      const mls = getMlsSessionStore(client, host.secureStore, host.localStore);
+      const unattributable = await reconcileAfterKick(client, mls, topicId);
+      if (unattributable > 0) {
+        Alert.alert(t('openstoa.members.kickPartialTitle'), t('openstoa.members.kickPartial', { count: unattributable }));
+      }
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.members.actionFailed'), err.message);

@@ -16,6 +16,7 @@ import Header from '@/components/Header';
 import Avatar from '@/components/Avatar';
 import { resizeImage } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import { safeReturnTo, withHash } from '@/lib/returnTo';
 
 const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
 
@@ -31,7 +32,11 @@ function ProfilePageInner() {
   const router = useRouter();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get('returnTo') ?? '/topics';
+  // Sanitised and fragment-preserving: this page is a detour on the way back
+  // to `returnTo`, and an invite link's history keys are in the fragment. See
+  // `lib/returnTo.ts`.
+  const returnTo = safeReturnTo(searchParams.get('returnTo'));
+  const backToReturnTo = () => router.replace(withHash(returnTo, window.location.hash));
   const [nickname, setNickname] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,7 +54,7 @@ function ProfilePageInner() {
           return;
         }
         if (data.nickname && !isDefaultNickname(data.nickname)) {
-          router.replace(returnTo);
+          backToReturnTo();
           return;
         }
         setUserId(data.userId ?? null);
@@ -139,7 +144,7 @@ function ProfilePageInner() {
         throw new Error(d.error ?? t('profilePage.setNicknameFailed'));
       }
 
-      router.replace(returnTo);
+      backToReturnTo();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('profilePage.unknownError'));
     } finally {

@@ -59,6 +59,14 @@ export interface CreateTopicInput {
   categoryId?: string;
   proofType?: string;
   allowedCountries?: string[];
+  /**
+   * How long the topic keeps its encrypted chat archive, in days: 0 (the
+   * default) forever, or 365 / 90 / 30. Anything else is refused with 400.
+   * Set once, at creation — `topics.update` does not accept it, because
+   * shortening a window deletes other members' history. A shorter window means
+   * a member (or agent) who joins later reads less back from `/archive`.
+   */
+  chatArchiveRetentionDays?: 0 | 365 | 90 | 30;
   [k: string]: unknown;
 }
 

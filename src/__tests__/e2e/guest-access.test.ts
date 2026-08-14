@@ -8,10 +8,7 @@ import {
   authPost,
 } from './helpers';
 
-// NOTE: Private and secret topic visibility is gated behind a server-side
-// feature flag right now — POST /api/topics returns 400 "Only public topics
-// are currently supported." Skip the whole suite until the feature lands.
-describe.sequential.skip('Guest access', () => {
+describe.sequential('Guest access', () => {
   let publicTopicId: string;
   let privateTopicId: string;
   let secretTopicId: string;

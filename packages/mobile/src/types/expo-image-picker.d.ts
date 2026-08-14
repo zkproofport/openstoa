@@ -21,6 +21,23 @@ declare module 'expo-image-picker' {
     type?: string;
     fileName?: string;
     fileSize?: number;
+    /** Present when `base64: true` was requested — the bytes an E2EE attachment encrypts. */
+    base64?: string | null;
+    /** The picked file's content type, e.g. `image/jpeg`. */
+    mimeType?: string;
+  }
+
+  /**
+   * iOS only. `Compatible` transcodes HEIC to JPEG in the picker.
+   *
+   * Chat attachments are encrypted on the device, so nothing downstream can
+   * transcode them — the picker is the last place that can, and a HEIC that
+   * gets past it is an image no browser can display.
+   */
+  export enum UIImagePickerPreferredAssetRepresentationMode {
+    Automatic = 'automatic',
+    Compatible = 'compatible',
+    Current = 'current',
   }
 
   export interface ImagePickerResult {
@@ -33,6 +50,9 @@ declare module 'expo-image-picker' {
     allowsEditing?: boolean;
     quality?: number;
     allowsMultipleSelection?: boolean;
+    /** Return the picked bytes as base64 (see `ImagePickerAsset.base64`). */
+    base64?: boolean;
+    preferredAssetRepresentationMode?: UIImagePickerPreferredAssetRepresentationMode;
   }
 
   export function requestMediaLibraryPermissionsAsync(): Promise<PermissionResponse>;

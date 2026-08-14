@@ -16,6 +16,8 @@ import {
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
 import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
+import { ARCHIVE_RETENTION_CHOICES, parseArchiveRetentionDays } from '@/lib/archiveRetention';
+import { hasNulByte } from '@/lib/textGuard';
 
 const ROUTE = '/api/topics';
 
@@ -158,8 +160,24 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *                 type: string
  *                 enum: [public, private, secret]
  *                 description: >-
- *                   Topic visibility. `public` lists everywhere, `private` requires approval,
- *                   `secret` is invite-only (use `POST /api/topics/{topicId}/invite`). Defaults to `public`.
+ *                   Topic visibility. `public` lists everywhere and anyone may join. `private` is
+ *                   listed and its POSTS are readable by any signed-in account, but joining is
+ *                   invite-only. `secret` is hidden and invite-only, posts included. Chat is
+ *                   members-only in every tier — invite via `POST /api/topics/{topicId}/invite`.
+ *                   Defaults to `public`.
+ *               chatArchiveRetentionDays:
+ *                 type: integer
+ *                 enum: [0, 365, 90, 30]
+ *                 description: >-
+ *                   How long this topic keeps its encrypted chat ARCHIVE, in days. `0` (the default)
+ *                   keeps it indefinitely; `365`, `90` and `30` purge archived messages older than
+ *                   that window. Any other value is rejected with 400 — send the number, not a string.
+ *                   The cost of a short window is that a member who joins later sees less history:
+ *                   anything already purged is gone for everyone, including the agent reading it back
+ *                   through `GET /api/topics/{topicId}/archive`. **Set once, at creation** — the field
+ *                   is deliberately NOT accepted by `PATCH /api/topics/{topicId}`, because shortening a
+ *                   window destroys other members' history. It does not affect live message delivery
+ *                   (`GET /api/topics/{topicId}/chat`), only the archive back-fill.
  *     responses:
  *       201:
  *         description: Topic created
@@ -371,7 +389,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, image, visibility, categoryId, proofType, requiredDomain } = body;
+    const { title, description, requiresCountryProof, allowedCountries, proof, publicInputs, image, visibility, categoryId, proofType, requiredDomain, chatArchiveRetentionDays } = body;
 
     if (!title || typeof title !== 'string') {
       logger.warn(ROUTE, 'Missing title in topic creation', { userId: session.userId });
@@ -388,6 +406,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Postgres text storage cannot hold a NUL byte (see src/lib/textGuard.ts)
+    // — reject before it ever reaches the insert, same rule as apiKeys.name.
+    if (hasNulByte(title)) {
+      return NextResponse.json({ error: 'Title must not contain a NUL byte' }, { status: 400 });
+    }
+    if (description !== undefined && description !== null && typeof description === 'string' && hasNulByte(description)) {
+      return NextResponse.json({ error: 'Description must not contain a NUL byte' }, { status: 400 });
+    }
+
     // Visibility tiers (design §5.2): public (listed, join immediately),
     // private (listed, join needs owner/admin approval), secret (hidden,
     // invite-only). The join route + listing filters already honor all three.
@@ -396,6 +423,21 @@ export async function POST(request: NextRequest) {
       logger.warn(ROUTE, 'Invalid visibility', { userId: session.userId, visibility });
       return NextResponse.json(
         { error: `visibility must be one of: ${VALID_VISIBILITIES.join(', ')}` },
+        { status: 400 },
+      );
+    }
+
+    // How long this topic keeps its chat archive. Chosen ONCE, here, by the
+    // creator (who is its first owner): shortening a window deletes other
+    // members' history, so it is not an editable preference and PATCH does not
+    // accept it. Omitting the field is the one absence that is not an error —
+    // it means "unlimited", which is what every topic created before this
+    // setting existed already has.
+    const retentionDays = parseArchiveRetentionDays(chatArchiveRetentionDays);
+    if (retentionDays === null) {
+      logger.warn(ROUTE, 'Invalid chatArchiveRetentionDays', { userId: session.userId, chatArchiveRetentionDays });
+      return NextResponse.json(
+        { error: `chatArchiveRetentionDays must be one of: ${ARCHIVE_RETENTION_CHOICES.join(', ')}` },
         { status: 400 },
       );
     }
@@ -545,6 +587,7 @@ export async function POST(request: NextRequest) {
         requiredDomain: effectiveDomain,
         inviteCode,
         visibility: validVisibility,
+        chatArchiveRetentionDays: retentionDays,
       })
       .returning();
 

@@ -23,6 +23,7 @@ import {
 } from './takSession';
 import * as km from './keyManager';
 import { b64, unb64 } from './keyBackup';
+import { ackDelivery } from '../lib/chatDeliveryAck';
 
 function statusOf(e: unknown): number | null {
   const m = String(e instanceof Error ? e.message : e).match(/→ (\d{3}):/);
@@ -69,9 +70,17 @@ export function createMlsTransport(client: OpenStoaClient): MlsTransport {
   };
 }
 
-// Per-app-session device identity (the MLS leaf credential). In-memory like the
-// group state — on app restart a fresh identity re-bootstraps via External
-// Commit (a new leaf). Stable cross-restart identity is a follow-up.
+/*
+ * FIRST-RUN SEED for this device's MLS leaf credential — not the identity.
+ *
+ * The comment here used to say the identity was in-memory and that a restart
+ * re-bootstrapped a fresh leaf. That has not been true since `mlsSession`
+ * started persisting `mls.identity` (see its `mintIdentity`): this value is
+ * consulted only when nothing is stored yet, and the stored one is reused
+ * forever after — changing it would orphan the saved group state, whose key is
+ * derived from it. Left stale, the note reads as a leaf-churn bug that does not
+ * exist, and it is exactly the kind of thing that gets "fixed".
+ */
 let _identity: string | null = null;
 function deviceIdentity(): string {
   if (!_identity) {
@@ -110,6 +119,59 @@ function encrypting(raw: SecureKVStore | undefined, rootStore: SecureKVStore | u
   return km.EncryptingKVStore.lazy(raw, () => masterKey(rootStore), rootStore);
 }
 
+/**
+ * Acknowledge delivery for this device (R-1) — the mini-app's transport half.
+ *
+ * The rule (which instant may be claimed, and that a failure must be silent)
+ * lives in the twinned `lib/chatDeliveryAck`; only the POST is here, because
+ * the browser sends a cookie and this sends the host's Bearer.
+ */
+export function ackDeliveryMls(
+  client: OpenStoaClient,
+  topicId: string,
+  messages: readonly { id?: string; createdAt: string; message?: string | null }[],
+  hostSecureStore?: HostSecureStore,
+  hostLocalStore?: HostSecureStore,
+): void {
+  /*
+   * Translate this platform's "unreadable" into the shared rule's.
+   *
+   * The web client carries an `undecryptable` FLAG and `chatDeliveryAck.claimable`
+   * reads it; the mini-app carries the `UNREADABLE_BODY` SENTINEL instead,
+   * because its back-fill, its locked count and its sync filter all match on that
+   * exact string. Without this mapping the rule would see no flag, judge every
+   * locked row claimable, and acknowledge ciphertext this device cannot read —
+   * which is the one mistake that makes the server delete the copy the device is
+   * still waiting for. The two representations meet HERE rather than in the
+   * shared rule, which has no business knowing a platform's placeholder text.
+   */
+  const shaped = messages.map((m) => ({
+    id: m.id,
+    createdAt: m.createdAt,
+    undecryptable: m.message === UNREADABLE_BODY,
+  }));
+  void ackDelivery(topicId, shaped, {
+    deviceId: () => getTakSessionStore(client, hostSecureStore, hostLocalStore).myDeviceId(topicId),
+    post: async (t, deviceId, through) => {
+      await client.post(`/api/topics/${t}/chat/delivered`, { deviceId, through });
+    },
+  });
+}
+
+/**
+ * The signed-in account, for naming this device's MLS leaf `<userId>:<deviceId>`
+ * so a later removal can find every device the account owns. Null on failure —
+ * chat still works, only attribution is lost, and a guessed id would be worse.
+ */
+async function sessionUserId(client: OpenStoaClient): Promise<string | null> {
+  try {
+    const d = await client.request<{ userId?: string }>('/api/auth/session');
+    return d?.userId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 let _store: MlsSessionStore | null = null;
 export function getMlsSessionStore(
   client: OpenStoaClient,
@@ -127,7 +189,9 @@ export function getMlsSessionStore(
     // Encrypt both at rest under the master_key (rootStore = the secure store).
     const store = encrypting(rawSecure, rawSecure);
     const msgCache = encrypting(rawLocal, rawSecure);
-    _store = new MlsSessionStore(createMlsTransport(client), deviceIdentity(), store, msgCache);
+    _store = new MlsSessionStore(createMlsTransport(client), deviceIdentity(), store, msgCache, () =>
+      sessionUserId(client),
+    );
   }
   return _store;
 }
@@ -517,10 +581,20 @@ export async function recoverDevice(
  * through `Promise.all` (ChatRoomScreen), so a single REJECTION would discard
  * every sibling row and blank the list. A throw from anywhere below — a failed
  * MLS bootstrap/rejoin, an unreadable key store, a corrupt cached row — must
- * therefore degrade to the same '[unable to decrypt]' placeholder that a plain
+ * therefore degrade to the same `UNREADABLE_BODY` placeholder that a plain
  * `null` produces, for THAT row only. This mirrors the web twin
  * (openstoa/src/components/ChatPanel.tsx `toDisplayMessage`).
  */
+/**
+ * The one string the mini-app uses for "no readable body right now".
+ *
+ * Named because it is load-bearing rather than cosmetic: the archive back-fill
+ * only rewrites rows equal to it, the locked count only counts those rows, the
+ * sync filter only hides those rows — and the delivery ack must refuse to claim
+ * them. A row that misses this string is invisible to every one of those.
+ */
+export const UNREADABLE_BODY = '[unable to decrypt]';
+
 export async function toDisplayMessageMls(
   store: MlsSessionStore,
   topicId: string,
@@ -535,11 +609,48 @@ export async function toDisplayMessageMls(
         const opened = raw.id
           ? await store.openCached(topicId, raw.id, raw.sealed)
           : await store.open(topicId, raw.sealed);
-        text = opened ?? '[unable to decrypt]';
+        text = opened ?? UNREADABLE_BODY;
       } catch {
-        text = '[unable to decrypt]';
+        text = UNREADABLE_BODY;
+      }
+    } else if (raw.id) {
+      /*
+       * NO sealed body: the server reclaimed the live copy once every device in
+       * the group at send time had fetched it (R-1). The plaintext may still be
+       * on THIS device from when it WAS delivered, and `openCached` checks the
+       * message cache before it looks at the sealed body — so an empty one is
+       * enough to ask "do we already have this?". A miss falls through to the
+       * placeholder below, which is what the archive pass matches on.
+       */
+      try {
+        text = (await store.openCached(topicId, raw.id, { ciphertext: '', epoch: 0 })) ?? '';
+      } catch {
+        text = '';
       }
     }
+    /*
+     * A row with no body is NOT an empty message — it is one this device cannot
+     * read YET, and it has to say so in the one vocabulary the rest of the
+     * screen understands.
+     *
+     * Everything downstream keys off this exact sentinel: the archive back-fill
+     * only rewrites rows equal to it (`ChatRoomScreen` ~:802), the locked count
+     * only counts those rows (~:816), and the sync filter only hides those rows
+     * while history is still arriving (~:833). An empty string matches none of
+     * them, so a purged row whose plaintext this device does not hold rendered
+     * as an EMPTY BUBBLE — and, because the back-fill skipped it, stayed empty
+     * forever even when the archive could have supplied it. The web twin has
+     * never had this shape: it sets `undecryptable: true` and its three states
+     * fall out of that flag.
+     *
+     * Purged and locked deliberately share one sentinel because the DEVICE
+     * cannot tell them apart — "the live copy is gone" and "I was not in the
+     * group yet" both arrive as no readable body. What separates them is what
+     * happens next, and that is not this function's call: the archive pass
+     * resolves the first and leaves the second, which is exactly why the row
+     * must be visible to that pass rather than silently blank.
+     */
+    if (text === '') text = UNREADABLE_BODY;
     return { ...raw, message: text };
   }
   return raw;

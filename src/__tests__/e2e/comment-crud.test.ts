@@ -290,4 +290,12 @@ describe.sequential('Comments CRUD + Permission', () => {
     const res = await authPost(`/api/posts/${postId}/comments`, { content: '   hello   ' });
     expect(res.status).toBe(201);
   });
+
+  it('POST comment with a NUL byte in content is rejected with a clean 400 (Postgres text cannot store it)', async () => {
+    const NUL = String.fromCharCode(0);
+    const res = await authPost(`/api/posts/${postId}/comments`, { content: `bad${NUL}comment` });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe('Comment must not contain a NUL byte');
+  });
 });

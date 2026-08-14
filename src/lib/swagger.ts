@@ -26,6 +26,11 @@ const options: swaggerJsdoc.Options = {
       { name: 'Profile', description: 'User profile — nickname and profile image' },
       { name: 'Upload', description: 'File upload via presigned URLs' },
       {
+        name: 'Media',
+        description:
+          'Gated read path for uploaded images (post images, topic covers, profile avatars). Serves the raw bytes behind the URLs `POST /api/upload` mints and that appear in `post.content`, `topic.image`, and `user.profileImage`.',
+      },
+      {
         name: 'Topics',
         description:
           'Community topics with visibility controls (public/private/secret), country-gating, and invite codes',
@@ -183,7 +188,7 @@ const options: swaggerJsdoc.Options = {
               type: 'string',
               enum: ['public', 'private', 'secret'],
               description:
-                'public: anyone can join, private: requires approval, secret: invite code only',
+                'public: anyone can join; private: listed, posts readable when signed in, join by invite link only; secret: hidden and invite-only',
             },
             image: {
               type: 'string',

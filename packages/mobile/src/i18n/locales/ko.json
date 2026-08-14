@@ -177,15 +177,31 @@
         "all": "전체"
       },
       "invite": {
-        "cta": "초대 코드로 참여",
-        "hint": "초대 코드 입력",
+        "cta": "초대로 참여하기",
+        "hint": "초대 링크나 코드를 붙여넣으세요",
         "join": "참여",
         "share": "초대",
         "shareSubject": "OpenStoa 토픽에 참여하세요",
-        "shareBody": "이 초대 코드로 참여할 수 있어요: {{code}}",
+        "shareBody": "OpenStoa 토픽에 참여하세요: {{link}}",
         "joinFailedTitle": "참여하지 못했어요",
         "alreadyMember": "이미 이 토픽의 구성원이에요.",
-        "invalidCode": "유효하지 않거나 만료된 초대 코드예요."
+        "invalidCode": "유효하지 않거나 만료된 초대 코드예요.",
+        "shareTitle": "초대하기",
+        "shareCta": "링크 공유",
+        "joinedTitle": "참여 완료",
+        "historyHeading": "공유할 대화 기록",
+        "historyNone": "기록 공유 안 함",
+        "historySessions": "최근 {{count}}개 세션",
+        "historyLoading": "이 링크가 담을 내용을 확인하는 중…",
+        "historySummary": "이 링크에는 {{date}}부터의 최근 메시지 {{messages}}개가 담깁니다.",
+        "historySummaryNoDate": "이 링크에는 최근 메시지 {{messages}}개가 담깁니다.",
+        "historyEmptySummary": "최근 {{sessions}}개 세션에는 메시지가 없어서, 이 링크에는 기록이 담기지 않습니다.",
+        "historyNoneSummary": "이 링크에는 대화 기록이 담기지 않습니다. 상대는 참여한 뒤의 메시지만 볼 수 있습니다.",
+        "historyUnavailable": "아직 이 토픽의 기록을 가지고 있지 않아서, 이 링크에 기록을 담을 수 없습니다.",
+        "historyPublic": "이 토픽에 참여한 사람은 누구나 대화 기록을 볼 수 있으므로, 링크에 키가 담기지 않습니다.",
+        "keysWarning": "이 링크를 여는 사람은 그 메시지를 모두 읽을 수 있습니다. 초대는 취소할 수 있지만 키는 취소할 수 없습니다.",
+        "historyImported": "대화 기록이 열렸습니다: 지난 메시지 {{count}}개 세션.",
+        "historyWrongTopic": "이 링크에 다른 토픽의 기록 키가 담겨 있어 사용하지 않았습니다."
       }
     },
     "topicDetail": {
@@ -204,7 +220,19 @@
         "popular": "인기",
         "recorded": "기록됨",
         "pinned": "고정됨"
-      }
+      },
+      "archiveRetention": {
+        "unlimited": "채팅 기록: 계속 보관",
+        "year1": "채팅 기록: 1년",
+        "days90": "채팅 기록: 90일",
+        "days30": "채팅 기록: 30일",
+        "noteUnlimited": "이 토픽은 채팅 아카이브를 계속 보관합니다. 나중에 들어온 멤버도 전체 대화를 읽을 수 있습니다.",
+        "noteWindowed": "보관 기간이 지난 채팅은 모두에게서 삭제되므로, 나중에 들어온 멤버는 남아 있는 만큼만 봅니다."
+      },
+      "leave": "토픽 나가기",
+      "leaveConfirmTitle": "이 토픽에서 나가시겠습니까?",
+      "leaveConfirmMessage": "이 기기에서 채팅과 지난 대화를 볼 수 없게 됩니다. 다시 가입할 수는 있지만, 토픽이 보관하고 있지 않으면 지난 메시지는 돌아오지 않습니다.",
+      "leaveFailedTitle": "토픽에서 나가지 못했습니다"
     },
     "members": {
       "title": "구성원",
@@ -218,6 +246,8 @@
       "demote": "운영자 해제",
       "kick": "내보내기",
       "kickConfirm": "이 구성원을 토픽에서 내보낼까요?",
+      "kickPartialTitle": "내보냈지만 알려드릴 것이 있어요",
+      "kickPartial": "토픽에서 제거했습니다. 다만 암호화된 채팅에서 기기 {{count}}대를 제거하지 못해, 해당 기기는 지금 이후에 전송되는 메시지를 계속 읽을 수 있습니다. 기기 식별이 도입되기 전에 참여한 기기에서 발생합니다.",
       "transfer": "소유권 이전",
       "transferConfirm": "{{nickname}}에게 소유권을 이전할까요? 이후 운영자가 됩니다.",
       "actionsForMember": "{{nickname}}",
@@ -229,7 +259,8 @@
       "empty": "대기 중인 요청이 없어요",
       "approve": "승인",
       "reject": "거절",
-      "actionFailed": "작업에 실패했어요"
+      "actionFailed": "작업에 실패했어요",
+      "retired": "이제 토픽은 초대 링크로만 참여할 수 있어 새 참여 신청은 들어오지 않습니다. 여기 남아 있는 신청은 그 이전에 접수된 것이고, 지금도 승인할 수 있습니다."
     },
     "topicEdit": {
       "title": "토픽 편집",
@@ -262,7 +293,7 @@
         "public": "공개",
         "publicDesc": "누구나 찾고 참여 가능",
         "private": "비공개",
-        "privateDesc": "모두에게 노출, 승인 후 참여",
+        "privateDesc": "목록에 보이고 로그인하면 게시글 열람 — 채팅은 초대 링크로만",
         "secret": "비밀",
         "secretDesc": "숨김, 초대 코드만 가능"
       },
@@ -275,7 +306,31 @@
       "countryCodes": "ISO 국가 코드 (쉼표로 구분)",
       "requiredDomain": "도메인 제한 (선택)",
       "domainHint": "비워두면 모든 조직 허용",
-      "createFailed": "생성 실패"
+      "createFailed": "생성 실패",
+      "archiveRetention": {
+        "label": "채팅 기록 보관",
+        "hint": "이 토픽이 암호화된 채팅 아카이브를 얼마나 보관할지 정합니다. 생성 시 한 번만 정할 수 있고 이후에는 바꿀 수 없습니다.",
+        "cost": "보관 기간이 짧을수록 남는 대화가 적습니다. 기간이 지난 메시지는 모두에게서 삭제되므로, 나중에 들어온 멤버는 그만큼 적게 봅니다.",
+        "options": {
+          "unlimited": {
+            "label": "계속 보관",
+            "desc": "아무것도 삭제하지 않습니다. 나중에 들어온 멤버도 전체 대화를 읽을 수 있습니다."
+          },
+          "year1": {
+            "label": "1년",
+            "desc": "1년이 지난 메시지는 삭제됩니다."
+          },
+          "days90": {
+            "label": "90일",
+            "desc": "90일이 지난 메시지는 삭제됩니다."
+          },
+          "days30": {
+            "label": "30일",
+            "desc": "30일이 지난 메시지는 삭제됩니다. 나중에 들어온 멤버는 최근 한 달만 봅니다."
+          }
+        }
+      },
+      "tiersLink": "네 가지 방이 어떻게 다른지 →"
     },
     "postCreate": {
       "title": "제목",
@@ -397,7 +452,31 @@
       "linkPreviewUnavailable": "미리보기를 가져올 수 없습니다",
       "sendFailedRetry": "재전송",
       "sendFailedDiscard": "삭제",
-      "lockedHistorySyncing": "채팅 히스토리를 가져오는 중입니다… 이 기기가 방 키를 받으면 이전 메시지가 열립니다."
+      "lockedHistorySyncing": "채팅 히스토리를 가져오는 중입니다… 이 기기가 방 키를 받으면 이전 메시지가 열립니다.",
+      "media": {
+        "title": "이미지",
+        "decrypting": "이미지 복호화 중…",
+        "locked": "암호화된 이미지 — 이 기기에는 아직 키가 없습니다",
+        "fetchFailed": "이미지를 불러오지 못했습니다.",
+        "decryptFailed": "이미지를 복호화하지 못했습니다.",
+        "alt": "암호화된 이미지",
+        "error": {
+          "empty": "빈 파일입니다.",
+          "too-large": "이미지는 10MB 이하만 보낼 수 있습니다.",
+          "unsupported-type": "지원하지 않는 이미지 형식입니다. JPEG, PNG, GIF, WebP, BMP를 사용하세요.",
+          "heic-unsupported": "HEIC 사진은 암호화된 채팅에 보낼 수 없습니다. JPEG로 저장한 뒤 다시 시도하세요.",
+          "no-key": "채팅방 키를 기다리는 중입니다. 잠시 후 다시 시도하세요.",
+          "upload-failed": "이미지를 업로드하지 못했습니다. 다시 시도하세요.",
+          "send-failed": "이미지를 보내지 못했습니다. 다시 시도하세요."
+        },
+        "expired": "이 이미지는 전송되기 전에 만료되었습니다. 다시 보내세요.",
+        "reload": "다시 불러오기"
+      },
+      "tierClaim": {
+        "e2ee": "이 방의 새 메시지와 이미지는 종단간 암호화됩니다. 서비스는 내용을 읽을 수 없습니다.",
+        "serverReadable": "이 방의 새 메시지와 이미지는 전송 중에도 저장 시에도 암호화되지만, 공개 토픽이라 서비스가 기록을 여는 키를 갖고 있어 내용을 읽을 수 있습니다.",
+        "learnMore": "무슨 뜻인가요"
+      }
     },
     "dm": {
       "title": "다이렉트 메시지",

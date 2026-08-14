@@ -125,13 +125,32 @@ function encStore(): SecureKVStore {
   return _encStore;
 }
 
+/**
+ * The signed-in account, for naming this device's MLS leaf.
+ *
+ * Resolved lazily and only once, because the store is built before the session
+ * lookup has answered and the answer is only needed the first time this device
+ * publishes a credential. A guest, or a lookup that fails, yields null — the
+ * leaf falls back to the bare device id and chat still works.
+ */
+async function sessionUserId(): Promise<string | null> {
+  try {
+    const r = await fetch('/api/auth/session');
+    if (!r.ok) return null;
+    const d = (await r.json()) as { userId?: string };
+    return d?.userId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 let _store: MlsSessionStore | null = null;
 export function getMlsSessionStore(): MlsSessionStore {
   if (!_store) {
     // MLS ClientState + decrypted message cache, both at-rest encrypted under the
     // master_key. Keys are namespaced (mls.state.* / mls.identity / mls.msg.*).
     const s = encStore();
-    _store = new MlsSessionStore(httpTransport(), deviceIdentity(), s, s);
+    _store = new MlsSessionStore(httpTransport(), deviceIdentity(), s, s, sessionUserId);
   }
   return _store;
 }
@@ -413,6 +432,18 @@ export function getTakSessionStore(): TakSessionStore {
     _takStore = new TakSessionStore(getMlsSessionStore(), httpTakTransport(), encStore(), scheduleTakKeychainBackup);
   }
   return _takStore;
+}
+
+/**
+ * The TAK transport on its own, for callers that need the archive INDEX rather
+ * than its contents — the invite dialog counts how many messages the epochs it
+ * is about to share actually open, and that is a read of `takVersion` and
+ * `createdAt`, not of any key. Nothing here decrypts anything.
+ */
+let _takTransport: TakTransport | null = null;
+export function getTakTransport(): TakTransport {
+  if (!_takTransport) _takTransport = httpTakTransport();
+  return _takTransport;
 }
 
 // ---------------------------------------------------------------------------

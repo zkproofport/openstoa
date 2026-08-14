@@ -76,6 +76,10 @@ const TOPIC = {
   id: 't1',
   title: 'Privacy',
   description: 'A public topic for zero-knowledge proofs.',
+  // The real GET spreads the whole row, so `visibility` is always present.
+  // It is load-bearing in the header now: on a non-public topic the invite
+  // route is owner/admin-only, so a plain member is offered no Invite.
+  visibility: 'public',
   memberCount: 1204,
   requiresCountryProof: false,
   isMember: true,
@@ -222,6 +226,19 @@ describe('topic header — the action is the one this viewer can actually take',
     expect(invite!.className).toBe('os-button');
     expect(linkTo('/topics/t1/join')).toBeUndefined();
     expect(linkTo('/topics/t1/edit')).toBeUndefined();
+  });
+
+  it('AUTHZ: a member of an INVITE-ONLY topic gets no Invite — the route would refuse it', async () => {
+    // `/api/topics/{id}/invite` answers 403 to anyone but the owner or an admin
+    // outside `public`. A control that always fails is worse than an absent one
+    // (the same rule the missing Leave button follows).
+    await mountTopic({ role: 'member', topic: { visibility: 'private' } });
+    expect(buttonNamed(en.membersPage.invite)).toBeUndefined();
+  });
+
+  it('AUTHZ: an admin of an invite-only topic still gets Invite', async () => {
+    await mountTopic({ role: 'admin', topic: { visibility: 'secret' } });
+    expect(buttonNamed(en.membersPage.invite)).toBeTruthy();
   });
 
   it('an owner gets Edit + Manage + Invite, all in the same control vocabulary', async () => {

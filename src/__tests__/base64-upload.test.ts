@@ -63,6 +63,11 @@ describe('extractAndUploadBase64Images', () => {
       'image/png',
       'user-1',
       'post',
+      undefined,
+      // Topic-partitioned storage (M-3). Null here because this caller passed
+      // no topic — the object then lands under the uploader and is outside a
+      // topic sweep, which is the documented residue, not an accident.
+      null,
     );
     expect(result).toContain(`src="${cdnUrl}"`);
     expect(result).not.toContain('data:image/png;base64,');
@@ -106,6 +111,8 @@ describe('extractAndUploadBase64Images', () => {
       'image/svg+xml',
       'user-3',
       'post',
+      undefined,
+      null,
     );
     expect(result).toContain(`src="${svgUrl}"`);
   });

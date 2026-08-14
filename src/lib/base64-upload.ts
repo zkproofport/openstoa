@@ -24,6 +24,13 @@ const MIME_MAP: Record<string, string> = {
 export async function extractAndUploadBase64Images(
   content: string,
   userId: string,
+  /**
+   * The topic these images belong to, so they land under `topics/{id}/` and a
+   * topic deletion reaches them (M-3). Null only where there is genuinely no
+   * topic yet — the object then goes under the uploader and is outside the
+   * topic sweep, which is the residue documented in `src/lib/r2.ts`.
+   */
+  topicId: string | null = null,
 ): Promise<string> {
   const matches: Array<{
     fullMatch: string;
@@ -68,7 +75,7 @@ export async function extractAndUploadBase64Images(
       }
 
       const contentType = MIME_MAP[m.imageType] ?? `image/${m.imageType}`;
-      const publicUrl = await uploadToR2(buffer, contentType, userId, 'post');
+      const publicUrl = await uploadToR2(buffer, contentType, userId, 'post', undefined, topicId);
 
       const replacement = `${m.prefix}${publicUrl}${m.suffix}`;
       result = result.replace(m.fullMatch, replacement);

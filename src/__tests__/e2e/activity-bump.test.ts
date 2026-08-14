@@ -7,7 +7,7 @@ import {
   fetchCategorySlugs,
   deleteTopic,
 } from './helpers';
-import { hasDb, getPostRow, getTopicRow, closeDb } from './db-helpers';
+import { envGate, announceEnvGates, getPostRow, getTopicRow, closeDb } from './db-helpers';
 
 /**
  * End-to-end verification of the activity bump contract introduced in
@@ -72,6 +72,13 @@ const createdTopicIds: string[] = [];
 
 describe.sequential('Activity bump — posts/topics lastActivityAt + score', () => {
   beforeAll(async () => {
+    // Console output at module-collection time (bare top-level code) is not
+    // reliably surfaced by vitest's reporter — a beforeAll hook runs during
+    // the execution phase, where it is. Counting still happened correctly at
+    // collection time (it.skipIf(envGate(...)) below); this only decides
+    // where the resulting warning gets PRINTED.
+    announceEnvGates('activity-bump.test.ts');
+
     const cats = await fetchCategorySlugs();
     expect(cats.length).toBeGreaterThan(0);
     categorySlug = cats[0];
@@ -116,7 +123,7 @@ describe.sequential('Activity bump — posts/topics lastActivityAt + score', () 
   // They auto-skip when `E2E_STAGING_DB_URL` is not set so the default
   // CI run still works without a Cloud SQL Proxy.
 
-  it.skipIf(!hasDb())('vote actually writes the new upvote_count + score to the posts row (DB SELECT)', async () => {
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('vote actually writes the new upvote_count + score to the posts row (DB SELECT)', async () => {
     const beforeRow = await getPostRow(postId);
     expect(beforeRow).not.toBeNull();
     const beforeUp = beforeRow!.upvote_count;
@@ -139,7 +146,7 @@ describe.sequential('Activity bump — posts/topics lastActivityAt + score', () 
     expect(Number(afterRow!.score)).not.toBe(beforeScore);
   });
 
-  it.skipIf(!hasDb())('comment actually bumps topics.last_activity_at in the DB row', async () => {
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('comment actually bumps topics.last_activity_at in the DB row', async () => {
     const beforeTopic = await getTopicRow(topicId);
     expect(beforeTopic).not.toBeNull();
     const beforeMs = new Date(beforeTopic!.last_activity_at!).getTime();

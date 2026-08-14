@@ -7,6 +7,12 @@ import CommunityLayout from '@/components/CommunityLayout';
 import ProofGate from '@/components/ProofGate';
 import { resizeImage } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import {
+  ARCHIVE_RETENTION_CHOICES,
+  ARCHIVE_RETENTION_DEFAULT,
+  archiveRetentionKey,
+  type ArchiveRetentionDays,
+} from '@/lib/archiveRetention';
 
 export default function NewTopicPage() {
   const router = useRouter();
@@ -24,6 +30,10 @@ export default function NewTopicPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<'public' | 'private' | 'secret'>('public');
+  // Chosen here or never: the window cannot be edited afterwards, because
+  // shortening one deletes other members' history.
+  const [archiveRetentionDays, setArchiveRetentionDays] =
+    useState<ArchiveRetentionDays>(ARCHIVE_RETENTION_DEFAULT);
   const [imageUploading, setImageUploading] = useState(false);
   const [categories, setCategories] = useState<{id: string; name: string; slug: string; icon: string; description?: string}[]>([]);
   const [categoryId, setCategoryId] = useState<string>('');
@@ -130,6 +140,7 @@ export default function NewTopicPage() {
           requiredDomain: (proofType === 'google_workspace' || proofType === 'microsoft_365' || proofType === 'workspace') ? (requiredDomain.trim() || undefined) : undefined,
           image: imageUrl,
           visibility,
+          chatArchiveRetentionDays: archiveRetentionDays,
           ...(proofData ? { proof: proofData.proof, publicInputs: proofData.publicInputs, circuit: proofData.circuit } : {}),
         }),
       });
@@ -442,6 +453,78 @@ export default function NewTopicPage() {
                 </label>
               ))}
             </div>
+            {/* The visibility choice is also a choice about who can read the
+                chat — including whether the service can. That is more than fits
+                in a radio label, so it links out at the moment of the decision
+                rather than being discovered afterwards. */}
+            <Link
+              href="/docs/tiers"
+              style={{
+                display: 'inline-block',
+                marginTop: 'var(--space-2)',
+                fontSize: 'var(--text-body-sm)',
+                color: 'var(--color-brand-primary)',
+              }}
+            >
+              {t('newTopicPage.tiersLink')}
+            </Link>
+          </div>
+
+          {/* Chat history retention — chosen once, here. The cost of a short
+              window is stated next to the choice rather than buried in a help
+              page: it deletes for everyone, so a later joiner sees less. */}
+          <div>
+            <label
+              style={{ fontSize: 'var(--text-body)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-1)' }}
+            >
+              {t('newTopicPage.archiveRetention.label')}
+            </label>
+            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 10px' }}>
+              {t('newTopicPage.archiveRetention.hint')}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {ARCHIVE_RETENTION_CHOICES.map((days) => {
+                const key = archiveRetentionKey(days);
+                const selected = archiveRetentionDays === days;
+                return (
+                  <label
+                    key={days}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      padding: '10px 14px',
+                      background: selected ? 'color-mix(in srgb, var(--color-brand-primary) 6%, transparent)' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${selected ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)' : 'var(--border)'}`,
+                      borderRadius: 'var(--radius-control)',
+                      cursor: 'pointer',
+                      transition: 'all 0.12s',
+                      minHeight: 'var(--touch-target-min)',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="chatArchiveRetentionDays"
+                      value={days}
+                      checked={selected}
+                      onChange={() => setArchiveRetentionDays(days)}
+                      style={{ marginTop: 2, accentColor: 'var(--accent)' }}
+                    />
+                    <div>
+                      <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600 }}>
+                        {t(`newTopicPage.archiveRetention.options.${key}.label`)}
+                      </span>
+                      <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '2px 0 0' }}>
+                        {t(`newTopicPage.archiveRetention.options.${key}.desc`)}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-status-warning)', margin: '10px 0 0' }}>
+              {t('newTopicPage.archiveRetention.cost')}
+            </p>
           </div>
 
           {/* Proof requirement */}

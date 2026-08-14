@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   authGet,
   authPost,
@@ -477,7 +477,7 @@ describe.sequential('Feed endpoints', () => {
 // the feed tests.
 
 // Import direct-DB helpers for the search-performance guard tests below.
-import { hasDb, indexExists, explain, closeDb } from './db-helpers';
+import { envGate, announceEnvGates, indexExists, explain, explainIndexOnly, tablePages, closeDb } from './db-helpers';
 
 describe.sequential('Feed search — hard content', () => {
   const createdTopicIds: string[] = [];
@@ -488,6 +488,14 @@ describe.sequential('Feed search — hard content', () => {
   let postEmojiId: string;
   let postLongId: string;
   let longStamp: string;
+
+  beforeAll(() => {
+    // See db-helpers.ts: console output at module-collection time is not
+    // reliably surfaced by vitest's reporter, so the warning is printed from
+    // a hook instead — the counting itself already happened at collection
+    // time, in the it.skipIf(envGate(...)) calls below.
+    announceEnvGates('feed.test.ts');
+  });
 
   afterAll(async () => {
     for (const id of createdTopicIds) {
@@ -633,17 +641,40 @@ describe.sequential('Feed search — hard content', () => {
   //
   // Auto-skip when E2E_STAGING_DB_URL is not set.
 
-  it.skipIf(!hasDb())('posts_title_trgm_idx + posts_content_trgm_idx exist in the public schema', async () => {
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('posts_title_trgm_idx + posts_content_trgm_idx exist in the public schema', async () => {
     expect(await indexExists('posts_title_trgm_idx')).toBe(true);
     expect(await indexExists('posts_content_trgm_idx')).toBe(true);
   });
 
-  it.skipIf(!hasDb())('topics_title_trgm_idx + topics_description_trgm_idx exist in the public schema', async () => {
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('topics_title_trgm_idx + topics_description_trgm_idx exist in the public schema', async () => {
     expect(await indexExists('topics_title_trgm_idx')).toBe(true);
     expect(await indexExists('topics_description_trgm_idx')).toBe(true);
   });
 
-  it.skipIf(!hasDb())('q= against posts uses a trigram bitmap index plan (no seq scan)', async () => {
+  /**
+   * Below this page count, Postgres's own cost model correctly prefers a full
+   * table scan over the GIN bitmap index — a `BitmapOr` across two trigram
+   * indexes has fixed overhead a handful of pages can beat outright (observed
+   * locally: seq scan cost ~47 vs bitmap-index cost ~376 on a 35-page table,
+   * confirmed with `EXPLAIN` + `enable_seqscan=off`). That is correct
+   * planning, not a broken index, so below this threshold the test proves the
+   * index is real and reachable (forced plan) instead of asserting the
+   * planner's unforced preference, which only reflects reality at
+   * production/staging row counts. Comfortably above every local dev
+   * container's observed size (~35 posts pages, ~27 topics pages) and
+   * comfortably below production table sizes.
+   */
+  const SEQSCAN_COST_CROSSOVER_PAGES = 100;
+
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('q= against posts uses a trigram bitmap index plan (no seq scan)', async () => {
+    if ((await tablePages('posts')) < SEQSCAN_COST_CROSSOVER_PAGES) {
+      const forced = await explainIndexOnly(
+        `SELECT id FROM posts WHERE title ILIKE $1 OR content ILIKE $1 LIMIT 20`,
+        [`%${longStamp}%`],
+      );
+      expect(forced.toLowerCase()).toMatch(/bitmap index scan on posts_(title|content)_trgm_idx/);
+      return;
+    }
     const plan = await explain(
       `SELECT id FROM posts WHERE title ILIKE $1 OR content ILIKE $1 LIMIT 20`,
       [`%${longStamp}%`],
@@ -654,7 +685,15 @@ describe.sequential('Feed search — hard content', () => {
     expect(plan.toLowerCase()).toMatch(/index|bitmap/);
   });
 
-  it.skipIf(!hasDb())('q= against topics uses a trigram bitmap index plan (no seq scan)', async () => {
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('q= against topics uses a trigram bitmap index plan (no seq scan)', async () => {
+    if ((await tablePages('topics')) < SEQSCAN_COST_CROSSOVER_PAGES) {
+      const forced = await explainIndexOnly(
+        `SELECT id FROM topics WHERE title ILIKE $1 OR description ILIKE $1 LIMIT 20`,
+        [`%${longStamp}%`],
+      );
+      expect(forced.toLowerCase()).toMatch(/bitmap index scan on topics_(title|description)_trgm_idx/);
+      return;
+    }
     const plan = await explain(
       `SELECT id FROM topics WHERE title ILIKE $1 OR description ILIKE $1 LIMIT 20`,
       [`%${longStamp}%`],

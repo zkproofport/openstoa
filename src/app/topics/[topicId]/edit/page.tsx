@@ -70,6 +70,9 @@ export default function EditTopicPage() {
     const form = new FormData();
     form.append('file', new File([resized], 'topic-image.webp', { type: 'image/webp' }));
     form.append('purpose', 'topic');
+    // The topic exists here (unlike the creation form), so its picture can be
+    // filed under it and swept with it.
+    form.append('topicId', topicId);
 
     const res = await fetch('/api/upload', { method: 'POST', body: form });
     if (!res.ok) throw new Error(t('editTopicPage.uploadImageFailed'));

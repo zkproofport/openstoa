@@ -17,6 +17,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { Topic } from '@openstoa/api-types';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
+import {
+  ARCHIVE_RETENTION_CHOICES,
+  ARCHIVE_RETENTION_DEFAULT,
+  archiveRetentionKey,
+  type ArchiveRetentionDays,
+} from '../../lib/archiveRetention';
+import { buildTiersUrl } from '../../lib/docsLink';
+import { useHost } from '@openstoa/miniapp-bridge';
 
 interface Category {
   id: string;
@@ -44,6 +52,7 @@ interface CreateTopicBody {
   allowedCountries?: string[];
   countryMode?: 'include' | 'exclude';
   requiredDomain?: string;
+  chatArchiveRetentionDays?: ArchiveRetentionDays;
 }
 
 interface CreateTopicResponse {
@@ -179,6 +188,31 @@ function makeStyles(colors: ThemeColors) {
       fontSize: TYPE_SCALE.bodySmall,
       fontWeight: '600' as const,
     },
+    tiersLink: {
+      fontSize: TYPE_SCALE.caption,
+      lineHeight: 18,
+      marginTop: 8,
+      color: colors.brand.primary,
+      textDecorationLine: 'underline',
+    },
+    retentionHint: {
+      fontSize: TYPE_SCALE.caption,
+      color: colors.text.tertiary,
+      lineHeight: 18,
+      marginBottom: 8,
+    },
+    retentionOptionDesc: {
+      fontSize: TYPE_SCALE.caption,
+      color: colors.text.tertiary,
+      marginTop: 2,
+      lineHeight: 18,
+    },
+    retentionCost: {
+      fontSize: TYPE_SCALE.caption,
+      color: colors.status.warning,
+      lineHeight: 18,
+      marginTop: 10,
+    },
     infoBox: {
       marginTop: 10,
       padding: 12,
@@ -200,12 +234,19 @@ export function TopicCreateScreen() {
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
+  // Null when the host hands over an unusable base URL — the affordance is then
+  // hidden rather than opening a broken WebView (see lib/docsLink).
+  const tiersUrl = buildTiersUrl(useHost().getEnvironment().openstoaBaseUrl);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [proofType, setProofType] = useState<ProofType>('none');
   const [categoryId, setCategoryId] = useState<string>('');
   const [visibility, setVisibility] = useState<Visibility>('public');
+  // Chosen here or never: the window cannot be edited afterwards, because
+  // shortening one deletes other members' history.
+  const [archiveRetentionDays, setArchiveRetentionDays] =
+    useState<ArchiveRetentionDays>(ARCHIVE_RETENTION_DEFAULT);
   const [countryCodes, setCountryCodes] = useState('');
   const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
   const [requiredDomain, setRequiredDomain] = useState('');
@@ -240,6 +281,7 @@ export function TopicCreateScreen() {
         proofType,
         categoryId,
         visibility,
+        chatArchiveRetentionDays: archiveRetentionDays,
       };
       if (description.trim()) {
         body.description = description.trim();
@@ -372,6 +414,55 @@ export function TopicCreateScreen() {
             );
           })}
         </View>
+
+        {/* The visibility choice is also a choice about who can read the chat —
+            including whether the service can. Too much for a radio label, so it
+            links out at the moment of the decision. In-app WebView, never
+            Linking.openURL (project-wide rule for every http(s) link). */}
+        {tiersUrl ? (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('InAppBrowser', { url: tiersUrl })}
+            activeOpacity={0.7}
+            accessibilityRole="link"
+          >
+            <Text style={styles.tiersLink}>{t('openstoa.topicCreate.tiersLink')}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Chat history retention — chosen once, here. The cost of a short
+            window sits next to the choice, not in a help page: it deletes for
+            everyone, so a later joiner sees less. */}
+        <Text style={[styles.label, styles.labelSpaced]}>
+          {t('openstoa.topicCreate.archiveRetention.label')}
+        </Text>
+        <Text style={styles.retentionHint}>{t('openstoa.topicCreate.archiveRetention.hint')}</Text>
+        <View style={styles.pickerGroup}>
+          {ARCHIVE_RETENTION_CHOICES.map((days) => {
+            const key = archiveRetentionKey(days);
+            const isSelected = archiveRetentionDays === days;
+            return (
+              <TouchableOpacity
+                key={days}
+                style={[styles.pickerOption, isSelected && styles.pickerOptionSelected]}
+                onPress={() => setArchiveRetentionDays(days)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextSelected]}>
+                    {t(`openstoa.topicCreate.archiveRetention.options.${key}.label`)}
+                  </Text>
+                  <Text style={styles.retentionOptionDesc}>
+                    {t(`openstoa.topicCreate.archiveRetention.options.${key}.desc`)}
+                  </Text>
+                </View>
+                {isSelected ? (
+                  <Text style={{ fontSize: TYPE_SCALE.bodySmall, color: colors.brand.primary }}>✓</Text>
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.retentionCost}>{t('openstoa.topicCreate.archiveRetention.cost')}</Text>
 
         {/* Proof type picker */}
         <Text style={[styles.label, styles.labelSpaced]}>{t('openstoa.topicCreate.proofType')}</Text>

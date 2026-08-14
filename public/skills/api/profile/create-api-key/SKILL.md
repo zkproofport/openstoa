@@ -16,7 +16,10 @@ scoped credential: its `cmd` allowlist and `historyGrant` gate requests directly
 fresh profile `ai_permissions` lookup), so a key can be narrower than the account's own AI
 permissions. **The raw key is returned in this response ONLY — it is never shown again and
 the server stores only its SHA-256 hash.** Save it immediately; there is no recovery path,
-only revoke-and-reissue.
+only revoke-and-reissue. **Key MANAGEMENT (this endpoint, and list/edit/revoke below) is an
+account-owner action — it can only be called from a real session (cookie or a bare JWT),
+never from another API key.** A key can never mint, list, re-scope, or revoke a sibling key,
+regardless of its own `cmd` — this closes off a leaked narrow key widening itself.
 
 **Endpoint:** `POST /api/profile/api-keys`
 **Auth:** Bearer token or session cookie

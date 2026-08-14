@@ -46,6 +46,11 @@ export interface Topic {
   /** Set by GET /api/topics?view=all so the client can render membership UI
    *  without a second round-trip. Absent on guest responses. */
   isMember?: boolean;
+  /** How long this topic keeps its encrypted chat archive, in days; 0 keeps it
+   *  indefinitely. Chosen by the admin at creation and not editable afterwards.
+   *  Absent on an older payload, which means unlimited — see
+   *  `packages/mobile/src/lib/archiveRetention.ts`. */
+  chatArchiveRetentionDays?: number;
 }
 
 export interface PostMedia {
