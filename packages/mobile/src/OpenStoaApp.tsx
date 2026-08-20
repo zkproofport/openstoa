@@ -16,6 +16,7 @@ import type { SignInLauncher } from './auth';
 import { useDeveloperMode } from './hooks/useDeveloperMode';
 import { usePushRegistration } from './hooks/usePushRegistration';
 import { usePushTapRouting } from './hooks/usePushTapRouting';
+import { useAccountEvents } from './api/useAccountEvents';
 // Register OpenStoa translation bundles into the shared i18next instance.
 import './i18n';
 
@@ -173,6 +174,16 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   // invalidation across auth boundaries) once. The lifecycle module
   // subscribes to the session store directly so updates land
   // *synchronously* with the state change — no useEffect lag.
+  /*
+   * The account's own event stream, open for the whole session.
+   *
+   * Deliberately here and not in a chat screen: its job is to let a device that
+   * HOLDS chat keys hand them over without anyone opening the room those keys
+   * belong to, which is the entire reason a private room's second device used
+   * to sit on "Encrypted — this device has no key for it".
+   */
+  useAccountEvents();
+
   useEffect(() => {
     initSessionLifecycle(host);
   }, [host]);

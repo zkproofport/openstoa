@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -18,6 +19,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useOpenStoaSession } from '../stores/sessionStore';
 import { useSignInLauncher } from '../auth/SignInLauncher';
+import { subscribeSessionExpired } from '../auth/sessionExpiry';
 import { useThemeColors } from '../theme/ThemeContext';
 import { useDeveloperMode } from '../hooks/useDeveloperMode';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
@@ -73,6 +75,13 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
   const developerMode = useDeveloperMode();
   const [visible, setVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Which copy the sheet shows. 'guest' is the ordinary "sign in to do
+  // this" gate (screens opt in explicitly via `require()`/`open()`).
+  // 'expired' means the sheet opened ITSELF because the server just
+  // refused an authenticated request — see the effect below. The two are
+  // NOT interchangeable: a person who was already signed in and did
+  // nothing new needs "your session ended", not "sign in to continue".
+  const [reason, setReason] = useState<'guest' | 'expired'>('guest');
   // Queue of "what to do after sign-in completes". Stored in a ref so
   // re-rendering callers don't lose the pending action between renders.
   // Cleared on: successful sign-in (after firing), cancel, or error.
@@ -83,6 +92,7 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
   const open = useCallback((onSignedIn?: () => void) => {
     if (onSignedIn) pendingActionRef.current = onSignedIn;
     setErrorMsg(null);
+    setReason('guest');
     setVisible(true);
   }, []);
 
@@ -91,6 +101,21 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
     // doesn't surprise them on the next sign-in attempt.
     pendingActionRef.current = null;
     setVisible(false);
+  }, []);
+
+  // Pop the sheet UNPROMPTED the moment a session gets refused server-side
+  // (see openstoaClient.ts `dropDeadSession` -> sessionLifecycle.ts
+  // `onSessionDropped` -> `notifySessionExpired`). No `onSignedIn` is
+  // queued here: the request that surfaced this has already failed and
+  // returned, so there is nothing left to auto-replay — the person has to
+  // retry their own action after signing back in.
+  useEffect(() => {
+    return subscribeSessionExpired(() => {
+      pendingActionRef.current = null;
+      setErrorMsg(null);
+      setReason('expired');
+      setVisible(true);
+    });
   }, []);
 
   const require = useCallback(
@@ -162,10 +187,14 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
               style={[styles.handle, { backgroundColor: colors.border.strong }]}
             />
             <Text style={[styles.title, { color: colors.text.primary }]}>
-              {t('openstoa.signInPrompt.title')}
+              {reason === 'expired'
+                ? t('openstoa.signInPrompt.expiredTitle')
+                : t('openstoa.signInPrompt.title')}
             </Text>
             <Text style={[styles.body, { color: colors.text.secondary }]}>
-              {t('openstoa.signInPrompt.body')}
+              {reason === 'expired'
+                ? t('openstoa.signInPrompt.expiredBody')
+                : t('openstoa.signInPrompt.body')}
             </Text>
 
             {errorMsg ? (

@@ -1,6 +1,7 @@
 import { useOpenStoaSession } from '../stores/sessionStore';
 import { ensureClient } from '../api/openstoaClient';
 import { queryClient } from '../api/queryClient';
+import { notifySessionExpired } from './sessionExpiry';
 import type { HostApi } from '@openstoa/miniapp-bridge';
 
 /**
@@ -35,6 +36,22 @@ export function initSessionLifecycle(host: HostApi): void {
   // request after boot uses the right mode, even before any subscriber
   // fires.
   client.setMode(useOpenStoaSession.getState().mode);
+
+  // The client's own 401-recovery (`dropDeadSession`, openstoaClient.ts)
+  // already gives up on a session the server refused twice (once directly,
+  // once after a silent refresh) — but that lives entirely inside the
+  // client's own `this.mode` field, which `useOpenStoaSession` (what
+  // `AuthGate` / `useRequireAuth` actually read) never sees. Without this,
+  // the store keeps reporting `mode: 'authenticated'` for a credential the
+  // client has already discarded, so screens keep rendering authenticated
+  // UI backed by requests that silently fail. Mirror the drop into the
+  // store, then tell the sign-in sheet to open UNPROMPTED — unlike a
+  // deliberate "Log out" tap (which also flips the store but must NOT pop
+  // the sheet), nobody asked for this, so the app has to say so.
+  client.onSessionDropped(() => {
+    useOpenStoaSession.getState().setGuest();
+    notifySessionExpired();
+  });
 
   useOpenStoaSession.subscribe((state, prev) => {
     if (state.mode === prev.mode) return;
