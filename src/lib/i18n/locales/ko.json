@@ -149,7 +149,10 @@
       "googleWorkspace": "Google Workspace",
       "microsoft365": "Microsoft 365",
       "workspace": "조직 인증"
-    }
+    },
+    "inviteOnly": "초대 전용",
+    "joinFailed": "이 토픽에 참여하지 못했어요.",
+    "joinOffline": "서버에 연결하지 못했어요. 연결을 확인하고 다시 시도해 주세요."
   },
   "landingPage": {
     "copied": "복사됨!",

@@ -11,8 +11,95 @@ export type ClientMode = 'unknown' | 'guest' | 'authenticated';
 export class GuestAuthRequiredError extends Error {
   readonly kind = 'GUEST_AUTH_REQUIRED' as const;
   constructor(public readonly path: string) {
-    super(`Sign-in required for ${path}`);
+    // Path kept as a field, out of the message: screens that render a query
+    // error with `err.message` would otherwise show "Sign-in required for
+    // /api/topics", which names the endpoint instead of the thing to do.
+    super('Sign in to continue.');
     this.name = 'GuestAuthRequiredError';
+  }
+}
+
+/**
+ * A request the server answered with a failure status.
+ *
+ * The status and the server's own sentence used to be flattened into one
+ * message string — `PUT /api/profile/nickname → 400: {"error":"That name is
+ * reserved."}` — which left a caller two bad options: show the whole thing,
+ * internals and all, or show nothing. Screens showed nothing, so a refusal the
+ * server had explained in plain words arrived as silence.
+ *
+ * `status` lets a caller tell a refusal from a fault, and `serverMessage` is the
+ * sentence to put in front of the person. `message` keeps the old full string so
+ * logs and any existing caller are unaffected.
+ */
+export class OpenStoaApiError extends Error {
+  readonly kind = 'API_ERROR' as const;
+  constructor(
+    readonly status: number,
+    readonly path: string,
+    /** The server's `error` field, when it sent one. */
+    readonly serverMessage: string | null,
+    /**
+     * Method, path, status and raw body, for logs.
+     *
+     * NOT `message`, which is what a couple of dozen screens put on screen with
+     * `err.message`. That used to be this string, so a failed request showed
+     * the person `PUT /api/profile/nickname → 400: {"error":"…"}` — the API's
+     * shape, on a phone, in place of an explanation. Anything reaching a screen
+     * must come from `message` or `serverMessage`; this field is for the log.
+     */
+    readonly debugMessage: string,
+  ) {
+    // The message IS the user-facing sentence: the server's own words when it
+    // wrote any, and otherwise a plain statement with no internals in it. Every
+    // `err.message` call site is fixed by this one line, rather than by editing
+    // each of them and hoping the next one remembers.
+    super(serverMessage ?? 'Something went wrong. Please try again.');
+    this.name = 'OpenStoaApiError';
+  }
+}
+
+/**
+ * The request never reached the server — aeroplane mode, no signal, DNS, a
+ * dropped connection mid-flight.
+ *
+ * Distinct from `OpenStoaApiError` because it means something different to the
+ * person: nothing was changed and retrying is the whole remedy, whereas a 400
+ * means the server understood and declined. `fetch` reports both as thrown
+ * `TypeError`s with platform-specific text, which is not something a screen
+ * should be parsing.
+ */
+export class OpenStoaNetworkError extends Error {
+  readonly kind = 'NETWORK_ERROR' as const;
+  constructor(
+    readonly path: string,
+    readonly cause: unknown,
+  ) {
+    // The path stays a FIELD, for logs. It was in the message, and screens that
+    // render `err.message` printed "Could not reach the server for
+    // /api/topics" — an endpoint on screen, telling the reader nothing they can
+    // use and describing the system rather than their situation.
+    super('Could not reach the server. Check your connection and try again.');
+    this.name = 'OpenStoaNetworkError';
+  }
+}
+
+/**
+ * The server's own explanation, out of a failure body.
+ *
+ * Every route in this API answers a refusal as `{ error: string }`, and that
+ * sentence is written for a person ("That name is reserved.", "Nickname already
+ * taken"). Anything else — an HTML error page from a proxy, an empty body, a
+ * 500's opaque `errorId` shape — yields null so the caller shows its own copy
+ * instead of putting infrastructure text on screen.
+ */
+function readServerError(body: string): string | null {
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === 'string' && parsed.error.trim() ? parsed.error : null;
+  } catch {
+    return null;
   }
 }
 
@@ -121,6 +208,31 @@ export class OpenStoaClient {
       // Best effort: the in-memory half is already cleared, and failing to
       // reach host storage must not turn a refused request into a crash.
     }
+    // Tell whoever is listening that THIS client dropped the session on its
+    // own initiative — as opposed to the user tapping "Log out" somewhere.
+    // `this.mode` above is this class's own bookkeeping; it is invisible to
+    // `useOpenStoaSession` (the zustand store screens actually read via
+    // `AuthGate` / `useRequireAuth`), so without this callback the store
+    // keeps reporting `mode: 'authenticated'` for a credential the client
+    // has already given up on, and nothing ever tells the person why their
+    // last action quietly stopped working. `auth/sessionLifecycle.ts` is the
+    // sole subscriber: it mirrors this into the store AND pops the sign-in
+    // sheet unprompted (an ordinary logout must NOT do the latter, which is
+    // exactly why this fires only from here and not from `setMode('guest')`
+    // itself).
+    this.sessionDroppedHandler?.();
+  }
+
+  private sessionDroppedHandler: (() => void) | null = null;
+
+  /**
+   * Register the single listener for "this client just dropped a session the
+   * server refused" (see `dropDeadSession`). Not a pub/sub set — exactly one
+   * subscriber exists for the app's lifetime (`initSessionLifecycle`), same
+   * shape as `SignInLauncherProvider`. Pass `null` to detach.
+   */
+  onSessionDropped(handler: (() => void) | null): void {
+    this.sessionDroppedHandler = handler;
   }
 
   /**
@@ -231,6 +343,23 @@ export class OpenStoaClient {
     return this.inflightRefresh;
   }
 
+  /**
+   * `fetch`, with an unreachable server reported as such.
+   *
+   * A thrown `fetch` means the request never got an answer, which is a
+   * different fact from any status code and the one case where "check your
+   * connection" is the correct advice. Left raw it surfaced as a platform
+   * string ("Network request failed"), so screens could not tell it apart from
+   * a server fault and said nothing useful about either.
+   */
+  private async send(url: string, init: RequestInit, path: string): Promise<Response> {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      throw new OpenStoaNetworkError(path, e);
+    }
+  }
+
   async request<T>(path: string, init: RequestOptions = {}): Promise<T> {
     const method = (init.method ?? 'GET').toUpperCase();
     const guestSafe = method === 'GET' && isGuestSafePath(path);
@@ -266,7 +395,7 @@ export class OpenStoaClient {
     // when `clientMode === 'guest'` and we explicitly skipped the
     // Authorization header. That bug is what made joined topics keep
     // showing after logout.
-    let res = await fetch(url, { ...init, headers, credentials: 'omit' });
+    let res = await this.send(url, { ...init, headers, credentials: 'omit' }, path);
     if (res.status === 401) {
       // Guest (or anyone without a token) → don't auto-trigger login.
       // The screen catches GuestAuthRequiredError and shows SignInSheet.
@@ -305,7 +434,7 @@ export class OpenStoaClient {
       }
 
       headers.set('Authorization', `Bearer ${refreshed}`);
-      res = await fetch(url, { ...init, headers, credentials: 'omit' });
+      res = await this.send(url, { ...init, headers, credentials: 'omit' }, path);
       if (res.status === 401) {
         await this.dropDeadSession();
         throw new GuestAuthRequiredError(path);
@@ -314,7 +443,12 @@ export class OpenStoaClient {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`${method} ${path} → ${res.status}: ${text}`);
+      throw new OpenStoaApiError(
+        res.status,
+        path,
+        readServerError(text),
+        `${method} ${path} → ${res.status}: ${text}`,
+      );
     }
 
     if (res.status === 204) return undefined as T;
@@ -416,15 +550,27 @@ export class OpenStoaClient {
     } as unknown as Blob);
     if (opts.purpose) formData.append('purpose', opts.purpose);
     if (opts.topicId) formData.append('topicId', opts.topicId);
-    const res = await fetch(`${this.baseUrl}/api/upload`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-      credentials: 'omit',
-    });
+    // Same treatment as `request()`: uploads fail on the same networks and are
+    // reported by the same screens, so they must not be the one path that still
+    // hands `POST /api/upload → 413: …` to a person.
+    const res = await this.send(
+      `${this.baseUrl}/api/upload`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+        credentials: 'omit',
+      },
+      '/api/upload',
+    );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`POST /api/upload → ${res.status}: ${text}`);
+      throw new OpenStoaApiError(
+        res.status,
+        '/api/upload',
+        readServerError(text),
+        `POST /api/upload → ${res.status}: ${text}`,
+      );
     }
     const { publicUrl } = (await res.json()) as { publicUrl: string };
     return publicUrl;

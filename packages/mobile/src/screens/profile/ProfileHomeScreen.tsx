@@ -20,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useHost } from '@openstoa/miniapp-bridge';
 import type { Badge, DomainBadgeStatus, Post, SessionInfo } from '@openstoa/api-types';
+import { reportFailure } from '../../api/failure';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { PostCard } from '../../components/PostCard';
@@ -634,7 +635,7 @@ export function ProfileHomeScreen() {
         await client.delete('/api/profile/domain-badge');
         await queryClient.invalidateQueries({ queryKey: ['profile', 'domain-badge'] });
       } catch (e) {
-        host.showError('E9001', { detail: String(e) });
+        reportFailure(host, e, 'E9001');
       }
       return;
     }
@@ -650,7 +651,7 @@ export function ProfileHomeScreen() {
       await client.post('/api/profile/domain-badge');
       await queryClient.invalidateQueries({ queryKey: ['profile', 'domain-badge'] });
     } catch (e) {
-      host.showError('E9000', { detail: e instanceof Error ? e.message : String(e) });
+      reportFailure(host, e, 'E9000');
     }
   }, [domainBadgeQuery.data, client, queryClient, host, t]);
 

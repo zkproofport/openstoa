@@ -14,6 +14,7 @@ import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { sortConversationsByActivity } from '../../lib/chatSort';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { useOpenStoaSession } from '../../stores/sessionStore';
+import { QueryErrorState } from '../../components/QueryErrorState';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
@@ -136,25 +137,6 @@ function makeStyles(colors: ThemeColors) {
       textAlign: 'center',
       lineHeight: 20,
     },
-    errorTitle: {
-      fontSize: TYPE_SCALE.body,
-      fontWeight: '600',
-      color: colors.status.danger,
-    },
-    errorBody: {
-      fontSize: TYPE_SCALE.bodySmall,
-      color: colors.text.secondary,
-      marginTop: 6,
-      textAlign: 'center',
-    },
-    retryBtn: {
-      marginTop: 16,
-      paddingHorizontal: 18,
-      paddingVertical: 10,
-      borderRadius: RADIUS.pill,
-      backgroundColor: colors.brand.primary,
-    },
-    retryLabel: { color: '#FFFFFF', fontWeight: '600' },
   });
 }
 
@@ -267,13 +249,11 @@ export function ChatListScreen() {
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>{t('openstoa.chat.error.title')}</Text>
-        <Text style={styles.errorBody}>{(error as Error).message}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
-          <Text style={styles.retryLabel}>{t('openstoa.common.retry')}</Text>
-        </TouchableOpacity>
-      </View>
+      <QueryErrorState
+        title={t('openstoa.chat.error.title')}
+        error={error}
+        onRetry={() => refetch()}
+      />
     );
   }
 

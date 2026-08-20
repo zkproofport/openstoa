@@ -3,6 +3,18 @@ import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOpenStoaClient } from './useOpenStoaClient';
 import { patchPostInAllCaches } from '../utils/postCachePatch';
+import { OpenStoaApiError } from '../api/openstoaClient';
+
+/**
+ * Whether the server refused this because the caller is not a member.
+ *
+ * Was a substring search for "403" over the error message, which worked only
+ * while that message was the raw request line — the same string that leaked
+ * `/api/...` onto the screen. The status is now a field, so ask for it.
+ */
+function isNotAMember(e: unknown): boolean {
+  return e instanceof OpenStoaApiError && e.status === 403;
+}
 
 export interface ReactionSummary {
   emoji: string;
@@ -82,8 +94,7 @@ export function usePostMutations(postId: string) {
           userVoted: prevVote,
           upvoteCount: prevCount,
         }));
-        const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes('403') || /not a member/i.test(msg)) {
+        if (isNotAMember(e)) {
           Alert.alert(
             'Join the topic first',
             'Only members of this topic can vote on its posts. Tap the topic name to open it and join.',
@@ -234,7 +245,7 @@ export function usePostMutations(postId: string) {
         return { ok: true };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes('403') || /not a member/i.test(msg)) {
+        if (isNotAMember(e)) {
           return { ok: false, reason: 'not_member', message: msg };
         }
         return { ok: false, reason: 'other', message: msg };

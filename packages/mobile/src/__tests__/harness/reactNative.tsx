@@ -104,7 +104,52 @@ export const ActionSheetIOS = {
 export const Linking = { openURL: async () => {} };
 export const Keyboard = { dismiss: () => {} };
 export const Dimensions = { get: () => ({ width: 390, height: 844 }) };
-export const Animated = { View, Text, timing: () => ({ start: () => {} }), Value: class {} };
+/**
+ * Enough of `Animated` for a component that loops.
+ *
+ * The old stand-in had `timing` and an empty `Value`, which was all anything
+ * needed until a status line started breathing. A component reaching for
+ * `loop`, `sequence` or `interpolate` crashed the render, so the stand-in grows
+ * with what the app actually uses — the alternative is screens that cannot be
+ * mounted in a test because of their animations.
+ *
+ * Nothing here animates: `start` runs no frames and `interpolate` returns the
+ * output floor. A test asserts what is on screen, not what it is doing between
+ * frames, and a stand-in that drove real timers would make every screen test
+ * wait on them.
+ */
+class AnimatedValue {
+  constructor(public value: number = 0) {}
+  setValue(v: number) {
+    this.value = v;
+  }
+  interpolate({ outputRange }: { inputRange: number[]; outputRange: (string | number)[] }) {
+    return outputRange[0];
+  }
+}
+
+const animation = () => ({ start: (cb?: () => void) => cb?.(), stop: () => {}, reset: () => {} });
+
+export const Animated = {
+  View,
+  Text,
+  timing: animation,
+  spring: animation,
+  sequence: animation,
+  parallel: animation,
+  loop: animation,
+  delay: animation,
+  Value: AnimatedValue,
+};
+
+export const Easing = {
+  linear: (t: number) => t,
+  quad: (t: number) => t * t,
+  ease: (t: number) => t,
+  in: (fn: (t: number) => number) => fn,
+  out: (fn: (t: number) => number) => fn,
+  inOut: (fn: (t: number) => number) => fn,
+};
 
 /*
  * The members a FULL SCREEN reaches for, as opposed to a single component (T-1).

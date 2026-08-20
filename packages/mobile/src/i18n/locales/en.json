@@ -27,6 +27,8 @@
     "signInPrompt": {
       "title": "Sign in to continue",
       "body": "This action is only available to signed-in members. Sign in with a zero-knowledge proof to participate.",
+      "expiredTitle": "Sign in again",
+      "expiredBody": "Your session ended, so that didn't go through. Sign in again to continue — anything you were typing on this screen won't be saved once you do.",
       "primary": "Sign in with Google",
       "primaryMdl": "Sign in with Mobile ID",
       "cancel": "Not now",
@@ -58,7 +60,15 @@
       "save": "Save",
       "delete": "Delete",
       "ok": "OK",
-      "done": "Done"
+      "done": "Done",
+      "errorFallback": "Something went wrong. Please try again.",
+      "loadFailed": {
+        "topics": "Couldn't load topics",
+        "topic": "Couldn't load this topic",
+        "members": "Couldn't load members",
+        "requests": "Couldn't load requests",
+        "messages": "Couldn't load messages"
+      }
     },
     "postCard": {
       "author": {
@@ -148,7 +158,13 @@
       },
       "language": "Language",
       "help": "Help",
-      "docs": "Docs"
+      "docs": "Docs",
+      "nicknameRules": {
+        "tooShort": "Minimum 2 characters",
+        "tooLong": "Maximum 20 characters",
+        "charset": "Only letters, numbers, and underscore allowed",
+        "reserved": "Names starting with \"openstoa\" are reserved for this project."
+      }
     },
     "topics": {
       "detailTitle": "Topic",
@@ -174,7 +190,8 @@
         "top": "Top"
       },
       "category": {
-        "all": "All"
+        "all": "All",
+        "label": "Category"
       },
       "invite": {
         "cta": "Join with an invite",
@@ -202,7 +219,13 @@
         "keysWarning": "Anyone who opens this link can read those messages. The invite can be revoked; the keys cannot.",
         "historyImported": "Chat history unlocked: {{count}} sessions of past messages.",
         "historyWrongTopic": "This link carried history keys for a different topic, so they were not used."
-      }
+      },
+      "filter": {
+        "all": "All",
+        "joined": "Joined",
+        "groupLabel": "Which topics"
+      },
+      "inviteOnly": "Invite only"
     },
     "topicDetail": {
       "members": "Members",
@@ -442,7 +465,7 @@
       "noMessagesYet": "No messages yet",
       "encryptedMessage": "🔒 Encrypted message",
       "lockedMessage": "Encrypted — this device has no key for it",
-      "lockedMessageSyncing": "Loading — waiting for the room key",
+      "lockedMessageSyncing": "Waiting for the key…",
       "copyMessage": "Copy message",
       "copyLink": "Copy link",
       "offline": {
@@ -476,6 +499,10 @@
         "e2ee": "New messages and images in this room are end-to-end encrypted. The service cannot read them.",
         "serverReadable": "New messages and images in this room are encrypted in transit and at rest, but this is a public topic: the service holds a key to its history and can read it.",
         "learnMore": "What this means"
+      },
+      "awaitingKey": {
+        "body": "Catching up on {{count}} earlier messages",
+        "hint": "They unlock as soon as a device that already has them shares the key. If one of them is yours, opening this chat there does it right away."
       }
     },
     "dm": {

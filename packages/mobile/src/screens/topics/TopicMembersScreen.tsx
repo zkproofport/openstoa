@@ -12,13 +12,15 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
+import { QueryErrorState } from '../../components/QueryErrorState';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
@@ -403,6 +405,19 @@ export function TopicMembersScreen() {
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.brand.primary} />
       </View>
+    );
+  }
+
+  if (membersQuery.isError) {
+    // An empty member list and an unreachable server look identical once the
+    // data defaults to `[]`, and a topic with no members is not a thing that
+    // exists — so the empty list was always the wrong answer here.
+    return (
+      <QueryErrorState
+        title={t('openstoa.common.loadFailed.members')}
+        error={membersQuery.error}
+        onRetry={() => void membersQuery.refetch()}
+      />
     );
   }
 

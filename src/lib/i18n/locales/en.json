@@ -149,7 +149,10 @@
       "googleWorkspace": "Google Workspace",
       "microsoft365": "Microsoft 365",
       "workspace": "Workspace"
-    }
+    },
+    "inviteOnly": "Invite only",
+    "joinFailed": "Couldn't join this topic.",
+    "joinOffline": "Could not reach the server. Check your connection and try again."
   },
   "landingPage": {
     "copied": "Copied!",

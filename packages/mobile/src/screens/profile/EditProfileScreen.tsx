@@ -25,7 +25,8 @@ function loadImagePicker(): ImagePickerModule | null {
   }
 }
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useHost } from '@openstoa/miniapp-bridge';
@@ -39,6 +40,8 @@ import { useLanguage } from '../../i18n/useLanguage';
 import { buildDocsUrl } from '../../lib/docsLink';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
+import { isReservedNickname } from '../../lib/defaultNickname';
+import { reportFailure } from '../../api/failure';
 
 const NICKNAME_RE = /^[a-zA-Z0-9_]{2,20}$/;
 
@@ -367,10 +370,24 @@ export function EditProfileScreen() {
     }
   }, [sessionQuery.data?.nickname]);
 
+  /*
+   * Every rule `/api/profile/nickname` enforces, checked here first.
+   *
+   * The reserved-prefix rule was missing, and the screen said "Looks good" for
+   * a name the server was always going to refuse — you only found out by
+   * pressing Save and getting a 400. Held to the SAME `isReservedNickname` the
+   * route calls (one twinned module, not a second copy of the rule), so the two
+   * cannot answer differently.
+   *
+   * This is validation for the sake of the person typing, never a substitute
+   * for the server's: the route still checks all of it, and a name that gets
+   * past this one is still refused there and reported.
+   */
   function validateNickname(value: string): string | null {
-    if (value.length < 2) return 'Minimum 2 characters';
-    if (value.length > 20) return 'Maximum 20 characters';
-    if (!NICKNAME_RE.test(value)) return 'Only letters, numbers, and underscore allowed';
+    if (value.length < 2) return t('openstoa.editProfile.nicknameRules.tooShort');
+    if (value.length > 20) return t('openstoa.editProfile.nicknameRules.tooLong');
+    if (!NICKNAME_RE.test(value)) return t('openstoa.editProfile.nicknameRules.charset');
+    if (isReservedNickname(value)) return t('openstoa.editProfile.nicknameRules.reserved');
     return null;
   }
 
@@ -415,7 +432,7 @@ export function EditProfileScreen() {
       void queryClient.invalidateQueries({ queryKey: ['session'] });
     },
     onError: (e) => {
-      host.showError('E9006', { detail: String(e) });
+      reportFailure(host, e, 'E9006');
     },
   });
 
@@ -462,7 +479,16 @@ export function EditProfileScreen() {
       Alert.alert(t('openstoa.editProfile.saved.title'), t('openstoa.editProfile.saved.message'));
     },
     onError: (e) => {
-      host.showError('E9003', { detail: String(e) });
+      /*
+       * Say WHY. The server refuses a nickname for reasons it words for a
+       * person — "That name is reserved.", "Nickname already taken" — and those
+       * used to be flattened into a message string that nothing showed, so a
+       * refusal arrived as a Save button that appeared not to work. When the
+       * reason came from the server it is also shown under the field, because
+       * the field is where the fix is.
+       */
+      const failure = reportFailure(host, e, 'E9003');
+      if (failure.inline) setValidationError(failure.inline);
     },
   });
 
@@ -472,7 +498,7 @@ export function EditProfileScreen() {
       void queryClient.invalidateQueries({ queryKey: ['profile', 'domain-badge'] });
     },
     onError: (e) => {
-      host.showError('E9004', { detail: String(e) });
+      reportFailure(host, e, 'E9004');
     },
   });
 
@@ -557,7 +583,7 @@ export function EditProfileScreen() {
                 // Navigation may have been unmounted; ignore.
               }
             } catch (e) {
-              host.showError('E9005', { detail: String(e) });
+              reportFailure(host, e, 'E9005');
             }
           },
         },

@@ -10,11 +10,13 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
+import { QueryErrorState } from '../../components/QueryErrorState';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
@@ -205,6 +207,18 @@ export function TopicRequestsScreen() {
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.brand.primary} />
       </View>
+    );
+  }
+
+  if (requestsQuery.isError) {
+    // "No pending requests" is a decision an admin acts on. Saying it when the
+    // list never loaded invites them to stop checking.
+    return (
+      <QueryErrorState
+        title={t('openstoa.common.loadFailed.requests')}
+        error={requestsQuery.error}
+        onRetry={() => void requestsQuery.refetch()}
+      />
     );
   }
 

@@ -496,7 +496,13 @@ describe('OpenStoaClient — guest mode + auth-mode + 401 recovery', () => {
     expect(e).toBeInstanceOf(GuestAuthRequiredError);
     expect(e.kind).toBe('GUEST_AUTH_REQUIRED');
     expect(e.path).toBe('/api/topics/abc/posts');
-    expect(e.message).toContain('/api/topics/abc/posts');
+    // The path is a FIELD and no longer part of the message. Several screens
+    // render a query error with `err.message`, and this one used to put
+    // "Sign-in required for /api/topics/abc/posts" on screen — an endpoint
+    // where an instruction belongs. Asserted as an absence so it cannot creep
+    // back the next time someone wants a more informative message.
+    expect(e.message).not.toContain('/api/');
+    expect(e.message.trim()).not.toBe('');
     expect(e.name).toBe('GuestAuthRequiredError');
   });
 });
