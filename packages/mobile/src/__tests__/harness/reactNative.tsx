@@ -54,21 +54,60 @@ export const Pressable = host('Pressable');
  * asserts "the failed row is on screen" is asking about the DATA reaching the
  * list, not about windowing — and a mock that virtualised would make that
  * assertion depend on a scroll position no test has.
+ *
+ * Header, footer and empty state are rendered too, on the same rules the real
+ * list uses: header and footer always, empty only when there are no rows. They
+ * were dropped at first, and that silently hid a whole screen — TopicsHomeScreen
+ * puts its search, filters and category row in `ListHeaderComponent`, so a test
+ * mounting it saw a tree with none of them and could not assert on any of it.
+ * A stand-in that omits what the caller passed is a stand-in that lies.
  */
+type ListSlot = React.ComponentType<unknown> | React.ReactElement | null | undefined;
+
+function renderSlot(slot: ListSlot): React.ReactNode {
+  if (!slot) return null;
+  return typeof slot === 'function' ? React.createElement(slot) : slot;
+}
+
 export function FlatList<T>(props: {
   data?: readonly T[];
   renderItem?: (info: { item: T; index: number }) => React.ReactNode;
   keyExtractor?: (item: T, index: number) => string;
+  ListHeaderComponent?: ListSlot;
+  ListFooterComponent?: ListSlot;
+  ListEmptyComponent?: ListSlot;
   [k: string]: unknown;
 }) {
-  const rows = (props.data ?? []).map((item, index) =>
+  const data = props.data ?? [];
+  const rows = data.map((item, index) =>
     React.createElement(
       React.Fragment,
       { key: props.keyExtractor?.(item, index) ?? String(index) },
       props.renderItem?.({ item, index }),
     ),
   );
-  return React.createElement('FlatList', { ...props, data: undefined, renderItem: undefined }, rows);
+  const children = [
+    React.createElement(React.Fragment, { key: '__header__' }, renderSlot(props.ListHeaderComponent)),
+    ...rows,
+    React.createElement(
+      React.Fragment,
+      { key: '__empty__' },
+      data.length === 0 ? renderSlot(props.ListEmptyComponent) : null,
+    ),
+    React.createElement(React.Fragment, { key: '__footer__' }, renderSlot(props.ListFooterComponent)),
+  ];
+  return React.createElement(
+    'FlatList',
+    {
+      ...props,
+      data: undefined,
+      renderItem: undefined,
+      ListHeaderComponent: undefined,
+      ListFooterComponent: undefined,
+      ListEmptyComponent: undefined,
+    },
+    children,
+  );
 }
 
 export const StyleSheet = {

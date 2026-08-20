@@ -191,7 +191,8 @@
       },
       "category": {
         "all": "All",
-        "label": "Category"
+        "label": "Category",
+        "loadFailed": "Categories unavailable"
       },
       "invite": {
         "cta": "Join with an invite",

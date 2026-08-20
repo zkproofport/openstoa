@@ -75,8 +75,15 @@ async function waitFor(
   throw new Error(`timed out waiting for ${what}; last render was: ${rendered.text().slice(0, 300)}`);
 }
 
-/** The screen has stopped loading, one way or the other. */
-const settled = (text: string) => text.includes(ERROR_TITLE) || text.includes('openstoa.topics.');
+/**
+ * The screen has stopped loading, one way or the other.
+ *
+ * Deliberately NOT "any `openstoa.topics.` string": the sort row is on screen
+ * from the first frame, so that predicate is satisfied while the query is still
+ * in flight and every assertion after it reads the loading branch.
+ */
+const settled = (text: string) =>
+  text.includes(ERROR_TITLE) || text.includes('openstoa.topics.notFound');
 
 describe('Topics tab — a failed load is not an empty community', () => {
   const realFetch = global.fetch;
@@ -100,15 +107,18 @@ describe('Topics tab — a failed load is not an empty community', () => {
     expect(text, 'the failure was not stated').toContain(ERROR_TITLE);
     /*
      * The empty state cannot appear, because the list it belongs to is not
-     * rendered at all. Asserted this way because the harness's FlatList
-     * stand-in drops `ListEmptyComponent`, so its copy is invisible here —
-     * but "no FlatList" proves on a real device too, and it is the branch
-     * choice that was wrong.
+     * rendered at all — asserted on the list's absence rather than only on its
+     * copy, since that holds on a real device too and it is the branch choice
+     * that was wrong. The copy is checked as well, now that the harness
+     * renders `ListEmptyComponent` the way the real list does.
      */
     expect(
       rendered.root.findAll((n) => (n.type as unknown as string) === 'FlatList'),
       'the list rendered alongside the error, so its empty state can still appear',
     ).toHaveLength(0);
+    expect(rendered.text(), 'a failed load claimed the community was empty').not.toContain(
+      'openstoa.topics.notFound',
+    );
     // And the endpoint stays out of it — the reason comes from the error's
     // sentence, which no longer carries a path.
     expect(text).not.toContain('/api/');
@@ -128,10 +138,9 @@ describe('Topics tab — a failed load is not an empty community', () => {
   it('BOUNDARY: a successful but empty response is NOT reported as a failure', async () => {
     /*
      * The other direction: this fix must not turn "there really are no topics"
-     * into an error. Only the absence of the error state is asserted — the
-     * harness's FlatList stand-in renders `data` rows and drops
-     * `ListEmptyComponent`, so the empty copy itself is not observable here.
-     * Its wording is not what regressed; which branch runs is.
+     * into an error. Both halves are now observable — the harness's FlatList
+     * renders `ListEmptyComponent` when there are no rows, as the real one
+     * does — so the empty copy is asserted rather than assumed.
      */
     global.fetch = fetchWith('empty') as unknown as typeof global.fetch;
 
@@ -140,6 +149,10 @@ describe('Topics tab — a failed load is not an empty community', () => {
 
     expect(rendered.text()).not.toContain(ERROR_TITLE);
     expect(rendered.root.findAll((n) => n.props?.testID === 'query-error-state')).toHaveLength(0);
+    // The real empty state, said plainly, because there really are none.
+    expect(rendered.text(), 'a genuinely empty list said nothing at all').toContain(
+      'openstoa.topics.notFound',
+    );
   });
 
   it('CONTRACT: the filters stay put through a failure, so the screen is still usable', async () => {

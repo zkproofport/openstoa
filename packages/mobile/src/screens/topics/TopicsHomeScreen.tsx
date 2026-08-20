@@ -62,6 +62,26 @@ function makeStyles(colors: ThemeColors) {
       flex: 1,
       backgroundColor: colors.background.secondary,
     },
+    // Same height and padding as TagChips' folded header, so a failed load
+    // occupies the row it replaces instead of shifting the list under it.
+    categoryFailed: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 16,
+      minHeight: 44,
+      backgroundColor: colors.background.primary,
+    },
+    categoryFailedText: {
+      flex: 1,
+      fontSize: TYPE_SCALE.label,
+      color: colors.text.tertiary,
+    },
+    categoryRetry: {
+      fontSize: TYPE_SCALE.label,
+      fontWeight: '600',
+      color: colors.brand.primary,
+    },
     list: {
       flex: 1,
     },
@@ -308,7 +328,27 @@ export function TopicsHomeScreen() {
           }),
         }}
       />
-      {categoryChips.length > 1 ? (
+      {categoriesQuery.isError ? (
+        /*
+         * A failed category load USED to remove the row entirely, because the
+         * row renders on `chips.length > 1` and a failure leaves only "All".
+         * From the outside that is indistinguishable from the feature being
+         * gone — which is exactly how it was reported. Say it instead, and
+         * offer the one thing that fixes it.
+         */
+        <TouchableOpacity
+          onPress={() => categoriesQuery.refetch()}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          testID="category-load-failed"
+          style={styles.categoryFailed}
+        >
+          <Text style={styles.categoryFailedText} numberOfLines={1}>
+            {t('openstoa.topics.category.loadFailed')}
+          </Text>
+          <Text style={styles.categoryRetry}>{t('openstoa.common.retry')}</Text>
+        </TouchableOpacity>
+      ) : categoryChips.length > 1 ? (
         // Folded by default. It is the longest row, the least often changed,
         // and the header keeps saying which category is in force.
         <TagChips

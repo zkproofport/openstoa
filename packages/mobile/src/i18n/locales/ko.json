@@ -191,7 +191,8 @@
       },
       "category": {
         "all": "전체",
-        "label": "카테고리"
+        "label": "카테고리",
+        "loadFailed": "카테고리를 불러오지 못했습니다"
       },
       "invite": {
         "cta": "초대로 참여하기",
