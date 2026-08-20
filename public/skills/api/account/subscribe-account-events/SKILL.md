@@ -33,8 +33,11 @@ chat room retries a grant on its own while it is open.
 **Endpoint:** `GET /api/me/events`
 **Auth:** Bearer token or session cookie
 
+**Query parameters:**
+- `device` (string) — The `routingHandle` this device registered for push, if it has one. Send it and the server knows this device is already listening, so a `key-needed` fan-out reaches it over this stream instead of also waking it with a notification. Omit it on any client with no push registration — a browser, a CLI, an agent — and the stream still receives everything; it simply does not suppress a push that was never going to be sent. Sending a handle that is not yours only silences your own stream, never someone else's.
+
 ```bash
-curl -s "$BASE/api/me/events" \
+curl -s "$BASE/api/me/events?device=..." \
   -H "Authorization: Bearer $TOKEN"
 ```
 

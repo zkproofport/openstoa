@@ -38,6 +38,19 @@ const ROUTE = '/api/me/events';
  *       chat room retries a grant on its own while it is open.
  *     operationId: subscribeAccountEvents
  *     x-related-skills: [subscribe-chat-sse]
+ *     parameters:
+ *       - in: query
+ *         name: device
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: |
+ *           The `routingHandle` this device registered for push, if it has one. Send it and the
+ *           server knows this device is already listening, so a `key-needed` fan-out reaches it
+ *           over this stream instead of also waking it with a notification. Omit it on any client
+ *           with no push registration — a browser, a CLI, an agent — and the stream still receives
+ *           everything; it simply does not suppress a push that was never going to be sent.
+ *           Sending a handle that is not yours only silences your own stream, never someone else's.
  *     responses:
  *       200:
  *         description: SSE stream opened
