@@ -82,6 +82,8 @@ export interface HostApi {
   getPushPermissionStatus?(): Promise<'granted' | 'denied' | 'undetermined' | 'unavailable'>;
   /** Optional subscription to notification TAPS (warm + cold start). Absent → tap routing unavailable. */
   onPushNotificationTap?(listener: (tap: PushNotificationTap) => void): () => void;
+  /** Optional subscription to notifications DELIVERED but not tapped. Used for `key-needed`; never navigates. Absent → unavailable. */
+  onPushNotificationReceived?(listener: (tap: PushNotificationTap) => void): () => void;
   /**
    * Optional mirror of a Topic Archive Key into host storage the background push
    * handler can read (design §13.6 strategy A). `takB64` is base64 of exactly 32

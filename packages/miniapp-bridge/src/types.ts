@@ -205,6 +205,28 @@ export interface HostApi {
   ): () => void;
 
   /**
+   * Optional host-provided subscription to notifications that were DELIVERED
+   * but NOT tapped (expo-notifications `addNotificationReceivedListener`).
+   *
+   * Distinct from `onPushNotificationTap` because the two carry different
+   * intent: a tap is the user asking to go somewhere, a delivery is only
+   * information. Acting on a delivery must never navigate.
+   *
+   * The mini-app uses it for `key-needed` (design §13.7): on the scoped chat
+   * tiers a device that just joined can read nothing until a device already
+   * holding the keys hands them over, and the holder is almost never in that
+   * room. This lets it grant without its owner doing anything.
+   *
+   * Deliveries that arrive while the mini-app is unmounted are latched by the
+   * host and replayed, oldest first, to the next subscriber. Returns an
+   * unsubscribe function. Absent → the mini-app degrades to acting only on the
+   * account event stream and on room entry.
+   */
+  onPushNotificationReceived?(
+    listener: (tap: PushNotificationTap) => void,
+  ): () => void;
+
+  /**
    * Optional host-provided mirror of a Topic Archive Key into wherever the
    * host's background push handler can read it (design §13.6 strategy A).
    *

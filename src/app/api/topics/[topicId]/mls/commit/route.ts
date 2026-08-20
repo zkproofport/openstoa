@@ -9,6 +9,8 @@ import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
 import { parseCommitFraming, MlsFramingError } from '@/lib/mls/framing';
 import { scheduleDeviceJoinRecord } from '@/lib/mls/deviceJoins';
+import { publishKeyNeeded } from '@/lib/userEvents';
+import { dispatchKeyNeeded, getPushProvider } from '@/lib/push';
 import { applyCommitCas, getCommitsSince } from '@/lib/mls/commits';
 import {
   decodeBase64Strict,
@@ -192,6 +194,54 @@ export async function POST(
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         logger.error(ROUTE, 'Device join bookkeeping threw; commit stands', { topicId, error: message });
+      }
+
+      /*
+       * Tell the topic's members that somebody may now be short of keys.
+       *
+       * A commit is what a device join looks like from here, and on the scoped
+       * tiers the newcomer cannot read a thing until a device that HOLDS keys
+       * hands them over. That device is almost never in the room — which is
+       * exactly why it used to take "until a member happens to reopen the
+       * chat", which in practice meant minutes or never.
+       *
+       * Broadcast to every member rather than trying to pick the holder: the
+       * server cannot see the ratchet tree, so it cannot know who holds what,
+       * and a client with nothing to give simply does nothing. The payload
+       * carries no key material — it is a nudge, and the keys still travel
+       * sealed to a recipient leaf through the bundle mailbox.
+       *
+       * Awaited but never fatal: the commit is already applied, and the room's
+       * own retry still covers anyone who was offline for this.
+       */
+      try {
+        const members = await db.query.topicMembers.findMany({
+          where: eq(topicMembers.topicId, topicId),
+          columns: { userId: true },
+        });
+        const epoch = result.newEpoch;
+        await publishKeyNeeded(
+          members.map((m) => m.userId),
+          topicId,
+          epoch,
+          // Per DEVICE, not per account: the browser being open says nothing
+          // about the phone that actually holds the keys, and that phone will
+          // not grant anything until something wakes it.
+          (streamingByUser) =>
+            dispatchKeyNeeded(
+              db,
+              topicId,
+              epoch,
+              streamingByUser,
+              getPushProvider(),
+              // A join is an external commit by the joiner, so the caller
+              // IS the account whose device is waiting.
+              session.userId,
+            ),
+        );
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        logger.warn(ROUTE, 'key-needed fan-out failed; commit stands', { topicId, error: message });
       }
     }
 

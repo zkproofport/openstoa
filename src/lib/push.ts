@@ -88,8 +88,14 @@ export interface PushTarget {
 }
 
 export interface PushProvider {
-  /** Deliver one content-free payload to one device (Phase A). */
-  send(target: PushTarget, payload: DummyPushPayload): Promise<void>;
+  /**
+   * Deliver one content-free payload to one device (Phase A).
+   *
+   * Also carries the key-needed wake-up, which is the same shape with one extra
+   * routing field — a separate provider method would be a second code path to
+   * the same HTTP call for no gain.
+   */
+  send(target: PushTarget, payload: DummyPushPayload | KeyNeededPushPayload): Promise<void>;
   /**
    * Deliver one ciphertext-bearing payload to one device (Phase B). Optional:
    * a provider that can't carry `mutableContent`/data-only omits it, and the
@@ -121,6 +127,108 @@ export function getPushMode(): PushMode {
 /** The fixed content-free payload for a topic. No message content, ever. */
 export function buildDummyPayload(topicId: string): DummyPushPayload {
   return { title: 'OpenStoa', body: 'New message', data: { topicId } };
+}
+
+/**
+ * Ask someone to open the app so a waiting device can read the conversation.
+ *
+ * Meant to be SEEN and acted on, unlike the content-free "New message" dummy.
+ * On the scoped tiers the server holds no key, so a device that just joined can
+ * read nothing until a device that already has the keys hands them over — and
+ * that device is usually not in the room. Its owner is the only one who can
+ * unblock this, so they are the one asked.
+ *
+ * The two cases read differently to the person, so they are worded differently:
+ * their own second device waiting is a chore they will want to finish, while
+ * another member waiting is somebody else being kept out. Naming the wrong one
+ * is the sort of small wrongness that makes a notification feel automated.
+ *
+ * No topic title and no nickname, matching every other push this server sends:
+ * a lockscreen is a public surface, and the topic id is enough for the tap to
+ * land in the right room.
+ */
+export interface KeyNeededPushPayload {
+  title: string;
+  body: string;
+  /**
+   * `kind` lets a client route this away from the message path. `topicId` is
+   * what the tap handler opens — the right destination here, because opening
+   * that room is itself what hands the keys over.
+   */
+  data: { topicId: string; kind: 'key-needed'; epoch: number };
+}
+
+export function buildKeyNeededPayload(
+  topicId: string,
+  epoch: number,
+  /** True when the device waiting belongs to the person being notified. */
+  ownDevice: boolean,
+): KeyNeededPushPayload {
+  return {
+    title: ownDevice ? 'Your other device is waiting' : 'A new member is waiting',
+    body: ownDevice
+      ? 'Open OpenStoa here so your other device can catch up on this conversation.'
+      : 'They joined a chat you are in. Open OpenStoa so they can read the conversation so far.',
+    data: { topicId, kind: 'key-needed', epoch },
+  };
+}
+
+/**
+ * Send that request to every device of this account that is not already
+ * listening on an account stream.
+ *
+ * Per-device failures are swallowed: one dead token must not stop the rest, and
+ * the room's own retry still covers everyone this misses. A null provider —
+ * push not configured — is a clean no-op, which is why the SSE half never
+ * depends on push being set up.
+ */
+export async function dispatchKeyNeeded(
+  db: SqlExecutor,
+  topicId: string,
+  epoch: number,
+  /**
+   * Per account, the routing handles that already hold an account stream.
+   *
+   * Filtering happens per DEVICE, not per account: the case this exists for is
+   * a browser that is open while the phone holding the keys is asleep. Deciding
+   * by account would call that reachable and send nothing, and the phone would
+   * never grant.
+   */
+  streamingByUser: Map<string, Set<string>>,
+  provider: PushProvider | null,
+  /** Whose device joined — so the copy can say "yours" when it is theirs. */
+  joinerUserId: string,
+): Promise<void> {
+  if (!provider || streamingByUser.size === 0) return;
+  // `''` excludes nobody: here the recipient set is decided by which devices
+  // are asleep, not by who sent something.
+  const targets: MemberPushTarget[] = await getTopicMemberTokens(
+    db as Parameters<typeof getTopicMemberTokens>[0],
+    topicId,
+    '',
+  );
+  const asleep = targets.filter((t) => {
+    const streaming = streamingByUser.get(t.userId);
+    // A device of an account we were not asked about is not ours to wake.
+    if (!streaming) return false;
+    return !streaming.has(t.routingHandle);
+  });
+  await Promise.all(
+    asleep.map((t) =>
+      provider
+        .send(
+          { pushToken: t.pushToken, platform: t.platform },
+          buildKeyNeededPayload(topicId, epoch, t.userId === joinerUserId),
+        )
+        .catch((err) =>
+          logger.warn(ROUTE, 'key-needed push failed for one device', {
+            topicId,
+            platform: t.platform,
+            err: String(err),
+          }),
+        ),
+    ),
+  );
 }
 
 export interface CiphertextDispatchInput {

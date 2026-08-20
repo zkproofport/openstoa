@@ -12,6 +12,7 @@ import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
 import { readRailOpenPreference, writeRailOpenPreference, type RailRoom } from '@/lib/chatRail';
 import { getChatRailApi, publishChatRailApi } from '@/lib/chatRailStore';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import { useAccountEvents } from '@/lib/useAccountEvents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -197,6 +198,16 @@ export default function CommunityLayout({
       document.body.classList.remove('chat-rail-open');
     };
   }, [railOpen, isDesktop]);
+
+  /*
+   * The account's own event stream, open across every community page.
+   *
+   * Here rather than in the chat surfaces on purpose: its job is to let a
+   * browser that HOLDS chat keys hand them over without anyone opening the room
+   * those keys belong to. The web has no push, so for a browser this stream is
+   * the only way that can happen at all.
+   */
+  useAccountEvents(!isGuest);
 
   const showRail = !isGuest && railOpen;
 

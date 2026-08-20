@@ -90,6 +90,38 @@ export async function registerPushNow(
  * process. Never throws — the caller is a React effect and a push failure must
  * not disrupt the app.
  */
+/**
+ * This device's push routing handle, once it is known.
+ *
+ * Published because the account event stream has to identify itself by the SAME
+ * name the push fan-out addresses devices with. Presence recorded under any
+ * other name suppresses nothing — or worse, suppresses a different device — and
+ * the case that matters is a browser being open while THIS phone, the one
+ * holding the chat keys, is asleep.
+ *
+ * Set even when the registration POST fails: the handle is this device's
+ * identity, not a receipt for the server having stored it.
+ */
+let routingHandle: string | null = null;
+const handleListeners = new Set<(handle: string) => void>();
+
+export function getPushRoutingHandle(): string | null {
+  return routingHandle;
+}
+
+/** Notified once the handle is known. Returns an unsubscribe function. */
+export function subscribePushRoutingHandle(listener: (handle: string) => void): () => void {
+  handleListeners.add(listener);
+  if (routingHandle) listener(routingHandle);
+  return () => handleListeners.delete(listener);
+}
+
+function publishRoutingHandle(handle: string): void {
+  if (routingHandle === handle) return;
+  routingHandle = handle;
+  for (const l of handleListeners) l(handle);
+}
+
 export async function registerPushOnce(
   identity: string,
   host: PushRegistrationHost,
@@ -103,6 +135,7 @@ export async function registerPushOnce(
   try {
     const reg = await host.registerForPush();
     if (!reg) return 'unavailable';
+    publishRoutingHandle(reg.routingHandle);
     await client.post('/api/push/register', {
       routingHandle: reg.routingHandle,
       pushToken: reg.pushToken,

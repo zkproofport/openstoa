@@ -49,7 +49,8 @@ function loadClipboard(): ClipboardModule | null {
 }
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
@@ -77,7 +78,8 @@ import {
 import { displayNickname } from '../../lib/defaultNickname';
 import { MessageFailedControls } from '../../components/MessageFailedControls';
 import { chatTierOf } from '../../lib/chatTierPolicy';
-import { chatClaimKey } from '../../lib/chatTierExplainer';
+import { chatClaimKey, TIER_CLAIM_VISIBLE_MS } from '../../lib/chatTierExplainer';
+import { WaitingStatus } from '../../components/WaitingStatus';
 import { buildTiersUrl } from '../../lib/docsLink';
 
 /**
@@ -198,6 +200,8 @@ function makeStyles(colors: ThemeColors) {
 
     // The tier claim, directly under the stack header. Same strip as the web
     // banner: one line that says what this room is, in the tone of what it is.
+    // It withdraws after `TIER_CLAIM_VISIBLE_MS` — the header button below
+    // brings it back, and carries the tier in the meantime.
     tierBanner: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -221,6 +225,28 @@ function makeStyles(colors: ThemeColors) {
     },
     tierBannerTextReadable: {
       color: colors.status.warning,
+    },
+    // Says a key is on its way and what brings it. Warning-toned rather than
+    // danger: nothing is broken, and the room repairs itself once the key lands.
+    keyWaitNotice: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: colors.background.tertiary,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.default,
+    },
+    keyWaitText: {
+      flex: 1,
+      fontSize: TYPE_SCALE.caption,
+      lineHeight: 18,
+      color: colors.text.primary,
+      fontWeight: '600',
+    },
+    keyWaitHint: {
+      fontSize: TYPE_SCALE.caption,
+      lineHeight: 18,
+      color: colors.text.secondary,
+      marginTop: 2,
     },
     tierBannerLink: {
       fontSize: TYPE_SCALE.caption,
@@ -651,6 +677,33 @@ export function ChatRoomScreen() {
   const [recovered, setRecovered] = useState<Record<string, string>>(
     () => recoveredByTopic.get(topicId) ?? {},
   );
+  /**
+   * Merge what a backfill opened into the rendered rows.
+   *
+   * Extracted because the room now backfills more than once: on entry, and
+   * again on the key tick for as long as anything is still sealed. Two copies
+   * of "spread it in and update the module cache" is how one of them ends up
+   * forgetting the cache.
+   */
+  const applyBackfill = useCallback(
+    (history: Array<{ messageId: string; plaintext: string }>) => {
+      setRecovered((prev) => {
+        const next = { ...prev };
+        for (const h of history) next[h.messageId] = h.plaintext;
+        recoveredByTopic.set(topicId, next);
+        return next;
+      });
+    },
+    [topicId],
+  );
+  /**
+   * Whether any rendered row is still sealed to this device.
+   *
+   * A ref, not state: the key tick reads it to decide whether to bother
+   * backfilling, and it must not restart the timer every time a message
+   * arrives. Kept up to date where the list is assembled.
+   */
+  const lockedRef = useRef(false);
   // Whether this device can open the topic archive yet. Drives the difference
   // between "your history is on its way" and "something is wrong".
   const [rootState, setRootState] = useState<ArchiveRootState | null>(null);
@@ -673,6 +726,23 @@ export function ChatRoomScreen() {
    */
   const tier = chatTierOf(visibility, kind === 'dm');
   const claim = chatClaimKey(tier);
+  /*
+   * The claim's sentence shows on entry, then withdraws — four permanent lines
+   * above every conversation is furniture people learn to read past, and the
+   * tier where the sentence is a WARNING is the tier most rooms are in.
+   *
+   * Keyed on `claim`, not on mount: `visibility` arrives from a lookup, so the
+   * first frames of a private room say the public sentence (deliberately — see
+   * the `tier` comment above). Re-opening when the claim changes is what makes
+   * sure the sentence a room actually deserves is the one that gets read,
+   * rather than being replaced silently behind an already-expired timer.
+   */
+  const [claimOpen, setClaimOpen] = useState(true);
+  useEffect(() => {
+    setClaimOpen(true);
+    const timer = setTimeout(() => setClaimOpen(false), TIER_CLAIM_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [claim]);
   const tiersUrl = buildTiersUrl(host.getEnvironment().openstoaBaseUrl);
   // The caller's topic role — secret-tier history is granted only by the owner.
   const roleRef = useRef<string | null>(null);
@@ -825,6 +895,23 @@ export function ChatRoomScreen() {
    * finished, showed placeholder rows, and only decrypted on the NEXT visit.
    */
   const syncing = isSyncingHistory({ lockedCount, rootState, rootProbed });
+  // Read by the key tick, which must not re-arm every time a row arrives.
+  lockedRef.current = lockedCount > 0;
+  /*
+   * Locked rows, and the spinner has given up on them.
+   *
+   * This is the state the report was about: a private room showed a column of
+   * "Encrypted — this device has no key for it" and said nothing about what
+   * would change it. `isSyncingHistory` cannot cover the scoped tiers — it ends
+   * on `rootState === 'waiting'`, which is a PUBLIC-root idea, so private and
+   * secret fall straight through to the dead end the moment the probe answers.
+   *
+   * A key can still arrive: an existing member's client hands it over, and this
+   * room keeps asking for as long as it is open. So say that, and say the one
+   * thing a person can actually do about it — which for their own second device
+   * is to open the room where the history already is.
+   */
+  const awaitingRoomKey = lockedCount > 0 && !syncing;
   /*
    * While the spinner is up, an unreadable row shows NOTHING rather than a
    * placeholder. One spinner for the room, not a column of identical dots.
@@ -891,14 +978,7 @@ export function ChatRoomScreen() {
       let history: Array<{ messageId: string; plaintext: string }> = [];
       try {
         history = await tak.backfill(topicId, visibilityRef.current);
-        if (!cancelled && history.length) {
-          setRecovered((prev) => {
-            const next = { ...prev };
-            for (const h of history) next[h.messageId] = h.plaintext;
-            recoveredByTopic.set(topicId, next);
-            return next;
-          });
-        }
+        if (!cancelled && history.length) applyBackfill(history);
       } catch {}
       if (!cancelled) await provisionArchiveAccess();
       // Make removals real. A kick, a leave and an account deletion all end as
@@ -1083,26 +1163,63 @@ export function ChatRoomScreen() {
     };
   }, [tak, topicId]);
 
-  // A device that joins the group AFTER the root was handed out receives
-  // nothing, and until now that lasted "until some other device happens to
-  // reopen the chat" — reproducibly minutes, or forever. Re-check on a slow
-  // timer while the room is open. `distributePublicRootWhenGroupChanged` is a
-  // no-op unless the MLS epoch actually advanced, so the steady-state cost is
-  // one commits-since GET, not a bundle per tick.
+  /*
+   * Keep handing keys out, and keep picking them up, for as long as the room is
+   * open.
+   *
+   * A device that joins AFTER the keys went round receives nothing, and that
+   * lasted "until some other device happens to reopen the chat" — reproducibly
+   * minutes, or forever. A repeating tick fixed that for PUBLIC rooms and the
+   * scoped tiers never got it, so a private room's second device sat on
+   * "Encrypted — this device has no key for it" until a member reopened the
+   * chat. Reproduced in `inviteHistoryRepro.test.ts`: the crypto is fine, the
+   * grant works, it simply was not being run again.
+   *
+   * Both directions, because a tick that only GIVES leaves the device that
+   * needs the key waiting for its own next visit to notice what arrived:
+   *
+   *   give — the tier's own hand-out. Each is a no-op unless the group actually
+   *          changed, so the steady state costs one commits-since GET.
+   *   take — re-run the backfill, but only while something is still locked. A
+   *          room with nothing sealed does no work at all.
+   */
   useEffect(() => {
-    // Backoff from a short first interval: a device that joins right after the
-    // hand-out is the case that matters, and making it wait a fixed half-minute
-    // is the whole complaint.
     let delay = 3_000;
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
+
+    const give = async () => {
+      const visibility = visibilityRef.current;
+      if (kind === 'dm') return;
+      if (visibility === 'public') {
+        await tak.distributePublicRootWhenGroupChanged(topicId);
+        return;
+      }
+      // Same rule the one-shot on room open uses: private grants from any
+      // member, secret only from the owner.
+      if (visibility === 'private' || roleRef.current === 'owner') {
+        await tak.grantPrivateHistory(topicId);
+      }
+    };
+
+    const take = async () => {
+      if (!lockedRef.current) return;
+      const history = await tak.backfill(topicId, visibilityRef.current);
+      if (!alive || history.length === 0) return;
+      applyBackfill(history);
+    };
+
     const schedule = () => {
       timer = setTimeout(() => {
-        void tak
-          .distributePublicRootWhenGroupChanged(topicId)
+        void give()
+          .catch(() => {})
+          .then(take)
           .catch(() => {})
           .finally(() => {
             if (!alive) return;
+            // Doubling from a short first interval: the device that joined a
+            // second ago is the case that matters, and making it wait out a
+            // fixed half-minute is the complaint itself.
             delay = Math.min(delay * 2, 60_000);
             schedule();
           });
@@ -1113,7 +1230,7 @@ export function ChatRoomScreen() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [tak, topicId]);
+  }, [tak, topicId, kind, applyBackfill]);
 
   useEffect(() => {
     allMessagesRef.current = allMessages;
@@ -1218,6 +1335,26 @@ export function ChatRoomScreen() {
       title: topicTitle,
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* The claim, once its sentence has withdrawn. This control is the
+              part that must NEVER go away: a lock for a room the service
+              cannot read, a warning-coloured info mark for one it can, so the
+              two rooms never look alike even to someone who let the sentence
+              expire without reading it. Tapping it says the sentence again. */}
+          <TouchableOpacity
+            onPress={() => setClaimOpen((open) => !open)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: claimOpen }}
+            accessibilityLabel={t(`openstoa.chat.tierClaim.${claim}`)}
+            testID="chat-tier-claim-button"
+            style={{ marginRight: 10 }}
+          >
+            <Feather
+              name={claim === 'e2ee' ? 'lock' : 'info'}
+              size={18}
+              color={claim === 'e2ee' ? colors.brand.accent : colors.status.warning}
+            />
+          </TouchableOpacity>
           {kind !== 'dm' ? (
             <TouchableOpacity
               onPress={openMembers}
@@ -1251,7 +1388,11 @@ export function ChatRoomScreen() {
     kind,
     openMembers,
     presence,
+    claim,
+    claimOpen,
     colors.text.primary,
+    colors.brand.accent,
+    colors.status.warning,
     t,
     styles.presenceBadge,
     styles.presenceDot,
@@ -1644,6 +1785,7 @@ export function ChatRoomScreen() {
           PRESENT TENSE ("new messages and images are…"): images sent before the
           encrypted-attachment change are still plaintext objects, so a claim
           about the room would be false about its own history. */}
+      {claimOpen ? (
       <View
         style={[styles.tierBanner, claim === 'serverReadable' && styles.tierBannerReadable]}
         accessibilityRole="summary"
@@ -1666,6 +1808,35 @@ export function ChatRoomScreen() {
           </Text>
         ) : null}
       </View>
+      ) : null}
+
+      {/*
+        Locked rows, explained, with the one thing that resolves them.
+
+        Previously this room rendered a column of "Encrypted — this device has
+        no key for it" and left it there: true, useless, and reading like
+        breakage. The key IS still coming — an existing member's client hands it
+        over and this room asks again on every tick — so the wait is named, and
+        so is the action, because for someone's own second device the remedy is
+        entirely in their hands.
+      */}
+      {awaitingRoomKey ? (
+        <View
+          style={styles.keyWaitNotice}
+          // `status`, not `alert`: nothing is wrong and nothing is urgent — the
+          // keys are on their way, and an alert would interrupt to say so.
+          accessibilityRole="progressbar"
+          testID="chat-key-wait"
+        >
+          <WaitingStatus
+            label={t('openstoa.chat.awaitingKey.body', { count: lockedCount })}
+            color={colors.brand.accent}
+            style={styles.keyWaitText}
+            testID="chat-key-wait-line"
+          />
+          <Text style={styles.keyWaitHint}>{t('openstoa.chat.awaitingKey.hint')}</Text>
+        </View>
+      ) : null}
 
       {/* No connection bar here.
           It appeared and disappeared above the list, so every blink of the
@@ -1695,6 +1866,7 @@ export function ChatRoomScreen() {
               onRetry={retryFailed}
               onDiscard={discardFailed}
               syncing={syncing}
+              awaitingKey={awaitingRoomKey}
               prevItem={index > 0 ? visibleMessages[index - 1] : undefined}
               styles={styles}
               navigation={navigation}
@@ -1817,6 +1989,8 @@ interface RowProps {
   /** The room key has not reached this device YET — locked rows are loading,
    *  not broken, and must not be dressed as a permanent failure. */
   syncing?: boolean;
+  /** A key is still expected — see `awaitingRoomKey` in the screen. */
+  awaitingKey?: boolean;
 }
 
 // One line per distinct author, not per row: this renders inside a list.
@@ -1836,7 +2010,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
   });
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress, topicId, visibility }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, visibility }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -1884,6 +2058,7 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
       onDiscard={onDiscard}
       onLongPress={onLongPress}
       syncing={syncing}
+      awaitingKey={awaitingKey}
       sameAuthor={sameAuthor}
       isOwn={isOwn}
       styles={styles}
@@ -2014,6 +2189,8 @@ interface MessageBodyProps {
   visibility: Visibility;
   /** The room key has not reached this device YET — see `syncing` in the screen. */
   syncing?: boolean;
+  /** A key is still expected — see `awaitingRoomKey` in the screen. */
+  awaitingKey?: boolean;
 }
 
 // Image URLs: explicit extension OR a known image host. `media.zkproofport.app`
@@ -2134,19 +2311,24 @@ function EncryptedAttachment({
   );
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, onRetry, onDiscard, onLongPress, topicId, visibility }: MessageBodyProps) {
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, visibility }: MessageBodyProps) {
   // Its OWN hook. `t` from the screen component is not in scope here, and
   // reaching for it crashed every room that rendered a locked row.
   const { t } = useTranslation();
   const rawContent: string = item.message ?? '';
-  // While the room-key banner is already explaining the wait, repeating that
-  // sentence in every bubble fills the screen with the same line. A locked row
-  // says only that it is not readable yet.
-  // A locked row only ever reaches here once syncing has STOPPED — the list
-  // filters it out entirely while the spinner is up — so this is the real
-  // outcome, not a loading state.
+  /*
+   * A locked row while the key is still coming says so, and only then admits
+   * defeat.
+   *
+   * It used to always read "Encrypted — this device has no key for it": true,
+   * final-sounding, and wrong about the situation, because the key is on its
+   * way. The notice above carries the explanation and the remedy, so the bubble
+   * stays short — it only has to distinguish "not yet" from "not at all".
+   */
   const content: string =
-    rawContent === '[unable to decrypt]' ? t('openstoa.chat.lockedMessage') : rawContent;
+    rawContent === '[unable to decrypt]'
+      ? t(awaitingKey ? 'openstoa.chat.lockedMessageSyncing' : 'openstoa.chat.lockedMessage')
+      : rawContent;
   /*
    * An encrypted attachment, or null for an ordinary message. Memoised so the
    * attachment's decrypt effect does not re-run on every unrelated re-render of
