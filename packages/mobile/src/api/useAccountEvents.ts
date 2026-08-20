@@ -25,6 +25,11 @@ import { subscribeKeyNeededPushes } from '../hooks/pushReceived';
 
 type AccountEventName = 'key-needed' | 'ping';
 
+/** How long after a grant the same topic is left alone. */
+export const GRANT_COOLDOWN_MS = 60_000;
+/** Cap on the per-topic memory, so a long session cannot grow it without end. */
+const GRANT_MEMORY_MAX = 200;
+
 interface KeyNeededData {
   topicId?: unknown;
 }
@@ -54,26 +59,52 @@ export function useAccountEvents(): void {
    * leaves. Cleared when the pass ends, so a later event still runs.
    */
   const inFlight = useRef<Set<string>>(new Set());
+  /**
+   * When each topic last finished a grant, so a reconnect does not redo it.
+   *
+   * The server REPLAYS `key-needed` on every connect (up to 20 topics), and a
+   * phone reconnects whenever the network changes — so without this, walking
+   * between wifi and cellular re-runs twenty passes over the same leaves. The
+   * twin of this map lives in the web's `src/lib/useAccountEvents.ts`.
+   */
+  const lastGrantAt = useRef<Map<string, number>>(new Map());
 
   /**
-   * Run one grant, at most one at a time per topic.
+   * Run one grant: at most one at a time per topic, and not again straight away.
    *
    * Shared by BOTH triggers on purpose. A push and a stream event for the same
    * topic routinely arrive together — the server wakes every device that is not
    * streaming, and "not streaming" is decided a moment before the stream comes
    * up — and two passes over the same leaves is waste at best and interleaved
    * writes at worst.
+   *
+   * The cooldown applies to failures too. A grant that failed for a reason a
+   * retry would fix is covered by the room's own repeating tick, which backs
+   * off from 3s; hammering the same pass on every reconnect is not what fixes
+   * anything.
    */
   const grant = useCallback(
     (topicId: string) => {
       if (inFlight.current.has(topicId)) return;
+      const last = lastGrantAt.current.get(topicId) ?? 0;
+      if (Date.now() - last < GRANT_COOLDOWN_MS) return;
+
       inFlight.current.add(topicId);
       void grantRoomKeys(client, host, topicId)
         .catch(() => {
           // Expected often: this device may hold nothing for that topic, or
           // may not be a member any more. Nothing to tell anyone.
         })
-        .finally(() => inFlight.current.delete(topicId));
+        .finally(() => {
+          inFlight.current.delete(topicId);
+          lastGrantAt.current.set(topicId, Date.now());
+          // Bounded: the key is a topic id from the server, but nothing else
+          // trims this map over a long-lived session.
+          if (lastGrantAt.current.size > GRANT_MEMORY_MAX) {
+            const oldest = lastGrantAt.current.keys().next().value;
+            if (oldest !== undefined) lastGrantAt.current.delete(oldest);
+          }
+        });
     },
     [client, host],
   );

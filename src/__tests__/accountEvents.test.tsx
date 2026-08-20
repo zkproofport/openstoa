@@ -23,6 +23,8 @@
  *   external   → a grant that rejects does not surface, and does not wedge the
  *                in-flight guard for the next event
  *   boundary   → two different topics both run
+ *   race       → a reconnect that replays the same topic inside the cooldown
+ *                does not redo the grant; past it, it does
  *   UTF-8 / very large → N/A: the payload is an id the server minted.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -34,7 +36,7 @@ import { createRoot, type Root } from 'react-dom/client';
 const grantMock = vi.hoisted(() => vi.fn(async (_topicId: string) => {}));
 vi.mock('@/lib/keyGrant', () => ({ grantRoomKeys: grantMock }));
 
-const { useAccountEvents } = await import('@/lib/useAccountEvents');
+const { useAccountEvents, GRANT_COOLDOWN_MS } = await import('@/lib/useAccountEvents');
 
 /** Records what was opened, and lets a test push events into it. */
 class FakeEventSource {
@@ -121,6 +123,10 @@ describe('the account stream on the web', () => {
     grantMock.mockImplementation(
       () => new Promise<void>((resolve) => { release = resolve; }),
     );
+    // Time is driven so the later assertion is about the IN-FLIGHT guard
+    // clearing, not about the cooldown that also sits in front of it.
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(3_000_000);
 
     await mount();
     await act(async () => {
@@ -135,6 +141,7 @@ describe('the account stream on the web', () => {
     await settle();
 
     // And the guard clears, so a later event is not swallowed forever.
+    now.mockReturnValue(3_000_000 + GRANT_COOLDOWN_MS + 1);
     await act(async () => FakeEventSource.last.emit('key-needed', { topicId: 't1' }));
     await settle();
     expect(grantMock).toHaveBeenCalledTimes(2);
@@ -169,11 +176,20 @@ describe('the account stream on the web', () => {
     // Rejecting is the COMMON case: most members hold nothing for the topic in
     // the broadcast. An unhandled rejection per event would be constant noise.
     grantMock.mockRejectedValueOnce(new Error('holds nothing'));
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(4_000_000);
 
     await mount();
     await act(async () => FakeEventSource.last.emit('key-needed', { topicId: 't1' }));
     await settle();
 
+    // A FAILED grant is subject to the cooldown too — retrying it on every
+    // reconnect fixes nothing, and the room's own tick covers the real retry.
+    await act(async () => FakeEventSource.last.emit('key-needed', { topicId: 't1' }));
+    await settle();
+    expect(grantMock, 'a failure was retried immediately').toHaveBeenCalledTimes(1);
+
+    now.mockReturnValue(4_000_000 + GRANT_COOLDOWN_MS + 1);
     await act(async () => FakeEventSource.last.emit('key-needed', { topicId: 't1' }));
     await settle();
     expect(grantMock).toHaveBeenCalledTimes(2);
@@ -191,6 +207,49 @@ describe('the account stream on the web', () => {
     await expect(mount()).resolves.toBeUndefined();
     expect(container.isConnected, 'the page came down with the stream').toBe(true);
     expect(grantMock).not.toHaveBeenCalled();
+  });
+
+  it('RACE: a replayed topic inside the cooldown is not granted twice', async () => {
+    /*
+     * The server replays `key-needed` on EVERY connect, and EventSource
+     * reconnects on its own after any blip. Without the cooldown a flaky
+     * connection re-runs the same pass over the same leaves each time.
+     */
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(1_000_000);
+
+    await mount();
+    await act(async () => FakeEventSource.last.emit('key-needed', { topicId: 't1' }));
+    await settle();
+    expect(grantMock).toHaveBeenCalledTimes(1);
+
+    // A reconnect a second later replays it.
+    now.mockReturnValue(1_001_000);
+    await act(async () => FakeEventSource.last.emit('key-needed', { topicId: 't1' }));
+    await settle();
+    expect(grantMock, 'a reconnect redid the grant').toHaveBeenCalledTimes(1);
+
+    // BOUNDARY: past the cooldown it runs again, so a real need is not lost.
+    now.mockReturnValue(1_000_000 + GRANT_COOLDOWN_MS + 1);
+    await act(async () => FakeEventSource.last.emit('key-needed', { topicId: 't1' }));
+    await settle();
+    expect(grantMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('RACE: the cooldown is per topic, not global', async () => {
+    // A replay carries up to 20 DIFFERENT topics at once; one cooling down
+    // must not silence the other nineteen.
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(2_000_000);
+
+    await mount();
+    await act(async () => {
+      FakeEventSource.last.emit('key-needed', { topicId: 't1' });
+      FakeEventSource.last.emit('key-needed', { topicId: 't2' });
+    });
+    await settle();
+
+    expect(grantMock.mock.calls.map((c) => c[0]).sort()).toEqual(['t1', 't2']);
   });
 
   it('CONTRACT: unmounting closes the stream', async () => {

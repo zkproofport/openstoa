@@ -24,6 +24,11 @@ import { grantRoomKeys } from '@/lib/keyGrant';
  * @param enabled false for a signed-out visitor: there is no account to receive
  *   anything for, and opening the stream would only earn a 401.
  */
+/** How long after a grant the same topic is left alone. */
+export const GRANT_COOLDOWN_MS = 60_000;
+/** Cap on the per-topic memory, so a long-lived tab cannot grow it without end. */
+const GRANT_MEMORY_MAX = 200;
+
 export function useAccountEvents(enabled: boolean): void {
   /**
    * Topics with a grant in flight.
@@ -33,6 +38,15 @@ export function useAccountEvents(enabled: boolean): void {
    * leaves. Cleared when the pass ends, so a later event still runs.
    */
   const inFlight = useRef<Set<string>>(new Set());
+  /**
+   * When each topic last finished a grant, so a reconnect does not redo it.
+   *
+   * The server REPLAYS `key-needed` on every connect (up to 20 topics), and
+   * `EventSource` reconnects on its own after any blip — so without this, a
+   * flaky connection re-runs twenty passes over the same leaves each time. The
+   * twin of this map lives in the mini-app's `api/useAccountEvents.ts`.
+   */
+  const lastGrantAt = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!enabled) return;
@@ -62,6 +76,12 @@ export function useAccountEvents(enabled: boolean): void {
         // worth surfacing either — the room's own retry still covers the topic.
       }
       if (!topicId || inFlight.current.has(topicId)) return;
+      /*
+       * Not again straight away — including after a failure. A grant that
+       * failed for a reason a retry would fix is covered by the room's own
+       * repeating tick; redoing it on every reconnect fixes nothing.
+       */
+      if (Date.now() - (lastGrantAt.current.get(topicId) ?? 0) < GRANT_COOLDOWN_MS) return;
 
       const id = topicId;
       inFlight.current.add(id);
@@ -70,7 +90,15 @@ export function useAccountEvents(enabled: boolean): void {
           // Expected often: this browser may hold nothing for that topic, or
           // may not be a member any more. Nothing to tell anyone.
         })
-        .finally(() => inFlight.current.delete(id));
+        .finally(() => {
+          inFlight.current.delete(id);
+          lastGrantAt.current.set(id, Date.now());
+          // Bounded: nothing else trims this over a long-lived tab.
+          if (lastGrantAt.current.size > GRANT_MEMORY_MAX) {
+            const oldest = lastGrantAt.current.keys().next().value;
+            if (oldest !== undefined) lastGrantAt.current.delete(oldest);
+          }
+        });
     });
 
     // EventSource reconnects on its own; a signed-out visitor gets a 401 and
