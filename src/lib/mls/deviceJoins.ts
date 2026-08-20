@@ -115,3 +115,59 @@ export function scheduleDeviceJoinRecord(
     logger.error(MODULE, 'Device join record failed', { topicId, error: message });
   });
 }
+
+/** How far back a newly-opened stream looks for joins it may owe keys for. */
+export const JOIN_CATCH_UP_HOURS = 72;
+/** Ceiling on one catch-up, so a busy account cannot open a stream and stall. */
+export const JOIN_CATCH_UP_LIMIT = 20;
+
+/** A topic that may be waiting on this account for keys, and at which epoch. */
+export interface PendingKeyNeeded {
+  topicId: string;
+  epoch: number;
+}
+
+/**
+ * Topics this account may owe keys to, for a stream that has just opened.
+ *
+ * The live fan-out is pub/sub, which is to say VOLATILE: an event published
+ * while an account had nothing connected is gone. The host replays deliveries
+ * latched while the mini-app was unmounted, but a killed app takes that latch
+ * with it — so an account whose only key-holding device was closed at the
+ * moment somebody joined would never learn of it, and the newcomer's room would
+ * stay locked until an unrelated commit happened to fire another event.
+ *
+ * `mls_device_joins` already records every join, so the answer is a query
+ * rather than a new piece of state to keep. Bounded on both axes: a window,
+ * because a join old enough is either resolved or not worth re-attempting on
+ * every app launch, and a count, because this runs before the first byte of
+ * the stream.
+ *
+ * Scoped tiers only. `public` keeps its root server-side and `dm` grants on
+ * accept, so neither needs a holder to be nudged — including them would spend
+ * the whole budget on topics where nobody is waiting.
+ *
+ * Advisory, like the live event: a client that holds nothing for a topic does
+ * nothing with it.
+ */
+export async function pendingKeyNeeded(
+  executor: SqlExecutor,
+  userId: string,
+  limit: number = JOIN_CATCH_UP_LIMIT,
+): Promise<PendingKeyNeeded[]> {
+  const res = (await executor.execute(sql`
+    SELECT j.topic_id AS "topicId", MAX(j.joined_epoch)::bigint AS "epoch"
+    FROM mls_device_joins j
+    JOIN topic_members m ON m.topic_id = j.topic_id AND m.user_id = ${userId}
+    JOIN topics t ON t.id = j.topic_id
+    WHERE t.visibility IN ('private', 'secret')
+      AND j.joined_at > now() - (${JOIN_CATCH_UP_HOURS} * INTERVAL '1 hour')
+    GROUP BY j.topic_id
+    ORDER BY MAX(j.joined_at) DESC
+    LIMIT ${limit}
+  `)) as { rows?: Array<{ topicId: string; epoch: string | number }> } | Array<{ topicId: string; epoch: string | number }>;
+
+  // node-postgres answers `{ rows }`; some drivers answer the array directly.
+  const rows = Array.isArray(res) ? res : (res.rows ?? []);
+  return rows.map((r) => ({ topicId: r.topicId, epoch: Number(r.epoch) }));
+}

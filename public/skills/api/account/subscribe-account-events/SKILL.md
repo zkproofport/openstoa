@@ -27,6 +27,12 @@ Event shape: `event: <kind>\ndata: <json>\n\n`.
  recipient device through the bundle mailbox, which the server cannot open.
 - `ping` — heartbeat every 30s. Treat a gap over 60s as a drop and reconnect.
 
+On connect, `key-needed` is also REPLAYED for scoped-tier topics this account belongs to
+that saw a device join in the last 72 hours (at most 20, newest first). The live fan-out
+is pub/sub, so anything published while the account had nothing connected is gone —
+without the replay, a client that was closed when somebody joined would never learn of
+it. Expect duplicates across reconnects and make the grant idempotent.
+
 Advisory, never authoritative: a client that misses an event is not stuck, because the
 chat room retries a grant on its own while it is open.
 

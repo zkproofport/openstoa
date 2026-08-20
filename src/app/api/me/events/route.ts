@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import Redis from 'ioredis';
 import { logger } from '@/lib/logger';
+import { db } from '@/lib/db';
+import { pendingKeyNeeded } from '@/lib/mls/deviceJoins';
 import {
   markUserStreamClosed,
   markUserStreamOpen,
@@ -33,6 +35,12 @@ const ROUTE = '/api/me/events';
  *         nothing. Nothing secret is in this payload — the keys themselves travel sealed to a
  *         recipient device through the bundle mailbox, which the server cannot open.
  *       - `ping` — heartbeat every 30s. Treat a gap over 60s as a drop and reconnect.
+ *
+ *       On connect, `key-needed` is also REPLAYED for scoped-tier topics this account belongs to
+ *       that saw a device join in the last 72 hours (at most 20, newest first). The live fan-out
+ *       is pub/sub, so anything published while the account had nothing connected is gone —
+ *       without the replay, a client that was closed when somebody joined would never learn of
+ *       it. Expect duplicates across reconnects and make the grant idempotent.
  *
  *       Advisory, never authoritative: a client that misses an event is not stuck, because the
  *       chat room retries a grant on its own while it is open.
@@ -165,6 +173,36 @@ export async function GET(request: NextRequest) {
         // Sent immediately so a client can tell "connected" from "connecting"
         // without waiting up to 30 seconds for the first heartbeat.
         send('ping', {});
+
+        /*
+         * Catch up on joins this account slept through.
+         *
+         * The fan-out is pub/sub, so an event published while this account had
+         * nothing connected is simply gone — and a killed app also takes the
+         * host's replay latch with it. Without this, the only key-holding
+         * device being closed at the moment somebody joined leaves the
+         * newcomer's room locked until an unrelated commit happens to fire
+         * another event.
+         *
+         * Fire-and-forget, and AFTER the stream is live: it is a bounded query
+         * over bookkeeping the server already keeps, and the stream must not
+         * wait on it — nor fail with it.
+         */
+        void pendingKeyNeeded(db, userId)
+          .then((pending) => {
+            for (const { topicId, epoch } of pending) send('key-needed', { topicId, epoch });
+            if (pending.length > 0) {
+              logger.info(ROUTE, 'Replayed pending key-needed', {
+                userId,
+                count: pending.length,
+              });
+            }
+          })
+          .catch((err: unknown) => {
+            // Losing the catch-up costs a delay the room's own retry covers.
+            logger.warn(ROUTE, 'Key-needed catch-up failed', { userId, error: String(err) });
+          });
+
         heartbeatTimer = setInterval(() => {
           send('ping', {});
           // The marker expires on its own, so the heartbeat is also what keeps
