@@ -150,6 +150,36 @@ export async function GET(request: NextRequest) {
         });
       });
 
+      /*
+       * Catch up on joins this account slept through — BEFORE Redis.
+       *
+       * The fan-out is pub/sub, so an event published while this account had
+       * nothing connected is simply gone, and a killed app also takes the
+       * host's replay latch with it. Without this, the only key-holding device
+       * being closed at the moment somebody joined leaves the newcomer's room
+       * locked until an unrelated commit fires another event.
+       *
+       * Ordered ahead of `subscribe` deliberately: the replay needs only the
+       * database, so it must not die with the broker. Staging has had no Redis
+       * since the 2026-06-04 cost cutdown, and behind `subscribe` this would
+       * have been dead there too — the one environment where it is most likely
+       * to be exercised.
+       *
+       * Fire-and-forget either way: it is a bounded query over bookkeeping the
+       * server already keeps, and the stream must not wait on it.
+       */
+      void pendingKeyNeeded(db, userId)
+        .then((pending) => {
+          for (const { topicId, epoch } of pending) send('key-needed', { topicId, epoch });
+          if (pending.length > 0) {
+            logger.info(ROUTE, 'Replayed pending key-needed', { userId, count: pending.length });
+          }
+        })
+        .catch((err: unknown) => {
+          // Losing the catch-up costs a delay the room's own retry covers.
+          logger.warn(ROUTE, 'Key-needed catch-up failed', { userId, error: String(err) });
+        });
+
       try {
         await sub.subscribe(channelKey);
         sub.on('message', (_channel: string, messageStr: string) => {
@@ -173,35 +203,6 @@ export async function GET(request: NextRequest) {
         // Sent immediately so a client can tell "connected" from "connecting"
         // without waiting up to 30 seconds for the first heartbeat.
         send('ping', {});
-
-        /*
-         * Catch up on joins this account slept through.
-         *
-         * The fan-out is pub/sub, so an event published while this account had
-         * nothing connected is simply gone — and a killed app also takes the
-         * host's replay latch with it. Without this, the only key-holding
-         * device being closed at the moment somebody joined leaves the
-         * newcomer's room locked until an unrelated commit happens to fire
-         * another event.
-         *
-         * Fire-and-forget, and AFTER the stream is live: it is a bounded query
-         * over bookkeeping the server already keeps, and the stream must not
-         * wait on it — nor fail with it.
-         */
-        void pendingKeyNeeded(db, userId)
-          .then((pending) => {
-            for (const { topicId, epoch } of pending) send('key-needed', { topicId, epoch });
-            if (pending.length > 0) {
-              logger.info(ROUTE, 'Replayed pending key-needed', {
-                userId,
-                count: pending.length,
-              });
-            }
-          })
-          .catch((err: unknown) => {
-            // Losing the catch-up costs a delay the room's own retry covers.
-            logger.warn(ROUTE, 'Key-needed catch-up failed', { userId, error: String(err) });
-          });
 
         heartbeatTimer = setInterval(() => {
           send('ping', {});
