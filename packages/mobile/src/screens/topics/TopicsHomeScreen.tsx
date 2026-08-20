@@ -10,11 +10,13 @@ import {
   Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
 import type { Topic } from '@openstoa/api-types';
+import { OpenStoaApiError } from '../../api/openstoaClient';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { getTakSessionStore } from '../../crypto/mobileTransport';
@@ -24,6 +26,7 @@ import { TopicCard } from '../../components/TopicCard';
 import { SortPills } from '../../components/SortPills';
 import { TagChips } from '../../components/TagChips';
 import { SearchBar } from '../../components/SearchBar';
+import { QueryErrorState } from '../../components/QueryErrorState';
 import { InvitePromptModal } from '../../components/InvitePromptModal';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
@@ -96,34 +99,6 @@ function makeStyles(colors: ThemeColors) {
       minHeight: 44,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    filterRow: {
-      flexDirection: 'row',
-      gap: 8,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      backgroundColor: colors.background.secondary,
-    },
-    filterChip: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: RADIUS.pill,
-      borderWidth: 1,
-      borderColor: colors.border.default,
-      backgroundColor: colors.background.tertiary,
-    },
-    filterChipActive: {
-      backgroundColor: colors.brand.primaryMuted,
-      borderColor: colors.brand.primary,
-    },
-    filterChipText: {
-      fontSize: TYPE_SCALE.bodySmall,
-      color: colors.text.secondary,
-      fontWeight: '500',
-    },
-    filterChipTextActive: {
-      color: colors.brand.primary,
-      fontWeight: '700',
     },
   });
 }
@@ -225,11 +200,18 @@ export function TopicsHomeScreen() {
       navigation.navigate('TopicDetail', { topicId: res.topicId });
     },
     onError: (err: Error) => {
-      const msg = err.message.includes('409')
-        ? t('openstoa.topics.invite.alreadyMember')
-        : err.message.includes('404')
-        ? t('openstoa.topics.invite.invalidCode')
-        : err.message;
+      // Read the STATUS, not the message text. This used to search the message
+      // for "409" and "404", which only worked because the message was the raw
+      // request line — the same string that was putting `/api/...` on screen
+      // whenever neither substring matched. `err.message` is now the sentence
+      // to show, so the status has to come from the typed error.
+      const status = err instanceof OpenStoaApiError ? err.status : null;
+      const msg =
+        status === 409
+          ? t('openstoa.topics.invite.alreadyMember')
+          : status === 404
+          ? t('openstoa.topics.invite.invalidCode')
+          : err.message;
       Alert.alert(t('openstoa.topics.invite.joinFailedTitle'), msg);
     },
   });
@@ -295,29 +277,47 @@ export function TopicsHomeScreen() {
     });
   }, [allTopics, membershipFilter]);
 
+  /*
+   * Which topics, on the same line as in what order.
+   *
+   * These were two stacked rows of pills. They are two questions, but small
+   * ones — six words between them — and on a phone they were pushing the list
+   * itself below the fold before a single topic had been read. One row, with a
+   * rule between the groups so they still read as two questions.
+   */
+  const membershipItems = useMemo(
+    () => [
+      { key: 'all' as const, label: t('openstoa.topics.filter.all', { defaultValue: 'All' }) },
+      { key: 'joined' as const, label: t('openstoa.topics.filter.joined', { defaultValue: 'Joined' }) },
+    ],
+    [t],
+  );
+
   const Header = (
     <View>
-      <View style={styles.filterRow}>
-        <TouchableOpacity
-          style={[styles.filterChip, membershipFilter === 'all' && styles.filterChipActive]}
-          onPress={() => setMembershipFilter('all')}
-        >
-          <Text style={[styles.filterChipText, membershipFilter === 'all' && styles.filterChipTextActive]}>
-            {t('openstoa.topics.filter.all', { defaultValue: 'All' })}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterChip, membershipFilter === 'joined' && styles.filterChipActive]}
-          onPress={() => setMembershipFilter('joined')}
-        >
-          <Text style={[styles.filterChipText, membershipFilter === 'joined' && styles.filterChipTextActive]}>
-            {t('openstoa.topics.filter.joined', { defaultValue: 'Joined' })}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <SortPills items={sortItems} value={sortKey} onChange={setSortKey} />
+      <SortPills
+        items={sortItems}
+        value={sortKey}
+        onChange={setSortKey}
+        leading={{
+          items: membershipItems,
+          value: membershipFilter,
+          onChange: setMembershipFilter,
+          accessibilityLabel: t('openstoa.topics.filter.groupLabel', {
+            defaultValue: 'Which topics',
+          }),
+        }}
+      />
       {categoryChips.length > 1 ? (
-        <TagChips chips={categoryChips} value={activeCategory} onChange={setActiveCategory} />
+        // Folded by default. It is the longest row, the least often changed,
+        // and the header keeps saying which category is in force.
+        <TagChips
+          chips={categoryChips}
+          value={activeCategory}
+          onChange={setActiveCategory}
+          collapsible
+          title={t('openstoa.topics.category.label', { defaultValue: 'Category' })}
+        />
       ) : null}
     </View>
   );
@@ -337,6 +337,23 @@ export function TopicsHomeScreen() {
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.brand.primary} />
           </View>
+        </View>
+      ) : topicsQuery.isError ? (
+        /*
+         * Checked BEFORE the list, because the list's own empty state is the
+         * lie this fixes: a failed fetch left `data` undefined, the FlatList
+         * rendered `ListEmptyComponent`, and the screen said "No topics found"
+         * while the phone was in aeroplane mode. The header stays so the
+         * filters are still there to see, and the retry is the only new thing
+         * asked of anyone.
+         */
+        <View style={styles.list}>
+          {Header}
+          <QueryErrorState
+            title={t('openstoa.common.loadFailed.topics')}
+            error={topicsQuery.error}
+            onRetry={() => void topicsQuery.refetch()}
+          />
         </View>
       ) : (
         <FlatList<Topic>

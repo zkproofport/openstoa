@@ -34,7 +34,7 @@ import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import Link from 'next/link';
 import { chatTierOf, type ChatTier } from '@/lib/chatTierPolicy';
-import { chatClaimKey } from '@/lib/chatTierExplainer';
+import { chatClaimKey, TIER_CLAIM_VISIBLE_MS } from '@/lib/chatTierExplainer';
 import {
   getMlsSessionStore,
   getTakSessionStore,
@@ -520,6 +520,29 @@ function E2eeBanner({ connected, tier }: { connected?: boolean; tier: ChatTier }
   const { t } = useTranslation();
   const state = connected ? t('chat.connected') : t('chat.reconnecting');
   const claim = chatClaimKey(tier);
+  /*
+   * The SENTENCE withdraws; the strip does not.
+   *
+   * Three lines of standing notice above every conversation is furniture, and
+   * furniture goes unread — which is worst in `serverReadable`, where the
+   * sentence is a warning rather than a reassurance. So it says its piece on
+   * entry and then folds back to the marker.
+   *
+   * What stays is the marker itself: same strip, same per-tier colour, and a
+   * button carrying 🔒 or ℹ️. A room the service can read therefore still looks
+   * unlike one it cannot at every moment, including for a reader who never
+   * read the sentence — and the connection dot, which lives in this strip,
+   * keeps its place instead of appearing and disappearing with the text.
+   */
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    // Keyed on the claim: `tier` is derived from a topic lookup, so a room can
+    // resolve after its first frames, and the sentence it lands on deserves
+    // its own reading time rather than the tail of the previous one's.
+    setOpen(true);
+    const timer = setTimeout(() => setOpen(false), TIER_CLAIM_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [claim]);
   return (
     <div
       style={{
@@ -536,15 +559,36 @@ function E2eeBanner({ connected, tier }: { connected?: boolean; tier: ChatTier }
       }}
       data-testid="chat-e2ee-banner"
       data-claim={claim}
+      data-expanded={open ? 'true' : 'false'}
     >
-      <span aria-hidden="true">{claim === 'e2ee' ? '🔒' : 'ℹ️'}</span>
-      <span style={{ minWidth: 0 }}>{t(`chat.tierClaim.${claim}`)}</span>
-      <Link
-        href="/docs/tiers"
-        style={{ color: 'inherit', textDecoration: 'underline', flexShrink: 0 }}
+      <button
+        type="button"
+        onClick={() => setOpen((wasOpen) => !wasOpen)}
+        aria-expanded={open}
+        aria-label={t(`chat.tierClaim.${claim}`)}
+        data-testid="chat-tier-claim-button"
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          font: 'inherit',
+          color: 'inherit',
+          cursor: 'pointer',
+          lineHeight: 1,
+          flexShrink: 0,
+        }}
       >
-        {t('chat.tierClaim.learnMore')}
-      </Link>
+        <span aria-hidden="true">{claim === 'e2ee' ? '🔒' : 'ℹ️'}</span>
+      </button>
+      {open && <span style={{ minWidth: 0 }}>{t(`chat.tierClaim.${claim}`)}</span>}
+      {open && (
+        <Link
+          href="/docs/tiers"
+          style={{ color: 'inherit', textDecoration: 'underline', flexShrink: 0 }}
+        >
+          {t('chat.tierClaim.learnMore')}
+        </Link>
+      )}
       {connected !== undefined && (
         <span
           data-testid="chat-connection-state"

@@ -395,13 +395,16 @@ export default function NewTopicPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {([
                 { value: 'public' as const, label: t('newTopicPage.visibility.public.label'), desc: t('newTopicPage.visibility.public.desc'), disabled: false },
-                // Private is selectable now. Secret is not yet: it is the one
-                // tier whose confidentiality rests entirely on join control, and
-                // that path (expiring single-use invites only, no permanent
-                // code) has just changed — it opens once it has been exercised
-                // end to end.
+                // Secret was held back while its join path — expiring
+                // single-use invites only, no permanent code — was new and
+                // unexercised, because it is the one tier whose confidentiality
+                // rests entirely on join control. That path is now enforced
+                // server-side: the invite-join route refuses a permanent code
+                // for any non-public topic, so a secret room cannot be entered
+                // by a link that outlives its single use. Opening it is what
+                // lets it be exercised end to end.
                 { value: 'private' as const, label: t('newTopicPage.visibility.private.label'), desc: t('newTopicPage.visibility.private.desc'), disabled: false },
-                { value: 'secret' as const, label: t('newTopicPage.visibility.secret.label'), desc: t('newTopicPage.visibility.secret.desc'), disabled: true },
+                { value: 'secret' as const, label: t('newTopicPage.visibility.secret.label'), desc: t('newTopicPage.visibility.secret.desc'), disabled: false },
               ]).map((opt) => (
                 <label
                   key={opt.value}

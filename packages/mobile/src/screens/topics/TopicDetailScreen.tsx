@@ -13,7 +13,8 @@ import {
   Pressable,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
@@ -21,6 +22,7 @@ import type { Topic, Post } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { PostCard } from '../../components/PostCard';
+import { QueryErrorState } from '../../components/QueryErrorState';
 import { SortPills } from '../../components/SortPills';
 import { SearchBar } from '../../components/SearchBar';
 import { useAuthGuardedAction } from '../../auth';
@@ -147,6 +149,12 @@ function makeStyles(colors: ThemeColors) {
       borderRadius: RADIUS.card,
       paddingVertical: 12,
       minHeight: 44,
+    },
+    inviteOnlyNote: {
+      fontSize: TYPE_SCALE.bodySmall,
+      color: colors.text.tertiary,
+      textAlign: 'center',
+      paddingVertical: 12,
     },
     actionButtonDisabled: {
       opacity: 0.6,
@@ -573,6 +581,21 @@ export function TopicDetailScreen() {
     );
   }
 
+  /*
+   * Before the `!topic` branch below, which cannot tell "this topic does not
+   * exist" from "the request did not arrive" — and answering the second with
+   * the first tells someone their topic is gone when their signal is.
+   */
+  if (topicQuery.isError) {
+    return (
+      <QueryErrorState
+        title={t('openstoa.common.loadFailed.topic')}
+        error={topicQuery.error}
+        onRetry={() => void topicQuery.refetch()}
+      />
+    );
+  }
+
   if (!topic) {
     return (
       <View style={styles.centered}>
@@ -636,7 +659,21 @@ export function TopicDetailScreen() {
               : t('openstoa.topicDetail.archiveRetention.noteWindowed')}
           </Text>
         ) : null}
-        {isMember ? null : (
+        {isMember ? null : topic.visibility && topic.visibility !== 'public' ? (
+          /*
+           * No Join button on a topic that cannot be joined this way.
+           *
+           * `POST /join` answers 403 to everything that is not public — the
+           * invite link is the only door, because for the scoped tiers that
+           * link is also what carries the chat history keys. Offering the
+           * button anyway gave the reported behaviour: press, a spinner, back
+           * to "Join", and a 403 nobody sees. Saying what the topic IS costs
+           * the same row and is true.
+           */
+          <Text style={styles.inviteOnlyNote} testID="topic-invite-only">
+            {t('openstoa.topics.inviteOnly')}
+          </Text>
+        ) : (
           <TouchableOpacity
             style={[styles.actionButton, joinMutation.isPending && styles.actionButtonDisabled]}
             onPress={handleJoin}

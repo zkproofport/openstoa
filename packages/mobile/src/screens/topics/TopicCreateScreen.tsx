@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { Topic } from '@openstoa/api-types';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
@@ -387,17 +388,25 @@ export function TopicCreateScreen() {
         <Text style={[styles.label, styles.labelSpaced]}>{t('openstoa.topicCreate.visibility')}</Text>
         <View style={styles.pickerGroup}>
           {([
+            // All three tiers are selectable. These two carried a "coming soon"
+            // badge from the day this screen was scaffolded and simply never
+            // lost it — the web form opened `private` a while ago and the
+            // mini-app was not updated with it. Both tiers are backed
+            // end to end: `chatTierPolicy` gives them per-epoch keys the server
+            // may not hold, the archive-root route refuses a key for them, and
+            // the transport reads that refusal as "nothing deposited" rather
+            // than an error.
             { value: 'public' as const, label: t('openstoa.topicCreate.visibilityOptions.public'), desc: t('openstoa.topicCreate.visibilityOptions.publicDesc') },
-            { value: 'private' as const, label: t('openstoa.topicCreate.visibilityOptions.private'), desc: t('openstoa.topicCreate.visibilityOptions.privateDesc'), wip: true },
-            { value: 'secret' as const, label: t('openstoa.topicCreate.visibilityOptions.secret'), desc: t('openstoa.topicCreate.visibilityOptions.secretDesc'), wip: true },
+            { value: 'private' as const, label: t('openstoa.topicCreate.visibilityOptions.private'), desc: t('openstoa.topicCreate.visibilityOptions.privateDesc') },
+            { value: 'secret' as const, label: t('openstoa.topicCreate.visibilityOptions.secret'), desc: t('openstoa.topicCreate.visibilityOptions.secretDesc') },
           ]).map((opt) => {
             const isSelected = visibility === opt.value;
             return (
               <TouchableOpacity
                 key={opt.value}
-                style={[styles.pickerOption, isSelected && styles.pickerOptionSelected, opt.wip && { opacity: 0.55 }]}
-                onPress={() => { if (!opt.wip) setVisibility(opt.value); }}
-                activeOpacity={opt.wip ? 1 : 0.7}
+                style={[styles.pickerOption, isSelected && styles.pickerOptionSelected]}
+                onPress={() => setVisibility(opt.value)}
+                activeOpacity={0.7}
               >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextSelected]}>
@@ -405,9 +414,7 @@ export function TopicCreateScreen() {
                   </Text>
                   <Text style={{ fontSize: TYPE_SCALE.caption, color: colors.text.tertiary, marginTop: 2 }}>{opt.desc}</Text>
                 </View>
-                {opt.wip ? (
-                  <Text style={styles.wipBadge}>{t('openstoa.topicCreate.comingSoonShort')}</Text>
-                ) : isSelected ? (
+                {isSelected ? (
                   <Text style={{ fontSize: TYPE_SCALE.bodySmall, color: colors.brand.primary }}>✓</Text>
                 ) : null}
               </TouchableOpacity>

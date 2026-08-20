@@ -66,6 +66,8 @@ function ExplorePageInner() {
   const [isGuest, setIsGuest] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [joiningTopicId, setJoiningTopicId] = useState<string | null>(null);
+  /** Why the last join did not happen, or null. Cleared on the next try. */
+  const [joinError, setJoinError] = useState<string | null>(null);
   // `joiningTopicId` drives the DISABLED state, which is a render away; two
   // taps inside one frame (a double-tap, or a stuck click) both get through it
   // and issue two POSTs. The ref closes that window synchronously. Same guard,
@@ -141,15 +143,31 @@ function ExplorePageInner() {
     if (joinInFlightRef.current) return;
     joinInFlightRef.current = true;
     setJoiningTopicId(topicId);
+    setJoinError(null);
     try {
       const res = await fetch(`/api/topics/${topicId}/join`, { method: 'POST' });
       if (res.ok) {
         setTopics((prev) =>
           prev.map((t) => (t.id === topicId ? { ...t, isMember: true, memberCount: t.memberCount + 1 } : t)),
         );
+      } else {
+        /*
+         * A refusal has to reach the person.
+         *
+         * This branch did not exist: a 403 left the button snapping back to
+         * "Join" with nothing said, which reads as a broken button rather than
+         * as a locked door. The server writes its refusals for people ("This
+         * topic requires an invite code"), so that sentence is the one shown.
+         */
+        const reason = await res
+          .json()
+          .then((b: { error?: unknown }) => (typeof b.error === 'string' ? b.error : null))
+          .catch(() => null);
+        setJoinError(reason ?? t('explorePage.joinFailed'));
       }
     } catch {
-      // silently fail
+      // The request never left: the same treatment, in the reader's terms.
+      setJoinError(t('explorePage.joinOffline'));
     } finally {
       joinInFlightRef.current = false;
       setJoiningTopicId(null);
@@ -357,6 +375,32 @@ function ExplorePageInner() {
         </div>
       )}
 
+      {/*
+        Why a join did not happen.
+        
+        Above the grid rather than inside a card: the button that failed snaps
+        back to its resting state immediately, so a message attached to it would
+        appear next to a control that looks untouched. This sits where the
+        reader's eye already goes after pressing.
+      */}
+      {joinError && (
+        <div
+          role="alert"
+          data-testid="join-error"
+          style={{
+            margin: '0 0 var(--space-4)',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-card)',
+            border: '1px solid color-mix(in srgb, var(--color-status-warning) 30%, transparent)',
+            background: 'color-mix(in srgb, var(--color-status-warning) 10%, transparent)',
+            color: 'var(--color-status-warning)',
+            fontSize: 'var(--text-body-sm)',
+          }}
+        >
+          {joinError}
+        </div>
+      )}
+
       {/* Topics grid. `min(260px, 100%)` rather than a bare 260px track: at a
           320px viewport a fixed minimum overflows the column, and a horizontal
           scrollbar on the browse page is the one thing no phone reader wants. */}
@@ -532,6 +576,25 @@ function ExplorePageInner() {
                     <Link href={`/topics/${topic.id}`} className="os-button">
                       {t('explorePage.view')}
                     </Link>
+                  ) : topic.visibility !== 'public' ? (
+                    /*
+                     * No Join button on a topic that cannot be joined this way.
+                     *
+                     * `POST /join` answers 403 to everything that is not public
+                     * — the invite link is the only door, because for the
+                     * scoped tiers that link is also what carries the chat
+                     * history keys. Offering the button anyway produced the
+                     * reported behaviour: press, "Joining…", back to "Join",
+                     * nothing said, and a 403 in the console. Saying what the
+                     * topic IS costs the same space and is true.
+                     */
+                    <span
+                      className="os-label"
+                      style={{ color: 'var(--muted)' }}
+                      data-testid="invite-only-note"
+                    >
+                      {t('explorePage.inviteOnly')}
+                    </span>
                   ) : (
                     <button
                       type="button"

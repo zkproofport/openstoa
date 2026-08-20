@@ -140,7 +140,11 @@ describe('the mini-app says what the web says', () => {
 describe('the mini-app derives, and routes through the WebView', () => {
   it('CONTRACT: the chat room selects its claim with chatClaimKey', () => {
     const src = read(CHAT_ROOM);
-    expect(src).toContain("import { chatClaimKey } from '../../lib/chatTierExplainer'");
+    // Matched as two facts rather than as one exact import line: the point is
+    // that the claim comes from the twinned explainer, not that the explainer
+    // is the only thing imported from it. Pinning the whole line made adding a
+    // second import from the same module look like a removal of the first.
+    expect(src).toMatch(/import \{[^}]*\bchatClaimKey\b[^}]*\} from '\.\.\/\.\.\/lib\/chatTierExplainer'/);
     expect(src).toContain('chatTierOf(visibility, kind === \'dm\')');
     expect(src).toContain('openstoa.chat.tierClaim.${claim}');
   });

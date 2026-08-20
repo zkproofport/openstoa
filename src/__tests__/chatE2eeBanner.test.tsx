@@ -30,6 +30,7 @@
  *                is load-bearing in lockedHistory.test.tsx
  */
 import enLocale from '@/lib/i18n/locales/en.json';
+import { TIER_CLAIM_VISIBLE_MS } from '@/lib/chatTierExplainer';
 import koLocale from '@/lib/i18n/locales/ko.json';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
@@ -48,8 +49,17 @@ vi.mock('@/lib/mls/webTransport', () => ({
   }),
   getTakSessionStore: () => ({
     backfill: async () => [],
+    backfillMissingArchive: async () => {},
     myDeviceId: async () => 'device-1',
     distributePublicRoot: async () => 0,
+    // On a TIMER in the panel, so no test reached it until one started
+    // advancing the clock. Absent from this double it threw "is not a
+    // function" — a mock that is only complete for the tests that happen to
+    // run synchronously.
+    distributePublicRootWhenGroupChanged: async () => 0,
+    reconcileMembership: async () => {},
+    archiveRootState: async () => null,
+    forgetUnsettledRoot: () => {},
     grantPrivateHistory: async () => {},
     sealForPush: async () => null,
     archiveOnSend: async () => {},
@@ -313,6 +323,119 @@ describe('E2EE banner', () => {
     expect(container.querySelector('[data-testid="mute-toggle"]')).toBeNull(); // header really is hidden
     expect(banner()).not.toBeNull();
     expect(connection()).not.toBeNull();
+  });
+});
+
+describe('the claim withdraws, the marker does not', () => {
+  /*
+   * The sentence used to stand above every conversation forever. On a phone
+   * that is three or four lines of standing notice, which is furniture, and
+   * furniture goes unread — worst in exactly this tier, where the sentence is a
+   * WARNING ("the service holds a key to its history and can read it") rather
+   * than a reassurance.
+   *
+   * So the sentence withdraws after `TIER_CLAIM_VISIBLE_MS`. What must not
+   * withdraw with it is the claim: the strip keeps its per-tier colour, its
+   * 🔒 / ℹ️ marker and the connection dot, and the marker is a button that says
+   * the sentence again. These cases hold that line — a change that hid the
+   * whole strip would pass "the sentence goes away" and fail here.
+   */
+  beforeEach(() => {
+    // The panel awaits real microtasks while mounting; a frozen clock would
+    // deadlock those rather than merely holding the withdraw timer.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const withdraw = async () => {
+    await act(async () => {
+      vi.advanceTimersByTime(TIER_CLAIM_VISIBLE_MS + 1);
+    });
+  };
+
+  const claimButton = () =>
+    container.querySelector('[data-testid="chat-tier-claim-button"]') as HTMLButtonElement | null;
+
+  it('CONTRACT: the sentence is read on entry, then withdraws', async () => {
+    await mount();
+    expect(banner()!.textContent).toContain(enLocale.chat.tierClaim.serverReadable);
+
+    await withdraw();
+    expect(banner()!.textContent).not.toContain(enLocale.chat.tierClaim.serverReadable);
+  });
+
+  it('CONTRACT: the strip, its tier and the connection dot all stay behind', async () => {
+    await mount();
+    await withdraw();
+
+    // Still a strip, still tier-marked, still carrying the connection state —
+    // the room is not allowed to become indistinguishable from any other.
+    expect(banner()).not.toBeNull();
+    expect(banner()!.getAttribute('data-claim')).toBe('serverReadable');
+    expect(banner()!.getAttribute('data-expanded')).toBe('false');
+    expect(connection()).not.toBeNull();
+  });
+
+  it('CONTRACT: the marker is a button that says the sentence again', async () => {
+    await mount();
+    await withdraw();
+
+    const button = claimButton();
+    expect(button).not.toBeNull();
+    expect(button!.getAttribute('aria-expanded')).toBe('false');
+
+    await act(async () => {
+      button!.click();
+    });
+
+    expect(banner()!.textContent).toContain(enLocale.chat.tierClaim.serverReadable);
+    expect(claimButton()!.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('A11Y: the marker is named by the claim, so it is never a bare emoji', async () => {
+    await mount();
+    await withdraw();
+
+    // The emoji is aria-hidden; without a name on the button the only remaining
+    // statement of the tier would be a colour.
+    expect(claimButton()!.getAttribute('aria-label')).toBe(enLocale.chat.tierClaim.serverReadable);
+  });
+
+  it('BOUNDARY: an upgraded tier gets its own reading time, not the tail of the old one', async () => {
+    /*
+     * The tier arrives from a lookup, so a private room shows the public
+     * sentence first (see the RACE case above). If the timer ran from mount,
+     * the true sentence could land on an already-expired window and never be
+     * read at all — the one reader who most needs it is the one on a slow
+     * connection.
+     */
+    topicMeta = { visibility: 'private' };
+    let answer: () => void = () => {};
+    topicMetaGate = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+
+    await act(async () => {
+      root.render(
+        <I18nProvider initialLocale="en">
+          <ChatPanel topicId={TOPIC} isGuest={false} isMember />
+        </I18nProvider>,
+      );
+    });
+    await withdraw();
+    expect(banner()!.getAttribute('data-expanded')).toBe('false');
+
+    await act(async () => {
+      answer();
+    });
+    await flush();
+
+    expect(banner()!.getAttribute('data-claim')).toBe('e2ee');
+    expect(banner()!.getAttribute('data-expanded')).toBe('true');
+    expect(banner()!.textContent).toContain(enLocale.chat.tierClaim.e2ee);
   });
 });
 

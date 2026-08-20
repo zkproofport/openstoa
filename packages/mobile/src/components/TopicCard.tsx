@@ -87,6 +87,10 @@ function makeStyles(colors: ThemeColors) {
       fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
     },
+    inviteOnlyBadge: {
+      fontSize: TYPE_SCALE.label,
+      color: colors.text.tertiary,
+    },
     joinButton: {
       backgroundColor: colors.brand.primary,
       borderRadius: RADIUS.control,
@@ -135,8 +139,23 @@ export function TopicCard({ topic, onPress, isJoined, onJoin }: TopicCardProps) 
         <Text style={styles.memberCount}>
           {t('openstoa.topics.members', { count: topic.memberCount ?? 0 })}
         </Text>
-        {!isJoined && onJoin ? (
-          <TouchableOpacity style={styles.joinButton} onPress={onJoin} activeOpacity={0.8}>
+        {!isJoined && onJoin && topic.visibility && topic.visibility !== 'public' ? (
+          // The card's "Join" opens the detail screen rather than joining, but
+          // the WORD is still a promise this topic cannot keep: it is
+          // invite-only, and the detail screen now says so too.
+          <Text style={styles.inviteOnlyBadge} testID="card-invite-only">
+            {t('openstoa.topics.inviteOnly')}
+          </Text>
+        ) : !isJoined && onJoin ? (
+          <TouchableOpacity
+            style={styles.joinButton}
+            onPress={onJoin}
+            activeOpacity={0.8}
+            // Named so a test can ask for THIS control: the whole card is
+            // pressable and the joined badge's i18n key contains the join
+            // key, so a text search finds a button that is not there.
+            testID="card-join"
+          >
             <Text style={styles.joinButtonText}>{t('openstoa.topics.join')}</Text>
           </TouchableOpacity>
         ) : null}

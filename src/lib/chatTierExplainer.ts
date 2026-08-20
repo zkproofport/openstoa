@@ -48,6 +48,25 @@ export function chatClaimKey(tier: ChatTier): ChatClaimKey {
 }
 
 /**
+ * How long the claim's SENTENCE stays on screen after a room opens, in ms.
+ *
+ * It used to stay forever, which cost four lines above every conversation and
+ * taught people to read past it — a permanent notice is furniture, and the one
+ * tier where the sentence is a warning rather than a reassurance is the tier
+ * most rooms are in. So the sentence now appears on entry and withdraws.
+ *
+ * What does NOT withdraw is the claim itself: the control that brings the
+ * sentence back is always in the room, and it carries the tier in its icon and
+ * its colour. Nothing here may be used to hide that control — a room whose
+ * service can read it must look different from one where it cannot, at every
+ * moment, whether or not anybody has read the sentence.
+ *
+ * Long enough to read the longer of the two sentences unhurried, short enough
+ * that it is gone before the first reply.
+ */
+export const TIER_CLAIM_VISIBLE_MS = 6_000;
+
+/**
  * What a member who joins LATER can read of what was said before they arrived.
  *
  * `'all'`    — the whole conversation (the key opens everything).
