@@ -1,8 +1,13 @@
 # Media bucket flip checklist
 
-Status: documentation and verification only. No infrastructure changed, nothing flipped.
-Every command below was either run read-only against local dev, or is given for someone
-with staging/production access to run — clearly marked which is which.
+Status: **gates 1 and 2 are closed on LOCAL DEV** — the 84 offending rows are deleted and
+MinIO now refuses anonymous reads, both verified by running requests rather than reading
+config. Nothing was run against staging or production; every staging/production command
+below is written for a human with that access to run, and is marked as such.
+
+Gates 3 and 4 are production-only by an explicit product decision and do NOT block the
+staging flip — see "The edge layer is PRODUCTION-ONLY" at the bottom before re-reading
+their rows as staging gaps.
 
 Related: [`media-bucket-privatisation.md`](./media-bucket-privatisation.md) (candidate B,
 adopted) and [`gated-image-credentials.md`](./gated-image-credentials.md) (why the
@@ -11,8 +16,10 @@ which both docs describe, is done and merged (`aaa0588`). This doc is the pre-fl
 the step M-6 was building toward: making the R2 bucket itself refuse anonymous reads, the
 one remaining step `media-bucket-privatisation.md` said M-6 would leave.
 
-The five sections below are independent gates — all five should read "satisfied" before
-the bucket goes private, not just the first one someone happens to check.
+The five sections below are independent gates — check all of them before the bucket goes
+private, not just the first one someone happens to look at. "All five satisfied" is the bar
+for PRODUCTION only: gates 3 and 4 are N/A on staging by decision, so staging's bar is
+gates 1, 2 and 5.
 
 ## 1. Stored URLs
 
@@ -59,26 +66,50 @@ path: `./scripts/db-proxy.sh staging proxy` (or `production proxy`) in one termi
 query there. **Do not infer staging/production state from this doc or from anyone's
 recollection — run the query.**
 
-**Verified right now, local dev (this session, read-only):**
+**The query above over-matches, and the difference is a deleted post.** It matches any
+absolute URL with `/topics/` or `/users/` anywhere in it — including a link to a topic
+*page* in prose (`https://openstoa.xyz/topics/<uuid>`, no image involved) and a chat
+attachment key (`…/topics/<uuid>/chat/…`, ciphertext read through the membership-gated
+route, unaffected by the bucket's policy). Neither is an offending row, and on local dev
+both queries happened to return the same 84 rows — so the looseness cost nothing here and
+would have cost real posts on a corpus that contains such links. The deletion script
+(below) anchors on the full object-key shape instead, requiring the folder and the UUID
+segment `uploadObjectKey` actually emits:
 
-| Column | Absolute-URL rows | Out of |
+```
+<scheme>://<host>[/<bucket>]/topics/<id>/(posts|image)/<uuid>/<file>
+<scheme>://<host>[/<bucket>]/users/<id>/(profile|uploads)/<uuid>/<file>
+```
+
+Verified against both: prose page links and chat-attachment keys match the loose query and
+are correctly ignored by the anchored one; relative `/api/media/…` and external images
+(YouTube, `placehold.co`) match neither.
+
+**Verified this session, local dev — found, then resolved:**
+
+| Column | Absolute-URL rows (before) | After deletion |
 |---|---|---|
-| `posts.content` | 54 | 1971 posts |
-| `posts.media.images[]` | 30 | 1971 posts |
-| `topics.image` | 0 | 1524 topics |
-| `users.profile_image` | 0 | 2457 users |
+| `posts.content` | 54 | **0** |
+| `posts.media.images[]` | 30 | **0** |
+| `topics.image` | 0 | 0 |
+| `users.profile_image` | 0 | 0 |
 
-**Status: UNSATISFIED on local dev**, confirmed by query, not assumed — real rows from
-E2E runs against local MinIO before and during M-6 development. `topics.image` and
-`users.profile_image` are clean. This is a strictly larger count than the ~46/~26 reported
-partway through M-6 development — more E2E runs have happened since, and it will keep
-growing every time the local suite runs against local MinIO, because these are absolute
-URLs by construction (local MinIO's `R2_PUBLIC_URL` was absolute until the M-6 `dev.sh`
-change, and every row written before that change stays absolute forever — see item 2, this
-is a *separate* fact from whether NEW rows are relative). Also: `posts.media` and
-`posts.content` already show real relative-URL adoption post-M-6 — 9 and 38 rows
-respectively contain `/api/media/` — so local dev is genuinely in the mixed state M-6's
-`absolutizeMediaUrl` graceful-degradation was built for, not a hypothetical.
+The 54 and 30 overlap: 84 distinct posts, out of 2594. All 84 pointed at the local MinIO
+host (`http://10.78.14.37:9000/openstoa-dev/…`) — E2E residue, exactly as predicted below.
+`scripts/delete-absolute-media-rows.ts --apply` deleted them; 2594 → 2510 posts, and a
+second run deletes 0 (idempotent). Both the anchored query AND the loose one above now
+return 0 on all four columns.
+
+**Status: SATISFIED on local dev**, confirmed by re-running the query after the change, not
+assumed from the script's own exit code. `topics.image` and `users.profile_image` were
+already clean and were never touched.
+
+The count grew over the life of this doc (~46/~26 partway through M-6 development, 54/30
+here) for a reason worth keeping: every row written before M-6 pointed `R2_PUBLIC_URL` at
+`/api/media` stays absolute forever, and each local E2E run against the old configuration
+minted more. It stops growing now only because that flow is fixed — which is the point of
+"Deleting the rows is not durable unless `R2_PUBLIC_URL` is relative" below, and the reason
+that check has to happen on staging BEFORE the deletion rather than after.
 
 **Staging: UNKNOWN FROM HERE.** No DB access from this session. The user has stated staging
 is truncated; that is a claim to verify with the query above before the flip, not to trust
@@ -88,10 +119,80 @@ same way local dev did.
 **Production: UNKNOWN FROM HERE**, same caveat — "no users yet" is a point-in-time claim,
 not a standing guarantee; verify at flip time, not from this document's age.
 
-If any row is found: `scripts/rewrite-media-urls.ts` exists for exactly this (see
-`media-bucket-privatisation.md`'s Plan A section for its safety properties and the ordering
-constraint — run it, or otherwise handle the rows, **before** the bucket goes private, not
-after; doing it after means the objects are already 403ing while you fix the rows).
+**If any row is found — delete it. `scripts/delete-absolute-media-rows.ts`.** Not
+`rewrite-media-urls.ts`: see "Item 1 is resolved by DELETION" at the bottom of this doc.
+That script stays in the tree for the day there is data worth keeping; today there is not.
+
+Run it **before** removing the bucket's anonymous access, not after — doing it after means
+those images are already 403ing while you work.
+
+`db-proxy.sh` lives in the PARENT repo (`proofport-app-dev/scripts/`), not in this one; the
+script lives here. Staging proxies to `127.0.0.1:15432`, production to `15433`.
+
+```bash
+# Terminal 1 — from the parent repo
+./scripts/db-proxy.sh staging proxy          # production: ...production proxy
+
+# Terminal 2 — from THIS repo (openstoa/). Password: $POSTGRES_PASSWORD
+# / .env.staging, same source db-proxy.sh itself uses.
+export DATABASE_URL="postgresql://proofport:${POSTGRES_PASSWORD}@127.0.0.1:15432/openstoa"
+
+# 1. Look, don't touch. Prints per-column counts, then rolls back.
+npx tsx scripts/delete-absolute-media-rows.ts
+
+# 2. Only if the counts look right.
+npx tsx scripts/delete-absolute-media-rows.ts --apply
+```
+
+`MEDIA_HOST` is optional. Omitted, the script matches our key shape on ANY host, which is
+what you want when you don't know the environment's media hostname (open question #3 in
+`media-bucket-privatisation.md` — staging's is still unconfirmed). Set it and only that host
+matches, which additionally rules out a lookalike domain that copies our key shape. Unlike
+`rewrite-media-urls.ts`, a wrong `MEDIA_HOST` cannot cause silent false confidence: the
+script prints its match scope on the first line and the before/after counts either side of
+the write, so "0 rows" is always attributable.
+
+What it does, per column — the two are not the same action:
+- `posts.content` / `posts.media.images[]` → **DELETE the post row.** The image *is* the
+  content. `comments` and `records` have `NO ACTION` foreign keys onto `posts` and are
+  removed first in the same transaction, or the delete aborts on them.
+- `topics.image` / `users.profile_image` → **`SET NULL`.** Deleting the topic row would
+  cascade into its posts, members, and chat history; deleting the user row would take the
+  account and everything it authored. Neither is proportionate to a stale cover photo or
+  avatar, so the offending *value* goes and the row stays. Still deletion, not a backfill —
+  nothing is rewritten into a working URL anywhere in this script. Wanting those rows gone
+  outright is a call for a human to make explicitly.
+
+The whole run is one transaction, and the objects themselves are left in the bucket:
+post-flip nothing can reach an object no row references, and reclaiming the bytes is the
+unclaimed-media sweep's job.
+
+### Deleting the rows is not durable unless `R2_PUBLIC_URL` is relative — CHECK THIS FIRST
+
+Gate 1 as written measures a *stock* (rows holding absolute URLs) and says nothing about
+the *flow* that produces them. `uploadToR2` mints every new URL as
+`${config.R2_PUBLIC_URL}/${key}` (`src/lib/r2.ts:274`), so if the environment's
+`R2_PUBLIC_URL` is still an absolute media host, the cleanup is a point-in-time snapshot:
+every upload after it re-creates exactly the rows just deleted, and they break the moment
+the bucket goes private. That is how local dev accumulated 84 of them.
+
+Locally this is settled — `scripts/dev.sh` exports `R2_PUBLIC_URL=/api/media`. **Staging and
+production are not verifiable from here**: the value is the GitHub secret
+`STAGING_R2_PUBLIC_URL[_NEW]` / `PRODUCTION_R2_PUBLIC_URL[_NEW]`, injected at deploy
+(`.github/workflows/deploy.yml:270`), and no session without repo-secret access can read it.
+It is also the same open question #3 (`media-bucket-privatisation.md`) that has been unresolved
+since the original research.
+
+Confirm it is relative BEFORE running the deletion, or the deletion buys nothing:
+
+```bash
+gcloud run services describe proofport-community-staging --region us-central1 \
+  --format='value(spec.template.spec.containers[0].env)' | tr ';' '\n' | grep R2_PUBLIC_URL
+```
+
+Wanted: `/api/media`. If it is still `https://media.zkproofport.app` (or any absolute host),
+update the GitHub secret and redeploy first — then delete the rows, then flip the bucket.
+Order matters and this is the step that is easiest to skip.
 
 ## 2. MinIO's own anonymous-read policy (local dev only — no R2/production analog)
 
@@ -119,19 +220,90 @@ Returned `200` for a real key pulled from the local DB, anonymous, no session, n
 `Authorization` header — the exact bearer-URL bypass M-5 was built to close, still fully
 open at the storage layer locally.
 
-**Status: UNSATISFIED, confirmed live.** This is expected and not itself a problem — see
-below — but it means **"it works on my machine" proves nothing about whether the actual
-flip works**, because local dev's storage layer has never been gated to begin with,
-independent of anything M-5 or M-6 did at the app layer. Testing the real flip locally
-would need, additionally: `mc anonymous set none local/<bucket>` — the same command
-`docker-compose.yml`'s `minio-init` service already uses to grant it
-(`mc anonymous set download local/${R2_BUCKET_NAME}`, `docker-compose.yml:109`), reversed.
-**Not run here** — that's an infrastructure change, out of scope for this doc, and it would
-also break every one of the absolute-URL rows in item 1 immediately for local dev, which
-nobody has cleaned up yet.
+**Now closed.** `docker-compose.yml`'s `minio-init` no longer grants anonymous read by
+default — the grant became a lever:
 
-**Rollback (local):** `mc anonymous set download local/<bucket>` — same command, forward
-direction. Effectively instant; it's a same-host container ACL flip, no propagation delay.
+```yaml
+mc anonymous set ${OPENSTOA_DEV_BUCKET_ANONYMOUS:-none} local/${R2_BUCKET_NAME}
+```
+
+`scripts/dev.sh` exports the default (`none`) and prints which state the bucket is in, so
+a stack that is bypassable says so rather than looking identical to one that isn't. Setting
+`OPENSTOA_DEV_BUCKET_ANONYMOUS=download` restores the old public behavior for one run —
+the local rollback lever, and the way to reproduce the pre-flip bypass on purpose. This is
+safe to default on only because item 1 is now closed; while those 84 rows existed, flipping
+this would have broken every one of them.
+
+**Status: SATISFIED on local dev — verified by request, not by reading the config.** Both
+the policy AND real HTTP fetches were checked, before and after:
+
+| Probe | Before flip | After flip |
+|---|---|---|
+| anonymous, DIRECT to MinIO (`:9000/<bucket>/<key>`) | `200` — the bypass | **`403` `AccessDenied`** |
+| anonymous, through the gate, private object | `401` | `401` |
+| **authenticated**, through the gate, private object | `200` | **`200`** |
+| anonymous, through the gate, public-topic image | `200` | **`200`** |
+
+`scripts/verify-media-bucket-flip.sh` runs exactly that table, and is the thing to re-run
+after any change here. The object under test is uploaded through the real `POST /api/upload`
+during the run, so it is a genuinely gated `users/<id>/uploads/…` key, not a hand-picked
+fixture. The probe discriminates: flipped back to `download` it reports `200` on the first
+row and `403` again once returned to `none`, so a pass means the policy is actually doing
+the work rather than the test being unable to fail. The last two
+rows are the ones that make this a flip rather than an outage: the app still reads the
+bucket with credentials (`R2_ENDPOINT`), so authenticated reads and guest reads of public
+content both keep working — only the unauthenticated *direct* path died. `Cache-Control:
+public, max-age=31536000, immutable` is still set on the public object, unchanged.
+
+Upload itself was exercised after the flip too (that is how the probe object got there), so
+the credentialed write path is confirmed unaffected.
+
+**Rollback (local):** `OPENSTOA_DEV_BUCKET_ANONYMOUS=download ./scripts/dev.sh`, or against
+a running stack, `docker exec proofport-minio mc anonymous set download local/<bucket>` —
+same command, forward direction. Effectively instant; a same-host container ACL flip, no
+propagation delay.
+
+### The real R2 equivalent — NOT run from here
+
+An R2 bucket has **two independent** public-read surfaces, and closing one does not close
+the other. Find out which are on before flipping anything — staging's is genuinely unknown
+(open question #3 in `media-bucket-privatisation.md` never got resolved):
+
+```bash
+# Staging bucket is `openstoa-stg`; production is `openstoa-prod`
+# (docs/migration/cloudflare-setup.md §4). Both on the corp Cloudflare account.
+npx wrangler r2 bucket dev-url get openstoa-stg     # the r2.dev subdomain
+npx wrangler r2 bucket domain list openstoa-stg     # any custom domains
+```
+
+Then disable whichever came back enabled:
+
+```bash
+# 1. the r2.dev public development URL
+npx wrangler r2 bucket dev-url disable openstoa-stg
+
+# 2. any custom domain (production is media.zkproofport.app; staging's is unconfirmed
+#    — take it from `domain list` above, do not assume)
+npx wrangler r2 bucket domain remove openstoa-stg --domain <domain from the list>
+```
+
+Production is the same two commands against `openstoa-prod` — but the production flip is
+separately blocked on #83 → #81/M-7 (see items 3/4), so it is not simply "run these now".
+
+Both commands accept `--force`/`-y` to skip the confirmation prompt; do not use it — the prompt
+names the bucket it is about to change. Removing a custom domain **also deletes the CNAME
+record it created**, so rollback (`wrangler r2 bucket domain add <bucket> --domain <d>
+--zone-id <z>`) recreates a DNS record and is not instant the way the local MinIO toggle is
+— see item 5.
+
+Verifying the R2 flip is the same shape as the local proof above, and must be done the same
+way — a request, not a config read:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://<media-host>/<a real object key>   # want 403
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer <token>" https://<app-host>/api/media/<same key>        # want 200
+```
 
 ## 3. A CDN cache in front of `/api/media`
 
@@ -201,13 +373,20 @@ next edit to that rule.
 
 ## 4. Rate limiting
 
-This is also #81/M-7 — noted as a dependency here, not duplicated. **No rate-limit code
-exists on `/api/media` today** (`grep -n "checkRateLimit\|RateLimit"
-src/app/api/media/\[...key\]/route.ts` → no matches, verified this session). The existing
-pattern to extend, already used elsewhere in this codebase for exactly this shape of
-problem: `RateLimit` / `checkRateLimit` in `src/lib/mls/http.ts` (e.g.
-`MLS_RATE_KEY_PACKAGE`, `MLS_RATE_COMMIT`) — a per-key, per-window counter, not a new
-mechanism to invent.
+This is the EDGE rate limit, and it is #81/M-7 — noted as a dependency here, not duplicated.
+
+**Correction to an earlier draft of this doc**, which said "no rate-limit code exists on
+`/api/media` today (verified by grep)". That was true when written and is now false:
+`722436e` ("feat(media): cap how fast one caller can pull images") added
+`src/lib/mediaRateLimit.ts`, and the route calls it —
+`checkMediaReadRateLimit(identity)` → 429 with `Retry-After`
+(`src/app/api/media/[...key]/route.ts:236`). So the APPLICATION-level cap now exists; what
+remains for #81 is the edge-level one, in front of the origin, which is a different layer
+solving a different half of the problem (an edge limit spares the origin the request
+entirely; the in-app limit still costs a Cloud Run invocation to answer 429).
+
+Item 4's staging/production verdicts below are unchanged by this — staging is N/A by the
+product decision, and production is blocked on #83 → #81/M-7 regardless.
 
 **What breaks without it, once private:** every image load that isn't an edge-cache `HIT`
 (item 3) reaches the app and runs the M-5 gate's DB query (topic visibility / membership
@@ -248,12 +427,33 @@ depended on bucket access either way, flip or no flip).
 
 | # | Item | Local dev | Staging | Production |
 |---|---|---|---|---|
-| 1 | No absolute media URLs stored | **Unsatisfied** — 54 + 30 rows, verified by query | Unknown from here — run the query | Unknown from here — run the query |
-| 2 | Storage layer itself denies anonymous reads | **Unsatisfied** — MinIO confirmed still public, verified live | N/A locally; real-R2 equivalent is the flip itself | N/A locally; real-R2 equivalent is the flip itself |
-| 3 | CDN cache exists, public cacheable, private never cached | **N/A** — no Cloudflare in front of localhost | Unsatisfied — verified by reading `cloudflare-setup.md`, rule not applied | Unsatisfied — same doc, same rule, not applied |
-| 4 | Rate limit in front of `/api/media` | **Unsatisfied** — verified by grep, no code | Unsatisfied — same code, not deployed | Unsatisfied — same code, not deployed |
+| 1 | No absolute media URLs stored | **Satisfied** — 54 + 30 found (84 posts), deleted, re-query returns 0 | Unknown from here — run the script's dry run | Unknown from here — run the script's dry run |
+| 2 | Storage layer itself denies anonymous reads | **Satisfied** — MinIO now `private` by default; anonymous direct fetch 200 → 403, gate still 200, verified live | Not done — run the wrangler commands in item 2 | Not done, and blocked on 3/4 anyway |
+| 3 | CDN cache exists, public cacheable, private never cached | **N/A** — no Cloudflare in front of localhost | **N/A by decision** — edge layer is production-only (see note below) | Unsatisfied — blocked on #83 -> #81/M-7 |
+| 4 | Rate limit in front of `/api/media` | In-app cap **exists** (`722436e`); edge cap N/A — no edge in front of localhost | **N/A by decision** — edge layer is production-only (see note below) | Unsatisfied — blocked on #83 -> #81/M-7 |
 | 5 | Rollback path known and its cost is understood | **Documented above** — cheap, not instant for real R2 | Same mechanism, unverified access to actually exercise it from here | Same mechanism, unverified access to actually exercise it from here |
 
-None of the five is satisfied everywhere today. Items 1 and 2 are independently fixable now
-(a rewrite pass + a storage-policy check) without waiting on #81; items 3 and 4 are blocked
-on #81/M-7 shipping; item 5 just needs to be read and understood once, not built.
+### The edge layer is PRODUCTION-ONLY, by an explicit product decision
+
+Items 3 and 4 are **not** staging gaps waiting to be filled — staging deliberately runs
+without a CDN cache rule and without a rate limit, because staging carries no real traffic
+and the edge layer costs money at both Cloudflare and the load balancer. Putting the GCLB
+in front of production is precisely what makes it possible to attach these there and only
+there.
+
+Read the table accordingly: **staging's bucket flip does not wait on 3 or 4.** Only the
+production flip is blocked, on #83 (production GCLB) -> #81/M-7 (CDN). Do not re-report
+staging as "unsatisfied" on these two rows; that reading has cost the project the same
+conversation more than once.
+
+### Item 1 is resolved by DELETION, not a rewrite
+
+OpenStoa has not launched. There is no user data to preserve, so the 54 + 30 rows holding
+absolute media URLs are simply deleted rather than migrated — a rewrite pass would be
+effort spent protecting rows nobody will miss. The same applies to any other pre-launch
+data shape this checklist finds wanting.
+
+**Done, as of this session**: `scripts/delete-absolute-media-rows.ts`. Applied to local dev
+(84 posts deleted, all four columns now 0). Staging and production have NOT been touched —
+run its dry run there first, per item 1. `scripts/rewrite-media-urls.ts` is untouched and
+stays in the tree for the day there is data worth keeping; do not reach for it now.

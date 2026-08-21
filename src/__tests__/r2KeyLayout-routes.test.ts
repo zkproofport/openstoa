@@ -80,6 +80,7 @@ vi.mock('@/lib/r2', async (importOriginal) => {
 import { POST as uploadPOST } from '@/app/api/upload/route';
 import { DELETE as topicDELETE } from '@/app/api/topics/[topicId]/route';
 import { topicObjectPrefix, uploadObjectKey } from '@/lib/r2';
+import { TINY_JPEG } from './fixtures/images';
 
 const OWNER = 'r2-layout-owner';
 const MEMBER = 'r2-layout-member';
@@ -98,7 +99,8 @@ const session = (userId: string) => ({ userId, nickname: userId.replace(/-/g, '_
 /** A multipart request the route can read, without a real network stack. */
 function uploadReq(fields: Record<string, string>, file = true) {
   const fd = new FormData();
-  if (file) fd.append('file', new File([new Uint8Array([1, 2, 3])], 'photo.jpg', { type: 'image/jpeg' }));
+  // Real JPEG bytes: the upload route strips metadata and refuses anything it cannot parse.
+  if (file) fd.append('file', new File([new Uint8Array(TINY_JPEG)], 'photo.jpg', { type: 'image/jpeg' }));
   for (const [k, v] of Object.entries(fields)) fd.append(k, v);
   return { url: 'http://x/api/upload', formData: async () => fd } as never;
 }
