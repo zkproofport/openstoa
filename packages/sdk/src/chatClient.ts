@@ -332,7 +332,7 @@ export class ChatClient {
     let messageId = '';
     const envelope = await sendEncryptedChatMedia(input, {
       seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, visibility),
-      upload: (ciphertextB64, mediaId) => this.rest.chat.uploadMedia(topicId, mediaId, ciphertextB64),
+      upload: (ciphertext, mediaId) => this.rest.chat.uploadMedia(topicId, mediaId, ciphertext),
       send: async (body) => {
         // Through `sendChat`, so the envelope is archived like any other message
         // — that archive row is what a LATER member reads the picture from.

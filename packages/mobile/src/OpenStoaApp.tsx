@@ -35,6 +35,22 @@ const BOOT_MIN_DURATION_MS = 3000;
  */
 const DEFAULT_FEED_QUERY_KEY = ['feed', 'hot', null, ''] as const;
 
+/**
+ * Kill switch for the Mobile ID (mDL) sign-in button on WelcomeScreen.
+ *
+ * `false` for the 1.0.0 corporate beta (Masse Labs). The mDL path is still
+ * host-experimental and out of scope for that release, so it is HIDDEN rather
+ * than removed — the handler, the `'mdl'` launcher argument, the button and its
+ * translation keys are all untouched.
+ *
+ * Set back to `true` to restore it; the button then reappears only when the
+ * host has Developer Mode on, which is where it was before.
+ *
+ * Typed `boolean` on purpose: a bare `false` narrows to the literal type and
+ * makes the restore edit look like dead code to every reader after it.
+ */
+const MDL_SIGN_IN_ENABLED: boolean = false;
+
 export interface OpenStoaAppProps {
   /**
    * Optional override for the OpenStoa server URL. Defaults to whatever the
@@ -385,10 +401,20 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
     // mDL sign-in is host-experimental — only surface it when the host has
     // Developer Mode enabled. WelcomeScreen treats an undefined handler
     // as "hide the button".
+    //
+    // HIDDEN for the 1.0.0 corporate beta (Masse Labs): the Mobile ID (mDL)
+    // flow is out of scope for that release, and shipping a half-finished
+    // second sign-in path — even behind Developer Mode — is a support burden
+    // on a build going to outside testers. Nothing is deleted: the handler,
+    // the `'mdl'` launcher argument, the button and its copy all still exist.
+    // TO RESTORE: flip MDL_SIGN_IN_ENABLED back to `true` — the button then
+    // reappears under Developer Mode exactly as before.
     return (
       <WelcomeScreen
         onSignIn={handleSignIn}
-        onSignInMdl={developerMode ? handleSignInMdl : undefined}
+        onSignInMdl={
+          MDL_SIGN_IN_ENABLED && developerMode ? handleSignInMdl : undefined
+        }
         onContinueAsGuest={handleContinueAsGuest}
         errorMessage={errorMsg}
         busy={signInBusy}

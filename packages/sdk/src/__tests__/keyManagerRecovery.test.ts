@@ -11,11 +11,12 @@
  * and falling back to it on read; the SDK copy was 61 lines behind and had none
  * of it.
  *
- * Byte-identity with the web copy is asserted in `src/__tests__/
- * mlsCryptoTwins.test.ts`. That proves the SDK has the same SOURCE. It does not
- * prove the behaviour works on Node's webcrypto, and it does not prove the
- * CALLER engages it — which is exactly how the leaf-identity gap survived a
- * green twin test. These tests cover both.
+ * The SDK now RE-EXPORTS the web's `keyManager` — one implementation, guarded
+ * by `src/__tests__/mlsCryptoTwins.test.ts`, which asserts the three trees load
+ * the same module object rather than three files that agree. That proves the
+ * SDK runs the same SOURCE. It does not prove the behaviour works on Node's
+ * webcrypto, and it does not prove the CALLER engages it — which is exactly how
+ * the leaf-identity gap survived a green twin test. These tests cover both.
  *
  * EDGE-CASE MATRIX (CLAUDE.md) → coverage
  *   contract   → 'a value sealed under the old key is still readable'

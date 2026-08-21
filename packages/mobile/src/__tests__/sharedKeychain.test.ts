@@ -56,7 +56,7 @@ describe('mirrorTakWith — happy path + contract invocation', () => {
       keychainAccessGroup: SHARED_KEYCHAIN_ACCESS_GROUP,
       keychainAccessible: 'afterFirstUnlock', // readable while the device is locked
     });
-    expect(SHARED_KEYCHAIN_ACCESS_GROUP).toBe('com.zkproofport.app.openstoa');
+    expect(SHARED_KEYCHAIN_ACCESS_GROUP).toBe('com.masselabs.zkproofport.openstoa');
   });
 
   it('takVersion 0 (public archive root) is a valid version, not a missing one', async () => {

@@ -1,6 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { leafIdentity, userIdOfLeaf, deviceIdOfLeaf, leafBelongsTo } from '@/lib/mls/leafIdentity';
 
 const USER = '0x4a707ea4fc8031f35fcc7a0f8a1f478922e99ea32ecd30aec302a18087c29a25';
@@ -70,9 +68,23 @@ describe('leafIdentity', () => {
 });
 
 describe('shared rule', () => {
-  it('is BYTE-IDENTICAL to the mini-app copy, so both clients name leaves alike', () => {
-    const web = readFileSync(join(process.cwd(), 'src/lib/mls/leafIdentity.ts'), 'utf8');
-    const mobile = readFileSync(join(process.cwd(), 'packages/mobile/src/crypto/leafIdentity.ts'), 'utf8');
-    expect(mobile).toBe(web);
+  it('is the SAME MODULE as the mini-app copy, so both clients name leaves alike', async () => {
+    /*
+     * This used to compare the web and mini-app files byte for byte. There is
+     * one file now (`packages/mls/src/leafIdentity.ts`) and both trees
+     * re-export it, so the assertion is the one byte-identity was standing in
+     * for: the two imports are the same function, not two functions that
+     * happen to agree today.
+     *
+     * It matters here more than almost anywhere: if the two clients ever split
+     * on where a leaf identity separates, one of them attributes a leaf to the
+     * wrong account, and `reconcileMembership` evicts a member who did nothing.
+     */
+    const web = await import('@/lib/mls/leafIdentity');
+    const mobile = await import('../../packages/mobile/src/crypto/leafIdentity');
+    expect(Object.keys(mobile).sort()).toEqual(Object.keys(web).sort());
+    for (const name of Object.keys(web) as (keyof typeof web)[]) {
+      expect(mobile[name], `mini-app has its own \`${name}\``).toBe(web[name]);
+    }
   });
 });

@@ -1,5 +1,6 @@
 import type { HostApi } from '@openstoa/miniapp-bridge';
 import type { RefreshResponse } from '@openstoa/api-types';
+import { CHAT_MEDIA_CONTENT_TYPE } from '../lib/chatMedia';
 
 export type ClientMode = 'unknown' | 'guest' | 'authenticated';
 
@@ -492,20 +493,60 @@ export class OpenStoaClient {
    * `/api/upload`, which stores it at a public unauthenticated URL. It is still
    * the right call for post images and avatars, which are public by intent.
    */
-  async uploadChatMedia(topicId: string, mediaId: string, ciphertextB64: string): Promise<string> {
-    const { key } = await this.post<{ key: string }>(`/api/topics/${topicId}/chat/media`, {
-      mediaId,
-      ciphertext: ciphertextB64,
-    });
+  async uploadChatMedia(topicId: string, mediaId: string, ciphertext: Uint8Array): Promise<string> {
+    /*
+     * RAW BYTES as the body, with the id in the query string.
+     *
+     * It used to be `{ mediaId, ciphertext }` with the ciphertext base64'd
+     * inside JSON. That cost the 4/3 expansion against a 10MB transport
+     * ceiling, so the reachable attachment size was ~7.1MB rather than ~9.5MB,
+     * and it cost a multi-megabyte string built 32KB at a time on the JS thread
+     * before anything left the device.
+     *
+     * React Native still base64s an `ArrayBufferView` body at the bridge
+     * (`Libraries/Network/convertRequestBody.js`), so the encode is not gone on
+     * THIS hop — but it moves to `base64-js` in the platform's own fast path
+     * instead of a `String.fromCharCode` loop plus `JSON.stringify`, and what
+     * reaches the wire is octets either way. The ceiling is what actually
+     * mattered, and the ceiling is the wire.
+     */
+    const { key } = await this.request<{ key: string }>(
+      `/api/topics/${topicId}/chat/media?mediaId=${encodeURIComponent(mediaId)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': CHAT_MEDIA_CONTENT_TYPE },
+        body: ciphertext as unknown as BodyInit,
+      },
+    );
     return key;
   }
 
-  /** Fetch an encrypted attachment's ciphertext (base64) for local decryption. */
-  async fetchChatMedia(topicId: string, key: string): Promise<string> {
-    const { ciphertext } = await this.get<{ ciphertext: string }>(
-      `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`,
-    );
-    return ciphertext;
+  /**
+   * Where to fetch an encrypted attachment from, and with what credential.
+   *
+   * A SPEC rather than the bytes, because this client cannot fetch them: RN's
+   * `Response.arrayBuffer()` is not dependable (facebook/react-native#6743), so
+   * the download is done by the native filesystem straight to disk — see
+   * `lib/chatMediaFiles.ts`. This is the part that needs the session, so it
+   * lives here with the token handling and nothing else does.
+   *
+   * The token is resolved the same way every other request resolves it, which
+   * includes refreshing one that is close to expiry. What it does NOT get is
+   * the retry-after-401 that `request()` performs, because the download is not
+   * ours to retry — a 401 surfaces as a failed fetch with a Reload control,
+   * which is a worse outcome than an automatic refresh and a better one than a
+   * silent login prompt in the middle of reading a conversation.
+   */
+  async chatMediaFetchSpec(
+    topicId: string,
+    key: string,
+  ): Promise<{ url: string; headers: Record<string, string> }> {
+    const token = await this.tryGetToken();
+    if (!token) throw new GuestAuthRequiredError(`/api/topics/${topicId}/chat/media`);
+    return {
+      url: `${this.baseUrl}/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`,
+      headers: { Authorization: `Bearer ${token}` },
+    };
   }
 
   /** Delete an encrypted attachment — used when its message failed to send. */

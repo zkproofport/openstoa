@@ -7,6 +7,7 @@
  * SI-1: this client only ever moves opaque ciphertext + access-control metadata
  * for the chat/MLS/TAK surfaces. It never sends or receives chat plaintext.
  */
+import { CHAT_MEDIA_CONTENT_TYPE } from '../chatMedia';
 import type {
   AuthResult,
   RefreshResult,
@@ -67,6 +68,15 @@ interface RequestOpts {
   nullOn404?: boolean;
   /** Return status only, don't parse (used for conflict-aware commit POST). */
   raw?: boolean;
+  /**
+   * Send these BYTES as the whole body, framed `octet-stream`.
+   *
+   * Mutually exclusive with `body`, which JSON-encodes. Used only by the
+   * encrypted-attachment upload, where base64-inside-JSON cost the 4/3
+   * expansion against a 10MB transport ceiling and made the advertised
+   * attachment size unreachable.
+   */
+  rawBody?: Uint8Array;
 }
 
 export class OpenStoaClient {
@@ -107,12 +117,19 @@ export class OpenStoaClient {
     const method = opts.method ?? 'GET';
     const headers: Record<string, string> = {};
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
-    let body: string | undefined;
-    if (opts.body !== undefined) {
+    let body: string | Uint8Array | undefined;
+    if (opts.rawBody !== undefined) {
+      headers['Content-Type'] = CHAT_MEDIA_CONTENT_TYPE;
+      body = opts.rawBody;
+    } else if (opts.body !== undefined) {
       headers['Content-Type'] = 'application/json';
       body = JSON.stringify(opts.body);
     }
-    const res = await this._fetch(this.url(path, opts.query), { method, headers, body });
+    const res = await this._fetch(this.url(path, opts.query), {
+      method,
+      headers,
+      body: body as BodyInit | undefined,
+    });
     if (res.status === 404 && opts.nullOn404) return null as T;
     if (opts.raw) return res as unknown as T;
     const text = await res.text();
@@ -322,10 +339,14 @@ export class OpenStoaClient {
      * caller cannot choose where its object lands. Row is written unclaimed and
      * collected in an hour if the message never goes out.
      */
-    uploadMedia: async (topicId: string, mediaId: string, ciphertextB64: string): Promise<string> => {
+    uploadMedia: async (topicId: string, mediaId: string, ciphertext: Uint8Array): Promise<string> => {
+      // Raw bytes with the id in the query string. It was `{ mediaId,
+      // ciphertext }` with the ciphertext base64'd inside, which spent a third
+      // of the 10MB transport ceiling on an encoding neither end wanted.
       const { key } = await this.request<{ key: string }>(`/api/topics/${topicId}/chat/media`, {
         method: 'POST',
-        body: { mediaId, ciphertext: ciphertextB64 },
+        query: { mediaId },
+        rawBody: ciphertext,
       });
       return key;
     },
@@ -343,6 +364,15 @@ export class OpenStoaClient {
         raw: true,
       });
     },
+    /**
+     * The CIPHERTEXT bytes, or null when there is nothing to fetch.
+     *
+     * The route answers `application/octet-stream` and nothing else. It used to
+     * answer base64-in-JSON to any caller that did not ask for octets — and
+     * this one never asked, so `arrayBuffer()` handed back the bytes of a JSON
+     * document and every attachment an agent read failed to authenticate. The
+     * single shape is what makes that unrepresentable rather than merely fixed.
+     */
     media: async (topicId: string, key: string): Promise<Uint8Array | null> => {
       const res = await this.request<Response>(
         `/api/topics/${topicId}/chat/media`,
