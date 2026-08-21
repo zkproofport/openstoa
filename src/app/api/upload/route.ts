@@ -6,6 +6,7 @@ import { topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
+import { stripImageMetadata, ImageMetadataError } from '@/lib/imageMetadata';
 
 const ROUTE = '/api/upload';
 
@@ -61,6 +62,19 @@ function loadHeicConvert(): HeicConvertFn | null {
  *     description: >-
  *       Uploads an image file directly to the CDN via the server. Send the file as
  *       multipart/form-data. Returns the permanent public URL for the uploaded image.
+ *
+ *
+ *       **Metadata is stripped before the image is published.** GPS coordinates,
+ *       capture timestamps (`DateTimeOriginal`/`CreateDate`/`ModifyDate`), camera
+ *       make/model/lens/serial number, `Software`, MakerNotes, any embedded
+ *       thumbnail, and XMP/IPTC blocks are removed from JPEG, PNG, WebP, GIF and
+ *       SVG uploads. The ICC colour profile is kept, and image orientation is
+ *       preserved, so the picture still renders upright with correct colours.
+ *       The pixels themselves are not re-encoded for those formats, so the file
+ *       is not degraded and does not grow. Do not rely on the API to carry EXIF
+ *       through: an agent that needs capture time or location must put it in the
+ *       post body itself. An image whose container cannot be parsed is rejected
+ *       with 400 rather than published with its metadata intact.
  *     operationId: uploadImage
  *     x-related-skills: [delete-uploaded-images, create-post, edit-post, set-profile-image, create-topic]
  *     requestBody:
@@ -103,7 +117,9 @@ function loadHeicConvert(): HeicConvertFn | null {
  *                   type: string
  *                   description: Permanent public URL for the uploaded file
  *       400:
- *         description: Invalid request (missing file, wrong MIME type, file too large, or malformed topicId)
+ *         description: >-
+ *           Invalid request (missing file, wrong MIME type, file too large, malformed
+ *           topicId, or an image whose bytes could not be parsed to strip metadata)
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
@@ -207,7 +223,9 @@ export async function POST(request: NextRequest) {
         }
         const jpegArr = await heicConvert({ buffer, format: 'JPEG', quality: 0.85 });
         let jpegBuf: Buffer = Buffer.from(jpegArr);
-        // Pipe through sharp when available to normalise/strip metadata.
+        // Pipe through sharp when available to normalise the JPEG. Metadata
+        // removal is NOT this step's job — it happens unconditionally below,
+        // for every format, so it cannot be skipped when sharp is missing.
         if (sharp) {
           jpegBuf = Buffer.from(await sharp(jpegBuf).jpeg({ quality: 85 }).toBuffer());
         }
@@ -232,6 +250,49 @@ export async function POST(request: NextRequest) {
           { status: 500 },
         );
       }
+    }
+
+    /*
+     * SCRUB THE METADATA. Unconditional, and deliberately independent of the
+     * size check and of the HEIC branch above: Signal shipped years of GPS
+     * leaks precisely because its strip was a side effect of "the image was
+     * big enough to need resizing". A camera JPEG carries GPS coordinates,
+     * capture time to the second, the camera's serial number and an embedded
+     * thumbnail that survives cropping — publishing those next to a
+     * pseudonymous post deanonymises the poster. Policy and evidence:
+     * `docs/design/image-metadata-policy.md`.
+     *
+     * FAILS CLOSED: if the bytes cannot be cleaned, nothing is uploaded.
+     */
+    try {
+      const stripped = await stripImageMetadata(buffer);
+      logger.info(ROUTE, 'Image metadata stripped', {
+        userId: session.userId,
+        format: stripped.format,
+        strategy: stripped.strategy,
+        sizeBefore: buffer.length,
+        sizeAfter: stripped.buffer.length,
+      });
+      buffer = stripped.buffer;
+    } catch (err) {
+      const reason = err instanceof ImageMetadataError ? err.reason : 'unknown';
+      logger.warn(ROUTE, 'Image metadata strip failed — refusing the upload', {
+        userId: session.userId,
+        contentType,
+        reason,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      if (reason === 'unsupported') {
+        // The server, not the file, is at fault: we could not load the codec.
+        return NextResponse.json(
+          { error: 'Could not process this image on the server. Please try again later.' },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json(
+        { error: 'Could not read this image. It may be corrupt or in an unsupported format.' },
+        { status: 400 },
+      );
     }
 
     logger.info(ROUTE, 'Uploading file to R2', {

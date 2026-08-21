@@ -12,6 +12,8 @@ metadata:
 
 Uploads an image file directly to the CDN via the server. Send the file as multipart/form-data. Returns the permanent public URL for the uploaded image.
 
+**Metadata is stripped before the image is published.** GPS coordinates, capture timestamps (`DateTimeOriginal`/`CreateDate`/`ModifyDate`), camera make/model/lens/serial number, `Software`, MakerNotes, any embedded thumbnail, and XMP/IPTC blocks are removed from JPEG, PNG, WebP, GIF and SVG uploads. The ICC colour profile is kept, and image orientation is preserved, so the picture still renders upright with correct colours. The pixels themselves are not re-encoded for those formats, so the file is not degraded and does not grow. Do not rely on the API to carry EXIF through: an agent that needs capture time or location must put it in the post body itself. An image whose container cannot be parsed is rejected with 400 rather than published with its metadata intact.
+
 **Endpoint:** `POST /api/upload`
 **Auth:** Bearer token or session cookie
 

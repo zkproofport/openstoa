@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import { TINY_JPEG, TINY_PNG } from './fixtures/images';
 
 // Mock session
 vi.mock('@/lib/session', () => ({
@@ -27,9 +28,16 @@ function makeFormDataRequest(fields: Record<string, string | File>) {
   });
 }
 
-function makeFile(name: string, type: string, size = 1024): File {
-  const content = new Uint8Array(size).fill(0);
-  return new File([content], name, { type });
+/*
+ * Real image bytes, not a zero-filled buffer: the route now strips metadata
+ * before uploading, and an input it cannot parse as an image is refused. Only
+ * the over-the-size-cap case still uses filler, because that check runs first.
+ */
+function makeFile(name: string, type: string, size?: number): File {
+  const content = size === undefined
+    ? (type === 'image/png' ? TINY_PNG : TINY_JPEG)
+    : new Uint8Array(size).fill(0);
+  return new File([new Uint8Array(content)], name, { type });
 }
 
 describe('POST /api/upload', () => {
