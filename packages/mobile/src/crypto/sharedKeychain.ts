@@ -35,7 +35,7 @@
  */
 
 /** Kept in sync with `OpenStoaNSE/NotificationService.swift` + the host entitlements. */
-export const SHARED_KEYCHAIN_ACCESS_GROUP = 'com.zkproofport.app.openstoa';
+export const SHARED_KEYCHAIN_ACCESS_GROUP = 'com.masselabs.zkproofport.openstoa';
 
 /** Raw TAK length in bytes (takClient TAK_LEN) — a mirrored key must be exactly this. */
 export const TAK_BYTES = 32;

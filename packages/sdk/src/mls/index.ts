@@ -1,32 +1,31 @@
 /**
  * Portable MLS chat-crypto core for the @masselabs/openstoa SDK.
  *
- * These modules are copied verbatim (byte-compatible wire format: ciphersuite
- * 0x0001, same base64 framing) from the web client at openstoa/src/lib/mls so an
- * SDK agent interoperates with the web and mobile clients in the same MLS group.
- * They run on Node's global webcrypto (crypto.subtle / crypto.getRandomValues)
- * and the global btoa/atob, so no browser or React Native shims are needed.
+ * These modules are RE-EXPORTS. The implementation lives once, in
+ * `packages/mls/src`, and the web client and the mini-app import the same
+ * files — so an SDK agent interoperates with them in the same MLS group by
+ * construction rather than by hand-sync. They run on Node's global webcrypto
+ * (crypto.subtle / crypto.getRandomValues) and the global btoa/atob, so no
+ * browser or React Native shims are needed.
  *
- * These copies are no longer unbound. `src/__tests__/mlsCryptoTwins.test.ts`
- * holds them to the web originals, so changing a shared rule means changing
- * every copy the table names — editing only this one turns the suite red. Do
- * NOT refactor the source copies from here; make the change in
- * `src/lib/mls/*` and re-sync.
+ * They used to be COPIES, bound to the web originals byte for byte by
+ * `src/__tests__/mlsCryptoTwins.test.ts` — after this copy had already drifted
+ * 667 lines and 14 methods behind in silence, `openMedia` among them, so an AI
+ * member holding a topic's TAK received the literal envelope
+ * `openstoa:media:v1:{…}` where a person saw a photo.
  *
- * What IS bound today:
- *  - byte-identical across all three trees: `takSession`, `takClient`,
- *    `chatMedia`, `leafIdentity`;
- *  - byte-identical web ↔ SDK, with the mini-app held to the same METHOD
- *    SURFACE but exempt from byte-identity for a stated reason: `groupClient`
- *    (lazy ts-mls require for Metro/boot order, plus a @noble/ciphers AES-GCM
- *    shim for Hermes) and `mlsSession` (comment-only drift).
+ * That test still exists and still guards this directory; what it asserts is
+ * now "there is no copy": every file here is a re-export, every specifier
+ * resolves into `packages/mls/src`, all three trees load the SAME module
+ * object, and the repo holds exactly one implementation of each. So there is no
+ * longer a sync step to forget — but there is also nothing to add HERE. Code
+ * written in this directory is invisible to the web client and the mini-app,
+ * which is precisely how the drift happened. Put the change in
+ * `packages/mls/src`.
  *
- * Still unbound, and therefore still able to drift silently: `keyManager`,
- * `keyBackup`, `aiMember`. `keyBackup` and `aiMember` happen to be identical
- * across all three right now — by luck, not by a test. `keyManager` is NOT: the
- * SDK copy lacks the retired-key fallback that lets a device keep reading what
- * it sealed before a recovery. That is dormant here only because the SDK has no
- * recovery path; give it one and the gap is live.
+ * The two genuine platform differences (how ts-mls is loaded, where AES-GCM
+ * comes from) are injected through `configureMlsRuntime`; the SDK takes the
+ * defaults, which are the web behaviour.
  */
 export * as groupClient from './groupClient';
 export * as leafIdentity from './leafIdentity';

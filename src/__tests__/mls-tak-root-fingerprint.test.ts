@@ -696,18 +696,37 @@ describe('deriveRootFingerprint', () => {
     expect(sealed).not.toContain(fp);
   });
 
-  it('the mobile mirror is byte-identical, so both clients compute the same tag', () => {
-    // The KDF label and length are a wire contract between web and mobile. A
-    // divergence here would silently split the two into different fingerprints
-    // for the same root, which reads exactly like the bug being fixed.
-    const root = path.resolve(__dirname, '../..');
-    for (const f of ['takClient.ts', 'takSession.ts']) {
-      const web = readFileSync(path.join(root, 'src/lib/mls', f), 'utf-8');
-      const mobile = readFileSync(path.join(root, 'packages/mobile/src/crypto', f), 'utf-8');
-      expect(mobile, `${f} drifted between web and mobile`).toBe(web);
-    }
-    const web = readFileSync(path.join(root, 'src/lib/mls/takClient.ts'), 'utf-8');
-    expect(web).toContain("'openstoa-archive-root-id/v1'");
-    expect(web).toContain('ROOT_FINGERPRINT_LEN = 16');
+  it('the mini-app computes the same tag because it runs the same code, not a mirror of it', async () => {
+    /*
+     * The KDF label and length are a wire contract between web and mobile. A
+     * divergence here would silently split the two into different fingerprints
+     * for the same root, which reads exactly like the bug being fixed — so this
+     * used to compare the two source files byte for byte.
+     *
+     * There is one source file now (`packages/mls/src/takClient.ts`) and both
+     * trees re-export it, so "mirror" is the wrong word and byte-identity is
+     * the wrong assertion. What is asserted instead is what byte-identity was
+     * proxying for: `deriveRootFingerprint` reached through the mini-app path
+     * IS the function reached through the web path, and the label and length it
+     * closes over live in the shared file.
+     */
+    const mobile = await import('../../packages/mobile/src/crypto/takClient');
+    expect(
+      mobile.deriveRootFingerprint,
+      'the mini-app resolved a different deriveRootFingerprint — the two clients can now disagree on a tag',
+    ).toBe(tak.deriveRootFingerprint);
+    expect(mobile.ROOT_FINGERPRINT_B64_LEN).toBe(tak.ROOT_FINGERPRINT_B64_LEN);
+
+    // Same tag for the same root, computed through both import paths.
+    const root = tak.generatePublicRootKey();
+    expect(await mobile.deriveRootFingerprint(root)).toBe(await tak.deriveRootFingerprint(root));
+
+    // The wire contract itself, read from the one file that now defines it.
+    const shared = readFileSync(
+      path.join(path.resolve(__dirname, '../..'), 'packages/mls/src/takClient.ts'),
+      'utf-8',
+    );
+    expect(shared).toContain("'openstoa-archive-root-id/v1'");
+    expect(shared).toContain('ROOT_FINGERPRINT_LEN = 16');
   });
 });

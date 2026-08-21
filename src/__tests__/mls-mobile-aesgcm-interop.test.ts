@@ -18,14 +18,36 @@
  *
  * Also covers the direction the pre-existing cross-provider test never did:
  * WEB processing a MOBILE-produced External Commit.
+ *
+ * TWO MODULE INSTANCES, ON PURPOSE — this is the load-bearing part.
+ *
+ * The web client and the mini-app now share ONE implementation
+ * (`packages/mls/src`), and the two runtimes are selected by
+ * `configureMlsRuntime`, which is module-level state: one `runtime`, one
+ * memoized `_impl`. So a plain `import * as mob from '…/mobile/src/crypto/
+ * groupClient'` alongside `import * as web from '@/lib/mls/groupClient'`
+ * resolves to THE SAME MODULE — same functions, same ciphersuite object — and
+ * this file quietly becomes one client talking to itself while every assertion
+ * below still passes. That is precisely the shape of the bug it exists to
+ * catch, so the test would go green on the broken case.
+ *
+ * `vi.resetModules()` before the mobile import puts the mobile tree in its own
+ * registry: the statically-imported `web` keeps the DEFAULT (WebCrypto /
+ * ts-mls default provider) runtime, and the mobile copy configures noble on a
+ * separate instance. The `not.toBe` identity checks in the first test are the
+ * guard that this stays true — delete them and the file silently stops being a
+ * cross-provider test.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
-import * as mob from '../../packages/mobile/src/crypto/groupClient';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import * as web from '@/lib/mls/groupClient';
+
+type MobileGroupClient = typeof import('../../packages/mobile/src/crypto/groupClient');
+
+let mob: MobileGroupClient;
 
 const hostCalls: string[] = [];
 
-beforeAll(() => {
+beforeAll(async () => {
   // Installed FIRST → the mobile client's shim wraps this one, so anything
   // recorded here genuinely reached the host WebCrypto.
   const sc = globalThis.crypto.subtle as unknown as Record<string, (...a: unknown[]) => unknown>;
@@ -37,12 +59,37 @@ beforeAll(() => {
       return orig(...args);
     };
   }
+
+  // …and only THEN load the mobile tree, into a registry of its own. Loading it
+  // is what runs `configureMlsRuntime` + `installNobleAesGcmInterop`; keeping
+  // it out of `web`'s registry is what keeps the two providers two.
+  vi.resetModules();
+  mob = await import('../../packages/mobile/src/crypto/groupClient');
 });
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 describe('mobile MLS client keeps AES-GCM off the host WebCrypto', () => {
+  it('the mobile and web clients are genuinely two providers, not one module twice', async () => {
+    /*
+     * The guard on the guard. Both trees re-export one shared implementation,
+     * so "web" and "mobile" are only different while they are different MODULE
+     * INSTANCES — the runtime is chosen once per instance and the ciphersuite
+     * is memoized on it. If these collapse, every interop assertion in this
+     * file starts comparing a client against itself and passes for free.
+     */
+    expect(
+      mob.sealMessage,
+      'mobile and web resolved to the same module — this file is no longer testing interop',
+    ).not.toBe(web.sealMessage);
+    expect(await mob.ciphersuiteImpl(), 'both clients share one memoized ciphersuite').not.toBe(
+      await web.ciphersuiteImpl(),
+    );
+    // And the mobile instance is the one carrying the shim.
+    expect(mob.aesGcmInteropInstalled()).toBe(true);
+  }, 60_000);
+
   it('full lifecycle + web<->mobile interop, with zero host AES-GCM', async () => {
     const topic = 'aesgcm-interop';
 
