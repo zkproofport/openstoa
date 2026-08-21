@@ -146,6 +146,43 @@ describe('globals.css <-> src/styles/tokens.ts — single source of truth', () =
   });
 });
 
+/*
+ * The scrim is the one place where "define it in every theme block" is WRONG,
+ * so the exception is asserted rather than left to a comment.
+ *
+ * A control that sits on top of a user's photograph has a backdrop whose
+ * brightness is unrelated to the reader's theme. Flipping the scrim to a light
+ * value in light mode would put white on white over a snow photo — so the next
+ * person who runs a tidy-up pass and "completes" the four theme blocks needs to
+ * fail here, with the reason, instead of shipping an invisible button.
+ *
+ * Edge-case matrix rows covered:
+ *   contract  — presence in :root AND absence from all three override blocks
+ *   integrity — the foreground is asserted alongside the background, since a
+ *               scrim with a themed text colour fails in exactly the same way
+ */
+describe('scrim tokens — deliberately theme-invariant', () => {
+  const SCRIM_VARS = ['--scrim-strong', '--on-scrim'];
+
+  it('are declared once, in base :root', () => {
+    const block = extractBlock(css, ':root {');
+    for (const name of SCRIM_VARS) {
+      expect(block, name).toContain(`${name}:`);
+    }
+  });
+
+  it.each([
+    ['@media (prefers-color-scheme: light)'],
+    [":root[data-theme='dark'] {"],
+    [":root[data-theme='light'] {"],
+  ])('are NOT re-declared under %s — a themed scrim is invisible over a photo', (selector) => {
+    const block = extractBlock(css, selector);
+    for (const name of SCRIM_VARS) {
+      expect(block, `${name} must not be themed`).not.toContain(`${name}:`);
+    }
+  });
+});
+
 describe('spacing / radius / breakpoint / touch-target tokens', () => {
   it('spacing scale is exactly 4/8/12/16/24/32/48, in both CSS and TS', () => {
     expect(SPACING).toEqual({ 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32, 7: 48 });

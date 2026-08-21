@@ -39,6 +39,7 @@ vi.mock('heic-convert/browser', () => ({
 }));
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { minimalJpeg, minimalPng } from '../../packages/mls/src/__tests__/imageFixtures';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -123,6 +124,25 @@ function json(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as unknown as Response;
 }
 
+/**
+ * The read route's real answer: RAW CIPHERTEXT, `application/octet-stream`.
+ *
+ * A double that hands back `{ ciphertext: '<base64>' }` would be modelling a
+ * shape the server no longer has — and would certify a client that still parses
+ * it as working. `arrayBuffer` is what the panel calls.
+ */
+function octets(bytes: Uint8Array, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    headers: new Headers({ 'content-type': 'application/octet-stream' }),
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    json: async () => {
+      throw new Error('the attachment read route answers octets, not JSON');
+    },
+  } as unknown as Response;
+}
+
 function installFetch() {
   vi.stubGlobal(
     'fetch',
@@ -140,16 +160,26 @@ function installFetch() {
         // and the row's controls become ambiguous.
         if (method === 'GET') {
           if (mediaGetStatus !== 200) return json({ error: 'gone' }, false, mediaGetStatus);
-          return json({ ciphertext: 'AQID' });
+          return octets(new Uint8Array([1, 2, 3]));
         }
         if (method === 'PATCH' || method === 'DELETE') return json({ ok: true });
         if (mediaUploadStatus !== 200) {
           return json({ error: 'R2_ACCOUNT_ID ... required' }, false, mediaUploadStatus);
         }
-        // The real route derives the key FROM the posted mediaId, and the
-        // envelope is rejected if the two disagree — so the stub must too.
-        const posted = JSON.parse(String(init?.body ?? '{}')) as { mediaId?: string };
-        return json({ key: chatMediaObjectKey(TOPIC, ME, posted.mediaId ?? '') });
+        /*
+         * The upload is RAW BYTES with the id in the query string. Modelled as
+         * a refusal, not just a shape: a client that reverted to base64-in-JSON
+         * would put no `mediaId` in the URL and would send a string body, and
+         * both are rejected here rather than silently accepted.
+         */
+        if (typeof init?.body === 'string') {
+          throw new Error('the attachment upload takes raw bytes, not a JSON string');
+        }
+        const postedId = new URL(url, 'http://x').searchParams.get('mediaId');
+        if (!postedId) throw new Error('the attachment upload must name its mediaId in the query string');
+        // The real route derives the key FROM that id, and the envelope is
+        // rejected if the two disagree — so the stub must too.
+        return json({ key: chatMediaObjectKey(TOPIC, ME, postedId) });
       }
       if (url.startsWith(`/api/topics/${TOPIC}/chat?`)) return json({ messages: [], total: 0 });
       if (url === `/api/topics/${TOPIC}/chat`) {
@@ -196,8 +226,8 @@ function fileInput(): HTMLInputElement {
 }
 
 /** Select a file, exactly as a browser does: set `files`, dispatch `change`. */
-async function attach(name = 'photo.png', type = 'image/png', bytes = new Uint8Array([1, 2, 3])) {
-  const file = new File([bytes], name, { type });
+async function attach(name = 'photo.png', type = 'image/png', bytes = minimalPng()) {
+  const file = new File([bytes as BlobPart], name, { type });
   // jsdom's FileList is read-only; define the property the handler reads.
   Object.defineProperty(fileInput(), 'files', { value: [file], configurable: true });
   // jsdom's File has no arrayBuffer() in some versions — the component needs it.
@@ -354,8 +384,7 @@ describe('an attachment that cannot be sent says so', () => {
      * The bytes are the authority now, so this sends.
      */
     await mount();
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
-    await attach('photo', '', png);
+    await attach('photo', '', minimalPng());
 
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(requests.some((r) => r.includes('/chat/media'))).toBe(true);
@@ -376,8 +405,7 @@ describe('an attachment that cannot be sent says so', () => {
     // Claims PNG, is actually a JPEG. The reader must render what it received,
     // not what the sender's browser guessed.
     await mount();
-    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-    await attach('lies.png', 'image/png', jpeg);
+    await attach('lies.png', 'image/png', minimalJpeg());
 
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(takStore.sealMedia).toHaveBeenCalled();
@@ -407,7 +435,7 @@ describe('an iPhone photo (HEIC)', () => {
     for (let i = 0; i < head.length; i++) b[i] = head.charCodeAt(i);
     return b;
   };
-  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 7, 7, 7]);
+  const JPEG = minimalJpeg();
 
   it('REGRESSION: converts in the tab and sends, instead of refusing', async () => {
     /*
@@ -500,7 +528,7 @@ describe('an iPhone photo (HEIC)', () => {
   });
 
   it('HOSTILE: a PNG named .heic is sent as a PNG, not fed to the decoder', async () => {
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+    const png = minimalPng();
     const decode = installHeicSupport(JPEG);
     await mount();
     await attach('liar.heic', 'image/heic', png);

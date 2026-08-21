@@ -72,7 +72,13 @@ vi.mock('@/lib/r2', () => ({
 }));
 
 import { POST, GET, DELETE, PATCH } from '@/app/api/topics/[topicId]/chat/media/route';
-import { MAX_CHAT_MEDIA_CIPHERTEXT_BYTES, MAX_JSON_BODY_BYTES, chatMediaObjectKey } from '@/lib/chatMedia';
+import {
+  CHAT_MEDIA_CONTENT_TYPE,
+  MAX_CHAT_MEDIA_BYTES,
+  MAX_CHAT_MEDIA_CIPHERTEXT_BYTES,
+  MAX_REQUEST_BODY_BYTES,
+  chatMediaObjectKey,
+} from '@/lib/chatMedia';
 
 const params = () => Promise.resolve({ topicId: TOPIC });
 /*
@@ -82,18 +88,45 @@ const params = () => Promise.resolve({ topicId: TOPIC });
  * in this file came back 500. A double that lacks what the real request always
  * carries turns a behaviour change into a mystery.
  */
-const postReq = (body: unknown, headers: Record<string, string> = {}) =>
-  ({
-    json: async () => body,
-    url: `http://x/api/topics/${TOPIC}/chat/media`,
-    headers: new Headers(headers),
-  }) as never;
+/**
+ * An upload: RAW BYTES as the body, the media id in the query string.
+ *
+ * The `content-type` is part of the double because the route now refuses a
+ * request that is not framed as octets — there is one shape, so anything else
+ * is a stale client and gets 415 rather than a puzzling 400 about a field it
+ * did not send.
+ */
+const postReq = (
+  body: Uint8Array | Buffer | null,
+  over: { headers?: Record<string, string>; mediaId?: string | null; throwOnRead?: boolean } = {},
+) => {
+  const mediaId = over.mediaId === undefined ? MEDIA : over.mediaId;
+  const query = mediaId === null ? '' : `?mediaId=${encodeURIComponent(mediaId)}`;
+  /*
+   * ONE copy, detached from Node's buffer pool.
+   *
+   * `Buffer.from(x).buffer` hands back the whole 8KB pool a small Buffer was
+   * allocated inside, so returning it would give the route the neighbouring
+   * allocations too — which is exactly what a first draft of this helper did,
+   * and the single-byte case came back nine bytes long.
+   */
+  const src = Buffer.from(body ?? new Uint8Array(0));
+  const detached = src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength);
+  return {
+    arrayBuffer: async () => {
+      if (over.throwOnRead) throw new Error('body unreadable');
+      return detached;
+    },
+    url: `http://x/api/topics/${TOPIC}/chat/media${query}`,
+    headers: new Headers({ 'content-type': CHAT_MEDIA_CONTENT_TYPE, ...(over.headers ?? {}) }),
+  } as never;
+};
 const queryReq = (query: string, headers: Record<string, string> = {}) =>
   ({
     url: `http://x/api/topics/${TOPIC}/chat/media${query}`,
     headers: new Headers(headers),
   }) as never;
-const b64 = (buf: Buffer | Uint8Array) => Buffer.from(buf).toString('base64');
+const bytes = (s: string) => new Uint8Array(Buffer.from(s));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -111,27 +144,40 @@ beforeEach(() => {
 describe('POST — store an encrypted attachment', () => {
   it('A1: 401 for a guest', async () => {
     mocks.getSession.mockResolvedValue(null);
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('x')) }), { params: params() });
+    const res = await POST(postReq(bytes('x')), { params: params() });
     expect(res.status).toBe(401);
     expect(mocks.putR2Object).not.toHaveBeenCalled();
   });
 
   it('A2: 403 for an authenticated non-member', async () => {
     mocks.topicMembersFindFirst.mockResolvedValue(undefined);
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('x')) }), { params: params() });
+    const res = await POST(postReq(bytes('x')), { params: params() });
     expect(res.status).toBe(403);
     expect(mocks.putR2Object).not.toHaveBeenCalled();
   });
 
   it('stores the bytes under a topic-scoped key and returns it', async () => {
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('ciphertext')) }), {
-      params: params(),
-    });
+    const res = await POST(postReq(bytes('ciphertext')), { params: params() });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ key: KEY });
     const [storedKey, storedBuf] = mocks.putR2Object.mock.calls[0];
     expect(storedKey).toBe(KEY);
     expect(Buffer.from(storedBuf).toString()).toBe('ciphertext');
+  });
+
+  it('CONTRACT: the request body IS the ciphertext — no base64, no JSON', async () => {
+    /*
+     * The transport change, pinned. The body used to be
+     * `{"mediaId":"…","ciphertext":"<base64>"}`, which spent a third of a 10MB
+     * ceiling on an encoding neither end wanted and made the advertised
+     * attachment size unreachable. A revert would store the JSON document
+     * verbatim as if it were ciphertext, so this asserts the bytes go through
+     * BYTE-FOR-BYTE, including ones no base64 alphabet contains.
+     */
+    const raw = new Uint8Array([0x00, 0xff, 0x7b, 0x22, 0x0a, 0x80]);
+    const res = await POST(postReq(raw), { params: params() });
+    expect(res.status).toBe(200);
+    expect(Array.from(mocks.putR2Object.mock.calls[0][1] as Uint8Array)).toEqual(Array.from(raw));
   });
 
   it('CONTRACT: the bytes are stored verbatim — no sniff, no transcode', async () => {
@@ -140,7 +186,7 @@ describe('POST — store an encrypted attachment', () => {
     const heic = Buffer.alloc(32);
     heic.write('ftyp', 4, 'ascii');
     heic.write('heic', 8, 'ascii');
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(heic) }), { params: params() });
+    const res = await POST(postReq(heic), { params: params() });
     expect(res.status).toBe(200);
     const [, storedBuf, contentType] = mocks.putR2Object.mock.calls[0];
     expect(Buffer.from(storedBuf).equals(heic)).toBe(true);
@@ -150,42 +196,64 @@ describe('POST — store an encrypted attachment', () => {
 
   it('H1: a blob claiming to be an image is stored unchanged, like any other blob', async () => {
     const hostile = Buffer.from('<script>alert(1)</script>');
-    await POST(postReq({ mediaId: MEDIA, ciphertext: b64(hostile) }), { params: params() });
+    await POST(postReq(hostile), { params: params() });
     expect(Buffer.from(mocks.putR2Object.mock.calls[0][1]).equals(hostile)).toBe(true);
   });
 
+  it('415 when the body is not framed as octets', async () => {
+    /*
+     * There is exactly one shape now. A stale client still POSTing JSON must be
+     * refused rather than have its `{"mediaId":…}` document written to storage
+     * as ciphertext — an object that would then fail to decrypt on every reader
+     * forever, with nothing anywhere saying why.
+     */
+    for (const ct of ['application/json', 'text/plain', 'multipart/form-data; boundary=x', '']) {
+      const res = await POST(postReq(bytes('x'), { headers: { 'content-type': ct } }), {
+        params: params(),
+      });
+      expect(res.status, ct).toBe(415);
+    }
+    expect(mocks.putR2Object).not.toHaveBeenCalled();
+  });
+
+  it('accepts the framing with a charset or odd casing, which proxies add', async () => {
+    for (const ct of ['Application/Octet-Stream', 'application/octet-stream; charset=binary', ' application/octet-stream ']) {
+      mocks.putR2Object.mockClear();
+      const res = await POST(postReq(bytes('x'), { headers: { 'content-type': ct } }), {
+        params: params(),
+      });
+      expect(res.status, ct).toBe(200);
+    }
+  });
+
   it('400 on a malformed mediaId (uppercase, short, traversal, missing)', async () => {
-    for (const mediaId of ['A'.repeat(32), 'abc', '../../etc', '', undefined, 42]) {
-      const res = await POST(postReq({ mediaId, ciphertext: b64(Buffer.from('x')) }), { params: params() });
+    for (const mediaId of ['A'.repeat(32), 'abc', '../../etc', '', null]) {
+      const res = await POST(postReq(bytes('x'), { mediaId }), { params: params() });
       expect(res.status, String(mediaId)).toBe(400);
     }
     expect(mocks.putR2Object).not.toHaveBeenCalled();
   });
 
-  it('B1: 400 when the ciphertext is empty or missing', async () => {
-    for (const ciphertext of ['', undefined, null, 5]) {
-      const res = await POST(postReq({ mediaId: MEDIA, ciphertext }), { params: params() });
-      expect(res.status, String(ciphertext)).toBe(400);
-    }
-  });
-
-  it('400 on non-canonical base64', async () => {
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: 'not!base64' }), { params: params() });
+  it('B1: 400 when the body is empty', async () => {
+    const res = await POST(postReq(new Uint8Array(0)), { params: params() });
     expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/empty/i);
+    expect(mocks.putR2Object).not.toHaveBeenCalled();
   });
 
-  it('400 on a body that is not JSON', async () => {
-    const req = {
-      json: async () => {
-        throw new Error('bad');
-      },
-      url: `http://x/api/topics/${TOPIC}/chat/media`,
-      headers: new Headers(),
-    } as never;
-    expect((await POST(req, { params: params() })).status).toBe(400);
+  it('B2: a single byte is stored', async () => {
+    const res = await POST(postReq(new Uint8Array([7])), { params: params() });
+    expect(res.status).toBe(200);
+    expect(Array.from(mocks.putR2Object.mock.calls[0][1] as Uint8Array)).toEqual([7]);
   });
 
-  it('413, not a parse error, when the body is over the transport limit', async () => {
+  it('400 on a body that cannot be read', async () => {
+    const res = await POST(postReq(bytes('x'), { throwOnRead: true }), { params: params() });
+    expect(res.status).toBe(400);
+    expect(mocks.putR2Object).not.toHaveBeenCalled();
+  });
+
+  it('413, not a read error, when the declared length is over the transport limit', async () => {
     /*
      * The transport refuses an oversized body before any handler runs, and that
      * refusal used to reach the caller as `Body must be JSON` — a sentence
@@ -193,7 +261,7 @@ describe('POST — store an encrypted attachment', () => {
      * content-length lets the route answer honestly instead.
      */
     const res = await POST(
-      postReq({ mediaId: MEDIA, ciphertext: 'x' }, { 'content-length': String(MAX_JSON_BODY_BYTES + 1) }),
+      postReq(bytes('x'), { headers: { 'content-length': String(MAX_REQUEST_BODY_BYTES + 1) } }),
       { params: params() },
     );
 
@@ -202,18 +270,36 @@ describe('POST — store an encrypted attachment', () => {
     expect(mocks.putR2Object).not.toHaveBeenCalled();
   });
 
+  it('CONTRACT: the refusal names the REAL limit, derived from the cap', async () => {
+    /*
+     * The sentence and the cap drifted once: it said 10MB while the transport
+     * refused anything over ~7.4MB, so a person was handed a number they could
+     * not reach. It must say the current cap, whatever that is — and with the
+     * base64 term gone, that is 9MB rather than 7MB.
+     */
+    const res = await POST(postReq(Buffer.alloc(MAX_CHAT_MEDIA_CIPHERTEXT_BYTES + 1, 1)), {
+      params: params(),
+    });
+    expect(res.status).toBe(413);
+    const expected = Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024));
+    expect((await res.json()).error).toContain(`${expected}MB`);
+    expect(expected).toBe(9);
+  });
+
   it('B3: exactly the cap is accepted', async () => {
     const at = Buffer.alloc(MAX_CHAT_MEDIA_CIPHERTEXT_BYTES, 1);
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(at) }), { params: params() });
+    const res = await POST(postReq(at), { params: params() });
     expect(res.status).toBe(200);
   });
 
-  it('B4/B5/L1: one past the cap, and double it, are 400 regardless of what the client believes', async () => {
+  it('B4/B5/L1: one past the cap, and double it, are 413 whatever the client claimed', async () => {
     for (const size of [MAX_CHAT_MEDIA_CIPHERTEXT_BYTES + 1, MAX_CHAT_MEDIA_CIPHERTEXT_BYTES * 2]) {
-      const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.alloc(size, 1)) }), {
-        params: params(),
-      });
-      // 413, not 400: the size is the complaint, and the status now says so.
+      const res = await POST(
+        // An UNDERSTATED content-length: the header is a claim, the decoded
+        // length is the fact, and only the second one may decide this.
+        postReq(Buffer.alloc(size, 1), { headers: { 'content-length': '10' } }),
+        { params: params() },
+      );
       expect(res.status, String(size)).toBe(413);
       expect(mocks.putR2Object).not.toHaveBeenCalled();
     }
@@ -221,18 +307,22 @@ describe('POST — store an encrypted attachment', () => {
 
   it('429 over the per-member rate limit', async () => {
     mocks.incr.mockResolvedValue(99999);
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('x')) }), { params: params() });
+    const res = await POST(postReq(bytes('x')), { params: params() });
     expect(res.status).toBe(429);
     expect(mocks.putR2Object).not.toHaveBeenCalled();
   });
 
   it('U1: nothing the client names ends up in the key', async () => {
-    // There is no filename field at all — a Korean / emoji / traversal name has
-    // nowhere to go.
-    await POST(
-      postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('x')), filename: '사진 🌟/../../x.png' }),
-      { params: params() },
-    );
+    /*
+     * There is no filename field at all. The key is built from the topic, the
+     * session and the media id, so a Korean / emoji / traversal name has
+     * nowhere to go — not in the body (which is bytes), and not in the query
+     * string, which is the one place a caller could now try to put one.
+     */
+    const hostile = encodeURIComponent('사진 🌟/../../x.png');
+    const req = postReq(bytes('x')) as unknown as { url: string };
+    req.url = `${req.url}&filename=${hostile}&key=topics/evil/chat/e/${'b'.repeat(32)}.bin`;
+    await POST(req as never, { params: params() });
     expect(mocks.putR2Object.mock.calls[0][0]).toBe(KEY);
   });
 });
@@ -259,9 +349,45 @@ describe('GET — serve ciphertext to a member', () => {
   it('A5: 200 with the opaque bytes for a member', async () => {
     const res = await GET(queryReq(`?key=${encodeURIComponent(KEY)}`), { params: params() });
     expect(res.status).toBe(200);
-    const { ciphertext } = await res.json();
-    expect(Buffer.from(ciphertext, 'base64').equals(Buffer.from([1, 2, 3]))).toBe(true);
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual([1, 2, 3]);
     expect(res.headers.get('Cache-Control')).toContain('private');
+  });
+
+  it('CONTRACT: ONE response shape — octets, whatever the caller says it accepts', async () => {
+    /*
+     * The base64-in-JSON alternative is gone rather than kept for
+     * compatibility. Leaving it would leave a path that is slower, has a
+     * smaller effective ceiling, and that nothing tests — the shape a future
+     * reader picks by accident. It also silently broke the agent SDK, which
+     * sent no `Accept` at all and read the bytes of a JSON document as if they
+     * were ciphertext.
+     *
+     * So every Accept gets the same answer, including the one that used to
+     * select JSON and the one that sent nothing.
+     */
+    for (const accept of ['application/json', 'application/octet-stream', '*/*', '']) {
+      const res = await GET(queryReq(`?key=${encodeURIComponent(KEY)}`, { accept }), {
+        params: params(),
+      });
+      expect(res.status, accept).toBe(200);
+      expect(res.headers.get('Content-Type'), accept).toBe(CHAT_MEDIA_CONTENT_TYPE);
+      expect(res.headers.get('Content-Length'), accept).toBe('3');
+      expect(Array.from(new Uint8Array(await res.arrayBuffer())), accept).toEqual([1, 2, 3]);
+    }
+  });
+
+  it('INTEGRITY: bytes no base64 alphabet contains survive the round trip', async () => {
+    const raw = new Uint8Array([0x00, 0xff, 0x80, 0x0a, 0x7f]);
+    mocks.getR2Object.mockResolvedValue(raw);
+    const res = await GET(queryReq(`?key=${encodeURIComponent(KEY)}`), { params: params() });
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(Array.from(raw));
+  });
+
+  it('the response is never sniffable as a media type', async () => {
+    // The server cannot know what these bytes are; a browser guessing on its
+    // behalf is the one thing worse than saying nothing.
+    const res = await GET(queryReq(`?key=${encodeURIComponent(KEY)}`), { params: params() });
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
   });
 
   it('H4: a key from another topic is 400, and storage is never touched', async () => {
@@ -309,7 +435,7 @@ describe('M-1 — the index row that makes an object reachable', () => {
     mocks.putR2Object.mockImplementation(async () => {
       order.push('object');
     });
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('ct')) }), {
+    const res = await POST(postReq(bytes('ct')), {
       params: params(),
     });
     expect(res.status).toBe(200);
@@ -321,7 +447,7 @@ describe('M-1 — the index row that makes an object reachable', () => {
   });
 
   it('SI-1: the row carries no key material, mime, filename, size or message id', async () => {
-    await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('ct')) }), { params: params() });
+    await POST(postReq(bytes('ct')), { params: params() });
     const row = mocks.insertRow.mock.calls[0][0] as Record<string, unknown>;
     expect(Object.keys(row).sort()).toEqual(['objectKey', 'topicId', 'uploaderId']);
     for (const forbidden of ['messageId', 'mime', 'filename', 'size', 'ciphertext', 'key']) {
@@ -344,7 +470,7 @@ describe('M-1 — the index row that makes an object reachable', () => {
     mocks.putR2Object.mockRejectedValueOnce(
       new Error('R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, ... environment variables are required'),
     );
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('ct')) }), {
+    const res = await POST(postReq(bytes('ct')), {
       params: params(),
     });
     expect(res.status).toBe(500);
@@ -356,7 +482,7 @@ describe('M-1 — the index row that makes an object reachable', () => {
     // A missing-config throw and a socket error take the same path; only one of
     // them was exercised before, and the distinction is invisible from here.
     mocks.putR2Object.mockRejectedValueOnce(Object.assign(new Error('ECONNRESET'), { code: 'ECONNRESET' }));
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('ct')) }), {
+    const res = await POST(postReq(bytes('ct')), {
       params: params(),
     });
     expect(res.status).toBe(500);
@@ -367,7 +493,7 @@ describe('M-1 — the index row that makes an object reachable', () => {
     // Then the row really is the collector's problem, which is what it is for.
     mocks.putR2Object.mockRejectedValueOnce(new Error('r2 down'));
     mocks.deleteRow.mockRejectedValueOnce(new Error('db down too'));
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('ct')) }), {
+    const res = await POST(postReq(bytes('ct')), {
       params: params(),
     });
     expect(res.status).toBe(500);
@@ -375,7 +501,7 @@ describe('M-1 — the index row that makes an object reachable', () => {
 
   it('a failed index insert fails the upload rather than storing an unreachable object', async () => {
     mocks.insertRow.mockRejectedValueOnce(new Error('unique violation'));
-    const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.from('ct')) }), {
+    const res = await POST(postReq(bytes('ct')), {
       params: params(),
     });
     expect(res.status).toBe(500);

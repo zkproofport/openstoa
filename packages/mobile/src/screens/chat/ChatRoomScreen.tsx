@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  Share,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -57,6 +58,9 @@ import type { ChatMessage } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
 import { copyTargets } from '../../lib/messageActions';
 import { sendPickedAssets } from '../../lib/pickedAttachments';
+import { saveAttachment, type AttachmentFile } from '../../lib/saveAttachment';
+import { hostAttachmentFs } from '../../lib/attachmentFs';
+import { discardDecrypted, downloadCiphertext, writeDecrypted } from '../../lib/chatMediaFiles';
 import {
   ChatMediaError,
   MAX_ATTACHMENTS_PER_PICK,
@@ -64,12 +68,10 @@ import {
   addFailedMedia,
   base64ToBytes,
   buildChatMediaBody,
-  bytesToBase64,
   isFailedMediaExpired,
   parseFailedMedia,
   removeFailedMedia,
   serializeFailedMedia,
-  chatMediaDataUri,
   loadEncryptedChatMedia,
   parseChatMediaBody,
   resolveChatMediaMime,
@@ -763,7 +765,16 @@ export function ChatRoomScreen() {
   // Local image viewer URL — avoids piping image taps through the
   // in-app WebView, which renders the raw image at top + blank space
   // (the "white area" reported on staging).
-  const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
+  /*
+   * What the full-screen viewer is showing, and whether it can be kept.
+   *
+   * A plain URL was enough while the only thing to do was look. Saving needs
+   * the BYTES, which only the attachment that decrypted them has — so the
+   * opener supplies a closure rather than the viewer going and fetching
+   * anything itself. A pre-R3 inline image is a remote URL with no bytes on
+   * this device, so it opens without one and the control simply is not there.
+   */
+  const [imageViewer, setImageViewer] = useState<{ uri: string; save?: () => void } | null>(null);
   /** The message a long-press opened the copy sheet for, or null. */
   const [actionTarget, setActionTarget] = useState<{ message: string; link: string | null } | null>(null);
   // Peer profile card (author name tap on another member's message).
@@ -1545,7 +1556,17 @@ export function ChatRoomScreen() {
        */
       void (async () => {
         try {
-          await client.fetchChatMedia(topicId, envelope.key);
+          /*
+           * A full download to check existence, because the read route has no
+           * cheaper answer — it is a GET or nothing. It costs one temporary
+           * file, which `downloadCiphertext` removes either way, and it only
+           * runs when somebody presses Retry on a failed attachment.
+           */
+          await downloadCiphertext({
+            fs: hostAttachmentFs(),
+            spec: await client.chatMediaFetchSpec(topicId, envelope.key),
+            mediaId: envelope.mediaId,
+          });
         } catch {
           setSentMessages((curr) =>
             curr.map((m) =>
@@ -1616,7 +1637,7 @@ export function ChatRoomScreen() {
         { bytes, mime },
         {
           seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, visibilityRef.current),
-          upload: (ciphertextB64, mediaId) => client.uploadChatMedia(topicId, mediaId, ciphertextB64),
+          upload: (ciphertext, mediaId) => client.uploadChatMedia(topicId, mediaId, ciphertext),
           send: async (body) => {
             const sealed = await mls.seal(topicId, body);
             /*
@@ -1725,15 +1746,29 @@ export function ChatRoomScreen() {
        * below was simply never widened.
        *
        * The ceiling is about MEMORY, not taste. `base64: true` makes the picker
-       * return the encoded bytes for EVERY selected asset in one result, so the
+       * return the ENCODED bytes for EVERY selected asset in one result, so the
        * whole selection is resident before the first one is sent: at the
-       * ~7MB-per-image cap that is roughly 9MB of string each. Ten is already
-       * ~90MB held at once on a phone, and sending is sequential anyway.
+       * ~9.5MB-per-image cap that is ~12.7MB of string each, so ten is ~127MB
+       * held at once on a phone. Sending is sequential regardless.
+       *
+       * This is the last base64 left on the send path — the upload itself now
+       * hands raw octets to the transport — and it is why the count did not
+       * rise when the cap did.
        */
       allowsMultipleSelection: true,
       selectionLimit: MAX_ATTACHMENTS_PER_PICK,
-      // The bytes, not just a URI: the file is encrypted on this device now,
-      // and RN has no dependable way to read a file:// URI into memory.
+      /*
+       * The bytes, not just a URI: the file is encrypted on this device, and
+       * `fetch`-ing a `file://` URI is not dependable in React Native.
+       *
+       * Still base64 because that is the only shape the PICKER offers. The
+       * host's filesystem could read the asset as bytes instead (the download
+       * path already does, see `lib/chatMediaFiles.ts`), which would remove the
+       * last encode on this path and the memory bound above with it — but the
+       * fallback for a host binary without that module would need `base64` set
+       * anyway, so it is a change with its own edge cases rather than a
+       * one-liner.
+       */
       base64: true,
       // iOS hands over the ORIGINAL representation by default, which for a
       // photo taken on any recent iPhone is HEIC — a format no browser can
@@ -1911,7 +1946,7 @@ export function ChatRoomScreen() {
               styles={styles}
               navigation={navigation}
               client={client}
-              onImagePress={setImageViewerUrl}
+              onImagePress={(uri, save) => setImageViewer({ uri, save })}
               onAuthorPress={setProfileTarget}
               onLongPress={(text) => setActionTarget(copyTargets(text))}
               topicId={topicId}
@@ -1992,7 +2027,12 @@ export function ChatRoomScreen() {
       </View>
     </KeyboardAvoidingView>
     <MessageActionSheet target={actionTarget} styles={styles} onClose={() => setActionTarget(null)} />
-    <ImageViewerModal url={imageViewerUrl} onClose={() => setImageViewerUrl(null)} />
+    <ImageViewerModal
+      url={imageViewer?.uri ?? null}
+      onClose={() => setImageViewer(null)}
+      onSave={imageViewer?.save}
+      saveLabel={t('openstoa.chat.media.save')}
+    />
     <PeerProfileCard
       target={profileTarget}
       viewerUserId={sessionUserId}
@@ -2018,7 +2058,8 @@ interface RowProps {
   styles: Styles;
   navigation: NativeStackNavigationProp<ChatStackParamList>;
   client: ReturnType<typeof useOpenStoaClient>;
-  onImagePress: (url: string) => void;
+  /** `save` is present only for attachments this device decrypted itself. */
+  onImagePress: (uri: string, save?: () => void) => void;
   onAuthorPress: (target: PeerProfileTarget) => void;
   /** The room this row belongs to — an encrypted attachment is fetched per topic. */
   topicId: string;
@@ -2221,7 +2262,8 @@ interface MessageBodyProps {
   styles: Styles;
   navigation: NativeStackNavigationProp<ChatStackParamList>;
   client: ReturnType<typeof useOpenStoaClient>;
-  onImagePress: (url: string) => void;
+  /** `save` is present only for attachments this device decrypted itself. */
+  onImagePress: (uri: string, save?: () => void) => void;
   onAuthorPress: (target: PeerProfileTarget) => void;
   /** The room this row belongs to — an encrypted attachment is fetched per topic. */
   topicId: string;
@@ -2271,11 +2313,21 @@ function EncryptedAttachment({
   styles: Styles;
   isOwn: boolean;
   /** Opens the full-screen viewer. The decrypted bytes never leave the device. */
-  onImagePress: (uri: string) => void;
+  onImagePress: (uri: string, save?: () => void) => void;
 }) {
   const { t } = useTranslation();
   const [state, setState] = useState<ChatMediaLoad | null>(null);
-  const [dataUri, setDataUri] = useState<string | null>(null);
+  /**
+   * `file://` for the decrypted picture, NOT a `data:` URI.
+   *
+   * Re-encoding the plaintext to base64 for a URI cost 694ms of a measured
+   * 3982ms on a 6MB attachment under Hermes, and then kept a ~13MB string alive
+   * for as long as the row was on screen. `<Image>` reads a file perfectly
+   * well, and the bytes are already bytes.
+   */
+  const [fileUri, setFileUri] = useState<string | null>(null);
+  /** The same file, kept so it can be deleted and re-read for a save. */
+  const fileRef = useRef<AttachmentFile | null>(null);
   /** Bumped by the retry button; re-runs the effect without remounting the row. */
   const [attempt, setAttempt] = useState(0);
   const { key, mediaId, takVersion, mime, size } = envelope;
@@ -2283,24 +2335,90 @@ function EncryptedAttachment({
   useEffect(() => {
     let cancelled = false;
     setState(null);
-    setDataUri(null);
+    setFileUri(null);
     void (async () => {
       const tak = getTakSessionStore(client);
       const res = await loadEncryptedChatMedia(
         { v: 1, key, mediaId, takVersion, mime, size },
         {
-          fetchCiphertext: async (objectKey) => base64ToBytes(await client.fetchChatMedia(topicId, objectKey)),
+          /*
+           * Downloaded by the NATIVE filesystem, straight to disk.
+           *
+           * Not `fetch` — RN's `Response.arrayBuffer()` is not dependable
+           * (facebook/react-native#6743) because only strings cross the bridge,
+           * which is why this used to ask the server for base64-in-JSON and
+           * decode a multi-megabyte string here. A throw becomes `fetch-failed`,
+           * which is retryable and has a Reload control.
+           */
+          fetchCiphertext: async (objectKey) =>
+            downloadCiphertext({
+              fs: hostAttachmentFs(),
+              spec: await client.chatMediaFetchSpec(topicId, objectKey),
+              mediaId,
+            }),
           open: (id, version, ciphertext) => tak.openMedia(topicId, id, version, ciphertext, visibility),
         },
       );
       if (cancelled) return;
-      if (res.status === 'ok') setDataUri(chatMediaDataUri(res.bytes, res.mime));
+      if (res.status === 'ok') {
+        const file = writeDecrypted({ fs: hostAttachmentFs(), bytes: res.bytes, mime: res.mime, mediaId });
+        fileRef.current = file;
+        setFileUri(file?.uri ?? null);
+      }
       setState(res);
     })();
     return () => {
       cancelled = true;
+      /*
+       * The plaintext copy goes with the row.
+       *
+       * It is a decrypted picture from an end-to-end encrypted conversation
+       * sitting in a cache directory, so leaving it behind is not merely
+       * untidy — it is the one file in this flow that the encryption exists to
+       * prevent from lasting. The OS may reclaim the cache eventually; that is
+       * not a schedule worth relying on.
+       */
+      discardDecrypted(fileRef.current);
+      fileRef.current = null;
     };
   }, [client, topicId, visibility, key, mediaId, takVersion, mime, size, attempt]);
+
+  /*
+   * Hand the decrypted bytes to the share sheet.
+   *
+   * Read back from the DISPLAY FILE rather than held in a state field: the
+   * plaintext is already on disk for `<Image>`, and keeping a second
+   * multi-megabyte copy in JS for a button most people never press is exactly
+   * the kind of cost this change exists to remove. `saveAttachment` writes its
+   * own copy under the tidy filename and deletes it when the sheet closes, so
+   * the picture on screen is untouched.
+   */
+  const saveThis = useCallback(async () => {
+    const file = fileRef.current;
+    if (!file) {
+      Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.saveUnavailable'));
+      return;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = await file.bytes();
+    } catch {
+      Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.saveFailed'));
+      return;
+    }
+    const res = await saveAttachment({
+      fs: hostAttachmentFs(),
+      share: Share,
+      bytes,
+      mime,
+      mediaId,
+    });
+    if (res.status === 'unavailable') {
+      Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.saveUnavailable'));
+    } else if (res.status !== 'shared') {
+      Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.saveFailed'));
+    }
+  }, [mime, mediaId, t]);
 
   const wrap = isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther;
 
@@ -2351,14 +2469,14 @@ function EncryptedAttachment({
     <View style={wrap}>
       <TouchableOpacity
         activeOpacity={0.85}
-        disabled={!dataUri}
-        onPress={() => dataUri && onImagePress(dataUri)}
+        disabled={!fileUri}
+        onPress={() => fileUri && onImagePress(fileUri, () => void saveThis())}
         accessibilityRole="imagebutton"
         accessibilityLabel={t('openstoa.chat.media.alt')}
         testID="encrypted-attachment-open"
       >
         <Image
-          source={{ uri: dataUri ?? undefined }}
+          source={{ uri: fileUri ?? undefined }}
           accessibilityLabel={t('openstoa.chat.media.alt')}
           style={{
             width: 220,

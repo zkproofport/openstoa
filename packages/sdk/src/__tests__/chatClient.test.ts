@@ -17,6 +17,7 @@ import { OpenStoaClient } from '../rest/openStoaClient';
 import { MlsSessionStore, EncryptingKVStore, groupClient as gc, keyManager } from '../mls';
 import { mlsTransport } from '../rest/transports';
 import { createFileVaultStore } from '../keystore';
+import { minimalPng } from '../../../mls/src/__tests__/imageFixtures';
 
 // --- in-memory Delivery Service (crypto-free, like the real server) ----------
 
@@ -51,7 +52,7 @@ function makeDs() {
    * rejected it.
    */
   /** Attachment ciphertext by object key, plus whether its message went out. */
-  const objects = new Map<string, { b64: string; claimed: boolean }>();
+  const objects = new Map<string, { bytes: Uint8Array; claimed: boolean }>();
   const serverRoot = new Map<string, string>();
   const rootFingerprint = new Map<string, string>();
   const dmChannels = new Map<string, { topicId: string; a: string; b: string }>(); // key = canonical pair
@@ -71,7 +72,15 @@ function makeDs() {
     const u = new URL(String(input));
     const p = u.pathname;
     const method = init?.method ?? 'GET';
-    const body = init?.body ? JSON.parse(init.body as string) : undefined;
+    /*
+     * Only a STRING body is JSON. The attachment upload sends raw octets now,
+     * and parsing those as JSON is how this harness first went red — which is
+     * the right way round: a double that quietly accepted either framing would
+     * be more permissive than the route, which refuses anything that is not
+     * `application/octet-stream` with 415.
+     */
+    const rawBody = init?.body;
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : undefined;
     const auth = ((init?.headers ?? {}) as Record<string, string>).Authorization ?? '';
     const token = auth.replace('Bearer ', '');
     const userId = tokenUser[token] ?? token;
@@ -235,20 +244,35 @@ function makeDs() {
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/chat\/media$/))) {
       const t = m[1];
       if (method === 'POST') {
+        /*
+         * RAW BYTES in, id in the query string — and modelled as the route's
+         * REFUSALS, not just its happy path. The route answers 415 to anything
+         * not framed as octets and 400 to a missing id, so a client that
+         * reverted to base64-in-JSON must fail here rather than be recorded.
+         */
+        const ct = ((init?.headers ?? {}) as Record<string, string>)['Content-Type'] ?? '';
+        if (ct !== 'application/octet-stream') return json(415, { error: `bad framing: ${ct}` });
+        const mediaId = u.searchParams.get('mediaId') ?? '';
+        if (!/^[0-9a-f]{32}$/.test(mediaId)) return json(400, { error: 'bad mediaId' });
+        if (!(rawBody instanceof Uint8Array)) return json(400, { error: 'body must be bytes' });
+        if (rawBody.length === 0) return json(400, { error: 'ciphertext is empty' });
         // The server mints the key from ids — the caller never chooses it.
-        const key = `topics/${t}/chat/${userId}/${body.mediaId}.bin`;
-        objects.set(key, { b64: body.ciphertext, claimed: false });
+        const key = `topics/${t}/chat/${userId}/${mediaId}.bin`;
+        objects.set(key, { bytes: new Uint8Array(rawBody), claimed: false });
         return json(201, { key });
       }
       if (method === 'GET') {
         const key = u.searchParams.get('key') ?? '';
         const obj = objects.get(key);
         if (!obj) return json(404, { error: 'not found' });
-        // Real route streams bytes; the client reads arrayBuffer().
-        const bin = atob(obj.b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new Response(bytes, { status: 200 }) as unknown as Response;
+        // The route answers octets to EVERY caller — there is no JSON shape to
+        // negotiate any more. This client never sent an `Accept`, and while the
+        // route still had one it was handed the bytes of a JSON document and
+        // read them as ciphertext.
+        return new Response(obj.bytes, {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        }) as unknown as Response;
       }
       if (method === 'DELETE') {
         objects.delete(u.searchParams.get('key') ?? '');
@@ -429,11 +453,12 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
     await b.joinTopic(T);
 
-    // A 1x1 PNG — real magic bytes, so the shared MIME/HEIC guards see a real image.
-    const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-    ]);
+    /*
+      * A COMPLETE PNG, not just its magic bytes. The send path strips metadata
+      * before it seals, so it walks the whole container — and a header with no
+      * IDAT and no IEND is refused as something it cannot clean.
+      */
+    const png = minimalPng();
     const { messageId, envelope } = await a.sendMedia(T, { bytes: png, mime: 'image/png' });
 
     // The KEY is server-minted and topic-partitioned (M-3), never client-chosen.
@@ -460,7 +485,8 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
     await a.joinTopic(T);
     await a.sendChat(T, 'a message that is just words');
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
+    // A complete PNG: the send path walks the container to strip its metadata.
+    const png = minimalPng();
     const { messageId, envelope } = await a.sendMedia(T, { bytes: png, mime: 'image/png' });
 
     // The object disappears (retention, orphan collection, a topic sweep).
@@ -483,7 +509,8 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
     await a.joinTopic(T);
 
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x11, 0x22, 0x33, 0x44]);
+    // A complete PNG: the send path walks the container to strip its metadata.
+    const png = minimalPng();
     const { messageId } = await a.sendMedia(T, { bytes: png, mime: 'image/png' });
 
     // B arrives afterwards: MLS gives it nothing for that row…

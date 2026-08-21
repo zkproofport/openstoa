@@ -16,6 +16,19 @@
  * Same topic, same server, opposite directions. If the providers ever diverge
  * again, this fails and nothing else does.
  *
+ * TWO MODULE INSTANCES, ON PURPOSE. Both trees now re-export ONE implementation
+ * (`packages/mls/src`), and the runtime is selected by `configureMlsRuntime` —
+ * module-level state: one `runtime`, one memoized ciphersuite per module
+ * instance. Imported plainly, `MobileMlsSessionStore` IS `MlsSessionStore`, the
+ * mini-app's `groupClient` is never loaded so noble is never configured, and
+ * this file silently becomes one provider talking to itself while every
+ * assertion still passes — the exact shape of the bug it exists to catch.
+ *
+ * `vi.resetModules()` before the mobile import gives the mobile tree its own
+ * registry, and the mobile `groupClient` is loaded FIRST so its
+ * `configureMlsRuntime` lands on that instance. The `not.toBe` check in case 1
+ * is the guard that this stays true.
+ *
  * It also asserts what the server is allowed to hold: the stored object is
  * ciphertext, not the picture, and a non-member cannot fetch it at all.
  *
@@ -26,17 +39,33 @@
  * earlier runs and the epoch-CAS conflicts that follow look exactly like a
  * defect in the code under test.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import * as gc from '@/lib/mls/groupClient';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from '@/lib/mls/mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from '@/lib/mls/takSession';
-// The MOBILE twins — same source, different crypto provider underneath.
-import { MlsSessionStore as MobileMlsSessionStore } from '../../../packages/mobile/src/crypto/mlsSession';
-import { TakSessionStore as MobileTakSessionStore } from '../../../packages/mobile/src/crypto/takSession';
+
+/**
+ * The MOBILE stack — same source, different crypto provider underneath, loaded
+ * into a module registry of its own so that stays true (see the header).
+ * `groupClient` first: loading it is what runs `configureMlsRuntime`, and the
+ * session stores must be built on the instance it configured.
+ */
+async function loadMobileStack() {
+  vi.resetModules();
+  const mobileGc = await import('../../../packages/mobile/src/crypto/groupClient');
+  const { MlsSessionStore: MobileMlsSessionStore } = await import(
+    '../../../packages/mobile/src/crypto/mlsSession'
+  );
+  const { TakSessionStore: MobileTakSessionStore } = await import(
+    '../../../packages/mobile/src/crypto/takSession'
+  );
+  return { mobileGc, MobileMlsSessionStore, MobileTakSessionStore };
+}
 import {
+  CHAT_MEDIA_CONTENT_TYPE,
+  MAX_CHAT_MEDIA_BYTES,
+  MAX_CHAT_MEDIA_CIPHERTEXT_BYTES,
   buildChatMediaBody,
-  bytesToBase64,
-  base64ToBytes,
   chatMediaObjectKey,
   newMediaId,
   parseChatMediaBody,
@@ -195,24 +224,45 @@ function memKv(): SecureKVStore {
   return { get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) };
 }
 
-/** Upload ciphertext through the REAL route and return the key it assigned. */
-async function uploadCiphertext(token: string, topicId: string, mediaId: string, ct: Uint8Array): Promise<string> {
-  const r = await fetch(`${BASE}/api/topics/${topicId}/chat/media`, {
+/**
+ * Upload ciphertext through the REAL route: RAW BYTES, id in the query string.
+ *
+ * Not `{ mediaId, ciphertext: '<base64>' }` any more. That framing spent a
+ * third of the 10MB transport ceiling on base64's 4/3 expansion, which put the
+ * advertised attachment cap out of reach — the boundary cases below are what
+ * hold the new one honest against a running server rather than against
+ * arithmetic.
+ */
+async function uploadRaw(
+  token: string,
+  topicId: string,
+  mediaId: string,
+  ct: Uint8Array,
+  over: { contentType?: string } = {},
+): Promise<Response> {
+  return fetch(`${BASE}/api/topics/${topicId}/chat/media?mediaId=${encodeURIComponent(mediaId)}`, {
     method: 'POST',
-    headers: bearer(token),
-    body: JSON.stringify({ mediaId, ciphertext: bytesToBase64(ct) }),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': over.contentType ?? CHAT_MEDIA_CONTENT_TYPE,
+    },
+    body: ct as unknown as BodyInit,
   });
+}
+
+async function uploadCiphertext(token: string, topicId: string, mediaId: string, ct: Uint8Array): Promise<string> {
+  const r = await uploadRaw(token, topicId, mediaId, ct);
   if (!r.ok) throw new Error(`media POST ${r.status} ${await r.text()}`);
   return (await r.json()).key as string;
 }
 
-/** Fetch ciphertext back through the membership-gated route. */
+/** Fetch ciphertext back through the membership-gated route. Octets, not JSON. */
 async function fetchCiphertext(token: string, topicId: string, key: string): Promise<Uint8Array> {
   const r = await fetch(`${BASE}/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
     headers: bearer(token),
   });
   if (!r.ok) throw new Error(`media GET ${r.status}`);
-  return base64ToBytes((await r.json()).ciphertext as string);
+  return new Uint8Array(await r.arrayBuffer());
 }
 
 /** A picture, as far as this test is concerned: PNG magic + a byte pattern. */
@@ -232,8 +282,11 @@ describe('encrypted attachments across web and mobile, against a real container'
   let topicId: string;
   let webMls: MlsSessionStore;
   let webTak: TakSessionStore;
-  let mobileMls: InstanceType<typeof MobileMlsSessionStore>;
-  let mobileTak: InstanceType<typeof MobileTakSessionStore>;
+  // Same TYPES as the web stores (one implementation), different INSTANCES of
+  // the module — which is the whole point of this file.
+  let mobileMls: MlsSessionStore;
+  let mobileTak: TakSessionStore;
+  let mobileGc: typeof gc;
 
   /** web → mobile, filled in by the first case and read by the second. */
   let fromWeb: { body: string; bytes: Uint8Array; ciphertext: Uint8Array; mediaId: string; takVersion: number };
@@ -277,15 +330,13 @@ describe('encrypted attachments across web and mobile, against a real container'
 
     webMls = new MlsSessionStore(httpMls(web.token), WEB_DEVICE, memKv());
     webTak = new TakSessionStore(webMls, httpTak(web.token), memKv());
-    mobileMls = new MobileMlsSessionStore(httpMls(mobile.token), MOBILE_DEVICE, memKv());
-    mobileTak = new MobileTakSessionStore(mobileMls, httpTak(mobile.token), memKv());
+    const mobileStack = await loadMobileStack();
+    mobileGc = mobileStack.mobileGc;
+    mobileMls = new mobileStack.MobileMlsSessionStore(httpMls(mobile.token), MOBILE_DEVICE, memKv());
+    mobileTak = new mobileStack.MobileTakSessionStore(mobileMls, httpTak(mobile.token), memKv());
 
     // One probe, so every case knows whether the object store is usable.
-    const probe = await fetch(`${BASE}/api/topics/${topicId}/chat/media`, {
-      method: 'POST',
-      headers: bearer(web.token),
-      body: JSON.stringify({ mediaId: newMediaId(), ciphertext: bytesToBase64(new Uint8Array([1, 2, 3])) }),
-    });
+    const probe = await uploadRaw(web.token, topicId, newMediaId(), new Uint8Array([1, 2, 3]));
     storageAvailable = probe.ok;
     if (!storageAvailable) {
       // eslint-disable-next-line no-console
@@ -297,6 +348,18 @@ describe('encrypted attachments across web and mobile, against a real container'
   });
 
   it('1. both devices are in one MLS group — web genesis, mobile external-commit join', async () => {
+    /*
+     * The guard on the guard, before anything else runs. The two devices are
+     * only two providers while they are two MODULE INSTANCES; if they collapse,
+     * every cross-provider assertion below compares a client against itself and
+     * passes for free.
+     */
+    expect(
+      mobileGc.sealMessage,
+      'the mobile stack resolved to the web module — this file is no longer cross-provider',
+    ).not.toBe(gc.sealMessage);
+    expect(await mobileGc.ciphersuiteImpl()).not.toBe(await gc.ciphersuiteImpl());
+
     await webMls.seal(topicId, 'genesis'); // bootstraps the group at epoch 0
     await mobileMls.sync(topicId); // joins → epoch 1
     await webMls.sync(topicId); // web sees the mobile leaf
@@ -394,6 +457,145 @@ describe('encrypted attachments across web and mobile, against a real container'
     const envelope = parseChatMediaBody(fromWeb.body)!;
     const r = await fetch(`${BASE}/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`);
     expect(r.status).toBe(401);
+  });
+
+  it('8. TAMPERED ciphertext is a decrypt failure, not a picture and not a crash', async () => {
+    /*
+     * The property the AEAD exists for, exercised against real bytes from the
+     * real store rather than a mocked `open` that was told to say no. One
+     * flipped bit anywhere in the object and the tag no longer authenticates.
+     *
+     * It matters more with a binary transport than it did with base64: a body
+     * that is not valid base64 used to be rejected by the decoder before the
+     * AEAD ever saw it, which meant some corruption was caught by the encoding
+     * rather than by the crypto. Every byte sequence is now a legal body, so
+     * the AEAD is the only thing standing there.
+     */
+    const plain = picture(21, 1024);
+    const mediaId = newMediaId();
+    const sealed = await webTak.sealMedia(topicId, mediaId, plain, 'private');
+    expect(sealed).not.toBeNull();
+
+    const corrupted = new Uint8Array(sealed!.ciphertext.length);
+    corrupted.set(sealed!.ciphertext);
+    corrupted[corrupted.length - 1] ^= 0xff; // the tag
+    corrupted[20] ^= 0x01; // and the body
+
+    let ct: Uint8Array = corrupted;
+    if (storageAvailable) {
+      const key = await uploadCiphertext(web.token, topicId, mediaId, corrupted);
+      ct = await fetchCiphertext(web.token, topicId, key);
+      // The server stored what it was given, byte for byte — it cannot tell.
+      expect(hex(ct)).toBe(hex(corrupted));
+    }
+    const opened = await webTak.openMedia(topicId, mediaId, sealed!.takVersion, ct, 'private');
+    expect(opened.ok, 'tampered bytes must never open').toBe(false);
+    expect((opened as { ok: false; reason: string }).reason).toBe('decrypt');
+  });
+
+  it('9. FRAMING: a JSON body is refused with 415 rather than stored as ciphertext', async () => {
+    /*
+     * There is exactly one shape. A stale client still POSTing
+     * `{"mediaId":…,"ciphertext":"…"}` must be told so, not have its JSON
+     * document written to storage as if it were ciphertext — an object that
+     * would then fail to decrypt on every reader forever, with nothing
+     * anywhere saying why.
+     */
+    const body = new TextEncoder().encode(JSON.stringify({ mediaId: newMediaId(), ciphertext: 'AQID' }));
+    const r = await uploadRaw(web.token, topicId, newMediaId(), body, { contentType: 'application/json' });
+    expect(r.status).toBe(415);
+  });
+
+  it('10. BOUNDARY: an empty body is 400, and says so', async () => {
+    const r = await uploadRaw(web.token, topicId, newMediaId(), new Uint8Array(0));
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: string }).error).toMatch(/empty/i);
+  });
+
+  it('11. BOUNDARY: a malformed mediaId is 400 before any storage is touched', async () => {
+    for (const mediaId of ['A'.repeat(32), 'abc', '../../etc']) {
+      const r = await fetch(
+        `${BASE}/api/topics/${topicId}/chat/media?mediaId=${encodeURIComponent(mediaId)}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${web.token}`, 'Content-Type': CHAT_MEDIA_CONTENT_TYPE },
+          body: new Uint8Array([1, 2, 3]) as unknown as BodyInit,
+        },
+      );
+      expect(r.status, mediaId).toBe(400);
+    }
+  });
+
+  it('12. BOUNDARY: one byte over the ciphertext cap is 413, naming the REAL limit', async () => {
+    /*
+     * The regression this whole change is downstream of. The cap was a flat
+     * 10MB while the transport refused anything over ~7.4MB, so a person was
+     * promised a size they could not send and was then told `Body must be
+     * JSON` — a sentence about syntax for a file whose only problem was its
+     * size. Both the number and the sentence are asserted against a running
+     * server, because arithmetic in a unit test is exactly what was right last
+     * time while the product was wrong.
+     */
+    const over = new Uint8Array(MAX_CHAT_MEDIA_CIPHERTEXT_BYTES + 1);
+    const r = await uploadRaw(web.token, topicId, newMediaId(), over);
+    expect(r.status).toBe(413);
+    const { error } = (await r.json()) as { error: string };
+    expect(error).toMatch(/too large/i);
+    expect(error).toContain(`${Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024))}MB`);
+  });
+
+  it('13. BOUNDARY: an attachment AT the cap goes up and comes back byte-identical', async () => {
+    /*
+     * The number the composer promises, sent for real. This is the case that
+     * could not pass before: at the old framing a cap-sized attachment weighed
+     * ~1.34x on the wire and died in the body parser, which is why the cap had
+     * to be derived down to ~7.1MB. With raw octets the same 10MB ceiling
+     * carries ~9.5MB, and this proves it end to end rather than on paper.
+     *
+     * Skipped only where object storage is unavailable (R2 credentials are
+     * GitHub Secrets, so a developer stack has none) — reported, never
+     * silently passed.
+     */
+    if (!storageAvailable) {
+      // eslint-disable-next-line no-console
+      console.warn('[e2e] skipped: object storage unavailable, see the storageAvailable probe');
+      return;
+    }
+    const mediaId = newMediaId();
+    const at = new Uint8Array(MAX_CHAT_MEDIA_BYTES + 28);
+    // Not all zeroes: a store that dropped the body would return zeroes too.
+    for (let i = 0; i < at.length; i += 997) at[i] = (i % 251) + 1;
+    at[at.length - 1] = 0xfe;
+
+    const key = await uploadCiphertext(web.token, topicId, mediaId, at);
+    const back = await fetchCiphertext(web.token, topicId, key);
+    expect(back.length).toBe(at.length);
+    expect(hex(back)).toBe(hex(at));
+  }, 120_000);
+
+  it('14. CONTRACT: the read route answers OCTETS whatever the caller accepts', async () => {
+    /*
+     * The base64-in-JSON shape is gone rather than kept for compatibility.
+     * `Accept: application/json` used to select it — and the agent SDK, which
+     * sends no Accept at all, was reading the bytes of a JSON document as if
+     * they were ciphertext.
+     */
+    const envelope = parseChatMediaBody(fromWeb.body)!;
+    if (!storageAvailable) {
+      // eslint-disable-next-line no-console
+      console.warn('[e2e] skipped: object storage unavailable, see the storageAvailable probe');
+      return;
+    }
+    for (const accept of ['application/json', 'application/octet-stream', '*/*']) {
+      const r = await fetch(
+        `${BASE}/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`,
+        { headers: { Authorization: `Bearer ${web.token}`, Accept: accept } },
+      );
+      expect(r.status, accept).toBe(200);
+      expect(r.headers.get('content-type'), accept).toContain(CHAT_MEDIA_CONTENT_TYPE);
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      expect(hex(bytes), accept).toBe(hex(fromWeb.ciphertext));
+    }
   });
 
   it('7. a member cannot reach ANOTHER topic object through this one', async () => {

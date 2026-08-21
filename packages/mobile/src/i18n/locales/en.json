@@ -478,23 +478,27 @@
       "sendFailedDiscard": "Delete",
       "lockedHistorySyncing": "Getting your chat history… earlier messages unlock once this device receives the room key.",
       "media": {
-        "title": "Image",
-        "decrypting": "Decrypting image…",
-        "locked": "Encrypted image — this device has no key for it yet",
-        "fetchFailed": "Could not load this image.",
-        "decryptFailed": "This image could not be decrypted.",
         "alt": "Encrypted image",
+        "decryptFailed": "This image could not be decrypted.",
+        "decrypting": "Decrypting image…",
         "error": {
           "empty": "That file is empty.",
           "too-large": "Images must be {{limit}}MB or smaller.",
           "unsupported-type": "That image type is not supported. Use JPEG, PNG, GIF, WebP or BMP.",
           "heic-unsupported": "HEIC photos cannot be sent to an encrypted chat. Save the photo as JPEG and try again.",
+          "strip-failed": "That image could not have its location and camera data removed, so it was not sent. It may be damaged.",
           "no-key": "Waiting for this room's key. Try again in a moment.",
           "upload-failed": "The image could not be uploaded. Try again.",
           "send-failed": "The image was not sent. Try again."
         },
         "expired": "This image expired before it could be sent. Send it again.",
-        "reload": "Reload"
+        "fetchFailed": "Could not load this image.",
+        "locked": "Encrypted image — this device has no key for it yet",
+        "reload": "Reload",
+        "save": "Save",
+        "saveFailed": "Could not save that image.",
+        "saveUnavailable": "Saving needs a newer version of the app.",
+        "title": "Image"
       },
       "tierClaim": {
         "e2ee": "New messages and images in this room are end-to-end encrypted. The service cannot read them.",

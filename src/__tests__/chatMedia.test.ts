@@ -13,8 +13,6 @@
  * paths can be asserted without crypto in the way.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   CHAT_MEDIA_BODY_PREFIX,
   CHAT_MEDIA_FAILED_ROW_TTL_MS,
@@ -32,7 +30,6 @@ import {
   base64ToBytes,
   buildChatMediaBody,
   bytesToBase64,
-  chatMediaDataUri,
   chatMediaObjectKey,
   isChatMediaBody,
   isChatMediaKeyForTopic,
@@ -45,6 +42,14 @@ import {
   sniffImageMime,
   type ChatMediaEnvelope,
 } from '@/lib/chatMedia';
+/*
+ * A REAL image, because the send path walks the container now: it strips the
+ * metadata before it seals, so `new Uint8Array([1, 2, 3])` — what these tests
+ * used to pass — is no longer something it can clean, and is refused.
+ * `minimalPng` carries nothing on the strip list, so cleaning it is the
+ * identity and the size assertions below stay exact.
+ */
+import { minimalPng } from '../../packages/mls/src/__tests__/imageFixtures';
 
 const TOPIC = '11111111-2222-3333-4444-555555555555';
 const USER = '0xabc123';
@@ -63,7 +68,8 @@ const envelope = (over: Partial<ChatMediaEnvelope> = {}): ChatMediaEnvelope => (
 
 /** A send harness whose every step is observable. */
 function harness(opts: { sealFails?: boolean; uploadFails?: boolean; sendFails?: boolean } = {}) {
-  const uploaded: string[] = [];
+  /** What the upload hop actually received. BYTES — the transport is binary. */
+  const uploaded: Uint8Array[] = [];
   const storedKeys: string[] = [];
   const seal = vi.fn(async (mediaId: string, bytes: Uint8Array) => {
     if (opts.sealFails) return null;
@@ -73,9 +79,17 @@ function harness(opts: { sealFails?: boolean; uploadFails?: boolean; sendFails?:
     out[0] = 0xff;
     return { ciphertext: out, takVersion: 7 };
   });
-  const upload = vi.fn(async (ciphertextB64: string, mediaId: string) => {
+  const upload = vi.fn(async (ciphertext: Uint8Array, mediaId: string) => {
     if (opts.uploadFails) throw new Error('r2 down');
-    uploaded.push(ciphertextB64);
+    /*
+     * A mock that models the REAL thing's refusals: the route takes octets and
+     * nothing else, so a caller that reverted to handing over a base64 string
+     * must fail here rather than be quietly recorded.
+     */
+    if (!(ciphertext instanceof Uint8Array)) {
+      throw new TypeError(`upload expects raw bytes, got ${typeof ciphertext}`);
+    }
+    uploaded.push(ciphertext);
     const key = chatMediaObjectKey(TOPIC, USER, mediaId);
     storedKeys.push(key);
     return key;
@@ -192,9 +206,6 @@ describe('base64 codec', () => {
     const bytes = new Uint8Array(0x8000 * 3 + 17).fill(0xab);
     expect(base64ToBytes(bytesToBase64(bytes)).length).toBe(bytes.length);
   });
-  it('produces a data URI a native <Image> can read', () => {
-    expect(chatMediaDataUri(new Uint8Array([1, 2, 3]), 'image/png')).toBe('data:image/png;base64,AQID');
-  });
 });
 
 describe('HEIC detection', () => {
@@ -276,7 +287,7 @@ describe('type resolution — the bytes are the authority', () => {
 });
 
 describe('sendEncryptedChatMedia', () => {
-  const png = new Uint8Array([1, 2, 3]);
+  const png = minimalPng();
 
   it('C1/C2 CONTRACT: the file is encrypted, and the uploader never sees plaintext', async () => {
     const h = harness();
@@ -284,11 +295,27 @@ describe('sendEncryptedChatMedia', () => {
 
     // Removing the encrypt step fails BOTH of these.
     expect(h.seal).toHaveBeenCalledTimes(1);
-    const uploadedBytes = base64ToBytes(h.uploaded[0]);
+    const uploadedBytes = h.uploaded[0];
     expect(Array.from(uploadedBytes)).not.toEqual(Array.from(png));
-    expect(bytesToBase64(png)).not.toBe(h.uploaded[0]);
     // ...and the plaintext must not be a substring of what went up either.
     expect(uploadedBytes.length).toBeGreaterThan(png.length);
+  });
+
+  it('CONTRACT: the upload hop is handed RAW BYTES, never a base64 string', async () => {
+    /*
+     * The transport change, pinned where it can regress. base64-in-JSON cost
+     * the 4/3 expansion against a 10MB ceiling and is the reason the advertised
+     * cap could not be reached; a client that quietly re-encodes would restore
+     * that without failing anything else in this file.
+     */
+    const h = harness();
+    await sendEncryptedChatMedia({ bytes: png, mime: 'image/png' }, h);
+    const [ciphertext] = h.upload.mock.calls[0];
+    expect(ciphertext).toBeInstanceOf(Uint8Array);
+    expect(typeof ciphertext).not.toBe('string');
+    // Exactly the sealed bytes, unmodified on the way through.
+    const sealed = await h.seal.mock.results[0].value;
+    expect(Array.from(ciphertext)).toEqual(Array.from(sealed!.ciphertext));
   });
 
   it('CONTRACT: the sealed body carries the reference, never the bytes or a URL', async () => {
@@ -298,9 +325,11 @@ describe('sendEncryptedChatMedia', () => {
     const parsed = parseChatMediaBody(body);
     expect(parsed).not.toBeNull();
     expect(parsed!.takVersion).toBe(7);
-    expect(parsed!.size).toBe(3);
+    expect(parsed!.size).toBe(png.length);
     expect(body).not.toContain('http');
     expect(body).not.toContain(bytesToBase64(png));
+    // Nor the raw bytes, however they are spelled.
+    expect(body).not.toContain(String.fromCharCode(...png));
   });
 
   it('B1: a 0-byte file is refused before anything is uploaded', async () => {
@@ -312,16 +341,32 @@ describe('sendEncryptedChatMedia', () => {
     expect(h.upload).not.toHaveBeenCalled();
   });
 
-  it('B2: a 1-byte file goes through', async () => {
+  it('B2: the smallest real image goes through', async () => {
     const h = harness();
-    const env = await sendEncryptedChatMedia({ bytes: new Uint8Array([9]), mime: 'image/png' }, h);
-    expect(env.size).toBe(1);
+    const smallest = minimalPng(57);
+    const env = await sendEncryptedChatMedia({ bytes: smallest, mime: 'image/png' }, h);
+    expect(env.size).toBe(smallest.length);
+  });
+
+  it('B2b: a 1-byte file is refused — a container that cannot be cleaned is not sent', async () => {
+    /*
+     * It used to go through. It cannot any more, and that is the point: the
+     * bytes are unreadable as an image, so nothing can promise their metadata
+     * is gone, and Signal treats a failed strip as send-blocking rather than
+     * sending the original. See `docs/design/image-metadata-policy.md`.
+     */
+    const h = harness();
+    await expect(
+      sendEncryptedChatMedia({ bytes: new Uint8Array([9]), mime: 'image/png' }, h),
+    ).rejects.toMatchObject({ reason: 'strip-failed' });
+    expect(h.seal).not.toHaveBeenCalled();
+    expect(h.upload).not.toHaveBeenCalled();
   });
 
   it('B3: exactly the cap is accepted', async () => {
     const h = harness();
     const env = await sendEncryptedChatMedia(
-      { bytes: new Uint8Array(MAX_CHAT_MEDIA_BYTES), mime: 'image/png' },
+      { bytes: minimalPng(MAX_CHAT_MEDIA_BYTES), mime: 'image/png' },
       h,
     );
     expect(env.size).toBe(MAX_CHAT_MEDIA_BYTES);
@@ -578,11 +623,43 @@ describe('failed attachments that survive a restart', () => {
 });
 
 describe('web / mobile twin', () => {
-  it('the mobile copy is byte-identical', () => {
-    // These rules decide what leaves the device. Two copies that drift are two
-    // different answers to "is this encrypted", which is the whole subject.
-    const web = readFileSync(join(process.cwd(), 'src/lib/chatMedia.ts'), 'utf8');
-    const mobile = readFileSync(join(process.cwd(), 'packages/mobile/src/lib/chatMedia.ts'), 'utf8');
-    expect(mobile).toBe(web);
+  it('there is no twin: web, mini-app and SDK load ONE module', async () => {
+    /*
+     * These rules decide what leaves the device. Two copies that drift are two
+     * different answers to "is this encrypted", which is the whole subject —
+     * so this used to compare the web and mini-app files byte for byte.
+     *
+     * There is one file now (`packages/mls/src/chatMedia.ts`); the three trees
+     * hold re-exports of it. Byte-identity is therefore not just satisfied, it
+     * is unrepresentable, and the assertion that replaces it is the stronger
+     * one it was always standing in for: the three imports return the SAME
+     * module object, so `CHAT_MEDIA_BODY_PREFIX` and `chatMediaObjectKey`
+     * cannot be two values.
+     *
+     * `mlsCryptoTwins.test.ts` is where that invariant is guarded in full
+     * (shape, target, identity and a repo-wide sweep for a fourth copy). This
+     * is the local tripwire, kept here because this file is where someone
+     * changes the envelope.
+     */
+    const web = await import('@/lib/chatMedia');
+    const mobile = await import('../../packages/mobile/src/lib/chatMedia');
+    const sdk = await import('../../packages/sdk/src/chatMedia');
+    const shared = await import('../../packages/mls/src/chatMedia');
+
+    const names = Object.keys(shared).sort();
+    expect(names).toContain('CHAT_MEDIA_BODY_PREFIX');
+    expect(names).toContain('chatMediaObjectKey');
+    for (const [label, mod] of [
+      ['web', web],
+      ['mini-app', mobile],
+      ['SDK', sdk],
+    ] as const) {
+      expect(Object.keys(mod).sort(), `${label} re-export dropped symbols`).toEqual(names);
+      for (const n of names) {
+        expect((mod as Record<string, unknown>)[n], `${label} has its own \`${n}\``).toBe(
+          (shared as Record<string, unknown>)[n],
+        );
+      }
+    }
   });
 });

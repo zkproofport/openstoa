@@ -140,6 +140,21 @@ export const ActionSheetIOS = {
   },
 };
 
+/**
+ * Calls are RECORDED, like `Alert` — a test asserts what was offered to the
+ * share sheet, and the real one would open native UI a test cannot dismiss.
+ */
+export const Share = {
+  calls: [] as Array<{ url?: string; title?: string }>,
+  async share(content: { url?: string; title?: string }) {
+    Share.calls.push(content);
+    return { action: 'sharedAction' };
+  },
+  reset() {
+    Share.calls = [];
+  },
+};
+
 export const Linking = { openURL: async () => {} };
 export const Keyboard = { dismiss: () => {} };
 export const Dimensions = { get: () => ({ width: 390, height: 844 }) };
@@ -238,6 +253,7 @@ export default {
   Platform,
   Alert,
   ActionSheetIOS,
+  Share,
   Linking,
   Keyboard,
   Dimensions,

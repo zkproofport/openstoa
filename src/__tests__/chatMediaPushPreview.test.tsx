@@ -48,6 +48,7 @@ import { join } from 'node:path';
 import { CHAT_MEDIA_BODY_PREFIX, chatMediaObjectKey, parseChatMediaBody } from '@/lib/chatMedia';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { minimalPng } from '../../packages/mls/src/__tests__/imageFixtures';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -142,10 +143,34 @@ function installFetch() {
         return json({ topic: { visibility: 'public' }, currentUserRole: 'member' });
       }
       if (url.startsWith(`/api/topics/${TOPIC}/chat/media`)) {
-        if (method === 'GET') return json({ ciphertext: 'AQID' });
+        /*
+         * BINARY on both hops, modelled as the route's REFUSALS.
+         *
+         * The read answers raw octets and the upload takes them, with the id in
+         * the query string. A double that still accepted `{ mediaId,
+         * ciphertext }` would be more permissive than the server, which answers
+         * 415 to anything not framed as octets — and a lenient mock certifies a
+         * broken client as working, which is this codebase's dominant way of
+         * being wrong.
+         */
+        if (method === 'GET') {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/octet-stream' }),
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+            json: async () => {
+              throw new Error('the attachment read route answers octets, not JSON');
+            },
+          } as unknown as Response;
+        }
         if (method === 'PATCH' || method === 'DELETE') return json({ ok: true });
-        const posted = JSON.parse(String(init?.body ?? '{}')) as { mediaId?: string };
-        return json({ key: chatMediaObjectKey(TOPIC, ME, posted.mediaId ?? '') });
+        if (typeof init?.body === 'string') {
+          throw new Error('the attachment upload takes raw bytes, not a JSON string');
+        }
+        const postedId = new URL(url, 'http://x').searchParams.get('mediaId');
+        if (!postedId) throw new Error('the attachment upload must name its mediaId in the query string');
+        return json({ key: chatMediaObjectKey(TOPIC, ME, postedId) });
       }
       if (url.startsWith(`/api/topics/${TOPIC}/chat?`)) return json({ messages: [], total: 0 });
       if (url === `/api/topics/${TOPIC}/chat`) {
@@ -188,8 +213,8 @@ function fileInput(): HTMLInputElement {
 }
 
 /** Select a file, exactly as a browser does: set `files`, dispatch `change`. */
-async function attach(bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])) {
-  const file = new File([bytes], 'photo.png', { type: 'image/png' });
+async function attach(bytes = minimalPng()) {
+  const file = new File([bytes as BlobPart], 'photo.png', { type: 'image/png' });
   const input = fileInput();
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   await act(async () => {

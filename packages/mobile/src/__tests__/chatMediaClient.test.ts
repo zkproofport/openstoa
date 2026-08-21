@@ -45,6 +45,7 @@ interface Call {
   url: string;
   method: string;
   body: unknown;
+  contentType: string | null;
 }
 
 function installFetch(responses: Array<{ status: number; body?: unknown }>): Call[] {
@@ -52,10 +53,12 @@ function installFetch(responses: Array<{ status: number; body?: unknown }>): Cal
   let i = 0;
   (globalThis as unknown as { fetch: unknown }).fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
     const raw = init?.body;
+    const headers = new Headers((init?.headers ?? {}) as HeadersInit);
     calls.push({
       url: String(input),
       method: (init?.method ?? 'GET').toString().toUpperCase(),
       body: typeof raw === 'string' ? JSON.parse(raw) : raw,
+      contentType: headers.get('content-type'),
     });
     const spec = responses[i++] ?? { status: 500 };
     return {
@@ -79,28 +82,85 @@ afterEach(() => {
 });
 
 describe('uploadChatMedia', () => {
-  it('POSTs the ciphertext and returns the key the server assigned', async () => {
+  const CT = new Uint8Array([1, 2, 3]);
+
+  it('POSTs the ciphertext as RAW BYTES and returns the key the server assigned', async () => {
     const calls = installFetch([{ status: 200, body: { key: KEY } }]);
-    const key = await client().uploadChatMedia(TOPIC, MEDIA, 'AQID');
+    const key = await client().uploadChatMedia(TOPIC, MEDIA, CT);
 
     expect(key).toBe(KEY);
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('POST');
     expect(calls[0].url).toContain(`/api/topics/${TOPIC}/chat/media`);
-    expect(calls[0].body).toEqual({ mediaId: MEDIA, ciphertext: 'AQID' });
+    /*
+     * The transport change, pinned. It used to be
+     * `{ mediaId, ciphertext: '<base64>' }`, which spent a third of a 10MB
+     * ceiling on an encoding neither end wanted and put the advertised cap out
+     * of reach. A revert would send a JSON string here.
+     */
+    expect(calls[0].body).toBeInstanceOf(Uint8Array);
+    expect(Array.from(calls[0].body as Uint8Array)).toEqual([1, 2, 3]);
+    expect(calls[0].contentType).toBe('application/octet-stream');
+  });
+
+  it('CONTRACT: the media id rides in the query string, URL-encoded', async () => {
+    // A raw body has nowhere to put it. The server builds the object key from
+    // it, so a client that stopped sending it would upload to a 400 forever.
+    const calls = installFetch([{ status: 200, body: { key: KEY } }]);
+    await client().uploadChatMedia(TOPIC, MEDIA, CT);
+    expect(calls[0].url).toContain(`mediaId=${MEDIA}`);
   });
 
   it('CONTRACT: the plaintext never appears in the request', async () => {
-    // The body carries AEAD output and an id. Anything else here would mean the
-    // encryption happened somewhere it should not have.
+    // The body carries AEAD output and the URL carries an id. Anything else
+    // would mean the encryption happened somewhere it should not have.
     const calls = installFetch([{ status: 200, body: { key: KEY } }]);
-    await client().uploadChatMedia(TOPIC, MEDIA, 'AQID');
-    expect(Object.keys(calls[0].body as object).sort()).toEqual(['ciphertext', 'mediaId']);
+    await client().uploadChatMedia(TOPIC, MEDIA, CT);
+    expect(calls[0].url).not.toContain('ciphertext');
+    expect(typeof calls[0].body).not.toBe('string');
   });
 
   it('a refused upload throws rather than returning an empty key', async () => {
     installFetch([{ status: 500, body: { error: 'r2 down' } }]);
-    await expect(client().uploadChatMedia(TOPIC, MEDIA, 'AQID')).rejects.toThrow();
+    await expect(client().uploadChatMedia(TOPIC, MEDIA, CT)).rejects.toThrow();
+  });
+});
+
+describe('chatMediaFetchSpec', () => {
+  /*
+   * A SPEC rather than the bytes. RN's `Response.arrayBuffer()` is not
+   * dependable (facebook/react-native#6743), so the download is done by the
+   * native filesystem straight to disk — this client's job is the URL and the
+   * credential, which is the part that needs the session.
+   */
+  it('names the membership-gated route and carries the bearer token', async () => {
+    installFetch([]);
+    const spec = await client().chatMediaFetchSpec(TOPIC, KEY);
+    expect(spec.url).toContain(`/api/topics/${TOPIC}/chat/media`);
+    expect(spec.headers.Authorization).toBe('Bearer jwt.token');
+  });
+
+  it('the key is URL-encoded — an unescaped `/` would address a different object', async () => {
+    installFetch([]);
+    const spec = await client().chatMediaFetchSpec(TOPIC, KEY);
+    expect(spec.url).not.toContain(`key=${KEY}`);
+    expect(spec.url).toContain('%2F');
+  });
+
+  it('CONTRACT: it never fetches anything itself', async () => {
+    // Building the spec must not spend a round trip; the native download is
+    // the only request on this path.
+    const calls = installFetch([]);
+    await client().chatMediaFetchSpec(TOPIC, KEY);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a guest gets an auth error rather than an unauthenticated URL', async () => {
+    // An anonymous download would 401 into a file and read as a broken image.
+    installFetch([]);
+    const c = new OpenStoaClient({ host: makeHost() });
+    c.setMode('guest');
+    await expect(c.chatMediaFetchSpec(TOPIC, KEY)).rejects.toThrow();
   });
 });
 

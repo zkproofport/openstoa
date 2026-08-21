@@ -68,6 +68,17 @@
   --surface: var(--color-bg-secondary);
   --surface-hover: var(--color-bg-tertiary);
 
+  /* ── Scrim — a control sitting ON a picture, not on the page.
+     DELIBERATELY NOT re-declared per theme, and that is the whole point: what
+     is behind this is somebody's photograph, whose brightness has nothing to
+     do with whether the reader chose light or dark. A scrim that flipped with
+     the theme would go white-on-white over a snow photo in light mode — the
+     exact failure the token sweep exists to catch. Theme-invariant is the
+     correct behaviour here, so it is stated once and documented, rather than
+     hardcoded at a call site where the next reader would "fix" it. */
+  --scrim-strong: rgba(0, 0, 0, 0.55);
+  --on-scrim: #ffffff;
+
   /* Landing-page-only decorative tokens (src/app/page.tsx) — bespoke to that
      surface, not part of the semantic system, out of scope for this pass
      (owned by a parallel agent — see report). */

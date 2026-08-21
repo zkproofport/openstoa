@@ -30,12 +30,13 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
-import { checkRateLimit, decodeBase64Strict, type RateLimit } from '@/lib/mls/http';
+import { checkRateLimit, type RateLimit } from '@/lib/mls/http';
 import { deleteR2Object, getR2Object, putR2Object } from '@/lib/r2';
 import {
+  CHAT_MEDIA_CONTENT_TYPE,
   MAX_CHAT_MEDIA_BYTES,
   MAX_CHAT_MEDIA_CIPHERTEXT_BYTES,
-  MAX_JSON_BODY_BYTES,
+  MAX_REQUEST_BODY_BYTES,
   chatMediaObjectKey,
   isChatMediaKeyForTopic,
 } from '@/lib/chatMedia';
@@ -43,15 +44,28 @@ import {
 const ROUTE = '/api/topics/[topicId]/chat/media';
 
 /**
- * Uploads are bounded per member: an attachment is up to 10MB of storage the
- * server can never inspect, so the flood case has to be cheap to refuse. 60/min
- * is far above any human attach rate and far below a useful abuse rate.
+ * Uploads are bounded per member: an attachment is up to `MAX_CHAT_MEDIA_BYTES`
+ * of storage the server can never inspect, so the flood case has to be cheap to
+ * refuse. 60/min is far above any human attach rate and far below a useful
+ * abuse rate.
  */
 const RATE_MEDIA_UPLOAD: RateLimit = { max: 60, windowSec: 60 };
 
 const MEDIA_ID_RE = /^[0-9a-f]{32}$/;
 /** The `{userId}` path segment. A nullifier, but never trusted to be one. */
 const USER_SEGMENT_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * The refusal a sender sees, with the REAL limit in it.
+ *
+ * Derived from the cap rather than written out, because the two drifted once
+ * already: the sentence said 10MB while the transport refused anything over
+ * ~7.4MB, so the person was given a number that could not be reached. Stated
+ * once here so a future change to the cap changes the message with it.
+ */
+function tooLargeMessage(): string {
+  return `Attachment is too large. The maximum is ${Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024))}MB.`;
+}
 
 /**
  * Stamp `claimed_at` on an unclaimed row, swallowing everything.
@@ -108,7 +122,28 @@ async function requireMember(request: NextRequest, topicId: string) {
   return { session, membership };
 }
 
-/** Store one encrypted attachment. Body: `{ mediaId, ciphertext }` (base64). */
+/**
+ * Store one encrypted attachment.
+ *
+ * `POST ?mediaId=<32 hex>` with the CIPHERTEXT as the raw request body, framed
+ * `application/octet-stream`. It used to be `{ mediaId, ciphertext }` with the
+ * ciphertext base64-encoded inside JSON, and that framing cost more than the
+ * 33% it looks like: the transport caps the buffered body at 10MB, so base64's
+ * 4/3 expansion spent a third of the ceiling re-encoding bytes that were
+ * already bytes, and the reachable attachment size was ~7.1MB rather than
+ * ~9.5MB. On a phone it also cost a multi-megabyte string built one 32KB chunk
+ * at a time before anything left the device.
+ *
+ * The id moved to the query string because a raw body has nowhere to put it.
+ * That is fine — it is 32 hex characters, it is not secret (the server assigns
+ * the object key from it either way), and it is validated here exactly as
+ * strictly as it was when it arrived in JSON.
+ *
+ * NO backward compatibility with the JSON shape. Nothing has launched, and a
+ * dual path would mean the size cap depended on which framing a client
+ * happened to pick — two answers to "how big may a picture be", which is the
+ * defect class this route has already had once.
+ */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
   try {
     const { topicId } = await params;
@@ -129,62 +164,83 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     /*
-     * Size BEFORE parse, so an oversized upload is told what is wrong.
+     * The FRAMING, before anything is read.
      *
-     * The transport buffers the body and refuses it past `MAX_JSON_BODY_BYTES`
-     * (Next App Router + middleware, no per-route override), and that refusal
-     * surfaces here as a parse failure — so the honest error, "too large", was
-     * unreachable and the caller got `Body must be JSON` for a file that was
-     * merely too big. `MAX_CHAT_MEDIA_BYTES` is derived to stay under that
-     * ceiling, so anything arriving over it is either an out-of-date client or
-     * a hand-rolled request; both deserve the real reason.
+     * There is exactly one shape now, so a request that is not it gets 415
+     * rather than a confusing 400 about a field it did not send. It also stops
+     * a stale client's JSON body from being stored verbatim as if it were
+     * ciphertext — a hundred bytes of `{"mediaId":…}` written to R2, indexed,
+     * and then failing to decrypt on every reader forever.
+     */
+    const contentType = (request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (contentType !== CHAT_MEDIA_CONTENT_TYPE) {
+      return NextResponse.json(
+        { error: `Attachment body must be ${CHAT_MEDIA_CONTENT_TYPE}` },
+        { status: 415 },
+      );
+    }
+
+    /*
+     * Size BEFORE the body is read, so an oversized upload is told what is
+     * wrong.
+     *
+     * The transport buffers the body and refuses it past
+     * `MAX_REQUEST_BODY_BYTES` (Next App Router + middleware, no per-route
+     * override), and that refusal surfaces here as a read failure — so the
+     * honest error, "too large", was unreachable and the caller got a sentence
+     * about syntax for a file that was merely too big. `MAX_CHAT_MEDIA_BYTES`
+     * is derived to stay under that ceiling, so anything arriving over it is
+     * either an out-of-date client or a hand-rolled request; both deserve the
+     * real reason.
+     *
+     * `content-length` is the CLAIM, not the fact — it can be absent or
+     * understated — which is why the decoded length is checked again below.
+     * This one exists to refuse the obvious case without buffering it first.
      */
     const declaredLength = Number(request.headers.get('content-length') ?? '0');
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
       logger.warn(ROUTE, 'Attachment body over transport limit', {
         userId: session.userId,
         topicId,
         declaredLength,
       });
-      return NextResponse.json(
-        { error: `Attachment is too large. The maximum is ${Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024))}MB.` },
-        { status: 413 },
-      );
+      return NextResponse.json({ error: tooLargeMessage() }, { status: 413 });
     }
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      // Could still be the transport refusing a body whose content-length was
-      // absent or understated — say both possibilities rather than guess.
-      return NextResponse.json(
-        { error: 'Body must be JSON, and within the attachment size limit' },
-        { status: 400 },
-      );
-    }
-    const { mediaId, ciphertext } = (body ?? {}) as { mediaId?: unknown; ciphertext?: unknown };
-
+    const mediaId = new URL(request.url).searchParams.get('mediaId');
     if (typeof mediaId !== 'string' || !MEDIA_ID_RE.test(mediaId)) {
       return NextResponse.json({ error: 'mediaId must be 32 lowercase hex characters' }, { status: 400 });
     }
-    const bytes = decodeBase64Strict(ciphertext);
-    if (!bytes) {
-      return NextResponse.json({ error: 'ciphertext must be canonical base64' }, { status: 400 });
+
+    // A Buffer, not a bare Uint8Array: `putR2Object` takes one, and wrapping
+    // an ArrayBuffer is a view, not a copy.
+    let bytes: Buffer;
+    try {
+      bytes = Buffer.from(await request.arrayBuffer());
+    } catch {
+      // Still possibly the transport refusing a body whose content-length was
+      // absent or understated — say both possibilities rather than guess.
+      return NextResponse.json(
+        { error: 'Could not read the attachment body, or it is over the size limit' },
+        { status: 400 },
+      );
     }
     if (bytes.length === 0) {
       return NextResponse.json({ error: 'ciphertext is empty' }, { status: 400 });
     }
     if (bytes.length > MAX_CHAT_MEDIA_CIPHERTEXT_BYTES) {
       logger.warn(ROUTE, 'Attachment too large', { userId: session.userId, topicId, size: bytes.length });
-      return NextResponse.json(
-        { error: `Attachment is too large. The maximum is ${Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024))}MB.` },
-        { status: 413 },
-      );
+      return NextResponse.json({ error: tooLargeMessage() }, { status: 413 });
     }
 
-    // NOTE: no content sniffing, no transcode, no content-type check. The bytes
-    // are AEAD output; anything that "recognised" them would mean they are not.
+    /*
+     * NOTE: no content sniffing and no transcode. The bytes are AEAD output;
+     * anything that "recognised" them would mean they are not.
+     *
+     * The `content-type` check above is about the FRAMING of the request, not
+     * about what the bytes are — it asserts the caller said "these are opaque
+     * octets", which is the opposite of a claim about their content.
+     */
     const key = chatMediaObjectKey(topicId, session.userId, mediaId);
 
     /*
@@ -247,7 +303,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-/** Serve one encrypted attachment to a member of its topic. `?key=` */
+/**
+ * Serve one encrypted attachment to a member of its topic. `?key=`
+ *
+ * Answers `application/octet-stream` — the raw ciphertext — to every caller.
+ * There is no base64-in-JSON alternative any more; see the response block below
+ * for why the one that existed was removed rather than kept.
+ */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
   try {
     const { topicId } = await params;
@@ -288,49 +350,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     claimQuietly(topicId, key);
 
     /*
-     * Two response shapes, chosen by the caller's `Accept`.
+     * ONE response shape: the ciphertext, as bytes.
      *
-     * base64-in-JSON was the only shape for a long time, for a real reason:
-     * React Native cannot receive binary over `fetch` — only strings cross the
-     * bridge, so `Response.arrayBuffer()` is unavailable there
-     * (facebook/react-native#6743). One shape meant the clients could not
-     * drift.
+     * It used to answer base64-in-JSON, for a real reason — React Native cannot
+     * dependably receive binary through `fetch`, because only strings cross the
+     * bridge (facebook/react-native#6743), so one shape meant the clients could
+     * not drift. The cost was worse than "33% on the wire" suggests: every
+     * reader paid the expansion twice, once transferring it and once turning a
+     * multi-megabyte string back into bytes, and on a phone that second half is
+     * on the JS thread.
      *
-     * The cost turned out to be worse than "33% on the wire" suggested. base64
-     * expands 4/3, and the body it rides in is capped at 10MB by the framework,
-     * so the advertised 10MB attachment could not be uploaded at all. On the
-     * read side a browser pays for the expansion twice: once transferring it,
-     * once turning a multi-megabyte string back into bytes.
+     * The mini-app no longer needs the string. It downloads through the native
+     * filesystem straight to disk and reads the bytes back over JSI, so nothing
+     * multi-megabyte crosses the bridge at all — which is also what the iOS
+     * push extension already did, minus the JSON it then had to parse.
      *
-     * So a caller that CAN take bytes asks for them. Anything that does not ask
-     * — every client shipped before this line existed — still gets the JSON it
-     * expects. The bytes are identical either way; only the framing differs.
+     * So the JSON shape is GONE rather than kept for compatibility. Leaving it
+     * would leave a path that is slower, has a smaller effective ceiling, and
+     * that nothing tests — the shape a future reader picks by accident.
      */
-    const wantsBinary = (request.headers.get('accept') ?? '').includes('application/octet-stream');
-
-    const cacheHeaders = {
-      // Ciphertext is immutable and per-member: cache on the device, never
-      // in a shared cache.
-      'Cache-Control': 'private, max-age=31536000, immutable',
-      'X-Content-Type-Options': 'nosniff',
-    };
-
-    if (wantsBinary) {
-      return new NextResponse(Buffer.from(bytes) as unknown as BodyInit, {
-        headers: {
-          ...cacheHeaders,
-          // Opaque on purpose: the server cannot know what these bytes are, and
-          // naming a media type would be a claim it is not entitled to make.
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': String(bytes.length),
-        },
-      });
-    }
-
-    return NextResponse.json(
-      { ciphertext: Buffer.from(bytes).toString('base64') },
-      { headers: cacheHeaders },
-    );
+    return new NextResponse(Buffer.from(bytes) as unknown as BodyInit, {
+      headers: {
+        // Ciphertext is immutable and per-member: cache on the device, never in
+        // a shared cache.
+        'Cache-Control': 'private, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+        // Opaque on purpose: the server cannot know what these bytes are, and
+        // naming a media type would be a claim it is not entitled to make.
+        'Content-Type': CHAT_MEDIA_CONTENT_TYPE,
+        'Content-Length': String(bytes.length),
+      },
+    });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }

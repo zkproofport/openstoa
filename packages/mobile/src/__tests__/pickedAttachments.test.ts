@@ -31,7 +31,11 @@
  *                 does not inspect; the guard runs once, above it.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { sendPickedAssets, type PickedAsset } from '../lib/pickedAttachments';
+import {
+  sendPickedAssets,
+  type PickedAsset,
+  type SendOneAttachment,
+} from '../lib/pickedAttachments';
 
 const asset = (over: Partial<PickedAsset> = {}): PickedAsset => ({
   base64: 'AQID',
@@ -57,7 +61,7 @@ describe('sendPickedAssets', () => {
   });
 
   it('CONTRACT: each asset carries its own mime and filename', async () => {
-    const send = vi.fn(async () => {});
+    const send = vi.fn<SendOneAttachment>(async () => {});
 
     await sendPickedAssets(
       [
@@ -127,7 +131,7 @@ describe('sendPickedAssets', () => {
     ['empty', ''],
   ])('EMPTY: an asset whose base64 is %s is skipped, not sent', async (_label, base64) => {
     // Sending it would upload a zero-byte attachment the recipient cannot open.
-    const send = vi.fn(async () => {});
+    const send = vi.fn<SendOneAttachment>(async () => {});
     const onUnreadable = vi.fn();
 
     const result = await sendPickedAssets(
@@ -143,7 +147,7 @@ describe('sendPickedAssets', () => {
   });
 
   it('BOUNDARY: a single asset behaves exactly as the old single-shot path', async () => {
-    const send = vi.fn(async () => {});
+    const send = vi.fn<SendOneAttachment>(async () => {});
 
     const result = await sendPickedAssets([asset({ base64: 'only' })], send);
 
@@ -152,7 +156,7 @@ describe('sendPickedAssets', () => {
   });
 
   it('BOUNDARY: an empty pick sends nothing and reports nothing', async () => {
-    const send = vi.fn(async () => {});
+    const send = vi.fn<SendOneAttachment>(async () => {});
     const onUnreadable = vi.fn();
 
     expect(await sendPickedAssets([], send, onUnreadable)).toEqual({
@@ -165,7 +169,7 @@ describe('sendPickedAssets', () => {
   });
 
   it('HOSTILE: a hole in the array is skipped rather than thrown on', async () => {
-    const send = vi.fn(async () => {});
+    const send = vi.fn<SendOneAttachment>(async () => {});
 
     const result = await sendPickedAssets(
       [undefined as unknown as PickedAsset, asset({ base64: 'real' })],
@@ -179,7 +183,7 @@ describe('sendPickedAssets', () => {
   it('INTEGRITY: absent optional fields reach the sender as the shapes it expects', async () => {
     // `mimeType`/`fileName` are optional AND nullable on the picker's asset.
     // Passing null through would defeat the sender's own type sniffing.
-    const send = vi.fn(async () => {});
+    const send = vi.fn<SendOneAttachment>(async () => {});
 
     await sendPickedAssets([{ base64: 'x', mimeType: null, fileName: null }], send);
 
@@ -187,7 +191,7 @@ describe('sendPickedAssets', () => {
   });
 
   it('CONTRACT: onUnreadable is optional', async () => {
-    const send = vi.fn(async () => {});
+    const send = vi.fn<SendOneAttachment>(async () => {});
 
     await expect(sendPickedAssets([asset({ base64: null })], send)).resolves.toEqual({
       sent: 0,

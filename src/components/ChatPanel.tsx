@@ -10,8 +10,9 @@ import { copyTargets } from '@/lib/messageActions';
 import {
   ChatMediaError,
   MAX_CHAT_MEDIA_BYTES,
+  CHAT_MEDIA_CONTENT_TYPE,
+  chatMediaFilename,
   addFailedMedia,
-  base64ToBytes,
   buildChatMediaBody,
   isFailedMediaExpired,
   isHeicBytes,
@@ -987,18 +988,17 @@ function ChatMediaAttachment({
         {
           fetchCiphertext: async (objectKey) => {
             /*
-             * Ask for BYTES, not base64-in-JSON.
+             * BYTES. The route answers `application/octet-stream` and nothing
+             * else now — the base64-in-JSON shape it used to offer existed for
+             * React Native and is gone, so there is no `Accept` to negotiate.
              *
-             * The JSON shape exists for React Native, which cannot receive
-             * binary without going through a base64 string anyway. A browser
-             * can, and paying base64's 4/3 expansion here cost twice: once on
-             * the wire, once turning a multi-megabyte string back into bytes on
-             * the main thread. The server keeps serving JSON to anything that
-             * does not ask for octets, so this is additive.
+             * A browser was always the wrong place to pay for base64: the 4/3
+             * expansion cost twice, once on the wire and once turning a
+             * multi-megabyte string back into bytes on the main thread.
              */
             const r = await fetch(
               `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(objectKey)}`,
-              { credentials: 'include', headers: { Accept: 'application/octet-stream' } },
+              { credentials: 'include' },
             );
             if (!r.ok) throw new Error(`fetch failed (${r.status})`);
             const bytes = new Uint8Array(await r.arrayBuffer());
@@ -1072,25 +1072,74 @@ function ChatMediaAttachment({
     return <div style={noticeStyle}>{t('chat.media.decryptFailed')}</div>;
   }
   return (
-    <a
-      href={objectUrl ?? undefined}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
-      style={{ display: 'block', marginTop: 4, maxWidth: '85%' }}
-    >
-      <img
-        src={objectUrl ?? undefined}
-        alt={t('chat.media.alt')}
+    /*
+     * Two actions on one picture: open it, and keep it.
+     *
+     * Saving was missing entirely — every other chat app has it, and here the
+     * omission bites harder than usual, because an attachment is only readable
+     * on a device that holds the topic's key. Without this the picture exists
+     * nowhere the person can put it.
+     *
+     * The blob is what both use. It is the plaintext already decrypted for the
+     * <img>, so saving costs no second fetch and no second decrypt — and no
+     * round trip that could hand back the ciphertext by mistake.
+     */
+    <div style={{ position: 'relative', display: 'inline-block', marginTop: 4, maxWidth: '85%' }}>
+      <a
+        href={objectUrl ?? undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        style={{ display: 'block' }}
+      >
+        <img
+          src={objectUrl ?? undefined}
+          alt={t('chat.media.alt')}
+          style={{
+            maxWidth: '100%',
+            maxHeight: roomy ? 380 : 240,
+            borderRadius: 'var(--radius-card)',
+            border: '1px solid var(--border)',
+            display: 'block',
+          }}
+        />
+      </a>
+      {/*
+        An anchor, not a button with script: `download` is what tells the
+        browser to write the file instead of navigating to it, and it keeps the
+        control working with a middle click and a context menu like any other
+        link. `stopPropagation` because the row underneath is itself clickable.
+      */}
+      <a
+        href={objectUrl ?? undefined}
+        download={chatMediaFilename(mime, mediaId)}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={t('chat.media.download')}
+        title={t('chat.media.download')}
+        data-testid="chat-media-download"
         style={{
-          maxWidth: '100%',
-          maxHeight: roomy ? 380 : 240,
-          borderRadius: 'var(--radius-card)',
-          border: '1px solid var(--border)',
-          display: 'block',
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 32,
+          height: 32,
+          borderRadius: 'var(--radius-pill, 999px)',
+          // Legible over an unknown picture: a scrim rather than a theme
+          // colour, because the thing behind it is somebody's photograph. The
+          // token is theme-invariant on purpose — see globals.css.
+          background: 'var(--scrim-strong)',
+          color: 'var(--on-scrim)',
+          textDecoration: 'none',
+          fontSize: 16,
+          lineHeight: 1,
         }}
-      />
-    </a>
+      >
+        <span aria-hidden="true">↓</span>
+      </a>
+    </div>
   );
 }
 
@@ -1802,13 +1851,24 @@ export default function ChatPanel({
         {
           seal: (mediaId, plain) =>
             getTakSessionStore().sealMedia(topicId, mediaId, plain, visibilityRef.current),
-          upload: async (ciphertextB64, mediaId) => {
-            const res = await fetch(`/api/topics/${topicId}/chat/media`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ mediaId, ciphertext: ciphertextB64 }),
-            });
+          upload: async (ciphertext, mediaId) => {
+            /*
+             * The ciphertext IS the body. It used to be base64 inside a JSON
+             * object, which turned a 7MB picture into a 9.3MB request against a
+             * 10MB transport ceiling — a third of the budget spent re-encoding
+             * bytes that were already bytes, and the reason the advertised cap
+             * could not be reached. The id rides in the query string because a
+             * raw body has nowhere to put it.
+             */
+            const res = await fetch(
+              `/api/topics/${topicId}/chat/media?mediaId=${encodeURIComponent(mediaId)}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': CHAT_MEDIA_CONTENT_TYPE },
+                credentials: 'include',
+                body: ciphertext as BodyInit,
+              },
+            );
             if (!res.ok) throw new Error(`upload failed (${res.status})`);
             const { key } = (await res.json()) as { key?: string };
             if (!key) throw new Error('upload returned no key');

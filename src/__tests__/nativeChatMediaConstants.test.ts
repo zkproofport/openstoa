@@ -2,12 +2,12 @@
  * The attachment envelope exists in FOUR languages, and only three of them are
  * checked by a compiler.
  *
- * `src/lib/chatMedia.ts` is the source of truth. The web app, the mini-app and
- * the SDK all import it (a test asserts the mini-app's copy stays byte-identical
- * to it), so a change there reaches all three or fails to build. The push
- * handlers cannot import it: the iOS Notification Service Extension is Swift in
- * a separate app target, and the Android FCM handler is Kotlin. Both restate the
- * prefix by hand.
+ * `packages/mls/src/chatMedia.ts` is the source of truth, and the only copy —
+ * the web app, the mini-app and the SDK re-export it (`mlsCryptoTwins.test.ts`
+ * asserts there is no second implementation anywhere in the repo), so a change
+ * there reaches all three or fails to build. The push handlers cannot import
+ * it: the iOS Notification Service Extension is Swift in a separate app target,
+ * and the Android FCM handler is Kotlin. Both restate the prefix by hand.
  *
  * That is the shape of a defect that never announces itself. Bump the prefix to
  * `v2` here and nothing in Swift or Kotlin fails to compile — the native
@@ -39,14 +39,18 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CHAT_MEDIA_BODY_PREFIX, MAX_CHAT_MEDIA_BYTES } from '@/lib/chatMedia';
+import {
+  CHAT_MEDIA_AEAD_OVERHEAD_BYTES,
+  CHAT_MEDIA_BODY_PREFIX,
+  MAX_CHAT_MEDIA_BYTES,
+} from '@/lib/chatMedia';
 
 const APP_ROOT = join(process.cwd(), '..', 'proofport-app');
 const SWIFT_ENVELOPE = join(APP_ROOT, 'ios/OpenStoaNSE/ChatMediaEnvelope.swift');
 const SWIFT_SERVICE = join(APP_ROOT, 'ios/OpenStoaNSE/NotificationService.swift');
 const KOTLIN_HANDLER = join(
   APP_ROOT,
-  'android/app/src/main/java/com/zkproofport/app/openstoa/OpenStoaPushHandler.kt',
+  'android/app/src/main/java/com/masselabs/zkproofport/openstoa/OpenStoaPushHandler.kt',
 );
 
 const present = [SWIFT_ENVELOPE, SWIFT_SERVICE, KOTLIN_HANDLER].every((p) => existsSync(p));
@@ -84,6 +88,36 @@ describeIfPresent('the native push handlers restate chatMedia.ts correctly', () 
 
   it('iOS agrees on the plaintext cap a sender may attach', () => {
     expect(intConstant(read(SWIFT_ENVELOPE), 'static let maxPlaintextBytes')).toBe(MAX_CHAT_MEDIA_BYTES);
+  });
+
+  it('iOS agrees on the AEAD overhead, which now BOUNDS its fetch', () => {
+    /*
+     * It did not need this constant while the response was base64 inside JSON —
+     * the ceiling was simply doubled to cover the 4/3 expansion with slack. The
+     * response is the ciphertext now, so an honest one weighs exactly the
+     * preview ceiling plus this, and the extension's memory bound is derived
+     * from it. A drift here is a bound that is either too tight (a legal
+     * thumbnail refused) or too loose (a lying envelope pulling more into a
+     * ~24MB budget than it should).
+     */
+    expect(intConstant(read(SWIFT_ENVELOPE), 'static let aeadOverheadBytes')).toBe(
+      CHAT_MEDIA_AEAD_OVERHEAD_BYTES,
+    );
+  });
+
+  it('CONTRACT: iOS no longer unwraps a JSON response — the body IS the ciphertext', () => {
+    /*
+     * The read route answers `application/octet-stream` and nothing else. A
+     * Swift copy still parsing `{"ciphertext":"<base64>"}` would find no such
+     * key in a body of raw bytes, return nil for every attachment, and degrade
+     * silently to a caption — which reads as a slow network and gets filed by
+     * nobody. So the JSON path must be gone from the native side too.
+     */
+    const swift = read(SWIFT_ENVELOPE)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*(\/\/|\*).*$/gm, '');
+    expect(swift).not.toContain('object["ciphertext"]');
+    expect(swift).not.toContain('base64Encoded');
   });
 
   it('the iOS fetch ceiling is below the sender cap, or the extension is killed', () => {

@@ -339,6 +339,21 @@ describe('a purged ATTACHMENT — the picture has to come back too', () => {
     expect(bodyText()).not.toContain('openstoa:media:');
     expect(bodyText()).not.toContain(MEDIA_ID);
     expect(takStore.openMedia).toHaveBeenCalled();
+
+    /*
+     * And it can be SAVED. There was no way to keep a chat picture at all,
+     * which bites harder here than in an ordinary app: an attachment is only
+     * readable on a device holding the topic's key, so without this the
+     * picture exists nowhere the person can put it.
+     *
+     * Asserted on the same object URL the <img> uses — saving must reuse the
+     * plaintext already decrypted, not go back to the server for a second copy
+     * that would arrive as ciphertext.
+     */
+    const save = container.querySelector<HTMLAnchorElement>('[data-testid="chat-media-download"]');
+    expect(save, 'a resolved attachment must offer a way to save it').not.toBeNull();
+    expect(save!.getAttribute('href')).toBe(img!.getAttribute('src'));
+    expect(save!.getAttribute('download')).toMatch(/^openstoa-[a-z0-9]+\.(jpg|png|gif|webp|bmp|bin)$/);
   });
 
   it('resolved from this device own cache, the same', async () => {

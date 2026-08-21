@@ -478,23 +478,27 @@
       "sendFailedDiscard": "삭제",
       "lockedHistorySyncing": "채팅 히스토리를 가져오는 중입니다… 이 기기가 방 키를 받으면 이전 메시지가 열립니다.",
       "media": {
-        "title": "이미지",
-        "decrypting": "이미지 복호화 중…",
-        "locked": "암호화된 이미지 — 이 기기에는 아직 키가 없습니다",
-        "fetchFailed": "이미지를 불러오지 못했습니다.",
-        "decryptFailed": "이미지를 복호화하지 못했습니다.",
         "alt": "암호화된 이미지",
+        "decryptFailed": "이미지를 복호화하지 못했습니다.",
+        "decrypting": "이미지 복호화 중…",
         "error": {
           "empty": "빈 파일입니다.",
           "too-large": "이미지는 {{limit}}MB 이하만 보낼 수 있습니다.",
           "unsupported-type": "지원하지 않는 이미지 형식입니다. JPEG, PNG, GIF, WebP, BMP를 사용하세요.",
           "heic-unsupported": "HEIC 사진은 암호화된 채팅에 보낼 수 없습니다. JPEG로 저장한 뒤 다시 시도하세요.",
+          "strip-failed": "이 이미지에서 위치·카메라 정보를 제거하지 못해 보내지 않았습니다. 파일이 손상되었을 수 있습니다.",
           "no-key": "채팅방 키를 기다리는 중입니다. 잠시 후 다시 시도하세요.",
           "upload-failed": "이미지를 업로드하지 못했습니다. 다시 시도하세요.",
           "send-failed": "이미지를 보내지 못했습니다. 다시 시도하세요."
         },
         "expired": "이 이미지는 전송되기 전에 만료되었습니다. 다시 보내세요.",
-        "reload": "다시 불러오기"
+        "fetchFailed": "이미지를 불러오지 못했습니다.",
+        "locked": "암호화된 이미지 — 이 기기에는 아직 키가 없습니다",
+        "reload": "다시 불러오기",
+        "save": "저장",
+        "saveFailed": "이미지를 저장하지 못했습니다.",
+        "saveUnavailable": "저장하려면 앱을 업데이트해야 합니다.",
+        "title": "이미지"
       },
       "tierClaim": {
         "e2ee": "이 방의 새 메시지와 이미지는 종단간 암호화됩니다. 서비스는 내용을 읽을 수 없습니다.",
