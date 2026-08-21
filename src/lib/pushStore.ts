@@ -90,8 +90,13 @@ export async function deleteToken(
  * drops users who switched notifications off globally (P-M) or muted THIS topic
  * (P-S). The filter lives here, on the single resolver both `push.ts`
  * dispatchers already call, so neither Phase A nor Phase B can forget it and
- * adding a third dispatcher inherits it for free. Preferences fail CLOSED — see
- * `filterPushRecipients`.
+ * adding a third dispatcher inherits it for free.
+ *
+ * A preference the filter can READ is honoured absolutely (fail closed). A
+ * preference query that FAILS is an infrastructure fault, not an opt-out, and
+ * degrades to the last-known-good exclusions with a loud `PUSH_PREFS_DEGRADED`
+ * error log rather than dropping the whole fan-out — see the failure-posture
+ * section on `filterPushRecipients`.
  */
 export async function getTopicMemberTokens(
   executor: SqlExecutor,

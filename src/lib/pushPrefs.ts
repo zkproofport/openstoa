@@ -198,6 +198,105 @@ export async function getPushPreferences(
 }
 
 /**
+ * How long a last-known-good exclusion observation stays usable while the
+ * preference store is unreachable. Opt-outs change on human timescales, so a
+ * six-hour-old "this user muted this topic" is still far better evidence than
+ * no evidence at all. Bounded so a permanently broken store cannot pin stale
+ * state forever.
+ */
+const DEGRADED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** Hard cap on cached topics so the map cannot grow without bound. */
+const DEGRADED_CACHE_MAX_TOPICS = 2000;
+
+interface CachedExclusions {
+  at: number;
+  /** Users last observed with the GLOBAL switch off. */
+  globalOff: Set<string>;
+  /** Users last observed muting THIS topic. */
+  muted: Set<string>;
+}
+
+/**
+ * Last-known-good exclusions per topic, written only from a query that actually
+ * SUCCEEDED. Read only on the degraded path. Per-process and cold on a fresh
+ * Cloud Run instance — deliberately best-effort, never a source of truth.
+ */
+const degradedCache = new Map<string, CachedExclusions>();
+
+function rememberExclusions(
+  topicId: string,
+  patch: Partial<Pick<CachedExclusions, 'globalOff' | 'muted'>>,
+): void {
+  const prev = degradedCache.get(topicId);
+  const next: CachedExclusions = {
+    at: Date.now(),
+    globalOff: patch.globalOff ?? prev?.globalOff ?? new Set<string>(),
+    muted: patch.muted ?? prev?.muted ?? new Set<string>(),
+  };
+  degradedCache.delete(topicId);
+  degradedCache.set(topicId, next);
+  // Map preserves insertion order, so the first key is the oldest write.
+  while (degradedCache.size > DEGRADED_CACHE_MAX_TOPICS) {
+    const oldest = degradedCache.keys().next();
+    if (oldest.done) break;
+    degradedCache.delete(oldest.value);
+  }
+}
+
+function recallExclusions(topicId: string): CachedExclusions | undefined {
+  const hit = degradedCache.get(topicId);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at > DEGRADED_CACHE_TTL_MS) {
+    degradedCache.delete(topicId);
+    return undefined;
+  }
+  return hit;
+}
+
+/** Test hook: drop every cached observation so cases cannot leak into each other. */
+export function __resetPushPrefsDegradedCache(): void {
+  degradedCache.clear();
+}
+
+/** Which preference dimension a degraded read is standing in for. */
+type PrefDimension = 'global' | 'mute';
+
+/**
+ * Run one preference sub-query. On success the answer is AUTHORITATIVE and is
+ * cached. On failure it logs loudly and falls back to the last-known-good
+ * observation for this (topic, dimension), or to "no evidence of an opt-out"
+ * when there is none.
+ */
+async function readExclusionSet(
+  executor: SqlExecutor,
+  topicId: string,
+  dimension: PrefDimension,
+  query: ReturnType<typeof sql>,
+): Promise<{ users: Set<string>; degraded: boolean }> {
+  try {
+    const res = (await executor.execute(query)) as Rows<{ user_id: string }>;
+    const users = new Set(res.rows.map((r) => r.user_id));
+    rememberExclusions(topicId, dimension === 'global' ? { globalOff: users } : { muted: users });
+    return { users, degraded: false };
+  } catch (err) {
+    const cached = recallExclusions(topicId);
+    const fallback = (dimension === 'global' ? cached?.globalOff : cached?.muted) ?? new Set<string>();
+    logger.error(MODULE, 'PUSH_PREFS_DEGRADED push preference lookup failed', {
+      dimension,
+      topicId,
+      // The recovery posture, spelled out so a log reader does not have to
+      // reconstruct it from the code.
+      fallback: cached ? 'last-known-good exclusions' : 'none — delivering to unseen users',
+      fallbackExcluded: fallback.size,
+      cachedAgeMs: cached ? Date.now() - cached.at : null,
+      err: String(err),
+    });
+    return { users: fallback, degraded: true };
+  }
+}
+
+/**
  * DISPATCH-SIDE FILTER — given the candidate recipients for a topic, drop every
  * user who turned notifications off globally OR muted this topic. The global
  * switch wins: the two conditions are OR-ed into one exclusion set, so
@@ -205,13 +304,47 @@ export async function getPushPreferences(
  *
  * Generic over the target shape (anything carrying `userId`) so it works for
  * both the Phase A and Phase B fan-out without importing `pushStore` — that
- * also keeps the dependency one-way (`pushStore` → `pushPrefs`) with no cycle.
+ * also keeps the dependency one-way (`pushStore` -> `pushPrefs`) with no cycle.
  *
- * **Fails CLOSED.** If the preference lookup itself errors, NOBODY is returned
- * and the failure is logged at error level. Sending to a user who explicitly
- * turned notifications off is a broken promise; a missed notification is not.
- * (Practically, a preference-query error means a bug or a DB outage — and in an
- * outage the recipient lookup that precedes this has already failed.)
+ * ## Failure posture: closed on the OPT-OUT signal, degraded on INFRASTRUCTURE
+ *
+ * This function used to wrap everything in one try/catch and `return []` on any
+ * error. That is wrong, and it caused a real outage class: `push_prefs` and
+ * `push_topic_mutes` are the LAST step of the fan-out, so a single unreadable
+ * table (an unapplied migration, a connection blip, a statement timeout) turned
+ * every push for every topic into a silent no-op while chat itself kept
+ * answering 200. Nothing user-visible broke, so nobody looked.
+ *
+ * The distinction that matters is what the error actually tells us:
+ *
+ *  - A query that SUCCEEDS is the opt-out signal. Its answer is authoritative
+ *    and we fail CLOSED on it: a user it names is dropped, full stop. Both
+ *    tables encode denial as ROW-PRESENT (`enabled = false` / a mute row), so a
+ *    successful read genuinely distinguishes "opted out" from "never asked".
+ *  - A query that THROWS is not an opt-out signal at all. It carries zero
+ *    information about anyone's preference. Converting "we could not ask" into
+ *    "everyone said no" is not conservative, it is an outage: unbounded in
+ *    blast radius (the whole fleet), unbounded in duration (until someone
+ *    notices push is gone), and indistinguishable from working software.
+ *
+ * So an infrastructure failure degrades instead of denying:
+ *
+ *  1. The two dimensions are read INDEPENDENTLY, so a broken `push_topic_mutes`
+ *    can no longer discard the global switch (and vice versa). Partial
+ *    knowledge is still knowledge.
+ *  2. A failed dimension falls back to the last exclusion set we actually
+ *    OBSERVED for this topic (`degradedCache`, TTL-bounded). A user whose
+ *    opt-out this process has seen stays opted out through the outage.
+ *  3. Only users for whom we have never observed a denial are delivered to.
+ *    That bounds the cost of the fault to "a user who opted out on another
+ *    instance, or before this one started, may get one notification during an
+ *    outage" — recoverable, self-limiting, and visible in the logs — instead of
+ *    "nobody anywhere receives anything, silently, forever".
+ *  4. Every degraded read logs at ERROR with the greppable marker
+ *    `PUSH_PREFS_DEGRADED`, naming the dimension and the fallback used. The old
+ *    code logged too, but the log was the ONLY symptom; now the log is a
+ *    warning about a bounded degradation rather than the sole trace of a
+ *    total outage.
  *
  * Wiring: called from `pushStore.getTopicMemberTokens`, the single recipient
  * resolver both dispatchers already use. If `push.ts` is preferred as the
@@ -228,37 +361,32 @@ export async function filterPushRecipients<T extends { userId: string }>(
   targets: readonly T[],
 ): Promise<T[]> {
   if (targets.length === 0) return [];
-  try {
-    const userIds = [...new Set(targets.map((t) => t.userId))];
-    const idList = sql.join(
-      userIds.map((u) => sql`${u}`),
-      sql`, `,
-    );
-    // A non-uuid topic id can hold no mute rows, so only the global switch is
-    // consulted — querying `topic_id = <not a uuid>` would raise 22P02.
-    const query = isUuid(topicId)
-      ? sql`
-          SELECT user_id FROM push_prefs
-          WHERE enabled = false AND user_id IN (${idList})
-          UNION
-          SELECT user_id FROM push_topic_mutes
-          WHERE topic_id = ${topicId}::uuid AND user_id IN (${idList})
-        `
-      : sql`
-          SELECT user_id FROM push_prefs
-          WHERE enabled = false AND user_id IN (${idList})
-        `;
-    const res = (await executor.execute(query)) as Rows<{ user_id: string }>;
-    const excluded = new Set(res.rows.map((r) => r.user_id));
-    if (excluded.size === 0) return [...targets];
-    return targets.filter((t) => !excluded.has(t.userId));
-  } catch (err) {
-    // Fail closed — never notify someone whose preference we could not read.
-    logger.error(MODULE, 'push preference lookup failed — dropping ALL recipients', {
-      topicId,
-      candidates: targets.length,
-      err: String(err),
-    });
-    return [];
-  }
+  const userIds = [...new Set(targets.map((t) => t.userId))];
+  const idList = sql.join(
+    userIds.map((u) => sql`${u}`),
+    sql`, `,
+  );
+
+  const globalRead = readExclusionSet(
+    executor,
+    topicId,
+    'global',
+    sql`SELECT user_id FROM push_prefs WHERE enabled = false AND user_id IN (${idList})`,
+  );
+  // A non-uuid topic id can hold no mute rows, so the mute dimension is skipped
+  // entirely — querying `topic_id = <not a uuid>` would raise 22P02, and that
+  // synthetic error must not look like an infrastructure fault in the logs.
+  const muteRead = isUuid(topicId)
+    ? readExclusionSet(
+        executor,
+        topicId,
+        'mute',
+        sql`SELECT user_id FROM push_topic_mutes WHERE topic_id = ${topicId}::uuid AND user_id IN (${idList})`,
+      )
+    : Promise.resolve({ users: new Set<string>(), degraded: false });
+
+  const [globalOff, muted] = await Promise.all([globalRead, muteRead]);
+  const excluded = new Set([...globalOff.users, ...muted.users]);
+  if (excluded.size === 0) return [...targets];
+  return targets.filter((t) => !excluded.has(t.userId));
 }
