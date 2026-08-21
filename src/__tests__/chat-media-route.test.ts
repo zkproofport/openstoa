@@ -72,13 +72,27 @@ vi.mock('@/lib/r2', () => ({
 }));
 
 import { POST, GET, DELETE, PATCH } from '@/app/api/topics/[topicId]/chat/media/route';
-import { MAX_CHAT_MEDIA_CIPHERTEXT_BYTES, chatMediaObjectKey } from '@/lib/chatMedia';
+import { MAX_CHAT_MEDIA_CIPHERTEXT_BYTES, MAX_JSON_BODY_BYTES, chatMediaObjectKey } from '@/lib/chatMedia';
 
 const params = () => Promise.resolve({ topicId: TOPIC });
-const postReq = (body: unknown) =>
-  ({ json: async () => body, url: `http://x/api/topics/${TOPIC}/chat/media` }) as never;
-const queryReq = (query: string) =>
-  ({ url: `http://x/api/topics/${TOPIC}/chat/media${query}` }) as never;
+/*
+ * `headers` is part of the double because the route reads it — for the
+ * caller's `Accept` and for `content-length`. It was omitted while nothing
+ * touched it, so the first line that did threw `undefined.get` and every case
+ * in this file came back 500. A double that lacks what the real request always
+ * carries turns a behaviour change into a mystery.
+ */
+const postReq = (body: unknown, headers: Record<string, string> = {}) =>
+  ({
+    json: async () => body,
+    url: `http://x/api/topics/${TOPIC}/chat/media`,
+    headers: new Headers(headers),
+  }) as never;
+const queryReq = (query: string, headers: Record<string, string> = {}) =>
+  ({
+    url: `http://x/api/topics/${TOPIC}/chat/media${query}`,
+    headers: new Headers(headers),
+  }) as never;
 const b64 = (buf: Buffer | Uint8Array) => Buffer.from(buf).toString('base64');
 
 beforeEach(() => {
@@ -166,8 +180,26 @@ describe('POST — store an encrypted attachment', () => {
         throw new Error('bad');
       },
       url: `http://x/api/topics/${TOPIC}/chat/media`,
+      headers: new Headers(),
     } as never;
     expect((await POST(req, { params: params() })).status).toBe(400);
+  });
+
+  it('413, not a parse error, when the body is over the transport limit', async () => {
+    /*
+     * The transport refuses an oversized body before any handler runs, and that
+     * refusal used to reach the caller as `Body must be JSON` — a sentence
+     * about syntax for a file whose only problem was its size. A declared
+     * content-length lets the route answer honestly instead.
+     */
+    const res = await POST(
+      postReq({ mediaId: MEDIA, ciphertext: 'x' }, { 'content-length': String(MAX_JSON_BODY_BYTES + 1) }),
+      { params: params() },
+    );
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).error).toMatch(/too large/i);
+    expect(mocks.putR2Object).not.toHaveBeenCalled();
   });
 
   it('B3: exactly the cap is accepted', async () => {
@@ -181,7 +213,8 @@ describe('POST — store an encrypted attachment', () => {
       const res = await POST(postReq({ mediaId: MEDIA, ciphertext: b64(Buffer.alloc(size, 1)) }), {
         params: params(),
       });
-      expect(res.status, String(size)).toBe(400);
+      // 413, not 400: the size is the complaint, and the status now says so.
+      expect(res.status, String(size)).toBe(413);
       expect(mocks.putR2Object).not.toHaveBeenCalled();
     }
   });

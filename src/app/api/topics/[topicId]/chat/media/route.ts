@@ -33,7 +33,9 @@ import { isValidUUID } from '@/lib/uuid';
 import { checkRateLimit, decodeBase64Strict, type RateLimit } from '@/lib/mls/http';
 import { deleteR2Object, getR2Object, putR2Object } from '@/lib/r2';
 import {
+  MAX_CHAT_MEDIA_BYTES,
   MAX_CHAT_MEDIA_CIPHERTEXT_BYTES,
+  MAX_JSON_BODY_BYTES,
   chatMediaObjectKey,
   isChatMediaKeyForTopic,
 } from '@/lib/chatMedia';
@@ -126,11 +128,40 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Too many uploads' }, { status: 429 });
     }
 
+    /*
+     * Size BEFORE parse, so an oversized upload is told what is wrong.
+     *
+     * The transport buffers the body and refuses it past `MAX_JSON_BODY_BYTES`
+     * (Next App Router + middleware, no per-route override), and that refusal
+     * surfaces here as a parse failure — so the honest error, "too large", was
+     * unreachable and the caller got `Body must be JSON` for a file that was
+     * merely too big. `MAX_CHAT_MEDIA_BYTES` is derived to stay under that
+     * ceiling, so anything arriving over it is either an out-of-date client or
+     * a hand-rolled request; both deserve the real reason.
+     */
+    const declaredLength = Number(request.headers.get('content-length') ?? '0');
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
+      logger.warn(ROUTE, 'Attachment body over transport limit', {
+        userId: session.userId,
+        topicId,
+        declaredLength,
+      });
+      return NextResponse.json(
+        { error: `Attachment is too large. The maximum is ${Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024))}MB.` },
+        { status: 413 },
+      );
+    }
+
     let body: unknown;
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json({ error: 'Body must be JSON' }, { status: 400 });
+      // Could still be the transport refusing a body whose content-length was
+      // absent or understated — say both possibilities rather than guess.
+      return NextResponse.json(
+        { error: 'Body must be JSON, and within the attachment size limit' },
+        { status: 400 },
+      );
     }
     const { mediaId, ciphertext } = (body ?? {}) as { mediaId?: unknown; ciphertext?: unknown };
 
@@ -146,7 +177,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (bytes.length > MAX_CHAT_MEDIA_CIPHERTEXT_BYTES) {
       logger.warn(ROUTE, 'Attachment too large', { userId: session.userId, topicId, size: bytes.length });
-      return NextResponse.json({ error: 'Attachment is too large' }, { status: 400 });
+      return NextResponse.json(
+        { error: `Attachment is too large. The maximum is ${Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024))}MB.` },
+        { status: 413 },
+      );
     }
 
     // NOTE: no content sniffing, no transcode, no content-type check. The bytes
@@ -254,24 +288,48 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     claimQuietly(topicId, key);
 
     /*
-     * base64 in JSON rather than a binary stream, on both clients.
+     * Two response shapes, chosen by the caller's `Accept`.
      *
-     * React Native's `Response.arrayBuffer()` is not dependable (its FileReader
-     * has no readAsArrayBuffer), so a binary body would work in the browser and
-     * fail on the phone — and shipping two response shapes for one object is
-     * how the two clients drift. 33% on the wire buys one code path for an
-     * attachment that is capped at 10MB and sent by hand.
+     * base64-in-JSON was the only shape for a long time, for a real reason:
+     * React Native cannot receive binary over `fetch` — only strings cross the
+     * bridge, so `Response.arrayBuffer()` is unavailable there
+     * (facebook/react-native#6743). One shape meant the clients could not
+     * drift.
+     *
+     * The cost turned out to be worse than "33% on the wire" suggested. base64
+     * expands 4/3, and the body it rides in is capped at 10MB by the framework,
+     * so the advertised 10MB attachment could not be uploaded at all. On the
+     * read side a browser pays for the expansion twice: once transferring it,
+     * once turning a multi-megabyte string back into bytes.
+     *
+     * So a caller that CAN take bytes asks for them. Anything that does not ask
+     * — every client shipped before this line existed — still gets the JSON it
+     * expects. The bytes are identical either way; only the framing differs.
      */
+    const wantsBinary = (request.headers.get('accept') ?? '').includes('application/octet-stream');
+
+    const cacheHeaders = {
+      // Ciphertext is immutable and per-member: cache on the device, never
+      // in a shared cache.
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+    };
+
+    if (wantsBinary) {
+      return new NextResponse(Buffer.from(bytes) as unknown as BodyInit, {
+        headers: {
+          ...cacheHeaders,
+          // Opaque on purpose: the server cannot know what these bytes are, and
+          // naming a media type would be a claim it is not entitled to make.
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(bytes.length),
+        },
+      });
+    }
+
     return NextResponse.json(
       { ciphertext: Buffer.from(bytes).toString('base64') },
-      {
-        headers: {
-          // Ciphertext is immutable and per-member: cache on the device, never
-          // in a shared cache.
-          'Cache-Control': 'private, max-age=31536000, immutable',
-          'X-Content-Type-Options': 'nosniff',
-        },
-      },
+      { headers: cacheHeaders },
     );
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);

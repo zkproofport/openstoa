@@ -450,7 +450,13 @@ describe('an iPhone photo (HEIC)', () => {
     await mount();
     await attach('IMG_0002.HEIC', 'image/heic', heic());
 
-    expect(bodyText()).toContain(enLocale.chat.media.error['too-large']);
+    // The copy interpolates the cap so it cannot drift from the constant, so
+    // the rendered sentence carries the number rather than the placeholder.
+    const expected = enLocale.chat.media.error['too-large'].replace(
+      '{{limit}}',
+      String(Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024))),
+    );
+    expect(bodyText()).toContain(expected);
     expect(requests.filter((r) => r.startsWith('POST') && r.includes('/chat/media'))).toEqual([]);
   });
 

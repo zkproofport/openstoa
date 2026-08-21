@@ -105,6 +105,22 @@ function json(body: unknown, ok = true, status = 200) {
 }
 
 /**
+ * A binary response, which is what the media route answers a browser with.
+ *
+ * The client asks for `application/octet-stream` and reads `arrayBuffer()`:
+ * base64-in-JSON exists for React Native, which cannot take bytes off the
+ * bridge, and paying that expansion in a browser cost twice. A double that
+ * only speaks JSON silently stops resembling the endpoint.
+ */
+function binary(bytes: Uint8Array, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  } as unknown as Response;
+}
+
+/**
  * One purged row, exactly as the server sends it after the purge: every field
  * the renderer needs, and `sealed: null` where the body used to be.
  */
@@ -137,7 +153,8 @@ function installFetch() {
         return json({ members: [{ userId: ME }, { userId: THEM }] });
       }
       if (url.startsWith(`/api/topics/${TOPIC}/chat/media`)) {
-        if (method === 'GET') return json({ ciphertext: 'AQID' });
+        // Same three bytes the base64 'AQID' used to carry.
+        if (method === 'GET') return binary(new Uint8Array([1, 2, 3]));
         return json({ ok: true });
       }
       if (url.startsWith(`/api/topics/${TOPIC}/chat?`)) {

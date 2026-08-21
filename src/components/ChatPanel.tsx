@@ -9,6 +9,7 @@ import { isSyncingHistory, nextPendingId, isProvisionalId } from '@/lib/chatStat
 import { copyTargets } from '@/lib/messageActions';
 import {
   ChatMediaError,
+  MAX_CHAT_MEDIA_BYTES,
   addFailedMedia,
   base64ToBytes,
   buildChatMediaBody,
@@ -985,14 +986,24 @@ function ChatMediaAttachment({
         { v: 1, key, mediaId, takVersion, mime, size: envelope.size },
         {
           fetchCiphertext: async (objectKey) => {
+            /*
+             * Ask for BYTES, not base64-in-JSON.
+             *
+             * The JSON shape exists for React Native, which cannot receive
+             * binary without going through a base64 string anyway. A browser
+             * can, and paying base64's 4/3 expansion here cost twice: once on
+             * the wire, once turning a multi-megabyte string back into bytes on
+             * the main thread. The server keeps serving JSON to anything that
+             * does not ask for octets, so this is additive.
+             */
             const r = await fetch(
               `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(objectKey)}`,
-              { credentials: 'include' },
+              { credentials: 'include', headers: { Accept: 'application/octet-stream' } },
             );
             if (!r.ok) throw new Error(`fetch failed (${r.status})`);
-            const { ciphertext } = (await r.json()) as { ciphertext?: string };
-            if (!ciphertext) throw new Error('empty attachment');
-            return base64ToBytes(ciphertext);
+            const bytes = new Uint8Array(await r.arrayBuffer());
+            if (bytes.length === 0) throw new Error('empty attachment');
+            return bytes;
           },
           open: (id, version, ciphertext) =>
             getTakSessionStore().openMedia(topicId, id, version, ciphertext, visibility),
@@ -2908,7 +2919,14 @@ export default function ChatPanel({
             background: 'var(--color-bg-secondary)',
           }}
         >
-          <span>{t(`chat.media.error.${mediaError}`)}</span>
+          {/* `limit` from the constant, so the sentence cannot claim a size
+              the transport will refuse — it used to say 10MB while anything
+              over ~7.4MB failed in the body parser. */}
+          <span>
+            {t(`chat.media.error.${mediaError}`, {
+              limit: Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024)),
+            })}
+          </span>
           <button
             type="button"
             onClick={() => setMediaError(null)}

@@ -486,7 +486,7 @@
         "alt": "암호화된 이미지",
         "error": {
           "empty": "빈 파일입니다.",
-          "too-large": "이미지는 10MB 이하만 보낼 수 있습니다.",
+          "too-large": "이미지는 {{limit}}MB 이하만 보낼 수 있습니다.",
           "unsupported-type": "지원하지 않는 이미지 형식입니다. JPEG, PNG, GIF, WebP, BMP를 사용하세요.",
           "heic-unsupported": "HEIC 사진은 암호화된 채팅에 보낼 수 없습니다. JPEG로 저장한 뒤 다시 시도하세요.",
           "no-key": "채팅방 키를 기다리는 중입니다. 잠시 후 다시 시도하세요.",

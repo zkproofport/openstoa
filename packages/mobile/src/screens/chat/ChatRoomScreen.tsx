@@ -58,6 +58,7 @@ import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chat
 import { copyTargets } from '../../lib/messageActions';
 import {
   ChatMediaError,
+  MAX_CHAT_MEDIA_BYTES,
   addFailedMedia,
   base64ToBytes,
   buildChatMediaBody,
@@ -1673,7 +1674,12 @@ export function ChatRoomScreen() {
       // nothing about which of six things went wrong.
       const message =
         err instanceof ChatMediaError
-          ? t(`openstoa.chat.media.error.${err.reason}`)
+          ? // `limit` is interpolated so the sentence cannot drift from the
+            // constant again — it used to say 10MB while the transport refused
+            // anything over ~7.4MB.
+            t(`openstoa.chat.media.error.${err.reason}`, {
+              limit: Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024)),
+            })
           : err instanceof Error
             ? err.message
             : String(err);
@@ -2222,6 +2228,7 @@ function EncryptedAttachment({
   client,
   styles,
   isOwn,
+  onImagePress,
 }: {
   envelope: ChatMediaEnvelope;
   topicId: string;
@@ -2229,6 +2236,8 @@ function EncryptedAttachment({
   client: ReturnType<typeof useOpenStoaClient>;
   styles: Styles;
   isOwn: boolean;
+  /** Opens the full-screen viewer. The decrypted bytes never leave the device. */
+  onImagePress: (uri: string) => void;
 }) {
   const { t } = useTranslation();
   const [state, setState] = useState<ChatMediaLoad | null>(null);
@@ -2294,19 +2303,38 @@ function EncryptedAttachment({
       </View>
     );
   }
+  /*
+   * Tapping opens the viewer, the same as a plaintext image.
+   *
+   * It did not, and that was a regression rather than a decision: R-3 moved
+   * attachments behind this component and the `onImagePress` the old inline
+   * path used never came with them, so an encrypted picture was the one kind
+   * you could not enlarge. Guarded on `dataUri` so the states above — still
+   * decrypting, locked, failed — stay inert rather than opening an empty
+   * viewer.
+   */
   return (
     <View style={wrap}>
-      <Image
-        source={{ uri: dataUri ?? undefined }}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        disabled={!dataUri}
+        onPress={() => dataUri && onImagePress(dataUri)}
+        accessibilityRole="imagebutton"
         accessibilityLabel={t('openstoa.chat.media.alt')}
-        style={{
-          width: 220,
-          height: 220,
-          borderRadius: RADIUS.card,
-          backgroundColor: 'rgba(255,255,255,0.05)',
-        }}
-        resizeMode="cover"
-      />
+        testID="encrypted-attachment-open"
+      >
+        <Image
+          source={{ uri: dataUri ?? undefined }}
+          accessibilityLabel={t('openstoa.chat.media.alt')}
+          style={{
+            width: 220,
+            height: 220,
+            borderRadius: RADIUS.card,
+            backgroundColor: 'rgba(255,255,255,0.05)',
+          }}
+          resizeMode="cover"
+        />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -2534,6 +2562,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
             client={client}
             styles={styles}
             isOwn={isOwn}
+            onImagePress={onImagePress}
           />
         ) : null}
 

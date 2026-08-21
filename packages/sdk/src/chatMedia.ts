@@ -34,11 +34,45 @@
  */
 export const CHAT_MEDIA_BODY_PREFIX = 'openstoa:media:v1:';
 
-/** Plaintext cap, matching the 10MB limit the plaintext upload route enforces. */
-export const MAX_CHAT_MEDIA_BYTES = 10 * 1024 * 1024;
+/**
+ * How large a JSON request body the transport actually carries.
+ *
+ * Next's App Router buffers the body when middleware is present — and this app
+ * has `src/middleware.ts` — which caps it at 10MB with no per-route override
+ * (vercel/next.js#68409). The ciphertext rides inside that body as base64, so
+ * the real ceiling is this limit MINUS base64's 4/3 expansion and the JSON
+ * envelope around it.
+ *
+ * Measured, not assumed: a 7MB attachment (9.3MB body) uploads; 7.5MB (10.0MB
+ * body) is rejected by the transport before any handler runs.
+ */
+export const MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
+/**
+ * Headroom under the transport limit.
+ *
+ * Not just the JSON envelope: the measured boundary is INCLUSIVE — a body of
+ * exactly 10.0MB was rejected, 9.3MB went through — and the limit applies to
+ * the framed request, which also carries headers and the URL. Deriving a cap
+ * that lands exactly on the ceiling would ship a maximum that fails, which is
+ * the bug this constant exists to end. 5% back off the ceiling instead.
+ */
+const MEDIA_BODY_HEADROOM_BYTES = Math.floor(MAX_JSON_BODY_BYTES * 0.05);
 
 /** 12-byte AES-GCM nonce + 16-byte tag, prepended/appended by `sealMediaBytes`. */
 export const CHAT_MEDIA_AEAD_OVERHEAD_BYTES = 28;
+
+/**
+ * Plaintext cap.
+ *
+ * Derived from what the transport can carry rather than declared independently.
+ * It used to be a flat 10MB, which was the number the UI promised and the
+ * server checked — but base64 made a 10MB file into a 13.3MB body, so anything
+ * over ~7.4MB died in the body parser and came back as `Body must be JSON`.
+ * The person saw a broken upload with no reason, and both the client guard and
+ * the server's own "too large" check were unreachable.
+ */
+export const MAX_CHAT_MEDIA_BYTES =
+  Math.floor(((MAX_JSON_BODY_BYTES - MEDIA_BODY_HEADROOM_BYTES) * 3) / 4) - CHAT_MEDIA_AEAD_OVERHEAD_BYTES;
 
 /**
  * Server-side cap on the CIPHERTEXT, with a little slack over

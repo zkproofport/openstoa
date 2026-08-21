@@ -486,7 +486,7 @@
         "alt": "Encrypted image",
         "error": {
           "empty": "That file is empty.",
-          "too-large": "Images must be 10MB or smaller.",
+          "too-large": "Images must be {{limit}}MB or smaller.",
           "unsupported-type": "That image type is not supported. Use JPEG, PNG, GIF, WebP or BMP.",
           "heic-unsupported": "HEIC photos cannot be sent to an encrypted chat. Save the photo as JPEG and try again.",
           "no-key": "Waiting for this room's key. Try again in a moment.",

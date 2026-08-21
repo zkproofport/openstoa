@@ -47,7 +47,16 @@ const DATABASE_URL =
 
 const HOLDER = 'pkn-holder';
 const STRANGER = 'pkn-stranger';
-const PREFIX = '00000000-0000-4000-8000-0000000000';
+/*
+ * A prefix nothing else uses.
+ *
+ * It was `00000000-0000-4000-8000-0000000000`, which SWALLOWS the ids other
+ * real-Postgres suites pick from the same obvious range — `chatDelivered-route`
+ * uses `…000000000060` and `…061`. `wipe()` deletes by `LIKE prefix%`, so this
+ * file quietly destroyed another file's fixtures whenever the two ran together,
+ * and both passed in isolation. `dead` is hex, so this is still a valid uuid.
+ */
+const PREFIX = '0000dead-0000-4000-8000-0000000000';
 const topicId = (n: number) => `${PREFIX}${String(n).padStart(2, '0')}`;
 
 let pool: Pool;
