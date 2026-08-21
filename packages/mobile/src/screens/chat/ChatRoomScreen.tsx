@@ -56,8 +56,10 @@ import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
 import { copyTargets } from '../../lib/messageActions';
+import { sendPickedAssets } from '../../lib/pickedAttachments';
 import {
   ChatMediaError,
+  MAX_ATTACHMENTS_PER_PICK,
   MAX_CHAT_MEDIA_BYTES,
   addFailedMedia,
   base64ToBytes,
@@ -1585,7 +1587,19 @@ export function ChatRoomScreen() {
    * Takes base64, not a URI, because encryption needs the BYTES — the picker
    * and the clipboard both hand us base64 already, so nothing extra is read.
    */
-  const uploadAndSend = useAuthGuardedAction(async (input: { base64: string; mime: string; filename?: string }) => {
+  /*
+   * The raw worker, returning a REAL promise.
+   *
+   * `useAuthGuardedAction` deliberately fires and forgets — it returns `void`
+   * and does `void fn(...)` inside — which is right for a button press and
+   * wrong for a caller that has to send several attachments one after another:
+   * awaiting the guarded wrapper returns instantly, so a "sequential" loop
+   * would in fact launch every upload at once, holding every multi-megabyte
+   * buffer simultaneously and landing the messages in whatever order the
+   * uploads happened to finish. Callers that need ordering take this; callers
+   * that are a single button press take the guarded one below.
+   */
+  const uploadOne = useCallback(async (input: { base64: string; mime: string; filename?: string }) => {
     if (!topicId) return;
     setUploading(true);
     try {
@@ -1687,9 +1701,13 @@ export function ChatRoomScreen() {
     } finally {
       setUploading(false);
     }
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicId, t]);
 
-  const pickFromLibrary = useCallback(async () => {
+  /** Single-shot callers (the clipboard) — one press, one attachment. */
+  const uploadAndSend = useAuthGuardedAction(uploadOne);
+
+  const pickFromLibrary = useAuthGuardedAction(async () => {
     const ImagePicker = loadImagePicker();
     if (!ImagePicker) {
       Alert.alert('Image picker unavailable', 'The host app needs to be rebuilt to include expo-image-picker.');
@@ -1701,6 +1719,19 @@ export function ChatRoomScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
       allowsEditing: false,
+      /*
+       * Several at once, which is what every other chat app allows and what
+       * this screen refused for no recorded reason — the single-asset read
+       * below was simply never widened.
+       *
+       * The ceiling is about MEMORY, not taste. `base64: true` makes the picker
+       * return the encoded bytes for EVERY selected asset in one result, so the
+       * whole selection is resident before the first one is sent: at the
+       * ~7MB-per-image cap that is roughly 9MB of string each. Ten is already
+       * ~90MB held at once on a phone, and sending is sequential anyway.
+       */
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_ATTACHMENTS_PER_PICK,
       // The bytes, not just a URI: the file is encrypted on this device now,
       // and RN has no dependable way to read a file:// URI into memory.
       base64: true,
@@ -1717,14 +1748,17 @@ export function ChatRoomScreen() {
           }
         : {}),
     });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    if (!asset.base64) {
+    if (result.canceled || result.assets.length === 0) return;
+
+    // Sequencing and per-asset failure isolation live in `sendPickedAssets`,
+    // where they can be tested — the picker is a native module this package
+    // does not install, so nothing that drove it here could run.
+    // `uploadOne`, not the guarded wrapper: this loop depends on each send
+    // actually completing before the next begins.
+    await sendPickedAssets(result.assets, uploadOne, () => {
       Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.error.empty'));
-      return;
-    }
-    await uploadAndSend({ base64: asset.base64, mime: asset.mimeType ?? '', filename: asset.fileName ?? undefined });
-  }, [uploadAndSend, t]);
+    });
+  });
 
   const pasteFromClipboard = useCallback(async () => {
     const Clipboard = loadClipboard();

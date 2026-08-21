@@ -50,6 +50,12 @@ declare module 'expo-image-picker' {
     allowsEditing?: boolean;
     quality?: number;
     allowsMultipleSelection?: boolean;
+    /**
+     * Cap on how many assets one pick may return. Only meaningful alongside
+     * `allowsMultipleSelection`, and it matters here because `base64: true`
+     * makes the picker materialise every selected asset's bytes at once.
+     */
+    selectionLimit?: number;
     /** Return the picked bytes as base64 (see `ImagePickerAsset.base64`). */
     base64?: boolean;
     preferredAssetRepresentationMode?: UIImagePickerPreferredAssetRepresentationMode;

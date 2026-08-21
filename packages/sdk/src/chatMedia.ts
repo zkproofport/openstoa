@@ -58,6 +58,18 @@ export const MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
  */
 const MEDIA_BODY_HEADROOM_BYTES = Math.floor(MAX_JSON_BODY_BYTES * 0.05);
 
+/**
+ * How many attachments one pick may carry.
+ *
+ * A memory bound, not a product one. The picker is asked for base64, so it
+ * returns the encoded bytes for every selected asset in a single result — the
+ * whole selection is resident before the first send starts. At the per-file
+ * cap that is ~9MB of string apiece, so ten is already ~90MB held at once on a
+ * phone. Sending is sequential regardless, so a higher number would buy
+ * nothing but peak memory.
+ */
+export const MAX_ATTACHMENTS_PER_PICK = 10;
+
 /** 12-byte AES-GCM nonce + 16-byte tag, prepended/appended by `sealMediaBytes`. */
 export const CHAT_MEDIA_AEAD_OVERHEAD_BYTES = 28;
 
