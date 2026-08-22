@@ -1,12 +1,14 @@
 # OpenStoa — CI
 #
-# Three jobs:
+# Four jobs:
 #   packages   — matrix over the five publishable @masselabs/* packages:
 #                install -> typecheck -> unit tests.
 #   server     — the root Next.js app: the SI-1 plaintext-absence gate (source
 #                guard + a real row-count query against the postgres service),
 #                unit tests (against a real redis:7 service container), and
 #                `next build`.
+#   mini-app   — packages/mobile, the OpenStoa mini-app that ships inside the
+#                ZKProofport host app: install -> typecheck.
 #   mcp-smoke  — boots the built `openstoa-mcp` stdio binary and asserts it
 #                answers a real MCP `initialize` + `tools/list` handshake.
 #
@@ -167,12 +169,12 @@ jobs:
         run: npm run verify:no-plaintext-chat -- --strict
 
       - name: Unit tests
-        # `packages/**` is excluded: the five publishable packages have their own
-        # matrix job above (with their own lockfiles + built dist), and
-        # packages/mobile has no lockfile at all, so it cannot be installed
-        # reproducibly here. The repo e2e suite is excluded for the reason in the
-        # file header. The other three excludes restate vitest.config.ts's
-        # defaults, which a CLI `--exclude` would otherwise replace.
+        # `packages/**` is excluded: every package has its own job with its own
+        # lockfile (the five publishable ones in the matrix above, packages/mobile
+        # in `mini-app` below) and, for the publishable ones, its own built dist.
+        # The repo e2e suite is excluded for the reason in the file header. The
+        # other three excludes restate vitest.config.ts's defaults, which a CLI
+        # `--exclude` would otherwise replace.
         run: |
           npx vitest run \
             --exclude '**/node_modules/**' \
@@ -185,6 +187,71 @@ jobs:
         # `prebuild` regenerates public/skill.md + public/skills/** from the
         # OpenAPI JSDoc, so this also proves the skill generator still runs.
         run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # OpenStoa mini-app (packages/mobile).
+  #
+  # The React Native app that runs inside the ZKProofport host. Nothing else in
+  # this repo type-checked it, which is how it accumulated 44 tsc errors while
+  # the root app sat at zero — this job is the gate that stops that recurring.
+  #
+  # TWO installs, and they are not interchangeable:
+  #
+  #   packages/mobile           — the package's OWN dependencies (react-query,
+  #                               zustand, react-native-sse) plus typescript and
+  #                               vitest.
+  #   packages/mobile/typecheck — a TYPE-ONLY dependency root holding React
+  #                               Native and the host app's UI libraries. On a
+  #                               developer machine tsc resolves those from the
+  #                               `proofport-app` checkout next door; that repo
+  #                               is private and separate, so CI has to supply
+  #                               them itself. tsconfig.json lists both
+  #                               locations and takes whichever exists, so there
+  #                               is no CI-only tsconfig to drift.
+  #
+  # `--legacy-peer-deps` on BOTH is load-bearing, for two different reasons:
+  #   - packages/mobile lists react-native as a peerDependency. Letting npm
+  #     auto-install it would put a second React Native inside
+  #     `packages/mobile/node_modules`, which Metro finds by walking up from
+  #     `src/` and prefers over the host's — two React Natives in the shipped
+  #     app. The committed lockfile records the tree WITHOUT it; keep it so.
+  #   - the typecheck root pulls react-native-keyboard-controller, whose
+  #     reanimated peer wants a newer react-native than the host pins. It only
+  #     needs the .d.ts files, so npm's peer graph is not meaningful there.
+  #
+  # NOT RUN HERE, and this is a known gap rather than an oversight: the
+  # mini-app's 550-test vitest suite. `packages/mobile/vitest.config.ts` pins
+  # react, react-test-renderer, i18next and @react-navigation/native to
+  # `../../../proofport-app/node_modules` by absolute path so every module in
+  # the run shares one React — with no host app that path does not exist and
+  # 19 of 37 files fail to import. Pointing it at the typecheck root instead
+  # gets most of the way (30/37) but not all, so making the suite host-free is
+  # its own piece of work. Until then it runs on developer machines only; the
+  # typecheck above is what this job actually guarantees.
+  # ---------------------------------------------------------------------------
+  mini-app:
+    name: mini-app (typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install (mini-app)
+        working-directory: packages/mobile
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Install (type-only host deps)
+        working-directory: packages/mobile/typecheck
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Type check
+        working-directory: packages/mobile
+        run: npm run typecheck
 
   # ---------------------------------------------------------------------------
   # MCP stdio binary smoke test.
