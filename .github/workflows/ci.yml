@@ -50,16 +50,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `mls` holds the ONE copy of the MLS/TAK crypto; sdk re-exports it
+          # through `../mls/src/*`. It is not built, but its node_modules must
+          # exist or tsc resolves nothing from it — six jobs failed on
+          # "Cannot find module 'ts-mls'" until it was listed here. Locally it
+          # passed only because the repo-root node_modules happened to satisfy
+          # the lookup, which is why a green local run proved nothing.
           - package: sdk
-            local-deps: ''
+            local-deps: 'mls'
           - package: commands
-            local-deps: 'sdk'
+            local-deps: 'mls sdk'
           - package: cli
-            local-deps: 'sdk commands'
+            local-deps: 'mls sdk commands'
           - package: mcp
-            local-deps: 'sdk commands'
+            local-deps: 'mls sdk commands'
           - package: channel
-            local-deps: 'sdk commands'
+            local-deps: 'mls sdk commands'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,7 +80,18 @@ jobs:
         run: |
           for dep in ${{ matrix.local-deps }}; do
             echo "::group::packages/$dep"
-            ( cd "packages/$dep" && npm ci --no-audit --no-fund && npm run build )
+            # `mls` is consumed as SOURCE (sdk re-exports ../mls/src/*), so it
+            # has no build script and nothing to emit — it only needs its own
+            # node_modules present for tsc to resolve ts-mls. Everything else
+            # is consumed through dist/ and must be built.
+            if [ -f "packages/$dep/package-lock.json" ]; then
+              ( cd "packages/$dep" && npm ci --no-audit --no-fund )
+            else
+              ( cd "packages/$dep" && npm install --no-audit --no-fund )
+            fi
+            if node -e "process.exit(require('./packages/$dep/package.json').scripts?.build ? 0 : 1)"; then
+              ( cd "packages/$dep" && npm run build )
+            fi
             echo "::endgroup::"
           done
 
