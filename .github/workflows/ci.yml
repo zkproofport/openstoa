@@ -289,12 +289,21 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build sdk -> commands -> mcp
+      - name: Build mls -> sdk -> commands -> mcp
         shell: bash
         run: |
-          for pkg in sdk commands mcp; do
+          # `mls` leads the list because sdk compiles `../mls/src/*` directly.
+          # Its node_modules must exist or tsc resolves `ts-mls` to nothing and
+          # the dts build dies. It has no build script of its own, hence the
+          # guard — the matrix job above carries the same shape for the same
+          # reason.
+          for pkg in mls sdk commands mcp; do
             echo "::group::packages/$pkg"
-            ( cd "packages/$pkg" && npm ci --no-audit --no-fund && npm run build )
+            (
+              cd "packages/$pkg"
+              npm ci --no-audit --no-fund
+              npm run build --if-present
+            )
             echo "::endgroup::"
           done
 

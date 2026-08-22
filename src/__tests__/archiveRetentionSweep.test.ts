@@ -268,27 +268,50 @@ describe('sweepTopicArchive — the throttle', () => {
 describe('scheduleArchiveSweep — fire and forget', () => {
   it('CONTRACT: a failed purge is swallowed, not thrown at the request', async () => {
     // A member reading history must never get a 500 because a DELETE failed.
+    let rejection!: Promise<unknown>;
     const broken = {
-      execute: () => Promise.reject(new Error('db is down')),
+      execute: () => {
+        rejection = Promise.reject(new Error('db is down'));
+        return rejection;
+      },
     };
     expect(() => scheduleArchiveSweep(broken, TOPIC_30D, NOW)).not.toThrow();
-    // Let the rejected promise settle inside the helper's own catch.
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait on the rejection ITSELF rather than on a guessed number of
+    // milliseconds. The helper attaches its catch before it returns, so its
+    // handler is already queued ahead of this one — settling here means the
+    // swallow has happened, on a slow runner as surely as on a fast one.
+    await rejection.catch(() => undefined);
   });
 
   it('returns synchronously — the caller never waits on the purge', async () => {
     await seedRow(TOPIC_30D, msg(20), new Date(NOW.getTime() - 90 * DAY_MS));
     let settled = false;
+    // Two gates instead of two sleeps. The old shape held the DELETE for 30ms
+    // and then gave it 80ms to finish, which is a bet on the runner being
+    // fast; CI lost that bet. Here the DELETE is held open until the test
+    // says so, which is the actual contract being asserted — control came
+    // back while the work was demonstrably unfinished, not merely early.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let finish!: () => void;
+    const purged = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const slow = {
       execute: async (q: Parameters<typeof db.execute>[0]) => {
-        await new Promise((resolve) => setTimeout(resolve, 30));
+        await held;
         settled = true;
-        return db.execute(q);
+        const result = await db.execute(q);
+        finish();
+        return result;
       },
     };
     scheduleArchiveSweep(slow, TOPIC_30D, NOW);
     expect(settled).toBe(false); // control returned before the DELETE finished
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    release();
+    await purged;
     expect(settled).toBe(true);
     expect(await idsIn(TOPIC_30D)).toEqual([]);
   });

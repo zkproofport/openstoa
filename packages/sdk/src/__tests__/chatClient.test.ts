@@ -52,7 +52,11 @@ function makeDs() {
    * rejected it.
    */
   /** Attachment ciphertext by object key, plus whether its message went out. */
-  const objects = new Map<string, { bytes: Uint8Array; claimed: boolean }>();
+  // `Uint8Array<ArrayBuffer>`, not the default `Uint8Array<ArrayBufferLike>`:
+  // every write below copies into a fresh buffer, so the bytes are provably
+  // not backed by a SharedArrayBuffer — which is exactly what `BodyInit`
+  // demands before it will accept them as a `Response` body.
+  const objects = new Map<string, { bytes: Uint8Array<ArrayBuffer>; claimed: boolean }>();
   const serverRoot = new Map<string, string>();
   const rootFingerprint = new Map<string, string>();
   const dmChannels = new Map<string, { topicId: string; a: string; b: string }>(); // key = canonical pair
