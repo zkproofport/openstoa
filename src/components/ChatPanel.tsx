@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
@@ -996,7 +997,7 @@ function ChatMediaAttachment({
              * expansion cost twice, once on the wire and once turning a
              * multi-megabyte string back into bytes on the main thread.
              */
-            const r = await fetch(
+            const r = await apiFetch(
               `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(objectKey)}`,
               { credentials: 'include' },
             );
@@ -1860,13 +1861,17 @@ export default function ChatPanel({
              * could not be reached. The id rides in the query string because a
              * raw body has nowhere to put it.
              */
-            const res = await fetch(
+            const res = await apiFetch(
               `/api/topics/${topicId}/chat/media?mediaId=${encodeURIComponent(mediaId)}`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': CHAT_MEDIA_CONTENT_TYPE },
                 credentials: 'include',
                 body: ciphertext as BodyInit,
+                // Megabytes of ciphertext going up: the deadline covers the
+                // whole exchange, so the ordinary 15s would abort a transfer
+                // that is making perfectly good progress.
+                timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
               },
             );
             if (!res.ok) throw new Error(`upload failed (${res.status})`);
@@ -1888,7 +1893,7 @@ export default function ChatPanel({
              * — and neither can render an envelope as text.
              */
             const pushArchive = await buildPushArchive(body);
-            const res = await fetch(`/api/topics/${topicId}/chat`, {
+            const res = await apiFetch(`/api/topics/${topicId}/chat`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
@@ -1909,13 +1914,13 @@ export default function ChatPanel({
             void getTakSessionStore().archiveOnSend(topicId, payload.id, body, visibilityRef.current).catch(() => {});
           },
           discard: async (key) => {
-            await fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
+            await apiFetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
               method: 'DELETE',
               credentials: 'include',
             });
           },
           claim: async (key) => {
-            await fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
+            await apiFetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
               method: 'PATCH',
               credentials: 'include',
             });
@@ -2015,7 +2020,7 @@ export default function ChatPanel({
       // server assigns an id.
       setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, sealed } : m)));
       const pushArchive = await buildPushArchive(text);
-      const res = await fetch(`/api/topics/${topicId}/chat`, {
+      const res = await apiFetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
@@ -2107,7 +2112,7 @@ export default function ChatPanel({
      * request-triggered and an object may well outlive the window.
      */
     try {
-      const probe = await fetch(
+      const probe = await apiFetch(
         `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`,
         { credentials: 'include' },
       );
@@ -2128,7 +2133,7 @@ export default function ChatPanel({
       // did, or a picture that failed once would be the only one that never
       // notifies anybody.
       const pushArchive = await buildPushArchive(body);
-      const res = await fetch(`/api/topics/${topicId}/chat`, {
+      const res = await apiFetch(`/api/topics/${topicId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ciphertext: sealed.ciphertext, epoch: sealed.epoch, pushArchive }),
@@ -2144,7 +2149,7 @@ export default function ChatPanel({
       void getMlsSessionStore().cachePlaintext(topicId, payload.id, body);
       void getTakSessionStore().archiveOnSend(topicId, payload.id, body, visibilityRef.current).catch(() => {});
       // Only NOW is the object referenced by a real message.
-      void fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`, {
+      void apiFetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`, {
         method: 'PATCH',
         credentials: 'include',
       }).catch(() => {});
@@ -2167,7 +2172,7 @@ export default function ChatPanel({
      * not a design, it is a leak with a timer.
      */
     if (msg.mediaKey) {
-      void fetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(msg.mediaKey)}`, {
+      void apiFetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(msg.mediaKey)}`, {
         method: 'DELETE',
         credentials: 'include',
       }).catch(() => {});
@@ -2201,7 +2206,7 @@ export default function ChatPanel({
   useEffect(() => {
     if (isGuest) return;
     let alive = true;
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d?.userId) return;
@@ -2255,7 +2260,7 @@ export default function ChatPanel({
     const el = scrollerRef.current;
     pendingScrollAnchorRef.current = el ? el.scrollHeight - el.scrollTop : null;
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}&before=${encodeURIComponent(cursor)}`,
       );
       if (!res.ok) throw new Error(`history ${res.status}`);
@@ -2402,7 +2407,7 @@ export default function ChatPanel({
    */
   const reconcileGroupMembership = useCallback(async () => {
     try {
-      const res = await fetch(`/api/topics/${topicId}/members`);
+      const res = await apiFetch(`/api/topics/${topicId}/members`);
       if (!res.ok) return;
       const data = (await res.json()) as { members?: Array<{ userId?: string }> };
       const ids = (data.members ?? []).map((m) => m.userId).filter((id): id is string => !!id);
@@ -2450,13 +2455,13 @@ export default function ChatPanel({
         if (!rootFingerprint) {
           // Waiting for the root. If a previous visit already took the lease,
           // hand it back now rather than idling on it for the full 15 minutes.
-          await fetch(`/api/topics/${topicId}/tak/holder?deviceId=${encodeURIComponent(deviceId)}`, {
+          await apiFetch(`/api/topics/${topicId}/tak/holder?deviceId=${encodeURIComponent(deviceId)}`, {
             method: 'DELETE',
             credentials: 'include',
           });
           return;
         }
-        await fetch(`/api/topics/${topicId}/tak/holder`, {
+        await apiFetch(`/api/topics/${topicId}/tak/holder`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -2589,10 +2594,10 @@ export default function ChatPanel({
       // metadata lookup it does not depend on — the room painted a blank pane
       // for one extra round trip on every single entry.
       const [topicMeta, data] = await Promise.all([
-        fetch(`/api/topics/${topicId}`, { credentials: 'include' })
+        apiFetch(`/api/topics/${topicId}`, { credentials: 'include' })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
-        fetch(`/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}`)
+        apiFetch(`/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}`)
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
       ]);
@@ -2655,7 +2660,7 @@ export default function ChatPanel({
         const raws = await fetchCatchup<RawChatMessage & { id: string; createdAt: string }>({
           sinceIso: sinceCursor(anchor),
           fetchPage: async (since, limit) => {
-            const r = await fetch(
+            const r = await apiFetch(
               `/api/topics/${topicId}/chat?limit=${limit}&since=${encodeURIComponent(since)}`,
             );
             if (!r.ok) throw new Error(`catchup ${r.status}`);

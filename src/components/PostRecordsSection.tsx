@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
 import { RecordIcon } from '@/components/icons';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
@@ -47,7 +48,7 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
     setLoading(true);
     (async () => {
       try {
-        const res = await fetch(`/api/posts/${postId}/records`);
+        const res = await apiFetch(`/api/posts/${postId}/records`);
         if (!res.ok) return;
         const json = (await res.json()) as RecordsResponse;
         if (!cancelled) setData(json);

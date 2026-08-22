@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useCallback } from 'react';
 
 export interface ReactionSummary {
@@ -47,7 +48,7 @@ export function usePostMutations(postId: string) {
   const vote = useCallback(
     async (value: 1 | -1, current: VoteState): Promise<VoteResult> => {
       try {
-        const res = await fetch(`/api/posts/${postId}/vote`, {
+        const res = await apiFetch(`/api/posts/${postId}/vote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value }),
@@ -72,7 +73,7 @@ export function usePostMutations(postId: string) {
   const toggleBookmark = useCallback(
     async (current: boolean): Promise<BookmarkResult> => {
       try {
-        const res = await fetch(`/api/posts/${postId}/bookmark`, { method: 'POST' });
+        const res = await apiFetch(`/api/posts/${postId}/bookmark`, { method: 'POST' });
         if (!res.ok) return { ok: false, next: current };
         const data = await res.json();
         return { ok: true, next: !!data.bookmarked };
@@ -104,7 +105,7 @@ export function usePostMutations(postId: string) {
         next = [...current, { emoji, count: 1, userReacted: true }];
       }
       try {
-        await fetch(`/api/posts/${postId}/reactions`, {
+        await apiFetch(`/api/posts/${postId}/reactions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ emoji }),
@@ -112,7 +113,7 @@ export function usePostMutations(postId: string) {
       } catch {
         // Best-effort recovery: re-read the truth from the server.
         try {
-          const res = await fetch(`/api/posts/${postId}/reactions`);
+          const res = await apiFetch(`/api/posts/${postId}/reactions`);
           if (res.ok) {
             const data = await res.json();
             if (data?.reactions) return data.reactions as ReactionSummary[];
@@ -128,7 +129,7 @@ export function usePostMutations(postId: string) {
     async (current: RecordState): Promise<RecordResult> => {
       if (current.recorded) return { ok: true, next: current };
       try {
-        const res = await fetch(`/api/posts/${postId}/record`, { method: 'POST' });
+        const res = await apiFetch(`/api/posts/${postId}/record`, { method: 'POST' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           return { ok: false, next: current, error: data?.error ?? 'Failed to record' };

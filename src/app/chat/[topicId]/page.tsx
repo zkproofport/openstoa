@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -59,7 +60,7 @@ export default function TopicChatPage() {
 
   useEffect(() => {
     let alive = true;
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (alive) setViewerUserId(d?.userId ?? null);
@@ -73,7 +74,7 @@ export default function TopicChatPage() {
   const loadMembers = useCallback(() => {
     setMembers(null);
     setMembersFailed(false);
-    fetch(`/api/topics/${topicId}/members`)
+    apiFetch(`/api/topics/${topicId}/members`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed to load members'))))
       .then((d) => setMembers(Array.isArray(d?.members) ? d.members : []))
       .catch(() => setMembersFailed(true));
@@ -91,7 +92,7 @@ export default function TopicChatPage() {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(`/api/topics/${topicId}`, { credentials: 'include' });
+        const res = await apiFetch(`/api/topics/${topicId}`, { credentials: 'include' });
         if (!alive) return;
         if (res.status === 401) { router.replace('/'); return; }
         if (res.status === 403) {

@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect } from 'react';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -80,7 +81,7 @@ export default function LinkPreview({ url, compact, onUnavailable }: LinkPreview
     setImgError(false);
     setFaviconError(false);
 
-    fetch(`/api/og?url=${encodeURIComponent(url)}`)
+    apiFetch(`/api/og?url=${encodeURIComponent(url)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d: OGData) => {
         if (!cancelled) {

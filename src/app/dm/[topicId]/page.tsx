@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -47,7 +48,7 @@ export default function DmConversationPage() {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch('/api/dm');
+        const res = await apiFetch('/api/dm');
         if (!alive) return;
         if (res.status === 401) { router.replace('/'); return; }
         if (res.status === 403) { setNeedsNickname(true); return; }

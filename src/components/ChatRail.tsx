@@ -43,6 +43,7 @@
  * on an already-applied request would look like a no-op change and the
  * effect below would never re-fire.
  */
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -167,7 +168,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     if (!room || room.kind !== 'topic') return;
     setMembers(null);
     setMembersFailed(false);
-    fetch(`/api/topics/${room.topicId}/members`)
+    apiFetch(`/api/topics/${room.topicId}/members`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed to load members'))))
       .then((d) => setMembers(Array.isArray(d?.members) ? d.members : []))
       .catch(() => setMembersFailed(true));
@@ -183,7 +184,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
 
   useEffect(() => {
     let alive = true;
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (alive) setMyUserId(d?.userId ?? null);
@@ -239,7 +240,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
       dmInFlightRef.current = true;
       setDmStarting(candidate.userId);
       try {
-        const res = await fetch('/api/dm', {
+        const res = await apiFetch('/api/dm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: candidate.userId }),

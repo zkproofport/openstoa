@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -27,7 +28,7 @@ export default function EditTopicPage() {
   useEffect(() => {
     async function loadTopic() {
       try {
-        const res = await fetch(`/api/topics/${topicId}`);
+        const res = await apiFetch(`/api/topics/${topicId}`);
         if (res.status === 401) {
           router.replace('/');
           return;
@@ -74,7 +75,12 @@ export default function EditTopicPage() {
     // filed under it and swept with it.
     form.append('topicId', topicId);
 
-    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    // Upload deadline, not the ordinary one — the clock covers the body.
+    const res = await apiFetch('/api/upload', {
+      method: 'POST',
+      body: form,
+      timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+    });
     if (!res.ok) throw new Error(t('editTopicPage.uploadImageFailed'));
     const { publicUrl } = (await res.json()) as { publicUrl: string };
     return publicUrl;
@@ -125,7 +131,7 @@ export default function EditTopicPage() {
         body.image = imageUrl;
       }
 
-      const res = await fetch(`/api/topics/${topicId}`, {
+      const res = await apiFetch(`/api/topics/${topicId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

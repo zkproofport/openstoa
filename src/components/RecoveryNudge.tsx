@@ -24,6 +24,7 @@
  * nothing at all for guests, on `/recovery` itself, and whenever the decision
  * says no — so the common case costs one layout slot and no markup.
  */
+import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ensureTakKeychainBackup, keyBackupHttp } from '@/lib/mls/webTransport';
@@ -76,7 +77,7 @@ export default function RecoveryNudge({
     void (async () => {
       let id: string;
       try {
-        const r = await fetch('/api/auth/session');
+        const r = await apiFetch('/api/auth/session');
         const data = r.ok ? ((await r.json()) as { userId?: string }) : null;
         if (!data?.userId) return; // no session after all — nothing to repair
         id = data.userId;

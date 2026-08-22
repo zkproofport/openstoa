@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -44,7 +45,7 @@ export default function DmListPage() {
   const [needsNickname, setNeedsNickname] = useState(false);
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (!data?.userId) { router.replace('/'); return; }
@@ -57,7 +58,7 @@ export default function DmListPage() {
     setError(null);
     setNeedsNickname(false);
     try {
-      const res = await fetch('/api/dm');
+      const res = await apiFetch('/api/dm');
       if (res.status === 401) { router.replace('/'); return; }
       if (res.status === 403) { setNeedsNickname(true); return; }
       if (!res.ok) throw new Error(t('dmPage.loadError'));

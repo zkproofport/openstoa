@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useCallback, useEffect, useState } from 'react';
 import {
   HISTORY_SCOPES,
@@ -231,7 +232,7 @@ export default function AiAgentSettings() {
     setLoading(true);
     setLoadError(null);
     try {
-      const keysRes = await fetch('/api/profile/api-keys');
+      const keysRes = await apiFetch('/api/profile/api-keys');
       if (keysRes.status === 401) {
         throw new Error(t('aiAgentSettings.signInRequired'));
       }
@@ -281,7 +282,7 @@ export default function AiAgentSettings() {
     setCreateError(null);
     setRawKey(null);
     try {
-      const res = await fetch('/api/profile/api-keys', {
+      const res = await apiFetch('/api/profile/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -324,7 +325,7 @@ export default function AiAgentSettings() {
     setSavingEdit(true);
     setEditError(null);
     try {
-      const res = await fetch(`/api/profile/api-keys/${keyId}`, {
+      const res = await apiFetch(`/api/profile/api-keys/${keyId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cmd: orderedCmd(allowedCmd, editCmd), historyGrant: editHistory }),
@@ -347,7 +348,7 @@ export default function AiAgentSettings() {
     setRevokingId(id);
     setRevokeError(null);
     try {
-      const res = await fetch(`/api/profile/api-keys/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/profile/api-keys/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? t('aiAgentSettings.revokeKeyFailed'));

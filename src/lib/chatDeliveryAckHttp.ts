@@ -11,8 +11,10 @@
  * having to learn about it. The rule it feeds — which instant may be claimed,
  * and that a failure must be silent — is in the twinned `chatDeliveryAck`.
  */
+import { apiFetch } from '@/lib/apiFetch';
+
 export function httpAckPost(topicId: string, deviceId: string, through: string): Promise<void> {
-  return fetch(`/api/topics/${topicId}/chat/delivered`, {
+  return apiFetch(`/api/topics/${topicId}/chat/delivered`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

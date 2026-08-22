@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -62,7 +63,7 @@ function TopicsPageInner() {
 
   // ── Auth check ──
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (!data?.userId) {
@@ -108,7 +109,7 @@ function TopicsPageInner() {
         url += `&q=${encodeURIComponent(q.trim())}`;
       }
 
-      const res = await fetch(url);
+      const res = await apiFetch(url);
 
       if (!res.ok) {
         // If feed endpoint doesn't exist yet (404), show empty state

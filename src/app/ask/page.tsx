@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
@@ -273,10 +274,19 @@ export default function AskPage() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     try {
-      const res = await fetch('/api/ask/stream', {
+      const res = await apiFetch('/api/ask/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages }),
+        /*
+         * NO DEADLINE, deliberately. This response is read incrementally with
+         * `body.getReader()` below and a long answer legitimately takes minutes
+         * to finish arriving — a 15s cap would abort the model mid-sentence,
+         * every time, which is the exact failure the default is there to
+         * prevent for everything else. The stream is not unbounded either way:
+         * the route ends it, and leaving the page aborts the read.
+         */
+        timeoutMs: null,
       });
 
       if (!res.ok || !res.body) {

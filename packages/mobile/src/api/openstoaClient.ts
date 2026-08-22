@@ -1,6 +1,21 @@
 import type { HostApi } from '@openstoa/miniapp-bridge';
 import type { RefreshResponse } from '@openstoa/api-types';
 import { CHAT_MEDIA_CONTENT_TYPE } from '../lib/chatMedia';
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  UPLOAD_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout,
+  OpenStoaTimeoutError,
+} from './timeout';
+
+/*
+ * Re-exported so the timeout joins its two siblings — `OpenStoaApiError` and
+ * `OpenStoaNetworkError` — at the import a caller already writes. It lives in
+ * `./timeout` rather than here because `OpenStoaApp` needs it for the handful
+ * of raw `fetch` calls it makes during boot, and that must not drag the whole
+ * client (and the host bridge it types against) into the module graph.
+ */
+export { OpenStoaTimeoutError, DEFAULT_REQUEST_TIMEOUT_MS, UPLOAD_REQUEST_TIMEOUT_MS };
 
 export type ClientMode = 'unknown' | 'guest' | 'authenticated';
 
@@ -126,6 +141,17 @@ export interface RequestOptions extends RequestInit {
    * below; callers do not need to set this for those paths.
    */
   allowGuest?: boolean;
+  /**
+   * Override the request deadline, in milliseconds — or `null` for none.
+   *
+   * Defaults to `DEFAULT_REQUEST_TIMEOUT_MS`. Raise it for a request whose body
+   * is large (the uploads below do); pass `null` ONLY for a connection meant to
+   * stay open, and say why in a comment where you pass it. Nothing in this
+   * package passes `null` today: both long-lived streams
+   * (`api/chatSocket.ts`, `api/useAccountEvents.ts`) open `EventSource`
+   * directly and never come through here at all.
+   */
+  timeoutMs?: number | null;
 }
 
 // Mirrors the server's `GUEST_ACCESSIBLE_PREFIXES` in `src/middleware.ts`.
@@ -324,11 +350,17 @@ export class OpenStoaClient {
     if (!this.inflightRefresh) {
       this.inflightRefresh = (async () => {
         try {
-          const res = await fetch(`${this.baseUrl}/api/auth/refresh`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${currentToken}` },
-            credentials: 'omit',
-          });
+          // Deadlined like every other request: a refresh that hangs used to
+          // hang whatever call was waiting on it, which is every call.
+          const res = await fetchWithTimeout(
+            `${this.baseUrl}/api/auth/refresh`,
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${currentToken}` },
+              credentials: 'omit',
+            },
+            { path: '/api/auth/refresh', timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS, method: 'POST' },
+          );
           if (!res.ok) {
             throw new Error(`refresh failed (${res.status})`);
           }
@@ -353,16 +385,35 @@ export class OpenStoaClient {
    * string ("Network request failed"), so screens could not tell it apart from
    * a server fault and said nothing useful about either.
    */
-  private async send(url: string, init: RequestInit, path: string): Promise<Response> {
+  private async send(
+    url: string,
+    init: RequestInit,
+    path: string,
+    timeoutMs: number | null = DEFAULT_REQUEST_TIMEOUT_MS,
+  ): Promise<Response> {
     try {
-      return await fetch(url, init);
+      return await fetchWithTimeout(url, init, {
+        path,
+        timeoutMs,
+        method: (init.method ?? 'GET').toString().toUpperCase(),
+      });
     } catch (e) {
+      // A deadline that expired is its own fact and must reach the caller as
+      // one — rewrapping it as "could not reach the server" would put the wrong
+      // sentence on screen and, worse, assert that nothing was sent when the
+      // truth is that nobody knows.
+      if (e instanceof OpenStoaTimeoutError) throw e;
       throw new OpenStoaNetworkError(path, e);
     }
   }
 
   async request<T>(path: string, init: RequestOptions = {}): Promise<T> {
     const method = (init.method ?? 'GET').toUpperCase();
+    // Every request carries a deadline unless the caller named a different one.
+    // Kept out of the object handed to `fetch` — it is ours, not `RequestInit`'s.
+    const { timeoutMs: timeoutOverride, ...fetchInit } = init;
+    const timeoutMs =
+      timeoutOverride === undefined ? DEFAULT_REQUEST_TIMEOUT_MS : timeoutOverride;
     const guestSafe = method === 'GET' && isGuestSafePath(path);
     const guestAllowed = guestSafe || init.allowGuest === true;
 
@@ -396,7 +447,7 @@ export class OpenStoaClient {
     // when `clientMode === 'guest'` and we explicitly skipped the
     // Authorization header. That bug is what made joined topics keep
     // showing after logout.
-    let res = await this.send(url, { ...init, headers, credentials: 'omit' }, path);
+    let res = await this.send(url, { ...fetchInit, headers, credentials: 'omit' }, path, timeoutMs);
     if (res.status === 401) {
       // Guest (or anyone without a token) → don't auto-trigger login.
       // The screen catches GuestAuthRequiredError and shows SignInSheet.
@@ -435,7 +486,7 @@ export class OpenStoaClient {
       }
 
       headers.set('Authorization', `Bearer ${refreshed}`);
-      res = await this.send(url, { ...init, headers, credentials: 'omit' }, path);
+      res = await this.send(url, { ...fetchInit, headers, credentials: 'omit' }, path, timeoutMs);
       if (res.status === 401) {
         await this.dropDeadSession();
         throw new GuestAuthRequiredError(path);
@@ -516,6 +567,9 @@ export class OpenStoaClient {
         method: 'POST',
         headers: { 'Content-Type': CHAT_MEDIA_CONTENT_TYPE },
         body: ciphertext as unknown as BodyInit,
+        // Megabytes of ciphertext up a phone's uplink: the ordinary 15s
+        // deadline would cut off a transfer that is making progress.
+        timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
       },
     );
     return key;
@@ -536,6 +590,11 @@ export class OpenStoaClient {
    * ours to retry — a 401 surfaces as a failed fetch with a Reload control,
    * which is a worse outcome than an automatic refresh and a better one than a
    * silent login prompt in the middle of reading a conversation.
+   *
+   * It also gets no deadline from here, because there is no request here to put
+   * one on: the download runs on the native side, on its own clock, and the
+   * only thing this method spends time on is resolving the token — which is
+   * itself deadlined, since `tryGetToken` refreshes through `refreshOnce`.
    */
   async chatMediaFetchSpec(
     topicId: string,
@@ -603,6 +662,8 @@ export class OpenStoaClient {
         credentials: 'omit',
       },
       '/api/upload',
+      // Same reason as `uploadChatMedia`: the clock covers the body going up.
+      UPLOAD_REQUEST_TIMEOUT_MS,
     );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
@@ -629,15 +690,19 @@ export class OpenStoaClient {
     try {
       const token = await this.tryGetToken();
       if (!token) return null;
-      const res = await fetch(`${this.baseUrl}/api/upload`, {
-        method: 'DELETE',
-        credentials: 'omit',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+      const res = await fetchWithTimeout(
+        `${this.baseUrl}/api/upload`,
+        {
+          method: 'DELETE',
+          credentials: 'omit',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ urls: clean }),
         },
-        body: JSON.stringify({ urls: clean }),
-      });
+        { path: '/api/upload', timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS, method: 'DELETE' },
+      );
       if (!res.ok) return null;
       return (await res.json()) as { attempted: number; deleted: number; skipped: number };
     } catch {

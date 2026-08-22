@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -52,12 +53,12 @@ export default function JoinPage() {
     try {
       let info: TopicInfo;
       if (inviteCode) {
-        const res = await fetch(`/api/topics/join/${inviteCode}`);
+        const res = await apiFetch(`/api/topics/join/${inviteCode}`);
         if (!res.ok) throw new Error(t('joinPage.inviteInvalid'));
         const data = await res.json();
         info = { ...data.topic, isMember: data.isMember, memberCount: data.topic.memberCount ?? 0 };
       } else {
-        const res = await fetch(`/api/topics/${topicId}`);
+        const res = await apiFetch(`/api/topics/${topicId}`);
         if (!res.ok) throw new Error(t('joinPage.topicNotFound'));
         const data = await res.json();
         info = data.topic;
@@ -90,7 +91,7 @@ export default function JoinPage() {
         body.publicInputs = proofData.publicInputs;
       }
 
-      const res = await fetch(`/api/topics/${topicInfo.id}/join`, {
+      const res = await apiFetch(`/api/topics/${topicInfo.id}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

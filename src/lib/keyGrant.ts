@@ -14,6 +14,7 @@
  * a private topic's second device stayed sealed until somebody happened to
  * reopen that exact conversation.
  */
+import { apiFetch } from '@/lib/apiFetch';
 import { getTakSessionStore } from '@/lib/mls/webTransport';
 
 interface TopicShape {
@@ -34,7 +35,7 @@ interface TopicShape {
  * are expected to find nothing to send.
  */
 export async function grantRoomKeys(topicId: string): Promise<void> {
-  const res = await fetch(`/api/topics/${topicId}`, { credentials: 'include' });
+  const res = await apiFetch(`/api/topics/${topicId}`, { credentials: 'include' });
   if (!res.ok) return; // not a member any more, or gone — nothing to hand over
   const meta = (await res.json()) as TopicShape;
   const visibility = meta?.topic?.visibility;

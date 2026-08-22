@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -459,7 +460,7 @@ function LandingPageInner() {
     setBetaSubmitting(true);
     setBetaError('');
     try {
-      const res = await fetch('/api/beta-signup', {
+      const res = await apiFetch('/api/beta-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: betaEmail.trim(), organization: betaOrg.trim(), platform: betaPlatform }),

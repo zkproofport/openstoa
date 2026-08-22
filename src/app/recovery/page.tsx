@@ -12,6 +12,7 @@
  * out (the mark in the header, and the explicit link below it) has to be on
  * this page itself.
  */
+import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -27,7 +28,7 @@ export default function RecoveryPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data?.userId) {

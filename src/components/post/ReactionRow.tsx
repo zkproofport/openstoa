@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
 import { usePostMutations, type ReactionSummary } from '@/hooks/usePostMutations';
 
@@ -10,7 +11,7 @@ interface ReactionRowProps {
   interactive?: boolean;
   /** Guests can't react — picker is hidden. */
   disabled?: boolean;
-  /** Skip the initial GET fetch (parent already has the reactions). */
+  /** Skip the initial GET apiFetch(parent already has the reactions). */
   initialKnown?: boolean;
   onChange?: (next: ReactionSummary[]) => void;
 }
@@ -40,7 +41,7 @@ export default function ReactionRow({
   useEffect(() => {
     if (initialKnown || reactions !== undefined) return;
     let cancelled = false;
-    fetch(`/api/posts/${postId}/reactions`)
+    apiFetch(`/api/posts/${postId}/reactions`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data?.reactions) setState(data.reactions);

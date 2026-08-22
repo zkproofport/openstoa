@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
@@ -38,7 +39,7 @@ export default function RecordedPage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (data?.userId) setSessionUserId(data.userId);
@@ -50,7 +51,7 @@ export default function RecordedPage() {
     if (replace) setLoading(true);
     else setPostsLoading(true);
     try {
-      const res = await fetch(`/api/recorded?limit=${PAGE_SIZE}&offset=${currentOffset}`);
+      const res = await apiFetch(`/api/recorded?limit=${PAGE_SIZE}&offset=${currentOffset}`);
       if (!res.ok) return;
       const data = await res.json();
       const newPosts: Post[] = data.posts ?? [];

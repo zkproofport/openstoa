@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -61,7 +62,7 @@ export default function NewTopicPage() {
 
   // Fetch categories on mount
   useEffect(() => {
-    fetch('/api/categories')
+    apiFetch('/api/categories')
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.categories) setCategories(data.categories); })
       .catch(() => {});
@@ -73,7 +74,12 @@ export default function NewTopicPage() {
     form.append('file', new File([resized], 'topic-image.webp', { type: 'image/webp' }));
     form.append('purpose', 'topic');
 
-    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    // Upload deadline, not the ordinary one — the clock covers the body.
+    const res = await apiFetch('/api/upload', {
+      method: 'POST',
+      body: form,
+      timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+    });
     if (!res.ok) throw new Error(t('profilePage.uploadImageFailed'));
     const { publicUrl } = (await res.json()) as { publicUrl: string };
     return publicUrl;
@@ -126,7 +132,7 @@ export default function NewTopicPage() {
     }
 
     try {
-      const res = await fetch('/api/topics', {
+      const res = await apiFetch('/api/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

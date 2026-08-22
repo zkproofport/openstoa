@@ -4,6 +4,7 @@
  * singleton store. Browser-only — every entry point is called from client
  * event handlers / effects, never during SSR.
  */
+import { apiFetch } from '@/lib/apiFetch';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
 import * as km from './keyManager';
@@ -15,13 +16,13 @@ function httpTransport(): MlsTransport {
   const json = { 'Content-Type': 'application/json' };
   return {
     async getGroupInfo(topicId) {
-      const r = await fetch(`${base(topicId)}/group-info`, { credentials: 'include' });
+      const r = await apiFetch(`${base(topicId)}/group-info`, { credentials: 'include' });
       if (r.status === 404) return null;
       if (!r.ok) throw new Error(`group-info GET ${r.status}`);
       return (await r.json()).groupInfo as string;
     },
     async postGroupInfo(topicId, groupInfoB64, groupIdB64) {
-      const r = await fetch(`${base(topicId)}/group-info`, {
+      const r = await apiFetch(`${base(topicId)}/group-info`, {
         method: 'POST',
         credentials: 'include',
         headers: json,
@@ -31,7 +32,7 @@ function httpTransport(): MlsTransport {
       return (await r.json()).created as boolean;
     },
     async postCommit(topicId, commitB64, groupInfoB64) {
-      const r = await fetch(`${base(topicId)}/commit`, {
+      const r = await apiFetch(`${base(topicId)}/commit`, {
         method: 'POST',
         credentials: 'include',
         headers: json,
@@ -42,7 +43,7 @@ function httpTransport(): MlsTransport {
       return { ok: true, epoch: (await r.json()).epoch as number };
     },
     async getCommitsSince(topicId, sinceEpoch) {
-      const r = await fetch(`${base(topicId)}/commit?sinceEpoch=${sinceEpoch}`, { credentials: 'include' });
+      const r = await apiFetch(`${base(topicId)}/commit?sinceEpoch=${sinceEpoch}`, { credentials: 'include' });
       if (!r.ok) throw new Error(`commit GET ${r.status}`);
       return (await r.json()).commits;
     },
@@ -135,7 +136,7 @@ function encStore(): SecureKVStore {
  */
 async function sessionUserId(): Promise<string | null> {
   try {
-    const r = await fetch('/api/auth/session');
+    const r = await apiFetch('/api/auth/session');
     if (!r.ok) return null;
     const d = (await r.json()) as { userId?: string };
     return d?.userId ?? null;
@@ -162,7 +163,7 @@ function httpTakTransport(): TakTransport {
   const json = { 'Content-Type': 'application/json' };
   return {
     async postArchive(topicId, messageId, takVersion, archiveB64) {
-      const r = await fetch(`${base(topicId)}/archive`, {
+      const r = await apiFetch(`${base(topicId)}/archive`, {
         method: 'POST',
         credentials: 'include',
         headers: json,
@@ -175,7 +176,7 @@ function httpTakTransport(): TakTransport {
       const out: ArchiveEntry[] = [];
       let cursor = '';
       for (;;) {
-        const r = await fetch(`${base(topicId)}/archive?limit=500${cursor}`, { credentials: 'include' });
+        const r = await apiFetch(`${base(topicId)}/archive?limit=500${cursor}`, { credentials: 'include' });
         if (!r.ok) throw new Error(`archive GET ${r.status}`);
         const page = (await r.json()).archive as ArchiveEntry[];
         out.push(...page);
@@ -186,7 +187,7 @@ function httpTakTransport(): TakTransport {
       return out;
     },
     async postBundle(topicId, recipientUserId, recipientDeviceId, bundleB64, scope) {
-      const r = await fetch(`${base(topicId)}/tak/bundles`, {
+      const r = await apiFetch(`${base(topicId)}/tak/bundles`, {
         method: 'POST',
         credentials: 'include',
         headers: json,
@@ -195,14 +196,14 @@ function httpTakTransport(): TakTransport {
       if (!r.ok) throw new Error(`bundle POST ${r.status}`);
     },
     async getBundles(topicId, deviceId) {
-      const r = await fetch(`${base(topicId)}/tak/bundles?deviceId=${encodeURIComponent(deviceId)}`, {
+      const r = await apiFetch(`${base(topicId)}/tak/bundles?deviceId=${encodeURIComponent(deviceId)}`, {
         credentials: 'include',
       });
       if (!r.ok) throw new Error(`bundle GET ${r.status}`);
       return (await r.json()).bundles as TakBundleRow[];
     },
     async ackBundles(topicId, deviceId, ids) {
-      const r = await fetch(`${base(topicId)}/tak/bundles`, {
+      const r = await apiFetch(`${base(topicId)}/tak/bundles`, {
         method: 'DELETE',
         credentials: 'include',
         headers: json,
@@ -211,7 +212,7 @@ function httpTakTransport(): TakTransport {
       if (!r.ok) throw new Error(`bundle DELETE ${r.status}`);
     },
     async getServerRoot(topicId) {
-      const r = await fetch(`${base(topicId)}/archive/root`, { credentials: 'include' });
+      const r = await apiFetch(`${base(topicId)}/archive/root`, { credentials: 'include' });
       // 204 = nothing deposited yet; 403 = a tier that keeps its key on devices.
       // Neither is a failure — both mean "the server has nothing for you", and
       // throwing would turn an ordinary answer into a broken room.
@@ -221,7 +222,7 @@ function httpTakTransport(): TakTransport {
       return typeof rootKey === 'string' && rootKey.length > 0 ? unb64(rootKey) : null;
     },
     async putServerRoot(topicId, root) {
-      const r = await fetch(`${base(topicId)}/archive/root`, {
+      const r = await apiFetch(`${base(topicId)}/archive/root`, {
         method: 'PUT',
         credentials: 'include',
         headers: json,
@@ -235,7 +236,7 @@ function httpTakTransport(): TakTransport {
       return true;
     },
     async getRootFingerprint(topicId) {
-      const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, { credentials: 'include' });
+      const r = await apiFetch(`${base(topicId)}/tak/root-fingerprint`, { credentials: 'include' });
       // 400 = not a public topic, 404 = topic gone. Neither is a failure to
       // report: those topics have no shared archive root at all, so the honest
       // answer is "nothing published". Throwing here would abort the keychain
@@ -245,7 +246,7 @@ function httpTakTransport(): TakTransport {
       return await r.json();
     },
     async setRootFingerprint(topicId, fingerprint) {
-      const r = await fetch(`${base(topicId)}/tak/root-fingerprint`, {
+      const r = await apiFetch(`${base(topicId)}/tak/root-fingerprint`, {
         method: 'PUT',
         credentials: 'include',
         headers: json,
@@ -331,7 +332,7 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
     }
 
     await km.uploadTakKeychain(await masterKey(), merged, async (ciphertext) => {
-      const r = await fetch('/api/keys/tak-backup', {
+      const r = await apiFetch('/api/keys/tak-backup', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -364,7 +365,7 @@ export async function uploadTakKeychainNow(): Promise<TakBackupOutcome> {
  */
 async function joinedTopicIds(): Promise<string[]> {
   try {
-    const r = await fetch('/api/topics', { credentials: 'include' });
+    const r = await apiFetch('/api/topics', { credentials: 'include' });
     if (!r.ok) return [];
     const body = (await r.json()) as { topics?: { id: string }[] } | { id: string }[];
     const list = Array.isArray(body) ? body : (body.topics ?? []);
@@ -495,7 +496,7 @@ export type DeviceKeyState = 'ready' | 'recoverable' | 'no-backup';
 function report(step: string, detail: Record<string, unknown>): void {
   try {
     console.log('[E2EE]', step, JSON.stringify(detail));
-    void fetch('/api/diag/e2ee', {
+    void apiFetch('/api/diag/e2ee', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -601,12 +602,12 @@ export function keyBackupHttp() {
   const json = { 'Content-Type': 'application/json' };
   return {
     async getBackup(): Promise<km.KeyBackupState> {
-      const r = await fetch('/api/keys/backup', { credentials: 'include' });
+      const r = await apiFetch('/api/keys/backup', { credentials: 'include' });
       if (!r.ok) throw new Error(`keys/backup GET ${r.status}`);
       return (await r.json()) as km.KeyBackupState;
     },
     async postRecovery(wrappedMasterB64: string): Promise<void> {
-      const r = await fetch('/api/keys/backup', {
+      const r = await apiFetch('/api/keys/backup', {
         method: 'POST',
         credentials: 'include',
         headers: json,
@@ -615,7 +616,7 @@ export function keyBackupHttp() {
       if (!r.ok) throw new Error(`keys/backup POST recovery ${r.status}`);
     },
     async postPasskey(credentialId: string, prfWrappedB64: string): Promise<void> {
-      const r = await fetch('/api/keys/backup', {
+      const r = await apiFetch('/api/keys/backup', {
         method: 'POST',
         credentials: 'include',
         headers: json,
@@ -624,7 +625,7 @@ export function keyBackupHttp() {
       if (!r.ok) throw new Error(`keys/backup POST passkey ${r.status}`);
     },
     async getTakBackup(): Promise<string | null> {
-      const r = await fetch('/api/keys/tak-backup', { credentials: 'include' });
+      const r = await apiFetch('/api/keys/tak-backup', { credentials: 'include' });
       if (!r.ok) throw new Error(`keys/tak-backup GET ${r.status}`);
       return (await r.json()).ciphertext as string | null;
     },

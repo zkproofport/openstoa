@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useState, useEffect, useCallback, useRef, Children } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -292,7 +293,7 @@ export default function MyPage() {
 
   // Load session
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (!data?.userId) {
@@ -302,7 +303,7 @@ export default function MyPage() {
         setSession(data);
         if (data.profileImage) setProfileImage(data.profileImage);
         // Also fetch from profile image endpoint (session may not include it)
-        fetch('/api/profile/image').then(r => r.ok ? r.json() : null).then(d => {
+        apiFetch('/api/profile/image').then(r => r.ok ? r.json() : null).then(d => {
           if (d?.profileImage) setProfileImage(d.profileImage);
         }).catch(() => {});
       })
@@ -313,7 +314,7 @@ export default function MyPage() {
   async function handleLogout() {
     setLoggingOut(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await apiFetch('/api/auth/logout', { method: 'POST' });
       try { localStorage.removeItem('os-session'); } catch {}
       router.push('/');
     } catch {
@@ -332,7 +333,7 @@ export default function MyPage() {
     setNicknameSaving(true);
     setNicknameFeedback(null);
     try {
-      const res = await fetch('/api/profile/nickname', {
+      const res = await apiFetch('/api/profile/nickname', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nickname: trimmed }),
@@ -358,7 +359,7 @@ export default function MyPage() {
   useEffect(() => {
     if (activeTab !== 'settings') return;
     setPushLoading(true);
-    fetch('/api/push/preferences')
+    apiFetch('/api/push/preferences')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed'))))
       .then((data: { enabled: boolean; mutedTopicIds?: string[] }) => {
         setPushEnabled(data.enabled !== false);
@@ -372,7 +373,7 @@ export default function MyPage() {
     setPushSaving(true);
     setPushFeedback(null);
     try {
-      const res = await fetch('/api/push/preferences', {
+      const res = await apiFetch('/api/push/preferences', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: next }),
@@ -396,7 +397,7 @@ export default function MyPage() {
   useEffect(() => {
     if (activeTab !== 'settings') return;
     setDomainBadgeLoading(true);
-    fetch('/api/profile/domain-badge')
+    apiFetch('/api/profile/domain-badge')
       .then((r) => r.json())
       .then((data) => {
         setDomainBadgeDomains(data.domains ?? []);
@@ -409,7 +410,7 @@ export default function MyPage() {
   async function handleDomainBadgeAdd() {
     setDomainBadgeToggling(true);
     try {
-      const res = await fetch('/api/profile/domain-badge', { method: 'POST' });
+      const res = await apiFetch('/api/profile/domain-badge', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         setDomainBadgeDomains(data.domains ?? []);
@@ -421,7 +422,7 @@ export default function MyPage() {
   async function handleDomainBadgeRemove(domain: string) {
     setDomainBadgeToggling(true);
     try {
-      const res = await fetch('/api/profile/domain-badge', {
+      const res = await apiFetch('/api/profile/domain-badge', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain }),
@@ -446,17 +447,22 @@ export default function MyPage() {
     setImageFeedback(null);
     try {
       if (profileImage) {
-        const delRes = await fetch('/api/profile/image', { method: 'DELETE' });
+        const delRes = await apiFetch('/api/profile/image', { method: 'DELETE' });
         if (!delRes.ok) throw new Error(t('myPage.settings.profileImage.removeOldFailed'));
       }
       const resized = await resizeImage(file, 200);
       const form = new FormData();
       form.append('file', new File([resized], 'avatar.webp', { type: 'image/webp' }));
       form.append('purpose', 'avatar');
-      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      // Upload deadline, not the ordinary one — the clock covers the body.
+      const res = await apiFetch('/api/upload', {
+        method: 'POST',
+        body: form,
+        timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+      });
       if (!res.ok) throw new Error(t('profilePage.uploadImageFailed'));
       const { publicUrl } = (await res.json()) as { publicUrl: string };
-      const saveRes = await fetch('/api/profile/image', {
+      const saveRes = await apiFetch('/api/profile/image', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: publicUrl }),
@@ -476,7 +482,7 @@ export default function MyPage() {
   const loadMyPosts = useCallback(async (currentOffset: number, replace: boolean) => {
     setMyPostsLoading(true);
     try {
-      const res = await fetch(`/api/my/posts?limit=${PAGE_SIZE}&offset=${currentOffset}`);
+      const res = await apiFetch(`/api/my/posts?limit=${PAGE_SIZE}&offset=${currentOffset}`);
       if (!res.ok) return;
       const data = await res.json();
       const newPosts: Post[] = data.posts ?? [];
@@ -492,7 +498,7 @@ export default function MyPage() {
   const loadBookmarks = useCallback(async (currentOffset: number, replace: boolean) => {
     setBookmarksLoading(true);
     try {
-      const res = await fetch(`/api/bookmarks?limit=${PAGE_SIZE}&offset=${currentOffset}`);
+      const res = await apiFetch(`/api/bookmarks?limit=${PAGE_SIZE}&offset=${currentOffset}`);
       if (!res.ok) return;
       const data = await res.json();
       const newPosts: Post[] = data.posts ?? [];
@@ -507,7 +513,7 @@ export default function MyPage() {
   const loadMyTopics = useCallback(async () => {
     setMyTopicsLoading(true);
     try {
-      const res = await fetch('/api/topics');
+      const res = await apiFetch('/api/topics');
       if (!res.ok) return;
       const data = await res.json();
       setMyTopics(data.topics ?? []);
@@ -1226,7 +1232,7 @@ export default function MyPage() {
                             setDeletingAccount(true);
                             setOwnedTopicsError(null);
                             try {
-                              const res = await fetch('/api/account', { method: 'DELETE' });
+                              const res = await apiFetch('/api/account', { method: 'DELETE' });
                               if (res.status === 409) {
                                 const data = await res.json();
                                 setOwnedTopicsError(data.topics ?? []);

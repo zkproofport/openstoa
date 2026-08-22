@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
 import { BookmarkIcon } from '@/components/icons';
 import { usePostMutations } from '@/hooks/usePostMutations';
@@ -42,7 +43,7 @@ export default function BookmarkButton({
   useEffect(() => {
     if (initialKnown || typeof bookmarked === 'boolean' || disabled) return;
     let cancelled = false;
-    fetch(`/api/posts/${postId}/bookmark`)
+    apiFetch(`/api/posts/${postId}/bookmark`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data) setState(!!data.bookmarked);

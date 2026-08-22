@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -188,7 +189,10 @@ export default function SNSEditor({
       // Files the object under the topic, so deleting the topic deletes it.
       if (topicId) form.append('topicId', topicId);
 
-      const res = await fetch('/api/upload', {
+      const res = await apiFetch('/api/upload', {
+      // A multi-megabyte body going up: the ordinary deadline covers the
+      // WHOLE exchange, so 15s would cut off a transfer that is making progress.
+      timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
         method: 'POST',
         body: form,
       });

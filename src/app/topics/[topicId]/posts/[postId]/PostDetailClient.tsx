@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -106,7 +107,7 @@ export default function PostDetailClient() {
     if (isGuest) return;
     setPollLoading(true);
     try {
-      const res = await fetch(`/api/posts/${postId}/poll/vote`, {
+      const res = await apiFetch(`/api/posts/${postId}/poll/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ optionIds }),
@@ -126,7 +127,7 @@ export default function PostDetailClient() {
     if (isGuest) return;
     setPollLoading(true);
     try {
-      const res = await fetch(`/api/posts/${postId}/poll/vote`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/posts/${postId}/poll/vote`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? 'Unvote failed');
@@ -174,7 +175,7 @@ export default function PostDetailClient() {
   }
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (!data?.userId) {
@@ -195,18 +196,18 @@ export default function PostDetailClient() {
   useEffect(() => {
     loadPost();
     // Only check bookmark status for authenticated users
-    fetch(`/api/posts/${postId}/bookmark`)
+    apiFetch(`/api/posts/${postId}/bookmark`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setBookmarked(data.bookmarked); })
       .catch(() => {});
     // Fetch reactions
-    fetch(`/api/posts/${postId}/reactions`)
+    apiFetch(`/api/posts/${postId}/reactions`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.reactions) setReactions(data.reactions); })
       .catch(() => {});
     // Fetch the viewer's topic role so we know whether to surface the
     // Pin/Unpin menu entry. 401/403/null all collapse to "no role".
-    fetch(`/api/topics/${topicId}`)
+    apiFetch(`/api/topics/${topicId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.currentUserRole) setTopicRole(data.currentUserRole); })
       .catch(() => {});
@@ -241,7 +242,7 @@ export default function PostDetailClient() {
 
   async function loadPost() {
     try {
-      const res = await fetch(`/api/posts/${postId}`);
+      const res = await apiFetch(`/api/posts/${postId}`);
       if (res.status === 401) {
         // Guest on a non-public topic
         router.replace('/topics');
@@ -276,7 +277,7 @@ export default function PostDetailClient() {
     setSubmitting(true);
     setCommentError(null);
     try {
-      const res = await fetch(`/api/posts/${postId}/comments`, {
+      const res = await apiFetch(`/api/posts/${postId}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: commentContent.trim() }),
@@ -365,7 +366,7 @@ export default function PostDetailClient() {
       };
       if (pollPayload !== undefined) body.poll = pollPayload;
 
-      const res = await fetch(`/api/posts/${postId}`, {
+      const res = await apiFetch(`/api/posts/${postId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -391,7 +392,7 @@ export default function PostDetailClient() {
     if (!post || pinning) return;
     setPinning(true);
     try {
-      const res = await fetch(`/api/posts/${postId}/pin`, { method: 'POST' });
+      const res = await apiFetch(`/api/posts/${postId}/pin`, { method: 'POST' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? 'Failed to toggle pin');
@@ -412,7 +413,7 @@ export default function PostDetailClient() {
     if (!ok) return;
     setPostDeleting(true);
     try {
-      const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/posts/${postId}`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? 'Failed to delete');
@@ -430,7 +431,7 @@ export default function PostDetailClient() {
     if (deletingCommentId) return;
     setDeletingCommentId(commentId);
     try {
-      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/comments/${commentId}`, { method: 'DELETE' });
       if (res.ok) {
         const data = await res.json();
         setComments((prev) =>

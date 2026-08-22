@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Spinner from '@/components/Spinner';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
@@ -97,7 +98,7 @@ export default function ProofGate({
       if (domain) body.domain = domain;
       if (provider) body.provider = provider;
 
-      const res = await fetch('/api/auth/proof-request', {
+      const res = await apiFetch('/api/auth/proof-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -158,7 +159,7 @@ export default function ProofGate({
       pollingRef.current = setInterval(async () => {
         if (doneRef.current) return;
         try {
-          const pollRes = await fetch(pollUrl);
+          const pollRes = await apiFetch(pollUrl);
           if (!pollRes.ok) return;
           const pollData = await pollRes.json();
           if (pollData.status === 'completed') {

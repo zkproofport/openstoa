@@ -23,6 +23,7 @@
  * and is told nothing.
  */
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -97,7 +98,7 @@ export default function InviteJoinPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/topics/join/${encodeURIComponent(inviteCode)}`, {
+        const res = await apiFetch(`/api/topics/join/${encodeURIComponent(inviteCode)}`, {
           credentials: 'include',
         });
         if (cancelled) return;
@@ -135,7 +136,7 @@ export default function InviteJoinPage() {
     setJoining(true);
     setError(null);
     try {
-      const res = await fetch(`/api/topics/join/${encodeURIComponent(inviteCode)}`, {
+      const res = await apiFetch(`/api/topics/join/${encodeURIComponent(inviteCode)}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

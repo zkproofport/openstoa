@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -76,7 +77,7 @@ function ExplorePageInner() {
 
   // ── Auth check ──
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (!data?.userId) {
@@ -98,7 +99,7 @@ function ExplorePageInner() {
 
   // ── Fetch categories ──
   useEffect(() => {
-    fetch('/api/categories')
+    apiFetch('/api/categories')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.categories) {
@@ -117,7 +118,7 @@ function ExplorePageInner() {
       if (category) {
         url += `&category=${encodeURIComponent(category)}`;
       }
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (!res.ok) throw new Error('failed');
       const data = await res.json();
       setTopics(data.topics ?? []);
@@ -145,7 +146,7 @@ function ExplorePageInner() {
     setJoiningTopicId(topicId);
     setJoinError(null);
     try {
-      const res = await fetch(`/api/topics/${topicId}/join`, { method: 'POST' });
+      const res = await apiFetch(`/api/topics/${topicId}/join`, { method: 'POST' });
       if (res.ok) {
         setTopics((prev) =>
           prev.map((t) => (t.id === topicId ? { ...t, isMember: true, memberCount: t.memberCount + 1 } : t)),

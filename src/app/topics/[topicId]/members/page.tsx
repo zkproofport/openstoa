@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getMlsSessionStore } from '@/lib/mls/webTransport';
@@ -113,7 +114,7 @@ export default function MembersPage() {
   const chatRail = useChatRail();
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (!data?.userId) { router.replace('/'); return; }
@@ -130,7 +131,7 @@ export default function MembersPage() {
 
   async function loadTopic() {
     try {
-      const res = await fetch(`/api/topics/${topicId}`);
+      const res = await apiFetch(`/api/topics/${topicId}`);
       if (res.status === 401) { router.replace('/'); return; }
       if (res.status === 403) { router.replace(`/topics/${topicId}/join`); return; }
       if (!res.ok) throw new Error(t('membersPage.topicNotFound'));
@@ -147,7 +148,7 @@ export default function MembersPage() {
    *  PREVIOUS list, which still contains the person just removed. */
   async function loadMembers(): Promise<Member[]> {
     try {
-      const res = await fetch(`/api/topics/${topicId}/members`);
+      const res = await apiFetch(`/api/topics/${topicId}/members`);
       if (!res.ok) throw new Error(t('membersPage.loadMembersFailed'));
       const data = await res.json();
       const loaded: Member[] = data.members ?? [];
@@ -183,7 +184,7 @@ export default function MembersPage() {
   async function loadRequests() {
     setRequestsLoading(true);
     try {
-      const res = await fetch(`/api/topics/${topicId}/requests`);
+      const res = await apiFetch(`/api/topics/${topicId}/requests`);
       if (!res.ok) throw new Error(t('membersPage.loadRequestsFailed'));
       const data = await res.json();
       setRequests(data.requests ?? []);
@@ -197,7 +198,7 @@ export default function MembersPage() {
   async function handleRequestAction(requestId: string, action: 'approve' | 'reject') {
     setRequestActionLoading(requestId);
     try {
-      const res = await fetch(`/api/topics/${topicId}/requests`, {
+      const res = await apiFetch(`/api/topics/${topicId}/requests`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId, action }),
@@ -236,7 +237,7 @@ export default function MembersPage() {
     setDmLoading(userId);
     setDmError(null);
     try {
-      const res = await fetch('/api/dm', {
+      const res = await apiFetch('/api/dm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),
@@ -267,7 +268,7 @@ export default function MembersPage() {
   async function handleRoleChange(userId: string, newRole: 'admin' | 'member') {
     setActionLoading(userId);
     try {
-      const res = await fetch(`/api/topics/${topicId}/members`, {
+      const res = await apiFetch(`/api/topics/${topicId}/members`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, role: newRole }),
@@ -292,7 +293,7 @@ export default function MembersPage() {
     setActionLoading(userId);
     setConfirmKick(null);
     try {
-      const res = await fetch(`/api/topics/${topicId}/members`, {
+      const res = await apiFetch(`/api/topics/${topicId}/members`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),
@@ -350,7 +351,7 @@ export default function MembersPage() {
     setTransferLoading(true);
     setConfirmTransfer(null);
     try {
-      const res = await fetch(`/api/topics/${topicId}/members`, {
+      const res = await apiFetch(`/api/topics/${topicId}/members`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, role: 'owner' }),

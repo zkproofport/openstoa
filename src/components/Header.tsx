@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import HeaderSearchBar from '@/components/HeaderSearchBar';
@@ -78,7 +79,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
       setSessionChecked(true);
     }
 
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (data?.userId) {

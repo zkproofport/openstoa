@@ -1,3 +1,4 @@
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchWithTimeout } from '../../api/timeout';
 import React, {
   useCallback,
   useEffect,
@@ -2541,8 +2542,16 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
         const isYouTube =
           host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be';
         if (isYouTube) {
-          const r = await fetch(
+          // Deadlined like everything else the person is waiting on. It is a
+          // third party rather than our API, which if anything makes it MORE
+          // likely to accept a connection and go quiet — and this runs inside a
+          // query, so a request that never answers is a preview that spins for
+          // the life of the screen. The surrounding catch turns the timeout
+          // into "no preview", which is the right outcome for a link card.
+          const r = await fetchWithTimeout(
             `https://www.youtube.com/oembed?url=${encodeURIComponent(firstUrl)}&format=json`,
+            {},
+            { path: 'youtube.com/oembed', timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
           );
           if (r.ok) {
             const j = (await r.json()) as {

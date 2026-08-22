@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import SNSContent from '@/components/SNSContent';
@@ -184,7 +185,7 @@ export default function PostCard({
     async (optionIds: string[]) => {
       setPollLoading(true);
       try {
-        const res = await fetch(`/api/posts/${post.id}/poll/vote`, {
+        const res = await apiFetch(`/api/posts/${post.id}/poll/vote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ optionIds }),
@@ -205,7 +206,7 @@ export default function PostCard({
   const clearPollVote = useCallback(async () => {
     setPollLoading(true);
     try {
-      const res = await fetch(`/api/posts/${post.id}/poll/vote`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/posts/${post.id}/poll/vote`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? 'Unvote failed');
@@ -221,7 +222,7 @@ export default function PostCard({
     e.preventDefault();
     e.stopPropagation();
     try {
-      await fetch(`/api/posts/${post.id}/pin`, { method: 'POST' });
+      await apiFetch(`/api/posts/${post.id}/pin`, { method: 'POST' });
       onPin?.(post.id);
     } catch {}
   };

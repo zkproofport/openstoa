@@ -21,6 +21,7 @@
  * `stripInviteHistory(url)`. The token can be revoked; the keys cannot.
  */
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import {
@@ -125,7 +126,7 @@ export default function InviteDialog({ topicId, visibility, open, onClose }: Inv
     setMinting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/topics/${topicId}/invite`, {
+      const res = await apiFetch(`/api/topics/${topicId}/invite`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

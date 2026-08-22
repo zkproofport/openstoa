@@ -24,6 +24,7 @@
  * badges`) — each renders its own explanatory line rather than being
  * collapsed into a single generic empty state.
  */
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from './Avatar';
@@ -54,7 +55,7 @@ const VIEWER_TTL_MS = 60_000;
 async function resolveViewerUserId(): Promise<string | null> {
   if (viewerCache && Date.now() - viewerCache.at < VIEWER_TTL_MS) return viewerCache.userId;
   try {
-    const r = await fetch('/api/auth/session', { credentials: 'include' });
+    const r = await apiFetch('/api/auth/session', { credentials: 'include' });
     const d = r.ok ? await r.json() : null;
     const userId: string | null = d?.userId ?? null;
     viewerCache = { at: Date.now(), userId };
@@ -177,7 +178,7 @@ export default function UserCard({
       if (starting) return;
       setStarting(true);
       try {
-        const res = await fetch('/api/dm', {
+        const res = await apiFetch('/api/dm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId }),

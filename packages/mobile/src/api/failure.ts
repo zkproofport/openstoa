@@ -16,10 +16,22 @@
  * there isn't one.
  */
 import type { HostApi } from '@openstoa/miniapp-bridge';
-import { OpenStoaApiError, OpenStoaNetworkError } from './openstoaClient';
+import { OpenStoaApiError, OpenStoaNetworkError, OpenStoaTimeoutError } from './openstoaClient';
 
 /** The host error code for "the request never reached the server". */
 export const NETWORK_ERROR_CODE = 'E9998';
+
+/**
+ * The host error code for "the server never answered".
+ *
+ * Its OWN code, not `NETWORK_ERROR_CODE`, because the two mean opposite things
+ * about the person's data. A request that never left the device changed
+ * nothing, and the modal says so. A request that was accepted and then went
+ * unanswered may well have landed — so its modal must not promise otherwise,
+ * and telling someone "nothing was changed" when the post might have been
+ * created is the kind of wrong that makes them post it twice.
+ */
+export const TIMEOUT_ERROR_CODE = 'E9997';
 
 export interface Failure {
   /** Which host error modal to open. */
@@ -46,6 +58,12 @@ export interface Failure {
 export function describeFailure(e: unknown, fallbackCode: string): Failure {
   if (e instanceof OpenStoaNetworkError) {
     return { code: NETWORK_ERROR_CODE, detail: e.message, inline: null };
+  }
+  // Before the API-error branch and separate from the network one: a deadline
+  // that expired is neither a status the server chose nor a request that never
+  // went out. See `TIMEOUT_ERROR_CODE`.
+  if (e instanceof OpenStoaTimeoutError) {
+    return { code: TIMEOUT_ERROR_CODE, detail: e.message, inline: null };
   }
   if (e instanceof OpenStoaApiError) {
     const explained = e.status < 500 ? e.serverMessage : null;

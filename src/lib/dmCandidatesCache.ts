@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/apiFetch';
 /**
  * Session-scoped cache for `GET /api/dm/candidates` (P-O chat rail).
  *
@@ -59,7 +60,7 @@ export async function getDmCandidates(force = false): Promise<DmCandidatesResult
   if (!force && cached && Date.now() - cached.at < TTL_MS) return { ok: true, data: cached.data };
   if (!force && inflight) return inflight;
 
-  inflight = fetch('/api/dm/candidates', { credentials: 'include' })
+  inflight = apiFetch('/api/dm/candidates', { credentials: 'include' })
     .then(async (r): Promise<DmCandidatesResult> => {
       // `?? null` because a Response-like without a numeric status (a partial
       // mock, a polyfill) must still satisfy `number | null` rather than
@@ -92,7 +93,7 @@ async function getExistingDmPeerIds(force = false): Promise<Set<string>> {
   if (!force && cachedDmPeerIds && Date.now() - cachedDmPeerIds.at < TTL_MS) return cachedDmPeerIds.ids;
   if (!force && dmPeerIdsInflight) return dmPeerIdsInflight;
 
-  dmPeerIdsInflight = fetch('/api/dm', { credentials: 'include' })
+  dmPeerIdsInflight = apiFetch('/api/dm', { credentials: 'include' })
     .then(async (r): Promise<Set<string>> => {
       if (!r.ok) return new Set();
       const d = (await r.json()) as { dms?: Array<{ peer?: { userId?: string } }> };

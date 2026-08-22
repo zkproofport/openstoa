@@ -9,6 +9,7 @@
  * stand on its own, so the heading, the identity it is naming, and the one
  * action are the whole page.
  */
+import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useState, useEffect, Suspense } from 'react';
 import { isDefaultNickname } from '@/lib/defaultNickname';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -46,7 +47,7 @@ function ProfilePageInner() {
   const [imageUploading, setImageUploading] = useState(false);
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (!data?.userId) {
@@ -78,10 +79,15 @@ function ProfilePageInner() {
       const form = new FormData();
       form.append('file', new File([resized], 'avatar.webp', { type: 'image/webp' }));
       form.append('purpose', 'avatar');
-      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      // Upload deadline, not the ordinary one — the clock covers the body.
+      const res = await apiFetch('/api/upload', {
+        method: 'POST',
+        body: form,
+        timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+      });
       if (!res.ok) throw new Error(t('profilePage.uploadImageFailed'));
       const { publicUrl } = (await res.json()) as { publicUrl: string };
-      const saveRes = await fetch('/api/profile/image', {
+      const saveRes = await apiFetch('/api/profile/image', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: publicUrl }),
@@ -98,7 +104,7 @@ function ProfilePageInner() {
   async function handleImageRemove() {
     setImageUploading(true);
     try {
-      const res = await fetch('/api/profile/image', { method: 'DELETE' });
+      const res = await apiFetch('/api/profile/image', { method: 'DELETE' });
       if (!res.ok) throw new Error(t('profilePage.removeImageFailed'));
       setProfileImage(null);
     } catch (err) {
@@ -133,7 +139,7 @@ function ProfilePageInner() {
     setError(null);
 
     try {
-      const res = await fetch('/api/profile/nickname', {
+      const res = await apiFetch('/api/profile/nickname', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nickname }),

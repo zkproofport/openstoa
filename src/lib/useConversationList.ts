@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useCallback, useEffect, useState } from 'react';
 import { sortConversationsByActivity } from '@/lib/chatSort';
 import { sortDmChannels } from '@/lib/dm';
@@ -66,8 +67,8 @@ export function useConversationList<T extends ConversationTopic, D>(options?: {
     void (async () => {
       try {
         const [topicsRes, dmsRes] = await Promise.all([
-          fetch('/api/topics', { credentials: 'include' }),
-          fetch('/api/dm', { credentials: 'include' }),
+          apiFetch('/api/topics', { credentials: 'include' }),
+          apiFetch('/api/dm', { credentials: 'include' }),
         ]);
         if (topicsRes.status === 401 || dmsRes.status === 401) {
           setUnauthenticated(true);

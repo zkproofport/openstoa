@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
 import { CommentIcon, EyeIcon, ShareIcon, TrashIcon, RecordIcon } from '@/components/icons';
 import VotePill from './VotePill';
@@ -81,7 +82,7 @@ export default function PostActionBar({
     if (variant !== 'list' || !sessionUserId || sessionUserId === authorId) return;
     if (typeof userRecorded === 'boolean') return;
     let cancelled = false;
-    fetch(`/api/posts/${postId}/records`)
+    apiFetch(`/api/posts/${postId}/records`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data) {
@@ -156,7 +157,7 @@ export default function PostActionBar({
     }
     setDeleting(true);
     try {
-      const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/posts/${postId}`, { method: 'DELETE' });
       if (res.ok) onDelete?.(postId);
     } finally {
       setDeleting(false);

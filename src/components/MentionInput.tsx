@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
 
 interface MentionSuggestion {
@@ -38,7 +39,7 @@ export default function MentionInput({
       const ctrl = new AbortController();
       fetchRef.current = ctrl;
       try {
-        const res = await fetch(
+        const res = await apiFetch(
           `/api/topics/${topicId}/members?q=${encodeURIComponent(q)}`,
           { signal: ctrl.signal },
         );

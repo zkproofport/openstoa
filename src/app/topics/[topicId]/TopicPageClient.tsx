@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getMlsSessionStore } from '@/lib/mls/webTransport';
@@ -206,7 +207,7 @@ export default function TopicPageClient() {
   }
 
   useEffect(() => {
-    fetch('/api/auth/session')
+    apiFetch('/api/auth/session')
       .then((r) => r.json())
       .then((data) => {
         if (data?.userId) {
@@ -226,7 +227,7 @@ export default function TopicPageClient() {
   useEffect(() => {
     loadTopic();
     loadPosts(0, true, null, 'new');
-    fetch(`/api/tags?topicId=${topicId}`)
+    apiFetch(`/api/tags?topicId=${topicId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.tags) setPopularTags(data.tags); })
       .catch(() => {});
@@ -259,7 +260,7 @@ export default function TopicPageClient() {
 
   async function loadTopic() {
     try {
-      const res = await fetch(`/api/topics/${topicId}`);
+      const res = await apiFetch(`/api/topics/${topicId}`);
       if (res.status === 401) {
         if (isGuest) { router.replace('/topics'); return; }
         router.replace('/');
@@ -300,7 +301,7 @@ export default function TopicPageClient() {
       const tagParam = tag ? `&tag=${encodeURIComponent(tag)}` : '';
       // 'pinned' is a client-side filter — request newest, then filter in memory.
       const apiSort = currentSort === 'popular' ? 'hot' : currentSort === 'pinned' ? 'new' : currentSort;
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/topics/${topicId}/posts?limit=${PAGE_SIZE}&offset=${currentOffset}&sort=${apiSort}${tagParam}`,
         { cache: 'no-store' }
       );
@@ -362,7 +363,7 @@ export default function TopicPageClient() {
     }
     tagSearchTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/tags?topicId=${topicId}&q=${encodeURIComponent(value.trim())}`);
+        const res = await apiFetch(`/api/tags?topicId=${topicId}&q=${encodeURIComponent(value.trim())}`);
         if (!res.ok) return;
         const data = await res.json();
         setTagSuggestions(data.tags ?? []);
@@ -395,7 +396,7 @@ export default function TopicPageClient() {
     }
     setLeaving(true);
     try {
-      const res = await fetch(`/api/topics/${topicId}/leave`, { method: 'POST' });
+      const res = await apiFetch(`/api/topics/${topicId}/leave`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         // 409 is the owner case and deserves the instruction, not the generic
@@ -452,7 +453,10 @@ export default function TopicPageClient() {
     const orphans = postImages.filter((u) => !initial.has(u));
     if (orphans.length > 0) {
       // Fire-and-forget — same pattern as the mobile screen's R2 sweep.
-      void fetch('/api/upload', {
+      void apiFetch('/api/upload', {
+      // A multi-megabyte body going up: the ordinary deadline covers the
+      // WHOLE exchange, so 15s would cut off a transfer that is making progress.
+      timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls: orphans }),
@@ -492,7 +496,7 @@ export default function TopicPageClient() {
         };
       }
 
-      const res = await fetch(`/api/topics/${topicId}/posts`, {
+      const res = await apiFetch(`/api/topics/${topicId}/posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

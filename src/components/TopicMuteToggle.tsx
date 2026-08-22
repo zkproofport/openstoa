@@ -14,6 +14,7 @@
  * The toggle is optimistic and reverts on failure, so the rendered state can
  * never disagree with the server for longer than one round trip.
  */
+import { apiFetch } from '@/lib/apiFetch';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -53,7 +54,7 @@ export default function TopicMuteToggle({ topicId, enabled, style }: TopicMuteTo
       return;
     }
     let cancelled = false;
-    fetch(`/api/topics/${topicId}/push`, { credentials: 'include' })
+    apiFetch(`/api/topics/${topicId}/push`, { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { muted?: boolean } | null) => {
         if (!cancelled && d) setMuted(d.muted === true);
@@ -70,7 +71,7 @@ export default function TopicMuteToggle({ topicId, enabled, style }: TopicMuteTo
     setBusy(true);
     setMuted(next); // optimistic
     try {
-      const res = await fetch(`/api/topics/${topicId}/push`, {
+      const res = await apiFetch(`/api/topics/${topicId}/push`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

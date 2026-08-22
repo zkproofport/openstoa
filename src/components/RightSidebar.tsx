@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { relativeTime } from '@/lib/utils';
@@ -80,7 +81,7 @@ export default function RightSidebar({
   // Fetch recent posts from feed endpoint (falls back to topics endpoint)
   useEffect(() => {
     // Try the feed endpoint first
-    fetch('/api/feed?sort=new&limit=6')
+    apiFetch('/api/feed?sort=new&limit=6')
       .then((r) => {
         if (!r.ok) throw new Error('feed not available');
         return r.json();
@@ -108,7 +109,7 @@ export default function RightSidebar({
       })
       .catch(() => {
         // Fallback: fetch from topics active endpoint
-        fetch('/api/topics?view=all&sort=active&limit=6')
+        apiFetch('/api/topics?view=all&sort=active&limit=6')
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (data?.topics) {

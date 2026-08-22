@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -298,7 +299,7 @@ export default function LeftSidebar({
 
   // Fetch categories from API, fall back to defaults
   useEffect(() => {
-    fetch('/api/categories')
+    apiFetch('/api/categories')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.categories && data.categories.length > 0) {
@@ -310,7 +311,7 @@ export default function LeftSidebar({
 
   // Fetch all topics (for grouping under categories)
   useEffect(() => {
-    fetch('/api/topics?view=all&sort=hot&limit=50')
+    apiFetch('/api/topics?view=all&sort=hot&limit=50')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.topics) {
@@ -322,7 +323,7 @@ export default function LeftSidebar({
 
   // Fetch community stats from dedicated endpoint
   useEffect(() => {
-    fetch('/api/stats')
+    apiFetch('/api/stats')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) {
@@ -337,7 +338,7 @@ export default function LeftSidebar({
 
   // Fetch popular tags
   useEffect(() => {
-    fetch('/api/tags')
+    apiFetch('/api/tags')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.tags) {
