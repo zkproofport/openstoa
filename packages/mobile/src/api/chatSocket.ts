@@ -5,7 +5,15 @@ import type { ChatMessage, PresencePayload } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { getMlsSessionStore, toDisplayMessageMls } from '../crypto/mobileTransport';
 
-type SSEEventName = 'message' | 'presence' | 'ping';
+/**
+ * The event names the chat stream emits ON TOP of react-native-sse's built-ins
+ * ('open' | 'message' | 'error' | 'close'). `EventSource` is generic over
+ * exactly this set — leaving it off makes the parameter `never`, which is why
+ * `addEventListener('presence', ...)` used to need a cast to compile. The cast
+ * silenced the error without registering the listener type, so a rename on
+ * either side went unnoticed; the generic makes the compiler check it.
+ */
+type SSECustomEventName = 'presence' | 'ping';
 
 export interface UseChatSocketResult {
   messages: ChatMessage[];
@@ -30,7 +38,7 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
   const [presence, setPresence] = useState<PresencePayload | null>(null);
   const [status, setStatus] = useState<UseChatSocketResult['status']>('idle');
   const [error, setError] = useState<string | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const esRef = useRef<EventSource<SSECustomEventName> | null>(null);
 
   useEffect(() => {
     if (!topicId) {
@@ -49,7 +57,7 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
         if (cancelled) return;
 
         const url = `${host.getEnvironment().openstoaBaseUrl}/api/topics/${topicId}/chat/subscribe`;
-        const es = new EventSource(url, {
+        const es = new EventSource<SSECustomEventName>(url, {
           headers: { Authorization: `Bearer ${token}` },
           // react-native-sse handles reconnect via its own polling timer.
         });
@@ -107,9 +115,9 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
           setError(e?.message ?? 'SSE error');
         };
 
-        es.addEventListener('message' as SSEEventName, onMessage);
-        es.addEventListener('presence' as SSEEventName, onPresence);
-        es.addEventListener('ping' as SSEEventName, onPing);
+        es.addEventListener('message', onMessage);
+        es.addEventListener('presence', onPresence);
+        es.addEventListener('ping', onPing);
         es.addEventListener('error', onError);
       } catch (err) {
         if (cancelled) return;

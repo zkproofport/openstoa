@@ -48,6 +48,8 @@ declare module 'expo-image-picker' {
   export interface ImagePickerOptions {
     mediaTypes?: string;
     allowsEditing?: boolean;
+    /** `[x, y]` crop ratio for the built-in editor. Only honoured alongside `allowsEditing`. */
+    aspect?: [number, number];
     quality?: number;
     allowsMultipleSelection?: boolean;
     /**

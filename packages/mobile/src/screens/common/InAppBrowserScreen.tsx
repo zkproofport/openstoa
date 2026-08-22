@@ -10,7 +10,7 @@ import {
 import { useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
-import type { WebViewNavigation } from 'react-native-webview';
+import type { WebViewNavigation, WebViewMethods, WebViewProgressEvent } from 'react-native-webview';
 import Feather from 'react-native-vector-icons/Feather';
 import { useThemeColors } from '../../theme/ThemeContext';
 
@@ -27,10 +27,12 @@ export function InAppBrowserScreen() {
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [currentUrl, setCurrentUrl] = useState(url);
-  const webViewRef = useRef<WebView | null>(null);
+  // `WebView` is a value, not a type — the ref yields the imperative
+  // command handle (`goBack`/`goForward`/`reload`), not the component.
+  const webViewRef = useRef<WebViewMethods | null>(null);
   const progressOpacity = useRef(new Animated.Value(0)).current;
 
-  const onLoadProgress = useCallback((event: { nativeEvent: { progress: number } }) => {
+  const onLoadProgress = useCallback((event: WebViewProgressEvent) => {
     setProgress(event.nativeEvent.progress);
   }, []);
 

@@ -10,7 +10,7 @@ import { MediaGallery } from './MediaGallery';
 import { PollRenderer } from './PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls, type MediaItem } from './PostContent';
 import { PostBodyWithOg } from './PostBodyWithOg';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon } from './icons';
 import Feather from 'react-native-vector-icons/Feather';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -142,7 +142,7 @@ function makeStyles(colors: ThemeColors) {
     authorTimestamp: {
       fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
-      fontVariantNumeric: 'tabular-nums',
+      fontVariant: ['tabular-nums'],
     },
     authorSeparator: {
       fontSize: TYPE_SCALE.caption,
@@ -386,10 +386,25 @@ function makeStyles(colors: ThemeColors) {
   });
 }
 
+/**
+ * The routes a PostCard can reach from wherever it happens to be mounted.
+ *
+ * The card is rendered from all four stacks (Feed / Topics / Profile / Chat)
+ * and each of them registers `InAppBrowser` with exactly this param shape —
+ * see `src/navigation/stacks/*.tsx`, and the "external links open in the
+ * in-app WebView" rule that requires every such stack to carry it. Typing the
+ * hook with the intersection is what lets `navigate` be checked at all: a bare
+ * `useNavigation()` resolves to the empty global param list, where every
+ * argument is `never` and only a double `as never` compiles.
+ */
+type PostCardRoutes = {
+  InAppBrowser: { url: string; title?: string };
+};
+
 export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
   const { t } = useTranslation();
   const { colors } = useThemeColors();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp<PostCardRoutes>>();
   const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
   // Overflow tracked by measuring the body's natural height with onLayout
@@ -609,7 +624,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
             <View onLayout={handleBodyLayout}>
               <PostBodyWithOg
                 content={stripVideoUrls(rawContent)}
-                onOpenUrl={(url) => navigation.navigate('InAppBrowser' as never, { url } as never)}
+                onOpenUrl={(url) => navigation.navigate('InAppBrowser', { url })}
               />
             </View>
             {/* Bottom fade so the last partial line dissolves into the card

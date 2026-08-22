@@ -80,7 +80,7 @@ function makeStyles(colors: ThemeColors) {
       color: '#FFFFFF',
       fontSize: TYPE_SCALE.label,
       fontWeight: '600',
-      fontVariantNumeric: 'tabular-nums',
+      fontVariant: ['tabular-nums'],
     },
     dotsRow: {
       flexDirection: 'row',
@@ -155,7 +155,7 @@ function makeStyles(colors: ThemeColors) {
       color: '#FFFFFF',
       fontSize: TYPE_SCALE.label,
       fontWeight: '600',
-      fontVariantNumeric: 'tabular-nums',
+      fontVariant: ['tabular-nums'],
     },
   });
 }

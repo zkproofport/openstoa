@@ -18,7 +18,10 @@ declare module 'react-native-svg' {
     children?: React.ReactNode;
   }
 
-  interface PathProps extends CommonProps { d?: string; }
+  // `fillRule` decides how self-intersecting subpaths are filled. The
+  // OpenStoa mark is one path with counter-wound holes, so it needs
+  // 'evenodd' — the SVG default is 'nonzero', which fills the holes in.
+  interface PathProps extends CommonProps { d?: string; fillRule?: 'evenodd' | 'nonzero'; }
   interface CircleProps extends CommonProps { cx?: number | string; cy?: number | string; r?: number | string; }
   interface LineProps extends CommonProps { x1?: number | string; y1?: number | string; x2?: number | string; y2?: number | string; }
   interface PolylineProps extends CommonProps { points?: string; }

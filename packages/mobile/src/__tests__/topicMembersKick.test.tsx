@@ -32,7 +32,18 @@ import { useOpenStoaSession } from '../stores/sessionStore';
 // The stand-in aliased in for every '.tsx' test — see vitest.config.ts. Real
 // import specifier so this file observes the SAME Alert/ActionSheetIOS the
 // screen under test calls into, not a second copy.
-import { Alert, ActionSheetIOS } from 'react-native';
+import { Alert as RNAlert, ActionSheetIOS as RNActionSheetIOS } from 'react-native';
+import type * as Harness from './harness/reactNative';
+
+// ...but assert against the STAND-IN's shape. It records what the screen was
+// asked to show (`Alert.alerts`, `ActionSheetIOS.calls`) and can be cleared
+// between cases (`reset()`); the real RN statics have none of that, and
+// `react-native` is what TypeScript resolves the import above to. Re-typing
+// here rather than importing `./harness/reactNative` directly keeps the module
+// instance shared with the screen under test, while `typeof Harness.*` keeps
+// the re-type honest: rename a recorder in the harness and this breaks.
+const Alert = RNAlert as unknown as typeof Harness.Alert;
+const ActionSheetIOS = RNActionSheetIOS as unknown as typeof Harness.ActionSheetIOS;
 
 const TOPIC = '11111111-2222-4333-8444-555555555555';
 
@@ -64,7 +75,10 @@ function membersFetch(currentUserRole: 'owner' | 'admin' | 'member') {
 /** Every TouchableOpacity that would fire a long-press — i.e. every member
  *  row the current viewer can act on at all. */
 function longPressableRows(root: ReactTestInstance) {
-  return root.findAll((n) => typeof n.type === 'string' && n.type === 'TouchableOpacity' && !!n.props.onLongPress);
+  // `String(n.type)`, not `typeof n.type === 'string' && n.type === ...`:
+  // narrowing `ElementType` to `string` narrows it to the DOM intrinsic tag
+  // names react's JSX types declare, which 'TouchableOpacity' is not one of.
+  return root.findAll((n) => String(n.type) === 'TouchableOpacity' && !!n.props.onLongPress);
 }
 
 /**

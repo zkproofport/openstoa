@@ -262,7 +262,7 @@ function makeStyles(colors: ThemeColors) {
     charCount: {
       fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
-      fontVariantNumeric: 'tabular-nums',
+      fontVariant: ['tabular-nums'],
     },
     // Tag chips
     tagRow: {

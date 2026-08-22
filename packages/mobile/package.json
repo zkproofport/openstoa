@@ -34,6 +34,7 @@
   },
   "scripts": {
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

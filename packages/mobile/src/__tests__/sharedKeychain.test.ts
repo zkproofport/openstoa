@@ -32,7 +32,7 @@ const TAK_B64 = Buffer.alloc(TAK_BYTES, 7).toString('base64'); // 32 bytes → 4
 const TOPIC = '00000000-0000-4000-8000-00000000abcd';
 
 function store(impl?: SecureStoreLike['setItemAsync']) {
-  const spy = vi.fn(impl ?? (async () => {}));
+  const spy = vi.fn<SecureStoreLike['setItemAsync']>(impl ?? (async () => {}));
   const s: SecureStoreLike = { setItemAsync: spy, AFTER_FIRST_UNLOCK: 'afterFirstUnlock' };
   return { s, spy };
 }
@@ -78,7 +78,10 @@ describe('mirrorTakWith — happy path + contract invocation', () => {
   });
 
   it('an older module without AFTER_FIRST_UNLOCK still writes (option omitted)', async () => {
-    const spy = vi.fn(async () => {});
+    // Typed to the real `setItemAsync`, not `async () => {}` — a zero-arg
+    // stub makes `spy.mock.calls` a `[][]`, so asserting on the options
+    // argument (index 2) is an out-of-bounds read on an empty tuple.
+    const spy = vi.fn<SecureStoreLike['setItemAsync']>(async () => {});
     const s: SecureStoreLike = { setItemAsync: spy };
     await expect(mirrorTakWith(s, 'ios', TOPIC, 1, TAK_B64)).resolves.toBe(true);
     expect(spy.mock.calls[0][2]).toEqual({

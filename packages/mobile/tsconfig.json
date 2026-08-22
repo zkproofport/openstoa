@@ -3,8 +3,14 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    // ES2022, not ES2020: the test suite uses `Array.prototype.at`, which
+    // ES2020 does not declare. It only compiled because a transitive
+    // `/// <reference lib>` in the host app's node_modules happened to pull a
+    // newer lib in — take the host away (as CI does) and the same source stops
+    // compiling. `target` stays at ES2020; Metro/Babel transpiles anyway, and
+    // Hermes has `at`.
     "lib": [
-      "ES2020",
+      "ES2022",
       "DOM"
     ],
     "jsx": "react-jsx",
@@ -15,39 +21,93 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    // `react-native` is deliberately NOT listed. The only thing that would
+    // satisfy it is the deprecated `@types/react-native` (pinned at 0.70 in
+    // the host app, eleven minors behind the RN actually in use), and it is
+    // not load-bearing: `import ... from 'react-native'` resolves through the
+    // `paths` entry below to the real package's own `types/index.d.ts`.
     "types": [
-      "react",
-      "react-native"
+      "react"
     ],
     "paths": {
+      // Two candidates for every host-owned module, tried in order:
+      //   1. the host app's node_modules, one directory above the openstoa
+      //      checkout — present on a developer machine, where the mini-app is
+      //      built and run as part of `proofport-app`;
+      //   2. `./typecheck/node_modules`, this package's TYPE-ONLY dependency
+      //      root — present in CI, where there is no host app to borrow from.
+      // TypeScript takes the first candidate that exists and falls through to
+      // ordinary node resolution when neither does, so the same tsconfig is
+      // correct in both places without a second config to keep in sync.
+      //
+      // The type-only root lives under `typecheck/` and NOT in this package's
+      // own `node_modules` on purpose: Metro resolves the mini-app's imports
+      // by walking up from `src/`, so a second copy of `react-native` in
+      // `packages/mobile/node_modules` would shadow the host's and give the
+      // built app two React Natives. `packages/mobile/typecheck/node_modules`
+      // is not on any ancestor path of `src/`, so nothing but tsc can see it.
       "react-native": [
-        "../../../proofport-app/node_modules/react-native"
+        "../../../proofport-app/node_modules/react-native",
+        "./typecheck/node_modules/react-native"
       ],
       "react-native/*": [
-        "../../../proofport-app/node_modules/react-native/*"
+        "../../../proofport-app/node_modules/react-native/*",
+        "./typecheck/node_modules/react-native/*"
       ],
       "react-native-*": [
-        "../../../proofport-app/node_modules/react-native-*"
+        "../../../proofport-app/node_modules/react-native-*",
+        "./typecheck/node_modules/react-native-*"
       ],
       "@react-navigation/*": [
-        "../../../proofport-app/node_modules/@react-navigation/*"
+        "../../../proofport-app/node_modules/@react-navigation/*",
+        "./typecheck/node_modules/@react-navigation/*"
       ],
       "@openstoa/*": [
         "../*/src"
       ],
       "react-i18next": [
-        "../../../proofport-app/node_modules/react-i18next"
+        "../../../proofport-app/node_modules/react-i18next",
+        "./typecheck/node_modules/react-i18next"
       ],
       "i18next": [
-        "../../../proofport-app/node_modules/i18next"
+        "../../../proofport-app/node_modules/i18next",
+        "./typecheck/node_modules/i18next"
       ],
+      // `@types/...` FIRST. react-native-vector-icons ships Flow, not
+      // TypeScript, so pointing straight at the package resolves every
+      // `react-native-vector-icons/Feather` import to an untyped .js file —
+      // which is what put 18 of this package's 44 accumulated errors there.
       "react-native-vector-icons/*": [
+        "../../../proofport-app/node_modules/@types/react-native-vector-icons/*",
+        "./typecheck/node_modules/@types/react-native-vector-icons/*",
         "../../../proofport-app/node_modules/react-native-vector-icons/*"
+      ],
+      // CI-ONLY fallbacks for the three modules the mini-app borrows that
+      // nothing else in this repo installs. Each is a single candidate that
+      // does not exist on a developer machine, so local resolution is
+      // unchanged; in CI there is nowhere else for them to come from.
+      // (This package's own deps — react, zustand, @tanstack/react-query,
+      // react-native-sse, vitest — need no entry: `npm ci` in packages/mobile
+      // puts them where ordinary node resolution already finds them.)
+      "react-test-renderer": [
+        "./typecheck/node_modules/@types/react-test-renderer"
+      ],
+      "ts-mls": [
+        "./typecheck/node_modules/ts-mls"
+      ],
+      // ts-mls publishes `./*.js` -> `./dist/src/*.d.ts` through `exports`,
+      // which a path mapping does not read — point at the declarations.
+      "ts-mls/*": [
+        "./typecheck/node_modules/ts-mls/dist/src/*"
+      ],
+      "@noble/ciphers/*": [
+        "./typecheck/node_modules/@noble/ciphers/*"
       ]
     },
     "typeRoots": [
       "../../node_modules/@types",
-      "../../../proofport-app/node_modules/@types"
+      "../../../proofport-app/node_modules/@types",
+      "./typecheck/node_modules/@types"
     ]
   },
   "include": [

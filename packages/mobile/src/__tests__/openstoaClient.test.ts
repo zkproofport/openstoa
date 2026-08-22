@@ -38,6 +38,13 @@ function makeFakeHost(opts: FakeHostOpts = {}): HostApi & {
     getOpenStoaToken,
     loginToOpenStoa,
     logoutFromOpenStoa,
+    // Required by HostApi. Not exercised by these cases, but present so the
+    // fake is not narrower than the interface the client is written against —
+    // a client that starts calling one of them must fail loudly here rather
+    // than pass against a mock that never had the method.
+    setOpenStoaToken: vi.fn(async () => {}),
+    getDeveloperMode: () => false,
+    onDeveloperModeChange: () => () => {},
     generateProof: vi.fn(),
     exitToHost: vi.fn(),
     showError: vi.fn(),

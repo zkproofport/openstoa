@@ -434,7 +434,6 @@ function makeStyles(colors: ThemeColors) {
     commentAuthorInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
     commentAuthor: { fontSize: TYPE_SCALE.caption, fontWeight: '600', color: colors.text.primary },
     commentMeta: { fontSize: TYPE_SCALE.caption, color: colors.text.tertiary },
-    commentBody: { fontSize: TYPE_SCALE.body, lineHeight: 22, color: colors.text.primary },
     commentDeleted: { fontSize: TYPE_SCALE.bodySmall, color: colors.text.tertiary, fontStyle: 'italic' },
 
     deleteBtn: {
@@ -606,7 +605,15 @@ function CommentRow({
           </TouchableOpacity>
         )}
       </View>
-      <View style={styles.commentBody}>
+      {/* No text style here: `PostBodyWithOg` owns its own typography (see
+          `PostContent`), so font/colour set on this wrapper View is inert.
+          The `commentBody` text style this View used to carry stopped taking
+          effect when the body moved from <Text> to <PostBodyWithOg>, which
+          means comment bodies render at PostContent's default (lineHeight 18,
+          text.secondary) rather than the 22 / text.primary once intended.
+          Restoring that intent needs a style prop on PostBodyWithOg, which is
+          a rendering change, not a type fix. */}
+      <View>
         <PostBodyWithOg content={comment.content} onOpenUrl={openInBrowser} />
       </View>
     </View>
@@ -618,11 +625,13 @@ function CommentRow({
 // ---------------------------------------------------------------------------
 
 // Extended Post type to handle fields returned by the detail endpoint
-// that are not yet in api-types (topicTitle, tags, userVoted, authorProfileImage)
+// that are not yet in api-types (topicTitle, tags, authorProfileImage).
+// `userVoted` is NOT redeclared here: `Post` already carries it as
+// `1 | -1 | null`, and restating it as `number | null` widened the property,
+// which is an illegal interface extension.
 interface PostDetail extends Post {
   topicTitle?: string;
   tags?: { name: string; slug: string }[];
-  userVoted?: number | null;
   authorProfileImage?: string | null;
   // Whether the current user is a member of this post's topic. Used to
   // show a "Joined" badge next to the topic label so the user knows
@@ -730,7 +739,7 @@ export function PostDetailScreen() {
   // Everything below is derived from the React Query cache. No local
   // mirroring — that's what kept causing the "tap, flash, revert" desync
   // (props/cache updated, useState didn't).
-  const userVote = (post?.userVoted ?? null) as 1 | -1 | null;
+  const userVote = post?.userVoted ?? null;
   const upvoteCount = post?.upvoteCount ?? 0;
   const bookmarked =
     bookmarkData?.bookmarked ?? !!(post as { userBookmarked?: boolean } | undefined)?.userBookmarked;

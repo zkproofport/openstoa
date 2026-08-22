@@ -289,7 +289,10 @@ export function GuestSignInCard({
         {body ?? t('openstoa.signInPrompt.guestCardBody')}
       </Text>
       <Pressable
-        onPress={open}
+        // `() => open()`, NOT `open` — Pressable passes a
+        // GestureResponderEvent as the first argument, which `open` would
+        // store as the post-sign-in `onSignedIn` action and then try to CALL.
+        onPress={() => open()}
         style={({ pressed }) => [
           cardStyles.button,
           {

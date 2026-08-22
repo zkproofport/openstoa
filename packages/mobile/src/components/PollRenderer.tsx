@@ -106,13 +106,13 @@ function makeStyles(colors: ThemeColors) {
     resultPct: {
       fontSize: TYPE_SCALE.label,
       color: colors.text.secondary,
-      fontVariantNumeric: 'tabular-nums',
+      fontVariant: ['tabular-nums'],
       fontWeight: '600',
     },
     resultCount: {
       fontSize: TYPE_SCALE.label,
       color: colors.text.tertiary,
-      fontVariantNumeric: 'tabular-nums',
+      fontVariant: ['tabular-nums'],
     },
     footerRow: {
       flexDirection: 'row',
@@ -154,7 +154,12 @@ function makeStyles(colors: ThemeColors) {
   });
 }
 
-function formatTimeLeft(closesAtIso: string | null | undefined, t: (k: string, o?: object) => string): string {
+/** Exactly what `useTranslation()` hands back — i18next's `TFunction` is a
+ *  set of overloads, not a plain `(key, opts) => string`, so a hand-rolled
+ *  signature is not assignable to it. */
+type Translate = ReturnType<typeof useTranslation>['t'];
+
+function formatTimeLeft(closesAtIso: string | null | undefined, t: Translate): string {
   if (!closesAtIso) return '';
   const diff = new Date(closesAtIso).getTime() - Date.now();
   if (diff <= 0) return t('openstoa.poll.closed');
