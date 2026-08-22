@@ -263,11 +263,76 @@ a running stack, `docker exec proofport-minio mc anonymous set download local/<b
 same command, forward direction. Effectively instant; a same-host container ACL flip, no
 propagation delay.
 
-### The real R2 equivalent — NOT run from here
+### The real R2 equivalent — STAGING IS DONE (2026-08-23)
+
+Open question #3 is answered. Staging's surfaces, read from the API rather than guessed:
+
+| Surface | Staging (`openstoa-stg`) | Action taken |
+| --- | --- | --- |
+| `r2.dev` dev URL | not enabled | none needed |
+| custom domain | `stg-cdn.zkproofport.app` | set `enabled: false` |
+
+Measured, not assumed — with a REAL object, not a 404 probe. A missing key returns 404
+whether the bucket is open or shut, so probing one proves nothing:
+
+```
+GET https://stg-cdn.zkproofport.app/topics/<id>/chat/<sender>/<blob>.bin
+  before: 200, 12856 bytes        # anonymous, no credentials, ciphertext readable
+  after:  401
+```
+
+**Disabled, not removed.** `wrangler r2 bucket domain remove` also deletes the CNAME it
+created, which makes rollback a DNS change. The REST API takes `{"enabled": false}` on the
+same domain and is a one-field flip back:
+
+```bash
+curl -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/r2/buckets/openstoa-stg/domains/custom/stg-cdn.zkproofport.app" \
+  -H "Authorization: Bearer $CLOUDFLARE_TOKEN" -H 'Content-Type: application/json' \
+  --data '{"enabled":false}'      # "enabled":true to roll back
+```
+
+#### Two things that nearly undid the flip
+
+**1. `R2_PUBLIC_URL` must be RELATIVE, and the first attempt made it absolute.**
+`https://stg-community.zkproofport.app/api/media` reaches the gate and looks correct, but it
+re-creates the very rows the cleanup deleted — every upload mints an absolute URL again. The
+warning is already above under "Deleting the rows is not durable"; it was read too late. The
+wanted value is `/api/media`, and `media-route.test.ts` ("RELATIVE R2_PUBLIC_URL (M-6)") is
+what guarantees the gate does not care about URL shape.
+
+**2. Changing Cloud Run alone does not survive a deploy.** `deploy.yml:270` uses
+`--set-env-vars` (not `--update-env-vars`) and sources `R2_PUBLIC_URL` from a GitHub secret,
+so the next deploy overwrites any manual `gcloud run services update`. Both must change:
+
+```bash
+echo -n "/api/media" | gh secret set STAGING_R2_PUBLIC_URL_NEW     # the durable one
+gcloud run services update proofport-community-staging --region us-central1 \
+  --update-env-vars "R2_PUBLIC_URL=/api/media"                     # takes effect now
+```
+
+The `_NEW` suffix is not optional: `deploy.yml:81-87` appends it whenever
+`target_project = masselabs`, so `STAGING_R2_PUBLIC_URL` (no suffix) belongs to the OLD
+project and editing it changes nothing.
+
+#### Order matters, and staging got away with the wrong one
+
+The correct order is: **relative `R2_PUBLIC_URL` -> redeploy -> delete rows -> flip the
+bucket.** Staging ran truncate -> flip -> fix the URL, which is wrong, and was harmless only
+because the database had just been emptied so there were no rows left to re-break.
+Production has real rows and will not be so forgiving.
+
+#### Chat attachments were never at risk
+
+Worth stating because it is the thing that looks most likely to break: chat media is read
+through `/api/topics/{topicId}/chat/media?key=...` (see `ChatPanel.tsx` and
+`packages/mobile/src/api/openstoaClient.ts`), never through `R2_PUBLIC_URL`. That variable
+only ever addressed plaintext post/topic/profile images. Closing the public domain cannot
+darken chat.
+
+### Finding the surfaces (for production)
 
 An R2 bucket has **two independent** public-read surfaces, and closing one does not close
-the other. Find out which are on before flipping anything — staging's is genuinely unknown
-(open question #3 in `media-bucket-privatisation.md` never got resolved):
+the other. Find out which are on before flipping anything:
 
 ```bash
 # Staging bucket is `openstoa-stg`; production is `openstoa-prod`
@@ -288,7 +353,9 @@ npx wrangler r2 bucket domain remove openstoa-stg --domain <domain from the list
 ```
 
 Production is the same two commands against `openstoa-prod` — but the production flip is
-separately blocked on #83 → #81/M-7 (see items 3/4), so it is not simply "run these now".
+separately blocked on the edge work in items 3/4 (CDN cache rule, rate limit), so it is
+not simply "run these now". (Earlier drafts cited issues #83 and #81 here — neither exists;
+the repo's only open issues are #4 and #5. The blockers are the checklist items themselves.)
 
 Both commands accept `--force`/`-y` to skip the confirmation prompt; do not use it — the prompt
 names the bucket it is about to change. Removing a custom domain **also deletes the CNAME
@@ -324,16 +391,16 @@ items, both marked optional (`(선택)`) and both **unchecked**:
 - [ ] OpenStoa 정적 자산만 캐싱
 ```
 
-Neither is applied. **Status: task #81/M-7 has not started at the Cloudflare config
+Neither is applied. **Status: the item-4 edge work has not started at the Cloudflare config
 layer** — confirmed by reading the checklist state, not inferred from the todo tracker
 alone. Today, `/api/media` relies entirely on Cloudflare's *default* cache behavior, which
 — per the citation already in `media-bucket-privatisation.md`'s Sources — generally does
 not cache API-shaped paths without an explicit Cache Rule.
 
-**A real conflict to flag for whoever builds #81, found by reading both docs together**:
+**A real conflict to flag for whoever builds the edge cache rule (item 4), found by reading both docs together**:
 the one *documented* (optional, unapplied) rule above would **bypass all of `/api/*`** —
 if it's ever applied literally as written, it would also bypass `/api/media`, the opposite
-of what #81 needs. Cloudflare evaluates Cache Rules in priority order, so `/api/media`
+of what the edge cache rule needs. Cloudflare evaluates Cache Rules in priority order, so `/api/media`
 needs either its own higher-priority rule or an explicit carve-out from the blanket
 `/api/*` bypass — not a detail to discover after both rules are live and disagreeing.
 
@@ -345,7 +412,7 @@ curl -sI https://<app-host>/api/media/<a genuinely public key> | grep -i cf-cach
 
 Request it twice. First request from a cold edge node is typically `MISS` or `EXPIRED`;
 the second (from the same edge PoP) should show `HIT`. `DYNAMIC` or `BYPASS` on both means
-nothing is being cached at all — the state #81 needs to fix.
+nothing is being cached at all — the state the edge cache rule needs to fix.
 
 **The check that must not be got wrong — private objects must NEVER show `HIT`:**
 
@@ -360,20 +427,20 @@ The M-5 route already sets `Cache-Control: private` for exactly these objects
 (`src/app/api/media/[...key]/route.ts`), and Cloudflare's documented default honors that —
 but a Cache Rule can override it (an "Eligible for cache: All" + "Edge TTL: Override
 origin" rule ignores the origin's own `Cache-Control` header entirely). **This has to be
-re-verified against whatever Cache Rule #81 actually ships**, not assumed safe because the
+re-verified against whatever Cache Rule item 4 actually ships**, not assumed safe because the
 default was safe before a rule existed.
 
 **Status: UNKNOWN FROM HERE for live edge behavior** (no Cloudflare in front of
 `localhost` — this cannot be exercised from local dev at all, by construction). **VERIFIED
 FROM READING that no rule exists yet** — which makes the "private is never cached" property
 trivially true today (nothing is cached, so nothing can leak) and the "public is cached"
-property false (task not started). Both need re-checking once #81 ships a real rule —
+property false (task not started). Both need re-checking once item 4 ships a real rule —
 passing the first check the day the rule is deployed does not mean it stays true after the
 next edit to that rule.
 
 ## 4. Rate limiting
 
-This is the EDGE rate limit, and it is #81/M-7 — noted as a dependency here, not duplicated.
+This is the EDGE rate limit, and it is item 4 — noted as a dependency here, not duplicated.
 
 **Correction to an earlier draft of this doc**, which said "no rate-limit code exists on
 `/api/media` today (verified by grep)". That was true when written and is now false:
@@ -381,12 +448,12 @@ This is the EDGE rate limit, and it is #81/M-7 — noted as a dependency here, n
 `src/lib/mediaRateLimit.ts`, and the route calls it —
 `checkMediaReadRateLimit(identity)` → 429 with `Retry-After`
 (`src/app/api/media/[...key]/route.ts:236`). So the APPLICATION-level cap now exists; what
-remains for #81 is the edge-level one, in front of the origin, which is a different layer
+remains for item 4 is the edge-level one, in front of the origin, which is a different layer
 solving a different half of the problem (an edge limit spares the origin the request
 entirely; the in-app limit still costs a Cloud Run invocation to answer 429).
 
 Item 4's staging/production verdicts below are unchanged by this — staging is N/A by the
-product decision, and production is blocked on #83 → #81/M-7 regardless.
+product decision, and production is blocked on the item 3/4 edge work regardless.
 
 **What breaks without it, once private:** every image load that isn't an edge-cache `HIT`
 (item 3) reaches the app and runs the M-5 gate's DB query (topic visibility / membership
@@ -429,8 +496,8 @@ depended on bucket access either way, flip or no flip).
 |---|---|---|---|---|
 | 1 | No absolute media URLs stored | **Satisfied** — 54 + 30 found (84 posts), deleted, re-query returns 0 | Unknown from here — run the script's dry run | Unknown from here — run the script's dry run |
 | 2 | Storage layer itself denies anonymous reads | **Satisfied** — MinIO now `private` by default; anonymous direct fetch 200 → 403, gate still 200, verified live | Not done — run the wrangler commands in item 2 | Not done, and blocked on 3/4 anyway |
-| 3 | CDN cache exists, public cacheable, private never cached | **N/A** — no Cloudflare in front of localhost | **N/A by decision** — edge layer is production-only (see note below) | Unsatisfied — blocked on #83 -> #81/M-7 |
-| 4 | Rate limit in front of `/api/media` | In-app cap **exists** (`722436e`); edge cap N/A — no edge in front of localhost | **N/A by decision** — edge layer is production-only (see note below) | Unsatisfied — blocked on #83 -> #81/M-7 |
+| 3 | CDN cache exists, public cacheable, private never cached | **N/A** — no Cloudflare in front of localhost | **N/A by decision** — edge layer is production-only (see note below) | Unsatisfied — blocked on items 3/4 |
+| 4 | Rate limit in front of `/api/media` | In-app cap **exists** (`722436e`); edge cap N/A — no edge in front of localhost | **N/A by decision** — edge layer is production-only (see note below) | Unsatisfied — blocked on items 3/4 |
 | 5 | Rollback path known and its cost is understood | **Documented above** — cheap, not instant for real R2 | Same mechanism, unverified access to actually exercise it from here | Same mechanism, unverified access to actually exercise it from here |
 
 ### The edge layer is PRODUCTION-ONLY, by an explicit product decision
@@ -442,7 +509,7 @@ in front of production is precisely what makes it possible to attach these there
 there.
 
 Read the table accordingly: **staging's bucket flip does not wait on 3 or 4.** Only the
-production flip is blocked, on #83 (production GCLB) -> #81/M-7 (CDN). Do not re-report
+production flip is blocked, on the production GCLB and the CDN cache rule (items 3/4). Do not re-report
 staging as "unsatisfied" on these two rows; that reading has cost the project the same
 conversation more than once.
 
