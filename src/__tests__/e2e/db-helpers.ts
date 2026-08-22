@@ -164,41 +164,14 @@ export async function indexExists(name: string): Promise<boolean> {
 }
 
 /**
- * Returns the query plan as a single text blob for the given SQL. Used
- * to assert that ilike on title/content actually picks the trigram
- * index, not a sequential scan.
- */
-export async function explain(sql: string, params: unknown[] = []): Promise<string> {
-  const c = await getClient();
-  const res = await c.query<{ ['QUERY PLAN']: string }>(`EXPLAIN ${sql}`, params);
-  return res.rows.map((r) => r['QUERY PLAN']).join('\n');
-}
-
-/**
- * Physical size of a table, in pages (`pg_class.relpages`) — the planner's own
- * proxy for "is this table big enough for an index to pay for itself". A GIN
- * bitmap scan has fixed overhead (walking the index, `BitmapOr`-ing two
- * conditions, a recheck pass) that a tiny table's full scan can beat outright;
- * that is correct, cost-based planning, not a broken index. Used to make the
- * search-performance-guard tests honest about which regime they are in.
- */
-export async function tablePages(name: string): Promise<number> {
-  const c = await getClient();
-  const res = await c.query<{ relpages: number }>(
-    `SELECT relpages FROM pg_class WHERE relname = $1`,
-    [name],
-  );
-  return res.rows[0]?.relpages ?? 0;
-}
-
-/**
  * EXPLAIN with `enable_seqscan` forced off for this one statement, then
  * restored. Proves an index is real, correctly typed, and actually reachable
  * by the planner — independent of whether the CURRENT table size makes the
- * planner prefer it unforced. Session-scoped (this file's `getClient()`
- * caches one connection), so the reset in `finally` matters: leaving
- * `enable_seqscan=off` set would silently change every later query on the
- * same connection, including the unrelated `EXPLAIN` calls below.
+ * planner prefer it unforced, which on a dev container it correctly does not
+ * (see the search-performance guards in feed.test.ts). Session-scoped (this
+ * file's `getClient()` caches one connection), so the reset in `finally`
+ * matters: leaving `enable_seqscan=off` set would silently change every
+ * later query on the same connection.
  */
 export async function explainIndexOnly(sql: string, params: unknown[] = []): Promise<string> {
   const c = await getClient();

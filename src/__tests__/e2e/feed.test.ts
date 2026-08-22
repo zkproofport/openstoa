@@ -477,7 +477,7 @@ describe.sequential('Feed endpoints', () => {
 // the feed tests.
 
 // Import direct-DB helpers for the search-performance guard tests below.
-import { envGate, announceEnvGates, indexExists, explain, explainIndexOnly, tablePages, closeDb } from './db-helpers';
+import { envGate, announceEnvGates, indexExists, explainIndexOnly, closeDb } from './db-helpers';
 
 describe.sequential('Feed search — hard content', () => {
   const createdTopicIds: string[] = [];
@@ -635,9 +635,9 @@ describe.sequential('Feed search — hard content', () => {
   //
   // Without pg_trgm GIN indexes, `ilike '%term%'` falls back to a seq
   // scan and stays linear in row count — fine on dev, catastrophic
-  // in production. These checks confirm the migration applied and
-  // the planner actually picks a bitmap-index scan on the title /
-  // content GIN indexes for our q= queries.
+  // in production. These checks confirm the migration applied and that
+  // the planner can serve our q= queries from the title / content GIN
+  // indexes instead of scanning the table.
   //
   // Auto-skip when E2E_STAGING_DB_URL is not set.
 
@@ -652,54 +652,57 @@ describe.sequential('Feed search — hard content', () => {
   });
 
   /**
-   * Below this page count, Postgres's own cost model correctly prefers a full
-   * table scan over the GIN bitmap index — a `BitmapOr` across two trigram
-   * indexes has fixed overhead a handful of pages can beat outright (observed
-   * locally: seq scan cost ~47 vs bitmap-index cost ~376 on a 35-page table,
-   * confirmed with `EXPLAIN` + `enable_seqscan=off`). That is correct
-   * planning, not a broken index, so below this threshold the test proves the
-   * index is real and reachable (forced plan) instead of asserting the
-   * planner's unforced preference, which only reflects reality at
-   * production/staging row counts. Comfortably above every local dev
-   * container's observed size (~35 posts pages, ~27 topics pages) and
-   * comfortably below production table sizes.
+   * Both plan checks below force `enable_seqscan = off` rather than asserting
+   * the planner's unforced choice, and that is deliberate.
+   *
+   * Which plan wins unforced is a function of how many rows the database
+   * happens to be holding, which is not something this repo controls. On a
+   * dev container the tables are small and a full scan genuinely IS the
+   * cheaper plan — a `BitmapOr` across two GIN indexes has fixed overhead a
+   * few dozen pages can beat outright. That is correct cost-based planning,
+   * not a broken index. Measured against the local container at 105 pages /
+   * 2662 rows: seq scan 144.93 vs. bitmap 175.29 — 20% apart, and drifting
+   * across that line in either direction as each E2E run appends more rows.
+   * (An earlier version of this test gated on `pg_class.relpages < 100` to
+   * pick a regime; the local `posts` table crossed 100 pages while a seq scan
+   * was still the cheaper plan, and the test went red for no defect. The page
+   * count is simply not where the crossover lives.)
+   *
+   * The forced plan pins the half that IS a repo invariant and holds at any
+   * table size: migration 0010 ran, pg_trgm is installed, each index is a GIN
+   * over `gin_trgm_ops` on the right column, and the planner can reach BOTH
+   * of them for the exact `col ILIKE '%x%' OR col ILIKE '%x%'` shape the q=
+   * search issues. Drop either index and the forced plan falls back to a seq
+   * scan (`enable_seqscan = off` only makes a seq scan astronomically
+   * expensive, never impossible), failing both assertions. What no local run
+   * can prove is production's row count — at that size the cost model picks
+   * the index on its own, and that needs no test.
    */
-  const SEQSCAN_COST_CROSSOVER_PAGES = 100;
 
-  it.skipIf(envGate('E2E_STAGING_DB_URL'))('q= against posts uses a trigram bitmap index plan (no seq scan)', async () => {
-    if ((await tablePages('posts')) < SEQSCAN_COST_CROSSOVER_PAGES) {
-      const forced = await explainIndexOnly(
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('q= against posts is servable from both posts trigram indexes (no seq scan)', async () => {
+    const plan = (
+      await explainIndexOnly(
         `SELECT id FROM posts WHERE title ILIKE $1 OR content ILIKE $1 LIMIT 20`,
         [`%${longStamp}%`],
-      );
-      expect(forced.toLowerCase()).toMatch(/bitmap index scan on posts_(title|content)_trgm_idx/);
-      return;
-    }
-    const plan = await explain(
-      `SELECT id FROM posts WHERE title ILIKE $1 OR content ILIKE $1 LIMIT 20`,
-      [`%${longStamp}%`],
-    );
-    // Either index is acceptable; what we forbid is the planner falling
-    // back to a sequential scan on the posts table for a small q.
-    expect(plan.toLowerCase()).not.toMatch(/seq scan on posts/);
-    expect(plan.toLowerCase()).toMatch(/index|bitmap/);
+      )
+    ).toLowerCase();
+    // Both columns are searched by q=, so both indexes have to be reachable;
+    // a BitmapOr degrades to a full scan the moment one branch is not.
+    expect(plan).toMatch(/bitmap index scan on posts_title_trgm_idx/);
+    expect(plan).toMatch(/bitmap index scan on posts_content_trgm_idx/);
+    expect(plan).not.toMatch(/seq scan on posts/);
   });
 
-  it.skipIf(envGate('E2E_STAGING_DB_URL'))('q= against topics uses a trigram bitmap index plan (no seq scan)', async () => {
-    if ((await tablePages('topics')) < SEQSCAN_COST_CROSSOVER_PAGES) {
-      const forced = await explainIndexOnly(
+  it.skipIf(envGate('E2E_STAGING_DB_URL'))('q= against topics is servable from both topics trigram indexes (no seq scan)', async () => {
+    const plan = (
+      await explainIndexOnly(
         `SELECT id FROM topics WHERE title ILIKE $1 OR description ILIKE $1 LIMIT 20`,
         [`%${longStamp}%`],
-      );
-      expect(forced.toLowerCase()).toMatch(/bitmap index scan on topics_(title|description)_trgm_idx/);
-      return;
-    }
-    const plan = await explain(
-      `SELECT id FROM topics WHERE title ILIKE $1 OR description ILIKE $1 LIMIT 20`,
-      [`%${longStamp}%`],
-    );
-    expect(plan.toLowerCase()).not.toMatch(/seq scan on topics/);
-    expect(plan.toLowerCase()).toMatch(/index|bitmap/);
+      )
+    ).toLowerCase();
+    expect(plan).toMatch(/bitmap index scan on topics_title_trgm_idx/);
+    expect(plan).toMatch(/bitmap index scan on topics_description_trgm_idx/);
+    expect(plan).not.toMatch(/seq scan on topics/);
   });
 
   // ── Pagination ────────────────────────────────────────────────────────

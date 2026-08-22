@@ -17,7 +17,7 @@
  *      has no push provider configured, so "did this user get a notification?"
  *      cannot be asked over the wire. Nothing here is mocked — the only
  *      injected object is a recording provider at the outermost edge (which is
- *      the module's own injection point) and, for the fail-closed row, an
+ *      the module's own injection point) and, for the failure-posture rows, an
  *      executor that raises on the preference query.
  *
  * Edge-case matrix rows covered (E2E scope; the SQL-level rows live in the
@@ -32,7 +32,9 @@
  *   large           — 1 KB topic id rejected before it can reach the uuid column
  *   authz           — guest 401; authenticated NON-member 403; per-user isolation
  *   race/idempotency— double mute, double unmute, repeated global set converge
- *   ext-failure     — preference lookup error ⇒ fail CLOSED (zero recipients)
+ *   ext-failure     — preference lookup error ⇒ DEGRADES: a cold cache still
+ *                     delivers (an unreadable table is not an opt-out signal),
+ *                     while an opt-out already OBSERVED keeps suppressing
  *   contract        — removing the `filterPushRecipients` call in
  *                     `pushStore.getTopicMemberTokens` breaks a test here, and
  *                     so does bypassing `getTopicMemberTokens` in either
@@ -46,7 +48,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, sql } from 'drizzle-orm';
 import * as schema from '@/lib/db/schema';
 import { getTopicMemberTokens } from '@/lib/pushStore';
-import { filterPushRecipients } from '@/lib/pushPrefs';
+import { filterPushRecipients, __resetPushPrefsDegradedCache } from '@/lib/pushPrefs';
 import {
   dispatchDummyForMessage,
   dispatchCiphertextForMessage,
@@ -158,6 +160,18 @@ class CapturingProvider implements PushProvider {
 
 let pool: Pool;
 let db: ReturnType<typeof drizzle<typeof schema>>;
+
+/**
+ * The static SQL text of a drizzle template. Used to prove WHICH tables the
+ * dispatch path queried, so the contract row below asserts that preference SQL
+ * was actually issued rather than just counting calls. Its own correctness is
+ * guarded by a test, so a drizzle upgrade that changes the internals fails
+ * loudly instead of quietly making the contract assertions vacuous.
+ */
+function sqlText(q: unknown): string {
+  const chunks = (q as { queryChunks?: Array<{ value?: unknown }> }).queryChunks ?? [];
+  return chunks.map((c) => (Array.isArray(c.value) ? c.value.join('') : '')).join(' ');
+}
 
 /** userIds the real recipient resolver would notify for `topicId`. */
 async function recipientIds(topicId: string, senderUserId: string): Promise<string[]> {
@@ -624,6 +638,15 @@ describe.sequential('precedence: global off beats topic un-muted', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe.sequential('dispatch contract', () => {
+  it('GUARD: the SQL-text helper still sees drizzle internals', () => {
+    // If this fails, the table assertions in the contract row below silently
+    // degenerate into `''.toContain(...)` and prove nothing.
+    expect(sqlText(sql`SELECT user_id FROM push_prefs WHERE enabled = false`)).toContain(
+      'push_prefs',
+    );
+    expect(sqlText(sql`SELECT user_id FROM push_topic_mutes`)).toContain('push_topic_mutes');
+  });
+
   it('BOTH dispatchers skip a muted member and still reach the others', async () => {
     const muted = await newMember('dm', [mainTopic]);
     const heard = await newMember('dh', [mainTopic]);
@@ -663,25 +686,87 @@ describe.sequential('dispatch contract', () => {
     expect(tok.rows.length).toBe(1);
   });
 
-  it('fails CLOSED: a preference lookup error drops every recipient', async () => {
+  // ── Failure posture ──────────────────────────────────────────────────────
+  //
+  // A preference query that SUCCEEDS is the opt-out signal and is obeyed
+  // absolutely (every case in sections 1-7 above). A query that THROWS is not
+  // an opt-out signal at all — it carries zero information about anyone's
+  // preference — so it degrades to the last exclusion set this process actually
+  // OBSERVED, and only delivers to users it has never seen deny anything.
+  //
+  // These two rows are the two halves of that rule, and they must be read
+  // together: on its own the first looks like "we notify muted users", which is
+  // exactly what the second one shows we do not.
+
+  it('degrades OPEN on a COLD cache: an unreadable preference table is not an opt-out', async () => {
+    // No observation for this topic in this process (a freshly-started Cloud
+    // Run instance, or the first message to this topic since it started).
+    __resetPushPrefsDegradedCache();
     const survivors = await filterPushRecipients(
       { execute: async () => { throw new Error('simulated preference lookup failure'); } },
       mainTopic,
       [{ userId: memberB.userId }, { userId: memberC.userId }],
     );
-    expect(survivors).toEqual([]);
+    // The old behaviour was []. Because this filter is the LAST step of the
+    // fan-out and runs for every topic, [] here meant every push for every
+    // topic became a silent no-op while chat kept answering 200 — an outage
+    // with no user-visible symptom and no way to notice it.
+    expect(survivors.map((t) => t.userId).sort()).toEqual(
+      [memberB.userId, memberC.userId].sort(),
+    );
   });
 
-  it('fails CLOSED through getTopicMemberTokens, proving the filter is invoked', async () => {
-    // First execute() is the member-token join (passed through to the real DB);
-    // the SECOND is the preference lookup, which raises. If the
-    // `filterPushRecipients` call in pushStore.getTopicMemberTokens were
-    // removed, there would BE no second call and this would return recipients.
+  it('but an opt-out OBSERVED before the outage keeps suppressing THROUGH it', async () => {
+    __resetPushPrefsDegradedCache();
+    const c = api(memberB.token);
+    expect((await c.patch(topicPush(mainTopic), { muted: true })).status).toBe(200);
+    try {
+      // One SUCCESSFUL read against the container's own database — this is what
+      // makes the mute "observed", and it is the only thing that ever writes
+      // the last-known-good set.
+      const healthy = await filterPushRecipients(db, mainTopic, [
+        { userId: memberB.userId },
+        { userId: memberC.userId },
+      ]);
+      expect(healthy.map((t) => t.userId)).toEqual([memberC.userId]);
+
+      // Now the preference store dies. memberB muted this topic and must NOT
+      // start receiving notifications just because the table went unreadable.
+      const degraded = await filterPushRecipients(
+        { execute: async () => { throw new Error('simulated preference lookup failure'); } },
+        mainTopic,
+        [{ userId: memberB.userId }, { userId: memberC.userId }],
+      );
+      expect(degraded.map((t) => t.userId)).toEqual([memberC.userId]);
+    } finally {
+      expect((await c.patch(topicPush(mainTopic), { muted: false })).status).toBe(200);
+      __resetPushPrefsDegradedCache();
+    }
+  });
+
+  it('CONTRACT: getTopicMemberTokens routes its recipients through the preference filter', async () => {
+    // THE POINT OF THIS TEST is that `filterPushRecipients` is still WIRED INTO
+    // `pushStore.getTopicMemberTokens`. The first execute() is the member-token
+    // join (passed through to the real DB); every later one is a preference
+    // lookup, which raises. Delete the filter call in pushStore and there is
+    // exactly ONE call and no preference SQL at all — every assertion below
+    // fails, which is the regression this row exists to catch.
+    //
+    // The call count is asserted as a LOWER BOUND on purpose. The filter reads
+    // its two dimensions (global switch, per-topic mute) independently, so the
+    // exact number is an implementation detail that has already changed once —
+    // pinning it to an exact value is what made this test fail for a reason
+    // that had nothing to do with the contract. What must never regress is that
+    // preference SQL is issued at all, so the tables are named explicitly:
+    // no accidental unrelated query can satisfy those two assertions.
+    __resetPushPrefsDegradedCache();
+    const prefSql: string[] = [];
     let calls = 0;
     const flaky = {
       execute: async (q: Parameters<typeof db.execute>[0]) => {
         calls += 1;
         if (calls === 1) return db.execute(q);
+        prefSql.push(sqlText(q));
         throw new Error('simulated preference lookup failure');
       },
     };
@@ -690,7 +775,15 @@ describe.sequential('dispatch contract', () => {
       mainTopic,
       owner.userId,
     );
-    expect(calls).toBe(2);
-    expect(targets).toEqual([]);
+
+    expect(calls).toBeGreaterThan(1);
+    expect(prefSql.join(' ')).toContain('push_prefs');
+    expect(prefSql.join(' ')).toContain('push_topic_mutes');
+
+    // ...and the degraded posture is visible end-to-end through the real
+    // resolver, not just through the filter in isolation: the members the join
+    // returned are still delivered to instead of the topic going silent.
+    expect(targets.length).toBeGreaterThan(0);
+    expect(targets.map((t) => t.userId)).toContain(memberB.userId);
   });
 });
