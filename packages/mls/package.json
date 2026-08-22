@@ -7,6 +7,8 @@
   "types": "src/index.ts",
   "peerDependencies": {
     "@noble/ciphers": ">=2",
+    "@noble/curves": ">=2",
+    "@noble/hashes": ">=2",
     "ts-mls": ">=1.6.0"
   },
   "//": [
@@ -24,6 +26,8 @@
   ],
   "devDependencies": {
     "@noble/ciphers": "2.1.1",
+    "@noble/curves": "2.0.1",
+    "@noble/hashes": "2.0.1",
     "ts-mls": "^1.6.2",
     "typescript": "^5.7.0"
   }
