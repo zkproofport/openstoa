@@ -8,5 +8,23 @@
   "peerDependencies": {
     "@noble/ciphers": ">=2",
     "ts-mls": ">=1.6.0"
+  },
+  "//": [
+    "peerDependencies say WHO must supply the runtime copy: each consumer (web app,",
+    "mini-app, SDK) already depends on ts-mls and @noble/ciphers, and a second copy",
+    "resolved from here would put two ts-mls in one bundle.",
+    "",
+    "devDependencies exist so THIS package can be typechecked and built on its own.",
+    "CI installs each package in isolation, so packages/mls/node_modules is empty and",
+    "tsc reported \"Cannot find module ts-mls\" for every dependent build. Locally it",
+    "passed only because the root node_modules happened to satisfy the lookup.",
+    "",
+    "Keep the devDependency ranges in step with the consumers, or the types compiled",
+    "here will not be the types the app runs against."
+  ],
+  "devDependencies": {
+    "@noble/ciphers": "2.1.1",
+    "ts-mls": "^1.6.2",
+    "typescript": "^5.7.0"
   }
 }
