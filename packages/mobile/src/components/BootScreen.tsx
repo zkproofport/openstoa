@@ -1,9 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +18,28 @@ import { TYPE_SCALE } from '../theme/tokens';
 interface BootScreenProps {
   /** Optional one-line status under the tagline (e.g. "Preparing your anonymous identity…"). */
   status?: string | null;
+  /**
+   * What to do when the person gives up waiting. Omitted → no control at all,
+   * which is right for the ordinary boot beat: it lasts three seconds and
+   * cancelling it would mean nothing.
+   *
+   * Supplied for sign-in, where the wait can be minutes of real proof work —
+   * and where, before this existed, a login that never came back could only be
+   * escaped by force-quitting the app.
+   */
+  onCancel?: () => void;
+  /** Label for the cancel control. Required in practice whenever `onCancel` is. */
+  cancelLabel?: string;
+  /** One line above the control, explaining why it has appeared. */
+  cancelHint?: string | null;
+  /**
+   * How long to wait before showing the control, in ms.
+   *
+   * Not zero by default: a control that appears instantly and vanishes half a
+   * second later reads as a glitch, and invites a tap that aborts something
+   * which was about to succeed. `0` shows it immediately — used by tests.
+   */
+  cancelAfterMs?: number;
 }
 
 /**
@@ -31,9 +54,31 @@ interface BootScreenProps {
  * No `Animated.Image` + `tintColor` chicanery any more — that combo was
  * unreliable on RN 0.81 and the user kept getting blank space.
  */
-export function BootScreen({ status }: BootScreenProps) {
+export function BootScreen({
+  status,
+  onCancel,
+  cancelLabel,
+  cancelHint,
+  cancelAfterMs = 8_000,
+}: BootScreenProps) {
   const { colors } = useThemeColors();
   const { t } = useTranslation();
+
+  // The control appears on a timer rather than with the screen — see
+  // `cancelAfterMs`. State, not an animation, so a test can observe it.
+  const [cancelVisible, setCancelVisible] = useState(false);
+  useEffect(() => {
+    if (!onCancel) {
+      setCancelVisible(false);
+      return;
+    }
+    if (cancelAfterMs <= 0) {
+      setCancelVisible(true);
+      return;
+    }
+    const timer = setTimeout(() => setCancelVisible(true), cancelAfterMs);
+    return () => clearTimeout(timer);
+  }, [onCancel, cancelAfterMs]);
 
   // Mirror the host's `LoadingScreen.tsx` splash pulse — scale 1 ↔ 1.05
   // over 2 s, looping. Safe to apply now that the icon is an inline SVG
@@ -92,6 +137,25 @@ export function BootScreen({ status }: BootScreenProps) {
             {status}
           </Text>
         ) : null}
+
+        {onCancel && cancelVisible ? (
+          <View style={styles.cancelWrap}>
+            {cancelHint ? (
+              <Text style={[styles.cancelHint, { color: colors.text.tertiary }]}>
+                {cancelHint}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              onPress={onCancel}
+              accessibilityRole="button"
+              hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+            >
+              <Text style={[styles.cancelLabel, { color: colors.brand.primary }]}>
+                {cancelLabel ?? t('openstoa.boot.cancelSignIn')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -126,5 +190,18 @@ const styles = StyleSheet.create({
   status: {
     marginTop: 28,
     fontSize: TYPE_SCALE.label,
+  },
+  cancelWrap: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  cancelHint: {
+    fontSize: TYPE_SCALE.label,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  cancelLabel: {
+    fontSize: TYPE_SCALE.bodySmall,
+    fontWeight: '600',
   },
 });

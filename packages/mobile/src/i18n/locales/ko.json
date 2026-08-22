@@ -10,7 +10,9 @@
     "boot": {
       "tagline": "신원 없는 진실",
       "preparingIdentity": "익명 신원을 준비하는 중…",
-      "loading": "OpenStoa를 불러오는 중…"
+      "loading": "OpenStoa를 불러오는 중…",
+      "cancelSignIn": "로그인 취소",
+      "takingLonger": "평소보다 오래 걸리고 있습니다."
     },
     "welcome": {
       "heading": "OpenStoa에 오신 걸 환영해요",
@@ -22,7 +24,8 @@
       "signInMdl": "모바일 신분증으로 로그인",
       "signingIn": "보안 로그인을 여는 중…",
       "continueAsGuest": "게스트로 둘러보기",
-      "legal": "신원은 저장되지 않아요. 익명 nullifier만 기록돼요."
+      "legal": "신원은 저장되지 않아요. 익명 nullifier만 기록돼요.",
+      "signInTimedOut": "시간 내에 로그인이 완료되지 않았습니다. 다시 시도해 주세요."
     },
     "signInPrompt": {
       "title": "로그인이 필요해요",

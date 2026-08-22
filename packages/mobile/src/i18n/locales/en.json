@@ -10,7 +10,9 @@
     "boot": {
       "tagline": "Truth, without identity",
       "preparingIdentity": "Preparing your anonymous identity…",
-      "loading": "Loading OpenStoa…"
+      "loading": "Loading OpenStoa…",
+      "cancelSignIn": "Cancel sign-in",
+      "takingLonger": "This is taking longer than usual."
     },
     "welcome": {
       "heading": "Welcome to OpenStoa",
@@ -22,7 +24,8 @@
       "signInMdl": "Sign in with Mobile ID",
       "signingIn": "Opening secure sign-in…",
       "continueAsGuest": "Continue as guest",
-      "legal": "Your identity is never shared. Only your anonymous nullifier is stored."
+      "legal": "Your identity is never shared. Only your anonymous nullifier is stored.",
+      "signInTimedOut": "Sign-in didn't finish in time. Please try again."
     },
     "signInPrompt": {
       "title": "Sign in to continue",

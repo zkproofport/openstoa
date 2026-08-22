@@ -11,6 +11,7 @@ import { RecoveryNudge } from './components/RecoveryNudge';
 import { WelcomeScreen } from './screens/onboarding/WelcomeScreen';
 import { SignInSheetProvider } from './components/SignInSheet';
 import { queryClient } from './api/queryClient';
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './api/timeout';
 import { initSessionLifecycle, SignInLauncherProvider } from './auth';
 import type { SignInLauncher } from './auth';
 import { useDeveloperMode } from './hooks/useDeveloperMode';
@@ -50,6 +51,58 @@ const DEFAULT_FEED_QUERY_KEY = ['feed', 'hot', null, ''] as const;
  * makes the restore edit look like dead code to every reader after it.
  */
 const MDL_SIGN_IN_ENABLED: boolean = false;
+
+/**
+ * How long the "Preparing your anonymous identity…" screen waits before it
+ * offers a way out.
+ *
+ * There IS one now because there was not one, and a person on a real device
+ * spent the difference force-quitting the app: `phase === 'authenticating'`
+ * rendered a plain `BootScreen` with no control on it, so a login that never
+ * came back had no exit that did not go through the app switcher.
+ *
+ * Not zero, because sign-in normally resolves in well under a second and a
+ * Cancel that flashes past is worse than none — it reads as a glitch and
+ * invites a tap that aborts a login which was about to succeed. Eight seconds
+ * is past every fast path and still inside the span where somebody is actively
+ * waiting rather than wondering whether the app is dead.
+ */
+const SIGN_IN_CANCEL_VISIBLE_AFTER_MS = 8_000;
+
+/**
+ * The point at which the app stops waiting for the host, whatever the host is
+ * doing.
+ *
+ * Eight minutes, and deliberately NOT the fifteen seconds an HTTP request gets.
+ * `loginToOpenStoa` is not one request: on a production build it posts a
+ * proof-request, hands the user to the ZK proof flow, and then polls the server
+ * for the result 240 times at 1.5s — six minutes of legitimate waiting, most of
+ * it on the person tapping through Google sign-in and on-device proving. A
+ * deadline inside that window would cancel logins that were going to work.
+ *
+ * So this is a backstop, not the primary remedy — Cancel above is the primary
+ * remedy. What it exists for is the case the try/catch could never handle: a
+ * promise that NEVER SETTLES. The HTTP deadline in `api/timeout.ts` does not
+ * cover it, because this is a bridge call into the host and its ways of hanging
+ * are not all HTTP: a proof modal the user swiped away, a native promise nobody
+ * resolves, a deep link that never comes back. Whatever the cause, the app
+ * leaves this screen within eight minutes instead of never.
+ */
+const SIGN_IN_HARD_DEADLINE_MS = 8 * 60 * 1000;
+
+/**
+ * The hard deadline above fired.
+ *
+ * Its own type so the catch can tell it from anything the host threw and say
+ * "it did not answer" rather than "it failed" — the same distinction
+ * `OpenStoaTimeoutError` draws for HTTP, one layer up.
+ */
+class SignInTimeoutError extends Error {
+  constructor(readonly waitedMs: number) {
+    super('SIGN_IN_TIMEOUT');
+    this.name = 'SignInTimeoutError';
+  }
+}
 
 export interface OpenStoaAppProps {
   /**
@@ -109,14 +162,22 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
       // (they gate on `mode === 'authenticated'` with a userId).
       const base = host.getEnvironment().openstoaBaseUrl.replace(/\/$/, '');
       try {
-        const res = await fetch(`${base}/api/auth/session`, {
-          headers: { Authorization: `Bearer ${token}` },
-          // Don't trust stale cookies — the host's iOS cookie store
-          // outlives our AsyncStorage token and was making the server
-          // treat logged-out users as authenticated. Authorization
-          // header is the only auth source we trust.
-          credentials: 'omit',
-        });
+        // Deadlined: this one runs during `phase === 'booting'`, and without a
+        // deadline a server that accepts the connection and says nothing keeps
+        // the boot screen up for as long as the app lives — the same trap as
+        // the sign-in hang, one phase earlier and with even less on screen.
+        const res = await fetchWithTimeout(
+          `${base}/api/auth/session`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            // Don't trust stale cookies — the host's iOS cookie store
+            // outlives our AsyncStorage token and was making the server
+            // treat logged-out users as authenticated. Authorization
+            // header is the only auth source we trust.
+            credentials: 'omit',
+          },
+          { path: '/api/auth/session', timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
+        );
         if (res.ok) {
           const me = (await res.json()) as {
             userId?: string;
@@ -160,10 +221,13 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
               offset: '0',
               sort: 'hot',
             });
-            const res = await fetch(`${base}/api/feed?${params.toString()}`, {
-              headers,
-              credentials: 'omit',
-            });
+            // Deadlined for the same reason as the hydrate above: boot waits
+            // on this, and `catch` cannot catch a promise that never settles.
+            const res = await fetchWithTimeout(
+              `${base}/api/feed?${params.toString()}`,
+              { headers, credentials: 'omit' },
+              { path: '/api/feed', timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
+            );
             if (!res.ok) {
               // Prefetch failures are non-fatal — FeedHomeScreen will
               // re-query and surface its own error UI.
@@ -290,6 +354,48 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   const signInInflightRef = useRef(false);
   const [signInBusy, setSignInBusy] = useState(false);
 
+  /**
+   * Which sign-in attempt is the one still worth listening to.
+   *
+   * Bumped when an attempt starts AND when one is abandoned, so a login that
+   * comes back after the user gave up cannot drive the app anywhere: it finds
+   * its own number stale and returns without touching phase, session, or the
+   * re-entry guard. Without it, cancelling and immediately retrying would let
+   * the abandoned attempt's `finally` release the guard belonging to the NEW
+   * attempt, and its `catch` drop the user back to Welcome mid-login.
+   */
+  const signInAttemptRef = useRef(0);
+
+  /** When the current attempt began, so an abandonment can report the wait. */
+  const signInStartedAtRef = useRef(0);
+
+  /**
+   * Stop waiting on the current attempt and return to Welcome.
+   *
+   * Shared by the Cancel control and the hard deadline, because the two need
+   * exactly the same four things done and a second copy of them is a second
+   * chance to forget one — releasing `signInInflightRef` in particular, which
+   * is what stopped every retry when the original hang left it stuck true.
+   *
+   * The host promise cannot be recalled; it is only stopped being waited on.
+   * If the login does finish later the token is written and the next entry into
+   * the tab is signed in, which is a better outcome than pretending otherwise.
+   */
+  const abandonSignIn = useCallback(
+    (reason: 'cancelled' | 'timeout', waitedMs: number) => {
+      signInAttemptRef.current += 1;
+      signInInflightRef.current = false;
+      setSignInBusy(false);
+      setErrorMsg(reason === 'timeout' ? t('openstoa.welcome.signInTimedOut') : null);
+      setPhase('welcome');
+      console.warn(
+        `[OpenStoaApp] sign-in ${reason} after ${waitedMs}ms — ` +
+          'leaving authenticating phase; any late result will be ignored',
+      );
+    },
+    [t],
+  );
+
   // The launcher is the single source of truth for "run the ZK sign-in
   // flow". Both the Welcome "Sign in" CTA and the SignInSheet route
   // through it so that:
@@ -309,10 +415,50 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
       setSignInBusy(true);
       setErrorMsg(null);
       setPhase('authenticating');
+      const attempt = signInAttemptRef.current + 1;
+      signInAttemptRef.current = attempt;
+      /** Is this attempt still the one the app is waiting for? */
+      const isCurrent = () => signInAttemptRef.current === attempt;
+      const startedAt = Date.now();
+      signInStartedAtRef.current = startedAt;
       void (async () => {
+        /*
+         * DIAGNOSTICS. The incident that produced all of this left no trace at
+         * all: the code logged a success and logged a rejection, and a login
+         * that did neither wrote nothing — which is why what actually triggered
+         * it is still unknown. An attempt now announces itself BEFORE it can
+         * hang, so the next report has a first line, a method, and a start time
+         * to measure the silence from.
+         */
+        console.log(
+          `[OpenStoaApp] sign-in attempt ${attempt} started ` +
+            `(method=${method ?? 'oidc'}, deadline=${SIGN_IN_HARD_DEADLINE_MS}ms)`,
+        );
+        let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
         try {
           // force=true bypasses any LOGGED_OUT marker the host may still hold.
-          const auth = await host.loginToOpenStoa({ force: true, method });
+          //
+          // Raced against the hard deadline: `await` on its own has no upper
+          // bound, and this is a bridge call into the host — a promise it never
+          // settles is not an error anything here can catch, it is simply a
+          // caller that never resumes. That is what pinned the app on this
+          // screen; the race is what unpins it.
+          const auth = await Promise.race([
+            host.loginToOpenStoa({ force: true, method }),
+            new Promise<never>((_resolve, reject) => {
+              deadlineTimer = setTimeout(
+                () => reject(new SignInTimeoutError(SIGN_IN_HARD_DEADLINE_MS)),
+                SIGN_IN_HARD_DEADLINE_MS,
+              );
+            }),
+          ]);
+          if (!isCurrent()) {
+            console.warn(
+              `[OpenStoaApp] sign-in attempt ${attempt} succeeded after being ` +
+                `abandoned (${Date.now() - startedAt}ms) — result discarded`,
+            );
+            return;
+          }
           // Pull the platform-wide role from /api/auth/session so admin
           // moderation affordances surface immediately after sign-in. The
           // login payload doesn't include role; fetching once here avoids
@@ -320,10 +466,14 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
           let role: 'admin' | 'member' = 'member';
           try {
             const base = host.getEnvironment().openstoaBaseUrl.replace(/\/$/, '');
-            const sessRes = await fetch(`${base}/api/auth/session`, {
-              headers: { Authorization: `Bearer ${auth.token}` },
-              credentials: 'omit',
-            });
+            const sessRes = await fetchWithTimeout(
+              `${base}/api/auth/session`,
+              {
+                headers: { Authorization: `Bearer ${auth.token}` },
+                credentials: 'omit',
+              },
+              { path: '/api/auth/session', timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
+            );
             if (sessRes.ok) {
               const me = (await sessRes.json()) as { role?: string };
               if (me.role === 'admin') role = 'admin';
@@ -357,18 +507,63 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
             }
           }
         } catch (err) {
+          const waitedMs = Date.now() - startedAt;
+          if (!isCurrent()) {
+            // Already abandoned by Cancel; whoever abandoned it has restored
+            // the phase and released the guard, and doing either again here
+            // would trample a retry the user may already have started.
+            console.warn(
+              `[OpenStoaApp] sign-in attempt ${attempt} failed after being ` +
+                `abandoned (${waitedMs}ms) — ignored`,
+            );
+            return;
+          }
+          if (err instanceof SignInTimeoutError) {
+            // Said differently from a failure ON PURPOSE: nothing reported an
+            // error, the host simply never came back. A log line that called
+            // this "failed" would send the next reader looking for an exception
+            // that does not exist.
+            console.warn(
+              `[OpenStoaApp] sign-in attempt ${attempt} TIMED OUT after ${waitedMs}ms ` +
+                `(limit ${SIGN_IN_HARD_DEADLINE_MS}ms) — host.loginToOpenStoa never settled`,
+            );
+            abandonSignIn('timeout', waitedMs);
+            return;
+          }
           const msg = err instanceof Error ? err.message : String(err);
-          console.warn('[OpenStoaApp] performSignIn failed: ' + msg);
+          console.warn(
+            `[OpenStoaApp] sign-in attempt ${attempt} failed after ${waitedMs}ms: ${msg}`,
+          );
           setErrorMsg(msg === 'LOGGED_OUT' ? null : msg);
           setPhase('welcome');
         } finally {
-          signInInflightRef.current = false;
-          setSignInBusy(false);
+          if (deadlineTimer) clearTimeout(deadlineTimer);
+          // Only the CURRENT attempt may release the guard. An abandoned one
+          // reaching here would otherwise unlock a sign-in that is still
+          // running, and two host login flows at once is the exact race this
+          // guard was added for.
+          if (isCurrent()) {
+            signInInflightRef.current = false;
+            setSignInBusy(false);
+          }
         }
       })();
     },
-    [host, session, prefetchFeed],
+    [host, session, prefetchFeed, abandonSignIn],
   );
+
+  /**
+   * The way out of "Preparing your anonymous identity…".
+   *
+   * Deliberately reachable while the login is still running: the person cannot
+   * be asked to guess whether the host is working or wedged, and the cost of
+   * cancelling a healthy login is one more tap, against an app that has to be
+   * force-quit otherwise.
+   */
+  const handleCancelSignIn = useCallback(() => {
+    if (!signInInflightRef.current) return;
+    abandonSignIn('cancelled', Date.now() - signInStartedAtRef.current);
+  }, [abandonSignIn]);
 
   // Welcome screen "Sign in" CTA — no replay needed, just kicks off the
   // shared launcher.
@@ -394,7 +589,15 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   }
 
   if (phase === 'authenticating') {
-    return <BootScreen status={t('openstoa.boot.preparingIdentity')} />;
+    return (
+      <BootScreen
+        status={t('openstoa.boot.preparingIdentity')}
+        onCancel={handleCancelSignIn}
+        cancelLabel={t('openstoa.boot.cancelSignIn')}
+        cancelHint={t('openstoa.boot.takingLonger')}
+        cancelAfterMs={SIGN_IN_CANCEL_VISIBLE_AFTER_MS}
+      />
+    );
   }
 
   if (phase === 'welcome') {
