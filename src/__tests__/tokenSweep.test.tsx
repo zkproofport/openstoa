@@ -144,6 +144,11 @@ const COLOR_SWEPT_FILES = [
  */
 const EXCLUDED_FILES: Array<{ file: string; reason: string }> = [
   {
+    file: 'src/components/ChatImage.tsx',
+    reason:
+      'Media chrome only. Every surface colour it draws is a token (--radius-card, --border, --color-background-tertiary); the two raw values left are the black scrim and the black pill that sit ON TOP of the user\'s own photo, which must stay black in light mode or the "See full image" label loses its contrast against the picture underneath. Same carve-out as the ALLOWLIST\'s media-chrome category, applied at file level because both values exist only for that overlay.',
+  },
+  {
     file: 'src/app/page.tsx',
     reason:
       'Landing: a bespoke permanently-dark split-screen composition (--human-*/--agent-*/--center-glow, documented as out-of-system in globals.css) plus a particle canvas that needs raw rgba() for ctx.fillStyle. Its one ordinary surface, the beta-signup modal, IS tokenized.',

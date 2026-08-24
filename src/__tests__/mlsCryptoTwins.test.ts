@@ -233,6 +233,23 @@ const MODULES = [
 const CONSUMERS = ['web', 'mobile', 'sdk'] as const;
 
 /**
+ * Shared by the web and the mini-app, but NOT by the SDK.
+ *
+ * `chatMediaLayout` is how big a picture is drawn in a chat bubble. Both
+ * clients must reach the same answer, so it belongs in the shared package —
+ * but the agent SDK renders nothing, so there is no third copy and the
+ * three-consumer table above cannot describe it. Checked by its own block
+ * below, including the claim that the SDK does not use it.
+ */
+const UI_SHARED = [
+  {
+    name: 'chatMediaLayout',
+    web: 'src/lib/chatMediaLayout.ts',
+    mobile: 'packages/mobile/src/lib/chatMediaLayout.ts',
+  },
+] as const;
+
+/**
  * The ONE consumer file allowed to hold code, and the exact bound on it.
  *
  * Naming the reason is the point, and it is inherited from the version of this
@@ -378,11 +395,64 @@ describe('MLS/TAK crypto: exactly one implementation', () => {
      */
     const INTERNAL = ['index.ts', 'aesGcmInterop.ts', 'imageMetadata.ts'];
     const onDisk = readdirSync(join(ROOT, SHARED_DIR))
-      .filter((f) => f.endsWith('.ts') && !INTERNAL.includes(f))
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => !INTERNAL.includes(f))
+      .filter((f) => !UI_SHARED.some((m) => `${m.name}.ts` === f))
       .map((f) => f.replace(/\.ts$/, ''))
       .sort();
     expect(MODULES.map((m) => m.name).sort()).toEqual(onDisk);
   });
+
+  for (const mod of UI_SHARED) {
+    /*
+     * The exemption above, CHECKED rather than asserted.
+     *
+     * Excluding a file from the table with a comment saying "it only has two
+     * consumers" would be indistinguishable from excluding it because it was
+     * inconvenient — and a shared module nothing checks is how the SDK copy
+     * fell 667 lines behind in the first place. So both halves of the stated
+     * reason are tested: the two consumers it DOES have are real re-exports,
+     * and the consumer it claims not to have really does not import it. If the
+     * SDK ever grows a use for one of these, the last case here goes red and
+     * the module moves into MODULES.
+     */
+    describe(`${mod.name} (shared by two consumers, not three)`, () => {
+      for (const consumer of ['web', 'mobile'] as const) {
+        it(`SHAPE: ${consumer} holds a re-export, not an implementation`, () => {
+          expect(codeLines(read(mod[consumer]))).toEqual([
+            `export * from '${resolvedSpecifiers(mod[consumer])[0].spec}';`,
+          ]);
+        });
+
+        it(`TARGET: ${consumer}'s re-export resolves into ${SHARED_DIR}`, () => {
+          const specs = resolvedSpecifiers(mod[consumer]);
+          expect(specs.length, `${mod[consumer]} has no re-export`).toBeGreaterThan(0);
+          for (const { target } of specs) {
+            expect(target.startsWith(SHARED_DIR + sep), `${mod[consumer]} resolves to ${target}`).toBe(true);
+          }
+        });
+      }
+
+      it('the SDK really does not import it — the reason for the exemption', () => {
+        const sdkDir = join(ROOT, 'packages', 'sdk', 'src');
+        const offenders: string[] = [];
+        const walk = (dir: string) => {
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const child = join(dir, entry.name);
+            if (entry.isDirectory()) walk(child);
+            else if (entry.name.endsWith('.ts') && readFileSync(child, 'utf8').includes(mod.name)) {
+              offenders.push(child);
+            }
+          }
+        };
+        walk(sdkDir);
+        expect(
+          offenders,
+          `the SDK now uses ${mod.name}; move it into MODULES and give it an SDK re-export`,
+        ).toEqual([]);
+      });
+    });
+  }
 
   it('the barrel re-exports every shared module, so a new one is not born unreachable', () => {
     const barrel = codeOnly(read(join(SHARED_DIR, 'index.ts')));

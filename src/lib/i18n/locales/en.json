@@ -637,7 +637,8 @@
       "expired": "This image expired before it could be sent. Send it again.",
       "fetchFailed": "Could not load this image.",
       "locked": "Encrypted image — this device has no key for it yet",
-      "reload": "Reload"
+      "reload": "Reload",
+      "cropped": "See full image"
     },
     "tierClaim": {
       "e2ee": "New messages and images in this room are end-to-end encrypted. The service cannot read them.",

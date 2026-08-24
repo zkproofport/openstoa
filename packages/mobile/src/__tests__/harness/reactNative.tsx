@@ -42,7 +42,28 @@ export const ScrollView = host('ScrollView');
 export const TextInput = host('TextInput');
 export const ActivityIndicator = host('ActivityIndicator');
 export const Modal = host('Modal');
-export const Image = host('Image');
+/**
+ * `Image.getSize` — a REFUSAL by default, which is what the real one does for a
+ * file it cannot decode.
+ *
+ * Defaulting to a success with invented dimensions would be the lenient-mock
+ * failure this codebase keeps getting bitten by: every caller would look
+ * correct while measuring nothing. A test that needs a size says so by
+ * replacing this, and one that does not gets the honest "could not read it"
+ * path.
+ */
+type ImageGetSize = (
+  uri: string,
+  success: (width: number, height: number) => void,
+  failure?: (error: unknown) => void,
+) => void;
+
+export const Image = Object.assign(host('Image'), {
+  getSize: ((_uri, _success, failure) => {
+    failure?.(new Error('Image.getSize: no size configured for this test'));
+  }) as ImageGetSize,
+});
+
 export const KeyboardAvoidingView = host('KeyboardAvoidingView');
 export const TouchableOpacity = host('TouchableOpacity');
 export const Pressable = host('Pressable');

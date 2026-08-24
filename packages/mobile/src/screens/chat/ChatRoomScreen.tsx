@@ -59,6 +59,12 @@ import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
+import {
+  getChatReadCursorIso,
+  markChatRead,
+  newestReadable,
+} from '../../lib/chatReadCursor';
+import { syncChatReadMls, flushChatReadMls } from '../../lib/chatReadSyncHttp';
 import { copyTargets } from '../../lib/messageActions';
 import { sendPickedAssets } from '../../lib/pickedAttachments';
 import { saveAttachment, type AttachmentFile } from '../../lib/saveAttachment';
@@ -131,6 +137,7 @@ import { formatRelativeTime } from '../../utils/relativeTime';
 import { OGPreviewCard } from '../../components/OGPreviewCard';
 import type { OGData } from '../../components/OGPreviewCard';
 import ImageViewerModal from '../../components/ImageViewerModal';
+import { ChatImage } from '../../components/ChatImage';
 import { PeerProfileCard } from '../../components/PeerProfileCard';
 import { TopicMuteButton } from '../../components/TopicMuteButton';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
@@ -169,13 +176,14 @@ interface ChatPage {
 }
 
 // ---------------------------------------------------------------------------
-// Last-seen timestamp cache (in-memory, per process)
+// Last-seen cache — now `../../lib/chatReadCursor`
 // ---------------------------------------------------------------------------
-// Used to drive `?since=<iso>` delta sync on chat re-entry within the same
-// app session. Survives screen mount/unmount but resets when the app
-// process is killed. Persisting across restarts (AsyncStorage / MMKV) is a
-// later Phase 5 concern.
-const lastSeenByTopic = new Map<string, string>();
+// This used to be a private `Map<topicId, iso>` serving one consumer: the
+// `?since=<iso>` delta sync below. The chat LIST kept a second, unrelated map
+// of its own and wrote it from a row's `onPress`, which is why arriving in a
+// room any other way (a push notification tap goes straight to
+// `navigation.navigate`) left the list's unread badge untouched. Both now read
+// the one cursor, and the room is what writes it. See that module's header.
 
 /**
  * TAK-recovered plaintext per room, for the life of the process.
@@ -186,17 +194,6 @@ const lastSeenByTopic = new Map<string, string>();
  * memory only: the same process is already holding it on screen.
  */
 const recoveredByTopic = new Map<string, Record<string, string>>();
-
-function getLastSeen(topicId: string): string | undefined {
-  return lastSeenByTopic.get(topicId);
-}
-
-function setLastSeen(topicId: string, iso: string): void {
-  const prev = lastSeenByTopic.get(topicId);
-  if (!prev || new Date(iso) > new Date(prev)) {
-    lastSeenByTopic.set(topicId, iso);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -1273,12 +1270,35 @@ export function ChatRoomScreen() {
     };
   }, [tak, topicId, kind, applyBackfill]);
 
+  // Being in the room IS reading it. Runs on mount once history lands and on
+  // every change after, so the cursor tracks what is on screen no matter how
+  // the user got here — the push-notification tap included, which previously
+  // recorded nothing at all and left the list badging messages just read.
+  //
+  // `newestReadable` rather than the last element: a row the user just sent is
+  // on screen before the server has stored it, and its id and clock are the
+  // device's. See `markChatRead` for why recording one would be worse than
+  // recording nothing.
   useEffect(() => {
     allMessagesRef.current = allMessages;
     if (allMessages.length === 0) return;
-    const newest = allMessages[allMessages.length - 1];
-    if (newest?.createdAt) setLastSeen(topicId, String(newest.createdAt));
-  }, [allMessages, topicId]);
+    // Local first, then the server. The local cursor is a CACHE and it is what
+    // makes the badge drop the instant the user walks in — waiting for a round
+    // trip would leave the list they came from showing a count for messages
+    // that are on screen. The server write is debounced and fire-and-forget;
+    // see `chatReadSync` for why a failure here may do nothing at all.
+    markChatRead(topicId, newestReadable(allMessages));
+    syncChatReadMls(client, topicId, allMessages);
+  }, [allMessages, topicId, client]);
+
+  // Leaving the room is when the write matters most and is most likely to be
+  // still sitting in the debounce window. Flush on unmount so the badge clears
+  // on this account's OTHER devices now rather than on the next visit.
+  useEffect(() => {
+    return () => {
+      flushChatReadMls(topicId);
+    };
+  }, [topicId]);
 
   // When SSE transitions to `open`, fetch any messages newer than what we
   // already have. Initial connect of a freshly-opened screen has nothing
@@ -1288,7 +1308,7 @@ export function ChatRoomScreen() {
     const prev = prevSseStatusRef.current;
     prevSseStatusRef.current = status;
     if (status !== 'open') return;
-    const cursorIso = getLastSeen(topicId);
+    const cursorIso = getChatReadCursorIso(topicId);
     // No anchor yet (very first connect with no history loaded) — nothing
     // to delta-sync against; the initial useInfiniteQuery fetch covers it.
     if (!cursorIso) return;
@@ -2542,16 +2562,16 @@ function EncryptedAttachment({
         accessibilityLabel={t('openstoa.chat.media.alt')}
         testID="encrypted-attachment-open"
       >
-        <Image
-          source={{ uri: fileUri ?? undefined }}
+        {/*
+          Sized by the shared rule, not by a fixed square. 220x220 bounded the
+          height but center-cropped every ordinary landscape photo to get there.
+          See `packages/mls/src/chatMediaLayout.ts`.
+        */}
+        <ChatImage
+          uri={fileUri}
           accessibilityLabel={t('openstoa.chat.media.alt')}
-          style={{
-            width: 220,
-            height: 220,
-            borderRadius: RADIUS.card,
-            backgroundColor: 'rgba(255,255,255,0.05)',
-          }}
-          resizeMode="cover"
+          croppedLabel={t('openstoa.chat.media.cropped')}
+          testID="encrypted-attachment-image"
         />
       </TouchableOpacity>
     </View>
@@ -2806,15 +2826,12 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
             delayLongPress={400}
             style={isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther}
           >
-            <Image
-              source={{ uri: imageUrl }}
-              style={{
-                width: 220,
-                height: 220,
-                borderRadius: RADIUS.card,
-                backgroundColor: 'rgba(255,255,255,0.05)',
-              }}
-              resizeMode="cover"
+            {/* The same rule as the encrypted path, through the same component. */}
+            <ChatImage
+              uri={imageUrl}
+              accessibilityLabel={t('openstoa.chat.media.alt')}
+              croppedLabel={t('openstoa.chat.media.cropped')}
+              testID="inline-image"
             />
           </TouchableOpacity>
         ) : null}

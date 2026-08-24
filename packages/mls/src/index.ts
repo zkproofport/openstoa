@@ -30,3 +30,4 @@ export * from './aiMember';
 export * from './chatMedia';
 export * from './chatTierPolicy';
 export * from './imageMetadata';
+export * from './chatMediaLayout';
