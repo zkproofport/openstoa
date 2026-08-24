@@ -1,49 +1,67 @@
 /**
- * The Mobile ID (mDL) button on WelcomeScreen: shown only when asked for.
+ * The Mobile ID (mDL) button: hidden for the 1.0.0 corporate beta, and hidden
+ * from EVERY sign-in surface rather than from one of them.
  *
- * `WelcomeScreenProps.onSignInMdl` is optional, and the component's own
- * contract is "when omitted, the mDL button is hidden". That sentence is the
- * whole hiding mechanism — for the 1.0.0 corporate beta (Masse Labs) the app
- * simply stops passing the handler, so the mDL code stays on disk, intact and
- * restorable, instead of being deleted and later half-reconstructed.
+ * The original version of this file tested a per-screen seam —
+ * `WelcomeScreenProps.onSignInMdl`, whose contract was "when omitted, the mDL
+ * button is hidden". That contract held, and the app was still shipping the mDL
+ * button: `SignInSheet` (the bottom sheet a guest gets when they hit a gated
+ * action, and the one that opens itself on session expiry) kept its own copy of
+ * the button list and its own translation keys, so hiding mDL on Welcome did
+ * nothing to it. A tester found it on production-shaped staging.
  *
- * A contract that load-bearing needs a test that fails when it is broken. It
- * would be broken by making the button unconditional, or by rendering a
- * disabled placeholder instead of nothing — both of which look harmless in a
- * diff and both of which would put an experimental sign-in path in front of
- * outside testers.
+ * So the seam moved. `auth/signInMethods.ts` is now the single place that
+ * decides which methods are offered; both surfaces render that list through
+ * `<SignInMethodButtons>`, and neither keeps a list of its own. These tests
+ * follow it there — the offered set is asserted directly (it is plain data, no
+ * mounting required), and then the two surfaces are asserted to render exactly
+ * what the list says.
  *
  * EDGE-CASE MATRIX (CLAUDE.md) → coverage here
- *   contract   → handler supplied → button present AND wired to that handler;
- *                handler omitted → button absent from the rendered text
- *   empty      → an EXPLICIT `undefined` is the same as omitting the prop, and
- *                is asserted separately: that is the shape the app actually
- *                passes (`flag && devMode ? handler : undefined`), so
- *                collapsing the two cases would leave the real one untested
- *   boundary   → the pressable COUNT is asserted, not just the copy: two
- *                buttons hidden, three shown. A button rendered with no label
- *                would slip past a text-only assertion
- *   integrity  → hiding mDL leaves the other two CTAs present and callable —
- *                the hide must not take sign-in or guest browsing with it
- *   race       → `busy` (an inflight host login) disables every CTA including
- *                mDL, so a second tap cannot start a second sign-in
- *   authz / hostile / UTF-8 / very large → N/A: this component takes three
- *                callbacks and two display props, renders copy from the
- *                catalogue, and reads no caller identity or free text.
+ *   contract   → mDL is absent from `offeredSignInMethods()` under BOTH
+ *                Developer Mode settings — `enabled: false` outranks
+ *                `developerOnly`, which is the whole point of the kill switch
+ *   contract   → WelcomeScreen renders one button per offered method, wired to
+ *                `onSignIn` with that method's id; `SignInSheet` renders the
+ *                same set
+ *   integrity  → mDL is not deleted, only un-offered: it is still present in
+ *                `SIGN_IN_METHODS` with its label key, so the restore is one
+ *                flag and not a reconstruction
+ *   integrity  → hiding mDL leaves sign-in and guest browsing intact and
+ *                callable — the hide must not take the other CTAs with it
+ *   boundary   → the pressable COUNT is asserted, not only the copy: a button
+ *                rendered with no label would slip past a text-only assertion.
+ *                The empty list (every method disabled) renders nothing at all
+ *   empty      → a caller that passes no `methods` at all gets the
+ *                conservative default, not "everything"
+ *   race       → `busy` (an inflight host login) disables every CTA, so a
+ *                second tap cannot start a second sign-in
+ *   authz / hostile / UTF-8 / very large → N/A: this surface takes callbacks
+ *                and display props, renders copy from the catalogue, and reads
+ *                no caller identity or free text.
  *
  * i18next is not initialised in this harness, so `t(key)` returns the key —
- * which is why the assertions below match on `openstoa.welcome.*` rather than
- * on English copy. That is deliberate: matching on copy would make the test
- * fail the next time the wording is edited.
+ * which is why the assertions below match on `openstoa.*` keys rather than on
+ * English copy. That is deliberate: matching on copy would make the test fail
+ * the next time the wording is edited.
  */
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { render } from './harness/render';
+import { renderScreen, hostDouble } from './harness/screen';
 import { WelcomeScreen } from '../screens/onboarding/WelcomeScreen';
+import { useSignInGate } from '../components/SignInSheet';
+import { Text, TouchableOpacity } from 'react-native';
+import {
+  SIGN_IN_METHODS,
+  offeredSignInMethods,
+  isSignInMethodOffered,
+  type SignInMethod,
+} from '../auth/signInMethods';
 
-const SIGN_IN = 'openstoa.welcome.signIn';
-const MDL = 'openstoa.welcome.signInMdl';
+const OIDC = 'openstoa.signIn.method.oidc';
+const MDL = 'openstoa.signIn.method.mdl';
 const GUEST = 'openstoa.welcome.continueAsGuest';
 
 /**
@@ -65,27 +83,62 @@ function pressables(root: ReactTestInstance): ReactTestInstance[] {
   return root.findAll((n) => isPressable(n.type));
 }
 
-describe('WelcomeScreen mDL button', () => {
-  it('CONTRACT: absent when no handler is supplied', async () => {
+/** The mDL entry as the app knows it — offered or not, it still exists. */
+const mdlMethod = SIGN_IN_METHODS.find((m) => m.id === 'mdl') as SignInMethod;
+
+describe('the offered sign-in methods (auth/signInMethods.ts)', () => {
+  it('CONTRACT: mDL is not offered, with Developer Mode off OR on', () => {
+    // `enabled: false` outranks `developerOnly` — that is what makes this a
+    // release kill switch rather than another Developer Mode toggle. Both
+    // settings are asserted because only one of them was ever the gate before.
+    for (const developerMode of [false, true]) {
+      const offered = offeredSignInMethods({ developerMode });
+      expect(offered.map((m) => m.id)).not.toContain('mdl');
+      expect(isSignInMethodOffered('mdl', { developerMode })).toBe(false);
+    }
+  });
+
+  it('CONTRACT: OIDC is offered either way — the hide is mDL-specific', () => {
+    for (const developerMode of [false, true]) {
+      expect(isSignInMethodOffered('oidc', { developerMode })).toBe(true);
+    }
+  });
+
+  it('INTEGRITY: mDL is un-offered, NOT deleted — restoring it is one flag', () => {
+    expect(mdlMethod).toBeDefined();
+    expect(mdlMethod.enabled).toBe(false);
+    // The label key survives, so the restore is a flag flip and not a
+    // reconstruction of copy that was deleted and half-remembered.
+    expect(mdlMethod.labelKey).toBe(MDL);
+    // And the gate it goes back BEHIND is still Developer Mode, which is where
+    // it lived before the beta hid it — `enabled` did not replace that gate,
+    // it stacked on top of it.
+    expect(mdlMethod.developerOnly).toBe(true);
+  });
+});
+
+describe('WelcomeScreen renders the offered methods and nothing else', () => {
+  it('EMPTY: no `methods` prop → the conservative default, which excludes mDL', async () => {
     const r = await render(
       <WelcomeScreen onSignIn={() => {}} onContinueAsGuest={() => {}} />,
     );
 
     expect(r.text()).not.toContain(MDL);
     expect(r.pressableWith(MDL)).toBeUndefined();
+    expect(r.text()).toContain(OIDC);
     // BOUNDARY: sign in + guest, and nothing in between. A labelless button
     // would pass the text assertions above and fail here.
     expect(pressables(r.root).length).toBe(2);
   });
 
-  it('EMPTY: an explicit `undefined` handler hides it too', async () => {
-    // This is the shape the app passes — `flag && developerMode ? fn :
-    // undefined` — so it is asserted in its own right rather than assumed
+  it('CONTRACT: what the app actually passes (the offered set) hides mDL too', async () => {
+    // This is the real call shape — `methods={useOfferedSignInMethods()}` in
+    // OpenStoaApp — so it is asserted in its own right rather than assumed
     // equivalent to omitting the prop.
     const r = await render(
       <WelcomeScreen
+        methods={offeredSignInMethods({ developerMode: true })}
         onSignIn={() => {}}
-        onSignInMdl={undefined}
         onContinueAsGuest={() => {}}
       />,
     );
@@ -94,12 +147,16 @@ describe('WelcomeScreen mDL button', () => {
     expect(pressables(r.root).length).toBe(2);
   });
 
-  it('CONTRACT: present, and wired, when a handler IS supplied', async () => {
-    const onSignInMdl = vi.fn();
+  it('CONTRACT: a method that IS offered renders, and is wired to its id', async () => {
+    // Proves the screen is a renderer of the list rather than a hardcoded
+    // stack: hand it mDL explicitly and the button appears, wired to 'mdl'.
+    // If this ever failed while the tests above passed, the buttons would be
+    // hardcoded again and the whole seam would be decoration.
+    const onSignIn = vi.fn();
     const r = await render(
       <WelcomeScreen
-        onSignIn={() => {}}
-        onSignInMdl={onSignInMdl}
+        methods={[...SIGN_IN_METHODS]}
+        onSignIn={onSignIn}
         onContinueAsGuest={() => {}}
       />,
     );
@@ -112,7 +169,24 @@ describe('WelcomeScreen mDL button', () => {
     // Present is not the same as working: a button rendered but not connected
     // would satisfy every assertion above.
     await r.press(button!);
-    expect(onSignInMdl).toHaveBeenCalledTimes(1);
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+    expect(onSignIn).toHaveBeenCalledWith('mdl');
+  });
+
+  it('BOUNDARY: an empty method list renders no sign-in buttons at all', async () => {
+    const r = await render(
+      <WelcomeScreen
+        methods={[]}
+        onSignIn={() => {}}
+        onContinueAsGuest={() => {}}
+      />,
+    );
+
+    expect(r.text()).not.toContain(OIDC);
+    expect(r.text()).not.toContain(MDL);
+    // Guest browsing survives — the only CTA left.
+    expect(pressables(r.root).length).toBe(1);
+    expect(r.text()).toContain(GUEST);
   });
 
   it('INTEGRITY: hiding mDL leaves sign-in and guest browsing intact', async () => {
@@ -122,20 +196,21 @@ describe('WelcomeScreen mDL button', () => {
       <WelcomeScreen onSignIn={onSignIn} onContinueAsGuest={onContinueAsGuest} />,
     );
 
-    expect(r.text()).toContain(SIGN_IN);
+    expect(r.text()).toContain(OIDC);
     expect(r.text()).toContain(GUEST);
 
-    await r.press(r.pressableWith(SIGN_IN)!);
+    await r.press(r.pressableWith(OIDC)!);
     await r.press(r.pressableWith(GUEST)!);
     expect(onSignIn).toHaveBeenCalledTimes(1);
+    expect(onSignIn).toHaveBeenCalledWith('oidc');
     expect(onContinueAsGuest).toHaveBeenCalledTimes(1);
   });
 
-  it('RACE: while a sign-in is inflight every CTA is disabled, mDL included', async () => {
+  it('RACE: while a sign-in is inflight every CTA is disabled', async () => {
     const r = await render(
       <WelcomeScreen
+        methods={[...SIGN_IN_METHODS]}
         onSignIn={() => {}}
-        onSignInMdl={() => {}}
         onContinueAsGuest={() => {}}
         busy
       />,
@@ -144,5 +219,45 @@ describe('WelcomeScreen mDL button', () => {
     for (const p of pressables(r.root)) {
       expect(p.props.disabled).toBe(true);
     }
+  });
+});
+
+/** Opens the sheet from inside the provider, the way a gated action does. */
+function GateProbe() {
+  const gate = useSignInGate();
+  return (
+    <TouchableOpacity onPress={() => gate.open()}>
+      <Text>probe</Text>
+    </TouchableOpacity>
+  );
+}
+
+describe('SignInSheet — the OTHER surface, which used to keep its own list', () => {
+  it('CONTRACT: the opened sheet offers OIDC and does not offer mDL', async () => {
+    // The defect this whole change is about: this sheet showed "Sign in with
+    // Mobile ID" while WelcomeScreen hid it. `hostDouble()` reports Developer
+    // Mode OFF, which is the shipped configuration.
+    const { rendered } = await renderScreen(<GateProbe />);
+
+    await rendered.press(rendered.pressableWith('probe')!);
+
+    expect(rendered.text()).toContain(OIDC);
+    expect(rendered.text()).not.toContain(MDL);
+
+    rendered.unmount();
+  });
+
+  it('CONTRACT: mDL stays hidden even with Developer Mode ON', async () => {
+    // Developer Mode was the ONLY gate this surface had before the kill switch
+    // existed, so a host that turns it on is exactly the case that regressed.
+    const host = hostDouble({ getDeveloperMode: () => true });
+    const { rendered } = await renderScreen(<GateProbe />, { host });
+
+    await rendered.press(rendered.pressableWith('probe')!);
+
+    expect(rendered.text()).toContain(OIDC);
+    expect(rendered.text()).not.toContain(MDL);
+
+    rendered.unmount();
   });
 });

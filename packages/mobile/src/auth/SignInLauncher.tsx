@@ -1,4 +1,5 @@
 import React, { createContext, useContext, type ReactNode } from 'react';
+import type { SignInMethodId } from './signInMethods';
 
 /**
  * A function that drives the full ZK-proof sign-in flow on the host.
@@ -26,10 +27,15 @@ import React, { createContext, useContext, type ReactNode } from 'react';
  * `method` selects the proof flavor:
  *   - `'oidc'` (default) — Google / Microsoft OIDC sign-in
  *   - `'mdl'`            — Korea Mobile ID via OmniOne CX (experimental)
+ *
+ * The union comes from `signInMethods.ts` rather than being restated here, so
+ * the launcher and the offered-methods list cannot drift: adding a method there
+ * is immediately a type error in every launcher implementation that does not
+ * handle it.
  */
 export type SignInLauncher = (
   onSuccess?: () => void,
-  method?: 'oidc' | 'mdl',
+  method?: SignInMethodId,
 ) => void;
 
 const SignInLauncherContext = createContext<SignInLauncher | null>(null);

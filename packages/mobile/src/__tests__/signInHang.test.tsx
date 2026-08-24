@@ -51,9 +51,12 @@ import { hostDouble } from './harness/screen';
  * `@react-navigation/bottom-tabs`, which is a peer dependency this package does
  * not install, so importing it here fails at resolution before a single
  * assertion runs. What the tests below actually need from it is one bit: did we
- * land in the app or not. `RecoveryNudge` goes for the plainer reason that it
- * starts an account-level key repair the moment it mounts, which has nothing to
- * do with the phase machine and would put unrelated fetches in the way.
+ * land in the app or not. `RecoveryRepairProvider` goes for the plainer reason
+ * that it starts an account-level key repair the moment it mounts, which has
+ * nothing to do with the phase machine and would put unrelated fetches in the
+ * way. It is stubbed as a pass-through rather than as `null` — it WRAPS the
+ * navigator, so returning null here would delete the "did we land in the app"
+ * signal these tests read.
  *
  * Everything the tests DO exercise — the phase machine, the deadline, the
  * cancel control, the guard, the boot sequence — is the real code.
@@ -61,8 +64,8 @@ import { hostDouble } from './harness/screen';
 vi.mock('../navigation/OpenStoaTabNavigator', () => ({
   OpenStoaTabNavigator: () => 'READY_TAB_NAVIGATOR',
 }));
-vi.mock('../components/RecoveryNudge', () => ({
-  RecoveryNudge: () => null,
+vi.mock('../components/RecoveryRepair', () => ({
+  RecoveryRepairProvider: ({ children }: { children?: unknown }) => children,
 }));
 /*
  * `src/i18n` registers the mini-app's bundles into the DEFAULT i18next
@@ -88,7 +91,10 @@ const DEADLINE_MS = 8 * 60 * 1000;
 // Asserting on keys rather than on English copy keeps these tests alive through
 // a wording change — the same choice `welcomeMdlButton.test.tsx` makes.
 const WELCOME = 'openstoa.welcome.heading';
-const SIGN_IN = 'openstoa.welcome.signIn';
+// The sign-in button's label is shared by every sign-in surface now, so it
+// lives under `openstoa.signIn.method.*` rather than under this screen's own
+// namespace — see `auth/signInMethods.ts`.
+const SIGN_IN = 'openstoa.signIn.method.oidc';
 const PREPARING = 'openstoa.boot.preparingIdentity';
 const CANCEL = 'openstoa.boot.cancelSignIn';
 const TIMED_OUT = 'openstoa.welcome.signInTimedOut';

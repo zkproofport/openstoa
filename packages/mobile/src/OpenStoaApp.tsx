@@ -7,16 +7,17 @@ import { OpenStoaTabNavigator } from './navigation/OpenStoaTabNavigator';
 import { useOpenStoaSession } from './stores/sessionStore';
 import { ThemeProvider, useThemeColors } from './theme/ThemeContext';
 import { BootScreen } from './components/BootScreen';
-import { RecoveryNudge } from './components/RecoveryNudge';
+import { RecoveryRepairProvider } from './components/RecoveryRepair';
 import { WelcomeScreen } from './screens/onboarding/WelcomeScreen';
 import { SignInSheetProvider } from './components/SignInSheet';
 import { queryClient } from './api/queryClient';
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './api/timeout';
 import { initSessionLifecycle, SignInLauncherProvider } from './auth';
-import type { SignInLauncher } from './auth';
-import { useDeveloperMode } from './hooks/useDeveloperMode';
+import type { SignInLauncher, SignInMethodId } from './auth';
+import { useOfferedSignInMethods } from './auth/useOfferedSignInMethods';
 import { usePushRegistration } from './hooks/usePushRegistration';
 import { usePushTapRouting } from './hooks/usePushTapRouting';
+import { useChatNotificationClearing } from './hooks/useChatNotificationClearing';
 import { useAccountEvents } from './api/useAccountEvents';
 // Register OpenStoa translation bundles into the shared i18next instance.
 import './i18n';
@@ -35,22 +36,6 @@ const BOOT_MIN_DURATION_MS = 3000;
  * where the default sort is 'hot', no tag, empty query.
  */
 const DEFAULT_FEED_QUERY_KEY = ['feed', 'hot', null, ''] as const;
-
-/**
- * Kill switch for the Mobile ID (mDL) sign-in button on WelcomeScreen.
- *
- * `false` for the 1.0.0 corporate beta (Masse Labs). The mDL path is still
- * host-experimental and out of scope for that release, so it is HIDDEN rather
- * than removed — the handler, the `'mdl'` launcher argument, the button and its
- * translation keys are all untouched.
- *
- * Set back to `true` to restore it; the button then reappears only when the
- * host has Developer Mode on, which is where it was before.
- *
- * Typed `boolean` on purpose: a bare `false` narrows to the literal type and
- * makes the restore edit look like dead code to every reader after it.
- */
-const MDL_SIGN_IN_ENABLED: boolean = false;
 
 /**
  * How long the "Preparing your anonymous identity…" screen waits before it
@@ -127,7 +112,10 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   const session = useOpenStoaSession();
   const { colors } = useThemeColors();
   const { t } = useTranslation();
-  const developerMode = useDeveloperMode();
+  // Which sign-in methods this build offers, Developer Mode already applied.
+  // The list itself — including the mDL kill switch for the 1.0.0 beta — lives
+  // in `auth/signInMethods.ts`, shared with the SignInSheet.
+  const signInMethods = useOfferedSignInMethods();
   const [phase, setPhase] = useState<Phase>('booting');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -144,6 +132,13 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   // gating it on the session would drop the very tap that launched the app. The
   // topic is latched; `OpenStoaTabNavigator` and `ChatListScreen` consume it.
   usePushTapRouting();
+
+  // Clearing delivered notifications for the room the user is reading. Entry
+  // into a room is handled by `ChatStack`'s screenListeners; this covers the
+  // case with no focus change in it — the app returning to the foreground with
+  // a room already open. Mounted at the root because AppState is a process-wide
+  // signal, not a screen's.
+  useChatNotificationClearing();
 
   // The host and mini-app share the SAME i18next default instance (resolved
   // via Metro module deduplication). Re-calling `i18n.changeLanguage(lang)`
@@ -565,14 +560,14 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
     abandonSignIn('cancelled', Date.now() - signInStartedAtRef.current);
   }, [abandonSignIn]);
 
-  // Welcome screen "Sign in" CTA — no replay needed, just kicks off the
-  // shared launcher.
-  const handleSignIn = useCallback(() => {
-    performSignIn();
-  }, [performSignIn]);
-  const handleSignInMdl = useCallback(() => {
-    performSignIn(undefined, 'mdl');
-  }, [performSignIn]);
+  // Welcome screen sign-in CTAs — no replay needed, just kick off the shared
+  // launcher with whichever method was tapped.
+  const handleSignIn = useCallback(
+    (method: SignInMethodId) => {
+      performSignIn(undefined, method);
+    },
+    [performSignIn],
+  );
 
   const handleContinueAsGuest = useCallback(() => {
     // Mirror the sign-in guard — don't let a guest-tap during an inflight
@@ -601,23 +596,13 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   }
 
   if (phase === 'welcome') {
-    // mDL sign-in is host-experimental — only surface it when the host has
-    // Developer Mode enabled. WelcomeScreen treats an undefined handler
-    // as "hide the button".
-    //
-    // HIDDEN for the 1.0.0 corporate beta (Masse Labs): the Mobile ID (mDL)
-    // flow is out of scope for that release, and shipping a half-finished
-    // second sign-in path — even behind Developer Mode — is a support burden
-    // on a build going to outside testers. Nothing is deleted: the handler,
-    // the `'mdl'` launcher argument, the button and its copy all still exist.
-    // TO RESTORE: flip MDL_SIGN_IN_ENABLED back to `true` — the button then
-    // reappears under Developer Mode exactly as before.
+    // The offered methods are handed down rather than read inside the screen:
+    // `signInMethods.ts` is the single place that decides, and the Developer
+    // Mode read that feeds it belongs to the app, not to onboarding chrome.
     return (
       <WelcomeScreen
+        methods={signInMethods}
         onSignIn={handleSignIn}
-        onSignInMdl={
-          MDL_SIGN_IN_ENABLED && developerMode ? handleSignInMdl : undefined
-        }
         onContinueAsGuest={handleContinueAsGuest}
         errorMessage={errorMsg}
         busy={signInBusy}
@@ -635,14 +620,17 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
         <View
           style={[styles.fill, { backgroundColor: colors.background.primary }]}
         >
-          {/* E2EE key-backup repair + first-run recovery prompt. Renders null
-              for guests and whenever recovery is already set up (the common
-              case). Mounted at the ROOT, above the navigator: the repair is
-              account-level and must not depend on the user opening a chat
-              room — the old key-change-only trigger is exactly why accounts
-              ended up with a wrapped master_key and nothing to restore. */}
-          <RecoveryNudge />
-          <OpenStoaTabNavigator />
+          {/* Silent E2EE key-backup repair, wrapping the whole navigator so it
+              reaches every signed-in account regardless of which tab they open
+              — the repair is account-level and must not depend on the user
+              visiting a chat room, or a Profile tab: the old key-change-only
+              trigger is exactly why accounts ended up with a wrapped
+              master_key and nothing to restore. It renders no UI of its own.
+              The VISIBLE banner it decides on is `<RecoveryNudge />`, mounted
+              on the Profile screen alone (see `RecoveryNudge.tsx`). */}
+          <RecoveryRepairProvider>
+            <OpenStoaTabNavigator />
+          </RecoveryRepairProvider>
         </View>
       </SignInSheetProvider>
     </SignInLauncherProvider>

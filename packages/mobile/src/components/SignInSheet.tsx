@@ -21,7 +21,9 @@ import { useOpenStoaSession } from '../stores/sessionStore';
 import { useSignInLauncher } from '../auth/SignInLauncher';
 import { subscribeSessionExpired } from '../auth/sessionExpiry';
 import { useThemeColors } from '../theme/ThemeContext';
-import { useDeveloperMode } from '../hooks/useDeveloperMode';
+import { SignInMethodButtons } from '../auth/SignInMethodButtons';
+import { useOfferedSignInMethods } from '../auth/useOfferedSignInMethods';
+import type { SignInMethodId } from '../auth/signInMethods';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 
 interface SignInSheetContextValue {
@@ -70,9 +72,11 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
   const launcher = useSignInLauncher();
   const { t } = useTranslation();
   const { colors } = useThemeColors();
-  // mDL sign-in is host-experimental — only surface it when Developer Mode
-  // is enabled on the host. Re-renders automatically on toggle.
-  const developerMode = useDeveloperMode();
+  // WHICH methods to offer is not this component's decision — it comes from
+  // `signInMethods.ts`, the same list WelcomeScreen renders. This sheet used to
+  // keep its own copy of that list, which is how mDL ended up hidden on Welcome
+  // and still reachable here for the 1.0.0 beta.
+  const methods = useOfferedSignInMethods();
   const [visible, setVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // Which copy the sheet shows. 'guest' is the ordinary "sign in to do
@@ -133,7 +137,7 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
   );
 
   const runLauncher = useCallback(
-    (method?: 'oidc' | 'mdl') => {
+    (method?: SignInMethodId) => {
       // Hand off to the launcher — OpenStoaApp will switch to the
       // `'authenticating'` BootScreen and run the host proof flow there.
       // We close the sheet first so the proof modal has a clean modal
@@ -157,8 +161,10 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
     [launcher],
   );
 
-  const handleSignIn = useCallback(() => runLauncher('oidc'), [runLauncher]);
-  const handleSignInMdl = useCallback(() => runLauncher('mdl'), [runLauncher]);
+  const handleSelectMethod = useCallback(
+    (method: SignInMethodId) => runLauncher(method),
+    [runLauncher],
+  );
 
   const value = useMemo<SignInSheetContextValue>(
     () => ({ require, open, close, isGuest }),
@@ -203,37 +209,11 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
               </Text>
             ) : null}
 
-            <Pressable
-              onPress={handleSignIn}
-              style={({ pressed }) => [
-                styles.primary,
-                {
-                  backgroundColor: colors.brand.primary,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text style={styles.primaryText}>
-                {t('openstoa.signInPrompt.primary')}
-              </Text>
-            </Pressable>
-
-            {developerMode ? (
-              <Pressable
-                onPress={handleSignInMdl}
-                style={({ pressed }) => [
-                  styles.mdl,
-                  {
-                    borderColor: colors.brand.primary,
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.mdlText, { color: colors.brand.primary }]}>
-                  {t('openstoa.signInPrompt.primaryMdl')}
-                </Text>
-              </Pressable>
-            ) : null}
+            <SignInMethodButtons
+              methods={methods}
+              onSelect={handleSelectMethod}
+              size="md"
+            />
 
             <Pressable
               onPress={close}
@@ -344,31 +324,6 @@ const styles = StyleSheet.create({
     fontSize: TYPE_SCALE.caption,
     fontWeight: '500',
     marginBottom: 12,
-  },
-  primary: {
-    height: 48,
-    borderRadius: RADIUS.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  primaryText: {
-    color: '#FFFFFF',
-    fontSize: TYPE_SCALE.body,
-    fontWeight: '700',
-  },
-  mdl: {
-    height: 48,
-    borderRadius: RADIUS.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    borderWidth: 1.5,
-    backgroundColor: 'transparent',
-  },
-  mdlText: {
-    fontSize: TYPE_SCALE.bodySmall,
-    fontWeight: '700',
   },
   secondary: {
     height: 44,

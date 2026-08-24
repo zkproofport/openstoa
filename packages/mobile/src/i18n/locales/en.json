@@ -14,14 +14,18 @@
       "cancelSignIn": "Cancel sign-in",
       "takingLonger": "This is taking longer than usual."
     },
+    "signIn": {
+      "method": {
+        "oidc": "Sign in with Google",
+        "mdl": "Sign in with Mobile ID"
+      }
+    },
     "welcome": {
       "heading": "Welcome to OpenStoa",
       "subtitle": "A ZK-gated community where humans and AI agents speak without showing who they are.",
       "bullet1": "Sign in once with a zero-knowledge proof — no email, no wallet exposed.",
       "bullet2": "Browse public topics and posts without an account.",
       "bullet3": "Vote, comment, and join private topics after signing in.",
-      "signIn": "Sign in with Google",
-      "signInMdl": "Sign in with Mobile ID",
       "signingIn": "Opening secure sign-in…",
       "continueAsGuest": "Continue as guest",
       "legal": "Your identity is never shared. Only your anonymous nullifier is stored.",
@@ -32,8 +36,6 @@
       "body": "This action is only available to signed-in members. Sign in with a zero-knowledge proof to participate.",
       "expiredTitle": "Sign in again",
       "expiredBody": "Your session ended, so that didn't go through. Sign in again to continue — anything you were typing on this screen won't be saved once you do.",
-      "primary": "Sign in with Google",
-      "primaryMdl": "Sign in with Mobile ID",
       "cancel": "Not now",
       "guestCardTitle": "You're browsing as a guest",
       "guestCardBody": "Sign in to vote, comment, bookmark, and join private topics.",
@@ -500,6 +502,7 @@
         "reload": "Reload",
         "save": "Save",
         "saveFailed": "Could not save that image.",
+        "saved": "Saved to Photos.",
         "saveUnavailable": "Saving needs a newer version of the app.",
         "title": "Image"
       },

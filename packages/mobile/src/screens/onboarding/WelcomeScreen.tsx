@@ -11,13 +11,32 @@ import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../../theme/ThemeContext';
 import { OpenStoaMarkIcon } from '../../components/icons';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
+import { SignInMethodButtons } from '../../auth/SignInMethodButtons';
+import {
+  offeredSignInMethods,
+  type SignInMethod,
+  type SignInMethodId,
+} from '../../auth/signInMethods';
+
+/**
+ * What this screen offers when the caller says nothing: the methods that need
+ * no Developer Mode. Conservative on purpose — a surface that forgets to pass
+ * the list shows fewer methods, never more.
+ */
+const DEFAULT_METHODS = offeredSignInMethods({ developerMode: false });
 
 export interface WelcomeScreenProps {
-  onSignIn: () => void;
-  /** Optional Mobile ID sign-in handler. When omitted, the mDL button is hidden. */
-  onSignInMdl?: () => void;
+  /**
+   * Which sign-in methods to offer, from `signInMethods.ts` — the single place
+   * that decides. Passed in rather than read from a hook here because this
+   * screen is also rendered outside `<HostProvider>` (tests), and because the
+   * Developer Mode read belongs to the app, not to the onboarding chrome.
+   */
+  methods?: readonly SignInMethod[];
+  /** Starts sign-in with the chosen method. */
+  onSignIn: (method: SignInMethodId) => void;
   onContinueAsGuest: () => void;
-  /** Disables both buttons during inflight host work (e.g. login spawning). */
+  /** Disables every button during inflight host work (e.g. login spawning). */
   busy?: boolean;
   /** Shown above the buttons when a previous login attempt failed. */
   errorMessage?: string | null;
@@ -26,10 +45,14 @@ export interface WelcomeScreenProps {
 /**
  * First-launch / signed-out OpenStoa entry. Lets the user pick between
  * Sign in (ZK proof flow on the host) and Browse as guest (read-only).
+ *
+ * The sign-in buttons themselves come from `<SignInMethodButtons>`, shared with
+ * `SignInSheet` — this screen owns only its own chrome (heading, bullets,
+ * "continue as guest", legal line).
  */
 export function WelcomeScreen({
+  methods = DEFAULT_METHODS,
   onSignIn,
-  onSignInMdl,
   onContinueAsGuest,
   busy,
   errorMessage,
@@ -99,43 +122,13 @@ export function WelcomeScreen({
           </Text>
         ) : null}
 
-        <Pressable
-          onPress={onSignIn}
-          disabled={busy}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            {
-              backgroundColor: colors.brand.primary,
-              opacity: busy ? 0.6 : pressed ? 0.85 : 1,
-            },
-          ]}
-        >
-          <Text style={styles.primaryButtonText}>
-            {busy
-              ? t('openstoa.welcome.signingIn')
-              : t('openstoa.welcome.signIn')}
-          </Text>
-        </Pressable>
-
-        {onSignInMdl ? (
-          <Pressable
-            onPress={onSignInMdl}
-            disabled={busy}
-            style={({ pressed }) => [
-              styles.mdlButton,
-              {
-                borderColor: colors.brand.primary,
-                opacity: busy ? 0.5 : pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={[styles.mdlButtonText, { color: colors.brand.primary }]}
-            >
-              {t('openstoa.welcome.signInMdl')}
-            </Text>
-          </Pressable>
-        ) : null}
+        <SignInMethodButtons
+          methods={methods}
+          onSelect={onSignIn}
+          busy={busy}
+          busyLabelKey="openstoa.welcome.signingIn"
+          size="lg"
+        />
 
         <Pressable
           onPress={onContinueAsGuest}
@@ -248,31 +241,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginBottom: 4,
-  },
-  primaryButton: {
-    height: 52,
-    borderRadius: RADIUS.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: TYPE_SCALE.body,
-    fontWeight: '700',
-    letterSpacing: 0.1,
-  },
-  mdlButton: {
-    height: 52,
-    borderRadius: RADIUS.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    backgroundColor: 'transparent',
-  },
-  mdlButtonText: {
-    fontSize: TYPE_SCALE.bodySmall,
-    fontWeight: '700',
-    letterSpacing: 0.1,
   },
   secondaryButton: {
     height: 44,
