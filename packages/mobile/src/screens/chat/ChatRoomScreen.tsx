@@ -1892,7 +1892,7 @@ export function ChatRoomScreen() {
     <>
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       /*
        * `automaticOffset`, NOT a hand-tuned `keyboardVerticalOffset`.
        *
@@ -1920,9 +1920,23 @@ export function ChatRoomScreen() {
        * PostDetailScreen and PostCreateScreen already dock their composers
        * with.
        *
-       * Android is deliberately untouched: `behavior` stays undefined there
-       * because the activity is `adjustResize`, which already moves the
-       * window, and adding padding on top would double-count.
+       * BOTH PLATFORMS. Android used to be left out — `behavior` was undefined
+       * there — on the grounds that the activity is `adjustResize` and the
+       * window therefore already moves. That was true when it was written and
+       * is not true now: the app targets SDK 36, and from SDK 35 an app is
+       * edge-to-edge by default unless it opts out, which this one does not.
+       * Under edge-to-edge the platform stops resizing the window for the IME,
+       * so `adjustResize` in the manifest does nothing and the composer sits
+       * behind the keyboard.
+       *
+       * The premise died at a distance: a correct targetSdk bump somewhere else
+       * killed it, and nothing here could report that, because from this file's
+       * point of view nothing had changed.
+       *
+       * The two screens this comment used to cite as working — PostDetailScreen
+       * and PostCreateScreen — dock their composers with `KeyboardStickyView`,
+       * which takes no `behavior` at all. They were never evidence that Android
+       * needs none here; they were evidence that a different component does not.
        */
       automaticOffset
       keyboardVerticalOffset={0}
