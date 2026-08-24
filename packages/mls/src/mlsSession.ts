@@ -86,6 +86,15 @@ export class MlsSessionStore {
     private userIdProvider?: () => Promise<string | null>,
   ) {}
 
+  /**
+   * Plaintext this process has already opened, by `msgKey`.
+   *
+   * In memory only, and deliberately: it is a memo over the durable cache, not
+   * a second copy of it. Nothing here survives a restart, and nothing needs to
+   * — the store below does that.
+   */
+  private readonly plaintextMemo = new Map<string, string>();
+
   private msgKey(topicId: string, msgId: string): string {
     return `mls.msg.${topicId}.${msgId}`;
   }
@@ -285,20 +294,47 @@ export class MlsSessionStore {
    * (Raising MLS key retention to re-decrypt would weaken forward secrecy.)
    */
   async openCached(topicId: string, msgId: string, sealed: SealedMessage): Promise<string | null> {
+    const key = this.msgKey(topicId, msgId);
+
+    /*
+     * ALREADY OPEN? Then it is free.
+     *
+     * The store below is the durable half and it does its job: MLS is never
+     * asked to decrypt the same message twice. But "cached" there still means a
+     * read through `EncryptingKVStore`, which OPENS EVERY VALUE IT RETURNS —
+     * so a hit costs one storage read and one AES open, per message. Leaving a
+     * room and coming back paid that fifty times over before the first bubble
+     * appeared, and that is what "why does it decrypt every time I open the
+     * room" was describing. It was not MLS. It was this.
+     *
+     * The memo lives as long as the store singleton, which outlives the screen
+     * — so the SECOND entry into a room does no work at all for rows the first
+     * entry already opened. It is bounded because the durable cache behind it
+     * is bounded: an entry only exists here if a message was rendered.
+     */
+    const memo = this.plaintextMemo.get(key);
+    if (memo !== undefined) return memo;
+
     if (this.msgCache) {
       try {
-        const cached = await this.msgCache.get(this.msgKey(topicId, msgId));
-        if (cached != null) return cached;
+        const cached = await this.msgCache.get(key);
+        if (cached != null) {
+          this.plaintextMemo.set(key, cached);
+          return cached;
+        }
       } catch {
         /* cache miss/unreadable → decrypt below */
       }
     }
     const plaintext = await this.open(topicId, sealed);
-    if (plaintext != null && this.msgCache) {
-      try {
-        await this.msgCache.set(this.msgKey(topicId, msgId), plaintext);
-      } catch {
-        /* best-effort cache write */
+    if (plaintext != null) {
+      this.plaintextMemo.set(key, plaintext);
+      if (this.msgCache) {
+        try {
+          await this.msgCache.set(key, plaintext);
+        } catch {
+          /* best-effort cache write */
+        }
       }
     }
     return plaintext;
@@ -311,6 +347,10 @@ export class MlsSessionStore {
    * this with the server-assigned message id right after a successful send.
    */
   async cachePlaintext(topicId: string, msgId: string, plaintext: string): Promise<void> {
+    // The memo first and unconditionally: a message this device just SENT is
+    // the one `openCached` can never derive, so if it misses here it pays a
+    // storage read to find out there is nothing to find.
+    this.plaintextMemo.set(this.msgKey(topicId, msgId), plaintext);
     if (!this.msgCache) return;
     try {
       await this.msgCache.set(this.msgKey(topicId, msgId), plaintext);

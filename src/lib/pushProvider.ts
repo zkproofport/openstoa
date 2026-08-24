@@ -27,6 +27,18 @@ const ROUTE = 'push-provider';
 
 /** The one well-known Expo push endpoint (not a secret, not env-configurable). */
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+/** Where an accepted ticket's real outcome shows up. */
+const EXPO_RECEIPT_URL = 'https://exp.host/--/api/v2/push/getReceipts';
+/** Expo's documented cap for one getReceipts call. */
+const EXPO_RECEIPT_MAX = 1000;
+/**
+ * How long to leave a ticket before asking about it.
+ *
+ * Expo answers `pending` for a receipt it has not resolved yet, and a pending
+ * answer teaches nothing. Long enough that the common case has settled, short
+ * enough to stay inside the request the push was sent from.
+ */
+const RECEIPT_DELAY_MS = 5_000;
 
 /** Expo accepts up to 100 message objects per POST — we chunk to respect it. */
 export const EXPO_BATCH_MAX = 100;
@@ -125,25 +137,112 @@ export class ExpoPushProvider implements PushProvider {
           continue;
         }
 
-        // Summarise Expo tickets by status ('ok' vs 'error') — never the tickets'
-        // ids or any payload content.
+        /*
+         * Summarise the tickets, AND NAME THE FAILURES.
+         *
+         * This used to count `ok` and `error` and throw the rest away, which
+         * made every push failure look identical in the log. Android delivery
+         * was dead for a day behind `{ok:0,error:1}`, and the reason — Expo
+         * holding no FCM credential for this app after the package rename —
+         * only came out by hand-POSTing to Expo and reading the reply. That is
+         * a diagnosis the log should have handed over.
+         *
+         * `details.error` is an enum from Expo (`InvalidCredentials`,
+         * `DeviceNotRegistered`, `MessageTooBig`, `MessageRateExceeded`) and
+         * `message` is its prose. NEITHER contains a token, a user, or any part
+         * of the message — the ticket does not carry them — so this stays
+         * inside the same rule the counts already obeyed.
+         */
         const json = (await res.json().catch(() => null)) as {
-          data?: Array<{ status?: string }>;
+          data?: Array<{
+            status?: string;
+            id?: string;
+            message?: string;
+            details?: { error?: string };
+          }>;
         } | null;
         const tickets = Array.isArray(json?.data) ? json!.data : [];
         let ok = 0;
-        let error = 0;
+        const reasons: string[] = [];
+        const receiptIds: string[] = [];
         for (const t of tickets) {
-          if (t?.status === 'ok') ok++;
-          else error++;
+          if (t?.status === 'ok') {
+            ok++;
+            if (t.id) receiptIds.push(t.id);
+            continue;
+          }
+          reasons.push(t?.details?.error ?? t?.message ?? 'unknown');
         }
-        logger.info(ROUTE, 'expo push batch sent', { count: batch.length, ok, error });
+        if (reasons.length > 0) {
+          logger.warn(ROUTE, 'expo push batch rejected', {
+            count: batch.length,
+            ok,
+            error: reasons.length,
+            reasons: [...new Set(reasons)].join(','),
+          });
+        } else {
+          logger.info(ROUTE, 'expo push batch sent', { count: batch.length, ok, error: 0 });
+        }
+        /*
+         * An accepted ticket is a QUEUED message, not a delivered one. Expo
+         * hands the real outcome back through a receipt, and everything that
+         * goes wrong between Expo and FCM/APNs — an expired credential, a token
+         * the device has since dropped — appears ONLY there. Without this the
+         * server can watch every push it sends succeed while no phone rings.
+         */
+        void this.reportReceipts(receiptIds);
       } catch (err) {
         logger.warn(ROUTE, 'expo push batch failed', {
           count: batch.length,
           err: String(err),
         });
       }
+    }
+  }
+
+  /**
+   * Ask Expo what actually happened to the messages it accepted.
+   *
+   * Deliberately fire-and-forget and deliberately unawaited by the caller: a
+   * receipt is diagnostics, and a chat message must not wait on it or fail
+   * because of it. Receipts are not ready the instant a ticket is issued, so a
+   * `pending` answer is normal and is not logged — only an error is.
+   */
+  private async reportReceipts(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      await new Promise((r) => setTimeout(r, RECEIPT_DELAY_MS));
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      };
+      if (this.accessToken) headers.Authorization = `Bearer ${this.accessToken}`;
+
+      for (const group of chunk(ids, EXPO_RECEIPT_MAX)) {
+        const res = await fetch(EXPO_RECEIPT_URL, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ids: group }),
+        });
+        if (!res.ok) continue;
+        const json = (await res.json().catch(() => null)) as {
+          data?: Record<string, { status?: string; message?: string; details?: { error?: string } }>;
+        } | null;
+        const reasons: string[] = [];
+        for (const receipt of Object.values(json?.data ?? {})) {
+          if (!receipt || receipt.status === 'ok') continue;
+          reasons.push(receipt.details?.error ?? receipt.message ?? 'unknown');
+        }
+        if (reasons.length > 0) {
+          logger.warn(ROUTE, 'expo push undelivered', {
+            count: group.length,
+            failed: reasons.length,
+            reasons: [...new Set(reasons)].join(','),
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn(ROUTE, 'expo push receipt check failed', { err: String(err) });
     }
   }
 }

@@ -23,6 +23,7 @@ import {
   writeChatHistory,
   cursorFrom,
   mergeChatHistory,
+  type CachedChatHistory,
   type CachedChatMessage,
   type ChatHistoryCursor,
   type ChatHistoryStore,
@@ -1204,6 +1205,40 @@ export class TakSessionStore {
    * archive row we now hold a key for. Rows we lack a key for (out of scope) are
    * skipped. Returns the decrypted bodies keyed by original message id.
    */
+  /**
+   * The room as this device last rendered it, in ONE read.
+   *
+   * `mlsSession.openCached` also holds plaintext, but keyed per MESSAGE — and
+   * the store it sits behind decrypts every value it returns, so restoring
+   * fifty rows costs fifty reads and fifty AES opens before anything paints.
+   * This record is the whole room, so it costs one of each.
+   *
+   * Returns null on a miss, an unreadable store, or a first visit. A room that
+   * cannot read its cache is a room that fetches, which is what it did before.
+   */
+  async readHistoryCache(topicId: string): Promise<CachedChatHistory | null> {
+    return readChatHistory(this.historyStore, topicId);
+  }
+
+  /**
+   * Remember the room as rendered, so the next entry can paint before it asks
+   * the network anything.
+   *
+   * The cursor is left as it was: it belongs to the ARCHIVE walk in `backfill`
+   * and says which sealed rows have been opened. Messages that arrived live
+   * have not moved it, and advancing it here would tell the next backfill to
+   * skip rows it has never read.
+   */
+  async writeHistoryCache(topicId: string, messages: CachedChatMessage[]): Promise<void> {
+    const existing = await readChatHistory(this.historyStore, topicId);
+    await writeChatHistory(
+      this.historyStore,
+      topicId,
+      mergeChatHistory([...(existing?.messages ?? []), ...messages]),
+      existing?.cursor ?? null,
+    );
+  }
+
   async backfill(topicId: string, tier: ChatTier): Promise<Array<{ messageId: string; plaintext: string }>> {
     await this.ingestBundles(topicId);
 

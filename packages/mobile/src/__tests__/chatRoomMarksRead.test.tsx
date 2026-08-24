@@ -99,6 +99,11 @@ const takDouble = storeDouble({
   forgetUnsettledRoot: () => {},
   sealForPush: async () => null,
   archiveOnSend: async () => {},
+  // The room reads its own snapshot before it asks the network for anything.
+  // A miss here is the arrangement these cases are about: no cache, so the
+  // cursor has to come from the fetched history rather than from stored rows.
+  readHistoryCache: async () => null,
+  writeHistoryCache: async () => {},
 });
 
 vi.mock('../crypto/mobileTransport', async (importOriginal) => {

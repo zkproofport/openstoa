@@ -880,7 +880,6 @@ export function ChatRoomScreen() {
   // its own sealed message, so without this the SSE echo shows "[unable to
   // decrypt]". Spread FIRST in the merge so it wins the first-wins dedup.
   const [sentMessages, setSentMessages] = useState<LocalMessage[]>([]);
-
   // ── Merge history + catchup + live, deduplicated, newest last ─────────────
   const allMessages = useMemo<LocalMessage[]>(() => {
     const historyMsgs = (data?.pages ?? []).flatMap((p) => p.messages);
@@ -943,7 +942,6 @@ export function ChatRoomScreen() {
     () => (syncing ? allMessages.filter((m) => m.message !== '[unable to decrypt]') : allMessages),
     [allMessages, syncing],
   );
-
   // ── TAK back-fill + public holder upkeep (Phase 3) ────────────────────────
   // On mount: resolve visibility, then back-fill (ingest bundles + decrypt the
   // archive) to recover pre-join history. For public topics, claim the single-
@@ -1892,7 +1890,7 @@ export function ChatRoomScreen() {
     <>
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior="padding"
+      behavior="translate-with-padding"
       /*
        * `automaticOffset`, NOT a hand-tuned `keyboardVerticalOffset`.
        *
@@ -1937,6 +1935,16 @@ export function ChatRoomScreen() {
        * and PostCreateScreen — dock their composers with `KeyboardStickyView`,
        * which takes no `behavior` at all. They were never evidence that Android
        * needs none here; they were evidence that a different component does not.
+       *
+       * `translate-with-padding`, not plain `padding`. Plain padding left a
+       * 23dp band of dead screen between the composer and the keyboard —
+       * measured off the device, not estimated: the composer bar ended at
+       * y=1335 and the keyboard toolbar began at y=1400 on a 450dpi panel.
+       * Padding alone double-counts, because Android moves part of the way on
+       * its own; translating the view and padding only the remainder is the
+       * variant that does not need a constant to correct it, and a constant is
+       * exactly what this comment already records nobody being able to derive
+       * twice running.
        */
       automaticOffset
       keyboardVerticalOffset={0}
@@ -2043,6 +2051,31 @@ export function ChatRoomScreen() {
             />
           )}
           contentContainerStyle={styles.listContent}
+          /*
+           * ANCHOR THE VIEWPORT TO A ROW, not to a scroll offset.
+           *
+           * A chat room grows UPWARDS after it paints: every picture resolves
+           * its real height some frames after layout, every locked row swaps a
+           * placeholder for real text when its key arrives, and older pages
+           * prepend when the reader scrolls back. Without an anchor the list
+           * keeps `contentOffset` fixed while the content above it gets taller,
+           * so the conversation slides out from under the reader — which is
+           * what "it jumps and then ends up in the middle" is. Nothing scrolled;
+           * the content moved.
+           *
+           * `minIndexForVisible: 1` and not 0, because index 0 is exactly the
+           * row a prepended page replaces. Anchoring to it means anchoring to
+           * whichever message happens to be oldest right now, and scrolling up
+           * changes that — so the anchor moves at the one moment it is meant to
+           * hold still. React Native's own guidance says the same thing.
+           *
+           * There must be exactly ONE of these props. A second copy appeared
+           * further down this element from another lane, and because JSX keeps
+           * the LAST duplicate it silently won: the list ran on 0 while this
+           * comment explained 1. `chatListSingleAnchor.test.tsx` fails if a
+           * duplicate comes back.
+           */
+          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
           onScroll={onScrollTop}
           scrollEventThrottle={64}
           // Only auto-scroll when the user is already pinned to the
@@ -2054,7 +2087,18 @@ export function ChatRoomScreen() {
               listRef.current?.scrollToEnd({ animated: false });
             }
           }}
-          onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
+          /*
+           * Gated like `onContentSizeChange` above, and for the same reason.
+           * Ungated, this fired on every layout pass — including the ones that
+           * happen while pictures are still resolving — and each one yanked a
+           * reader who had scrolled up straight back to the bottom, competing
+           * with the anchor above and producing the bounce.
+           */
+          onLayout={() => {
+            if (userNearBottomRef.current) {
+              listRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
           ListHeaderComponent={
             isFetchingNextPage ? (
               <View style={styles.loadingMore}>
@@ -2067,7 +2111,6 @@ export function ChatRoomScreen() {
               <Text style={styles.emptyText}>{t('openstoa.chat.noMessagesYet')}</Text>
             </View>
           }
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         />
       )}
 

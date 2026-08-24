@@ -257,8 +257,10 @@ export function ChatListScreen() {
   // this screen already depends on it (and it stays mounted underneath an open
   // chat room, where polling every room's history would be pure waste).
   const [screenFocused, setScreenFocused] = useState(false);
+  /** True only while a pull-to-refresh the user started is in flight. */
+  const [pulling, setPulling] = useState(false);
 
-  const { data, isLoading, error, refetch, isRefetching } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['my-topics'],
     queryFn: () => client.get<{ topics: Topic[] } | Topic[]>('/api/topics'),
     enabled: !isGuest,
@@ -397,8 +399,29 @@ export function ChatListScreen() {
     <FlatList
       data={sortedTopics}
       keyExtractor={(topic) => topic.id}
-      refreshing={isRefetching}
-      onRefresh={() => refetch()}
+      /*
+       * `pulling`, NOT react-query's `isRefetching`.
+       *
+       * `isRefetching` is true for ANY background fetch, and this list polls
+       * every 30 seconds — so the pull-to-refresh spinner appeared on its own
+       * every poll, with nobody having pulled anything. Coming back from a push
+       * notification re-focuses the screen and restarts the poll, which is why
+       * it read as "the spinner is stuck after a notification".
+       *
+       * A refresh control is a statement about what the USER asked for. Only a
+       * pull sets this.
+       */
+      refreshing={pulling}
+      onRefresh={async () => {
+        setPulling(true);
+        try {
+          await refetch();
+        } finally {
+          // `finally`: a refetch that rejects must still put the spinner away,
+          // or a single failed pull leaves it turning until the screen unmounts.
+          setPulling(false);
+        }
+      }}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       renderItem={({ item }) => {
         const originalIndex = topics.indexOf(item);
