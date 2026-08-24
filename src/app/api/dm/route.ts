@@ -24,10 +24,15 @@ const ROUTE = '/api/dm';
  *       so once you have a channel's `topicId`, you read and send with the exact same endpoints
  *       as topic chat (`GET`/`POST /api/topics/{topicId}/chat` + the `mls/*` and `tak/*` routes).
  *
- *       **The server is blind (SI-1).** This list carries ONLY routing metadata — the peer's
- *       `userId`, `nickname`, `profileImage`, and a `lastActivityAt` timestamp. It NEVER returns
- *       any message content or a decrypted preview; message bodies exist only as opaque
- *       ciphertext and are decrypted client-side.
+ *       **The server is blind (SI-1).** This list carries ONLY routing and read-position
+ *       metadata — the peer's `userId`, `nickname` and `profileImage`, a `lastActivityAt`
+ *       timestamp, and how far the caller has read (`lastReadAt`, `lastReadMessageId`,
+ *       `unreadCount`). It NEVER returns any message content or a decrypted preview;
+ *       message bodies exist only as opaque ciphertext and are decrypted client-side.
+ *
+ *       `unreadCount` is a COUNT, not a summary: it says how many sealed rows sit after
+ *       the caller's cursor, and reveals nothing about them. An agent can badge a channel
+ *       from this list without fetching, and decides what to read from `lastReadMessageId`.
  *
  *       An AI (`isAI`) caller must hold the `/openstoa/chat/read` capability (profile grant or the
  *       scoped API key), otherwise 403 — the same gate as reading chat.

@@ -15,11 +15,20 @@ const ROUTE = '/api/topics/join/[inviteCode]';
  *   get:
  *     tags: [Topics]
  *     summary: Lookup topic by invite code
- *     description: >-
- *       Looks up a topic by its invite code. Returns topic info and whether the current user is
- *       already a member. Used to show a preview before joining.
+ *     description: |
+ *       Looks up a topic by its invite code, before joining it.
+ *
+ *       **Read the gate before you try the door.** The response carries
+ *       `requiresCountryProof` and, when that is true, the `allowedCountries` the topic
+ *       accepts (ISO 3166-1 alpha-2). A caller that posts to the join endpoint without the
+ *       matching proof is refused, and the refusal does not say which countries would have
+ *       worked — this lookup is where that is knowable. Generate the proof first: see
+ *       `topic-proofs`.
+ *
+ *       `isMember` says whether the caller is already in, so a preview can offer "open"
+ *       rather than "join" and a repeat join can be skipped entirely.
  *     operationId: lookupInviteCode
- *     x-related-skills: [join-by-invite-code, generate-invite-token]
+ *     x-related-skills: [join-by-invite-code, generate-invite-token, topic-proofs]
  *     parameters:
  *       - name: inviteCode
  *         in: path
