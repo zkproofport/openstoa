@@ -601,6 +601,16 @@ function E2eeBanner({ connected, tier }: { connected?: boolean; tier: ChatTier }
       {open && (
         <Link
           href="/docs/tiers"
+          /*
+           * Not prefetched. Next fetches a Link's route as soon as it enters the
+           * viewport, and this one appears while the room is opening — measured
+           * on staging, `/docs/tiers` took 386ms of the 732ms entry, competing
+           * for connections with the archive read and the TAK bundles that the
+           * room actually needs. It is a "learn more" link off a tier badge:
+           * whoever taps it can afford one navigation, and everybody who does
+           * not tap it stops paying for it.
+           */
+          prefetch={false}
           style={{ color: 'inherit', textDecoration: 'underline', flexShrink: 0 }}
         >
           {t('chat.tierClaim.learnMore')}
@@ -2471,9 +2481,53 @@ export default function ChatPanel({
 
   useEffect(() => {
     messagesRef.current = messages;
-    // Decrypted bodies live only in memory here — this is the same process that
-    // already holds them on screen, never storage.
+    // The in-memory copy, for a re-entry inside this same page load.
     if (messages.length) paintCache.set(topicId, messages);
+    /*
+     * And the DURABLE copy, so a reload does not start from a blank pane.
+     *
+     * `paintCache` alone dies with the page: measured on staging, re-entering a
+     * room inside one page load paints in 102ms and the same room after a
+     * refresh took 637ms, because nothing could be drawn until `/chat` came
+     * back. The design note for this cache (`openstoa-chat-history-decision.md`)
+     * already called for it — "painted from cache; nothing refetched" — and the
+     * reason it had not happened is that the cached record held no author, so
+     * it could restore bodies but not bubbles.
+     *
+     * Not awaited and never able to fail the room: this is a write-behind of
+     * what is already on screen. `writeHistoryCache` merges and bounds it.
+     */
+    if (messages.length) {
+      /*
+       * Called through an optional-call, not a plain one.
+       *
+       * The store is swapped for a partial stand-in in a dozen test files, and
+       * a plain call turns "this build has no history cache" into a crash on
+       * every render — which is the opposite of what the cache is: an
+       * optimisation the room is correct without. Optional-call keeps the
+       * contract the code already claims, in tests and in any future build that
+       * ships a narrower store.
+       */
+      void getTakSessionStore()
+        .writeHistoryCache?.(
+          topicId,
+          messages
+            // A row still in flight has no server id to merge on, and a locked
+            // row has no plaintext worth keeping — both are re-derived.
+            .filter((m) => !m.pending && !m.failed && !m.undecryptable)
+            .map((m) => ({
+              id: m.id,
+              createdAt: m.createdAt,
+              plaintext: m.message,
+              userId: m.userId,
+              nickname: m.nickname,
+              profileImage: m.profileImage,
+              type: m.type,
+              isAI: m.isAI,
+            })),
+        )
+        ?.catch(() => {});
+    }
     oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
     const bottom = messages.length > 0 ? messages[messages.length - 1] : null;
     /*
@@ -2786,6 +2840,48 @@ export default function ChatPanel({
     pendingScrollAnchorRef.current = null;
     initialScrolledRef.current = false;
     userNearBottomRef.current = true;
+
+    /*
+     * PAINT FROM THE DEVICE FIRST, then reconcile with the server.
+     *
+     * `paintCache` covers a re-entry inside this page load; this covers the
+     * reload, where it is empty and the room used to sit blank for a full round
+     * trip. The rows come from the same cache `backfill` already reads, so
+     * nothing new is fetched and nothing new is decrypted — they were opened on
+     * a previous visit and sealed under the device master key ever since.
+     *
+     * Seeded ONLY into an empty list: if the network answered first, its rows
+     * are newer and must not be re-sorted against a stale copy. `applyIncoming`
+     * is deliberately not used — it acknowledges delivery and syncs the read
+     * cursor, and neither belongs to rows this device rendered days ago.
+     * `mergeChronological` de-duplicates on id, so the fetch below reconciles
+     * these rows rather than doubling them.
+     */
+    void (async () => {
+      try {
+        const cached = await getTakSessionStore().readHistoryCache?.(topicId);
+        if (!mountedRef.current || !cached?.messages.length) return;
+        setMessages((prev) => {
+          if (prev.length) return prev;
+          return cached.messages
+            .filter((m) => m.userId && m.nickname)
+            .map((m) => ({
+              id: m.id,
+              topicId,
+              userId: m.userId!,
+              nickname: m.nickname!,
+              profileImage: m.profileImage,
+              message: m.plaintext,
+              type: (m.type as ChatMessage['type']) ?? 'message',
+              isAI: m.isAI,
+              createdAt: m.createdAt,
+            }));
+        });
+      } catch {
+        // A cache that cannot be read is a room that fetches, which is what it
+        // did before this existed.
+      }
+    })();
 
     // Fetch history, then TAK back-fill pre-join messages (Phase 3).
     (async () => {

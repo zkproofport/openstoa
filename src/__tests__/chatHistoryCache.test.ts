@@ -309,7 +309,9 @@ describe('EXTERNAL FAILURE: storage never breaks the room', () => {
       'wrong version',
       JSON.stringify({ v: 99, cursor: null, messages: [{ id: 'a', createdAt: 'x', plaintext: 'p' }] }),
     ],
-    ['messages not an array', JSON.stringify({ v: 1, cursor: null, messages: 'nope' })],
+    // `v: 99` above already covers a version mismatch; this row must fail on
+    // the SHAPE, so it carries no version at all rather than a stale literal.
+    ['messages not an array', JSON.stringify({ cursor: null, messages: 'nope' })],
     ['null body', JSON.stringify(null)],
   ])('a stored value that is %s reads as a miss', async (_label, raw) => {
     store.map.set('chatHistory/v1/t1', raw);
@@ -317,14 +319,18 @@ describe('EXTERNAL FAILURE: storage never breaks the room', () => {
   });
 
   it('drops malformed rows but keeps the good ones', async () => {
-    store.map.set(
-      'chatHistory/v1/t1',
-      JSON.stringify({
-        v: 1,
-        cursor: null,
-        messages: [msg(1), { id: 'no-date' }, null, 42, msg(2)],
-      }),
-    );
+    /*
+     * Seeded THROUGH `writeChatHistory` and then corrupted, rather than
+     * hand-written as a literal. A literal has to name the format version, and
+     * naming it made this the one test that failed whenever the version was
+     * bumped — a false alarm that says nothing about the behaviour under test.
+     * Writing first takes whatever version the module currently stamps.
+     */
+    await writeChatHistory(store, 't1', [msg(1), msg(2)], null);
+    const stored = JSON.parse(store.map.get('chatHistory/v1/t1')!);
+    stored.messages = [msg(1), { id: 'no-date' }, null, 42, msg(2)];
+    store.map.set('chatHistory/v1/t1', JSON.stringify(stored));
+
     const got = await readChatHistory(store, 't1');
     expect(got!.messages.map((m) => m.id)).toEqual([msg(1).id, msg(2).id]);
   });

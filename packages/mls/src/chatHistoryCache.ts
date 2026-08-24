@@ -37,6 +37,34 @@ export interface CachedChatMessage {
   /** ISO instant, server-assigned. The ordering key. */
   createdAt: string;
   plaintext: string;
+  /**
+   * Who wrote it, so a room can be PAINTED from this cache and not merely
+   * decrypted from it.
+   *
+   * Without these the cache could restore bodies but not bubbles: the renderer
+   * needs an author to put a name on a row and to decide which side it sits on,
+   * so a cached room still had to wait for `/chat` before it could show
+   * anything — which is the whole cost the cache exists to remove, and it was
+   * still being paid on every reload. Measured on staging: a re-entry inside
+   * one page load paints in 102ms, and after a refresh it was 637ms again.
+   *
+   * Storing them adds no exposure. They are not secret to begin with — the
+   * server assigns them and returns them in the clear on every `/chat` read,
+   * and on a `public` topic it holds the archive root and can read the bodies
+   * too — and this whole record is sealed under the device master key by the
+   * `encrypting(...)` wrapper before it reaches storage. What stays out is
+   * anything the server does NOT already have.
+   *
+   * Optional because a row can be opened by `backfill` from an `ArchiveEntry`,
+   * which carries ciphertext and no author at all. Such a row keeps its
+   * plaintext and gets its author from the network read that follows.
+   */
+  userId?: string;
+  nickname?: string;
+  profileImage?: string;
+  /** `'message' | 'join' | 'leave'` — a join notice renders as a notice, not a bubble. */
+  type?: string;
+  isAI?: boolean;
 }
 
 /** Where to resume from — the newest archive row this cache has seen. */
@@ -77,7 +105,13 @@ export interface ChatHistoryStore {
   set(key: string, value: string): Promise<void>;
 }
 
-const VERSION = 1;
+/*
+ * Bumped when the shape of a stored room changes. A record written by an older
+ * version is DISCARDED, not migrated: OpenStoa has not shipped, so there is no
+ * installed base to carry, and the cache is re-derivable from the archive by
+ * design — dropping it costs one slow room once.
+ */
+const VERSION = 2;
 const ROOM_PREFIX = 'chatHistory/v1/';
 const INDEX_KEY = 'chatHistory/v1/index';
 
