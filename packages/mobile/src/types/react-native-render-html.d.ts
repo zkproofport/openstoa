@@ -18,6 +18,20 @@ declare module 'react-native-render-html' {
     baseStyle?: StyleProp<TextStyle>;
     tagsStyles?: Record<string, StyleProp<TextStyle | ViewStyle>>;
     renderersProps?: Record<string, unknown>;
+    // Headers for elements the library fetches through its OWN pipeline —
+    // an inline `<img>` never reaches our `GatedImage`, so this is the only
+    // place a gated `/api/media/...` image inside a post body can be handed
+    // the session Bearer. Narrowed from upstream's generic
+    // `EmbeddedHeadersProvider` (v6.3.4 `shared-types.d.ts:208`): `tagName`
+    // is the full embedded-tag union there and the third `params` argument
+    // is tag-specific, neither of which this app uses — a widened `string`
+    // and an omitted third parameter are both assignable to it. The return
+    // is `Record<string, string> | null | void` upstream; `undefined`
+    // satisfies `void`.
+    provideEmbeddedHeaders?: (
+      uri: string,
+      tagName: string,
+    ) => Record<string, string> | undefined;
     systemFonts?: string[];
     ignoredDomTags?: string[];
     defaultTextProps?: Record<string, unknown>;

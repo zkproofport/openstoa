@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Image, type LayoutChangeEvent, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, type LayoutChangeEvent, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import type { Post } from '@openstoa/api-types';
@@ -19,7 +19,7 @@ import { useOpenStoaSession } from '../stores/sessionStore';
 import { usePostMutations } from '../hooks/usePostMutations';
 import { useAuthGuardedAction, useRequireAuth } from '../auth';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
-import { absolutizeMediaUrl } from '../utils/absolutizeMediaUrl';
+import { GatedImage } from './GatedImage';
 
 // Lazy clipboard load — same pattern as ChatRoomScreen
 type ClipboardModule = typeof import('@react-native-clipboard/clipboard').default;
@@ -558,8 +558,8 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
             profile image. */}
         <View style={styles.authorRow}>
           {post.authorProfileImage ? (
-            <Image
-              source={{ uri: absolutizeMediaUrl(post.authorProfileImage, client.getBaseUrl()) ?? undefined }}
+            <GatedImage
+              uri={post.authorProfileImage}
               style={styles.authorAvatar}
               resizeMode="cover"
             />

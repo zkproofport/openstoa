@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Linking, Text, useWindowDimensions, View } from 'react-native';
 import RenderHtml, { defaultSystemFonts } from 'react-native-render-html';
 import { useThemeColors } from '../theme/ThemeContext';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
+import { useMediaAuthToken } from '../hooks/useMediaAuthToken';
+import { gatedMediaHeaders } from '../utils/gatedMedia';
 
 export interface PostContentProps {
   /** HTML-formatted post body. Mirrors the web's `post.content` field which
@@ -239,6 +241,32 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
     [onPressLink],
   );
 
+  /*
+   * The second image-rendering integration point in this app, and the one a
+   * grep for `source={{ uri` does not find: `RenderHtml` fetches an inline
+   * `<img>` through its OWN pipeline, so `GatedImage` never sees these. Gated
+   * post images embedded in a body would 401 exactly like the gallery ones did.
+   *
+   * `provideEmbeddedHeaders` is the library's first-class hook for this and it
+   * is threaded all the way down — `useIMGNormalizedSource` puts the result on
+   * `source.headers`, and `useIMGElementState` then calls
+   * `Image.getSizeWithHeaders` rather than `Image.getSize` when headers are
+   * present, so the intrinsic-dimension probe authenticates too. It is called
+   * with the ALREADY-normalized (absolute) uri, which is what
+   * `gatedMediaHeaders` needs to compare against our origin.
+   *
+   * The `tagName` check and the origin check inside `gatedMediaHeaders` are
+   * both doing real work here: a post body is author-controlled HTML, and an
+   * `<img src="https://somewhere-else/x.png">` in it must not be handed this
+   * reader's session token.
+   */
+  const mediaToken = useMediaAuthToken().token;
+  const provideEmbeddedHeaders = useCallback(
+    (uri: string, tagName: string) =>
+      tagName === 'img' ? gatedMediaHeaders(uri, client.getBaseUrl(), mediaToken) : undefined,
+    [client, mediaToken],
+  );
+
   // `react-native-render-html` issues deprecation warnings about some props
   // we don't pass; silence its noisy defaultProps warnings for cleaner dev
   // logs. (The library still maintains its v6 API.)
@@ -287,6 +315,7 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
       baseStyle={baseStyle}
       tagsStyles={tagsStyles}
       renderersProps={renderersProps}
+      provideEmbeddedHeaders={provideEmbeddedHeaders}
       systemFonts={SYSTEM_FONTS}
       ignoredDomTags={ignoredDomTags}
       defaultTextProps={{ selectable: true }}

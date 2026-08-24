@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Image,
   Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -17,8 +16,7 @@ import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { VideoEmbed } from './VideoEmbed';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
-import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
-import { absolutizeMediaUrl } from '../utils/absolutizeMediaUrl';
+import { GatedImage } from './GatedImage';
 
 export interface MediaGalleryProps {
   images?: string[];
@@ -176,15 +174,13 @@ export function MediaGallery({
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const client = useOpenStoaClient();
-  // Resolved once here so every render site below (`hasImages`, both
-  // carousels, the page counter/dots, and the lightbox) sees the same
-  // already-absolute list — one shadowed `images` beats each call site
-  // remembering to absolutize on its own.
-  const images = useMemo(
-    () => (imagesProp ?? []).map((u) => absolutizeMediaUrl(u, client.getBaseUrl()) ?? u),
-    [imagesProp, client],
-  );
+  // Kept as a plain, un-resolved list: `GatedImage` below owns BOTH halves of
+  // turning a stored value into a request (absolutize against our origin, then
+  // attach the Bearer if the result is ours), so resolving a second time here
+  // would be two places that have to agree. Everything else this list feeds is
+  // a length or an index — `hasImages`, the page counter, the dots, the
+  // lightbox — none of which care what the strings are.
+  const images = useMemo(() => imagesProp ?? [], [imagesProp]);
 
   const itemWidth = Math.max(0, windowWidth - horizontalPadding);
   const imageHeight = Math.round(itemWidth * (10 / 16));
@@ -291,8 +287,8 @@ export function MediaGallery({
               return (
                 <View key={`${uri}-${i}`} style={{ width: itemWidth }}>
                   <Pressable onPress={() => handleImageTap(i)}>
-                    <Image
-                      source={{ uri }}
+                    <GatedImage
+                      uri={uri}
                       style={[
                         styles.galleryImage,
                         { width: itemWidth, height: imageHeight },
@@ -396,8 +392,8 @@ export function MediaGallery({
                     justifyContent: 'center',
                   }}
                 >
-                  <Image
-                    source={{ uri }}
+                  <GatedImage
+                    uri={uri}
                     style={{ width: windowWidth, height: windowHeight - 80 }}
                     resizeMode="contain"
                   />

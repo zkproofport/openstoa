@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Keyboard,
   Modal,
   Platform,
@@ -30,7 +29,7 @@ import { MediaGallery } from '../../components/MediaGallery';
 import { PollRenderer } from '../../components/PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls } from '../../components/PostContent';
 import { PostBodyWithOg } from '../../components/PostBodyWithOg';
-import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
+import { GatedImage } from '../../components/GatedImage';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon, TrashIcon } from '../../components/icons';
 import Feather from 'react-native-vector-icons/Feather';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -88,11 +87,10 @@ function Avatar({
   size: number;
   colors: ThemeColors;
 }) {
-  const client = useOpenStoaClient();
   if (src) {
     return (
-      <Image
-        source={{ uri: absolutizeMediaUrl(src, client.getBaseUrl()) ?? undefined }}
+      <GatedImage
+        uri={src}
         style={{ width: size, height: size, borderRadius: RADIUS.pill }}
         resizeMode="cover"
       />

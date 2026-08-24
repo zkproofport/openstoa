@@ -1,10 +1,11 @@
 import React from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import type { PostMedia } from '@openstoa/api-types';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { VideoEmbed } from './VideoEmbed';
 import { RADIUS } from '../theme/tokens';
+import { GatedImage } from './GatedImage';
 
 export interface MediaPreviewProps {
   media: PostMedia | null | undefined;
@@ -90,9 +91,9 @@ export function MediaPreview({ media, imageHeight = 200, imageWidth = 280, fullW
         fullWidth ? (
           <View>
             {images.map((uri, i) => (
-              <Image
+              <GatedImage
                 key={`${uri}-${i}`}
-                source={{ uri }}
+                uri={uri}
                 style={styles.fullImage}
                 resizeMode="cover"
               />
@@ -105,9 +106,9 @@ export function MediaPreview({ media, imageHeight = 200, imageWidth = 280, fullW
             contentContainerStyle={styles.imageStripContent}
           >
             {images.map((uri, i) => (
-              <Image
+              <GatedImage
                 key={`${uri}-${i}`}
-                source={{ uri }}
+                uri={uri}
                 style={[styles.image, { width: imageWidth, height: imageHeight }]}
                 resizeMode="cover"
               />

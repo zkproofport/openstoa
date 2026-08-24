@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -15,8 +14,7 @@ import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { canDm, dmUnavailableReason, initialFor, type PeerProfileTarget } from '../lib/peerProfile';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
-import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
-import { absolutizeMediaUrl } from '../utils/absolutizeMediaUrl';
+import { GatedImage } from './GatedImage';
 
 export interface PeerProfileCardProps {
   /** The tapped member/author, or null to render nothing (mirrors the
@@ -171,7 +169,6 @@ export function PeerProfileCard({
   const { t } = useTranslation();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
-  const client = useOpenStoaClient();
 
   if (!target) return null;
 
@@ -191,8 +188,8 @@ export function PeerProfileCard({
             <View style={styles.card}>
               <View style={styles.avatar}>
                 {target.profileImage ? (
-                  <Image
-                    source={{ uri: absolutizeMediaUrl(target.profileImage, client.getBaseUrl()) ?? undefined }}
+                  <GatedImage
+                    uri={target.profileImage}
                     style={styles.avatarImage}
                   />
                 ) : (

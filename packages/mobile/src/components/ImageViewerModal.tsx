@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Image,
   Modal,
   StatusBar,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
+import { GatedImage } from './GatedImage';
 
 interface Props {
   url: string | null;
@@ -63,8 +63,8 @@ export default function ImageViewerModal({ url, onClose, onSave, saveLabel }: Pr
             </TouchableOpacity>
           ) : null}
           <View pointerEvents="none">
-            <Image
-              source={{ uri: url }}
+            <GatedImage
+              uri={url}
               style={{ width, height: height - 80 }}
               resizeMode="contain"
             />

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -40,6 +39,7 @@ import { useLanguage } from '../../i18n/useLanguage';
 import { buildDocsUrl } from '../../lib/docsLink';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
+import { GatedImage } from '../../components/GatedImage';
 import { isReservedNickname } from '../../lib/defaultNickname';
 import { reportFailure } from '../../api/failure';
 
@@ -613,7 +613,7 @@ export function EditProfileScreen() {
             <View style={styles.avatarWrap}>
               {profileImageUrl ? (
                 <>
-                  <Image source={{ uri: profileImageUrl }} style={styles.avatarImage} />
+                  <GatedImage uri={profileImageUrl} style={styles.avatarImage} />
                   <TouchableOpacity
                     style={styles.avatarRemoveBtn}
                     onPress={handleRemoveImage}

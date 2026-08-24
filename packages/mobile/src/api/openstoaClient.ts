@@ -285,6 +285,46 @@ export class OpenStoaClient {
   }
 
   /**
+   * The Bearer for a request this client does NOT make itself — React
+   * Native's `<Image>`, which fetches a gated `/api/media/{key}` URL through
+   * the platform's own HTTP stack and carries neither our `Authorization`
+   * header nor a cookie (`credentials: 'omit'` in `send()` is deliberate; see
+   * the comment there). `src/utils/gatedMedia.ts` decides which URLs may
+   * receive it.
+   *
+   * Async, like `pushSessionCredential` next door and for the same reason:
+   * both are thin public wrappers over `tryGetToken`, so a second consumer
+   * gets the refresh-on-near-expiry behaviour rather than a private copy of
+   * the rules. `tryGetToken` is also why this never triggers a host login —
+   * an image must not be the thing that prompts somebody to sign in.
+   */
+  async mediaAuthToken(): Promise<string | null> {
+    return this.tryGetToken();
+  }
+
+  /**
+   * The same credential, synchronously, or null when nothing is cached.
+   *
+   * Exists because `mediaAuthToken` cannot be awaited by the two places that
+   * need it: `react-native-render-html`'s `provideEmbeddedHeaders` is a
+   * synchronous callback, and a list row's `<Image>` should mount with its
+   * headers already attached instead of after a promise settles. This lets
+   * `useMediaAuthToken` SEED its state on first render in the overwhelmingly
+   * common case — the app has already made an authenticated API call by the
+   * time any image exists, so `cachedToken` is populated.
+   *
+   * Reads the cache and nothing else: no storage, no network, no refresh. A
+   * near-expiry token is returned as-is, which is what makes the `reresolve`
+   * path in `useMediaAuthToken` necessary rather than optional.
+   */
+  peekAuthToken(): string | null {
+    // Same guard as `tryGetToken`: a guest must never send a Bearer left over
+    // from a previous session, even one still sitting in this cache.
+    if (this.mode === 'guest') return null;
+    return this.cachedToken;
+  }
+
+  /**
    * The credential the iOS Notification Service Extension needs to fetch an
    * encrypted attachment for a push preview (P-1), or null when there is none.
    *

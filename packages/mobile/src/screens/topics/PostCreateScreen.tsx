@@ -3,7 +3,6 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Image,
   Keyboard,
   Modal,
   Platform,
@@ -67,7 +66,7 @@ import type { TopicsStackParamList } from '../../navigation/stacks/TopicsStack';
 import { PostBodyWithOg } from '../../components/PostBodyWithOg';
 import { MediaGallery } from '../../components/MediaGallery';
 import { PollEditor, type PollEditorValue } from '../../components/PollEditor';
-import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
+import { GatedImage } from '../../components/GatedImage';
 
 type Props = NativeStackScreenProps<TopicsStackParamList, 'PostCreate'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'PostCreate'>;
@@ -1002,8 +1001,8 @@ function PostCreateScreenAuthed() {
               <View style={styles.imageStrip}>
                 {images.map((uri, i) => (
                   <View key={uri} style={styles.imageThumbWrap}>
-                    <Image
-                      source={{ uri: absolutizeMediaUrl(uri, client.getBaseUrl()) ?? undefined }}
+                    <GatedImage
+                      uri={uri}
                       style={styles.imageThumb}
                     />
                     <TouchableOpacity

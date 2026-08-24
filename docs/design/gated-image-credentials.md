@@ -1,8 +1,10 @@
 # Gated image credentials: why the mini-app and the two web hosts can't authenticate today, and three ways to fix it
 
-Status: research only. No application code, infrastructure, or database changes. No
-throwaway proof-of-concept was needed — reading settled every open question below (see
-"Why no POC" under Candidate A).
+Status: written as research (no code) — since IMPLEMENTED, candidates B then A. See the
+update block below before reading the analysis, which is preserved as written and still
+uses the present tense for things that have since been fixed. No throwaway
+proof-of-concept was needed — reading settled every open question below (see "Why no POC"
+under Candidate A).
 
 Related: [`media-bucket-privatisation.md`](./media-bucket-privatisation.md) — that doc
 established the fact this one leans on repeatedly: `setSessionCookie()`
@@ -14,6 +16,36 @@ in the project tracker — implemented and merged (`aaa0588`): candidate B, root
 Pre-flight: [`media-bucket-flip-checklist.md`](./media-bucket-flip-checklist.md) — the
 conditions to verify before the bucket itself goes private, now that this doc's
 recommendation is implemented and the gate has a credential to check.
+
+**Update — candidate A is now implemented too, ON TOP of B, not instead of it.**
+Candidate B removed the third hostname and made every image request same-origin,
+which is what fixed the two web hosts. It did nothing for the mini-app, and the
+reason is the sentence in "The problem" below that reads as a caveat and is
+actually the whole bug: React Native's `<Image>` sends no cookie either. Once
+staging's `R2_PUBLIC_URL` moved to `/api/media` and the R2 custom domain was
+disconnected, every gated post image in the app went blank while the same image
+rendered fine on the web — and avatars kept working everywhere, because
+`AVATAR_IS_UNGATED` in the media route skips the check for them, which made the
+failure look like anything but an auth problem.
+
+What shipped, along the lines this doc laid out:
+- `packages/mobile/src/components/GatedImage.tsx` — absolutize, then attach the
+  Bearer if and only if the result addresses our own `/api/media/` route. Every
+  gated `<Image>` call site goes through it.
+- `packages/mobile/src/utils/gatedMedia.ts` — the single origin check both
+  consumers share, so "ours" cannot mean two different things.
+- `packages/mobile/src/hooks/useMediaAuthToken.ts` + `peekAuthToken()` on the
+  client — the "hoist the resolved token into React state" shape this doc
+  concluded was the only workable one, seeded synchronously from the client's
+  in-memory cache so a list row mounts with its headers already attached.
+- `PostContent.tsx` passes `provideEmbeddedHeaders`, which is what covers the
+  sixth site (inline `<img>` inside a post body, rendered by
+  `react-native-render-html`'s own pipeline).
+
+The `onError` retry this doc flagged as "new code, not a side effect of adding
+headers" is in `GatedImage` and is deliberately narrow: it re-resolves the
+token and only re-renders if it actually changed. It never forces a login — an
+image must not be the thing that prompts somebody to sign in.
 
 ## The problem
 

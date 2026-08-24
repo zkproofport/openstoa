@@ -2,7 +2,6 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   RefreshControl,
   ScrollView,
   SectionList,
@@ -24,9 +23,10 @@ import { reportFailure } from '../../api/failure';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { PostCard } from '../../components/PostCard';
+import { RecoveryNudge } from '../../components/RecoveryNudge';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
-import { absolutizeMediaUrl } from '../../utils/absolutizeMediaUrl';
+import { GatedImage } from '../../components/GatedImage';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
@@ -795,6 +795,15 @@ export function ProfileHomeScreen() {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <>
+            {/* The ONLY mount of the chat-key recovery banner. It is a
+                Profile-tab prompt by product decision — the feed and the
+                topic list have no business raising chat keys — and mounting
+                it here rather than gating a root-level mount on the focused
+                route is what makes that true by construction. The silent
+                repair behind it runs app-wide from `RecoveryRepairProvider`
+                (`OpenStoaApp.tsx`), not from this screen. Renders null unless
+                the account actually has unprotected history. */}
+            <RecoveryNudge />
             {/* Header */}
             <View style={styles.header}>
               <TouchableOpacity
@@ -809,8 +818,8 @@ export function ProfileHomeScreen() {
                 onPress={() => navigation.navigate('EditProfile')}
               >
                 {profileImage ? (
-                  <Image
-                    source={{ uri: absolutizeMediaUrl(profileImage, client.getBaseUrl()) ?? undefined }}
+                  <GatedImage
+                    uri={profileImage}
                     style={styles.avatarImage}
                     resizeMode="cover"
                   />
