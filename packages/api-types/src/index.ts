@@ -270,3 +270,11 @@ export interface DomainBadgeStatus {
  * written for one silently misses the other.
  */
 export * from './queryKeys';
+
+/*
+ * Request deadlines, shared by every client.
+ *
+ * They were identical and defined twice; nothing connected them, so raising one
+ * would have left the other giving up sooner on the same operation.
+ */
+export * from './timeouts';

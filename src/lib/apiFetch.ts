@@ -32,15 +32,26 @@
  * at all and therefore cannot inherit anything from here.
  */
 
-/** The deadline an ordinary request gets. See the header for the number. */
-export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
-
-/**
- * The deadline for a request whose body is megabytes (image upload). Longer
- * because the clock covers the body going up, not idle time — a transfer that
- * is making progress must not be cut off for making progress slowly.
+/*
+ * The numbers themselves come from `@openstoa/api-types`, where the mini-app
+ * reads the same ones. They were identical here and there, defined twice, with
+ * nothing connecting them — so raising one would have left the other giving up
+ * sooner on the same operation, visible only as "it works on the web". The
+ * comments below stay because they are about how THIS client applies them.
  */
-export const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  UPLOAD_REQUEST_TIMEOUT_MS,
+  MEDIA_DOWNLOAD_TIMEOUT_MS,
+} from '../../packages/api-types/src/timeouts';
+
+// Re-exported as well as imported: every caller in this codebase reaches these
+// through `@/lib/apiFetch`, and moving where they LIVE must not move where they
+// are read from.
+export { DEFAULT_REQUEST_TIMEOUT_MS, UPLOAD_REQUEST_TIMEOUT_MS, MEDIA_DOWNLOAD_TIMEOUT_MS };
+
+/** The deadline an ordinary request gets. See the header for the number. */
+
 
 /**
  * The deadline for DOWNLOADING one of those same megabytes back — an encrypted
@@ -60,7 +71,7 @@ export const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
  * progress. A sender's uplink is normally the slower half, which is why this
  * survived: the upload it was cut against had already been given room.
  */
-export const MEDIA_DOWNLOAD_TIMEOUT_MS = UPLOAD_REQUEST_TIMEOUT_MS;
+
 
 /**
  * The server was reachable and did not answer inside the deadline.

@@ -47,14 +47,24 @@
  * `timeoutMs: null` opt-out below exists for anything that later does.
  */
 
-/** The deadline every ordinary request gets. See the header for the number. */
-export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
-
-/**
- * The deadline for a request whose body is megabytes (chat attachments, image
- * uploads). Longer because the clock covers the upload itself, not idle time.
+/*
+ * The numbers come from `@openstoa/api-types`, where the web client reads the
+ * same ones. They were identical here and there, defined twice, with nothing
+ * connecting them — so raising one would have left the other giving up sooner
+ * on the same operation, and the difference would only ever show as "it works
+ * on the web". The prose above and below stays, because it is about how THIS
+ * client applies them.
  */
-export const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
+export {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  UPLOAD_REQUEST_TIMEOUT_MS,
+  MEDIA_DOWNLOAD_TIMEOUT_MS,
+  // A relative path, not the package name. The web's vitest config resolves
+  // `@/*` and the shared packages by path but has no `@openstoa/*` alias, and
+  // it runs this package's logic tests — so the bare specifier resolved in the
+  // mini-app's own config and nowhere else, which surfaced as four suites
+  // failing to import at all.
+} from '../../../api-types/src/timeouts';
 
 /**
  * The server was reachable but did not answer inside the deadline.

@@ -83,6 +83,52 @@ describe('ONE set of keys', () => {
   });
 });
 
+describe('ONE set of request deadlines', () => {
+  /*
+   * The numbers were already identical — 15s ordinary, 60s for a megabyte body
+   * — and defined twice, in `src/lib/apiFetch.ts` and
+   * `packages/mobile/src/api/timeout.ts`. Nothing connected them, so raising one
+   * would have left the other giving up sooner on the same operation, and the
+   * difference would only ever surface as "it works on the web".
+   *
+   * The argument is the one `apiFetch` already made about upload versus
+   * download: two independent numbers drift, and the drift is invisible because
+   * the direction that breaks is whichever one somebody forgot. It is as true
+   * across two clients as across two directions.
+   */
+  it('both clients read them from the shared package', () => {
+    const shared = readFileSync(join(ROOT, 'packages/api-types/src/timeouts.ts'), 'utf8');
+    expect(shared).toMatch(/export const DEFAULT_REQUEST_TIMEOUT_MS/);
+    expect(shared).toMatch(/export const UPLOAD_REQUEST_TIMEOUT_MS/);
+
+    for (const rel of ['src/lib/apiFetch.ts', 'packages/mobile/src/api/timeout.ts']) {
+      const src = readFileSync(join(ROOT, rel), 'utf8');
+      expect(
+        /from '(@openstoa\/api-types|.*api-types\/src\/timeouts)'/.test(src),
+        `${rel} no longer reads the deadlines from the shared package`,
+      ).toBe(true);
+    }
+  });
+
+  it('nobody re-declares one locally', () => {
+    // A second `= 15_000` anywhere is the drift itself, arriving.
+    const offenders: string[] = [];
+    for (const dir of ['src', 'packages/mobile/src']) {
+      for (const file of walk(join(ROOT, dir))) {
+        const rel = file.slice(ROOT.length + 1);
+        const src = readFileSync(file, 'utf8');
+        if (/export const (DEFAULT_REQUEST|UPLOAD_REQUEST|MEDIA_DOWNLOAD)_TIMEOUT_MS\s*=\s*[0-9]/.test(src)) {
+          offenders.push(rel);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `these declare a deadline instead of importing it from @openstoa/api-types:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([]);
+  });
+});
+
 describe('NOTHING reaches around the layer', () => {
   it('client code reads the session through useSession, never a bare fetch', () => {
     /*
