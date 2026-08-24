@@ -28,6 +28,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { act } from 'react-test-renderer';
+import { QueryClient } from '@tanstack/react-query';
 import { renderScreen } from './harness/screen';
 
 const TOPIC = '11111111-2222-4333-8444-555555555555';
@@ -129,6 +130,10 @@ function wireRow(n: number, over: Record<string, unknown> = {}) {
 }
 
 /** True when `/chat` must hang, so a test can prove the cache stands alone. */
+/** Every URL the screen asked for, so a test can assert what it did NOT ask for. */
+let fetchCalls: string[] = [];
+/** Seeded per test, so a case can model arriving from a screen that already fetched. */
+let queryClient: QueryClient;
 let chatNeverAnswers = false;
 let cachedHistory: { messages: Record<string, unknown>[]; cursor: null } | null = null;
 let history: Record<string, unknown>[] = [];
@@ -142,7 +147,7 @@ async function settle(times = 6): Promise<void> {
 }
 
 async function enterRoom() {
-  const { rendered } = await renderScreen(<ChatRoomScreen />);
+  const { rendered } = await renderScreen(<ChatRoomScreen />, { queryClient });
   await settle();
   return rendered;
 }
@@ -161,12 +166,26 @@ beforeEach(() => {
   vi.clearAllMocks();
   missingStoreMethods.length = 0;
   cachedHistory = null;
+  fetchCalls = [];
+  /*
+   * `gcTime` is NOT zero here, unlike the shared harness default.
+   *
+   * A zero collection time drops an entry the instant nothing is observing it,
+   * and `ensureQueryData` writes without an observer — so the value the screen
+   * fetched was collected before the assertion could look, and the room's read
+   * would be indistinguishable from no read at all. The app's own client keeps
+   * entries; this models that, and retries stay off for the usual reason.
+   */
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   chatNeverAnswers = false;
   history = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      fetchCalls.push(url);
       if (chatNeverAnswers && url.includes('/chat?')) return new Promise<Response>(() => {});
       const body = url.includes('/chat/media')
         ? { ciphertext: '' }
@@ -302,6 +321,45 @@ describe('CONTRACT: what was rendered is written back', () => {
     for (const [, rows] of writeHistoryCache.mock.calls) {
       expect(rows.some((r) => r.id === 'm1')).toBe(false);
     }
+    rendered.unmount();
+  });
+});
+
+describe('CONTRACT: the topic is read through the query cache', () => {
+  /*
+   * A raw `client.get('/api/topics/{id}')` here meant opening a room always
+   * paid for the topic again — even when the topic screen one tab away had just
+   * fetched it under `['topic', topicId]` — and nothing else could reuse what
+   * this fetched either. Twenty-eight of the thirty-seven reads across the
+   * mini-app already go through the cache; this was one of the nine that did
+   * not, and the only one of those that is a SCREEN rather than the crypto
+   * layer, which runs outside React and cannot use it.
+   */
+  it('a topic already in the cache is not fetched again', async () => {
+    const seeded = { topic: { visibility: 'public' }, currentUserRole: 'member' };
+    queryClient.setQueryData(['topic', TOPIC], seeded);
+    history = [wireRow(1)];
+
+    const rendered = await enterRoom();
+
+    const topicCalls = fetchCalls.filter((u) => /\/api\/topics\/[^/?]+$/.test(u));
+    expect(
+      topicCalls,
+      'the room refetched a topic the cache already held',
+    ).toEqual([]);
+    rendered.unmount();
+  });
+
+  it('a topic NOT in the cache is fetched, and lands under the shared key', async () => {
+    history = [wireRow(1)];
+    const rendered = await enterRoom();
+
+    const topicCalls = fetchCalls.filter((u) => /\/api\/topics\/[^/?]+$/.test(u));
+    expect(topicCalls.length).toBe(1);
+    expect(
+      queryClient.getQueryData(['topic', TOPIC]),
+      'the fetched topic did not land where the topic screens look',
+    ).toBeDefined();
     rendered.unmount();
   });
 });

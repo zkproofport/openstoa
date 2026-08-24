@@ -53,7 +53,7 @@ function loadClipboard(): ClipboardModule | null {
 }
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
@@ -604,6 +604,7 @@ export function ChatRoomScreen() {
   // Pass the host secure store so MLS state persists across restarts (same leaf
   // restored, no re-join). Singleton: first caller (here or chatSocket) wins.
   const mls = getMlsSessionStore(client, host.secureStore, host.localStore);
+  const queryClient = useQueryClient();
   const tak = getTakSessionStore(client, host.secureStore, host.localStore);
 
   /*
@@ -1092,7 +1093,27 @@ export function ChatRoomScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const tj = await client.get<{ topic?: { visibility?: string }; visibility?: string; currentUserRole?: string | null }>(`/api/topics/${topicId}`);
+        /*
+         * Through the query cache, on the key the topic screens already use.
+         *
+         * A raw `client.get` here meant opening a room always paid for the
+         * topic again — even when the topic screen one tab away had just
+         * fetched it — and nothing else could reuse what this fetched either.
+         * `ensureQueryData`, not `fetchQuery`: the latter honours staleness and
+         * refetches an entry the moment it is stale, which with the app's
+         * `staleTime: 0` is immediately — so it would have shared nothing. What
+         * this needs is "use what we have, fetch only if we have none", and a
+         * topic's visibility changes rarely and invalidates this exact key when
+         * it does (`TopicDetailScreen` on save).
+         */
+        const tj = await queryClient.ensureQueryData<{
+          topic?: { visibility?: string };
+          visibility?: string;
+          currentUserRole?: string | null;
+        }>({
+          queryKey: ['topic', topicId],
+          queryFn: () => client.get(`/api/topics/${topicId}`),
+        });
         const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;
         if (v === 'public' || v === 'private' || v === 'secret') {
           visibilityRef.current = v;

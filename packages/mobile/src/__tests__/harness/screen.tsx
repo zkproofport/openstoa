@@ -122,6 +122,15 @@ export interface ScreenHarness {
   rendered: Rendered;
   host: HostDouble;
   nav: NavDouble;
+  /**
+   * The client the screen rendered against.
+   *
+   * Returned so a test can assert what the screen READ from the cache and what
+   * it wrote back — the difference between "the room fetched the topic" and
+   * "the room reused the one the topic screen already had", which is invisible
+   * from the outside.
+   */
+  queryClient: QueryClient;
 }
 
 export interface RenderScreenOptions {
@@ -129,6 +138,8 @@ export interface RenderScreenOptions {
   params?: Record<string, unknown>;
   host?: HostDouble;
   nav?: NavDouble;
+  /** Seed the cache before the screen mounts, to model arriving from another tab. */
+  queryClient?: QueryClient;
 }
 
 /**
@@ -148,9 +159,11 @@ export async function renderScreen(
     name: 'ChatRoom',
     params: { topicId: '11111111-2222-4333-8444-555555555555', kind: 'topic', ...options.params },
   };
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
-  });
+  const client =
+    options.queryClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+    });
 
   const rendered = await render(
     <HostProvider api={host.api as never}>
@@ -168,7 +181,7 @@ export async function renderScreen(
     </HostProvider>,
   );
 
-  return { rendered, host, nav };
+  return { rendered, host, nav, queryClient: client };
 }
 
 /** Where the screen keeps failed attachments for one topic. */
