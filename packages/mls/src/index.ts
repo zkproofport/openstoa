@@ -31,4 +31,12 @@ export * from './chatMedia';
 export * from './chatTierPolicy';
 export * from './imageMetadata';
 export * from './chatMediaLayout';
+/*
+ * The sender's own plaintext, kept for the lifetime of the process.
+ *
+ * Shared because both clients render the sender's bubble moments after sealing
+ * those exact bytes, and both used to fetch them straight back. Only the BYTES
+ * are shared: the web builds a blob URL and the mini-app writes a file.
+ */
+export * from './chatMediaPlaintextCache';
 export * from './chatHistoryCache';

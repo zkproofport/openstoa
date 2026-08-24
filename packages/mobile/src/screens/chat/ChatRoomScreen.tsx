@@ -90,6 +90,7 @@ import {
   type ChatMediaLoad,
   type PersistedFailedMedia,
 } from '../../lib/chatMedia';
+import { rememberSentChatMedia, readSentChatMedia } from '../../lib/chatMediaPlaintextCache';
 import { displayNickname } from '../../lib/defaultNickname';
 import { MessageFailedControls } from '../../components/MessageFailedControls';
 import { chatTierOf, usesTopicRootKey, type ChatTier } from '../../lib/chatTierPolicy';
@@ -1798,7 +1799,22 @@ export function ChatRoomScreen() {
       await sendEncryptedChatMedia(
         { bytes, mime },
         {
-          seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, tierRef.current),
+          seal: async (mediaId, plain) => {
+            const sealed = await tak.sealMedia(topicId, mediaId, plain, tierRef.current);
+            /*
+             * Remember what THIS app just encrypted, so the sender's own bubble
+             * does not download and decrypt a picture it chose from this phone
+             * moments ago. Measured on the web, that redundant round trip was
+             * 2441ms of 8661ms for a 7.7MB image; a phone on mobile data pays
+             * more, not less.
+             *
+             * After the seal, so a failed seal caches nothing. `plain` is the
+             * exact buffer handed over — post-EXIF-strip, post-HEIC-convert —
+             * so the bubble cannot differ from the same bubble after a restart.
+             */
+            if (sealed) rememberSentChatMedia(mediaId, plain, mime);
+            return sealed;
+          },
           upload: (ciphertext, mediaId) => client.uploadChatMedia(topicId, mediaId, ciphertext),
           send: async (body) => {
             const sealed = await mls.seal(topicId, body);
@@ -2622,6 +2638,24 @@ function EncryptedAttachment({
     setFileUri(null);
     void (async () => {
       const tak = getTakSessionStore(client);
+      /*
+       * THE SENDER'S OWN BUBBLE. A hit skips the download and the decrypt
+       * entirely; a miss falls through to the reader path below, which is what
+       * a restart, the recipient and the sender's other device all take.
+       *
+       * Matched on the ENVELOPE's size and mime, not just the id, so a cached
+       * entry that disagrees with what this row describes is treated as a miss.
+       */
+      const own = readSentChatMedia(mediaId, size, mime);
+      if (own) {
+        const file = writeDecrypted({ fs: hostAttachmentFs(), bytes: own.bytes, mime: own.mime, mediaId });
+        if (cancelled) return;
+        fileRef.current = file;
+        setFileUri(file?.uri ?? null);
+        setState({ status: 'ok', bytes: own.bytes, mime: own.mime });
+        return;
+      }
+
       const res = await loadEncryptedChatMedia(
         { v: 1, key, mediaId, takVersion, mime, size },
         {

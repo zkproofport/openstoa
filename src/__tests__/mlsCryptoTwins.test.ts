@@ -247,6 +247,21 @@ const UI_SHARED = [
     web: 'src/lib/chatMediaLayout.ts',
     mobile: 'packages/mobile/src/lib/chatMediaLayout.ts',
   },
+  {
+    /*
+     * The plaintext of an attachment THIS process just sealed, so the sender's
+     * own bubble does not download and decrypt a picture it chose moments ago.
+     * Both clients render that bubble and both used to pay for it; the agent
+     * SDK renders nothing, so there is no third copy.
+     *
+     * Only the BYTES are shared. The web builds a blob URL, the mini-app writes
+     * a file — which is why the cache holds a `Uint8Array` and knows nothing
+     * about how it is displayed.
+     */
+    name: 'chatMediaPlaintextCache',
+    web: 'src/lib/chatMediaPlaintextCache.ts',
+    mobile: 'packages/mobile/src/lib/chatMediaPlaintextCache.ts',
+  },
 ] as const;
 
 /**
