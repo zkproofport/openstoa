@@ -27,7 +27,7 @@
  * resolved and filtered upstream in `pushStore`/`pushPrefs`.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { PlatformSplitProvider, isExpoToken } from '@/lib/pushProvider';
+import { PlatformSplitProvider, ExpoPushProvider, isExpoToken } from '@/lib/pushProvider';
 import type { PushProvider, PushTarget } from '@/lib/push';
 
 function spyProvider(name: string) {
@@ -102,6 +102,37 @@ describe('INTEGRITY: the ciphertext path routes identically', () => {
 
     expect(ios.sent).toEqual([`cipher:${EXPO}`]);
     expect(fcm.sent).toEqual([`cipher:${RAW_FCM}`]);
+  });
+
+  it('iOS REGRESSION: the real Expo provider still carries a sealed payload', async () => {
+    /*
+     * The split must not have cost iOS its lock-screen preview.
+     *
+     * `sendCiphertext` is OPTIONAL on the interface and the split calls it
+     * conditionally, which is right — a provider that cannot seal must not
+     * crash a chat message — and is also a place a regression can hide: losing
+     * the implementation turns the preview off silently, and every case above
+     * would still pass because they use spies that always have the method.
+     *
+     * So this one asserts against the REAL class: whatever the split does, an
+     * iOS target must reach something that actually implements it.
+     */
+    const expo = new ExpoPushProvider(undefined);
+    expect(
+      typeof (expo as unknown as { sendCiphertext?: unknown }).sendCiphertext,
+      'ExpoPushProvider lost sendCiphertext — iOS lock-screen previews are off',
+    ).toBe('function');
+
+    const fcm = spyProvider('fcm');
+    const split = new PlatformSplitProvider(expo, fcm.provider);
+    const calls: string[] = [];
+    vi.spyOn(expo, 'sendCiphertext').mockImplementation(async (t) => {
+      calls.push(t.pushToken);
+    });
+
+    await split.sendCiphertext({ pushToken: 'apns-token', platform: 'ios' }, payload);
+    expect(calls, 'an iOS sealed payload never reached the Expo provider').toEqual(['apns-token']);
+    expect(fcm.sent).toEqual([]);
   });
 
   it('EXTERNAL: a provider with no sendCiphertext is not a crash', async () => {
