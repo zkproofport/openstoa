@@ -72,7 +72,7 @@ vi.mock('@/components/ChatRail', () => ({
 import CommunityLayout from '@/components/CommunityLayout';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -97,7 +97,7 @@ async function render(ui: React.ReactElement) {
   // `CommunityLayout`) now reads copy through `useTranslation()` — see
   // src/lib/i18n/I18nProvider.tsx. Every render in this suite needs the
   // provider in the tree, same as the app root (src/app/layout.tsx).
-  await act(async () => { root.render(<I18nProvider initialLocale="en">{ui}</I18nProvider>); });
+  await act(async () => { root.render(<TestProviders initialLocale="en">{ui}</TestProviders>); });
   await act(async () => { await Promise.resolve(); });
 }
 

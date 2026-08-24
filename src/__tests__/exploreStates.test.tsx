@@ -38,7 +38,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import en from '@/lib/i18n/locales/en.json';
 import ko from '@/lib/i18n/locales/ko.json';
 
@@ -128,9 +128,9 @@ const jsonTopics = (topics: unknown[]) =>
 async function mount(locale: 'en' | 'ko' = 'en') {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale={locale}>
+      <TestProviders initialLocale={locale}>
         <ExplorePage />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   // Chained generations: session resolve → effect → topics resolve.

@@ -28,13 +28,11 @@
  * Testing Library — that package is not a dependency here.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { resetSessionMemoForTests } from '@/lib/sessionCache';
-import { resetRequestCache } from '@/lib/requestCache';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 import en from '@/lib/i18n/locales/en.json';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -141,13 +139,17 @@ let root: Root;
 
 async function mount(node: React.ReactElement) {
   await act(async () => {
-    root.render(<I18nProvider initialLocale="en">{node}</I18nProvider>);
+    root.render(<TestProviders initialLocale="en">{node}</TestProviders>);
   });
-  // Session resolve → dependent effects → their resolves.
-  for (let i = 0; i < 4; i++) {
-    // eslint-disable-next-line no-await-in-loop
-    await act(async () => { await Promise.resolve(); });
-  }
+  /*
+   * Session resolve → dependent effects → their resolves.
+   *
+   * A macrotask drain now: the session comes from TanStack Query, which
+   * delivers through `notifyManager` on a real `setTimeout(0)`, so draining
+   * microtasks alone leaves the page still deciding whether the reader is a
+   * guest.
+   */
+  await flushQueries();
 }
 
 /*
@@ -157,9 +159,14 @@ async function mount(node: React.ReactElement) {
  * that — so the swap has to clear them too, or the second mount is answered
  * with the first mount's topic.
  */
+/*
+ * A NEW fetch mock is this file's way of saying "a different page load", and a
+ * different page load means a different query cache. `TestProviders` builds one
+ * per render, so the only thing left to clear is the storage the session seeds
+ * from.
+ */
 const freshPage = (o: Overrides) => {
-  resetRequestCache();
-  resetSessionMemoForTests();
+  try { localStorage.clear(); } catch { /* no storage in this environment */ }
   vi.stubGlobal('fetch', mockFetch(o));
 };
 

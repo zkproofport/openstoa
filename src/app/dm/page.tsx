@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -45,13 +45,18 @@ export default function DmListPage() {
   // that used to 403 this call is gone.
   const [needsNickname, setNeedsNickname] = useState(false);
 
+  /*
+   * Gated on `isVerified`, not on the value.
+   *
+   * A seeded session is a hint; a redirect is not something to do on a hint,
+   * and neither is redirecting because the answer has not arrived yet. The
+   * previous code only ever ran after the fetch settled, and this keeps that:
+   * it acts once the server has answered, and a failed lookup answers `null`.
+   */
+  const { session, isVerified } = useSession();
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (!data?.userId) { router.replace('/'); return; }
-      })
-      .catch(() => router.replace('/'));
-  }, [router]);
+    if (isVerified && !session?.userId) router.replace('/');
+  }, [isVerified, session, router]);
 
   const loadDms = useCallback(async () => {
     setLoading(true);

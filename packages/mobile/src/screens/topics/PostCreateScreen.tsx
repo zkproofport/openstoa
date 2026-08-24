@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { postKeys, topicKeys } from '@openstoa/api-types';
 import {
   ActionSheetIOS,
   ActivityIndicator,
@@ -838,10 +839,10 @@ function PostCreateScreenAuthed() {
     },
     onSuccess: (res) => {
       submittedRef.current = true;
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'posts'] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.postsAll(topicId) });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
       if (isEditing && editPostId) {
-        queryClient.invalidateQueries({ queryKey: ['post', editPostId] });
+        queryClient.invalidateQueries({ queryKey: postKeys.detail(editPostId) });
         navigation.goBack();
       } else {
         navigation.replace('PostDetail', { postId: res.post.id });

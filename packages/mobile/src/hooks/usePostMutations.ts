@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { postKeys, topicKeys } from '@openstoa/api-types';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOpenStoaClient } from './useOpenStoaClient';
@@ -241,7 +242,7 @@ export function usePostMutations(postId: string) {
         // The actual comment list lives in the post detail payload, so
         // invalidate that one query (the list-row caches were just patched
         // for the count and don't carry the comment body).
-        void queryClient.invalidateQueries({ queryKey: ['post', postId] });
+        void queryClient.invalidateQueries({ queryKey: postKeys.detail(postId) });
         return { ok: true };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -277,7 +278,7 @@ export function usePostMutations(postId: string) {
         }));
         // Invalidate list views so newly-pinned posts surface at the top
         // (server orders by isPinned desc).
-        void queryClient.invalidateQueries({ queryKey: ['topic'] });
+        void queryClient.invalidateQueries({ queryKey: topicKeys.all() });
         void queryClient.invalidateQueries({ queryKey: ['feed'] });
         return { ok: true };
       } catch (e) {

@@ -73,7 +73,7 @@ vi.mock('@/components/TopicAvatar', () => ({
   default: () => React.createElement('div', { 'data-testid': 'topic-avatar' }),
 }));
 
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import LeftSidebar from '@/components/LeftSidebar';
 import type { Locale } from '@/lib/i18n';
 import { LEFT_NAV_GROUPS_KEY } from '@/lib/leftNav';
@@ -115,7 +115,7 @@ afterEach(async () => {
 
 async function renderSidebar(ui: React.ReactElement, locale: Locale = 'en') {
   await act(async () => {
-    root.render(<I18nProvider initialLocale={locale}>{ui}</I18nProvider>);
+    root.render(<TestProviders initialLocale={locale}>{ui}</TestProviders>);
     await Promise.resolve();
     await Promise.resolve();
   });

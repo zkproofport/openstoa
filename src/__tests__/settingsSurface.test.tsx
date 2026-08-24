@@ -88,7 +88,7 @@ vi.mock('@/lib/passkeyPrf', () => ({
 import MyPage from '@/app/my/page';
 import AiAgentSettings from '@/components/AiAgentSettings';
 import { AccountRecovery } from '@/components/AccountRecovery';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 import type { Locale } from '@/lib/i18n';
 import en from '@/lib/i18n/locales/en.json';
 
@@ -202,17 +202,19 @@ function routeFetch(o: Overrides = {}) {
   vi.stubGlobal('fetch', fetchSpy);
 }
 
-async function flush(times = 8) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 async function render(node: React.ReactElement, locale: Locale = 'en') {
   await act(async () => {
-    root.render(<I18nProvider initialLocale={locale}>{node}</I18nProvider>);
+    root.render(<TestProviders initialLocale={locale}>{node}</TestProviders>);
   });
   await flush();
 }

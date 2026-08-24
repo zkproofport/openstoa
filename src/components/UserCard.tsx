@@ -25,7 +25,7 @@
  * collapsed into a single generic empty state.
  */
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from './Avatar';
@@ -58,14 +58,13 @@ const noteStyle: React.CSSProperties = {
  * concurrent callers and survives a reload, so the TTL bought nothing that was
  * not already there — and a TTL was the wrong shape anyway, since the answer
  * only changes at sign-in and sign-out, both of which write through it.
+ *
+ * It is now `useSession()`, on the key the mini-app also uses. The old code
+ * also deferred the lookup until a card was OPENED, so a feed of fifty avatars
+ * cost nothing; that no longer buys anything, because the request is shared
+ * with the header and every other reader on the page and is already in flight
+ * before any card could ask.
  */
-async function resolveViewerUserId(): Promise<string | null> {
-  try {
-    return (await loadSession())?.userId ?? null;
-  } catch {
-    return null;
-  }
-}
 
 interface UserCardProps {
   userId: string;
@@ -117,16 +116,11 @@ export default function UserCard({
 
   // Self-resolve only when the caller didn't tell us (prop omitted) and only
   // once the card is actually opened — no session fetch for cards nobody clicks.
+  const { session: viewerSession } = useSession();
   useEffect(() => {
     if (!open || viewerUserId !== undefined) return;
-    let alive = true;
-    resolveViewerUserId().then((id) => {
-      if (alive) setResolvedViewer(id);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [open, viewerUserId]);
+    setResolvedViewer(viewerSession?.userId ?? null);
+  }, [open, viewerUserId, viewerSession]);
 
   const isSelf = resolvedViewer != null && resolvedViewer === userId;
 

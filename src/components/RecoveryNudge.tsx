@@ -25,7 +25,7 @@
  * says no — so the common case costs one layout slot and no markup.
  */
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ensureTakKeychainBackup, keyBackupHttp } from '@/lib/mls/webTransport';
@@ -70,20 +70,26 @@ export default function RecoveryNudge({
   // session is the point. Without this latch a route change inside the shell
   // would re-run it (and re-decide the banner the user just dismissed).
   const ran = useRef(false);
+  // Shared with the header and everything else on the page; this component is
+  // only ever mounted inside the signed-in shell, so it is already resolved.
+  const { session: nudgeSession } = useSession();
 
   useEffect(() => {
     if (ran.current || !sessionChecked || isGuest) return;
+    /*
+     * The latch goes AFTER the session check, not before it.
+     *
+     * The account arrives asynchronously now (a shared query rather than an
+     * await inside this effect), so the first run happens with nothing to
+     * repair. Latching there would consume the one chance this component has
+     * and the repair would never run at all — the effect re-runs when the
+     * session lands, and that is the run that must be allowed through.
+     */
+    if (!nudgeSession?.userId) return; // not known yet, or genuinely signed out
     ran.current = true;
+    const id: string = nudgeSession.userId;
 
     void (async () => {
-      let id: string;
-      try {
-        const data = await loadSession();
-        if (!data?.userId) return; // no session after all — nothing to repair
-        id = data.userId;
-      } catch {
-        return; // claim nothing about an account we could not identify
-      }
       setUserId(id);
 
       // Runs even when the banner will be suppressed: the repair is the fix for
@@ -105,7 +111,7 @@ export default function RecoveryNudge({
     })();
     // `pathname` is read once, at the single run this latch permits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGuest, sessionChecked]);
+  }, [isGuest, sessionChecked, nudgeSession]);
 
   if (!show) return null;
 

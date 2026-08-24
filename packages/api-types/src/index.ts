@@ -261,3 +261,12 @@ export interface DomainBadgeStatus {
   /** Convenience shortcut for the first opted-in domain. */
   domain?: string;
 }
+
+/*
+ * Cache keys, beside the response shapes they name.
+ *
+ * A key is part of the API contract — `['topic', id]` says what the server
+ * treats as one resource — so both clients must agree on it or an invalidation
+ * written for one silently misses the other.
+ */
+export * from './queryKeys';

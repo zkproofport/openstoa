@@ -85,7 +85,7 @@ vi.mock('@/lib/mls/webTransport', () => ({
 }));
 
 const { default: ChatPanel } = await import('@/components/ChatPanel');
-const { I18nProvider } = await import('@/lib/i18n/I18nProvider');
+const { TestProviders } = await import('./harness/providers');
 
 class FakeEventSource {
   listeners = new Map<string, ((e: { data: string }) => void)[]>();
@@ -194,12 +194,12 @@ afterEach(() => {
 async function mountFresh(topicId: string) {
   vi.resetModules();
   const { default: FreshChatPanel } = await import('@/components/ChatPanel');
-  const { I18nProvider: FreshI18nProvider } = await import('@/lib/i18n/I18nProvider');
+  const { TestProviders: FreshProviders } = await import('./harness/providers');
   await act(async () => {
     root.render(
-      <FreshI18nProvider initialLocale="en">
+      <FreshProviders initialLocale="en">
         <FreshChatPanel topicId={topicId} isGuest={false} isMember />
-      </FreshI18nProvider>,
+      </FreshProviders>,
     );
   });
   await act(async () => {
@@ -211,9 +211,9 @@ async function mountFresh(topicId: string) {
 async function mount(topicId: string) {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <ChatPanel topicId={topicId} isGuest={false} isMember />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   // Let the cache read's microtasks settle without resolving the fetch.

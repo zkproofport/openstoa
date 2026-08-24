@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
-import { loadSession, clearSession } from '@/lib/sessionCache';
+import { useSession, useClearSession } from '@/lib/useSession';
 import { useState, useEffect, useCallback, useRef, Children } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -293,26 +293,33 @@ export default function MyPage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Load session
+  /*
+   * Acts once the SERVER has answered — a seeded session is a hint, and a
+   * redirect or a guest verdict must not rest on one. The previous code ran
+   * only after the fetch settled, and a failed lookup settles as `null`.
+   */
+  // Named apart from the `session` STATE this page already keeps: that one is
+  // the narrowed, page-local copy; this is the shared query result.
+  const { session: authSession, isVerified } = useSession();
+
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (!data?.userId) {
-          router.replace('/');
-          return;
-        }
-        // Narrowed, not cast: the guard above proves `userId` is present, and
-        // the shared cache types it optional because a signed-out session has
-        // none.
-        setSession({ ...data, userId: data.userId });
-        if (data.profileImage) setProfileImage(data.profileImage);
-        // Also fetch from profile image endpoint (session may not include it)
-        apiFetch('/api/profile/image').then(r => r.ok ? r.json() : null).then(d => {
-          if (d?.profileImage) setProfileImage(d.profileImage);
-        }).catch(() => {});
-      })
-      .catch(() => router.replace('/'))
-      .finally(() => setSessionLoading(false));
-  }, [router]);
+    if (!isVerified) return;
+    setSessionLoading(false);
+    if (!authSession?.userId) {
+      router.replace('/');
+      return;
+    }
+    // Narrowed, not cast: the guard above proves `userId` is present, and the
+    // query types it optional because a signed-out session has none.
+    setSession({ ...authSession, userId: authSession.userId });
+    if (authSession.profileImage) setProfileImage(authSession.profileImage);
+    // Also fetch from profile image endpoint (session may not include it)
+    apiFetch('/api/profile/image').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.profileImage) setProfileImage(d.profileImage);
+    }).catch(() => {});
+  }, [router, authSession, isVerified]);
+
+  const clearSession = useClearSession();
 
   async function handleLogout() {
     setLoggingOut(true);

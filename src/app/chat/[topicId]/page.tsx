@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -59,17 +59,14 @@ export default function TopicChatPage() {
   const [members, setMembers] = useState<TopicMember[] | null>(null);
   const [membersFailed, setMembersFailed] = useState(false);
 
+  /*
+   * One query for the whole page, shared with the header and the chat panel.
+   * The local mirror stays because the rest of this file reads it as state.
+   */
+  const { session } = useSession();
   useEffect(() => {
-    let alive = true;
-    loadSession()
-      .then((d) => {
-        if (alive) setViewerUserId(d?.userId ?? null);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
+    setViewerUserId(session?.userId ?? null);
+  }, [session]);
 
   const loadMembers = useCallback(() => {
     setMembers(null);

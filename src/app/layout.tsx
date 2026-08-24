@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { getServerLocale } from '@/lib/i18n/getServerLocale';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { QueryProvider } from '@/lib/queryClient';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -213,7 +214,9 @@ gtag('config', '${GA_ID}');`}
             />
           </>
         )}
-        <I18nProvider initialLocale={locale}>{children}</I18nProvider>
+        <QueryProvider>
+          <I18nProvider initialLocale={locale}>{children}</I18nProvider>
+        </QueryProvider>
       </body>
     </html>
   );

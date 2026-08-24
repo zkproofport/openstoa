@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -175,23 +175,23 @@ export default function PostDetailClient() {
     }
   }
 
+  /*
+   * Acts once the SERVER has answered — a seeded session is a hint, and a
+   * redirect or a guest verdict must not rest on one. The previous code ran
+   * only after the fetch settled, and a failed lookup settles as `null`.
+   */
+  const { session, isVerified } = useSession();
+
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (!data?.userId) {
-          setIsGuest(true);
-        } else {
-          setCurrentUserId(data.userId);
-          setCurrentUserRole(typeof data.role === 'string' ? data.role : null);
-        }
-      })
-      .catch(() => {
-        setIsGuest(true);
-      })
-      .finally(() => {
-        setSessionChecked(true);
-      });
-  }, []);
+    if (!isVerified) return;
+    if (!session?.userId) {
+      setIsGuest(true);
+    } else {
+      setCurrentUserId(session.userId);
+      setCurrentUserRole(typeof session.role === 'string' ? session.role : null);
+    }
+    setSessionChecked(true);
+  }, [session, isVerified]);
 
   useEffect(() => {
     loadPost();

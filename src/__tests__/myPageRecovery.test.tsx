@@ -43,7 +43,7 @@ vi.mock('@/components/AiAgentSettings', () => ({
 }));
 
 import MyPage from '@/app/my/page';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -69,13 +69,15 @@ function routeFetch() {
   );
 }
 
-async function flush(times = 8) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 beforeEach(() => {
   container = document.createElement('div');
@@ -98,9 +100,9 @@ describe('MyPage — Settings tab Recovery section (FIX8)', () => {
   it('CONTRACT: the Settings tab renders a Recovery section linking to /recovery', async () => {
     await act(async () => {
       root.render(
-        <I18nProvider initialLocale="en">
+        <TestProviders initialLocale="en">
           <MyPage />
-        </I18nProvider>,
+        </TestProviders>,
       );
     });
     await flush();

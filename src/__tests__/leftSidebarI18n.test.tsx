@@ -33,7 +33,7 @@ vi.mock('@/components/TopicAvatar', () => ({
   default: () => React.createElement('div', { 'data-testid': 'topic-avatar' }),
 }));
 
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import LeftSidebar from '@/components/LeftSidebar';
 import type { Locale } from '@/lib/i18n';
 
@@ -64,9 +64,9 @@ beforeEach(() => {
 async function renderSidebar(locale: Locale) {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale={locale}>
+      <TestProviders initialLocale={locale}>
         <LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />
-      </I18nProvider>,
+      </TestProviders>,
     );
     await Promise.resolve();
   });

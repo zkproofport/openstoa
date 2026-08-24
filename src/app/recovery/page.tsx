@@ -13,7 +13,7 @@
  * this page itself.
  */
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -28,19 +28,23 @@ export default function RecoveryPage() {
   const [nickname, setNickname] = useState<string>('You');
   const [loaded, setLoaded] = useState(false);
 
+  /*
+   * Acts once the SERVER has answered. A seeded session is a hint, and a
+   * redirect should not rest on a hint — the previous code only ever ran after
+   * the fetch settled, and a failed lookup settles as `null`.
+   */
+  const { session, isVerified } = useSession();
+
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (!data?.userId) {
-          router.replace('/');
-          return;
-        }
-        setUserId(data.userId);
-        if (data.nickname) setNickname(data.nickname);
-        setLoaded(true);
-      })
-      .catch(() => router.replace('/'));
-  }, [router]);
+    if (!isVerified) return;
+    if (!session?.userId) {
+      router.replace('/');
+      return;
+    }
+    setUserId(session.userId);
+    if (session.nickname) setNickname(session.nickname);
+    setLoaded(true);
+  }, [router, session, isVerified]);
 
   return (
     <>

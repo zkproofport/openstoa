@@ -20,7 +20,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import en from '@/lib/i18n/locales/en.json';
 import {
   DEFAULT_THEME,
@@ -57,9 +57,9 @@ afterEach(() => {
 async function mount() {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <ThemeToggle />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   await act(async () => { await Promise.resolve(); });

@@ -30,7 +30,7 @@ import enWeb from '@/lib/i18n/locales/en.json';
 import koWeb from '@/lib/i18n/locales/ko.json';
 import enMobile from '../../packages/mobile/src/i18n/locales/en.json';
 import koMobile from '../../packages/mobile/src/i18n/locales/ko.json';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import ArchiveRetentionNotice from '@/components/ArchiveRetentionNotice';
 import { ARCHIVE_RETENTION_CHOICES, archiveRetentionKey } from '@/lib/archiveRetention';
 
@@ -53,9 +53,9 @@ afterEach(() => {
 function render(days: number | undefined | null) {
   act(() => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <ArchiveRetentionNotice days={days} />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   return container.textContent ?? '';

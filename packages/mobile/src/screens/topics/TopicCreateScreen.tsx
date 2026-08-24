@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { listKeys } from '@openstoa/api-types';
 import {
   View,
   Text,
@@ -262,7 +263,7 @@ export function TopicCreateScreen() {
   ];
 
   const categoriesQuery = useQuery<{ categories: Category[] }>({
-    queryKey: ['categories'],
+    queryKey: listKeys.categories(),
     queryFn: () => client.get<{ categories: Category[] }>('/api/categories'),
   });
 

@@ -1,8 +1,7 @@
 'use client';
 
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
-import { sharedGet } from '@/lib/requestCache';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getMlsSessionStore } from '@/lib/mls/webTransport';
@@ -208,22 +207,19 @@ export default function TopicPageClient() {
     }
   }
 
+  /*
+   * Acts once the SERVER has answered — a seeded session is a hint, and a
+   * redirect or a guest verdict must not rest on one. The previous code ran
+   * only after the fetch settled, and a failed lookup settles as `null`.
+   */
+  const { session, isVerified } = useSession();
+
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (data?.userId) {
-          setSessionUserId(data.userId);
-        } else {
-          setIsGuest(true);
-        }
-      })
-      .catch(() => {
-        setIsGuest(true);
-      })
-      .finally(() => {
-        setSessionChecked(true);
-      });
-  }, []);
+    if (!isVerified) return;
+    if (session?.userId) setSessionUserId(session.userId);
+    else setIsGuest(true);
+    setSessionChecked(true);
+  }, [session, isVerified]);
 
   useEffect(() => {
     loadTopic();
@@ -261,7 +257,7 @@ export default function TopicPageClient() {
 
   async function loadTopic() {
     try {
-      const res = await sharedGet(`/api/topics/${topicId}`);
+      const res = await apiFetch(`/api/topics/${topicId}`);
       if (res.status === 401) {
         if (isGuest) { router.replace('/topics'); return; }
         router.replace('/');

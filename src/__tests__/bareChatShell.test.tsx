@@ -31,7 +31,7 @@ vi.mock('next/navigation', () => ({
 
 import BareChatShell from '@/components/BareChatShell';
 import { CHAT_WIDTH_KEY } from '@/lib/chatWidth';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -59,11 +59,11 @@ afterEach(async () => {
 async function mount() {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <BareChatShell>
           <div data-testid="child">content</div>
         </BareChatShell>
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
 }

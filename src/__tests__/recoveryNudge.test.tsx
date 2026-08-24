@@ -61,7 +61,7 @@ vi.mock('next/navigation', () => ({
 
 import RecoveryNudge from '@/components/RecoveryNudge';
 import { shouldNudgeRecovery, recoveryNudgeDismissKey } from '@/lib/recoveryNudge';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 import en from '@/lib/i18n/locales/en.json';
 import ko from '@/lib/i18n/locales/ko.json';
 import type { Locale } from '@/lib/i18n';
@@ -78,12 +78,18 @@ async function render(
   root = createRoot(container);
   await act(async () => {
     root.render(
-      React.createElement(I18nProvider, {
+      React.createElement(TestProviders, {
         initialLocale: locale,
         children: React.createElement(RecoveryNudge, props),
       }),
     );
   });
+  /*
+   * The banner now reads its account from the shared session query, which
+   * delivers on a real `setTimeout(0)` rather than a microtask — so without
+   * this the component is still deciding when the assertions run.
+   */
+  await flushQueries();
 }
 
 function banner() {
@@ -182,7 +188,7 @@ describe('RecoveryNudge — repair', () => {
     await render();
     await act(async () => {
       root.render(
-        React.createElement(I18nProvider, {
+        React.createElement(TestProviders, {
           initialLocale: 'en' as Locale,
           children: React.createElement(RecoveryNudge, { isGuest: false, sessionChecked: true }),
         }),

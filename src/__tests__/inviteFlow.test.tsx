@@ -70,7 +70,7 @@ vi.mock('@/components/CommunityLayout', () => ({
 
 const { default: InviteDialog } = await import('@/components/InviteDialog');
 const { default: InviteJoinPage } = await import('@/app/topics/join/[inviteCode]/page');
-const { I18nProvider } = await import('@/lib/i18n/I18nProvider');
+const { TestProviders } = await import('./harness/providers');
 
 // ─── Harness ─────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ let clipboard: string[];
 
 function render(node: React.ReactElement) {
   act(() => {
-    root.render(React.createElement(I18nProvider, { initialLocale: 'en', children: node }));
+    root.render(React.createElement(TestProviders, { initialLocale: 'en', children: node }));
   });
 }
 

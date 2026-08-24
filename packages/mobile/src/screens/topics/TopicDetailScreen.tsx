@@ -19,6 +19,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from 'react-native-vector-icons/Feather';
 import type { Topic, Post } from '@openstoa/api-types';
+import { topicKeys } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { PostCard } from '../../components/PostCard';
@@ -239,12 +240,12 @@ export function TopicDetailScreen() {
   const [q, setQ] = useState('');
 
   const topicQuery = useQuery<TopicDetailResponse>({
-    queryKey: ['topic', topicId],
+    queryKey: topicKeys.detail(topicId),
     queryFn: () => client.get<TopicDetailResponse>(`/api/topics/${topicId}`),
   });
 
   const postsQuery = useInfiniteQuery<PostsPageResponse, Error>({
-    queryKey: ['topic', topicId, 'posts', sortKey, activeTag, q],
+    queryKey: topicKeys.posts(topicId, sortKey, activeTag, q),
     staleTime: 0, // always re-fetch on focus/navigation so new posts appear immediately
     queryFn: async ({ pageParam }) => {
       const offset = (pageParam as number | undefined) ?? 0;
@@ -300,7 +301,7 @@ export function TopicDetailScreen() {
       await client.post(`/api/topics/${topicId}/join`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.detail(topicId) });
       // Prefix-match every topics list query so the explore / browse
       // tab refreshes `isMember` for the joined topic. The previous
       // `['topics', 'joined']` key was dead code — TopicsHomeScreen uses
@@ -338,7 +339,7 @@ export function TopicDetailScreen() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.detail(topicId) });
       queryClient.invalidateQueries({ queryKey: ['topics'] });
       // Without this the topic keeps rendering a chat preview on the chat tab
       // for a room the user can no longer open.
@@ -371,7 +372,7 @@ export function TopicDetailScreen() {
       return client.post(`/api/posts/${postId}/pin`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'posts'] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.postsAll(topicId) });
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.topicDetail.pinFailed'), err.message);

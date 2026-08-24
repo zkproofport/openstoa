@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 
 /**
  * Per-topic mute bell (P-S) — the shared web control used by both the ChatPanel
@@ -38,7 +38,7 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
 // tree, same as the app root (src/app/layout.tsx).
 async function render(ui: React.ReactElement) {
   await act(async () => {
-    root.render(<I18nProvider initialLocale="en">{ui}</I18nProvider>);
+    root.render(<TestProviders initialLocale="en">{ui}</TestProviders>);
   });
 }
 

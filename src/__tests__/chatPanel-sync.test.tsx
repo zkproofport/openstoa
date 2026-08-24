@@ -29,6 +29,7 @@
  * web. See `chatComposerNewline.test.tsx` for the element's own guards.
  */
 import enLocale from '@/lib/i18n/locales/en.json';
+import { flushQueries } from './harness/providers';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -83,7 +84,7 @@ vi.mock('@/lib/mls/webTransport', () => ({
 
 // Imported AFTER the mock so the component picks up the doubles.
 const { default: ChatPanel } = await import('@/components/ChatPanel');
-const { I18nProvider } = await import('@/lib/i18n/I18nProvider');
+const { TestProviders } = await import('./harness/providers');
 
 // ─── EventSource double ──────────────────────────────────────────────────────
 
@@ -211,13 +212,15 @@ let container: HTMLDivElement;
 let root: Root;
 let scrollCalls: number;
 
-async function flush(times = 6) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 // `ChatPanel` (and the `TopicMuteToggle` it renders internally) now read
 // copy through `useTranslation()` — see src/lib/i18n/I18nProvider.tsx. Every
@@ -226,9 +229,9 @@ async function flush(times = 6) {
 async function mount(props: Partial<React.ComponentProps<typeof ChatPanel>> = {}) {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <ChatPanel topicId={TOPIC} isGuest={false} isMember={true} {...props} />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   await flush();

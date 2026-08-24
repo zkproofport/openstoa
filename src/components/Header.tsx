@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { peekSession, loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import HeaderSearchBar from '@/components/HeaderSearchBar';
@@ -53,32 +53,21 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
   // the SSR vs CSR HTML structure diverged on every page load and React
   // tore down + retried hydration in a postMessage retry loop. The cache
   // is now applied AFTER mount so SSR and the first client render match.
-  const [user, setUser] = useState<UserSession | null>(null);
-  const [sessionChecked, setSessionChecked] = useState(false);
-
-  useEffect(() => {
-    // Hydrate from cache first (avoids flashing the "Sign in" pill for
-    // already-signed-in users) and mark the session as checked so the
-    // header switches from the placeholder span to the real chip.
-    /*
-     * The cache this header has always kept, now shared.
-     *
-     * It was the ONLY reader of `os-session` while twelve other call sites
-     * fetched the same endpoint independently — opening a topic asked twice
-     * before anything else happened. `sessionCache` owns the key now, and the
-     * request is de-duplicated across every caller on the page.
-     */
-    const cached = peekSession();
-    if (cached?.userId) {
-      setUser(cached);
-      setSessionChecked(true);
-    }
-
-    loadSession()
-      .then((data) => setUser(data?.userId ? data : null))
-      .catch(() => {})
-      .finally(() => setSessionChecked(true));
-  }, []);
+  /*
+   * One query, shared with every other caller on the page.
+   *
+   * This header was the only component that cached the session — in
+   * `localStorage`, under `os-session` — while sixteen other call sites fetched
+   * the same endpoint themselves. `useSession` keeps the storage seed (that is
+   * what stops the "Sign in" pill flashing for a signed-in reader) and hands
+   * the de-duplication to the query layer the mini-app already uses.
+   *
+   * The hydration constraint above still holds and is why the seed happens in
+   * an effect inside the hook rather than in a render-time initialiser.
+   */
+  const { session, isPending } = useSession();
+  const user = session as UserSession | null;
+  const sessionChecked = !isPending;
 
   return (
     // `has-app-shell` = "CommunityLayout is around this header, so a drawer, a

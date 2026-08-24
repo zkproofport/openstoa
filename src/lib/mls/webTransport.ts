@@ -5,7 +5,6 @@
  * event handlers / effects, never during SSR.
  */
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
 import * as km from './keyManager';
@@ -136,8 +135,24 @@ function encStore(): SecureKVStore {
  * leaf falls back to the bare device id and chat still works.
  */
 async function sessionUserId(): Promise<string | null> {
+  /*
+   * Fetched directly, and this is the one place on the web that still should.
+   *
+   * Everything a component reads goes through `useSession()` and TanStack
+   * Query. This does not run in a component: the MLS store is built lazily by
+   * whatever first needs it, outside React, so there is no provider to reach
+   * and no hook to call. The mini-app's crypto layer has exactly the same
+   * shape and the same eight direct calls for the same reason — a constraint,
+   * not a bypass.
+   *
+   * It is also cheap to leave alone: this resolves ONCE per page, the first
+   * time this device publishes a credential, and never again.
+   */
   try {
-    return (await loadSession())?.userId ?? null;
+    const r = await apiFetch('/api/auth/session');
+    if (!r.ok) return null;
+    const d = (await r.json()) as { userId?: string };
+    return d?.userId ?? null;
   } catch {
     return null;
   }

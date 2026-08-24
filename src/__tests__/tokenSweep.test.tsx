@@ -34,7 +34,7 @@ import { createRoot, type Root } from 'react-dom/client';
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 import Badge from '@/components/Badge';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import type { Locale } from '@/lib/i18n';
 
 /**
@@ -452,7 +452,7 @@ afterEach(() => {
 
 async function renderBadge(node: React.ReactElement, locale: Locale = 'en') {
   await act(async () => {
-    root.render(<I18nProvider initialLocale={locale}>{node}</I18nProvider>);
+    root.render(<TestProviders initialLocale={locale}>{node}</TestProviders>);
     await Promise.resolve();
   });
 }

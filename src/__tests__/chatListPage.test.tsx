@@ -56,7 +56,7 @@ vi.mock('@/components/ChatPanel', () => ({
 }));
 
 import ChatListPage from '@/app/chat/page';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 import type { Locale } from '@/lib/i18n';
 
 let container: HTMLDivElement;
@@ -88,20 +88,22 @@ function routes(topicsBody: unknown, dmsBody: unknown, opts: { topicsStatus?: nu
   ] as Array<[string, (url: string) => Response]>;
 }
 
-async function flush(times = 6) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 async function mount(locale: Locale = 'en') {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale={locale}>
+      <TestProviders initialLocale={locale}>
         <ChatListPage />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   await flush();

@@ -15,6 +15,7 @@
  * network and the crypto stores are doubled.
  */
 import enLocale from '@/lib/i18n/locales/en.json';
+import { flushQueries } from './harness/providers';
 import {
   CHAT_MEDIA_RETRY_WINDOW_MS,
   MAX_CHAT_MEDIA_BYTES,
@@ -89,7 +90,7 @@ vi.mock('@/lib/mls/webTransport', () => ({
 }));
 
 const { default: ChatPanel } = await import('@/components/ChatPanel');
-const { I18nProvider } = await import('@/lib/i18n/I18nProvider');
+const { TestProviders } = await import('./harness/providers');
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -196,20 +197,22 @@ function installFetch() {
 let container: HTMLDivElement;
 let root: Root;
 
-async function flush(times = 8) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 async function mount() {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <ChatPanel topicId={TOPIC} isGuest={false} isMember={true} />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   await flush();

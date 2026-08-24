@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getMlsSessionStore } from '@/lib/mls/webTransport';
@@ -114,14 +114,18 @@ export default function MembersPage() {
   // `handleStartDm` for the one case it wouldn't be).
   const chatRail = useChatRail();
 
+  /*
+   * Acts once the SERVER has answered — a seeded session is a hint, and a
+   * redirect or a guest verdict must not rest on one. The previous code ran
+   * only after the fetch settled, and a failed lookup settles as `null`.
+   */
+  const { session, isVerified } = useSession();
+
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (!data?.userId) { router.replace('/'); return; }
-        setSessionUserId(data.userId);
-      })
-      .catch(() => router.replace('/'));
-  }, [router]);
+    if (!isVerified) return;
+    if (!session?.userId) { router.replace('/'); return; }
+    setSessionUserId(session.userId);
+  }, [router, session, isVerified]);
 
   useEffect(() => {
     loadTopic();

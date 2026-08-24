@@ -79,7 +79,7 @@ vi.mock('@/lib/mls/keyManager', () => ({
 }));
 
 import { AccountRecovery } from '@/components/AccountRecovery';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import en from '@/lib/i18n/locales/en.json';
 import ko from '@/lib/i18n/locales/ko.json';
 import type { Locale } from '@/lib/i18n';
@@ -93,7 +93,7 @@ async function render(locale: Locale = 'en') {
   root = createRoot(container);
   await act(async () => {
     root.render(
-      React.createElement(I18nProvider, {
+      React.createElement(TestProviders, {
         initialLocale: locale,
         children: React.createElement(AccountRecovery, { userId: 'user-1', displayName: 'Someone' }),
       }),

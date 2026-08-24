@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 import en from '@/lib/i18n/locales/en.json';
 import ko from '@/lib/i18n/locales/ko.json';
 
@@ -75,14 +75,18 @@ async function mount() {
     // Locale pinned to `en` so assertions can compare against en.json directly;
     // the ko side is covered by the shape/translation checks at the bottom.
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <TopicsPage />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   // Two chained promise generations: session resolve → effect → feed resolve.
-  await act(async () => { await Promise.resolve(); });
-  await act(async () => { await Promise.resolve(); });
+  /*
+   * A macrotask drain: the page decides guest-vs-member from the shared session
+   * query, and TanStack delivers through `notifyManager` on `setTimeout(0)`, so
+   * a microtask drain leaves the feed still waiting to be told who is reading.
+   */
+  await flushQueries();
 }
 
 const text = () => container.textContent ?? '';

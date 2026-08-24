@@ -61,7 +61,7 @@ vi.mock('@/lib/chatRailContext', () => ({
 }));
 
 import BottomTabBar from '@/components/BottomTabBar';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import type { Locale } from '@/lib/i18n';
 
 let container: HTMLDivElement;
@@ -70,9 +70,9 @@ let root: Root;
 async function render(props: React.ComponentProps<typeof BottomTabBar>, locale: Locale = 'en') {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale={locale}>
+      <TestProviders initialLocale={locale}>
         <BottomTabBar {...props} />
-      </I18nProvider>,
+      </TestProviders>,
     );
     await Promise.resolve();
   });

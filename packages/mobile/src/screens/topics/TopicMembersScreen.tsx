@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { topicKeys } from '@openstoa/api-types';
 import {
   View,
   Text,
@@ -179,14 +180,14 @@ export function TopicMembersScreen() {
   }, [navigation, t]);
 
   const membersQuery = useQuery<MembersResponse>({
-    queryKey: ['topic', topicId, 'members'],
+    queryKey: topicKeys.members(topicId),
     queryFn: () => client.get<MembersResponse>(`/api/topics/${topicId}/members`),
   });
 
   // Fall back to the topic detail endpoint to learn the current user's role
   // when the members listing doesn't include it.
   const topicMetaQuery = useQuery<TopicMetaResponse>({
-    queryKey: ['topic', topicId],
+    queryKey: topicKeys.detail(topicId),
     queryFn: () => client.get<TopicMetaResponse>(`/api/topics/${topicId}`),
   });
 
@@ -199,7 +200,7 @@ export function TopicMembersScreen() {
       return client.patch(`/api/topics/${topicId}/members`, { userId, role });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'members'] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.members(topicId) });
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.members.actionFailed'), err.message);
@@ -215,7 +216,7 @@ export function TopicMembersScreen() {
       });
     },
     onSuccess: async () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'members'] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.members(topicId) });
       // See reconcileAfterKick.ts for what this does and why it is
       // best-effort on the sweep but never on the reported count.
       const mls = getMlsSessionStore(client, host.secureStore, host.localStore);
@@ -234,8 +235,8 @@ export function TopicMembersScreen() {
       return client.patch(`/api/topics/${topicId}/members`, { userId, role: 'owner' });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'members'] });
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.members(topicId) });
+      queryClient.invalidateQueries({ queryKey: topicKeys.detail(topicId) });
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.members.actionFailed'), err.message);

@@ -10,7 +10,7 @@
  * action are the whole page.
  */
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, Suspense } from 'react';
 import { isDefaultNickname } from '@/lib/defaultNickname';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -47,22 +47,26 @@ function ProfilePageInner() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
 
+  /*
+   * Acts once the SERVER has answered. A seeded session is a hint, and a
+   * redirect should not rest on a hint — the previous code only ever ran after
+   * the fetch settled, and a failed lookup settles as `null`.
+   */
+  const { session, isVerified } = useSession();
+
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (!data?.userId) {
-          router.replace('/');
-          return;
-        }
-        if (data.nickname && !isDefaultNickname(data.nickname)) {
-          backToReturnTo();
-          return;
-        }
-        setUserId(data.userId ?? null);
-        if (data.profileImage) setProfileImage(data.profileImage);
-      })
-      .catch(() => router.replace('/'));
-  }, [router]);
+    if (!isVerified) return;
+    if (!session?.userId) {
+      router.replace('/');
+      return;
+    }
+    if (session.nickname && !isDefaultNickname(session.nickname)) {
+      backToReturnTo();
+      return;
+    }
+    setUserId(session.userId ?? null);
+    if (session.profileImage) setProfileImage(session.profileImage);
+  }, [router, session, isVerified]);
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

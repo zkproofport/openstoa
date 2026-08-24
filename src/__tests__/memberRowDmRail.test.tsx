@@ -75,7 +75,7 @@ vi.mock('@/lib/dmCandidatesCache', async (importOriginal) => {
 });
 
 import MembersPage from '@/app/topics/[topicId]/members/page';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 import { __resetChatRailStore } from '@/lib/chatRailStore';
 import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 
@@ -111,13 +111,15 @@ function routeFetch() {
   return fn;
 }
 
-async function flush(times = 8) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 beforeEach(() => {
   container = document.createElement('div');
@@ -145,9 +147,9 @@ describe('member-row DM opens the rail (FIX1 + FIX4 regression)', () => {
 
     await act(async () => {
       root.render(
-        <I18nProvider initialLocale="en">
+        <TestProviders initialLocale="en">
           <MembersPage />
-        </I18nProvider>,
+        </TestProviders>,
       );
     });
     await flush();

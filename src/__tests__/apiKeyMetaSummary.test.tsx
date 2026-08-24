@@ -3,11 +3,11 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ApiKeyMetaSummary } from '@/components/AiAgentSettings';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 
 function renderKey(node: React.ReactElement): string {
   return renderToStaticMarkup(
-    React.createElement(I18nProvider, { initialLocale: 'en', children: node }),
+    React.createElement(TestProviders, { initialLocale: 'en', children: node }),
   );
 }
 

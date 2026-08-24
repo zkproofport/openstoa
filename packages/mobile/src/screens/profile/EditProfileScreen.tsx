@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { sessionKeys } from '@openstoa/api-types';
 import {
   ActivityIndicator,
   Alert,
@@ -332,7 +333,7 @@ export function EditProfileScreen() {
   const docsUrl = buildDocsUrl(host.getEnvironment().openstoaBaseUrl);
 
   const sessionQuery = useQuery<SessionInfo>({
-    queryKey: ['session'],
+    queryKey: sessionKeys.current(),
     queryFn: () => client.get<SessionInfo>('/api/auth/session'),
   });
 
@@ -417,7 +418,7 @@ export function EditProfileScreen() {
       const publicUrl = await client.uploadFile(result.assets[0].uri, { purpose: 'avatar' });
       await client.put('/api/profile/image', { imageUrl: publicUrl });
       void queryClient.invalidateQueries({ queryKey: ['profile', 'image'] });
-      void queryClient.invalidateQueries({ queryKey: ['session'] });
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.current() });
     } catch (err) {
       Alert.alert('Upload failed', err instanceof Error ? err.message : String(err));
     } finally {
@@ -429,7 +430,7 @@ export function EditProfileScreen() {
     mutationFn: () => client.delete('/api/profile/image'),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['profile', 'image'] });
-      void queryClient.invalidateQueries({ queryKey: ['session'] });
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.current() });
     },
     onError: (e) => {
       reportFailure(host, e, 'E9006');
@@ -474,7 +475,7 @@ export function EditProfileScreen() {
       useOpenStoaSession.getState().setNickname(data.nickname);
       // 3. Finally a background invalidate so the next refetch reconciles
       //    any server-side derived fields (joinedAt, totalRecorded, etc.).
-      void queryClient.invalidateQueries({ queryKey: ['session'] });
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.current() });
       setNickname(data.nickname);
       Alert.alert(t('openstoa.editProfile.saved.title'), t('openstoa.editProfile.saved.message'));
     },

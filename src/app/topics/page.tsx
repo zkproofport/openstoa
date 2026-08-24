@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -62,27 +62,28 @@ function TopicsPageInner() {
   const observerRef = useRef<HTMLDivElement | null>(null);
   const LIMIT = 20;
 
+  /*
+   * Acts once the SERVER has answered. A seeded session is a hint, and neither
+   * a redirect nor a "you are a guest" verdict should rest on a hint — the
+   * previous code only ever ran after the fetch settled, and a failed lookup
+   * settles as `null`, which is the guest branch.
+   */
+  const { session, isVerified } = useSession();
   // ── Auth check ──
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (!data?.userId) {
-          setIsGuest(true);
-          setSessionChecked(true);
-          return;
-        }
-        if (!data.nickname) {
-          router.replace('/profile');
-          return;
-        }
-        setSessionUserId(data.userId);
-        setSessionChecked(true);
-      })
-      .catch(() => {
-        setIsGuest(true);
-        setSessionChecked(true);
-      });
-  }, [router]);
+    if (!isVerified) return;
+    if (!session?.userId) {
+      setIsGuest(true);
+      setSessionChecked(true);
+      return;
+    }
+    if (!session.nickname) {
+      router.replace('/profile');
+      return;
+    }
+    setSessionUserId(session.userId);
+    setSessionChecked(true);
+  }, [router, session, isVerified]);
 
   // ── Fetch feed ──
   const loadFeed = useCallback(async (sort: string, category: string | null, tag: string | null, q: string | null, currentOffset: number, append: boolean) => {

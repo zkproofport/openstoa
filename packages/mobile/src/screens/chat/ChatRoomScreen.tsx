@@ -58,6 +58,7 @@ import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutat
 import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
+import { topicKeys } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
 import {
   getChatReadCursorIso,
@@ -832,7 +833,7 @@ export function ChatRoomScreen() {
     isFetchingNextPage,
     status: historyStatus,
   } = useInfiniteQuery<ChatPage>({
-    queryKey: ['chat-history', topicId],
+    queryKey: topicKeys.chat(topicId),
     queryFn: async ({ pageParam }) => {
       const cursor = pageParam as string | undefined;
       const qs = cursor === undefined
@@ -1111,7 +1112,7 @@ export function ChatRoomScreen() {
           visibility?: string;
           currentUserRole?: string | null;
         }>({
-          queryKey: ['topic', topicId],
+          queryKey: topicKeys.detail(topicId),
           queryFn: () => client.get(`/api/topics/${topicId}`),
         });
         const v = (tj?.topic?.visibility ?? tj?.visibility) as Visibility | undefined;

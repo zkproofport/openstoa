@@ -1,4 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { listKeys } from '@openstoa/api-types';
 import {
   View,
   Text,
@@ -162,7 +163,7 @@ export function TopicsHomeScreen() {
   });
 
   const categoriesQuery = useQuery<CategoriesResponse>({
-    queryKey: ['categories'],
+    queryKey: listKeys.categories(),
     queryFn: () => client.get<CategoriesResponse>('/api/categories'),
     staleTime: 5 * 60_000,
   });

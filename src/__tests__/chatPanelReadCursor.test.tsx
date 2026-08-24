@@ -29,7 +29,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import { resetChatReadSync, CHAT_READ_DEBOUNCE_MS } from '@/lib/chatReadSync';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -138,9 +138,9 @@ function mockFetch(rows: unknown[]) {
 async function mount() {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <ChatPanel topicId={TOPIC} isGuest={false} isMember fullHeight />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });

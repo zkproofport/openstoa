@@ -88,7 +88,7 @@ vi.mock('@/lib/dmCandidatesCache', async (importOriginal) => {
 
 import ChatRail from '@/components/ChatRail';
 import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -109,13 +109,15 @@ function routeFetch(routes: Array<[string, (url: string, init?: RequestInit) => 
   return fn;
 }
 
-async function flush(times = 6) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 type OpenRequest = { room: { kind: 'topic' | 'dm'; topicId: string; title: string } | null; nonce: number } | null;
 
@@ -125,7 +127,7 @@ type OpenRequest = { room: { kind: 'topic' | 'dm'; topicId: string; title: strin
 // (src/app/layout.tsx).
 async function mount(onClose: () => void = () => {}, openRequest: OpenRequest = null) {
   await act(async () => {
-    root.render(<I18nProvider initialLocale="en"><ChatRail onClose={onClose} openRequest={openRequest} /></I18nProvider>);
+    root.render(<TestProviders initialLocale="en"><ChatRail onClose={onClose} openRequest={openRequest} /></TestProviders>);
   });
   await flush();
 }
@@ -135,7 +137,7 @@ async function mount(onClose: () => void = () => {}, openRequest: OpenRequest = 
  *  than the lazy-`useState` mount-time path. */
 async function rerenderWithRequest(openRequest: OpenRequest, onClose: () => void = () => {}) {
   await act(async () => {
-    root.render(<I18nProvider initialLocale="en"><ChatRail onClose={onClose} openRequest={openRequest} /></I18nProvider>);
+    root.render(<TestProviders initialLocale="en"><ChatRail onClose={onClose} openRequest={openRequest} /></TestProviders>);
   });
   await flush();
 }

@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { sessionKeys } from '@openstoa/api-types';
 import {
   ActivityIndicator,
   Alert,
@@ -524,7 +525,7 @@ export function ProfileHomeScreen() {
   const { isGuest } = useRequireAuth();
 
   const sessionQuery = useQuery<SessionWithStats>({
-    queryKey: ['session'],
+    queryKey: sessionKeys.current(),
     queryFn: () => client.get<SessionWithStats>('/api/auth/session'),
     enabled: !isGuest,
   });

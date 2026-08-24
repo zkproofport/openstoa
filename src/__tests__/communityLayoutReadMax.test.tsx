@@ -50,7 +50,7 @@ vi.mock('@/components/ChatRail', () => ({
 }));
 
 import CommunityLayout from '@/components/CommunityLayout';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -86,7 +86,7 @@ afterEach(async () => {
 
 async function render(ui: React.ReactElement) {
   await act(async () => {
-    root.render(<I18nProvider initialLocale="en">{ui}</I18nProvider>);
+    root.render(<TestProviders initialLocale="en">{ui}</TestProviders>);
     await Promise.resolve();
   });
 }

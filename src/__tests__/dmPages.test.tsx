@@ -80,7 +80,7 @@ vi.mock('@/components/TopicMuteToggle', () => ({
 import DmListPage from '@/app/dm/page';
 import DmConversationPage from '@/app/dm/[topicId]/page';
 import MembersPage from '@/app/topics/[topicId]/members/page';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 
 // ── harness ──────────────────────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ function routeFetch(routes: Array<[string, (init?: RequestInit) => Response]>) {
 // tree, same as the app root (src/app/layout.tsx).
 async function render(ui: React.ReactElement) {
   await act(async () => {
-    root.render(<I18nProvider initialLocale="en">{ui}</I18nProvider>);
+    root.render(<TestProviders initialLocale="en">{ui}</TestProviders>);
   });
 }
 

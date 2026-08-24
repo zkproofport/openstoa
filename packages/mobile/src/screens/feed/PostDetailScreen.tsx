@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { postKeys, topicKeys } from '@openstoa/api-types';
 import {
   ActionSheetIOS,
   ActivityIndicator,
@@ -714,7 +715,7 @@ export function PostDetailScreen() {
     isLoading: postLoading,
     error: postError,
   } = useQuery<{ post: PostDetail; comments: Comment[] }>({
-    queryKey: ['post', postId],
+    queryKey: postKeys.detail(postId),
     queryFn: () =>
       client.get<{ post: PostDetail; comments: Comment[] }>(`/api/posts/${postId}`),
     enabled: !!postId,
@@ -728,7 +729,7 @@ export function PostDetailScreen() {
   // toggleBookmark mirrors the value into `userBookmarked` on the
   // post-detail cache so other surfaces (PostCard etc.) stay in sync.
   const { data: bookmarkData } = useQuery<{ bookmarked: boolean }>({
-    queryKey: ['bookmark', postId],
+    queryKey: postKeys.bookmark(postId),
     queryFn: () =>
       client.get<{ bookmarked: boolean }>(`/api/posts/${postId}/bookmark`),
     enabled: !!postId,
@@ -797,7 +798,15 @@ export function PostDetailScreen() {
     topic: { isMember?: boolean } | null;
     currentUserRole?: 'owner' | 'admin' | 'member' | null;
   }>({
-    queryKey: ['topic', post?.topicId],
+    /*
+     * `?? ''` rather than widening the shared key to accept `undefined`.
+     *
+     * The query is gated by `enabled` below, so this key is never actually
+     * used to fetch. Letting `detail()` take `undefined` would make the empty
+     * key legal EVERYWHERE, and `['topic', undefined]` is a real cache entry
+     * that silently never matches an invalidation.
+     */
+    queryKey: topicKeys.detail(post?.topicId ?? ''),
     queryFn: () =>
       client.get<{
         topic: { isMember?: boolean } | null;
@@ -1110,7 +1119,7 @@ export function PostDetailScreen() {
                 try {
                   await client.delete(`/api/posts/${postId}`);
                   queryClient.invalidateQueries({ queryKey: ['feed'] });
-                  queryClient.invalidateQueries({ queryKey: ['topic', postTopicId, 'posts'] });
+                  queryClient.invalidateQueries({ queryKey: topicKeys.postsAll(postTopicId) });
                   navigation.goBack();
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : String(err);

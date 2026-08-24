@@ -65,7 +65,7 @@ vi.mock('@/components/TopicMuteToggle', () => ({
 }));
 
 import TopicChatPage from '@/app/chat/[topicId]/page';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -94,9 +94,9 @@ function routeFetch(routes: Array<[string, (init?: RequestInit) => Response]>) {
 async function render() {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <TopicChatPage />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   await act(async () => { await Promise.resolve(); });

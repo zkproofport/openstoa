@@ -44,8 +44,9 @@
  * effect below would never re-fire.
  */
 import { apiFetch } from '@/lib/apiFetch';
-import { sharedGet } from '@/lib/requestCache';
-import { loadSession } from '@/lib/sessionCache';
+import { useQueryClient } from '@tanstack/react-query';
+import { topicKeys } from '@/lib/queryKeys';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -116,6 +117,8 @@ interface ChatRailProps {
 }
 
 export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
+  const queryClient = useQueryClient();
+  const { session: railSession } = useSession();
   const { t } = useTranslation();
   const pathname = usePathname();
   // Focus target for `openRequest` (below) — an external "open this DM/topic"
@@ -170,11 +173,26 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     if (!room || room.kind !== 'topic') return;
     setMembers(null);
     setMembersFailed(false);
-    sharedGet(`/api/topics/${room.topicId}/members`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed to load members'))))
-      .then((d) => setMembers(Array.isArray(d?.members) ? d.members : []))
+    /*
+     * Through the query cache, on the key `ChatPanel` also uses — the two mount
+     * together on a topic page and used to fetch this list twice.
+     * `ensureQueryData` is the imperative read: it returns what is cached and
+     * fetches only when there is nothing, which is the same call the mini-app
+     * makes for the same reason.
+     */
+    const topicId = room.topicId;
+    queryClient
+      .ensureQueryData({
+        queryKey: topicKeys.members(topicId),
+        queryFn: async () => {
+          const r = await apiFetch(`/api/topics/${topicId}/members`);
+          if (!r.ok) throw new Error('failed to load members');
+          return (await r.json()) as { members?: unknown[] };
+        },
+      })
+      .then((d) => setMembers(Array.isArray(d?.members) ? (d.members as never[]) : []))
       .catch(() => setMembersFailed(true));
-  }, [room]);
+  }, [room, queryClient]);
 
   const toggleMembers = useCallback(() => {
     setShowMembers((v) => {
@@ -185,16 +203,8 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
   }, [loadMembers]);
 
   useEffect(() => {
-    let alive = true;
-    loadSession()
-      .then((d) => {
-        if (alive) setMyUserId(d?.userId ?? null);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
+    setMyUserId(railSession?.userId ?? null);
+  }, [railSession]);
 
   // The SAME hook `/chat` uses. Both lists used to fetch and order themselves,
   // which is how the rail kept showing creation order after `/chat` was fixed.

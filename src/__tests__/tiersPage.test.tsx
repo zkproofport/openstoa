@@ -31,7 +31,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import enLocale from '@/lib/i18n/locales/en.json';
 import koLocale from '@/lib/i18n/locales/ko.json';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import {
   TIER_ORDER,
   historyClaimKey,
@@ -53,9 +53,9 @@ let root: Root;
 function render(locale: 'en' | 'ko' = 'en') {
   act(() => {
     root.render(
-      <I18nProvider initialLocale={locale}>
+      <TestProviders initialLocale={locale}>
         <TiersPage />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
 }

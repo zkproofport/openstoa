@@ -41,7 +41,7 @@ import { join } from 'path';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import LocaleSwitcher from '@/components/LocaleSwitcher';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders } from './harness/providers';
 import type { Locale } from '@/lib/i18n';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -79,9 +79,9 @@ function render(initialLocale: Locale = 'en', props: React.ComponentProps<typeof
   root = createRoot(container);
   act(() => {
     root.render(
-      <I18nProvider initialLocale={initialLocale}>
+      <TestProviders initialLocale={initialLocale}>
         <LocaleSwitcher {...props} />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
 }

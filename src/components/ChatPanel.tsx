@@ -2,8 +2,9 @@
 
 import { sendPickedFiles } from '@/lib/pickedFiles';
 import { apiFetch, MEDIA_DOWNLOAD_TIMEOUT_MS, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
-import { sharedGet } from '@/lib/requestCache';
-import { peekSession, loadSession } from '@/lib/sessionCache';
+import { useQueryClient } from '@tanstack/react-query';
+import { topicKeys } from '@/lib/queryKeys';
+import { useSession } from '@/lib/useSession';
 import { rememberSentChatMedia, readSentChatMedia } from '@/lib/chatMediaPlaintextCache';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
@@ -1688,15 +1689,18 @@ export default function ChatPanel({
   // Own-message alignment needs the caller's id. Same source the rest of the
   // web app uses for "is this me" checks (see topics/[topicId]/members).
   /*
-   * Seeded from the shared session cache before the first render, so the gate
-   * below is already open and the list is drawable on the very first paint.
+   * The reader's id, from the one query the whole page shares.
    *
-   * `peekSession()` and not a second store of our own: `Header` has always kept
-   * the answer in `localStorage`, and thirteen call sites asked the endpoint
-   * independently without reading it. One key, one writer, one thing to clear
-   * on logout — see `sessionCache.ts`.
+   * This gate is why it matters: the panel refuses to draw a row until the id
+   * is known, because a bubble whose side is unknown opens under someone else's
+   * name and then moves. On staging the endpoint takes ~270ms, so before this
+   * was shared and seeded, every reload sat blank for a value the tab already
+   * had. `useSession` seeds from storage AFTER mount (never during the first
+   * render — that is the React #418 hydration trap `Header` documents) and the
+   * query verifies it.
    */
-  if (cachedUserId === null) cachedUserId = peekSession()?.userId ?? null;
+  const queryClient = useQueryClient();
+  const { session: panelSession, isVerified: sessionVerified } = useSession();
   const [myUserId, setMyUserId] = useState<string | null>(cachedUserId);
   /*
    * Whether the session lookup has ANSWERED — which is not the same as
@@ -2352,23 +2356,24 @@ export default function ChatPanel({
     }
   }
 
+  /*
+   * Mirror the shared session into the panel's own state.
+   *
+   * `sessionProbed` flips as soon as the answer is KNOWN — seeded or fetched —
+   * because that is what the render gate needs: something to place bubbles by.
+   * It also flips when the query settles without a session, since an
+   * unanswered or signed-out lookup must not hold the room shut forever.
+   */
   useEffect(() => {
     if (isGuest) return;
-    let alive = true;
-    // Shared: concurrent panels and the header resolve one request between them.
-    loadSession()
-      .then((d) => {
-        if (!d?.userId) return;
-        cachedUserId = d.userId;
-        if (alive) setMyUserId(d.userId);
-      })
-      .catch(() => {})
-      // Settled either way: an unanswered lookup must not hold the room shut.
-      .finally(() => {
-        if (alive) setSessionProbed(true);
-      });
-    return () => { alive = false; };
-  }, [isGuest]);
+    if (panelSession?.userId) {
+      cachedUserId = panelSession.userId;
+      setMyUserId(panelSession.userId);
+      setSessionProbed(true);
+    } else if (sessionVerified) {
+      setSessionProbed(true);
+    }
+  }, [isGuest, panelSession, sessionVerified]);
 
   /**
    * Scroll the message list to the bottom.
@@ -2664,9 +2669,15 @@ export default function ChatPanel({
    */
   const reconcileGroupMembership = useCallback(async () => {
     try {
-      const res = await sharedGet(`/api/topics/${topicId}/members`);
-      if (!res.ok) return;
-      const data = (await res.json()) as { members?: Array<{ userId?: string }> };
+      // Same key `ChatRail` reads, so a topic page fetches this list once.
+      const data = await queryClient.ensureQueryData({
+        queryKey: topicKeys.members(topicId),
+        queryFn: async () => {
+          const r = await apiFetch(`/api/topics/${topicId}/members`);
+          if (!r.ok) throw new Error('members unavailable');
+          return (await r.json()) as { members?: Array<{ userId?: string }> };
+        },
+      });
       const ids = (data.members ?? []).map((m) => m.userId).filter((id): id is string => !!id);
       // An EMPTY list is refused rather than acted on. It is far more likely to
       // be a response shape we failed to read than a topic that genuinely has
@@ -2902,8 +2913,17 @@ export default function ChatPanel({
       // metadata lookup it does not depend on — the room painted a blank pane
       // for one extra round trip on every single entry.
       const [topicMeta, data] = await Promise.all([
-        sharedGet(`/api/topics/${topicId}`, { credentials: 'include' })
-          .then((r) => (r.ok ? r.json() : null))
+        // Same key `TopicPageClient` uses: the two mount together and used to
+        // fetch the topic twice, at ~441ms each on staging.
+        queryClient
+          .ensureQueryData({
+            queryKey: topicKeys.detail(topicId),
+            queryFn: async () => {
+              const r = await apiFetch(`/api/topics/${topicId}`, { credentials: 'include' });
+              if (!r.ok) throw new Error('topic unavailable');
+              return r.json();
+            },
+          })
           .catch(() => null),
         apiFetch(`/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}`)
           .then((r) => (r.ok ? r.json() : null))

@@ -60,7 +60,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import Header from '@/components/Header';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -69,20 +69,22 @@ function json(body: unknown, ok = true) {
   return { ok, json: async () => body } as unknown as Response;
 }
 
-async function flush(times = 6) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * The header now reads its session through TanStack Query, which delivers
+ * results via `notifyManager` on a real `setTimeout(0)` — so draining
+ * microtasks alone left every query result undelivered and the signed-in chip
+ * never rendered. Same helper, same reason, as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 async function render(props: React.ComponentProps<typeof Header> = {}) {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <Header {...props} />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   await flush();
@@ -407,9 +409,9 @@ describe('NAV LINKS: removed inside the app shell, kept outside it', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ userId: 'me', nickname: 'me' }))));
     await act(async () => {
       root.render(
-        <I18nProvider initialLocale="ko">
+        <TestProviders initialLocale="ko">
           <Header />
-        </I18nProvider>,
+        </TestProviders>,
       );
     });
     await flush();

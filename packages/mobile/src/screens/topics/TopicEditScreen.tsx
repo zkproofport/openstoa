@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
+import { topicKeys } from '@openstoa/api-types';
 import {
   View,
   Text,
@@ -133,7 +134,7 @@ export function TopicEditScreen() {
   }, [navigation, t]);
 
   const topicQuery = useQuery<TopicDetailResponse>({
-    queryKey: ['topic', topicId],
+    queryKey: topicKeys.detail(topicId),
     queryFn: () => client.get<TopicDetailResponse>(`/api/topics/${topicId}`),
   });
 
@@ -153,7 +154,7 @@ export function TopicEditScreen() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.detail(topicId) });
       queryClient.invalidateQueries({ queryKey: ['topics'] });
       navigation.goBack();
     },
@@ -168,7 +169,7 @@ export function TopicEditScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['topics'] });
-      queryClient.removeQueries({ queryKey: ['topic', topicId] });
+      queryClient.removeQueries({ queryKey: topicKeys.detail(topicId) });
       // Navigate back to topics home
       navigation.navigate('TopicsHome');
     },

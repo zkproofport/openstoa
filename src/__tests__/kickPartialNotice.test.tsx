@@ -77,7 +77,7 @@ vi.mock('@/lib/mls/webTransport', async (importOriginal) => {
 });
 
 import MembersPage from '@/app/topics/[topicId]/members/page';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries } from './harness/providers';
 import en from '@/lib/i18n/locales/en.json';
 
 let container: HTMLDivElement;
@@ -111,13 +111,15 @@ function routeFetch() {
   return fn;
 }
 
-async function flush(times = 10) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 /**
  * The Kick button needs two clicks: the first arms the confirm, which RELABELS
@@ -169,9 +171,9 @@ afterEach(async () => {
 async function mount() {
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <MembersPage />
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
   await flush();

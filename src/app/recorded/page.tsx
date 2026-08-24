@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { loadSession } from '@/lib/sessionCache';
+import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
@@ -39,13 +39,10 @@ export default function RecordedPage() {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  const { session } = useSession();
   useEffect(() => {
-    loadSession()
-      .then((data) => {
-        if (data?.userId) setSessionUserId(data.userId);
-      })
-      .catch(() => {});
-  }, []);
+    if (session?.userId) setSessionUserId(session.userId);
+  }, [session]);
 
   const loadPosts = useCallback(async (currentOffset: number, replace: boolean) => {
     if (replace) setLoading(true);

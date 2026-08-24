@@ -1,4 +1,5 @@
 import React, { useCallback, useLayoutEffect } from 'react';
+import { topicKeys } from '@openstoa/api-types';
 import {
   View,
   Text,
@@ -150,7 +151,7 @@ export function TopicRequestsScreen() {
   }, [navigation, t]);
 
   const requestsQuery = useQuery<RequestsResponse>({
-    queryKey: ['topic', topicId, 'requests'],
+    queryKey: topicKeys.requests(topicId),
     queryFn: () => client.get<RequestsResponse>(`/api/topics/${topicId}/requests`),
   });
 
@@ -159,8 +160,8 @@ export function TopicRequestsScreen() {
       return client.patch(`/api/topics/${topicId}/requests`, { requestId, action });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'requests'] });
-      queryClient.invalidateQueries({ queryKey: ['topic', topicId, 'members'] });
+      queryClient.invalidateQueries({ queryKey: topicKeys.requests(topicId) });
+      queryClient.invalidateQueries({ queryKey: topicKeys.members(topicId) });
     },
     onError: (err: Error) => {
       Alert.alert(t('openstoa.requests.actionFailed'), err.message);

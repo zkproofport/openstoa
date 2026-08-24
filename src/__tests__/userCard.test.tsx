@@ -36,7 +36,7 @@ vi.mock('@/lib/dmCandidatesCache', () => ({
 
 import UserCard from '@/components/UserCard';
 import { publishChatRailApi, __resetChatRailStore } from '@/lib/chatRailStore';
-import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { TestProviders, flushQueries, makeTestQueryClient } from './harness/providers';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -45,13 +45,15 @@ function json(body: unknown, ok = true) {
   return { ok, json: async () => body } as unknown as Response;
 }
 
-async function flush(times = 4) {
-  for (let i = 0; i < times; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
+/*
+ * A macrotask drain, not a microtask one.
+ *
+ * TanStack Query delivers results through `notifyManager`, which schedules on a
+ * real `setTimeout(0)` — so draining microtasks alone leaves every query result
+ * undelivered and every assertion reading "not yet". Same helper, same reason,
+ * as the mini-app harness's `settle`.
+ */
+const flush = flushQueries;
 
 function trigger(): HTMLElement {
   return container.querySelector('[aria-haspopup="dialog"]') as HTMLElement;
@@ -86,11 +88,11 @@ async function mountWithRail(
   const merged = { userId: 'peer-1', nickname: 'bob', viewerUserId: 'viewer-1', ...props };
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <UserCard {...merged}>
           <span data-testid="avatar-slot">B</span>
         </UserCard>
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
 }
@@ -122,11 +124,11 @@ async function mount(props: Partial<React.ComponentProps<typeof UserCard>> = {})
   const merged = { userId: 'peer-1', nickname: 'bob', viewerUserId: 'viewer-1', ...props };
   await act(async () => {
     root.render(
-      <I18nProvider initialLocale="en">
+      <TestProviders initialLocale="en">
         <UserCard {...merged}>
           <span data-testid="avatar-slot">B</span>
         </UserCard>
-      </I18nProvider>,
+      </TestProviders>,
     );
   });
 }
@@ -226,20 +228,27 @@ describe('boundary — self-resolving viewer session', () => {
     document.body.appendChild(containerB);
     const rootB = createRoot(containerB);
 
+    /*
+     * ONE client across both cards, because that is what the app has: a single
+     * provider in the root layout. Two `TestProviders` each build their own by
+     * default, which would make this assert that two isolated pages fetch twice
+     * — true, and not what the test is about.
+     */
+    const shared = makeTestQueryClient();
     await act(async () => {
       root.render(
-        <I18nProvider initialLocale="en">
+        <TestProviders initialLocale="en" queryClient={shared}>
           <UserCard userId="peer-1" nickname="bob">
             <span>B</span>
           </UserCard>
-        </I18nProvider>,
+        </TestProviders>,
       );
       rootB.render(
-        <I18nProvider initialLocale="en">
+        <TestProviders initialLocale="en" queryClient={shared}>
           <UserCard userId="peer-2" nickname="carol">
             <span>C</span>
           </UserCard>
-        </I18nProvider>,
+        </TestProviders>,
       );
     });
 
