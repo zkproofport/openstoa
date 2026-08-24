@@ -82,7 +82,7 @@ describe('ExpoPushProvider.send (content-free)', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('SI-1: POSTs an array with exactly {to,title,body,data} — NO ct/plaintext/flags', async () => {
+  it('SI-1: POSTs an array with exactly {to,title,body,data,channelId} — NO ct/plaintext/flags', async () => {
     await new ExpoPushProvider().send(TARGET, DUMMY);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(EXPO_URL);
@@ -90,7 +90,19 @@ describe('ExpoPushProvider.send (content-free)', () => {
     expect(Array.isArray(body)).toBe(true);
     expect(body).toHaveLength(1);
     const msg = body[0];
-    expect(Object.keys(msg).sort()).toEqual(['body', 'data', 'title', 'to']);
+    /*
+     * The key set is enumerated, not sampled, so a field added later cannot
+     * smuggle content past this file unnoticed — which is exactly what it just
+     * did for `channelId`, and why that key is listed here with its reason
+     * rather than waved through.
+     *
+     * `channelId` is a fixed string naming an Android notification channel. It
+     * is not derived from the message, the topic or the user, so it carries no
+     * information about any of them; the assertion below pins its VALUE for
+     * the same reason the key list exists.
+     */
+    expect(Object.keys(msg).sort()).toEqual(['body', 'channelId', 'data', 'title', 'to']);
+    expect(msg.channelId).toBe('chat');
     expect(msg.to).toBe(TARGET.pushToken);
     expect(msg.data).toEqual({ topicId: 'topic-1' });
     // No content-bearing or delivery-mode fields on the content-free message.

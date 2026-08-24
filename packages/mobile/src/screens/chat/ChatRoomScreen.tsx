@@ -1890,7 +1890,7 @@ export function ChatRoomScreen() {
     <>
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior="translate-with-padding"
+      behavior="padding"
       /*
        * `automaticOffset`, NOT a hand-tuned `keyboardVerticalOffset`.
        *
@@ -1946,7 +1946,25 @@ export function ChatRoomScreen() {
        * exactly what this comment already records nobody being able to derive
        * twice running.
        */
-      automaticOffset
+      /*
+       * `automaticOffset` ON IOS ONLY — measured, not reasoned.
+       *
+       * It asks the native side for the view's true position in the window so
+       * the padding is the ACTUAL overlap, which is what iOS needs and why it
+       * replaced the hand-tuned constant. On Android it DOUBLE-COUNTS: the
+       * platform has already moved part of the way, so adding the full overlap
+       * on top left a band of dead screen between the composer and the keys.
+       *
+       * Three builds on the device, each scanned pixel-row by pixel-row:
+       *   behavior undefined              composer behind the keyboard
+       *   padding + automaticOffset       composer 65px (23dp) too high
+       *   translate-with-padding          composer pushed off screen entirely
+       *   padding, no automaticOffset     composer bottom 1399, keys 1400 — flush
+       *
+       * The split is by evidence from both platforms, not by a constant nobody
+       * could derive twice.
+       */
+      automaticOffset={Platform.OS === 'ios'}
       keyboardVerticalOffset={0}
     >
       {/* What this room is, said in the room. The mini-app had no such line at

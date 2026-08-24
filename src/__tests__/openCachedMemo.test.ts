@@ -59,7 +59,7 @@ beforeEach(() => {
     { userId: 'u', deviceId: 'd' } as never,
     new CountingStore() as never,
     cache as never,
-    () => 'u',
+    async () => 'u',
   );
   // The MLS open itself — the expensive half, and the one that can only ever
   // run once per message because forward secrecy eats the key.
@@ -110,7 +110,7 @@ describe('CONTRACT: the second open costs nothing', () => {
       { userId: 'u', deviceId: 'd' } as never,
       new CountingStore() as never,
       cache as never,
-      () => 'u',
+      async () => 'u',
     );
     const opens: string[] = [];
     vi.spyOn(fresh, 'open').mockImplementation(async (_t: string, s: { ciphertext: string }) => {

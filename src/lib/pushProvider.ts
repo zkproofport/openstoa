@@ -27,6 +27,18 @@ const ROUTE = 'push-provider';
 
 /** The one well-known Expo push endpoint (not a secret, not env-configurable). */
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+/**
+ * The Android channel the app declares at push registration.
+ *
+ * Ignored by iOS. On Android it is what keeps Firebase from displaying the
+ * message itself: a Firebase-built notification carries none of the extras
+ * expo-notifications stamps, so `getPresentedNotificationsAsync()` returns an
+ * empty list for it and the app can never dismiss it when the room is opened.
+ * The app names the same string in `pushClearing.ts` (`CHAT_CHANNEL_ID`), and
+ * a disagreement between the two is silent — the notification simply lands on
+ * the fallback channel again and the tray stops clearing.
+ */
+const CHAT_CHANNEL_ID = 'chat';
 /** Where an accepted ticket's real outcome shows up. */
 const EXPO_RECEIPT_URL = 'https://exp.host/--/api/v2/push/getReceipts';
 /** Expo's documented cap for one getReceipts call. */
@@ -49,6 +61,15 @@ interface ExpoMessage {
   title: string;
   body: string;
   data: Record<string, unknown>;
+  /**
+   * Android: the channel expo-notifications must deliver this on.
+   *
+   * Without it Firebase displays the message itself on its own fallback
+   * channel, and a Firebase-built notification carries none of the extras expo
+   * stamps — so `getPresentedNotificationsAsync()` cannot see it and the app
+   * cannot dismiss it when the user opens the room. Ignored by iOS.
+   */
+  channelId?: string;
   /** Android: 'high' delivers the data message immediately. */
   priority?: 'default' | 'normal' | 'high';
   /** iOS: sets APNs `mutable-content=1` so the NSE wakes to decrypt + rewrite. */
@@ -87,6 +108,7 @@ export class ExpoPushProvider implements PushProvider {
         title: payload.title,
         body: payload.body,
         data: payload.data,
+        channelId: CHAT_CHANNEL_ID,
       },
     ]);
   }
@@ -101,6 +123,7 @@ export class ExpoPushProvider implements PushProvider {
         title: payload.title,
         body: payload.body,
         data: payload.data,
+        channelId: CHAT_CHANNEL_ID,
         mutableContent: true,
         _contentAvailable: true,
         priority: 'high',
