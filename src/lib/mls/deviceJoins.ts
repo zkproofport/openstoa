@@ -143,9 +143,17 @@ export interface PendingKeyNeeded {
  * every app launch, and a count, because this runs before the first byte of
  * the stream.
  *
- * Scoped tiers only. `public` keeps its root server-side and `dm` grants on
- * accept, so neither needs a holder to be nudged — including them would spend
- * the whole budget on topics where nobody is waiting.
+ * The tiers whose keys live only on devices: `private`, `secret` and `dm`. A
+ * `public` topic keeps its root on the server, so its newcomers fetch it
+ * themselves and no holder needs waking.
+ *
+ * A DM's row carries `visibility: 'secret'`, so it has always been selected by
+ * the filter below — while the comment here claimed DMs were excluded because
+ * they "grant on accept", a mechanism that was never built. The SQL was right
+ * and the sentence was wrong, which is the more dangerous way round: the test
+ * that guarded this asserted the exclusion against a fixture row with
+ * `visibility: 'dm'`, a value the schema never produces, so it certified a rule
+ * nothing implemented against a shape that cannot occur.
  *
  * Advisory, like the live event: a client that holds nothing for a topic does
  * nothing with it.

@@ -28,4 +28,5 @@ export * from './keyManager';
 export * from './keyBackup';
 export * from './aiMember';
 export * from './chatMedia';
+export * from './chatTierPolicy';
 export * from './imageMetadata';

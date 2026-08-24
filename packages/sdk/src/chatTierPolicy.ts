@@ -7,4 +7,4 @@
  * come to disagree — see the header of the shared module for the DM key defect
  * that cost.
  */
-export * from '../../packages/mls/src/chatTierPolicy';
+export * from '../../mls/src/chatTierPolicy';

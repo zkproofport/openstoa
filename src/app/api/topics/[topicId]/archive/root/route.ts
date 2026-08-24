@@ -6,7 +6,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
-import { chatTierOf, serverMayHoldKey } from '@/lib/chatTierPolicy';
+import { serverMayHoldKeyForRow } from '@/lib/chatTierPolicy';
 
 const ROUTE = '/api/topics/[topicId]/archive/root';
 
@@ -27,11 +27,35 @@ const ROUTE = '/api/topics/[topicId]/archive/root';
 async function loadPublicTopic(topicId: string) {
   const topic = await db.query.topics.findFirst({ where: eq(topics.id, topicId) });
   if (!topic) return { error: 'Topic not found', status: 404 as const };
-  // Asked, not restated. The tier table is the one place that decides which
-  // tiers may put a key here; a copy of that rule in this file is a copy that
-  // will eventually disagree with it.
-  if (!serverMayHoldKey(chatTierOf(topic.visibility, false))) {
-    return { error: 'This topic does not keep its archive key on the server', status: 403 as const };
+  /*
+   * Asked, not restated. The tier table is the one place that decides which
+   * tiers may put a key here; a copy of that rule in this file is a copy that
+   * will eventually disagree with it.
+   *
+   * `isDm` was hardcoded `false`, which made this gate right by luck: a DM row
+   * carries `visibility: 'secret'`, and secret is refused too. A security gate
+   * that is passed the wrong facts and happens to reach the right answer is one
+   * schema change away from being wrong, silently, in the direction that hands
+   * the server a key it must never hold.
+   */
+  /*
+   * Asked, not restated, and asked STRICTLY.
+   *
+   * The tier table is the one place that decides which rooms may put a key here.
+   * `serverMayHoldKeyForRow` is the composed question — it refuses a row whose
+   * visibility it cannot classify BEFORE asking whether that tier is allowed,
+   * because `chatTierOf` resolves an unrecognised value to `public` and `public`
+   * is the permissive branch here. The column is a plain varchar with no CHECK,
+   * so a migration or an unvalidated write is all it would take.
+   *
+   * `isDm` was also hardcoded `false` here once, which made the gate right by
+   * luck: a DM row carries `visibility: 'secret'`, and secret is refused too. A
+   * security gate fed the wrong facts that happens to reach the right answer is
+   * one schema change from being wrong in the direction that hands the server a
+   * key it must never hold.
+   */
+  if (!serverMayHoldKeyForRow(topic.visibility, topic.kind === 'dm')) {
+    return { error: 'This conversation does not keep its archive key on the server', status: 403 as const };
   }
   return { topic };
 }

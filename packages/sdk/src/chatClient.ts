@@ -20,9 +20,9 @@ import {
   EncryptingKVStore,
   keyManager,
   type SecureKVStore,
-  type Visibility,
   type SealedMessage,
 } from './mls';
+import { chatTierOf, usesTopicRootKey, type ChatTier } from './chatTierPolicy';
 import { OpenStoaClient, type OpenStoaClientOptions } from './rest/openStoaClient';
 import type { DmChannel } from './rest/types';
 import { mlsTransport, takTransport } from './rest/transports';
@@ -98,7 +98,7 @@ export class ChatClient {
   private _deviceId: string | null = null;
   private _masterKey: Promise<Uint8Array> | null = null;
   private readonly sessions = new Map<string, TopicSession>();
-  private readonly visibilityCache = new Map<string, Visibility>();
+  private readonly tierCache = new Map<string, ChatTier>();
 
   constructor(opts: ChatClientOptions) {
     this.rest = opts.client ?? new OpenStoaClient(opts);
@@ -194,20 +194,84 @@ export class ChatClient {
     return s;
   }
 
-  private async visibility(topicId: string): Promise<Visibility> {
-    const cached = this.visibilityCache.get(topicId);
+  /**
+   * Which key model this room uses — the question the TAK layer actually asks.
+   *
+   * It used to resolve a VISIBILITY, and a DM's topic row says `'secret'`, so
+   * every DM was handled as a per-epoch room while `chatTierPolicy` declares it
+   * topic-root. `kind` is the half that was being dropped.
+   *
+   * Falls back to `public` on a failed lookup, which is the tier that promises
+   * the least — the same direction `chatTierOf` errs in.
+   */
+  private async tier(topicId: string): Promise<ChatTier> {
+    const cached = this.tierCache.get(topicId);
     if (cached) return cached;
-    let v: Visibility = 'public';
+    let t: ChatTier = 'public';
     try {
       const topic = await this.rest.topics.get(topicId);
-      if (topic.visibility === 'private' || topic.visibility === 'secret' || topic.visibility === 'public') {
-        v = topic.visibility;
-      }
+      t = chatTierOf(topic.visibility, (topic as { kind?: string }).kind === 'dm');
     } catch {
       /* default to public if the topic lookup fails */
     }
-    this.visibilityCache.set(topicId, v);
-    return v;
+    this.tierCache.set(topicId, t);
+    return t;
+  }
+
+  /**
+   * Exchange keys with the room's other leaves, per the tier's rule.
+   *
+   * BOTH directions, and the order matters. Taking first is what lets a device
+   * that holds nothing become one that can serve: it adopts the root addressed
+   * to it, and the give below then has something to give. A give-only pass
+   * leaves two devices each waiting for the other.
+   *
+   * The web app and the mini-app both run this off a `key-needed` broadcast; an
+   * agent has no such loop, so it runs on the calls an agent actually makes —
+   * sending and reading. Nothing existed here at all, which meant an agent could
+   * hold a room's only key and never pass it on.
+   *
+   * Best-effort and silent: the give is a no-op unless the group changed, and a
+   * failure to exchange must never fail the send or read that triggered it.
+   */
+  private async shareKeys(topicId: string, tier: ChatTier): Promise<void> {
+    let tak: TakSessionStore;
+    try {
+      ({ tak } = await this.session(topicId));
+    } catch {
+      return; // no session for this room — nothing to exchange either way
+    }
+
+    /*
+     * TWO independent duties, so TWO catches. Sharing one would be a bug and
+     * was: an API key with `historyGrant: 'none'` is REFUSED `GET /tak/bundles`
+     * by design, and with both halves under one `try` that expected 403 threw
+     * past the hand-out — so an AI member archived its own message under the
+     * room's root and never told anyone, and the human it was talking to read
+     * `null`. Being unable to RECEIVE a key says nothing about whether you hold
+     * one worth giving.
+     */
+    try {
+      // TAKE: bundles addressed to this device. `backfill` does this too, but a
+      // caller that only ever sends and reads would otherwise never pick up the
+      // key it is owed.
+      await tak.ingestBundles(topicId);
+    } catch {
+      /* refused or unreachable — the next call, and `backfill`, retry */
+    }
+
+    try {
+      // GIVE: a no-op unless the group changed since this device last looked.
+      if (usesTopicRootKey(tier)) {
+        await tak.distributeRootWhenGroupChanged(topicId, tier);
+      } else if (tier === 'private') {
+        await tak.grantPrivateHistory(topicId);
+      }
+      // `secret` is owner-only and the SDK has no role here; the owner's own
+      // client grants it. Sharing from any member is what that tier forbids.
+    } catch {
+      /* nothing to hand over, or the room moved on — the next call retries */
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -273,19 +337,19 @@ export class ChatClient {
    * this sender can re-read its own message later), and archive it under the
    * topic's TAK so later members can back-fill it. Returns the server message id.
    */
-  async sendChat(topicId: string, text: string, opts: { archive?: boolean; visibility?: Visibility } = {}): Promise<string> {
+  async sendChat(topicId: string, text: string, opts: { archive?: boolean; tier?: ChatTier } = {}): Promise<string> {
     const { mls, tak } = await this.session(topicId);
     const sealed: SealedMessage = await mls.seal(topicId, text);
-    // Same TAK material serves two jobs, so resolve visibility once. Callers that
+    // Same TAK material serves two jobs, so resolve the tier once. Callers that
     // opt out of archiving (`archive: false`) also opt out of the push preview —
     // both are TAK-sealed copies of the body.
     const archive = opts.archive !== false;
-    const visibility = archive ? opts.visibility ?? (await this.visibility(topicId)) : null;
+    const tier = archive ? opts.tier ?? (await this.tier(topicId)) : null;
     // Push-preview copy (design §13.6 strategy A): sealed under the topic's TAK
     // and attached to THIS request, because push fan-out happens inside it — the
     // archiveOnSend upload below only lands after the response. Best-effort:
     // sealForPush returns null on any failure and the send proceeds without it.
-    const preview = visibility ? await tak.sealForPush(topicId, text, visibility) : null;
+    const preview = tier ? await tak.sealForPush(topicId, text, tier) : null;
     const row = await this.rest.chat.send(topicId, {
       ciphertext: sealed.ciphertext,
       epoch: sealed.epoch,
@@ -294,9 +358,12 @@ export class ChatClient {
     // The MLS sender cannot decrypt its OWN application message — cache the
     // plaintext under the server id so readChat surfaces it after a restart.
     await mls.cachePlaintext(topicId, row.id, text);
-    if (visibility) {
+    if (tier) {
       try {
-        await tak.archiveOnSend(topicId, row.id, text, visibility);
+        await tak.archiveOnSend(topicId, row.id, text, tier);
+        // A room whose membership changed since this device last looked has
+        // leaves holding nothing. Sending is the natural moment to notice.
+        await this.shareKeys(topicId, tier);
       } catch {
         /* archiving is best-effort durability; a failure never fails the send */
       }
@@ -325,18 +392,18 @@ export class ChatClient {
   async sendMedia(
     topicId: string,
     input: { bytes: Uint8Array; mime: string },
-    opts: { visibility?: Visibility } = {},
+    opts: { tier?: ChatTier } = {},
   ): Promise<{ messageId: string; envelope: ChatMediaEnvelope }> {
     const { tak } = await this.session(topicId);
-    const visibility = opts.visibility ?? (await this.visibility(topicId));
+    const tier = opts.tier ?? (await this.tier(topicId));
     let messageId = '';
     const envelope = await sendEncryptedChatMedia(input, {
-      seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, visibility),
+      seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, tier),
       upload: (ciphertext, mediaId) => this.rest.chat.uploadMedia(topicId, mediaId, ciphertext),
       send: async (body) => {
         // Through `sendChat`, so the envelope is archived like any other message
         // — that archive row is what a LATER member reads the picture from.
-        messageId = await this.sendChat(topicId, body, { visibility });
+        messageId = await this.sendChat(topicId, body, { tier });
       },
       /*
        * The bytes are stored and good; only the message failed. Surfacing the
@@ -359,7 +426,10 @@ export class ChatClient {
     const { mls, tak } = await this.session(topicId);
     // The tier decides where an attachment's key comes from, so it is resolved
     // once per read rather than per row.
-    const visibility = await this.visibility(topicId);
+    const tier = await this.tier(topicId);
+    // Reading is the other moment an agent is present, so it is the other place
+    // a leaf that joined since last time can be handed what it is missing.
+    await this.shareKeys(topicId, tier);
     const { messages } = await this.rest.chat.history(topicId, opts);
     const out: ChatMessage[] = [];
     for (const r of messages) {
@@ -390,7 +460,7 @@ export class ChatClient {
             return bytes ?? new Uint8Array(0);
           },
           open: (mediaId, takVersion, ciphertext) =>
-            tak.openMedia(topicId, mediaId, takVersion, ciphertext, visibility),
+            tak.openMedia(topicId, mediaId, takVersion, ciphertext, tier),
         });
         media =
           loaded.status === 'ok'
@@ -415,6 +485,59 @@ export class ChatClient {
       });
     }
     await this.ackDelivered(topicId, out);
+
+    /*
+     * Recover rows whose LIVE copy is already gone.
+     *
+     * The server drops a message's ciphertext once every device that was in the
+     * group when it was sent has acknowledged it — and a device with NO delivery
+     * cursor counts as satisfied (`isPurgeable` only iterates devices that have
+     * one). For a room's FIRST message nobody has a cursor yet, so the sweep the
+     * archive upload schedules can null the ciphertext before the recipient has
+     * fetched once. The row survives with `sealed: null`, and `readChat` used to
+     * report it as `text: null` — indistinguishable from "sealed before I joined"
+     * and equally wrong, because the archive holds it and this device can open it.
+     *
+     * A visible race rather than a theoretical one: it turns on how long the
+     * SENDER stays busy after uploading the archive row. Adding two requests to
+     * `sendChat` was enough to lose every first message in this suite.
+     *
+     * Conditional, so the ordinary path costs nothing: only a row with no body,
+     * no attachment and no system text can have been purged.
+     */
+    const purged = out.filter((m) => m.text === null && !m.media && !m.system);
+    if (purged.length > 0) {
+      const recovered = new Map((await this.backfill(topicId, { tier })).map((r) => [r.messageId, r]));
+      for (const m of purged) {
+        const r = recovered.get(m.id);
+        if (!r) continue;
+        if (r.media) m.media = r.media;
+        else if (r.plaintext) m.text = r.plaintext;
+      }
+    }
+
+    /*
+     * Close archive GAPS. `archiveOnSend` gets ONE attempt, at send time, and
+     * writes nothing while this device holds no key it may seal under — offline,
+     * a server hiccup, or losing the race to mint the room's root. There was no
+     * second chance here, so the message stayed out of the archive forever: every
+     * device that joined later was missing it, this device could not re-open its
+     * own copy once the send ratchet advanced, and nothing anywhere reported a
+     * problem. A gap is silent in a way corruption is not.
+     *
+     * The web client does this on room entry (`ChatPanel`'s `archiveGaps`); this
+     * is the agent's equivalent, and it belongs AFTER `shareKeys` above, because
+     * a device that just adopted the room's root is exactly the one with rows to
+     * put back. Idempotent, uncoordinated and best-effort — `chat_archive` is
+     * unique on (topic_id, message_id) and the route ignores conflicts.
+     */
+    await tak
+      .backfillMissingArchive(
+        topicId,
+        tier,
+        out.flatMap((m) => (m.text ? [{ messageId: m.id, plaintext: m.text }] : [])),
+      )
+      .catch(() => 0);
     return out;
   }
 
@@ -484,11 +607,11 @@ export class ChatClient {
    */
   async backfill(
     topicId: string,
-    opts: { visibility?: Visibility } = {},
+    opts: { tier?: ChatTier } = {},
   ): Promise<Array<{ messageId: string; plaintext: string; media?: ChatMessage['media'] }>> {
     const { tak } = await this.session(topicId);
-    const visibility = opts.visibility ?? (await this.visibility(topicId));
-    const rows = await tak.backfill(topicId, visibility);
+    const tier = opts.tier ?? (await this.tier(topicId));
+    const rows = await tak.backfill(topicId, tier);
     /*
      * HISTORY has the same defect `readChat` had, one function over: an
      * attachment's archived plaintext IS the envelope, so an agent reading a
@@ -510,7 +633,7 @@ export class ChatClient {
       const loaded = await loadEncryptedChatMedia(envelope, {
         fetchCiphertext: async (key) => (await this.rest.chat.media(topicId, key)) ?? new Uint8Array(0),
         open: (mediaId, takVersion, ciphertext) =>
-          tak.openMedia(topicId, mediaId, takVersion, ciphertext, visibility),
+          tak.openMedia(topicId, mediaId, takVersion, ciphertext, tier),
       });
       out.push({
         messageId: row.messageId,
@@ -529,13 +652,18 @@ export class ChatClient {
   }
 
   /**
-   * Public-topic holder action: wrap the archive root to every current member
-   * leaf so any member (including later joiners) can read all archived history.
-   * Returns the number of bundles sent.
+   * Hand this room's archive key to every current member leaf, so any member —
+   * a later joiner, or another device of this same account — can read all of the
+   * history. Returns the number of bundles sent.
+   *
+   * `sendChat` / `readChat` already do this when the group has changed. This is
+   * the explicit form, for a caller that wants to share without saying anything.
    */
-  async distributePublicArchive(topicId: string): Promise<number> {
+  async shareRoomKeys(topicId: string): Promise<number> {
     const { tak } = await this.session(topicId);
-    return tak.distributePublicRoot(topicId);
+    const tier = await this.tier(topicId);
+    if (!usesTopicRootKey(tier)) return tak.grantPrivateHistory(topicId);
+    return tak.distributeRoot(topicId, tier);
   }
 
   /** Low-level access to the per-topic MLS/TAK stores (advanced flows: AI grants, removal). */

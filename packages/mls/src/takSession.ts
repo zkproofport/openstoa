@@ -17,7 +17,20 @@
 import * as gc from './groupClient';
 import * as tak from './takClient';
 import type { MlsSessionStore, SecureKVStore } from './mlsSession';
+import { serverMayHoldKey, usesTopicRootKey, type ChatTier } from './chatTierPolicy';
 
+/**
+ * A topic ROW's visibility. Kept because that is what the topic API returns and
+ * what several callers hold — but it is deliberately NOT what the methods below
+ * take.
+ *
+ * The distinction is the one this file got wrong. A DM's row carries
+ * `visibility: 'secret'`, so keying the archive off visibility gave every DM
+ * per-epoch keys while `chatTierPolicy` declared DMs used one topic-wide root —
+ * and since 'dm' is not a visibility, no type could catch it. The methods take a
+ * `ChatTier`, which callers build with `chatTierOf(visibility, isDm)`, and every
+ * `Visibility` is also a valid `ChatTier`, so nothing has to be converted twice.
+ */
 export type Visibility = 'public' | 'private' | 'secret';
 
 export interface TakBundleRow {
@@ -340,7 +353,7 @@ export class TakSessionStore {
     await this.store.set(this.manifestKey(), JSON.stringify(set));
   }
 
-  // In-flight resolvePublicRoot per topic. Without this, a holder that resolves
+  // In-flight resolveRoot per topic. Without this, a holder that resolves
   // concurrently (distribute-on-open + archive-on-send) would race: both read no
   // root, both generate a DIFFERENT random root, then archives get sealed under
   // one while the other is distributed — so receivers can't decrypt. Memoizing
@@ -388,14 +401,22 @@ export class TakSessionStore {
    * decides which of two unproven roots is the real one: row #1 predates any
    * root minted later by a device that was merely waiting.
    */
-  private resolvePublicRoot(topicId: string): Promise<RootResolution> {
+  private resolveRoot(topicId: string, tier: ChatTier): Promise<RootResolution> {
     const cached = this.rootResolutions.get(topicId);
     if (cached && (cached.res.state === 'verified' || Date.now() - cached.at < TakSessionStore.UNSETTLED_ROOT_TTL_MS)) {
       return Promise.resolve(cached.res);
     }
     let p = this.rootPromises.get(topicId);
     if (!p) {
-      p = this.computePublicRoot(topicId)
+      /*
+       * Two ways to agree on one root, and which one applies is exactly the
+       * question `serverMayHoldKey` answers. A public topic asks the server,
+       * which holds the key and settles the race in a round trip. A DM cannot —
+       * the server is not allowed to hold that key — so the devices settle it
+       * between themselves against a published FINGERPRINT, which is a one-way
+       * tag the server stores without ever being able to derive the key from it.
+       */
+      p = (serverMayHoldKey(tier) ? this.computeServerRoot(topicId) : this.computePeerRoot(topicId))
         .then((res) => {
           if (res.state !== 'unverified') this.rootResolutions.set(topicId, { at: Date.now(), res });
           return res;
@@ -408,7 +429,7 @@ export class TakSessionStore {
     return p;
   }
 
-  private async computePublicRoot(topicId: string): Promise<RootResolution> {
+  private async computeServerRoot(topicId: string): Promise<RootResolution> {
     /*
      * A public topic's archive root lives on the server, so this is three
      * questions instead of the compare-and-set dance it replaced.
@@ -470,6 +491,63 @@ export class TakSessionStore {
   }
 
   /**
+   * The archive root of a topic-root tier the server may NOT hold — today, a DM.
+   *
+   * The public tier settles this by asking the server, which is allowed to keep
+   * the key. A DM's key must never reach it, so the devices settle it between
+   * themselves against a published FINGERPRINT: a one-way tag of the root that
+   * identifies it without disclosing it, written compare-and-set so the first
+   * device to mint one wins and every other device adopts that answer.
+   *
+   *   fingerprint published, we hold the matching root   → verified
+   *   fingerprint published, we hold a different root    → orphan (read-only:
+   *       it still opens rows this device sealed, and must seal no more)
+   *   fingerprint published, we hold nothing             → waiting. The root is
+   *       on the peer's devices and arrives as a TAK bundle. There is no other
+   *       route to it, and inventing one here is the whole defect.
+   *   nothing published, nothing archived                → mint and claim
+   *   check failed (offline)                             → unverified. NEVER
+   *       mint: a root minted without checking looks valid to this device
+   *       forever and orphans everything sealed under it.
+   *
+   * `key` is still handed back on `unverified` and `orphan`, because reading is
+   * not sealing: a device offline with its own history should still open it.
+   * `currentArchiveKey` is what refuses to seal under anything but `verified`.
+   */
+  private async computePeerRoot(topicId: string): Promise<RootResolution> {
+    const local = await this.getRoot(topicId);
+
+    let identity: ArchiveRootIdentity;
+    try {
+      identity = await this.transport.getRootFingerprint(topicId);
+    } catch {
+      return { key: local, state: 'unverified' };
+    }
+
+    if (identity.fingerprint) {
+      if (!local) return { key: null, state: 'waiting' };
+      return (await tak.deriveRootFingerprint(local)) === identity.fingerprint
+        ? { key: local, state: 'verified' }
+        : { key: local, state: 'orphan' };
+    }
+
+    /*
+     * Rows exist but no fingerprint does. A device that cannot open the OLDEST
+     * of those rows is provably not holding the root they were sealed under, so
+     * claiming its own would rename the archive's identity to a key that opens
+     * none of it. Only the device that can read row #1 may speak for it.
+     */
+    if (identity.archiveCount > 0) {
+      if (!local) return { key: null, state: 'waiting' };
+      if ((await this.rootOpensOldestArchiveRow(topicId, local)) !== true) {
+        return { key: local, state: 'orphan' };
+      }
+    }
+
+    return this.claimRoot(topicId, local ?? tak.generatePublicRootKey(), local != null);
+  }
+
+  /**
    * Publish `root`'s fingerprint and interpret the compare-and-set outcome.
    * `persisted` says whether the root is already in the local store: a root we
    * just minted has sealed nothing, so if it loses the race we DROP it rather
@@ -516,19 +594,19 @@ export class TakSessionStore {
 
   /**
    * This device's standing on a topic's archive root — for surfacing "history is
-   * still syncing" in the UI. Null for private/secret/AI topics, whose archive
-   * keys are per-epoch and have no topic-wide root (§5.2).
+   * still syncing" in the UI. Null for the per-epoch tiers, which have no
+   * topic-wide root to have a standing on (§5.2).
    */
-  async archiveRootState(topicId: string, visibility: Visibility): Promise<ArchiveRootState | null> {
-    if (visibility !== 'public') return null;
-    return (await this.resolvePublicRoot(topicId)).state;
+  async archiveRootState(topicId: string, tier: ChatTier): Promise<ArchiveRootState | null> {
+    if (!usesTopicRootKey(tier)) return null;
+    return (await this.resolveRoot(topicId, tier)).state;
   }
 
   /**
    * Drop a cached NOT-YET-SETTLED answer, so the next resolution asks the
    * server again instead of repeating the last one.
    *
-   * `resolvePublicRoot` holds a 'waiting' answer for UNSETTLED_ROOT_TTL_MS,
+   * `resolveRoot` holds a 'waiting' answer for UNSETTLED_ROOT_TTL_MS,
    * which is right for casual callers and wrong for the one case that matters:
    * a device sitting in an open room with locked history, polling precisely
    * because it expects the answer to change. Its retries all landed inside the
@@ -553,7 +631,9 @@ export class TakSessionStore {
    * receive FROM, so nobody will ever send it the root it is missing.
    */
   async publicRootFingerprint(topicId: string): Promise<string | null> {
-    const resolved = await this.resolvePublicRoot(topicId);
+    // The holder lease is a PUBLIC-tier mechanism — a DM has two participants
+    // and no lease to win — so the tier is fixed here rather than passed.
+    const resolved = await this.resolveRoot(topicId, 'public');
     if (resolved.state !== 'verified' || !resolved.key) return null;
     return tak.deriveRootFingerprint(resolved.key);
   }
@@ -650,17 +730,23 @@ export class TakSessionStore {
   }
 
   /**
-   * The archive key this topic seals under right now: public → the shared root
-   * (tak_version 0); scoped → the current epoch TAK (tak_version = epoch), which
-   * is cached as a side effect so it can be granted later (the exporter secret is
-   * gone once the epoch advances).
+   * The archive key this topic seals under right now: a topic-root tier → the
+   * conversation's single root (tak_version 0); a per-epoch tier → the current
+   * epoch TAK (tak_version = epoch), which is cached as a side effect so it can
+   * be granted later (the exporter secret is gone once the epoch advances).
+   *
+   * The branch ASKS `chatTierPolicy` rather than restating it. It used to test
+   * `visibility === 'public'`, which is the same thing for three of the four
+   * tiers and wrong for the fourth: a DM's row says `'secret'`, so DMs fell into
+   * the per-epoch branch while the policy declared them topic-root, and the key
+   * that sealed a DM never left the device that minted it.
    */
   private async currentArchiveKey(
     topicId: string,
-    visibility: Visibility,
+    tier: ChatTier,
   ): Promise<{ key: Uint8Array | null; takVersion: number; rootState: ArchiveRootState | null }> {
-    if (visibility === 'public') {
-      const r = await this.resolvePublicRoot(topicId);
+    if (usesTopicRootKey(tier)) {
+      const r = await this.resolveRoot(topicId, tier);
       // Only a VERIFIED root may seal anything. An orphan/unverified root would
       // produce rows that no member — including this device after it adopts the
       // real root — can ever read.
@@ -689,9 +775,9 @@ export class TakSessionStore {
     topicId: string,
     messageId: string,
     plaintext: string,
-    visibility: Visibility,
+    tier: ChatTier,
   ): Promise<ArchiveResult> {
-    const { key, takVersion, rootState } = await this.currentArchiveKey(topicId, visibility);
+    const { key, takVersion, rootState } = await this.currentArchiveKey(topicId, tier);
     if (!key) return { archived: false, rootState };
     await this.transport.postArchive(topicId, messageId, takVersion, await tak.sealArchive(key, messageId, plaintext));
     return { archived: true, rootState };
@@ -710,9 +796,9 @@ export class TakSessionStore {
     topicId: string,
     mediaId: string,
     plaintext: Uint8Array,
-    visibility: Visibility,
+    tier: ChatTier,
   ): Promise<{ ciphertext: Uint8Array; takVersion: number } | null> {
-    const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+    const { key, takVersion } = await this.currentArchiveKey(topicId, tier);
     if (!key) return null;
     return { ciphertext: await tak.sealMediaBytes(key, mediaId, plaintext), takVersion };
   }
@@ -733,11 +819,11 @@ export class TakSessionStore {
     mediaId: string,
     takVersion: number,
     sealed: Uint8Array,
-    visibility: Visibility,
+    tier: ChatTier,
   ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: 'no-key' | 'decrypt' }> {
     const candidates =
-      visibility === 'public'
-        ? ([(await this.resolvePublicRoot(topicId)).key, await this.getOrphanRoot(topicId)].filter(Boolean) as Uint8Array[])
+      usesTopicRootKey(tier)
+        ? ([(await this.resolveRoot(topicId, tier)).key, await this.getOrphanRoot(topicId)].filter(Boolean) as Uint8Array[])
         : ([await this.epochTakForRead(topicId, takVersion)].filter(Boolean) as Uint8Array[]);
     if (candidates.length === 0) return { ok: false, reason: 'no-key' };
     for (const key of candidates) {
@@ -790,9 +876,9 @@ export class TakSessionStore {
    * block sending. `takB64` is raw key material for the LOCAL OS-keychain mirror
    * only — never send it to the server, never log it.
    */
-  async sealForPush(topicId: string, plaintext: string, visibility: Visibility): Promise<PushPreviewSeal | null> {
+  async sealForPush(topicId: string, plaintext: string, tier: ChatTier): Promise<PushPreviewSeal | null> {
     try {
-      const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+      const { key, takVersion } = await this.currentArchiveKey(topicId, tier);
       // No verified root → no preview. Sealing under an orphan root would ship a
       // notification body every recipient fails to open.
       if (!key) return null;
@@ -810,9 +896,9 @@ export class TakSessionStore {
    * of throwing when the key can't be resolved (nothing to mirror). `takB64` is
    * raw key material: local keychain only, never to the server, never logged.
    */
-  async takForPush(topicId: string, visibility: Visibility): Promise<Omit<PushPreviewSeal, 'ct'> | null> {
+  async takForPush(topicId: string, tier: ChatTier): Promise<Omit<PushPreviewSeal, 'ct'> | null> {
     try {
-      const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+      const { key, takVersion } = await this.currentArchiveKey(topicId, tier);
       if (!key) return null; // nothing worth mirroring until the real root arrives
       return { takVersion, takB64: b64(key) };
     } catch {
@@ -837,9 +923,13 @@ export class TakSessionStore {
   }
 
   /**
-   * Holder action (public, SI-6): wrap the archive root to EVERY current member
-   * leaf and upload the bundles, so any member — including ones who joined later
-   * — can derive every archived epoch. Returns how many bundles were sent.
+   * Wrap the archive root to EVERY current member leaf and upload the bundles,
+   * so any member — including one who joined later, and including another device
+   * of the sender — can read all of the archive. Returns how many were sent.
+   *
+   * The ONLY route by which a DM's key travels, and the second route for a
+   * public topic (whose members can also just fetch it from the server). See
+   * `chatTierPolicy`'s `'peer-device'` delivery.
    *
    * REFUSES (returns 0) unless our root is verified. This is the blast radius
    * that made the defect catastrophic rather than local: the holder lease is
@@ -862,7 +952,7 @@ export class TakSessionStore {
    * event: unchanged epoch costs one sync and returns, while a real join
    * triggers exactly one round of bundles instead of a duplicate per event.
    */
-  async distributePublicRootWhenGroupChanged(topicId: string): Promise<number> {
+  async distributeRootWhenGroupChanged(topicId: string, tier: ChatTier): Promise<number> {
     await this.mls.sync(topicId);
     let epoch: number;
     try {
@@ -871,19 +961,26 @@ export class TakSessionStore {
       return 0; // no group state here yet — nothing to distribute from
     }
     if (this.lastDistributedEpoch.get(topicId) === epoch) return 0;
-    const n = await this.distributePublicRoot(topicId);
+    const n = await this.distributeRoot(topicId, tier);
     // Recorded even when nothing was sent: without a verified root this device
     // cannot serve THIS epoch at all, and retrying every event would only spin.
     this.lastDistributedEpoch.set(topicId, epoch);
     return n;
   }
 
-  async distributePublicRoot(topicId: string): Promise<number> {
+  async distributeRoot(topicId: string, tier: ChatTier): Promise<number> {
+    if (!usesTopicRootKey(tier)) return 0; // per-epoch tiers grant epochs, not a root
     // Catch up first so we see every current member's leaf — a holder whose
     // history decrypted from cache never MLS-opened, so its tree could be stale.
     await this.mls.sync(topicId);
-    const resolved = await this.resolvePublicRoot(topicId);
+    const resolved = await this.resolveRoot(topicId, tier);
     if (resolved.state !== 'verified' || !resolved.key) return 0;
+    /*
+     * `tier: 'public'` is the BUNDLE's discriminant — "this carries a whole-topic
+     * root" as opposed to `'scoped'`, which carries a set of epoch keys — and not
+     * the topic's tier. A DM's root travels in the same envelope. Renaming the
+     * wire field would strand bundles already in flight for no gain.
+     */
     const payload: tak.PublicBundle = { tier: 'public', rootKey: b64(resolved.key) };
     const leaves = await this.allMemberLeaves(topicId);
     let n = 0;
@@ -1043,7 +1140,7 @@ export class TakSessionStore {
    * archive row we now hold a key for. Rows we lack a key for (out of scope) are
    * skipped. Returns the decrypted bodies keyed by original message id.
    */
-  async backfill(topicId: string, visibility: Visibility): Promise<Array<{ messageId: string; plaintext: string }>> {
+  async backfill(topicId: string, tier: ChatTier): Promise<Array<{ messageId: string; plaintext: string }>> {
     await this.ingestBundles(topicId);
     const rows = await this.transport.getArchive(topicId);
     /*
@@ -1059,16 +1156,14 @@ export class TakSessionStore {
      * lost a deposit race are unreadable to everyone else, but there is no
      * reason to hide them from the device that wrote them.
      */
-    const publicKeys =
-      visibility === 'public'
-        ? ([
-            (await this.resolvePublicRoot(topicId)).key,
-            await this.getOrphanRoot(topicId),
-          ].filter(Boolean) as Uint8Array[])
-        : [];
+    const rootKeys = usesTopicRootKey(tier)
+      ? ([(await this.resolveRoot(topicId, tier)).key, await this.getOrphanRoot(topicId)].filter(
+          Boolean,
+        ) as Uint8Array[])
+      : [];
     const out: Array<{ messageId: string; plaintext: string }> = [];
     for (const r of rows) {
-      const keys = visibility === 'public' ? publicKeys : [await this.getEpochTak(topicId, r.takVersion)];
+      const keys = usesTopicRootKey(tier) ? rootKeys : [await this.epochTakForRead(topicId, r.takVersion)];
       for (const key of keys) {
         if (!key) continue;
         const pt = await tak.openArchive(key, r.messageId, r.ciphertext);
@@ -1098,13 +1193,13 @@ export class TakSessionStore {
    */
   async backfillMissingArchive(
     topicId: string,
-    visibility: Visibility,
+    tier: ChatTier,
     readable: Array<{ messageId: string; plaintext: string }>,
   ): Promise<number> {
     if (readable.length === 0) return 0;
     // Same gate as sending: only a VERIFIED root may seal. A device that would
     // write rows nobody can open must not be the one to fill gaps.
-    const { key, takVersion } = await this.currentArchiveKey(topicId, visibility);
+    const { key, takVersion } = await this.currentArchiveKey(topicId, tier);
     if (!key) return 0;
 
     let archived: Set<string>;

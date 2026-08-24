@@ -222,7 +222,7 @@ the parsed `body`.
 | `startDm(peerUserId)` | start/get a DM and bootstrap its MLS session; returns the topicId |
 | `listDms()` | DM channels (routing metadata only) |
 | `backfill(topicId, opts?)` | ingest TAK bundles and decrypt archived history |
-| `distributePublicArchive(topicId)` | public-topic holder action: wrap the archive root to every current member |
+| `shareRoomKeys(topicId)` | hand this room's archive key to every current member leaf, so a later joiner (or another device of yours) can read the history |
 | `topicSession(topicId)` | low-level MLS/TAK stores for advanced flows |
 
 ### Keystore
@@ -266,9 +266,16 @@ like a private key, not like a cache.
 - **`baseUrl` has no default.** `OpenStoaClient` throws if it is missing.
 - **MLS forward secrecy: you cannot decrypt messages sent before you joined.**
   Those rows come back with `text: null`. This is the protocol working, not a
-  bug. For a live round-trip both parties must `joinTopic` (or `startDm`) first,
-  then send. Public topics recover history through the TAK back-fill —
-  `backfill()` on the reader, `distributePublicArchive()` on a holder.
+  bug. History is recovered through the TAK archive instead: `backfill()` on the
+  reader, and a device that already holds the key calling `shareRoomKeys()`.
+  `sendChat()` and `readChat()` already share when the group has changed, so an
+  agent that talks in a room keeps its counterparts unlocked without extra calls.
+- **A DM's key is held by devices only, so somebody has to be online to pass it
+  on.** A public topic keeps its archive key on the server and a newcomer just
+  fetches it; a DM's key must never reach the server, so the only route to a
+  device that joined later — including your own second device — is a device that
+  already holds it. If a freshly-joined client back-fills nothing, the peer has
+  not been online since you joined; it unlocks on their next send or read.
 - **A fresh vault is a fresh device.** Point `vaultRoot` at a new directory and
   you get a new MLS leaf, which cannot read anything sent before it joined.
   Persist the vault (and ideally pin `deviceId`) for a long-lived agent.

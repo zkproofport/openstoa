@@ -14,6 +14,7 @@
 import type { HostApi } from '@openstoa/miniapp-bridge';
 import type { OpenStoaClient } from '../api/openstoaClient';
 import { getTakSessionStore } from './mobileTransport';
+import { chatTierOf, usesTopicRootKey } from '../lib/chatTierPolicy';
 
 interface TopicShape {
   topic?: { visibility?: string; kind?: string } | null;
@@ -25,10 +26,17 @@ interface TopicShape {
  *
  * The same split the chat room applies on entry:
  *   public  — publish the shared archive root, which the server may hold.
+ *   dm      — hand the conversation's root to the peer's leaves and to this
+ *             account's other devices. The server may NOT hold this one, so
+ *             this call is the only route it has.
  *   private — grant the epochs this member holds to every member leaf.
  *   secret  — the owner alone grants; a member handing out a hidden room's
  *             history is the thing that tier exists to prevent.
- *   dm      — nothing to do: both parties were there from the start.
+ *
+ * `dm` used to return here immediately, on the reasoning that "both parties were
+ * there from the start". Both ACCOUNTS were; their devices were not, and a
+ * device is what holds a key. The early return meant a DM's key never left the
+ * device that minted it.
  *
  * Silent by design. It runs off a broadcast that goes to every member, so most
  * calls are expected to find nothing worth sending, and a failure is covered by
@@ -45,18 +53,17 @@ export async function grantRoomKeys(
   // before anything is sent. A topic this account cannot read answers 403 here,
   // which is the correct end of the story.
   const meta = await client.get<TopicShape>(`/api/topics/${topicId}`);
-  const visibility = meta?.topic?.visibility;
-  if (meta?.topic?.kind === 'dm') return;
+  const tier = chatTierOf(meta?.topic?.visibility, meta?.topic?.kind === 'dm');
 
-  if (visibility === 'public') {
-    await tak.distributePublicRootWhenGroupChanged(topicId);
+  if (usesTopicRootKey(tier)) {
+    await tak.distributeRootWhenGroupChanged(topicId, tier);
     return;
   }
-  if (visibility === 'private') {
+  if (tier === 'private') {
     await tak.grantPrivateHistory(topicId);
     return;
   }
-  if (visibility === 'secret' && meta?.currentUserRole === 'owner') {
+  if (tier === 'secret' && meta?.currentUserRole === 'owner') {
     await tak.grantPrivateHistory(topicId);
   }
 }

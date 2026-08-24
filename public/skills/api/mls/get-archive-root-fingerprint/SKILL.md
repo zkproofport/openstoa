@@ -1,6 +1,6 @@
 ---
 name: openstoa-get-archive-root-fingerprint
-description: Read which archive root a public topic's history is sealed under
+description: Read which archive root a conversation's history is sealed under
 metadata:
   parent: openstoa
   category: api/mls
@@ -8,16 +8,17 @@ metadata:
   require-secret: false
 ---
 
-# Read which archive root a public topic's history is sealed under
+# Read which archive root a conversation's history is sealed under
 
-Returns the **identity of the public topic's archive root** — a domain-separated one-way tag
+Returns the **identity of the conversation's archive root** — a domain-separated one-way tag
 `base64(HKDF(root, "openstoa-archive-root-id/v1", 16))` — plus how many archived messages the
 topic already has. The server stores the tag as opaque bytes and never derives or verifies it
 (crypto-free Delivery Service, C1); clients compute it from the root they hold and compare.
 
-A public topic has ONE random archive root for its whole history (design §5.2) and its rows
-carry `takVersion: 0`, so nothing in the rows themselves distinguishes the real root from a
-root some other device minted while waiting to receive it. Call this BEFORE archiving:
+Applies to the tiers that seal their whole history under ONE key: **public topics and DMs**
+(design §5.2). Their rows carry `takVersion: 0`, so nothing in the rows themselves
+distinguishes the real root from a root some other device minted while waiting to receive it.
+Call this BEFORE archiving:
 
 - `fingerprint` matches the root you hold → your root is the real one; archive normally.
 - `fingerprint` differs → the root you hold is an orphan. STOP archiving under it (more rows
@@ -30,7 +31,12 @@ root some other device minted while waiting to receive it. Call this BEFORE arch
  existing rows permanently unreadable. Only a device that can decrypt the OLDEST existing
  archive row may publish its fingerprint.
 
-Public topics only. **Membership required.**
+For a DM this is the ONLY way the two sides agree on a root, because the server is not
+allowed to hold a DM's key — `GET /api/topics/{topicId}/archive/root` answers 403 for one.
+The root itself travels device to device as a TAK bundle
+(`POST /api/topics/{topicId}/tak/bundles`); only this 16-byte tag is ever stored here.
+
+Public topics and DMs only. **Membership required.**
 
 **Endpoint:** `GET /api/topics/{topicId}/tak/root-fingerprint`
 **Auth:** Bearer token or session cookie

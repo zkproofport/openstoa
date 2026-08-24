@@ -10,7 +10,7 @@
  * test — `openMedia`, `sealMedia`, the whole public-root path (`getServerRoot`,
  * `putServerRoot`, `archiveRootState`, `publicRootFingerprint`,
  * `getRootFingerprint`, `setRootFingerprint`, `forgetUnsettledRoot`,
- * `distributePublicRootWhenGroupChanged`), the invite-history transfer
+ * `distributeRootWhenGroupChanged`), the invite-history transfer
  * (`exportInviteHistory`, `importInviteHistory`), `backfillMissingArchive` and
  * `diagnoseKeychain`.
  *
@@ -200,6 +200,21 @@ const MODULES = [
   },
   {
     /*
+     * What each tier does about keys. It lived in `src/lib/` and
+     * `packages/mobile/src/lib/` as a hand-synced PAIR — the SDK had no copy at
+     * all, so the agent client had no way to ask what a room's key model was and
+     * simply assumed the visibility it read off the topic row. That is how a DM,
+     * whose row says `visibility: 'secret'`, got per-epoch keys while this table
+     * declared it used one root: two files, no shared type, nothing red.
+     */
+    name: 'chatTierPolicy',
+    signature: 'const POLICIES: Record<ChatTier, TierPolicy> = {',
+    web: 'src/lib/chatTierPolicy.ts',
+    mobile: 'packages/mobile/src/lib/chatTierPolicy.ts',
+    sdk: 'packages/sdk/src/chatTierPolicy.ts',
+  },
+  {
+    /*
      * The attachment envelope AND the object-key builder. M-3 moved that key
      * shape once already: a hand-written fourth copy is how
      * `topics/{topicId}/chat/…` becomes two different strings, and the one that
@@ -314,6 +329,11 @@ const IMPORTERS: Record<string, Record<string, () => Promise<Record<string, unkn
     mobile: () => import('../../packages/mobile/src/lib/chatMedia'),
     sdk: () => import('../../packages/sdk/src/chatMedia'),
   },
+  chatTierPolicy: {
+    web: () => import('@/lib/chatTierPolicy'),
+    mobile: () => import('../../packages/mobile/src/lib/chatTierPolicy'),
+    sdk: () => import('../../packages/sdk/src/chatTierPolicy'),
+  },
   shared: {
     groupClient: () => import('../../packages/mls/src/groupClient'),
     mlsSession: () => import('../../packages/mls/src/mlsSession'),
@@ -324,6 +344,7 @@ const IMPORTERS: Record<string, Record<string, () => Promise<Record<string, unkn
     keyBackup: () => import('../../packages/mls/src/keyBackup'),
     aiMember: () => import('../../packages/mls/src/aiMember'),
     chatMedia: () => import('../../packages/mls/src/chatMedia'),
+    chatTierPolicy: () => import('../../packages/mls/src/chatTierPolicy'),
   },
 };
 

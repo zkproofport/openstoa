@@ -150,7 +150,7 @@ describe('TAK orchestration — public whole-history back-fill', () => {
     expect(await bob.mls.open(T, a1)).toBeNull();
 
     // Holder distributes the archive root to every current member leaf.
-    const sent = await alice.tak.distributePublicRoot(T);
+    const sent = await alice.tak.distributeRoot(T, 'public');
     expect(sent).toBe(2); // alice + bob
 
     // Bob back-fills: ingest the root bundle, then decrypt the whole archive.
@@ -176,14 +176,14 @@ describe('TAK orchestration — concurrent distribute + archive (root race)', ()
     // Fire archive-on-send and holder distribution CONCURRENTLY (the race).
     await Promise.all([
       alice.tak.archiveOnSend(T, 'm-race-1', 'raced-message', 'public'),
-      alice.tak.distributePublicRoot(T),
+      alice.tak.distributeRoot(T, 'public'),
     ]);
 
     const bob = makeClient(ds, tt, 'bob');
     const seed = await alice.mls.seal(T, 'seed');
     await bob.mls.open(T, seed);
     await fanOutCommits(ds, T, [alice]);
-    await alice.tak.distributePublicRoot(T); // cover bob's leaf
+    await alice.tak.distributeRoot(T, 'public'); // cover bob's leaf
 
     const history = await bob.tak.backfill(T, 'public');
     expect(history.find((h) => h.messageId === 'm-race-1')?.plaintext).toBe('raced-message');
@@ -292,7 +292,7 @@ describe('TAK orchestration — CVE: bundles are device-bound', () => {
     await fanOutCommits(ds, T, [alice, bob]);
 
     // Alice distributes the root to all current leaves (alice, bob, carol).
-    await alice.tak.distributePublicRoot(T);
+    await alice.tak.distributeRoot(T, 'public');
 
     // Carol back-fills with HER device id → only her own bundle decrypts; she
     // reads the archive. Bob likewise. Neither can open the other's bundle

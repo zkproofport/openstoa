@@ -351,7 +351,7 @@ describe('public archive root — server unreachable (fail safe)', () => {
     tt.offline = true;
     expect(await alice.tak.archiveRootState(T, 'public')).toBe('unverified');
     expect((await alice.tak.archiveOnSend(T, 'm-1', 'x', 'public')).archived).toBe(false);
-    expect(await alice.tak.distributePublicRoot(T)).toBe(0);
+    expect(await alice.tak.distributeRoot(T, 'public')).toBe(0);
     expect(await alice.tak.sealForPush(T, 'x', 'public')).toBeNull();
     expect(await alice.tak.takForPush(T, 'public')).toBeNull();
     expect(alice.kv.map.get(`tak.root.${T}`)).toBeUndefined(); // nothing minted

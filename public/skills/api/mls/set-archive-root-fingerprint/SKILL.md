@@ -50,6 +50,6 @@ curl -s "$BASE/api/topics/:topicId/tak/root-fingerprint" \
 ```
 
 ## See also
-- [Read which archive root a public topic's history is sealed under](/skills/api/mls/get-archive-root-fingerprint/SKILL.md)
+- [Read which archive root a conversation's history is sealed under](/skills/api/mls/get-archive-root-fingerprint/SKILL.md)
 - [Deliver an HPKE-wrapped TAK bundle to a member's device (history back-fill)](/skills/api/mls/deliver-tak-bundle/SKILL.md)
 - [Fetch undelivered TAK bundles for one of the caller's devices](/skills/api/mls/get-tak-bundles/SKILL.md)

@@ -33,6 +33,21 @@ interface CommitRow { epoch: number; commit: string; welcome: null }
 interface ArchiveRow { messageId: string; takVersion: number; ciphertext: string; createdAt: string }
 interface BundleRow { id: string; deviceId: string; bundle: string; scope: string; createdAt: string }
 
+/**
+ * What `GET /api/topics/{id}` says about a room, derived from its id.
+ *
+ * The tier is a property of the ROW, and two columns carry it: a DM is stored
+ * `visibility: 'secret'` with `kind: 'dm'`, which is exactly the pair that used
+ * to be collapsed into "visibility" and gave every DM the wrong key model.
+ * Encoding it in the id lets a test name the tier it wants.
+ */
+function topicShape(topicId: string): { visibility: string; kind: string } {
+  if (topicId.startsWith('dm-')) return { visibility: 'secret', kind: 'dm' };
+  if (topicId.startsWith('secret-')) return { visibility: 'secret', kind: 'topic' };
+  if (topicId.startsWith('private-')) return { visibility: 'private', kind: 'topic' };
+  return { visibility: 'public', kind: 'topic' };
+}
+
 function makeDs() {
   const groups = new Map<string, { groupInfo: string; epoch: number }>();
   const commits = new Map<string, CommitRow[]>();
@@ -113,9 +128,12 @@ function makeDs() {
       if (!token) return json(200, { authenticated: false });
       return json(200, { userId, nickname: 'dev' });
     }
-    // topic detail (visibility lookup)
+    // topic detail — the TIER lookup. Derived from the id so a test can ask for
+    // a room that is NOT public: it used to answer `public` for everything,
+    // which meant no test in this file could reach the tiers whose keys live
+    // only on devices, including every DM (`dm-…`, stored `secret` + `kind`).
     if ((m = p.match(/^\/api\/topics\/([^/]+)$/)) && method === 'GET') {
-      return json(200, { topic: { id: m[1], visibility: 'public' } });
+      return json(200, { topic: { id: m[1], ...topicShape(m[1]) } });
     }
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/join$/)) && method === 'POST') {
       return json(201, { success: true });
@@ -286,6 +304,16 @@ function makeDs() {
     // public archive root (public tier only — the server holds this one key)
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/archive\/root$/))) {
       const t = m[1];
+      /*
+       * REFUSE every other tier, exactly as the route does. This fake used to
+       * accept a deposit from anyone, which is the most dangerous shape a mock
+       * can have: a client that leaked a secret room's key to the server would
+       * have passed here, and a `secret` topic would silently behave like a
+       * public one in every test written against it.
+       */
+      if (topicShape(t).visibility !== 'public') {
+        return json(403, { error: 'This conversation does not keep its archive key on the server' });
+      }
       if (method === 'GET') {
         const k = serverRoot.get(t);
         // 204, not 404: "nothing deposited yet" is an ordinary answer.
@@ -298,9 +326,15 @@ function makeDs() {
         return json(200, { ok: true });
       }
     }
-    // the root's published identity — COMPARE-AND-SET, first writer wins
+    // the root's published identity — COMPARE-AND-SET, first writer wins.
+    // Public topics and DMs only: the per-epoch tiers have no topic-wide root to
+    // name, and the route answers 400 for them.
     if ((m = p.match(/^\/api\/topics\/([^/]+)\/tak\/root-fingerprint$/))) {
       const t = m[1];
+      const shape = topicShape(t);
+      if (shape.kind !== 'dm' && shape.visibility !== 'public') {
+        return json(400, { error: 'archive root fingerprint applies to public topics and DMs only' });
+      }
       if (method === 'GET') {
         return json(200, {
           fingerprint: rootFingerprint.get(t) ?? null,
@@ -344,6 +378,7 @@ function makeDs() {
     fetchImpl,
     chat,
     archive,
+    bundles,
     delivered,
     setDeliveredFails: (v: boolean) => {
       deliveredFails = v;
@@ -425,16 +460,30 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
     await b.joinTopic(T);
 
-    // FORWARD SECRECY, unchanged: MLS alone gives B nothing for a message sent
-    // before it joined — the epoch key it would need was never its to have.
-    const live = await b.readChat(T);
-    expect(live.find((r) => r.id === preJoinId)?.text ?? null).toBeNull();
+    /*
+     * FORWARD SECRECY, unchanged, and asserted where it actually lives: MLS
+     * alone gives B nothing for a message sent before it joined — the epoch key
+     * it would need was never its to have.
+     *
+     * This used to be asserted through `readChat` returning `text: null`, which
+     * stopped being a statement about MLS the moment `readChat` learned to fall
+     * back to the archive. The property did not change; the place to observe it
+     * did, and observing it at the MLS session is the honest one.
+     */
+    const { mls } = await b.topicSession(T);
+    const { messages } = await b.rest.chat.history(T, { limit: 50 });
+    const sealed = messages.find((r) => r.id === preJoinId)?.sealed;
+    expect(sealed, 'the pre-join row should still carry a live body here').toBeTruthy();
+    expect(await mls.open(T, sealed!)).toBeNull();
 
-    // …and the archive opens anyway, because THIS tier's root is on the server.
+    // …and it is readable anyway, because THIS tier's root is on the server.
     // No distribution call, no other member online: that is the trade `public`
     // makes, and the reason its banner does not claim the service cannot read.
     const history = await b.backfill(T);
     expect(history.find((h) => h.messageId === preJoinId)?.plaintext).toBe('secret-before-B');
+    // `readChat` reaches the same answer without the caller asking twice.
+    const live = await b.readChat(T);
+    expect(live.find((r) => r.id === preJoinId)?.text).toBe('secret-before-B');
   });
 
   it('AGENT ROUND TRIP: A sends an image, B reads the PICTURE — not the envelope', async () => {
@@ -559,6 +608,38 @@ describe('ChatClient E2EE seal/open (in-memory DS, real MLS core)', () => {
     expect(Buffer.from(stored.ciphertext, 'base64').toString('utf8')).not.toContain('dm secret');
   });
 
+  it('DM: a device that joins AFTER the message reads it, and the server is never offered the key', async () => {
+    /*
+     * The case the round-trip above cannot reach: B joins first, so no key has
+     * to travel. Here B's device does not exist until A has already spoken —
+     * the normal way a DM is read — which is the arrangement in which DMs were
+     * undecryptable for everyone, on every device, indefinitely.
+     *
+     * Note what the fake now refuses: `PUT /archive/root` answers 403 for a DM,
+     * as the route does. So this cannot pass by the client quietly depositing
+     * the key server-side; the root has to reach B's leaf as a TAK bundle.
+     */
+    const { fetchImpl, bundles } = makeDs();
+    const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
+
+    const t = await a.startDm('tok-B');
+    const plaintext = 'said before your device existed';
+    const msgId = await a.sendChat(t, plaintext);
+
+    // B's device arrives one message late.
+    const b = new ChatClient({ baseUrl: 'http://ds', token: 'tok-B', vaultRoot: rootB, deviceId: 'dev-B', fetch: fetchImpl });
+    expect(await b.startDm('tok-A')).toBe(t);
+    expect(await b.backfill(t), 'nothing should open before a key is handed over').toEqual([]);
+
+    // A is online once after that — in the apps this is the `key-needed`
+    // fan-out; here it is A's own next read.
+    await a.readChat(t);
+    expect((bundles.get(t) ?? []).length, 'the root was never wrapped to a leaf').toBeGreaterThan(0);
+
+    const history = await b.backfill(t);
+    expect(history.find((h) => h.messageId === msgId)?.plaintext).toBe(plaintext);
+  });
+
   it('accepts an injected OpenStoaClient (shared REST instance)', async () => {
     const { fetchImpl } = makeDs();
     const T = 'topic-shared';
@@ -635,13 +716,19 @@ describe('readChat acknowledges delivery (R-1)', () => {
      * "delivered" for ciphertext this device cannot open, and the purge then
      * drops the only copy — from under the device still waiting for its key.
      *
-     * The genuinely locked case is a device that joined AFTER the message: MLS
-     * gives a later leaf no past-epoch secret, so it cannot open that row and
-     * has to get it from the archive. (A SENDER is not the case to use here —
-     * `sendChat` caches its own plaintext, so it reads its own message back.)
+     * The genuinely locked case is a device that joined AFTER the message INTO
+     * A TIER WHOSE KEY LIVES ON DEVICES: MLS gives a later leaf no past-epoch
+     * secret, and with nobody online to hand one over there is no archive key
+     * either. (A SENDER is not the case to use here — `sendChat` caches its own
+     * plaintext, so it reads its own message back.)
+     *
+     * It used to use a PUBLIC topic, which stopped being a locked case at all
+     * once `readChat` began falling back to the archive: public keeps its root
+     * on the server, so a latecomer is never locked there — the illustration
+     * had quietly become the one tier that cannot demonstrate the rule.
      */
     const { fetchImpl, delivered } = makeDs();
-    const T = 'topic-ack-locked';
+    const T = 'secret-topic-ack-locked';
     const a = new ChatClient({ baseUrl: 'http://ds', token: 'tok-A', vaultRoot: rootA, deviceId: 'dev-A', fetch: fetchImpl });
     await a.joinTopic(T);
     await a.sendChat(T, 'sent before the latecomer arrived');

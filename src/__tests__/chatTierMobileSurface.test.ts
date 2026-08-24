@@ -149,6 +149,39 @@ describe('the mini-app derives, and routes through the WebView', () => {
     expect(src).toContain('openstoa.chat.tierClaim.${claim}');
   });
 
+  it('CONTRACT: every chatTierOf call is fed a VISIBILITY, never a tier', () => {
+    /*
+     * A `ChatTier` is a string and so is a visibility, so passing the wrong one
+     * typechecks perfectly and every test still passes — which is exactly what
+     * happened. A blanket rename of `visibilityRef.current` → `tierRef.current`
+     * across these two files caught the line that READS the visibility as well
+     * as the lines that pass the tier onward, leaving:
+     *
+     *     tierRef.current = chatTierOf(tierRef.current, kind === 'dm');
+     *
+     * `chatTierOf` maps anything it does not recognise to `public`, and 'dm',
+     * 'private' and 'secret' are not visibilities it recognises coming back in.
+     * So a private or secret room resolved to `public` on the second pass: the
+     * client would ask the server for a root it is refused, and grant no epochs
+     * — silently, in the tier where that matters most. DMs were unaffected,
+     * because `isDm` short-circuits, which is why no DM test could see it.
+     *
+     * Pinned as source text because there is no seam to observe it through:
+     * both call sites live inside large components, and the wrong value is a
+     * VALID value of the right type at every layer below.
+     */
+    for (const [file, call] of [
+      [CHAT_ROOM, "chatTierOf(visibilityRef.current, kind === 'dm')"],
+      ['src/components/ChatPanel.tsx', 'chatTierOf(visibilityRef.current, dm)'],
+    ] as const) {
+      const src = read(file);
+      expect(src, `${file} no longer resolves its tier from the visibility`).toContain(call);
+      expect(src, `${file} feeds a tier back into chatTierOf as a visibility`).not.toMatch(
+        /chatTierOf\(\s*tierRef\.current/,
+      );
+    }
+  });
+
   it('CONTRACT: the chat room writes no claim of its own', () => {
     // A literal here would be a second source of truth that no policy change
     // can reach.

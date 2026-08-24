@@ -19,9 +19,14 @@
  *   authorization → a topic the account is NOT a member of is never returned,
  *                   even though the join row exists — this decides who gets
  *                   nudged about which rooms
- *   integrity     → `public` and `dm` are excluded: neither needs a holder
- *                   woken, and including them would spend the budget on rooms
- *                   where nobody is waiting
+ *   integrity     → a real DM row IS returned — its key lives only on devices,
+ *                   so somebody has to be woken. `public` is excluded, because
+ *                   its root is on the server and a newcomer fetches it
+ *   hostile       → the DM fixture is built the way the DM ROUTE builds one
+ *                   (`visibility: 'secret'`, `kind: 'dm'`), not the way this
+ *                   file used to imagine it (`visibility: 'dm'`) — a value the
+ *                   schema never produces, which made the old assertion certify
+ *                   a rule against a shape that cannot occur
  *   integrity     → one row per topic, at the NEWEST epoch, when several
  *                   devices joined the same room
  *   boundary      → a join just inside the 72h window is returned, one just
@@ -70,11 +75,19 @@ async function wipe() {
   await db.execute(sql`DELETE FROM users WHERE id IN (${HOLDER}, ${STRANGER})`);
 }
 
-/** A topic of `visibility`, optionally with `HOLDER` as a member. */
+/**
+ * A topic of `visibility`, optionally with `HOLDER` as a member.
+ *
+ * `kind` is separate from `visibility` because it is separate in the schema, and
+ * conflating them is what broke the DM case below: `POST /api/dm` writes
+ * `visibility: 'secret'` + `kind: 'dm'`, and no code path anywhere writes
+ * `visibility: 'dm'`. A fixture that invents a value the product cannot produce
+ * tests nothing about the product.
+ */
 async function makeTopic(
   n: number,
-  visibility: 'public' | 'private' | 'secret' | 'dm',
-  { member = true }: { member?: boolean } = {},
+  visibility: 'public' | 'private' | 'secret',
+  { member = true, kind = 'topic' }: { member?: boolean; kind?: 'topic' | 'dm' } = {},
 ) {
   const id = topicId(n);
   await db.insert(schema.topics).values({
@@ -83,6 +96,7 @@ async function makeTopic(
     creatorId: STRANGER,
     inviteCode: `pkn-invite-${n}`,
     visibility,
+    kind,
   });
   if (member) {
     await db.insert(schema.topicMembers).values({ topicId: id, userId: HOLDER, role: 'member' });
@@ -133,21 +147,38 @@ describe('pendingKeyNeeded — real Postgres', () => {
     expect((await pendingKeyNeeded(db, HOLDER)).map((p) => p.topicId)).toEqual([id]);
   });
 
-  it.each(['public', 'dm'] as const)('INTEGRITY: %s is excluded', async (visibility) => {
-    // `public` keeps its root server-side and `dm` grants on accept, so no
-    // holder needs waking. Including them would spend the budget on rooms
-    // where nobody is waiting.
-    const id = await makeTopic(3, visibility);
+  it('INTEGRITY: public is excluded — its root is on the server', async () => {
+    // Nobody is waiting on a holder in a public topic: a newcomer fetches the
+    // root itself. Including it would spend the budget on rooms where nothing
+    // needs to happen.
+    const id = await makeTopic(3, 'public');
     await seedJoin(id, 'dev-A', 1);
 
     expect(await pendingKeyNeeded(db, HOLDER)).toEqual([]);
+  });
+
+  it('CONTRACT: a REAL DM row is returned — a DM key lives only on devices', async () => {
+    /*
+     * This case previously asserted the OPPOSITE, against a fixture row with
+     * `visibility: 'dm'` — a value nothing in the product writes. Against a row
+     * the DM route would actually produce (`'secret'` + `kind: 'dm'`) the query
+     * has always returned it, so the test was certifying an exclusion that was
+     * never in the SQL, in support of an 'on-accept' delivery that was never in
+     * the code. The catch-up is exactly what a DM needs: the server may not hold
+     * that key, so an offline peer device is the only thing that can hand it
+     * over, and this query is how it finds out it should.
+     */
+    const id = await makeTopic(4, 'secret', { kind: 'dm' });
+    await seedJoin(id, 'dev-A', 3);
+
+    expect(await pendingKeyNeeded(db, HOLDER)).toEqual([{ topicId: id, epoch: 3 }]);
   });
 
   it('AUTHZ: a topic this account is not a member of is never returned', async () => {
     // The join row exists and the topic is private; the only thing missing is
     // this account's membership. Nudging here would tell somebody that a room
     // they are not in gained a device.
-    const id = await makeTopic(4, 'private', { member: false });
+    const id = await makeTopic(8, 'private', { member: false });
     await seedJoin(id, 'dev-A', 1);
 
     expect(await pendingKeyNeeded(db, HOLDER)).toEqual([]);

@@ -8,6 +8,7 @@ import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
 import { checkRateLimit, decodeBase64Strict, MLS_RATE_TAK } from '@/lib/mls/http';
 import { getArchiveRootIdentity, claimArchiveRootFingerprint } from '@/lib/mls/archive';
+import { hasTopicRootForRow } from '@/lib/chatTierPolicy';
 
 const ROUTE = '/api/topics/[topicId]/tak/root-fingerprint';
 
@@ -18,13 +19,19 @@ const ROUTE = '/api/topics/[topicId]/tak/root-fingerprint';
 const FINGERPRINT_BYTES = 16;
 
 /**
- * Resolve the caller's membership AND require the topic be PUBLIC. The archive
- * root fingerprint identifies the single shared root of the PUBLIC tier (§5.2).
- * private / secret / DM topics key their archive per MLS epoch — there is no
- * topic-wide root to identify — so fingerprint operations on them are a 400 by
- * design, mirroring the archive-holder route (SI-6b).
+ * Resolve the caller's membership AND require a tier that HAS a topic-wide root
+ * to identify — `public` and `dm` (`chatTierPolicy`). `private` and `secret` key
+ * their archive per MLS epoch, so there is nothing here for them to name and a
+ * fingerprint operation on one is a 400 by design.
+ *
+ * A DM belongs here precisely BECAUSE the server may not hold its key. Public
+ * devices settle on one root by asking the server, which keeps it; DM devices
+ * have no such arbiter, so they compare against this fingerprint instead — a
+ * one-way 16-byte tag the server stores and can never invert. Refusing DMs here
+ * did not protect the key; it left the two devices with no way to agree which
+ * root was the conversation's, which is why a DM's key never travelled at all.
  */
-async function requirePublicMember(request: NextRequest, topicId: string) {
+async function requireRootTierMember(request: NextRequest, topicId: string) {
   const session = await getSession(request);
   if (!session) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
   const membership = await db.query.topicMembers.findFirst({
@@ -33,10 +40,12 @@ async function requirePublicMember(request: NextRequest, topicId: string) {
   if (!membership) return { error: NextResponse.json({ error: 'Not a member of this topic' }, { status: 403 }) };
   const topic = await db.query.topics.findFirst({ where: eq(topics.id, topicId) });
   if (!topic) return { error: NextResponse.json({ error: 'Topic not found' }, { status: 404 }) };
-  if (topic.visibility !== 'public') {
+  // Same strict-first rule as the deposit route, through the same predicate, so
+  // the two gates cannot disagree about which rooms have a topic-wide root.
+  if (!hasTopicRootForRow(topic.visibility, topic.kind === 'dm')) {
     return {
       error: NextResponse.json(
-        { error: 'archive root fingerprint applies to public topics only (private/secret archive keys are per-epoch)' },
+        { error: 'archive root fingerprint applies to public topics and DMs only (private/secret archive keys are per-epoch)' },
         { status: 400 },
       ),
     };
@@ -49,16 +58,17 @@ async function requirePublicMember(request: NextRequest, topicId: string) {
  * /api/topics/{topicId}/tak/root-fingerprint:
  *   get:
  *     tags: [MLS]
- *     summary: Read which archive root a public topic's history is sealed under
+ *     summary: Read which archive root a conversation's history is sealed under
  *     description: |
- *       Returns the **identity of the public topic's archive root** — a domain-separated one-way tag
+ *       Returns the **identity of the conversation's archive root** — a domain-separated one-way tag
  *       `base64(HKDF(root, "openstoa-archive-root-id/v1", 16))` — plus how many archived messages the
  *       topic already has. The server stores the tag as opaque bytes and never derives or verifies it
  *       (crypto-free Delivery Service, C1); clients compute it from the root they hold and compare.
  *
- *       A public topic has ONE random archive root for its whole history (design §5.2) and its rows
- *       carry `takVersion: 0`, so nothing in the rows themselves distinguishes the real root from a
- *       root some other device minted while waiting to receive it. Call this BEFORE archiving:
+ *       Applies to the tiers that seal their whole history under ONE key: **public topics and DMs**
+ *       (design §5.2). Their rows carry `takVersion: 0`, so nothing in the rows themselves
+ *       distinguishes the real root from a root some other device minted while waiting to receive it.
+ *       Call this BEFORE archiving:
  *
  *       - `fingerprint` matches the root you hold → your root is the real one; archive normally.
  *       - `fingerprint` differs → the root you hold is an orphan. STOP archiving under it (more rows
@@ -71,7 +81,12 @@ async function requirePublicMember(request: NextRequest, topicId: string) {
  *         existing rows permanently unreadable. Only a device that can decrypt the OLDEST existing
  *         archive row may publish its fingerprint.
  *
- *       Public topics only. **Membership required.**
+ *       For a DM this is the ONLY way the two sides agree on a root, because the server is not
+ *       allowed to hold a DM's key — `GET /api/topics/{topicId}/archive/root` answers 403 for one.
+ *       The root itself travels device to device as a TAK bundle
+ *       (`POST /api/topics/{topicId}/tak/bundles`); only this 16-byte tag is ever stored here.
+ *
+ *       Public topics and DMs only. **Membership required.**
  *     operationId: getArchiveRootFingerprint
  *     x-related-skills: [set-archive-root-fingerprint, get-tak-bundles, get-archive-holder]
  *     parameters:
@@ -94,7 +109,7 @@ async function requirePublicMember(request: NextRequest, topicId: string) {
  *                 archiveCount:
  *                   type: integer
  *                   description: Number of archived messages. Non-zero proves a root already exists even when fingerprint is null.
- *       400: { description: Topic is not public }
+ *       400: { description: 'Topic keys its archive per epoch (private/secret)' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       404: { description: Topic not found }
@@ -108,7 +123,7 @@ export async function GET(
     if (!isValidUUID(topicId)) {
       return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
     }
-    const auth = await requirePublicMember(request, topicId);
+    const auth = await requireRootTierMember(request, topicId);
     if ('error' in auth) return auth.error!;
 
     const identity = await getArchiveRootIdentity(db, topicId);
@@ -173,7 +188,7 @@ export async function GET(
  *                 claimed:
  *                   type: boolean
  *                   description: true if your value is the stored one. false means another device won — adopt its root.
- *       400: { description: Missing/malformed fingerprint, or topic not public }
+ *       400: { description: 'Missing/malformed fingerprint, or a per-epoch tier (private/secret)' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       404: { description: Topic not found }
@@ -188,7 +203,7 @@ export async function PUT(
     if (!isValidUUID(topicId)) {
       return NextResponse.json({ error: 'Invalid topicId' }, { status: 400 });
     }
-    const auth = await requirePublicMember(request, topicId);
+    const auth = await requireRootTierMember(request, topicId);
     if ('error' in auth) return auth.error!;
     const { session } = auth;
 

@@ -76,6 +76,35 @@ describe.sequential('DM 1:1 direct chat (real container)', () => {
     expect(history.find((h) => h.id === msgId)?.text).toBe(plaintext);
   });
 
+  it('E2EE round-trip, LATE joiner: C reads a message sent before its device existed', async () => {
+    /*
+     * The case above decrypts on a device that was already in the room, which is
+     * the ONE arrangement in which no key has to travel — and it passed for the
+     * whole time DMs were undecryptable everywhere else. The archive key was
+     * sealed per MLS epoch while the tier table declared one root, and nothing
+     * ever handed it over.
+     *
+     * So this file also owns one case where the reader joined LATE. The full
+     * matrix — the sender's own second device, both directions, the mint race,
+     * the server's refusal to hold the key — is in `dm-keys.e2e.test.ts`.
+     */
+    const late = (await newClient('late')).chat;
+    const lateUserId = (await late.login(`dm_late_${Date.now().toString(36)}`)).userId;
+
+    const topicId = await a.startDm(lateUserId);
+    const plaintext = `sent before you opened this — ${Date.now()}`;
+    const msgId = await a.sendChat(topicId, plaintext);
+
+    // Only now does the recipient's device exist in the group.
+    expect(await late.startDm(aUserId)).toBe(topicId);
+    // A device that holds the key has to be online once after that; in the apps
+    // this is the `key-needed` fan-out, here it is A's own next read.
+    await a.readChat(topicId);
+
+    const history = await late.backfill(topicId);
+    expect(history.find((h) => h.messageId === msgId)?.plaintext).toBe(plaintext);
+  }, 180_000);
+
   it('SI-1: the server stored only ciphertext, and GET /api/dm exposes no message content', async () => {
     const plaintext = `dm-si1-${Date.now()}`;
     const msgId = await a.sendChat(dmTopicId, plaintext);

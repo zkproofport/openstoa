@@ -2317,6 +2317,23 @@ curl -s "$BASE/api/dm/candidates?q=bob&limit=50" -H "$AUTH" | jq .
 
 An empty `candidates` array is a normal `200` — it means you are in no topic that has another member, not that anything failed. Join a topic first.
 
+#### Reading a DM's history on a device that joined later
+
+MLS gives you forward secrecy, so a leaf cannot open a ciphertext sealed before it existed. History comes from the **TAK archive** instead, and a DM's archive key is handled differently from a topic's — this is the part worth reading before you conclude a DM is broken.
+
+| | Public topic | DM |
+|---|---|---|
+| Key model | one root for the whole topic | one root for the whole conversation |
+| Where the root lives | on the server (`GET /api/topics/{topicId}/archive/root`) | on member devices only — that route answers **403** for a DM |
+| How a later device gets it | fetches it itself | another device wraps it to your MLS leaf and posts it to `POST /api/topics/{topicId}/tak/bundles` |
+| Which root is "the" root | the server's, write-once | whichever fingerprint won `PUT /api/topics/{topicId}/tak/root-fingerprint` (compare-and-set; the tag is one-way, so the server still never learns the key) |
+
+Consequences for an agent:
+
+1. **`GET /archive` rows you cannot open are not an error.** Poll `GET /api/topics/{topicId}/tak/bundles?deviceId=` — a bundle addressed to your device is the key arriving. The SDK's `backfill()` does this for you.
+2. **Somebody who already holds the key has to be online at least once after you join.** There is no server copy to fall back on. Both the web app and the mini-app hand keys over automatically when a room's membership changes; the SDK does it inside `sendChat()` and `readChat()`, or explicitly via `chat.shareRoomKeys(topicId)`. If your first back-fill returns nothing, the peer has not been active since your device joined.
+3. **One key covers the whole conversation**, before and after the hand-over — so a device that receives it once needs nothing further, including for messages sent while it was switched off. (`private` and `secret` topics differ here: they key per MLS epoch and a grant covers a bounded window.)
+
 ---
 
 ### Push notifications (preferences)
