@@ -128,6 +128,8 @@ function wireRow(n: number, over: Record<string, unknown> = {}) {
   };
 }
 
+/** True when `/chat` must hang, so a test can prove the cache stands alone. */
+let chatNeverAnswers = false;
 let cachedHistory: { messages: Record<string, unknown>[]; cursor: null } | null = null;
 let history: Record<string, unknown>[] = [];
 
@@ -159,11 +161,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   missingStoreMethods.length = 0;
   cachedHistory = null;
+  chatNeverAnswers = false;
   history = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (chatNeverAnswers && url.includes('/chat?')) return new Promise<Response>(() => {});
       const body = url.includes('/chat/media')
         ? { ciphertext: '' }
         : url.includes('/chat')
@@ -236,6 +240,28 @@ describe('CONTRACT: the device is read before the network', () => {
     // The live source wins the first-wins de-dupe; either way, not both.
     expect((text.match(/body 1/g) ?? []).length).toBe(1);
     expect(text).toContain('network body 2');
+    rendered.unmount();
+  });
+});
+
+describe('CONTRACT: the network is not a precondition', () => {
+  /*
+   * The web needed a second fix for this — its panel refuses to draw until
+   * `/api/auth/session` names the reader, so a cached room still waited a round
+   * trip. The mini-app does not: `useOpenStoaSession` already holds the signed-in
+   * id locally, so `isOwn` is knowable on the first frame. This asserts that
+   * difference rather than assuming it, because it is the whole reason the cache
+   * pays off here without the extra machinery.
+   */
+  it('cached rows render while /chat never answers at all', async () => {
+    cachedHistory = { messages: [cachedRow(1), cachedRow(2)], cursor: null };
+    chatNeverAnswers = true;
+
+    const rendered = await enterRoom();
+
+    const text = textOf(rendered);
+    expect(text, 'the room waited for the network it did not need').toContain('cached body 1');
+    expect(text).toContain('cached body 2');
     rendered.unmount();
   });
 });

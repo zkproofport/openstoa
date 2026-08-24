@@ -1979,7 +1979,17 @@ export function ChatRoomScreen() {
   }, [pickFromLibrary, pasteFromClipboard]);
 
   // ── Render ────────────────────────────────────────────────────────────────
-  const isFirstLoad = historyStatus === 'pending';
+  /*
+   * A spinner only when there is genuinely NOTHING to show.
+   *
+   * `historyStatus === 'pending'` is true until `/chat` answers, so this used to
+   * hold the list back even when the device already had the room on disk — the
+   * cache was read, the rows were in state, and the screen drew a spinner over
+   * them. Rows restored from the cache are rows this device rendered before;
+   * showing them while the fetch is in flight is the behaviour the cache exists
+   * to buy, and the fetch still reconciles them the moment it lands.
+   */
+  const isFirstLoad = historyStatus === 'pending' && allMessages.length === 0;
 
   return (
     <>
