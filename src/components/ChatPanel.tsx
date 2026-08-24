@@ -1,6 +1,8 @@
 'use client';
 
-import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
+import { sendPickedFiles } from '@/lib/pickedFiles';
+import { apiFetch, MEDIA_DOWNLOAD_TIMEOUT_MS, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
+import { rememberSentChatMedia, readSentChatMedia } from '@/lib/chatMediaPlaintextCache';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
 import Badge from '@/components/Badge';
@@ -30,8 +32,11 @@ import {
   type PersistedFailedMedia,
 } from '@/lib/chatMedia';
 import { convertHeicToJpeg } from '@/lib/chatMediaHeic';
+import { ChatImage, CHAT_IMAGE_SLOT_WIDTH, CHAT_IMAGE_SLOT_WIDTH_ROOMY } from '@/components/ChatImage';
 import { ackDelivery } from '@/lib/chatDeliveryAck';
 import { httpAckPost } from '@/lib/chatDeliveryAckHttp';
+import { syncChatRead } from '@/lib/chatReadSyncHttp';
+import { endChatReadSync } from '@/lib/chatReadSync';
 import { displayNickname } from '@/lib/defaultNickname';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
@@ -995,6 +1000,27 @@ function ChatMediaAttachment({
     setState(null);
     setObjectUrl(null);
     void (async () => {
+      /*
+       * THE SENDER'S OWN BUBBLE. This tab encrypted these bytes and uploaded
+       * them moments ago; without this it downloads and decrypts them straight
+       * back — 2441ms of a measured 8661ms on staging for a 7.7MB image, for a
+       * picture the sender chose from their own disk.
+       *
+       * The bytes are the same bytes (`rememberSentChatMedia` stores what was
+       * handed to `sealMedia`, and the size and mime are checked against this
+       * envelope), so this bubble and the same bubble after a reload cannot
+       * render differently. A miss just falls through to the reader path below,
+       * which is what a reload, the recipient, and the sender's other device
+       * all take.
+       */
+      const own = readSentChatMedia(mediaId, envelope.size, mime);
+      if (own) {
+        if (cancelled) return;
+        created = URL.createObjectURL(new Blob([own.bytes as BlobPart], { type: own.mime }));
+        setObjectUrl(created);
+        setState({ status: 'ok', bytes: own.bytes, mime: own.mime });
+        return;
+      }
       const res = await loadEncryptedChatMedia(
         { v: 1, key, mediaId, takVersion, mime, size: envelope.size },
         {
@@ -1010,7 +1036,15 @@ function ChatMediaAttachment({
              */
             const r = await apiFetch(
               `/api/topics/${topicId}/chat/media?key=${encodeURIComponent(objectKey)}`,
-              { credentials: 'include' },
+              {
+                credentials: 'include',
+                // Megabytes of ciphertext coming DOWN. The ordinary 15s is a
+                // deadline on the transfer itself here, not on an idle server:
+                // an attachment that is arriving slowly gets cut off and
+                // reported as a failure. Same budget as the upload of the same
+                // file — see `MEDIA_DOWNLOAD_TIMEOUT_MS`.
+                timeoutMs: MEDIA_DOWNLOAD_TIMEOUT_MS,
+              },
             );
             if (!r.ok) throw new Error(`fetch failed (${r.status})`);
             const bytes = new Uint8Array(await r.arrayBuffer());
@@ -1104,16 +1138,18 @@ function ChatMediaAttachment({
         onClick={(e) => e.stopPropagation()}
         style={{ display: 'block' }}
       >
-        <img
-          src={objectUrl ?? undefined}
+        {/*
+          Sized by the shared rule, not by a `maxHeight`. The old cap capped the
+          wrong axis: height was bounded and width fell out of the intrinsic
+          ratio, so a 1179x2556 screenshot rendered 175px wide and nothing in it
+          could be read. See `packages/mls/src/chatMediaLayout.ts`.
+        */}
+        <ChatImage
+          src={objectUrl}
           alt={t('chat.media.alt')}
-          style={{
-            maxWidth: '100%',
-            maxHeight: roomy ? 380 : 240,
-            borderRadius: 'var(--radius-card)',
-            border: '1px solid var(--border)',
-            display: 'block',
-          }}
+          slotWidth={roomy ? CHAT_IMAGE_SLOT_WIDTH_ROOMY : CHAT_IMAGE_SLOT_WIDTH}
+          croppedLabel={t('chat.media.cropped')}
+          data-testid="chat-media-image"
         />
       </a>
       {/*
@@ -1468,16 +1504,13 @@ function MessageRow({
           onClick={(e) => e.stopPropagation()}
           style={{ display: 'block', marginTop: 4, maxWidth: '85%' }}
         >
-          <img
+          {/* The same rule as the encrypted path, through the same component. */}
+          <ChatImage
             src={inlineImage}
             alt=""
-            style={{
-              maxWidth: '100%',
-              maxHeight: roomy ? 380 : 240,
-              borderRadius: 'var(--radius-card)',
-              border: '1px solid var(--border)',
-              display: 'block',
-            }}
+            slotWidth={roomy ? CHAT_IMAGE_SLOT_WIDTH_ROOMY : CHAT_IMAGE_SLOT_WIDTH}
+            croppedLabel={t('chat.media.cropped')}
+            data-testid="chat-inline-image"
           />
         </a>
       )}
@@ -1682,7 +1715,14 @@ export default function ChatPanel({
   const pendingScrollAnchorRef = useRef<number | null>(null);
   const userNearBottomRef = useRef(true);
   const initialScrolledRef = useRef(false);
-  const lastBottomIdRef = useRef<string | null>(null);
+  /**
+   * The bottom row's CONTENT, not its id. Decryption does not change an id —
+   * `catchUpArchive` replaces bodies in place — so an id was a key that could
+   * not see the one pass that matters. See the auto-scroll effect below.
+   */
+  const lastBottomKeyRef = useRef<string | null>(null);
+  /** The message list's own box, for the growth observer below. */
+  const contentRef = useRef<HTMLDivElement>(null);
 
   /**
    * One decrypt per message id, forever — the panel's central correctness
@@ -1809,6 +1849,39 @@ export default function ChatPanel({
       deviceId: () => getTakSessionStore().myDeviceId(topicId),
       post: httpAckPost,
     });
+    /*
+     * ...and how far this ACCOUNT has now read it.
+     *
+     * Same convergence point, deliberately: having the panel open with rows in
+     * it is what "read" means, and every route that puts rows in it ends here.
+     * The previous version of this idea on the mini-app was written from a list
+     * row's `onPress`, which made the marker a property of TAPPING A ROW — so a
+     * push-notification tap recorded nothing and re-badged everything the user
+     * had just read.
+     *
+     * Note the two calls disagree about a locked row on purpose: `ackDelivery`
+     * refuses one, this accepts it. See `chatReadSync`'s header — refusing here
+     * would strand the badge on a message that can never be cleared.
+     *
+     * Older `?before=` pages cannot rewind it: the sync sends the newest mark it
+     * has seen and skips anything at or behind what it already sent.
+     */
+    syncChatRead(topicId, incoming);
+  }, [topicId]);
+
+  /*
+   * Flush the read cursor when this panel goes away.
+   *
+   * The write is debounced, and closing the room is both the moment it is most
+   * likely to still be sitting in that window and the moment the user most
+   * expects the badge to be gone on their phone. `endChatReadSync`, not a plain
+   * flush: one last attempt and no retry timer left running for a room nobody
+   * is looking at. Never rejects.
+   */
+  useEffect(() => {
+    return () => {
+      endChatReadSync(topicId);
+    };
   }, [topicId]);
 
   // Seal the push-preview copy (design §13.6 strategy A) so the recipient's iOS
@@ -1876,8 +1949,16 @@ export default function ChatPanel({
       await sendEncryptedChatMedia(
         { bytes, mime },
         {
-          seal: (mediaId, plain) =>
-            getTakSessionStore().sealMedia(topicId, mediaId, plain, tierRef.current),
+          seal: async (mediaId, plain) => {
+            const sealed = await getTakSessionStore().sealMedia(topicId, mediaId, plain, tierRef.current);
+            // Only once the seal succeeded: a send that never happens must not
+            // leave bytes in the cache under an id nothing will ever name.
+            // `plain` is post-strip and post-conversion — exactly what the
+            // recipient will decrypt — so the sender's bubble renders the same
+            // picture the archive holds.
+            if (sealed) rememberSentChatMedia(mediaId, plain, mime);
+            return sealed;
+          },
           upload: async (ciphertext, mediaId) => {
             /*
              * The ciphertext IS the body. It used to be base64 inside a JSON
@@ -2394,16 +2475,80 @@ export default function ChatPanel({
     // already holds them on screen, never storage.
     if (messages.length) paintCache.set(topicId, messages);
     oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
-    const bottomId = messages.length > 0 ? messages[messages.length - 1].id : null;
-    if (bottomId === lastBottomIdRef.current) return;
-    lastBottomIdRef.current = bottomId;
-    if (!bottomId) return;
+    const bottom = messages.length > 0 ? messages[messages.length - 1] : null;
+    /*
+     * KEYED ON CONTENT, not on the bottom row's id.
+     *
+     * The id was the bug. Decryption never changes ids — `catchUpArchive`
+     * replaces bodies in place on the rows already in state — so the pass that
+     * finally makes a room readable produced an unchanged id and returned here
+     * before scrolling. The reader was left looking at wherever the locked,
+     * empty rows had happened to put them.
+     *
+     * It compounded with `initialScrolledRef`, which the FIRST paint sets while
+     * the list is still `syncing` (a centred spinner, no rows at all) or every
+     * row is locked and renders nothing. So the scroll that was recorded as
+     * "done" was a scroll over no content, and every row then grew twice: once
+     * as it decrypted, once as its <img> loaded. The second growth is the
+     * observer below; this handles the first.
+     *
+     * `lockedCount` and `syncing` are in the key because a decrypt anywhere in
+     * the list — not only in the last row — changes how far the bottom is, and
+     * `syncing` flipping false swaps a spinner for the whole conversation.
+     */
+    const bottomKey = bottom
+      ? [
+          bottom.id,
+          bottom.undecryptable ? 'locked' : 'open',
+          bottom.message.length,
+          lockedCount,
+          syncing ? 'syncing' : 'live',
+        ].join('|')
+      : null;
+    if (bottomKey === lastBottomKeyRef.current) return;
+    lastBottomKeyRef.current = bottomKey;
+    if (!bottom) return;
     if (!initialScrolledRef.current || userNearBottomRef.current) {
       const isFirstPaint = !initialScrolledRef.current;
       initialScrolledRef.current = true;
       scrollToBottom(!isFirstPaint);
     }
-  }, [messages, scrollToBottom]);
+  }, [messages, lockedCount, syncing, scrollToBottom]);
+
+  /**
+   * Re-pin to the bottom when the list GROWS under a reader who is already
+   * there — an `<img>` that finished loading, a row that decrypted after paint,
+   * a late web font.
+   *
+   * A React effect cannot see any of those: they change the layout without
+   * changing the state the effect above is keyed on. An image is the loud case,
+   * because its box is zero until the bytes arrive and then it is hundreds of
+   * pixels, so every attachment silently pushed the conversation below the fold
+   * of a scroller that had already been told it was at the bottom.
+   *
+   * Observing the CONTENT box rather than hooking each image keeps this out of
+   * `ChatImage` and covers the other two causes for free. Deliberately narrow:
+   * growth only (a shrink is a row being removed, and chasing it would fight
+   * the reader), never while a page of older history is mid-prepend (that path
+   * restores its own anchor), and never unless the reader was already at the
+   * bottom — so reading history is not interrupted by a picture two screens up.
+   */
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === 'undefined') return;
+    let lastHeight = content.getBoundingClientRect().height;
+    const ro = new ResizeObserver(() => {
+      const height = content.getBoundingClientRect().height;
+      const grew = height > lastHeight;
+      lastHeight = height;
+      if (!grew) return;
+      if (!initialScrolledRef.current || !userNearBottomRef.current) return;
+      if (pendingScrollAnchorRef.current != null) return;
+      scrollToBottom();
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [scrollToBottom]);
 
   // Provision archive access for later members, by tier. public: claim the
   // single-winner holder lease (409 = someone else holds it, no-op) and the
@@ -2635,7 +2780,7 @@ export default function ChatPanel({
     decryptOnceRef.current = new DecryptOnce<ChatMessage>();
     lastSeenIsoRef.current = null;
     oldestIdRef.current = null;
-    lastBottomIdRef.current = null;
+    lastBottomKeyRef.current = null;
     hasConnectedRef.current = false;
     catchupRunningRef.current = false;
     pendingScrollAnchorRef.current = null;
@@ -2929,7 +3074,7 @@ export default function ChatPanel({
         padding: roomy ? '16px 20px' : '10px var(--space-4)',
         overflowY: 'auto' as const,
       } : messagesContainerStyle}>
-        <div style={{
+        <div ref={contentRef} style={{
           ...measureStyle,
           display: 'flex',
           flexDirection: 'column',
@@ -3073,11 +3218,20 @@ export default function ChatPanel({
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          // `multiple` and the loop below are one change, not two. The mini-app
+          // has picked several photos at once for a while; the web could pick
+          // exactly one, and adding the attribute on its own would have made the
+          // picker accept three and send the first — a worse bug than the one it
+          // was fixing, because nothing on screen says the other two were
+          // dropped. `sendPickedFiles` is what makes three picks three messages.
+          multiple
           style={{ display: 'none' }}
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void sendImage(file);
-            // Allow selecting the same file again later.
+            const files = Array.from(e.target.files ?? []);
+            // Read BEFORE the input is cleared: `FileList` is live, and
+            // resetting `value` empties it.
+            void sendPickedFiles(files, sendImage);
+            // Allow selecting the same files again later.
             e.target.value = '';
           }}
         />
@@ -3124,13 +3278,27 @@ export default function ChatPanel({
           }}
           onKeyDown={handleKeyDown}
           onPaste={(e) => {
-            // Pasted image from clipboard → upload directly.
-            const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'));
-            const file = item?.getAsFile();
-            if (file) {
-              e.preventDefault();
-              void sendImage(file);
-            }
+            /*
+             * EVERY image on the clipboard, not the first — the same rule as
+             * the file input above, and broken here in the same way: `.find()`
+             * took one and the rest went nowhere, with nothing on screen
+             * saying so.
+             *
+             * `getAsFile()` runs HERE, synchronously, before anything is
+             * awaited. `clipboardData.items` is only alive for the duration of
+             * the event, so reading it from inside the async send hands back
+             * null and the paste vanishes.
+             */
+            const files = Array.from(e.clipboardData.items)
+              .filter((i) => i.type.startsWith('image/'))
+              .map((i) => i.getAsFile())
+              .filter((f): f is File => f !== null);
+            // No image on the clipboard — an ordinary text paste, which is the
+            // browser's to handle. Calling `preventDefault` unconditionally
+            // here would stop text pasting into the composer altogether.
+            if (files.length === 0) return;
+            e.preventDefault();
+            void sendPickedFiles(files, sendImage);
           }}
           placeholder={t('chat.messagePlaceholder')}
           maxLength={1000}
