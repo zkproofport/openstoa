@@ -2,6 +2,10 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { randomBytes } from 'crypto';
 import { R2_HOSTS } from '@/lib/imageCacheBuster';
+import {
+  OBJECT_STORAGE_UNCONFIGURED_MESSAGE,
+  OBJECT_STORAGE_UNCONFIGURED_STATUS,
+} from '@/lib/objectStorageStatus';
 
 const BASE_URL = process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app';
 
@@ -353,11 +357,11 @@ class ObjectStorageUnavailable extends Error {
   constructor(baseUrl: string, serverMessage: string) {
     super(
       `EXTERNAL DEPENDENCY UNAVAILABLE — object storage (Cloudflare R2) for ${baseUrl}\n` +
-        `  why:     POST /api/upload answered 500 and the deployment reported: "${serverMessage}"\n` +
+        `  why:     POST /api/upload answered ${OBJECT_STORAGE_UNCONFIGURED_STATUS} — "${serverMessage}"\n` +
         `           getR2Config() in src/lib/r2.ts refuses to run without credentials rather than\n` +
         `           falling back to a default, so this is missing configuration, not a broken upload\n` +
-        `           path. It names all five vars whenever ANY of them is unset, so the route cannot\n` +
-        `           say which one is actually absent.\n` +
+        `           path. WHICH variable is unset is in the CONTAINER LOG, never in the response:\n` +
+        `           \`docker logs proofport-community | grep "not configured"\`.\n` +
         `  restore: set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME and\n` +
         `           R2_PUBLIC_URL on the target deployment, or run these cases against one where\n` +
         `           object storage is already configured.\n` +
@@ -369,13 +373,11 @@ class ObjectStorageUnavailable extends Error {
 }
 
 /**
- * True only for the exact condition "this deployment has no R2 credentials".
+ * The `error` field of a JSON body, or the raw text when it is not JSON.
  *
- * Deliberately narrow: it matches the literal `getR2Config()` throws in
- * src/lib/r2.ts, surfaced by the route's catch-all as a 500. A 500 from a
- * genuine upload fault (bad bucket, expired key, S3 error, timeout) does NOT
- * match and must keep failing loudly — excusing those would let a broken
- * upload path masquerade as an unconfigured environment.
+ * Total by design: a body that does not parse, or carries no `error`, is not an
+ * exception to handle — it simply is not the unconfigured signal, and the caller
+ * treats it as the real failure it is.
  */
 function errorMessageOf(bodyText: string): string {
   try {
@@ -387,14 +389,34 @@ function errorMessageOf(bodyText: string): string {
   return bodyText;
 }
 
-function isMissingR2Credentials(status: number, bodyText: string): boolean {
-  if (status !== 500) return false;
-  const message = errorMessageOf(bodyText);
-  return (
-    message.includes('R2_ACCOUNT_ID') &&
-    message.includes('R2_PUBLIC_URL') &&
-    message.includes('environment variables are required')
-  );
+/**
+ * Is this environment simply WITHOUT object storage, as opposed to broken?
+ *
+ * Keyed on the ROUTE'S STATUS, because the previous version could never fire.
+ * It required the response BODY to carry `getR2Config()`'s sentence naming five
+ * environment variables — but `/api/upload` sends every failure through
+ * `unhandledRouteError`, whose body is deliberately generic
+ * (`{ error: 'Internal server error', errorId }`) and correctly so. The literal
+ * never reached here, `isMissingR2Credentials` never returned true, and the
+ * whole BLOCK path below was unreachable: an unconfigured environment could only
+ * ever report as ten unexplained failures across eight files, each pointing at
+ * application behaviour.
+ *
+ * "Block", not "skip": `requireObjectStorage` throws — these cases fail either
+ * way. What this decides is whether they fail NAMING the missing dependency or
+ * looking like an application bug.
+ *
+ * `/api/upload` now answers 503 with a CLASS — no variable names, no values —
+ * and that is the contract. The sentence in `src/lib/r2.ts` is free to be
+ * reworded; this status is not.
+ *
+ * Still strict in the direction that matters: 503 is the ONLY excuse. A 500, a
+ * 502, a timeout or a bad publicUrl remain real failures, because a guard that
+ * excuses too much is worse than no guard.
+ */
+export function isMissingR2Credentials(status: number, bodyText: string): boolean {
+  if (status !== OBJECT_STORAGE_UNCONFIGURED_STATUS) return false;
+  return errorMessageOf(bodyText) === OBJECT_STORAGE_UNCONFIGURED_MESSAGE;
 }
 
 type StorageProbe = { ok: true; origin: string } | { ok: false; serverMessage: string };
@@ -425,8 +447,8 @@ async function probeObjectStorage(): Promise<StorageProbe> {
     // Not the unconfigured case — a real upload failure, reported as one.
     throw new Error(
       `POST /api/upload failed with ${res.status} against ${BASE_URL}: ${text}\n` +
-        `This is NOT the missing-credential case — the response does not carry getR2Config()'s ` +
-        `"…environment variables are required" message — so it is a genuine upload failure and is ` +
+        `This is NOT the missing-storage case — that is a 503 carrying ` +
+        `"Object storage is not configured" — so it is a genuine upload failure and is ` +
         `NOT excused by the object-storage guard.`,
     );
   }

@@ -388,15 +388,33 @@ describe.sequential('Topics endpoints', () => {
   });
 
   it('GET /api/topics?view=all&q (whitespace-only) acts as no filter', async () => {
-    const [withQ, withoutQ] = await Promise.all([
+    /*
+     * Asserted on CONTENT, not on a count.
+     *
+     * This compared `a.topics.length` to `b.topics.length` across two separate
+     * requests against a live table, and went red at 2056 vs 2057 the moment any
+     * other suite created a topic between them — which several do. It was also a
+     * weak assertion even when it passed: two different sets of rows can be the
+     * same size, so an equal count never proved the filter was absent.
+     *
+     * What the case is really about is that a blank `q` must not narrow the
+     * result. So: the whitespace query returns this fixture's topics (a real
+     * filter on `"  "` would match none of them), and it returns FAR more than
+     * the three a genuine `q` selects — both immune to a concurrent insert.
+     */
+    const [withQ, withStampQ] = await Promise.all([
       authGet('/api/topics?view=all&q=%20%20&sort=new'),
-      authGet('/api/topics?view=all&sort=new'),
+      authGet(`/api/topics?view=all&q=${encodeURIComponent(searchStamp)}&sort=new`),
     ]);
     expect(withQ.status).toBe(200);
-    expect(withoutQ.status).toBe(200);
-    const a = await withQ.json();
-    const b = await withoutQ.json();
-    expect(a.topics.length).toBe(b.topics.length);
+    expect(withStampQ.status).toBe(200);
+    const blank = await withQ.json();
+    const filtered = await withStampQ.json();
+
+    const blankIds: string[] = blank.topics.map((t: { id: string }) => t.id);
+    for (const id of [topicAId, topicBId, topicCId]) expect(blankIds).toContain(id);
+    // A real filter selects a handful; no filter at all selects the corpus.
+    expect(filtered.topics.length).toBeLessThan(blank.topics.length);
   });
 
   it('GET /api/topics?view=all&q combines with sort=new', async () => {

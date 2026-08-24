@@ -54,14 +54,37 @@ function readEndpointOverride(): string | null {
 /**
  * The one sentence a caller sees when storage is not configured.
  *
- * It names all five variables whatever is actually missing, and the E2E suite
- * matches on that literal text to tell "this deployment has no credentials"
- * apart from a genuine upload fault (`isMissingR2Credentials` in
- * `src/__tests__/e2e/helpers.ts`). Rewording it turns a blocked case into a
- * silent pass, so change both together or neither.
+ * SERVER-SIDE ONLY. This text names five environment variables, so it must
+ * never reach a response body — it goes to the log, and the route answers with
+ * a class, not a cause.
+ *
+ * It used to carry a second job: the E2E suite matched this literal to tell
+ * "this deployment has no credentials" apart from a genuine upload fault, and
+ * the comment here warned that rewording it would turn a blocked case into a
+ * silent pass. The warning was sound and the channel was already broken — every
+ * `/api/upload` failure goes through `unhandledRouteError`, whose body is
+ * deliberately generic, so the literal never reached the test and the skip it
+ * guarded could not fire. Two files kept carefully in sync, with a third in the
+ * middle quietly making the contract unobservable.
+ *
+ * The suite now keys on the ROUTE's 503, not on this sentence — see
+ * `isMissingR2Credentials` in `src/__tests__/e2e/helpers.ts`. This text is free
+ * to change; that status is not.
  */
 const MISSING_CONFIG_MESSAGE =
   'R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, and R2_PUBLIC_URL environment variables are required';
+
+/**
+ * Is this the "storage was never configured" failure, as opposed to a real
+ * upload fault?
+ *
+ * Exported as a PREDICATE so callers do not re-match the sentence above and
+ * quietly re-create the coupling that just broke. The thrown type is unchanged
+ * — every existing bare `catch` in this file keeps behaving identically.
+ */
+export function isMissingR2ConfigError(error: unknown): boolean {
+  return error instanceof Error && error.message === MISSING_CONFIG_MESSAGE;
+}
 
 function getR2Config() {
   const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;

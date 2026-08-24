@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   authGet,
   authPost,
+  authPut,
   authPatch,
   publicGet,
   getSecondUserToken,
@@ -337,4 +338,54 @@ describe.sequential('TAK back-fill — server Delivery Service', () => {
       await authDelete(`/api/topics/${privId}`);
     }
   });
+
+  it.each(['private', 'secret'] as const)(
+    '15. CONTAINMENT: the server refuses to hold a %s topic archive key, whatever the client believes',
+    async (visibility) => {
+      /*
+       * The guard that GENERALISES, and the reason it lives here rather than in
+       * a client test.
+       *
+       * `chatTierOf` maps an unrecognised visibility to `public` — deliberately,
+       * because it also drives the E2EE BANNER and a wrong value there must
+       * under-promise rather than claim encryption we are not providing. But the
+       * same function now also selects the KEY MODEL, and for that consumer
+       * `public` is the permissive answer: it means "the server may hold this
+       * key". The two consumers fail in opposite directions from one default.
+       *
+       * A client-side test can only pin the call sites that exist today. This
+       * pins the BOUNDARY: whatever a present or future client believes about a
+       * scoped topic, the deposit route refuses, so a tier mistake can cost
+       * history but can never cost the key. Verified by sending the literal
+       * request a mis-tiered client would send.
+       */
+      const createRes = await authPost('/api/topics', {
+        title: `E2E TAK ${visibility} containment ${Date.now()}`,
+        description: 'a mis-tiered client must not be able to deposit',
+        visibility,
+        categoryId,
+      });
+      expect(createRes.status).toBe(201);
+      const id = (await createRes.json()).topic.id as string;
+
+      try {
+        // Exactly what a client that resolved the tier as `public` would send.
+        const put = await authPut(`/api/topics/${id}/archive/root`, {
+          rootKey: Buffer.alloc(32, 9).toString('base64'),
+        });
+        expect(put.status, 'the server accepted a scoped topic archive key').toBe(403);
+
+        // And nothing is readable back, so a refusal cannot be mistaken for a
+        // silent success by a client that only checks the GET.
+        const get = await authGet(`/api/topics/${id}/archive/root`);
+        expect(get.status).toBe(403);
+
+        // The fingerprint surface belongs to the topic-root tiers only.
+        const fp = await authGet(`/api/topics/${id}/tak/root-fingerprint`);
+        expect(fp.status).toBe(400);
+      } finally {
+        await authDelete(`/api/topics/${id}`);
+      }
+    },
+  );
 });

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { uploadToR2, deleteFromR2ByUrl, type UploadPurpose } from '@/lib/r2';
+import { uploadToR2, deleteFromR2ByUrl, isMissingR2ConfigError, type UploadPurpose } from '@/lib/r2';
+import {
+  OBJECT_STORAGE_UNCONFIGURED_MESSAGE,
+  OBJECT_STORAGE_UNCONFIGURED_STATUS,
+} from '@/lib/objectStorageStatus';
 import { db } from '@/lib/db';
 import { topicMembers } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
@@ -309,6 +313,40 @@ export async function POST(request: NextRequest) {
     logger.info(ROUTE, 'Upload complete', { userId: session.userId, publicUrl });
     return NextResponse.json({ publicUrl });
   } catch (error) {
+    /*
+     * "Never configured" is not "faulted", and 500 said the wrong one.
+     *
+     * A deployment with no object-storage credentials is not a server that
+     * broke handling this request — it is a server that was never able to serve
+     * it. 503 says that; 500 claims a fault and sends whoever is debugging to
+     * look for one. It cost exactly that: an environment rebuilt without the
+     * R2/MinIO vars produced ten failures across eight files, every one of them
+     * pointing at application behaviour.
+     *
+     * The body names a CLASS and nothing else — no variable names, no values,
+     * no stack. The five variable names stay in the log, where
+     * `unhandledRouteError` was already right to keep them. This narrow catch
+     * sits ABOVE that generic handler rather than inside it, so no other route
+     * changes and nothing else about error reporting moves.
+     *
+     * The E2E suite keys on this STATUS to skip when storage is absent
+     * (`isMissingR2Credentials`, src/__tests__/e2e/helpers.ts). That is the
+     * contract now: the sentence in `lib/r2.ts` may be reworded freely, this
+     * 503 may not.
+     */
+    if (isMissingR2ConfigError(error)) {
+      // The five variable names go HERE, untruncated, and nowhere else. No
+      // session lookup: re-reading the request inside a catch can throw on its
+      // own, and which account hit an unconfigured server is not the useful
+      // half of this line.
+      logger.error(ROUTE, 'Upload refused — object storage is not configured', {
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        { error: OBJECT_STORAGE_UNCONFIGURED_MESSAGE },
+        { status: OBJECT_STORAGE_UNCONFIGURED_STATUS },
+      );
+    }
     return unhandledRouteError(ROUTE, 'POST', error);
   }
 }
