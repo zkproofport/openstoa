@@ -35,6 +35,12 @@ import { MlsSessionStore, type MlsTransport, type CommitLogEntry, type SecureKVS
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from '@/lib/mls/takSession';
 import { parseCommitFraming } from '@/lib/mls/framing';
 
+const b64 = (b: Uint8Array) => {
+  let s = '';
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s);
+};
+
 const unb64 = (s: string) => {
   const bin = atob(s);
   const out = new Uint8Array(bin.length);
@@ -95,9 +101,21 @@ class MemoryDmTak implements TakTransport {
   private next() {
     return String(this.seq++).padStart(6, '0');
   }
+  /**
+   * The fingerprint this topic had published AT THE MOMENT its first row was
+   * written, recorded rather than asserted afterwards.
+   *
+   * The ordering is what makes `computePeerRoot` safe to let a rootless device
+   * claim: if a fingerprint is always published BEFORE anything can be sealed
+   * under a topic root, then `fingerprint === null && archiveCount > 0` cannot
+   * denote topic-root rows. Checked after the fact, that ordering is invisible
+   * — the fingerprint is there either way by the time the test looks.
+   */
+  fingerprintAtFirstArchive = new Map<string, string | null>();
   async postArchive(t: string, messageId: string, takVersion: number, ciphertext: string) {
     const list = this.archive.get(t) ?? [];
     if (list.some((r) => r.messageId === messageId)) return;
+    if (list.length === 0) this.fingerprintAtFirstArchive.set(t, this.fingerprints.get(t) ?? null);
     list.push({ messageId, takVersion, ciphertext, createdAt: new Date().toISOString() });
     this.archive.set(t, list);
   }
@@ -420,5 +438,124 @@ describe('DM archive root — races and refusals', () => {
     await fanOutCommits(ds, T, [alice]);
     await expect(alice.tak.distributeRoot(T, 'dm')).resolves.toBe(2);
     await expect(bob.tak.backfill(T, 'dm')).resolves.toHaveLength(1);
+  });
+});
+
+describe('DM archive root — a conversation that already has history', () => {
+  it('REGRESSION: rows already archived, no fingerprint — the DM still settles on a root', async () => {
+    /*
+     * THE CASE THE ORIGINAL SUITE DID NOT HAVE, and the reason the deadlock
+     * shipped: every DM those twelve tests create is FRESH, so `archiveCount`
+     * is 0 and the guard below is never reached. The one arrangement that
+     * breaks is the one no test built.
+     *
+     * The arrangement is not hypothetical — it is the state of every DM that
+     * carried a single message before the tier fix. Pre-fix, a DM's key model
+     * came from its ROW's `visibility: 'secret'`, so it took the per-epoch
+     * branch and wrote `chat_archive` rows under epoch keys, while the
+     * fingerprint route refused DMs outright so `archive_root_fingerprint`
+     * stayed NULL. `archiveOnSend(..., 'secret')` below reproduces exactly that,
+     * through the shipped code rather than by hand-seeding a row.
+     *
+     * What the guard then did: rows exist ⇒ "a root must already exist" ⇒ only a
+     * device holding it may claim ⇒ but the only way to HOLD one is to claim, or
+     * to be handed one by a peer whose own root is verified. Every device of
+     * both participants sat in `waiting`, forever, and it compounded —
+     * `currentArchiveKey` hands back no key unless verified, so messages sent
+     * after the deploy were not archived either.
+     */
+    const ds = new MemoryDS();
+    const tt = new MemoryDmTak();
+    const T = 'dm-legacy-archive';
+    const alice = makeClient(ds, tt, 'alice');
+    const seed = await alice.mls.seal(T, 'seed');
+
+    await alice.tak.archiveOnSend(T, 'legacy-1', 'said before the fix', 'secret');
+    expect((await tt.getArchive(T)).length).toBe(1);
+    expect(tt.fingerprints.size, 'a DM never had a fingerprint before the fix').toBe(0);
+
+    // Pre-fix this is 'waiting' — on this device and on every other one.
+    expect(await alice.tak.archiveRootState(T, 'dm')).toBe('verified');
+    expect((await alice.tak.archiveOnSend(T, 'm-1', 'after the fix', 'dm')).archived).toBe(true);
+
+    // And the peer is unblocked too, which is the half that makes it a DM again
+    // rather than a room one device can write to.
+    const bob = makeClient(ds, tt, 'bob');
+    await bob.mls.open(T, seed);
+    await fanOutCommits(ds, T, [alice]);
+    expect(await alice.tak.distributeRootWhenGroupChanged(T, 'dm')).toBe(2);
+    expect(bodies(await bob.tak.backfill(T, 'dm'))).toEqual({ 'm-1': 'after the fix' });
+
+    /*
+     * `legacy-1` is NOT recovered, by anyone, including the device that sealed
+     * it: it is under an epoch key, and a topic-root tier's backfill never
+     * reaches for one. That ciphertext is dead and stays dead — the code cannot
+     * fix it, which is why `scripts/delete-dm-chat-archive.ts` exists. Worse
+     * than merely unreadable: `chat_archive` is unique on (topic_id,
+     * message_id), so the row also blocks `backfillMissingArchive` from ever
+     * re-sealing that message under the root it CAN read.
+     */
+    expect(bodies(await alice.tak.backfill(T, 'dm'))['legacy-1']).toBeUndefined();
+  });
+
+  it('INTEGRITY: the fingerprint is published BEFORE anything is sealed under the root', async () => {
+    /*
+     * The invariant that makes the change above safe, pinned as an ORDERING
+     * rather than as an end state — after the fact the fingerprint is there
+     * either way, so an assertion at the end proves nothing.
+     *
+     * Because a row can only be sealed under a topic root AFTER that root's
+     * fingerprint is published, `fingerprint === null && archiveCount > 0`
+     * cannot mean "topic-root rows exist". On this path it can only mean rows
+     * from the per-epoch era, which no root will ever open. That is why the
+     * count alone must not block a claim.
+     */
+    const ds = new MemoryDS();
+    const tt = new MemoryDmTak();
+    const T = 'dm-fingerprint-first';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'seed');
+
+    await alice.tak.archiveOnSend(T, 'm-1', 'x', 'dm');
+    expect(tt.fingerprintAtFirstArchive.get(T)).not.toBeNull();
+    expect(tt.fingerprintAtFirstArchive.get(T)).toBe(tt.fingerprints.get(T));
+  });
+
+  it('ORPHAN: a held root that opens none of the existing rows still refuses to claim', async () => {
+    /*
+     * The half of the guard that stays. Dropping the `waiting` line does not
+     * drop this: a device that HOLDS a root which cannot open row #1 is provably
+     * not holding the archive's root, and letting it publish its own would
+     * rename the conversation's identity to a key that opens none of its
+     * history.
+     *
+     * Reachable, not decorative. `shouldAdoptRoot` adopts a bundle's root
+     * outright when no fingerprint is published (takSession.ts, `if (!local)
+     * return true`), and `webTransport` reports `fingerprint: null` for a 404 —
+     * so a root can be in the store while the published identity reads null. A
+     * restored keychain (`importKeychain`, the recovery path) gets there too,
+     * which is what this builds.
+     */
+    const ds = new MemoryDS();
+    const tt = new MemoryDmTak();
+    const T = 'dm-orphan-root';
+    const alice = makeClient(ds, tt, 'alice');
+    await alice.mls.seal(T, 'seed');
+    await alice.tak.archiveOnSend(T, 'm-1', 'the real history', 'dm');
+    // Reproduce "rows exist, published identity reads null" without inventing a
+    // row shape: the rows are real and really sealed under Alice's root.
+    tt.fingerprints.delete(T);
+
+    const restored = makeClient(ds, tt, 'mallory');
+    // `tak.root.<topicId>` is the store's own name for the topic root; a
+    // keychain restore writes exactly this. If the name ever changes, the
+    // planted root is simply not found and this test fails loudly rather than
+    // passing for the wrong reason.
+    const foreign = new Uint8Array(32).fill(7);
+    await restored.tak.importKeychain({ [`tak.root.${T}`]: b64(foreign) });
+
+    expect(await restored.tak.archiveRootState(T, 'dm')).toBe('orphan');
+    expect((await restored.tak.archiveOnSend(T, 'm-2', 'must not be sealed', 'dm')).archived).toBe(false);
+    expect(tt.fingerprints.size, 'an orphan root must not become the DM identity').toBe(0);
   });
 });

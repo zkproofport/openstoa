@@ -389,17 +389,19 @@ export class TakSessionStore {
    *   F set,  no root held              → waiting    (wait for the real root)
    *   F null, N == 0, no root held      → mint, publish F, then persist → verified
    *   F null, N == 0, root held         → publish its F                → verified
-   *   F null, N  > 0, no root held      → waiting    (rows PROVE a root exists)
+   *   F null, N  > 0, no root held      → mint, publish F, then persist → verified
    *   F null, N  > 0, root opens row #1 → publish its F                → verified
    *   F null, N  > 0, root does not     → orphan
    *   check failed (offline)            → unverified (never mint, never archive)
    *
-   * The `F null, N > 0` rows are the retroactive half: every topic in production
-   * today has archive rows and no fingerprint, and the old code read "no local
-   * root" as "no root exists" and minted one — silently orphaning all of it. The
-   * row count is what closes that hole, and decrypting the OLDEST row is what
-   * decides which of two unproven roots is the real one: row #1 predates any
-   * root minted later by a device that was merely waiting.
+   * The `F null, N > 0` rows are the retroactive half. Where a root IS held,
+   * decrypting the OLDEST row decides which of two unproven roots is the real
+   * one: row #1 predates any root minted later by a device that was merely
+   * waiting. Where NO root is held there is nothing to test and nothing to
+   * contradict — on this path a fingerprint is always published before a row can
+   * be sealed under a root (see `computePeerRoot`), so rows with no fingerprint
+   * are rows from the per-epoch era rather than proof that a root exists.
+   * Reading them as proof is what deadlocked every DM with any history.
    */
   private resolveRoot(topicId: string, tier: ChatTier): Promise<RootResolution> {
     const cached = this.rootResolutions.get(topicId);
@@ -505,7 +507,10 @@ export class TakSessionStore {
    *   fingerprint published, we hold nothing             → waiting. The root is
    *       on the peer's devices and arrives as a TAK bundle. There is no other
    *       route to it, and inventing one here is the whole defect.
-   *   nothing published, nothing archived                → mint and claim
+   *   nothing published                                  → mint and claim. Rows
+   *       may exist and still not contradict this: nothing is ever sealed under
+   *       a root before that root's fingerprint is published, so unfingerprinted
+   *       rows are per-epoch leftovers, not evidence of a root.
    *   check failed (offline)                             → unverified. NEVER
    *       mint: a root minted without checking looks valid to this device
    *       forever and orphans everything sealed under it.
@@ -532,16 +537,51 @@ export class TakSessionStore {
     }
 
     /*
-     * Rows exist but no fingerprint does. A device that cannot open the OLDEST
-     * of those rows is provably not holding the root they were sealed under, so
-     * claiming its own would rename the archive's identity to a key that opens
-     * none of it. Only the device that can read row #1 may speak for it.
+     * Rows exist but no fingerprint does. A device that HOLDS a root which
+     * cannot open the OLDEST of those rows is provably not holding the root they
+     * were sealed under, so claiming its own would rename the archive's identity
+     * to a key that opens none of it.
+     *
+     * What is NOT here any more, and why: this used to ALSO refuse a device
+     * holding nothing (`if (!local) return waiting`), on the reasoning that rows
+     * prove a root exists and only its holder may speak for it. For a public
+     * topic being migrated that was right. On THIS path it is an unbreakable
+     * cycle, and it deadlocked every DM that had ever carried a message:
+     *
+     *   - claiming a root is the only way to get one, and it demanded one;
+     *   - the only other source is a peer's TAK bundle, and `distributeRoot`
+     *     sends nothing unless the sender's own root is verified — so every
+     *     device of both participants sat in `waiting`, forever;
+     *   - and it compounded, because `currentArchiveKey` hands back no key
+     *     unless verified, so messages sent afterwards went unarchived too.
+     *
+     * It cannot re-open the public-topic hole it was written to close, for two
+     * independent reasons:
+     *
+     *  1. A public topic does not come here. `resolveRoot` dispatches on
+     *     `serverMayHoldKey(tier)`: public asks the SERVER, which holds the key
+     *     and settles the race in one round trip (`computeServerRoot`). This
+     *     function is the no-arbiter path, and `dm` is the only tier that both
+     *     reaches it and has a topic-wide root at all.
+     *  2. On this path a fingerprint is published BEFORE any row can be sealed
+     *     under a topic root — `currentArchiveKey` seals only on `verified`, and
+     *     `verified` here is only ever reached through `claimRoot`, which
+     *     publishes first. So `fingerprint === null && archiveCount > 0` cannot
+     *     denote topic-root rows; it denotes rows from the per-epoch era, which
+     *     no root will ever open. `mls-tak-dm-root.test.ts` pins that ordering.
+     *
+     * Note what the condition is NOT: a count of `tak_version = 0` rows. A DM's
+     * first MLS epoch IS 0, so a legacy per-epoch row and a topic-root row are
+     * indistinguishable by version — and a count would then keep dead ciphertext
+     * looking like history. The question is about the TIER's key model, and the
+     * dispatch above is where that is already answered.
      */
-    if (identity.archiveCount > 0) {
-      if (!local) return { key: null, state: 'waiting' };
-      if ((await this.rootOpensOldestArchiveRow(topicId, local)) !== true) {
-        return { key: local, state: 'orphan' };
-      }
+    if (
+      identity.archiveCount > 0 &&
+      local &&
+      (await this.rootOpensOldestArchiveRow(topicId, local)) !== true
+    ) {
+      return { key: local, state: 'orphan' };
     }
 
     return this.claimRoot(topicId, local ?? tak.generatePublicRootKey(), local != null);
