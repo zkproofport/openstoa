@@ -23,6 +23,10 @@
  *   scroll      — prepending older messages does not steal the scroll position;
  *                 a new bottom message does
  *   authz       — guests / non-members issue no chat request at all
+ *
+ * The composer these tests drive is a `<textarea>`, not an `<input>`: an
+ * `<input>` cannot hold a newline, which is why Shift+Enter did nothing on the
+ * web. See `chatComposerNewline.test.tsx` for the element's own guards.
  */
 import enLocale from '@/lib/i18n/locales/en.json';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -62,7 +66,7 @@ const mlsStore = {
 const takStore = {
   backfill: vi.fn(async () => [] as { messageId: string; plaintext: string }[]),
   myDeviceId: vi.fn(async () => 'device-1'),
-  distributePublicRoot: vi.fn(async () => 0),
+  distributeRoot: vi.fn(async () => 0),
   grantPrivateHistory: vi.fn(async () => {}),
   sealForPush: vi.fn(async () => null),
   archiveOnSend: vi.fn(async () => {}),
@@ -559,9 +563,9 @@ describe('ChatPanel — decrypt failures and own messages', () => {
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    const input = container.querySelector('textarea') as HTMLTextAreaElement;
     const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
+      window.HTMLTextAreaElement.prototype,
       'value',
     )!.set!;
     await act(async () => {
@@ -618,8 +622,8 @@ describe('ChatPanel — decrypt failures and own messages', () => {
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    const input = container.querySelector('textarea') as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
     await act(async () => {
       setter.call(input, 'hello');
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -661,8 +665,8 @@ describe('ChatPanel — decrypt failures and own messages', () => {
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    const input = container.querySelector('textarea') as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
     await act(async () => {
       setter.call(input, 'ㅇㅁㄹㅇ');
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -788,9 +792,9 @@ describe('delivery acknowledgement and purged rows', () => {
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
+    const input = container.querySelector('textarea') as HTMLTextAreaElement;
     const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
+      window.HTMLTextAreaElement.prototype,
       'value',
     )!.set!;
     await act(async () => {
@@ -847,8 +851,8 @@ describe('delivery acknowledgement and purged rows', () => {
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    const input = container.querySelector('textarea') as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
     await act(async () => {
       setter.call(input, 'hello');
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -890,8 +894,8 @@ describe('delivery acknowledgement and purged rows', () => {
     await act(async () => FakeEventSource.last.open());
     await flush();
 
-    const input = container.querySelector('input[type="text"]') as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    const input = container.querySelector('textarea') as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
     await act(async () => {
       setter.call(input, 'ㅇㅁㄹㅇ');
       input.dispatchEvent(new Event('input', { bubbles: true }));

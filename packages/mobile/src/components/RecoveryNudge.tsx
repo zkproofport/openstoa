@@ -1,109 +1,48 @@
 /**
- * Mini-app twin of the web `RecoveryNudge` (design §10-1, Phase 4). Two jobs,
- * one pass over the same server state:
+ * The visible half of recovery: a dismissible banner prompting a user who has
+ * chat history but no recovery at all.
  *
- * 1. REPAIR (silent). Make sure the account has a TAK-keychain backup at all.
- *    `tak_key_backups` used to be written ONLY by the TAK key-change hook, which
- *    fires when a key is newly WRITTEN — so a user who already held their keys
- *    and then registered a passkey got a wrapped master_key and an EMPTY
- *    keychain row. Recovering returned the key and unlocked nothing, and simply
- *    opening a chat wrote no new key, so the hook never fired again. This runs
- *    at SESSION START, not on chat-room entry: the backup is account-level (one
- *    row per user, every topic), so binding its repair to one room is what let
- *    the gap persist.
+ * PROFILE ONLY. This used to be mounted at the app ROOT, above the tab
+ * navigator, so it nagged from first launch on every tab — before the account
+ * had any history worth protecting, with copy that reads as a warning. Someone
+ * reading the feed does not need to be told about chat keys. It is now rendered
+ * from exactly one place, `screens/profile/ProfileHomeScreen.tsx`, which makes
+ * "Profile only" a property of where the element is rather than of a runtime
+ * check a future screen could get wrong.
  *
- * 2. NUDGE (visible, dismissible). Prompt a user who has chat history but no
- *    recovery at all. `shouldNudgeRecovery` owns that decision — including why
- *    the prompt waits until there is something to lose rather than firing at
- *    signup.
+ * IT NO LONGER RUNS THE REPAIR. The silent, account-level TAK-keychain repair
+ * that used to share this component's effect now lives in `RecoveryRepair.tsx`,
+ * mounted at the root wrapping the navigator — see that file for why binding it
+ * to one screen would recreate the bug it exists to fix. What arrives here is
+ * only the decision (`useRecoveryNudge()`), already made.
+ *
+ * NO SAFE-AREA INSET, DELIBERATELY. The root mount had nothing between it and
+ * the window, so it had to add `insets.top` itself or render under the status
+ * bar. Its only mount point now sits inside `ProfileStack`, below
+ * `MiniAppHeader` (`navigation/shared.tsx`), which already applies
+ * `paddingTop: insets.top` — adding it again would double-count and push the
+ * banner ~50px down the screen on a notched device. Every other surface inside
+ * that stack, `ProfileHomeScreen` included, reads no inset for the same reason.
  *
  * The CTA opens `AccountRecoveryScreen` in a modal rather than duplicating the
- * backup flow. That screen takes no navigation props, so it drops straight in —
- * which is also why this component can live above the tab navigator, where a
- * `navigation.navigate` would not be available.
+ * backup flow. That screen takes no navigation props, so it drops straight in.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useHost } from '@openstoa/miniapp-bridge';
-import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
-import { useOpenStoaSession } from '../stores/sessionStore';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
-import { ensureTakKeychainBackup, keyBackupHttp } from '../crypto/mobileTransport';
-import { recoveryNudgeDismissKey, shouldNudgeRecovery } from '../lib/recoveryNudge';
+import { useRecoveryNudge } from './RecoveryRepair';
 import { AccountRecoveryScreen } from '../screens/profile/AccountRecoveryScreen';
 
 export function RecoveryNudge() {
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
   const { t } = useTranslation();
-  const host = useHost();
-  const client = useOpenStoaClient();
-  const session = useOpenStoaSession();
+  const { show, dismiss } = useRecoveryNudge();
 
-  const [show, setShow] = useState(false);
   const [open, setOpen] = useState(false);
-  // The repair is account-level and idempotent; running it once per signed-in
-  // session is the point. Without this latch every re-render that flips a
-  // dependency would re-run it (and re-decide a banner the user just dismissed).
-  const ran = useRef(false);
-
-  const secureStore = host.secureStore;
-  const localStore = host.localStore;
-  const userId = session.userId;
-  const authenticated = session.mode === 'authenticated';
-
-  useEffect(() => {
-    // No secure store means no master_key on this device at all — backup and
-    // recovery are both unavailable here, so there is nothing to repair and
-    // nothing worth prompting for.
-    // Logged unconditionally: "the repair never ran" and "it ran and found
-    // nothing" produced the same silence on device, and only one of them is a
-    // bug in this component.
-    console.log(
-      '[TAKBACKUP]',
-      'nudge/effect',
-      JSON.stringify({ ran: ran.current, authenticated, hasUserId: !!userId, hasSecureStore: !!secureStore, hasLocalStore: !!localStore }),
-    );
-    if (ran.current || !authenticated || !userId || !secureStore) return;
-    ran.current = true;
-
-    void (async () => {
-      // Runs even when the banner will be suppressed: the repair is the fix for
-      // every account already in the broken state, and it is silent by design.
-      const backup = await ensureTakKeychainBackup(client, secureStore, localStore);
-
-      let dismissed = false;
-      try {
-        dismissed = (await localStore?.getItem(recoveryNudgeDismissKey(userId))) === '1';
-      } catch {
-        // Storage unavailable: treat as not dismissed. Erring towards showing a
-        // dismissible banner beats hiding the only prompt a user gets about
-        // history nobody can recover.
-      }
-      if (dismissed) return;
-
-      let hasRecovery = false;
-      try {
-        const wraps = await keyBackupHttp(client).getBackup();
-        hasRecovery = !!wraps.wrappedMaster || wraps.passkeys.length > 0;
-      } catch {
-        return; // offline: never nag on a guess
-      }
-
-      setShow(shouldNudgeRecovery({ authenticated: true, dismissed: false, hasRecovery, backup }));
-    })();
-  }, [authenticated, userId, secureStore, localStore, client]);
-
-  const dismiss = useCallback(() => {
-    setShow(false);
-    if (!userId) return;
-    void localStore?.setItem(recoveryNudgeDismissKey(userId), '1').catch(() => {
-      /* storage unavailable — the banner still closes for this session */
-    });
-  }, [localStore, userId]);
 
   if (!show) return null;
 
@@ -141,11 +80,14 @@ export function RecoveryNudge() {
   );
 }
 
+/** Gap between whatever sits above the banner and its top edge. */
+const BANNER_TOP_GAP = 12;
+
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     banner: {
       marginHorizontal: 16,
-      marginTop: 12,
+      marginTop: BANNER_TOP_GAP,
       padding: 14,
       borderRadius: RADIUS.card,
       backgroundColor: colors.background.secondary,

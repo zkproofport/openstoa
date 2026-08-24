@@ -36,7 +36,7 @@ import { displayNickname } from '@/lib/defaultNickname';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import Link from 'next/link';
-import { chatTierOf, type ChatTier } from '@/lib/chatTierPolicy';
+import { chatTierOf, usesTopicRootKey, type ChatTier } from '@/lib/chatTierPolicy';
 import { chatClaimKey, TIER_CLAIM_VISIBLE_MS } from '@/lib/chatTierExplainer';
 import {
   getMlsSessionStore,
@@ -150,6 +150,15 @@ async function toDisplayMessage(
 // sync so the same message renders an OG card on both surfaces.
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
 const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?.*)?$/i;
+
+/**
+ * How tall the composer may grow before it scrolls instead — about five lines.
+ *
+ * A composer that grows without a ceiling eats the conversation it is part of;
+ * one that never grows hides everything but the last line of what is being
+ * written. Mobile's chat composer draws the same line at `maxHeight: 120`.
+ */
+const COMPOSER_MAX_HEIGHT = 120;
 
 function extractFirstUrl(text: string): string | null {
   URL_REGEX.lastIndex = 0;
@@ -963,12 +972,14 @@ function LockedHistoryNotice({
 function ChatMediaAttachment({
   envelope,
   topicId,
-  visibility,
+  tier,
   roomy,
 }: {
   envelope: ChatMediaEnvelope;
   topicId: string;
-  visibility: Visibility;
+  /** Which key opens it — see `chatTierPolicy`. NOT the topic's visibility: a
+   *  DM row says `'secret'` and a DM's attachments are sealed under its root. */
+  tier: ChatTier;
   roomy?: boolean;
 }) {
   const { t } = useTranslation();
@@ -1007,7 +1018,7 @@ function ChatMediaAttachment({
             return bytes;
           },
           open: (id, version, ciphertext) =>
-            getTakSessionStore().openMedia(topicId, id, version, ciphertext, visibility),
+            getTakSessionStore().openMedia(topicId, id, version, ciphertext, tier),
         },
       );
       if (cancelled) return;
@@ -1023,7 +1034,7 @@ function ChatMediaAttachment({
       if (created) URL.revokeObjectURL(created);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topicId, visibility, key, mediaId, takVersion, mime, attempt]);
+  }, [topicId, tier, key, mediaId, takVersion, mime, attempt]);
 
   const noticeStyle = {
     display: 'inline-flex',
@@ -1153,14 +1164,14 @@ function MessageRow({
   onRetry,
   onDiscard,
   topicId,
-  visibility,
+  tier,
 }: {
   msg: ChatMessage;
   grouped?: boolean;
   roomy?: boolean;
   own?: boolean;
   topicId: string;
-  visibility: Visibility;
+  tier: ChatTier;
   /** The room key has not reached this device YET — locked rows are loading,
    *  not broken, and must not be dressed as a permanent failure. */
   syncing?: boolean;
@@ -1416,6 +1427,12 @@ function MessageRow({
               ? { borderBottomRightRadius: 'var(--radius-control)' }
               : { borderBottomLeftRadius: 'var(--radius-control)' }),
             padding: roomy ? '8px 12px' : '6px 10px',
+            // A message can now contain newlines (Shift+Enter in the composer),
+            // and HTML collapses those to a single space by default — the line
+            // break would survive the round trip, the encryption and the
+            // render, and vanish in the last inch. `pre-wrap`, not `pre`: long
+            // lines must still wrap inside the bubble.
+            whiteSpace: 'pre-wrap' as const,
             wordBreak: 'break-word' as const,
             minWidth: 0,
             // Drag-selectable. It was not: the bubble inherited the panel's
@@ -1434,7 +1451,7 @@ function MessageRow({
         <ChatMediaAttachment
           envelope={mediaEnvelope}
           topicId={topicId}
-          visibility={visibility}
+          tier={tier}
           roomy={roomy}
         />
       )}
@@ -1636,7 +1653,7 @@ export default function ChatPanel({
    */
   const [sessionProbed, setSessionProbed] = useState(cachedUserId !== null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1678,6 +1695,15 @@ export default function ChatPanel({
   // Topic visibility drives the TAK tier (public root vs scoped per-epoch).
   // Resolved once per topic in the history effect; defaults to public.
   const visibilityRef = useRef<Visibility>('public');
+  /*
+   * The tier, for the CRYPTO — which is not the same question as the topic's
+   * visibility and used to be answered with it. A DM row carries
+   * `visibility: 'secret'`, so passing the visibility here asked the TAK layer
+   * for per-epoch keys on a tier `chatTierPolicy` declares topic-root, and every
+   * DM ended up sealed under a key that never left this browser. Kept as a ref
+   * beside `visibilityRef` because the callbacks below read it outside render.
+   */
+  const tierRef = useRef<ChatTier>('public');
   // Same value as the ref, as state: an attachment row decrypts in an effect,
   // so it needs the tier as a PROP that changes when the lookup lands. A ref
   // read during render would pin the first row to the default forever.
@@ -1791,7 +1817,7 @@ export default function ChatPanel({
   // archiveOnSend upload only lands after the response. Best-effort: any failure
   // just omits the field and the recipient gets the content-free push.
   const buildPushArchive = useCallback(async (text: string) => {
-    const seal = await getTakSessionStore().sealForPush(topicId, text, visibilityRef.current).catch(() => null);
+    const seal = await getTakSessionStore().sealForPush(topicId, text, tierRef.current).catch(() => null);
     return seal ? { ct: seal.ct, takVersion: seal.takVersion } : undefined;
   }, [topicId]);
 
@@ -1851,7 +1877,7 @@ export default function ChatPanel({
         { bytes, mime },
         {
           seal: (mediaId, plain) =>
-            getTakSessionStore().sealMedia(topicId, mediaId, plain, visibilityRef.current),
+            getTakSessionStore().sealMedia(topicId, mediaId, plain, tierRef.current),
           upload: async (ciphertext, mediaId) => {
             /*
              * The ciphertext IS the body. It used to be base64 inside a JSON
@@ -1911,7 +1937,7 @@ export default function ChatPanel({
             // Re-encrypt the ENVELOPE for the archive so later members can read
             // it (Phase 3). The bytes it points at are sealed under the same
             // key, so a member who gets the archive gets the picture too.
-            void getTakSessionStore().archiveOnSend(topicId, payload.id, body, visibilityRef.current).catch(() => {});
+            void getTakSessionStore().archiveOnSend(topicId, payload.id, body, tierRef.current).catch(() => {});
           },
           discard: async (key) => {
             await apiFetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(key)}`, {
@@ -1985,6 +2011,9 @@ export default function ChatPanel({
     // message read as an edit of the first. The composer belongs to the user,
     // not to the request.
     setInputValue('');
+    // The box grew with the message; an emptied composer that stays five rows
+    // tall is the same bug from the other side.
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     inputRef.current?.focus();
     setSending(true);
 
@@ -2053,7 +2082,7 @@ export default function ChatPanel({
             // Cache own plaintext so it survives a restart (sender can't self-decrypt).
             void getMlsSessionStore().cachePlaintext(topicId, payload.id, text);
             // Re-encrypt for the archive so later members can read it (Phase 3).
-            void getTakSessionStore().archiveOnSend(topicId, payload.id, text, visibilityRef.current).catch(() => {});
+            void getTakSessionStore().archiveOnSend(topicId, payload.id, text, tierRef.current).catch(() => {});
           }
         } catch {}
       } else {
@@ -2147,7 +2176,7 @@ export default function ChatPanel({
       decryptOnceRef.current.set(payload.id, own);
       applyIncoming([own]);
       void getMlsSessionStore().cachePlaintext(topicId, payload.id, body);
-      void getTakSessionStore().archiveOnSend(topicId, payload.id, body, visibilityRef.current).catch(() => {});
+      void getTakSessionStore().archiveOnSend(topicId, payload.id, body, tierRef.current).catch(() => {});
       // Only NOW is the object referenced by a real message.
       void apiFetch(`/api/topics/${topicId}/chat/media?key=${encodeURIComponent(envelope.key)}`, {
         method: 'PATCH',
@@ -2179,7 +2208,25 @@ export default function ChatPanel({
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  /**
+   * Grow the composer to fit what has been typed, up to `COMPOSER_MAX_HEIGHT`.
+   *
+   * Height has to be cleared before it is read: `scrollHeight` on an element
+   * that is already tall enough reports the CURRENT height, so without the
+   * reset the box can only ever grow and a deleted line never gives its row
+   * back. A zero measurement (jsdom, or a box that is not laid out yet) is
+   * left alone rather than written as `0px` — nothing is known at that point,
+   * and a guess would collapse the composer.
+   */
+  function autoGrow(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    el.style.height = 'auto';
+    if (el.scrollHeight > 0) {
+      el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     /*
      * An Enter that is COMMITTING an IME composition is not a send.
      *
@@ -2311,7 +2358,7 @@ export default function ChatPanel({
   // A device that joins the group AFTER the root was handed out receives
   // nothing, and until now that lasted "until some other device happens to
   // reopen the chat" — reproducibly minutes, or forever. Re-check on a slow
-  // timer while the room is open. `distributePublicRootWhenGroupChanged` is a
+  // timer while the room is open. `distributeRootWhenGroupChanged` is a
   // no-op unless the MLS epoch actually advanced, so the steady-state cost is
   // one commits-since GET, not a bundle per tick.
   useEffect(() => {
@@ -2325,7 +2372,7 @@ export default function ChatPanel({
     const schedule = () => {
       timer = setTimeout(() => {
         void getTakSessionStore()
-          .distributePublicRootWhenGroupChanged(topicId)
+          .distributeRootWhenGroupChanged(topicId, tierRef.current)
           .catch(() => {})
           .finally(() => {
             if (!alive) return;
@@ -2381,7 +2428,7 @@ export default function ChatPanel({
             .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
           ...fromArchive,
         ];
-        await getTakSessionStore().backfillMissingArchive(topicId, visibilityRef.current, readable);
+        await getTakSessionStore().backfillMissingArchive(topicId, tierRef.current, readable);
       } catch {}
     },
     [topicId],
@@ -2424,7 +2471,7 @@ export default function ChatPanel({
   const catchUpArchive = useCallback(async () => {
     let recovered: Array<{ messageId: string; plaintext: string }> = [];
     try {
-      recovered = await getTakSessionStore().backfill(topicId, visibilityRef.current);
+      recovered = await getTakSessionStore().backfill(topicId, tierRef.current);
       if (mountedRef.current && recovered.length) {
         const byId = new Map(recovered.map((r) => [r.messageId, r.plaintext]));
         setMessages((prev) =>
@@ -2445,7 +2492,8 @@ export default function ChatPanel({
   const provisionArchiveAccess = useCallback(async () => {
     try {
       const tak = getTakSessionStore();
-      if (visibilityRef.current === 'public') {
+      const currentTier = tierRef.current;
+      if (currentTier === 'public') {
         const deviceId = await tak.myDeviceId(topicId);
         // Only a device that HOLDS the root may take the role, because the
         // holder is who everyone else receives the root from. A device still
@@ -2472,10 +2520,18 @@ export default function ChatPanel({
         // that is what left a device that joined a minute late with no root at
         // all. Serving is safe from any holder of a verified root: a recipient
         // rejects any bundle whose fingerprint is not the topic's.
-        await tak.distributePublicRootWhenGroupChanged(topicId);
-      } else if (visibilityRef.current === 'private') {
+        await tak.distributeRootWhenGroupChanged(topicId, currentTier);
+      } else if (usesTopicRootKey(currentTier)) {
+        /*
+         * A DM. Same delivery as public — the root wrapped to every member leaf
+         * — minus the holder lease, which is a public-tier mechanism: a DM has
+         * two participants and nobody to elect. This is the ONLY way a DM's key
+         * travels, because the server is not allowed to hold it.
+         */
+        await tak.distributeRootWhenGroupChanged(topicId, currentTier);
+      } else if (currentTier === 'private') {
         await tak.grantPrivateHistory(topicId);
-      } else if (visibilityRef.current === 'secret' && roleRef.current === 'owner') {
+      } else if (currentTier === 'secret' && roleRef.current === 'owner') {
         // secret: no auto-grant by default — only the owner shares history.
         await tak.grantPrivateHistory(topicId);
       }
@@ -2502,7 +2558,7 @@ export default function ChatPanel({
         // for fifteen seconds, and a device polling because it is waiting is
         // exactly the caller that must not be answered from that cache.
         getTakSessionStore().forgetUnsettledRoot(topicId);
-        const state = await getTakSessionStore().archiveRootState(topicId, visibilityRef.current);
+        const state = await getTakSessionStore().archiveRootState(topicId, tierRef.current);
         // null = a scoped tier with no topic-wide root, so there is nothing to
         // wait for and nothing to decrypt from an archive.
         if (state === null) {
@@ -2522,7 +2578,7 @@ export default function ChatPanel({
          * — spinner up, work already done.
          */
         const settled =
-          (await getTakSessionStore().archiveRootState(topicId, visibilityRef.current)) ?? state;
+          (await getTakSessionStore().archiveRootState(topicId, tierRef.current)) ?? state;
         if (alive) setRootState(settled);
         return settled === 'verified';
       } catch {
@@ -2608,7 +2664,9 @@ export default function ChatPanel({
       }
       // `kind` decides the tier alongside visibility: a DM carries whatever
       // visibility its row happens to have, and the banner must not read it.
-      setIsDm((topicMeta?.topic?.kind ?? topicMeta?.kind) === 'dm');
+      const dm = (topicMeta?.topic?.kind ?? topicMeta?.kind) === 'dm';
+      setIsDm(dm);
+      tierRef.current = chatTierOf(visibilityRef.current, dm);
       roleRef.current = (topicMeta?.currentUserRole as string | null) ?? null;
       if (!mountedRef.current || !Array.isArray(data?.messages)) return;
       const raws = data.messages as RawChatMessage[];
@@ -2957,7 +3015,7 @@ export default function ChatPanel({
                   roomy={roomy}
                   own={isOwnMessage(msg, myUserId)}
                   topicId={topicId}
-                  visibility={visibility}
+                  tier={tier}
                 />
               );
             })
@@ -3003,7 +3061,10 @@ export default function ChatPanel({
       )}
       <div style={{
         display: 'flex',
-        alignItems: 'center',
+        // `flex-end`, not `center`: the composer is a textarea that grows with
+        // the message, and centred buttons would drift up its side as it does.
+        // Identical to `center` at the resting single-row height.
+        alignItems: 'flex-end',
         gap: 6,
         padding: roomy ? '12px 20px' : '8px 10px',
         ...measureStyle,
@@ -3045,11 +3106,22 @@ export default function ChatPanel({
             </svg>
           )}
         </button>
-        <input
+        {/* A TEXTAREA, not an `<input>`.
+            Shift+Enter was already excluded from the send path below, and it
+            still did nothing: `<input type="text">` cannot hold a newline at
+            all, so the browser had nothing to insert and the guard was
+            unreachable in practice. The element was the defect, not the
+            handler. `rows={1}` keeps the resting shape identical to the old
+            single-line pill; `autoGrow` gives the extra rows back as they are
+            typed. */}
+        <textarea
           ref={inputRef}
-          type="text"
+          rows={1}
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            autoGrow(e.target);
+          }}
           onKeyDown={handleKeyDown}
           onPaste={(e) => {
             // Pasted image from clipboard → upload directly.
@@ -3081,6 +3153,18 @@ export default function ChatPanel({
             boxSizing: 'border-box',
             opacity: connected ? 1 : 0.5,
             minHeight: 'var(--touch-target-min)',
+            // The three that a textarea needs and an <input> never did:
+            //   • the drag handle a textarea draws by default is a second,
+            //     worse way to resize something that already sizes itself;
+            //   • the extra rows are given by `autoGrow`, and past the
+            //     ceiling the box scrolls rather than growing further;
+            //   • `font: inherit` — a bare textarea falls back to the
+            //     browser's monospace default, which the <input> did not.
+            resize: 'none',
+            overflowY: 'auto',
+            maxHeight: COMPOSER_MAX_HEIGHT,
+            fontFamily: 'inherit',
+            lineHeight: 1.4,
           }}
         />
         {/* Icon button, not a text button: "Send"/"보내기"/"Enviar" each take a

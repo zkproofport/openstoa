@@ -87,6 +87,19 @@ export default defineConfig({
       'react-native-vector-icons/MaterialIcons': path.join(HARNESS, 'iconStub.tsx'),
       'react-native-vector-icons/Ionicons': path.join(HARNESS, 'iconStub.tsx'),
       'react-native-svg': path.join(HARNESS, 'nativeStubs.tsx'),
+      // Not installed anywhere this workspace's resolution can reach (only the
+      // HOST app has it) — see `harness/safeAreaStub.tsx` for why a stub, not
+      // a borrowed copy, is the right fix here.
+      'react-native-safe-area-context': path.join(HARNESS, 'safeAreaStub.tsx'),
+      // Host-only install as well, and worse: the real one runs its work in a
+      // Reanimated worklet off a native keyboard observer. See the stub's
+      // header for what it can and cannot be asked to prove.
+      'react-native-keyboard-controller': path.join(HARNESS, 'keyboardControllerStub.tsx'),
+      // Installed in the HOST app only, same as the safe-area stub above. The
+      // stub keeps its props so a test can inspect what `PostContent` handed
+      // the renderer — read `harness/renderHtmlStub.tsx` for what that does
+      // and, more importantly, does not prove.
+      'react-native-render-html': path.join(HARNESS, 'renderHtmlStub.tsx'),
       'react-native': path.join(HARNESS, 'reactNative.tsx'),
       // Pinned by full specifier because that is exactly how zustand imports
       // them; a prefix alias does not match and the duplicate React returns.

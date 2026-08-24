@@ -68,8 +68,8 @@ let pushSeal: 'ok' | 'null' | 'throw';
 const takStore = {
   backfill: vi.fn(async () => [] as { messageId: string; plaintext: string }[]),
   myDeviceId: vi.fn(async () => 'device-1'),
-  distributePublicRoot: vi.fn(async () => 0),
-  distributePublicRootWhenGroupChanged: vi.fn(async () => 0),
+  distributeRoot: vi.fn(async () => 0),
+  distributeRootWhenGroupChanged: vi.fn(async () => 0),
   grantPrivateHistory: vi.fn(async () => {}),
   sealForPush: vi.fn(async (_t: string, body: string) => {
     if (pushSeal === 'throw') throw new Error('no root verified');

@@ -14,7 +14,6 @@ import {
   Share,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
@@ -22,6 +21,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+// NOT react-native's KeyboardAvoidingView — see the `automaticOffset` note at
+// the render root for what that one measures and why it cannot be right here.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
 // expo-image-picker is a native module — a top-level import instantiates
 // its native bridge at module-load time, which crashes ChatRoomScreen with
@@ -83,7 +85,7 @@ import {
 } from '../../lib/chatMedia';
 import { displayNickname } from '../../lib/defaultNickname';
 import { MessageFailedControls } from '../../components/MessageFailedControls';
-import { chatTierOf } from '../../lib/chatTierPolicy';
+import { chatTierOf, usesTopicRootKey, type ChatTier } from '../../lib/chatTierPolicy';
 import { chatClaimKey, TIER_CLAIM_VISIBLE_MS } from '../../lib/chatTierExplainer';
 import { WaitingStatus } from '../../components/WaitingStatus';
 import { buildTiersUrl } from '../../lib/docsLink';
@@ -719,6 +721,15 @@ export function ChatRoomScreen() {
   // current rows once and must not re-run as messages arrive.
   const allMessagesRef = useRef<LocalMessage[]>([]);
   const visibilityRef = useRef<Visibility>('public');
+  /*
+   * The tier, for the CRYPTO. Not the same question as the topic's visibility,
+   * though it used to be answered with it: a DM row carries
+   * `visibility: 'secret'`, so passing the visibility to the TAK layer asked for
+   * per-epoch keys on a tier `chatTierPolicy` declares topic-root, and a DM's
+   * key never left the device that minted it. `kind` comes from the route, so
+   * this is right on the first frame and only narrows when the lookup lands.
+   */
+  const tierRef = useRef<ChatTier>(chatTierOf(undefined, kind === 'dm'));
   // Same value as the ref, as state: an attachment row decrypts in an effect,
   // so the tier has to reach it as a PROP that changes when the lookup lands.
   const [visibility, setVisibility] = useState<Visibility>('public');
@@ -943,7 +954,8 @@ export function ChatRoomScreen() {
   // leaves so later joiners can read history. All best-effort — never blocks chat.
   const provisionArchiveAccess = useCallback(async () => {
     try {
-      if (visibilityRef.current === 'public') {
+      const currentTier = tierRef.current;
+      if (currentTier === 'public') {
         const deviceId = await tak.myDeviceId(topicId);
         // Only a device that HOLDS the root may take the role, because the
         // holder is who everyone else receives the root from. A device still
@@ -965,11 +977,19 @@ export function ChatRoomScreen() {
         // that is what left a device that joined a minute late with no root at
         // all. Serving is safe from any holder of a verified root: a recipient
         // rejects any bundle whose fingerprint is not the topic's.
-        await tak.distributePublicRootWhenGroupChanged(topicId);
-      } else if (visibilityRef.current === 'private') {
+        await tak.distributeRootWhenGroupChanged(topicId, currentTier);
+      } else if (usesTopicRootKey(currentTier)) {
+        /*
+         * A DM. Same delivery as public — the root wrapped to every member leaf
+         * — minus the holder lease, which is a public-tier mechanism: a DM has
+         * two participants and nobody to elect. This is the ONLY way a DM's key
+         * travels, because the server is not allowed to hold it.
+         */
+        await tak.distributeRootWhenGroupChanged(topicId, currentTier);
+      } else if (currentTier === 'private') {
         // SI-6b: explicit per-leaf grant of the epochs we hold; no custodian.
         await tak.grantPrivateHistory(topicId);
-      } else if (visibilityRef.current === 'secret' && roleRef.current === 'owner') {
+      } else if (currentTier === 'secret' && roleRef.current === 'owner') {
         // secret: no auto-grant by default — only the owner shares history.
         await tak.grantPrivateHistory(topicId);
       }
@@ -988,11 +1008,12 @@ export function ChatRoomScreen() {
           visibilityRef.current = v;
           setVisibility(v);
         }
+        tierRef.current = chatTierOf(visibilityRef.current, kind === 'dm');
         roleRef.current = tj?.currentUserRole ?? null;
       } catch {}
       let history: Array<{ messageId: string; plaintext: string }> = [];
       try {
-        history = await tak.backfill(topicId, visibilityRef.current);
+        history = await tak.backfill(topicId, tierRef.current);
         if (!cancelled && history.length) applyBackfill(history);
       } catch {}
       if (!cancelled) await provisionArchiveAccess();
@@ -1037,14 +1058,14 @@ export function ChatRoomScreen() {
             .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
           ...history,
         ];
-        void tak.backfillMissingArchive(topicId, visibilityRef.current, readable).catch(() => {});
+        void tak.backfillMissingArchive(topicId, tierRef.current, readable).catch(() => {});
       }
       // Mirror this topic's TAK into the shared Keychain (design §13.6 A) AFTER
       // provisioning, so a device that only ever READS the topic still holds the
       // key its notification extension needs — the send path alone would leave
       // pure readers with no preview. Best-effort; iOS-only.
       if (!cancelled) {
-        const ref = await tak.takForPush(topicId, visibilityRef.current);
+        const ref = await tak.takForPush(topicId, tierRef.current);
         if (ref) void mirrorTakToSharedKeychain(topicId, ref.takVersion, ref.takB64, host).catch(() => {});
         /*
          * The key alone previews a MESSAGE. An ATTACHMENT does not fit in a
@@ -1099,7 +1120,7 @@ export function ChatRoomScreen() {
         // cache and a bundle arriving moments after this device joined went
         // unseen until the room was closed and reopened.
         tak.forgetUnsettledRoot(topicId);
-        const state = await tak.archiveRootState(topicId, visibilityRef.current);
+        const state = await tak.archiveRootState(topicId, tierRef.current);
         // null = a scoped tier with no topic-wide root, so there is nothing to
         // wait for and nothing to decrypt from an archive.
         if (state === null) {
@@ -1111,7 +1132,7 @@ export function ChatRoomScreen() {
         // finally open the history — so the spinner ended over a room still
         // showing placeholders, and nothing decrypted until the user left the
         // room and came back.
-        const history = await tak.backfill(topicId, visibilityRef.current);
+        const history = await tak.backfill(topicId, tierRef.current);
         if (alive && history.length) {
           setRecovered((prev) => {
             const next = { ...prev };
@@ -1129,7 +1150,7 @@ export function ChatRoomScreen() {
          * so ('waiting'), leave the spinner up, and schedule another tick. The
          * work had already succeeded; only the answer was stale.
          */
-        const settled = (await tak.archiveRootState(topicId, visibilityRef.current)) ?? state;
+        const settled = (await tak.archiveRootState(topicId, tierRef.current)) ?? state;
         /*
          * Every tick, to the server sink — this path has now been diagnosed
          * three times from screenshots, and a screenshot cannot say whether the
@@ -1204,22 +1225,27 @@ export function ChatRoomScreen() {
     let timer: ReturnType<typeof setTimeout>;
 
     const give = async () => {
-      const visibility = visibilityRef.current;
-      if (kind === 'dm') return;
-      if (visibility === 'public') {
-        await tak.distributePublicRootWhenGroupChanged(topicId);
+      const currentTier = tierRef.current;
+      /*
+       * The DM early return that used to be here is why this ticker never
+       * unlocked a DM: it is the retry that covers a peer device joining while
+       * this one is on screen, and DMs were excluded from it on the belief that
+       * they needed no delivery at all.
+       */
+      if (usesTopicRootKey(currentTier)) {
+        await tak.distributeRootWhenGroupChanged(topicId, currentTier);
         return;
       }
       // Same rule the one-shot on room open uses: private grants from any
       // member, secret only from the owner.
-      if (visibility === 'private' || roleRef.current === 'owner') {
+      if (currentTier === 'private' || roleRef.current === 'owner') {
         await tak.grantPrivateHistory(topicId);
       }
     };
 
     const take = async () => {
       if (!lockedRef.current) return;
-      const history = await tak.backfill(topicId, visibilityRef.current);
+      const history = await tak.backfill(topicId, tierRef.current);
       if (!alive || history.length === 0) return;
       applyBackfill(history);
     };
@@ -1448,7 +1474,7 @@ export function ChatRoomScreen() {
   // Entirely best-effort: any failure just sends without it.
   const buildPushArchive = useCallback(async (text: string) => {
     if (!topicId) return undefined;
-    const seal = await tak.sealForPush(topicId, text, visibilityRef.current).catch(() => null);
+    const seal = await tak.sealForPush(topicId, text, tierRef.current).catch(() => null);
     if (!seal) return undefined;
     void mirrorTakToSharedKeychain(topicId, seal.takVersion, seal.takB64, host).catch(() => {});
     return { ct: seal.ct, takVersion: seal.takVersion };
@@ -1502,7 +1528,7 @@ export function ChatRoomScreen() {
         // Cache own plaintext so it survives a restart (sender can't self-decrypt).
         void mls.cachePlaintext(topicId, res.message.id, text);
         // Re-encrypt for the archive so later members can read it (Phase 3).
-        void tak.archiveOnSend(topicId, res.message.id, text, visibilityRef.current).catch(() => {});
+        void tak.archiveOnSend(topicId, res.message.id, text, tierRef.current).catch(() => {});
         // Only NOW is the object referenced by a real message, so only now may
         // the unclaimed collector leave it alone.
         if (media) void client.claimChatMedia(topicId, media.key).catch(() => {});
@@ -1637,7 +1663,7 @@ export function ChatRoomScreen() {
       await sendEncryptedChatMedia(
         { bytes, mime },
         {
-          seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, visibilityRef.current),
+          seal: (mediaId, plain) => tak.sealMedia(topicId, mediaId, plain, tierRef.current),
           upload: (ciphertext, mediaId) => client.uploadChatMedia(topicId, mediaId, ciphertext),
           send: async (body) => {
             const sealed = await mls.seal(topicId, body);
@@ -1658,7 +1684,7 @@ export function ChatRoomScreen() {
             void mls.cachePlaintext(topicId, res.message.id, body);
             // Re-encrypt the ENVELOPE for the archive so later members can read
             // it (Phase 3) — the bytes it points at use the same key.
-            void tak.archiveOnSend(topicId, res.message.id, body, visibilityRef.current).catch(() => {});
+            void tak.archiveOnSend(topicId, res.message.id, body, tierRef.current).catch(() => {});
           },
           discard: (key) => client.deleteChatMedia(topicId, key),
           claim: (key) => client.claimChatMedia(topicId, key),
@@ -1847,10 +1873,38 @@ export function ChatRoomScreen() {
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      // KAV measures its OWN frame against the keyboard. The screen is
-      // mounted under a stack header but the KAV starts BELOW it, so we
-      // don't add a 88-px header offset here — doing so leaves an
-      // 88-px gap above the keyboard (the bug user saw).
+      /*
+       * `automaticOffset`, NOT a hand-tuned `keyboardVerticalOffset`.
+       *
+       * Every avoiding-view of this shape compares the view's own frame
+       * against the keyboard's frame — and those are two different
+       * coordinate spaces. The frame comes from `onLayout`, which reports a
+       * position relative to the PARENT; the keyboard reports a position in
+       * the window. `keyboardVerticalOffset` exists purely to bridge that
+       * gap by hand ("distance between the top of the user screen and the
+       * React Native view"), which means the number is only ever right for
+       * one nesting. This screen sits under the mini-app's JS header, inside
+       * the mini-app tab navigator, inside the HOST tab navigator — and the
+       * number has now been reported wrong in both directions: 88 was removed
+       * in e537932 for leaving a gap above the keyboard, and the 0 that
+       * replaced it hid the composer behind the keyboard entirely, which is
+       * the bug this replaces. Nobody has been able to derive the right
+       * constant from the source twice running, which is the argument for not
+       * having one.
+       *
+       * `automaticOffset` asks the native side for the view's true position
+       * in the window (`viewPositionInWindow`), so the padding is the ACTUAL
+       * overlap with the keyboard whatever the ancestry, and nobody has to
+       * keep a header height in sync here. Same package, same provider
+       * (mounted at the host root in proofport-app/App.tsx) that
+       * PostDetailScreen and PostCreateScreen already dock their composers
+       * with.
+       *
+       * Android is deliberately untouched: `behavior` stays undefined there
+       * because the activity is `adjustResize`, which already moves the
+       * window, and adding padding on top would double-count.
+       */
+      automaticOffset
       keyboardVerticalOffset={0}
     >
       {/* What this room is, said in the room. The mini-app had no such line at
@@ -1951,7 +2005,7 @@ export function ChatRoomScreen() {
               onAuthorPress={setProfileTarget}
               onLongPress={(text) => setActionTarget(copyTargets(text))}
               topicId={topicId}
-              visibility={visibility}
+              tier={tier}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -2009,8 +2063,13 @@ export function ChatRoomScreen() {
           // which drops the keyboard — and messages come in bursts of two or
           // three, so the keyboard has to survive a send.
           multiline
+          // Return inserts a newline; the Send button is the only way to send.
+          // `default` is the honest return key for that — `"send"` would label
+          // a key that does not send. There is deliberately no
+          // `onSubmitEditing`: a `multiline` TextInput never raises it on iOS,
+          // and `blurOnSubmit={false}` suppresses it on Android too, so wiring
+          // `send` there would be a line that looks live and is not.
           returnKeyType="default"
-          onSubmitEditing={send}
           blurOnSubmit={false}
         />
         <TouchableOpacity
@@ -2064,8 +2123,9 @@ interface RowProps {
   onAuthorPress: (target: PeerProfileTarget) => void;
   /** The room this row belongs to — an encrypted attachment is fetched per topic. */
   topicId: string;
-  /** Tier, which selects the TAK an attachment was sealed under. */
-  visibility: Visibility;
+  /** Tier, which selects the TAK an attachment was sealed under. NOT the topic's
+   *  visibility: a DM row says `'secret'` and its attachments use the DM root. */
+  tier: ChatTier;
   /** Long-press on the bubble — opens the copy sheet with the message as sent. */
   onLongPress: (text: string) => void;
   /** The room key has not reached this device YET — locked rows are loading,
@@ -2092,7 +2152,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
   });
 }
 
-function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, visibility }: RowProps) {
+function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, tier }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
 
   // System messages (join / leave only — every other type renders as a
@@ -2149,7 +2209,7 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
       onImagePress={onImagePress}
       onAuthorPress={onAuthorPress}
       topicId={topicId}
-      visibility={visibility}
+      tier={tier}
     />
   );
 }
@@ -2268,8 +2328,9 @@ interface MessageBodyProps {
   onAuthorPress: (target: PeerProfileTarget) => void;
   /** The room this row belongs to — an encrypted attachment is fetched per topic. */
   topicId: string;
-  /** Tier, which selects the TAK an attachment was sealed under. */
-  visibility: Visibility;
+  /** Tier, which selects the TAK an attachment was sealed under. NOT the topic's
+   *  visibility: a DM row says `'secret'` and its attachments use the DM root. */
+  tier: ChatTier;
   /** The room key has not reached this device YET — see `syncing` in the screen. */
   syncing?: boolean;
   /** A key is still expected — see `awaitingRoomKey` in the screen. */
@@ -2301,7 +2362,7 @@ function isImageUrl(url: string): boolean {
 function EncryptedAttachment({
   envelope,
   topicId,
-  visibility,
+  tier,
   client,
   styles,
   isOwn,
@@ -2309,7 +2370,7 @@ function EncryptedAttachment({
 }: {
   envelope: ChatMediaEnvelope;
   topicId: string;
-  visibility: Visibility;
+  tier: ChatTier;
   client: ReturnType<typeof useOpenStoaClient>;
   styles: Styles;
   isOwn: boolean;
@@ -2357,7 +2418,7 @@ function EncryptedAttachment({
               spec: await client.chatMediaFetchSpec(topicId, objectKey),
               mediaId,
             }),
-          open: (id, version, ciphertext) => tak.openMedia(topicId, id, version, ciphertext, visibility),
+          open: (id, version, ciphertext) => tak.openMedia(topicId, id, version, ciphertext, tier),
         },
       );
       if (cancelled) return;
@@ -2382,7 +2443,7 @@ function EncryptedAttachment({
       discardDecrypted(fileRef.current);
       fileRef.current = null;
     };
-  }, [client, topicId, visibility, key, mediaId, takVersion, mime, size, attempt]);
+  }, [client, topicId, tier, key, mediaId, takVersion, mime, size, attempt]);
 
   /*
    * Hand the decrypted bytes to the share sheet.
@@ -2418,6 +2479,11 @@ function EncryptedAttachment({
       Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.saveUnavailable'));
     } else if (res.status !== 'shared') {
       Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.saveFailed'));
+    } else if (res.outcome === 'saved-to-photos') {
+      // Saving worked and said nothing, so the only way to find out was to open
+      // Photos. Confirmed for THIS outcome only: a dismissal or a hand-off to
+      // another app is not a save, and announcing one would be untrue.
+      Alert.alert(t('openstoa.chat.media.title'), t('openstoa.chat.media.saved'));
     }
   }, [mime, mediaId, t]);
 
@@ -2492,7 +2558,7 @@ function EncryptedAttachment({
   );
 }
 
-function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, visibility }: MessageBodyProps) {
+function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, tier }: MessageBodyProps) {
   // Its OWN hook. `t` from the screen component is not in scope here, and
   // reaching for it crashed every room that rendered a locked row.
   const { t } = useTranslation();
@@ -2719,7 +2785,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           <EncryptedAttachment
             envelope={mediaEnvelope}
             topicId={topicId}
-            visibility={visibility}
+            tier={tier}
             client={client}
             styles={styles}
             isOwn={isOwn}

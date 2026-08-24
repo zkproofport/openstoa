@@ -40,7 +40,7 @@ vi.mock('@/lib/mls/webTransport', () => ({
   getTakSessionStore: () => ({
     backfill: async () => [],
     myDeviceId: async () => 'web-test',
-    distributePublicRoot: async () => 0,
+    distributeRoot: async () => 0,
     grantPrivateHistory: async () => 0,
   }),
   getDeviceKeyState: async () => keyState.state,

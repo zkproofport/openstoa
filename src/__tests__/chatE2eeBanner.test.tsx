@@ -51,12 +51,12 @@ vi.mock('@/lib/mls/webTransport', () => ({
     backfill: async () => [],
     backfillMissingArchive: async () => {},
     myDeviceId: async () => 'device-1',
-    distributePublicRoot: async () => 0,
+    distributeRoot: async () => 0,
     // On a TIMER in the panel, so no test reached it until one started
     // advancing the clock. Absent from this double it threw "is not a
     // function" — a mock that is only complete for the tests that happen to
     // run synchronously.
-    distributePublicRootWhenGroupChanged: async () => 0,
+    distributeRootWhenGroupChanged: async () => 0,
     reconcileMembership: async () => {},
     archiveRootState: async () => null,
     forgetUnsettledRoot: () => {},
@@ -148,8 +148,10 @@ function sendButton(): HTMLButtonElement {
   return container.querySelector(`button[aria-label="${enLocale.chat.send}"]`) as HTMLButtonElement;
 }
 
-function composerInput(): HTMLInputElement {
-  return container.querySelector('input[type="text"]') as HTMLInputElement;
+// A textarea since Shift+Enter had to be able to insert a newline — see
+// chatComposerNewline.test.tsx. An <input> cannot hold one.
+function composerInput(): HTMLTextAreaElement {
+  return container.querySelector('textarea') as HTMLTextAreaElement;
 }
 
 /**
@@ -569,7 +571,7 @@ describe('composer', () => {
     expect(sendButton().disabled).toBe(true);
 
     const input = composerInput();
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
     await act(async () => {
       setter.call(input, 'hello');
       input.dispatchEvent(new Event('input', { bubbles: true }));

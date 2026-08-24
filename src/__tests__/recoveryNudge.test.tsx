@@ -279,8 +279,18 @@ describe('RecoveryNudge — the banner', () => {
     const web = readFileSync(path.join(root, 'src/components/CommunityLayout.tsx'), 'utf-8');
     expect(web).toContain('<RecoveryNudge isGuest={isGuest} sessionChecked={sessionChecked} />');
 
+    // The mini-app SPLIT the two jobs this component does on the web. Its
+    // banner is a Profile-tab prompt now (product decision — it nagged from
+    // first launch on every tab), so what has to be mounted app-wide there is
+    // the silent repair, and the assertion follows it: `RecoveryRepairProvider`
+    // wraps the whole tab navigator. Whether the banner itself is mounted, and
+    // nowhere but Profile, is asserted over the whole mini-app source tree in
+    // `packages/mobile/src/__tests__/recoveryNudgeProfileOnly.test.tsx` —
+    // a stronger check than this one, and it needs that package's harness.
     const mobile = readFileSync(path.join(root, 'packages/mobile/src/OpenStoaApp.tsx'), 'utf-8');
-    expect(mobile).toContain('<RecoveryNudge />');
+    expect(mobile.replace(/\s+/g, ' ')).toContain(
+      '<RecoveryRepairProvider> <OpenStoaTabNavigator /> </RecoveryRepairProvider>',
+    );
   });
 
   it('i18n: the banner renders in Korean, never a raw key', async () => {

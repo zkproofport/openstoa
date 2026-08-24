@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -140,11 +140,72 @@ function makeStyles(colors: ThemeColors) {
   });
 }
 
-// Simple unread heuristic: we track the last-seen message id per topic in
-// memory. A topic row is "unread" when the latest message id differs from
-// the last one the user opened. The badge shows total unread count
-// (capped at 99). This resets when the user navigates into the room.
+// Last-seen message id per topic. Set when the user opens a room; everything
+// newer than it is unread. IN MEMORY ONLY — a cold start has no marker for any
+// topic, so the first fetch after launch treats a room's whole recent window as
+// unread. That was already true of the previous boolean version (every room
+// showed a badge after a restart); making the badge a real number does not
+// change WHEN it appears, only what it says. Persisting this marker — or, better,
+// a server-side read cursor — is the remaining gap.
 const seenMessageIds = new Map<string, string>();
+
+// How many messages the list pulls per topic. The badge renders anything past
+// 99 as "99+", so 100 is exactly the window at which a wider fetch could no
+// longer change what the user sees. It is also the whole reason this is one
+// request and not two: the newest row doubles as the conversation preview.
+const UNREAD_SCAN_LIMIT = 100;
+
+// While the list is on screen, re-pull each room's window on this cadence.
+// Without it the only refresh was `useFocusEffect`, so a message arriving while
+// the user sat on the chat list did not move the badge until they navigated
+// away and back — the "badge shows up late" report. Matches the query's own
+// `staleTime` so a focus change and a tick never both fetch.
+const UNREAD_POLL_MS = 30_000;
+
+/**
+ * How often to re-pull, or `false` for not at all.
+ *
+ * Exported and pure so the GATING RULE can be tested directly. It cannot be
+ * tested through the rendered screen: react-query's `refetchInterval` does not
+ * fire under vitest's fake timers (verified with a standalone probe — a plain
+ * `useQuery` with `refetchInterval: 30_000` stays at one fetch across 62
+ * simulated seconds), so a render-level poll test would assert nothing and pass
+ * whether the poll worked or not. This pins the decision; that react-query then
+ * honours it is the library's contract, not this screen's.
+ */
+export function unreadPollInterval(screenFocused: boolean, isGuest: boolean): number | false {
+  // Guests fire no queries at all, and a blurred list stays mounted underneath
+  // an open chat room — polling every room's history from there is pure waste.
+  return screenFocused && !isGuest ? UNREAD_POLL_MS : false;
+}
+
+/**
+ * Unread messages in a topic's newest-first window.
+ *
+ * Walks from the newest row and stops at the first one the viewer has already
+ * accounted for:
+ *   - the last-seen id — they opened the room at that message;
+ *   - one of their OWN messages — sending is being in the room, so everything
+ *     under it has been seen. This is what keeps a room whose last three rows
+ *     are mine at zero rather than counting the older rows beneath them.
+ * System rows (join / leave) are skipped rather than counted: they are public
+ * furniture, not something to be unread about. They do not stop the walk either,
+ * so a join notice between two new messages cannot hide the older one.
+ */
+export function countUnread(
+  messages: ChatMessage[],
+  lastSeenId: string | undefined,
+  viewerId: string | null,
+): number {
+  let unread = 0;
+  for (const message of messages) {
+    if (message.id === lastSeenId) break;
+    if (viewerId != null && message.userId === viewerId) break;
+    if (message.type !== 'message') continue;
+    unread += 1;
+  }
+  return unread;
+}
 
 export function ChatListScreen() {
   const { t } = useTranslation();
@@ -165,10 +226,16 @@ export function ChatListScreen() {
 
   // Without view=all, /api/topics returns only joined topics for authenticated
   // users (verified via openstoa/src/app/api/topics/route.ts).
+  // Drives the poll below. `useFocusEffect` rather than `useIsFocused` because
+  // this screen already depends on it (and it stays mounted underneath an open
+  // chat room, where polling every room's history would be pure waste).
+  const [screenFocused, setScreenFocused] = useState(false);
+
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['my-topics'],
     queryFn: () => client.get<{ topics: Topic[] } | Topic[]>('/api/topics'),
     enabled: !isGuest,
+    refetchInterval: unreadPollInterval(screenFocused, isGuest),
   });
 
   const topics: Topic[] = Array.isArray(data) ? data : (data?.topics ?? []);
@@ -195,15 +262,21 @@ export function ChatListScreen() {
     navigation.navigate('ChatRoom', { topicId, topicTitle, kind: 'topic' });
   }, [pendingChatTopicId, isGuest, navigation]);
 
-  // Fetch the latest chat message per topic in parallel. Cached for 30s so
+  // Fetch each topic's newest messages in parallel. `UNREAD_SCAN_LIMIT`, not 1:
+  // the row needs both the newest message (preview) and enough of the window
+  // behind it to COUNT the unread ones — with `limit=1` there was nothing to
+  // count, which is why the badge was hard-wired to "1". Cached for 30s so
   // pull-to-refresh on the topics list won't hammer chat history.
   const chatQueries = useQueries({
     queries: topics.map((topic) => ({
       queryKey: ['chat-last', topic.id],
       queryFn: () =>
-        client.get<ChatHistoryResponse>(`/api/topics/${topic.id}/chat?limit=1`),
+        client.get<ChatHistoryResponse>(
+          `/api/topics/${topic.id}/chat?limit=${UNREAD_SCAN_LIMIT}`,
+        ),
       enabled: !isGuest && !!topic.id,
       staleTime: 30_000,
+      refetchInterval: unreadPollInterval(screenFocused, isGuest),
     })),
   });
 
@@ -226,9 +299,13 @@ export function ChatListScreen() {
   // refetch its latest message (and the topic list itself, for new rooms).
   useFocusEffect(
     useCallback(() => {
-      if (isGuest) return;
-      queryClient.invalidateQueries({ queryKey: ['chat-last'] });
-      queryClient.invalidateQueries({ queryKey: ['my-topics'] });
+      setScreenFocused(true);
+      if (!isGuest) {
+        queryClient.invalidateQueries({ queryKey: ['chat-last'] });
+        queryClient.invalidateQueries({ queryKey: ['my-topics'] });
+      }
+      // Stop the poll on blur — the screen stays mounted under an open room.
+      return () => setScreenFocused(false);
     }, [queryClient, isGuest]),
   );
 
@@ -276,22 +353,17 @@ export function ChatListScreen() {
       renderItem={({ item }) => {
         const originalIndex = topics.indexOf(item);
         const chatQuery = chatQueries[originalIndex];
-        const lastMessage = chatQuery?.data?.messages?.[0];
+        const messages = chatQuery?.data?.messages ?? [];
+        const lastMessage = messages[0];
         const chatLoading = chatQuery?.isLoading ?? false;
 
-        // Unread: message present, different from last-seen id, AND not
-        // authored by me. A message I just sent is the latest row but must
-        // never count as "unread" — that produced the bogus "1" badge on a
-        // topic where my own message was the most recent one.
+        // A real count over the fetched window, not `hasUnread ? 1 : 0`. See
+        // `countUnread` for the walk, including why a message I sent myself
+        // ends it — that rule is what kept the bogus "1" off a topic whose
+        // newest row is mine, and it is preserved here.
         const lastSeenId = seenMessageIds.get(item.id);
-        const hasUnread =
-          lastMessage != null &&
-          lastMessage.type === 'message' &&
-          lastMessage.id !== lastSeenId &&
-          lastMessage.userId !== sessionUserId;
-        // We show badge "1" when unread — no per-topic count without
-        // a dedicated unread API; presence of any new message is enough.
-        const unreadCount = hasUnread ? 1 : 0;
+        const unreadCount = countUnread(messages, lastSeenId, sessionUserId);
+        const hasUnread = unreadCount > 0;
 
         return (
           <TouchableOpacity
