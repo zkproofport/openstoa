@@ -321,13 +321,42 @@ export function getPushProvider(): PushProvider | null {
  * A device whose `platform` is neither goes to Expo, because that is what
  * shipped and an unrecognised platform is not a reason to drop a notification.
  */
+/**
+ * Whether this is an Expo push token rather than a raw OS one.
+ *
+ * `ExponentPushToken[...]` is Expo's documented shape; `ExpoPushToken[...]` is
+ * the older spelling still handed out by some SDK versions. Both are matched
+ * because a device that registered under one and a server that only knows the
+ * other is the same silent mis-routing this exists to end.
+ */
+export function isExpoToken(token: string): boolean {
+  return /^Expo(nent)?PushToken\[/.test(token ?? '');
+}
+
 export class PlatformSplitProvider implements PushProvider {
   constructor(
     private readonly ios: PushProvider,
     private readonly android: PushProvider,
   ) {}
 
+  /**
+   * The TOKEN decides, and the platform only breaks the tie.
+   *
+   * An Expo token says so in its own text, and Expo is the only thing that can
+   * deliver it — FCM answers `INVALID_ARGUMENT` on `message.token` and always
+   * will. That combination is not hypothetical: the Android client asks for a
+   * raw FCM token and DELIBERATELY falls back to the Expo one when the device
+   * cannot produce it ("a push that arrives and cannot be dismissed is still
+   * better than no push", `pushRegistration.ts`). The fallback was invisible
+   * here, so a fallen-back device registered as `android`, went to FCM, and was
+   * refused on every send for as long as it stayed registered.
+   *
+   * Reading the token rather than adding a column is deliberate too: the shape
+   * IS the fact, it needs no migration, and it cannot drift out of sync with
+   * what the device actually holds.
+   */
   private pick(target: PushTarget): PushProvider {
+    if (isExpoToken(target.pushToken)) return this.ios;
     return target.platform === 'android' ? this.android : this.ios;
   }
 
