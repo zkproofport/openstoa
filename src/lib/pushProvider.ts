@@ -20,8 +20,10 @@ import type {
   PushTarget,
   DummyPushPayload,
   CiphertextPushPayload,
+  KeyNeededPushPayload,
 } from '@/lib/push';
 import { logger } from '@/lib/logger';
+import { getFcmProvider } from '@/lib/fcmProvider';
 
 const ROUTE = 'push-provider';
 
@@ -281,5 +283,49 @@ export function getPushProvider(): PushProvider | null {
   const disabled = process.env.PUSH_DISABLED;
   if (disabled === '1' || disabled === 'true') return null;
   if (!process.env.PUSH_MODE) return null;
-  return new ExpoPushProvider(process.env.EXPO_ACCESS_TOKEN);
+  const expo = new ExpoPushProvider(process.env.EXPO_ACCESS_TOKEN);
+  const fcm = getFcmProvider();
+  return fcm ? new PlatformSplitProvider(expo, fcm) : expo;
+}
+
+/**
+ * iOS through Expo, Android straight to FCM.
+ *
+ * Not a preference — a correctness split. Design §13.2.1 requires Android to
+ * receive a DATA message so the app handles it; through Expo's push service it
+ * receives a notification message instead and Firebase displays it before the
+ * app is asked. That kills the lock-screen preview (`OpenStoaMessagingService`
+ * never runs) and per-room dismissal (a Firebase-built notification carries
+ * none of the extras `expo-notifications` stamps).
+ *
+ * iOS is left alone: it works, Expo holds the APNs key, and it is the platform
+ * with nothing to gain from the move.
+ *
+ * A device whose `platform` is neither goes to Expo, because that is what
+ * shipped and an unrecognised platform is not a reason to drop a notification.
+ */
+export class PlatformSplitProvider implements PushProvider {
+  constructor(
+    private readonly ios: PushProvider,
+    private readonly android: PushProvider,
+  ) {}
+
+  private pick(target: PushTarget): PushProvider {
+    return target.platform === 'android' ? this.android : this.ios;
+  }
+
+  send(target: PushTarget, payload: DummyPushPayload | KeyNeededPushPayload): Promise<void> {
+    return this.pick(target).send(target, payload);
+  }
+
+  /**
+   * Optional on the interface, so a provider that does not implement it must
+   * not become a crash — the Phase A path still delivers.
+   */
+  sendCiphertext(target: PushTarget, payload: CiphertextPushPayload): Promise<void> {
+    const provider = this.pick(target);
+    return provider.sendCiphertext
+      ? provider.sendCiphertext(target, payload)
+      : Promise.resolve();
+  }
 }
