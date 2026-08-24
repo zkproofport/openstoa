@@ -66,9 +66,21 @@ export interface AttachmentFs {
   download(url: string, name: string, headers: Record<string, string>): Promise<AttachmentFile>;
 }
 
-/** The slice of React Native's `Share` this needs. */
+/**
+ * The slice of React Native's `Share` this needs.
+ *
+ * The RESULT is now read, where it used to be discarded. React Native resolves
+ * `{ action: 'sharedAction' | 'dismissedAction', activityType?: string | null }`
+ * — a dismissed sheet RESOLVES rather than rejecting, and on iOS
+ * `RCTActionSheetManager`'s `completionWithItemsHandler` passes the chosen
+ * activity's identifier straight through. That is the only way this code can
+ * tell "they saved it" from "they closed the sheet", and telling them apart is
+ * what the save confirmation is built on.
+ */
 export interface AttachmentShare {
-  share(content: { url: string; title?: string }): Promise<unknown>;
+  share(content: { url: string; title?: string }): Promise<
+    { action?: string; activityType?: string | null } | null | undefined
+  >;
 }
 
 export interface SaveAttachmentDeps {
@@ -81,15 +93,68 @@ export interface SaveAttachmentDeps {
   mediaId: string;
 }
 
+/**
+ * What the person actually did with the sheet.
+ *
+ * Carried alongside `status: 'shared'` rather than replacing it, so a caller
+ * that only ever asked "did the sheet open" keeps working untouched.
+ *
+ *  - `saved-to-photos` — they chose the photo-library activity. The ONLY
+ *    outcome a "Saved" confirmation may be shown for, because it is the only
+ *    one where saving is what happened.
+ *  - `handed-off`      — some other activity completed (AirDrop, Mail, Files,
+ *    Copy). Those destinations report themselves; claiming a save here would
+ *    be a lie. Also the Android result for everything, because React Native
+ *    resolves `sharedAction` unconditionally there.
+ *  - `dismissed`       — the sheet was closed without choosing. Nothing
+ *    happened, and nothing should be announced.
+ *  - `unknown`         — a Share implementation that told us nothing. Treated
+ *    as "say nothing" rather than assumed successful.
+ */
+export type SaveAttachmentOutcome =
+  | 'saved-to-photos'
+  | 'handed-off'
+  | 'dismissed'
+  | 'unknown';
+
 export type SaveAttachmentResult =
-  /** The share sheet was opened. Whether they saved is theirs to decide. */
-  | { status: 'shared' }
+  /** The share sheet was opened. `outcome` says what came of it. */
+  | { status: 'shared'; outcome: SaveAttachmentOutcome; activityType?: string | null }
   /** No filesystem module in this host build — nothing to hand the sheet. */
   | { status: 'unavailable' }
   /** Writing the temporary copy failed, so there was nothing to share. */
   | { status: 'write-failed' }
   /** The sheet itself refused. Dismissing it is NOT this. */
   | { status: 'share-failed' };
+
+/**
+ * Whether an iOS activity identifier is the photo-library one.
+ *
+ * Matched as a case-insensitive SUBSTRING rather than against a hardcoded
+ * constant. `UIActivity.ActivityType.saveToCameraRoll` is public API and its
+ * documented name is what this looks for; its RAW string value is not printed
+ * in Apple's documentation, and hardcoding a value nobody verified would fail
+ * closed in the one direction that matters (no confirmation for a real save)
+ * while looking authoritative. A non-match degrades to `handed-off`, i.e. to
+ * silence — this can never announce a save that did not happen.
+ */
+export function isSaveToPhotosActivity(activityType: unknown): boolean {
+  return (
+    typeof activityType === 'string' &&
+    activityType.toLowerCase().includes('savetocameraroll')
+  );
+}
+
+/** Classify what React Native handed back from the sheet. */
+function outcomeOf(result: {
+  action?: string;
+  activityType?: string | null;
+} | null | undefined): SaveAttachmentOutcome {
+  if (!result || typeof result !== 'object') return 'unknown';
+  if (result.action === 'dismissedAction') return 'dismissed';
+  if (result.action !== 'sharedAction') return 'unknown';
+  return isSaveToPhotosActivity(result.activityType) ? 'saved-to-photos' : 'handed-off';
+}
 
 /**
  * Write the decrypted bytes to a temporary file and offer them to the share
@@ -111,6 +176,11 @@ export type SaveAttachmentResult =
  * nothing — and that failure reads as "saving is broken on iOS" rather than as
  * the lifecycle mistake it is. A failed delete is ignored; a stale file in a
  * cache directory is the operating system's problem.
+ *
+ * The RESULT of the sheet is now read and reported, because it used to be
+ * thrown away: saving worked and the app said nothing, so the only way to find
+ * out whether a picture had been kept was to go and look in Photos. See
+ * `SaveAttachmentOutcome`.
  */
 export async function saveAttachment(deps: SaveAttachmentDeps): Promise<SaveAttachmentResult> {
   const { fs, share, bytes, mime, mediaId } = deps;
@@ -125,8 +195,12 @@ export async function saveAttachment(deps: SaveAttachmentDeps): Promise<SaveAtta
   }
 
   try {
-    await share.share({ url: file.uri });
-    return { status: 'shared' };
+    const result = await share.share({ url: file.uri });
+    return {
+      status: 'shared',
+      outcome: outcomeOf(result),
+      activityType: result?.activityType ?? null,
+    };
   } catch {
     /*
      * A DISMISSED sheet does not land here — React Native resolves that rather

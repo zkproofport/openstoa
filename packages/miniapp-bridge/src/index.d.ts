@@ -85,6 +85,13 @@ export interface HostApi {
   /** Optional subscription to notifications DELIVERED but not tapped. Used for `key-needed`; never navigates. Absent → unavailable. */
   onPushNotificationReceived?(listener: (tap: PushNotificationTap) => void): () => void;
   /**
+   * Optional removal of the notifications one conversation already delivered,
+   * called when the user opens it. Scoped to that conversation and never the
+   * whole tray — room B's banner must survive the user opening room A. Never
+   * rejects. Absent → this host cannot clear notifications.
+   */
+  clearTopicNotifications?(topicId: string): Promise<void>;
+  /**
    * Optional mirror of a Topic Archive Key into host storage the background push
    * handler can read (design §13.6 strategy A). `takB64` is base64 of exactly 32
    * raw bytes and must never be logged. Absent → no background preview on this host.

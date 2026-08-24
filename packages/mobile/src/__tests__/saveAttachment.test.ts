@@ -28,12 +28,19 @@
  *   hostile         → a mime from inside the sealed envelope cannot steer the
  *                     filename that gets written
  *   boundary        → an empty payload round-trips rather than throwing
+ *   contract        → the sheet's RESULT is read rather than discarded: a save
+ *                     to the photo library is told apart from a dismissal and
+ *                     from a hand-off to another app, so a confirmation can be
+ *                     shown for exactly the first
+ *   external        → a Share that resolves nothing, or an unrecognised action,
+ *                     reports `unknown` rather than being assumed successful
  *   authz / UTF-8 / very large / race → N/A: the bytes are already decrypted on
  *                     this device, and the only string reaching a path is built
  *                     by `chatMediaFilename`, which has its own suite.
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
+  isSaveToPhotosActivity,
   saveAttachment,
   type AttachmentFile,
   type AttachmentFs,
@@ -43,8 +50,23 @@ import { chatMediaCacheFilename, chatMediaFilename } from '../lib/chatMedia';
 
 const MEDIA_ID = 'a'.repeat(32);
 
+/** What React Native resolves for a completed activity it cannot name (Android,
+ *  and any iOS activity that is not the photo library). */
+const HANDED_OFF = { action: 'sharedAction', activityType: null } as const;
+/** iOS, "Save Image" chosen. The identifier shape `UIActivity.ActivityType.saveToCameraRoll` produces. */
+const SAVED_TO_PHOTOS = {
+  action: 'sharedAction',
+  activityType: 'com.apple.UIKit.activity.SaveToCameraRoll',
+} as const;
+/** iOS, sheet closed without choosing. Note it RESOLVES — it does not reject. */
+const DISMISSED = { action: 'dismissedAction', activityType: null } as const;
+
+type ShareResult = { action?: string; activityType?: string | null } | null | undefined;
+
 /** Records the order of every native call, which is what the ordering test reads. */
-function harness(over: { write?: () => void; del?: () => void; share?: () => Promise<unknown> } = {}) {
+function harness(
+  over: { write?: () => void; del?: () => void; share?: () => Promise<ShareResult> } = {},
+) {
   const calls: string[] = [];
   let written: { name: string; content: Uint8Array; encoding?: string } | null = null;
   let lastName = '';
@@ -90,10 +112,17 @@ function harness(over: { write?: () => void; del?: () => void; share?: () => Pro
   };
 
   const share: AttachmentShare = {
-    share: vi.fn(async (c: { url: string }) => {
+    share: vi.fn(async (c: { url: string }): Promise<ShareResult> => {
       calls.push(`share:${c.url}`);
       if (over.share) return over.share();
-      return undefined;
+      /*
+       * A mock that models the real thing. React Native's `Share.share`
+       * RESOLVES an object describing what happened; it does not resolve
+       * undefined. The default here is the least informative REAL answer —
+       * a completed activity with no identifier — so nothing in this suite
+       * accidentally depends on a shape the platform never produces.
+       */
+      return HANDED_OFF;
     }),
   };
 
@@ -112,7 +141,7 @@ describe('saveAttachment', () => {
       mediaId: MEDIA_ID,
     });
 
-    expect(res).toEqual({ status: 'shared' });
+    expect(res).toEqual({ status: 'shared', outcome: 'handed-off', activityType: null });
     expect(h.fs.cacheFile).toHaveBeenCalledWith(`openstoa-${MEDIA_ID}.png`);
     expect(h.written()).toEqual({
       name: `openstoa-${MEDIA_ID}.png`,
@@ -259,7 +288,7 @@ describe('saveAttachment', () => {
         mime: 'image/png',
         mediaId: MEDIA_ID,
       }),
-    ).resolves.toEqual({ status: 'shared' });
+    ).resolves.toEqual({ status: 'shared', outcome: 'handed-off', activityType: null });
   });
 
   it('HOSTILE: a mime from the sealed envelope cannot steer the filename', async () => {
@@ -292,6 +321,118 @@ describe('saveAttachment', () => {
         mime: 'image/png',
         mediaId: MEDIA_ID,
       }),
-    ).resolves.toEqual({ status: 'shared' });
+    ).resolves.toEqual({ status: 'shared', outcome: 'handed-off', activityType: null });
+  });
+
+  /*
+   * The sheet's RESULT. It used to be discarded, which is the whole of the
+   * second defect: saving worked and the app said nothing, so the only way to
+   * learn whether a picture had been kept was to open Photos and look. What
+   * makes a confirmation possible at all is that a dismissed sheet RESOLVES
+   * (with `dismissedAction`) rather than rejecting — so "they closed it" is
+   * distinguishable from "they saved it", and the confirmation can be shown
+   * for exactly one of them.
+   */
+  describe('OUTCOME: what came of the sheet', () => {
+    async function outcomeFor(share: () => Promise<ShareResult>) {
+      const h = harness({ share });
+      const res = await saveAttachment({
+        fs: h.fs,
+        share: h.share,
+        bytes: new Uint8Array([1, 2, 3]),
+        mime: 'image/png',
+        mediaId: MEDIA_ID,
+      });
+      return res.status === 'shared' ? res.outcome : res.status;
+    }
+
+    it('reports a save to the photo library as such', async () => {
+      expect(await outcomeFor(async () => SAVED_TO_PHOTOS)).toBe('saved-to-photos');
+    });
+
+    it('does NOT report a save when the sheet was only dismissed', async () => {
+      // The case a naive "the promise resolved, so it worked" reading gets
+      // wrong, and the reason a confirmation could not simply be bolted on.
+      expect(await outcomeFor(async () => DISMISSED)).toBe('dismissed');
+    });
+
+    it('does NOT report a save for some other destination', async () => {
+      // AirDrop, Mail, Files, Copy. Those announce themselves; claiming the
+      // picture was saved to Photos would be untrue.
+      expect(
+        await outcomeFor(async () => ({
+          action: 'sharedAction',
+          activityType: 'com.apple.UIKit.activity.AirDrop',
+        })),
+      ).toBe('handed-off');
+    });
+
+    it('does NOT report a save on Android, where the platform cannot say', async () => {
+      // React Native resolves `sharedAction` unconditionally on Android, so a
+      // confirmation there would be right only half the time.
+      expect(await outcomeFor(async () => HANDED_OFF)).toBe('handed-off');
+    });
+
+    it('says `unknown` rather than assuming success for a Share that tells us nothing', async () => {
+      for (const nothing of [undefined, null, {}, { action: 'somethingElse' }]) {
+        expect(await outcomeFor(async () => nothing as ShareResult)).toBe('unknown');
+      }
+    });
+
+    it('recognises the activity identifier whatever its casing', async () => {
+      expect(
+        await outcomeFor(async () => ({
+          action: 'sharedAction',
+          activityType: 'COM.APPLE.UIKIT.ACTIVITY.SAVETOCAMERAROLL',
+        })),
+      ).toBe('saved-to-photos');
+    });
+
+    it('carries the activity identifier through for a caller that wants it', async () => {
+      const h = harness({ share: async () => SAVED_TO_PHOTOS });
+      const res = await saveAttachment({
+        fs: h.fs,
+        share: h.share,
+        bytes: new Uint8Array([1, 2, 3]),
+        mime: 'image/png',
+        mediaId: MEDIA_ID,
+      });
+      expect(res).toEqual({
+        status: 'shared',
+        outcome: 'saved-to-photos',
+        activityType: 'com.apple.UIKit.activity.SaveToCameraRoll',
+      });
+    });
+
+    it('still deletes the temporary copy on every outcome', async () => {
+      for (const result of [SAVED_TO_PHOTOS, DISMISSED, HANDED_OFF]) {
+        const h = harness({ share: async () => result });
+        await saveAttachment({
+          fs: h.fs,
+          share: h.share,
+          bytes: new Uint8Array([1, 2, 3]),
+          mime: 'image/png',
+          mediaId: MEDIA_ID,
+        });
+        expect(h.file.delete).toHaveBeenCalled();
+      }
+    });
+  });
+
+  describe('isSaveToPhotosActivity', () => {
+    it('refuses everything that is not the photo-library activity', () => {
+      for (const other of [
+        undefined,
+        null,
+        '',
+        42,
+        {},
+        'com.apple.UIKit.activity.AirDrop',
+        'com.apple.UIKit.activity.CopyToPasteboard',
+        'com.apple.UIKit.activity.SaveToFiles',
+      ]) {
+        expect(isSaveToPhotosActivity(other)).toBe(false);
+      }
+    });
   });
 });

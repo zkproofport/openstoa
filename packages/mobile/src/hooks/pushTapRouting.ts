@@ -43,6 +43,16 @@ const TOPIC_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Whether `value` is a topic id we are willing to act on. Shared with
+ * `../lib/chatNotifications`, which needs the same answer for a route param
+ * rather than for a push payload — same id, same set of things that must never
+ * be interpolated into a REST path or handed to the host as a match key.
+ */
+export function isTopicId(value: unknown): value is string {
+  return typeof value === 'string' && TOPIC_ID_RE.test(value.trim());
+}
+
+/**
  * Unwrap the Expo push envelope, mirroring `PushPayload.dataDictionary` in the
  * iOS NSE (`proofport-app/ios/OpenStoaNSE/PushPayload.swift`).
  *

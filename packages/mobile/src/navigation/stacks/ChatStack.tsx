@@ -8,8 +8,10 @@ import { ChatRoomScreen } from '../../screens/chat/ChatRoomScreen';
 import { DmListScreen } from '../../screens/chat/DmListScreen';
 import { NewConversationScreen } from '../../screens/chat/NewConversationScreen';
 import { InAppBrowserScreen } from '../../screens/common/InAppBrowserScreen';
+import { useHost } from '@openstoa/miniapp-bridge';
 import { useMiniAppStackScreenOptions } from '../shared';
 import { useThemeColors } from '../../theme/ThemeContext';
+import { enterChatRoom, leaveChatRoom } from '../../lib/chatNotifications';
 
 export type ChatStackParamList = {
   ChatList: undefined;
@@ -30,8 +32,34 @@ export function ChatStack() {
   const { t, i18n } = useTranslation();
   const screenOptions = useMiniAppStackScreenOptions();
   const { colors } = useThemeColors();
+  const host = useHost();
+  /*
+   * Notifications a conversation already delivered are cleared when the user
+   * opens it — see ../../lib/chatNotifications for why it is per conversation
+   * and never a whole-tray wipe.
+   *
+   * Wired HERE, on the navigator, rather than inside ChatRoomScreen: the
+   * screen is a large file with several owners, and the fact worth reacting to
+   * ("the ChatRoom route is now focused, for this topicId") is a navigation
+   * fact that the navigator already has in hand. `screenListeners` as a
+   * function receives the route, so `route.params.topicId` is available
+   * without the screen having to report it.
+   */
+  const screenListeners = React.useCallback(
+    ({ route }: { route: { name: string; params?: object } }) => ({
+      focus: () => {
+        if (route.name !== 'ChatRoom') return;
+        enterChatRoom(host, (route.params as { topicId?: unknown } | undefined)?.topicId);
+      },
+      blur: () => {
+        if (route.name !== 'ChatRoom') return;
+        leaveChatRoom((route.params as { topicId?: unknown } | undefined)?.topicId);
+      },
+    }),
+    [host],
+  );
   return (
-    <Stack.Navigator key={i18n.language} screenOptions={screenOptions}>
+    <Stack.Navigator key={i18n.language} screenOptions={screenOptions} screenListeners={screenListeners}>
       <Stack.Screen
         name="ChatList"
         component={ChatListScreen}

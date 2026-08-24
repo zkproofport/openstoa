@@ -227,6 +227,28 @@ export interface HostApi {
   ): () => void;
 
   /**
+   * Optional host-provided removal of the notifications a conversation has
+   * already delivered, called when the user opens that conversation.
+   *
+   * Nothing cleared them before: a chat push stayed in Notification Center
+   * until its own banner was tapped, so opening the app — or the very room the
+   * push announced — left the tray holding messages the user had already read.
+   *
+   * Scoped to ONE conversation, never the whole tray. A notification for room
+   * B is the user's only record that B has something waiting, and it must not
+   * disappear because they opened room A. This mirrors what Signal does
+   * (`cancelNotifications(threadId:)`, called from its conversation
+   * controller) and is the behaviour people expect from a messenger.
+   *
+   * The host matches on the `topicId` every OpenStoa push carries, so it works
+   * for topic rooms and DMs alike and does not depend on the iOS NSE having
+   * run. Never rejects — a host with no notification support, or a device that
+   * never granted permission, resolves as a no-op. Absent → this host cannot
+   * clear notifications and the mini-app simply skips it.
+   */
+  clearTopicNotifications?(topicId: string): Promise<void>;
+
+  /**
    * Optional host-provided mirror of a Topic Archive Key into wherever the
    * host's background push handler can read it (design §13.6 strategy A).
    *
