@@ -226,6 +226,18 @@ describe('EXTERNAL FAILURE and EMPTY', () => {
     else process.env.FCM_SERVICE_ACCOUNT = before;
   });
 
+  it('accepts the base64 form the deploy actually passes', () => {
+    // Raw JSON has spaces, and `gcloud run deploy --set-env-vars` split the
+    // value at the first one — failing the deploy and printing the private key
+    // into the CI log. Base64 contains nothing any shell treats specially.
+    const before = process.env.FCM_SERVICE_ACCOUNT;
+    const json = JSON.stringify({ client_email: 'e', private_key: 'k', project_id: 'p' });
+    process.env.FCM_SERVICE_ACCOUNT = Buffer.from(json).toString('base64');
+    expect(getFcmProvider()).not.toBeNull();
+    if (before === undefined) delete process.env.FCM_SERVICE_ACCOUNT;
+    else process.env.FCM_SERVICE_ACCOUNT = before;
+  });
+
   it('a complete credential yields a provider', () => {
     const before = process.env.FCM_SERVICE_ACCOUNT;
     process.env.FCM_SERVICE_ACCOUNT = JSON.stringify({

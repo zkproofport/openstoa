@@ -67,13 +67,26 @@ interface ServiceAccount {
 /**
  * Parse `FCM_SERVICE_ACCOUNT` once, and say plainly when it is unusable.
  *
+ * BASE64 IS THE EXPECTED FORM, and the reason is not neatness. The raw
+ * service-account JSON contains spaces and newlines, and the deploy passes env
+ * vars to `gcloud run deploy --set-env-vars`; the first space ended the value
+ * and gcloud read the rest of the private key as positional arguments, which
+ * failed the deploy AND printed the key into the CI log. That key has been
+ * revoked. Base64 has no character that any shell, delimiter or YAML layer
+ * treats specially, so the problem cannot recur.
+ *
+ * Raw JSON is still accepted, for a local `.env` where nothing re-quotes it.
+ *
  * No fallback and no default: a malformed credential must disable Android push
  * loudly rather than half-send. CLAUDE.md forbids the alternative.
  */
 function readServiceAccount(raw: string | undefined): ServiceAccount | null {
   if (!raw) return null;
+  const decoded = raw.trim().startsWith('{')
+    ? raw
+    : Buffer.from(raw, 'base64').toString('utf8');
   try {
-    const parsed = JSON.parse(raw) as Partial<ServiceAccount>;
+    const parsed = JSON.parse(decoded) as Partial<ServiceAccount>;
     if (!parsed.client_email || !parsed.private_key || !parsed.project_id) {
       logger.warn(ROUTE, 'service account missing required fields', {
         hasEmail: !!parsed.client_email,
