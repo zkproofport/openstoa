@@ -120,7 +120,28 @@ describe('DM — start / idempotency', () => {
     const body = await (await asUser(alice).get('/api/dm')).json();
     const row = body.dms.find((d: { topicId: string }) => d.topicId === dmTopicId);
 
-    expect(Object.keys(row).sort()).toEqual(['lastActivityAt', 'peer', 'topicId']);
+    /*
+     * An EXACT key set, still — that is the assertion, not a formality.
+     *
+     * SI-1 says a DM list row carries routing metadata and nothing a reader
+     * could mistake for content. A `toContain`-style check would pass while a
+     * body field sat beside the ones named here, which is precisely the thing
+     * this exists to catch. So the list grows only when a new field is judged
+     * to be metadata, and the judgement is written down.
+     *
+     * `lastReadAt` / `lastReadMessageId` / `unreadCount` arrived with the
+     * server-side read cursor (e3a0fb0), which did not update this list. All
+     * three are about WHERE the reader got to — an instant, a row id and a
+     * count — and none of them reveals what was said.
+     */
+    expect(Object.keys(row).sort()).toEqual([
+      'lastActivityAt',
+      'lastReadAt',
+      'lastReadMessageId',
+      'peer',
+      'topicId',
+      'unreadCount',
+    ]);
     expect(Object.keys(row.peer).sort()).toEqual(['nickname', 'profileImage', 'userId']);
     expect(JSON.stringify(body)).not.toMatch(/ciphertext|sealed|preview|plaintext/i);
   });
