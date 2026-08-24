@@ -27,7 +27,7 @@ scoped API key), otherwise 403 — the same gate as reading chat.
 **Auth:** Bearer token or session cookie
 
 **Returns:** { dms }
-- `dms` ({ topicId, peer, lastActivityAt }[])
+- `dms` ({ topicId, peer, lastActivityAt, lastReadAt, lastReadMessageId }[])
 
 ```bash
 curl -s "$BASE/api/dm" \

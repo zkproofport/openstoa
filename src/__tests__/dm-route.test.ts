@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   topicsFindFirst: vi.fn(),
   insertReturning: vi.fn(),
   selectRows: vi.fn(),
+  readCursorRows: vi.fn(),
+  unreadCountRows: vi.fn(),
 }));
 
 vi.mock('@/lib/session', () => ({ getSession: mocks.getSession }));
@@ -39,10 +41,31 @@ vi.mock('@/lib/db', () => ({
         onConflictDoNothing: vi.fn(() => ({ returning: async () => mocks.insertReturning() })),
       })),
     })),
-    // GET list path: db.select({...}).from(...).innerJoin(...).where(...) → rows
+    /*
+     * TWO select shapes, and the fake REFUSES anything else.
+     *
+     *   .from(...).innerJoin(...).where(...) — the DM list's own two queries
+     *   .from(...).where(...)                — `chatUnread.readStatesForTopics`
+     *
+     * Kept as separate mock queues rather than one, because collapsing them is
+     * how the previous version broke: `readStatesForTopics` drew from
+     * `selectRows` and consumed the peer-metadata row, and the list came back
+     * empty for a reason nothing in the route was responsible for.
+     */
     select: vi.fn(() => ({
-      from: () => ({ innerJoin: () => ({ where: async () => mocks.selectRows() }) }),
+      from: () => ({
+        innerJoin: () => ({ where: async () => mocks.selectRows() }),
+        where: async () => mocks.readCursorRows(),
+      }),
     })),
+    /*
+     * The unread count is one grouped statement, not a query-builder chain.
+     * `rows` is AWAITED: the real driver hands back a settled array, and a
+     * fake that hands back a Promise is not lenient — it is a different shape,
+     * and the route dies on it with "object is not iterable" rather than on
+     * anything the route did.
+     */
+    execute: vi.fn(async () => ({ rows: await mocks.unreadCountRows() })),
   },
 }));
 
@@ -62,6 +85,8 @@ beforeEach(() => {
   mocks.topicsFindFirst.mockResolvedValue(undefined);
   mocks.insertReturning.mockResolvedValue([{ id: 'dm-topic-1' }]);
   mocks.selectRows.mockResolvedValue([]);
+  mocks.readCursorRows.mockResolvedValue([]);
+  mocks.unreadCountRows.mockResolvedValue([]);
 });
 
 describe('canonicalDmPair — idempotency / order-independence', () => {
@@ -165,8 +190,44 @@ describe('GET /api/dm — capability gate + SI-1', () => {
       topicId: 't1',
       peer: { userId: 'bob', nickname: 'bob', profileImage: null },
       lastActivityAt: '2026-01-01T00:00:00.000Z',
+      // Read state, never read content: an id, an instant and a count. All
+      // three are metadata the server already held.
+      lastReadAt: null,
+      lastReadMessageId: null,
+      unreadCount: 0,
     });
-    // No message / ciphertext / preview field must ever appear.
-    expect(JSON.stringify(body)).not.toMatch(/ciphertext|message|sealed|preview/i);
+    /*
+     * Anchored at the KEY, not as a bare substring.
+     *
+     * `lastReadMessageId` contains "message" and is a message ID, not a
+     * message — a substring test reads the two as the same thing and fails on
+     * a field that carries no content. The guard exists to catch a body,
+     * a preview or a ciphertext arriving in this response, so it looks for
+     * those as JSON keys.
+     */
+    expect(JSON.stringify(body)).not.toMatch(/"(ciphertext|message|sealed|preview|systemText|body)"\s*:/i);
+  });
+
+  it('SI-1 guard bites: a body field would be caught by the key-anchored check', () => {
+    // The guard above is only worth anything if it still fires. A field named
+    // exactly `message` is what it exists to refuse.
+    const leaky = JSON.stringify({ dms: [{ topicId: 't1', message: 'hello' }] });
+    expect(leaky).toMatch(/"(ciphertext|message|sealed|preview|systemText|body)"\s*:/i);
+  });
+
+  it('CONTRACT: a stored cursor and count reach the row', async () => {
+    // The other half of the same field: nulls above prove it is always present,
+    // this proves it is actually populated from the read-state query.
+    mocks.selectRows
+      .mockResolvedValueOnce([{ topicId: 't1', lastActivityAt: new Date('2026-01-01T00:00:00Z') }])
+      .mockResolvedValueOnce([{ topicId: 't1', peerId: 'bob', nickname: 'bob', profileImage: null }]);
+    mocks.readCursorRows.mockResolvedValue([
+      { topicId: 't1', lastReadAt: new Date('2026-01-02T00:00:00Z'), lastReadMessageId: 'm-1' },
+    ]);
+    mocks.unreadCountRows.mockResolvedValue([{ topic_id: 't1', unread: 4 }]);
+    const body = await (await GET(get())).json();
+    expect(body.dms[0].lastReadAt).toBe('2026-01-02T00:00:00.000Z');
+    expect(body.dms[0].lastReadMessageId).toBe('m-1');
+    expect(body.dms[0].unreadCount).toBe(4);
   });
 });

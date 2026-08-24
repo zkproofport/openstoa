@@ -2233,6 +2233,55 @@ or the device id belongs to another account.
 
 The `@masselabs/openstoa` SDK does this for you — `readChat` acknowledges what it just returned.
 
+#### Move the read cursor (clears the unread badge)
+
+Separate from `chat/delivered` above, and the pair is easy to confuse. **Delivered is per DEVICE and
+decides whether the server may drop its copy. Read is per ACCOUNT and decides whether an unread badge
+is drawn.** A client that implements chat should call both.
+
+Read state is account-level on purpose: reading on a phone clears the badge on the web. Call this
+when a conversation is actually in front of the user, with the newest message they have seen, and
+again as new messages arrive while they stay in it. **Debounce it** — a room scrolling through a
+burst should issue one request, not one per message — and treat it as fire-and-forget: a failure here
+must never break the room, and the next call recovers.
+
+```bash
+curl -s -X PUT "$BASE/api/topics/:topicId/chat/read" -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"messageId": "<message uuid>", "readAt": "2026-08-24T10:00:00.000Z"}' | jq .
+```
+
+Response — the cursor after the call, and what it implies:
+```json
+{
+  "lastReadAt": "2026-08-24T10:00:00.000Z",
+  "lastReadMessageId": "6f1c…",
+  "unreadCount": 0
+}
+```
+
+Read it back for one room with `GET` on the same path, or for **every** joined room at once from
+`GET /api/topics` (and `GET /api/dm` for direct channels), which carry `lastReadAt`,
+`lastReadMessageId` and `unreadCount` per row.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `messageId` | uuid, required | Server id of the newest message the user has seen. Must be a stored message **in this topic**. A provisional `pending-` id from an optimistic send is rejected. |
+| `readAt` | ISO 8601, required | That message's `createdAt`, INCLUSIVE. The server prefers the row's own instant when the message still exists, and uses this only as a fallback for a message it no longer holds. A future value is clamped to the server clock. |
+
+Rules worth knowing before you implement against it:
+
+- **Monotonic.** An older `readAt` is accepted and ignored — the cursor never rewinds, so a history
+  page or a delta-sync merge cannot resurrect a badge the user cleared.
+- **A message you could not DECRYPT still advances it.** It was on screen as a locked placeholder;
+  refusing would strand the badge on a message that can never be cleared. This is the opposite of
+  `chat/delivered`, which must NOT be acked for an undecryptable row.
+- **`unreadCount` counts only** rows newer than `lastReadAt` that are not yours and are not system
+  `join`/`leave` rows. Your own message is itself a read mark: nothing at or beneath one is counted.
+  Capped at 999.
+
+Errors: `400` invalid `topicId`, missing/invalid `messageId` or `readAt`, a provisional id, or a
+message id belonging to another topic · `401` not authenticated · `403` not a member.
+
 #### Get chat presence
 
 Returns the list of users currently connected to the topic chat. Presence is tracked via Redis HASH and updated on SSE connect/disconnect.

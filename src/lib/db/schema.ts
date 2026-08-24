@@ -56,12 +56,25 @@ export const topics = pgTable('topics', {
   // server — it never derives or verifies this (C1: crypto-free DS); clients
   // compute it from the root they hold and compare. NULL means "no root has
   // been claimed yet", which is NOT the same as "this topic has no root": a
-  // topic that predates this column has archive rows and a null fingerprint, so
-  // clients also require `chat_archive` to be empty before minting a new root.
+  // topic that predates this column has archive rows and a null fingerprint.
   // WRITE-ONCE: only ever set from NULL (compare-and-set), so two devices racing
   // to create the first root cannot both win — the loser adopts the winner's
-  // root instead of overwriting the archive's identity. Public tier only;
-  // private/secret/DM topics are per-epoch (§5.2) and leave this NULL forever.
+  // root instead of overwriting the archive's identity.
+  //
+  // DM tier, NOT public. This said the opposite — "public tier only; DM topics
+  // leave this NULL forever" — and it was the shape of the whole DM bug: a DM
+  // is `topic-root` with `serverHoldsKey: false` (`chatTierPolicy`), so it is
+  // the one tier with a root and no server to arbitrate it, and this column is
+  // how its two devices agree on one. A public topic settles its root through
+  // `GET/PUT /archive/root` instead and does not need this. `private`/`secret`
+  // are per-epoch (§5.2) and do leave it NULL forever.
+  //
+  // Load-bearing beyond the crypto: because a row can only be sealed under a
+  // root AFTER that root's fingerprint is published (`claimRoot` publishes
+  // first, and `currentArchiveKey` seals only on `verified`), NULL here PROVES
+  // no row on this topic was sealed under a root. `scripts/delete-dm-chat-archive.ts`
+  // is that inference used as a deletion scope, so weakening this column's
+  // write-once/published-first properties would silently widen what it deletes.
   archiveRootFingerprint: text('archive_root_fingerprint'),
   // How long this topic's chat ARCHIVE (`chat_archive.ciphertext`) is kept, in
   // days — 0 means "kept indefinitely". Chosen by the admin when the topic is
@@ -470,6 +483,52 @@ export const chatDeliveryCursors = pgTable('chat_delivery_cursors', {
   pk: primaryKey({ columns: [table.topicId, table.deviceId] }),
   // Supports the purge's per-topic scan over every device owed a message.
   topicIdx: index('chat_delivery_topic_idx').on(table.topicId),
+}));
+
+/**
+ * How far each MEMBER has READ each conversation — an ACCOUNT-level fact.
+ *
+ * Distinct from `chat_delivery_cursors` above, and the two are easy to confuse
+ * because both are "a high-water mark over `chat_messages.created_at`":
+ *
+ *   - DELIVERY is per DEVICE and answers "may the server drop its live copy".
+ *     A user acking on the web must NOT release a message their phone has never
+ *     fetched, so it can never be collapsed to the account.
+ *   - READ is per USER and answers "does the list show a badge". Reading on the
+ *     phone MUST clear the badge on the web — that is the entire point. A
+ *     per-device read cursor would re-badge every other device for messages the
+ *     person has already read, which is the defect this table exists to end.
+ *
+ * Before this table the read mark was an in-process `Map` in the mini-app
+ * (`packages/mobile/src/lib/chatReadCursor.ts`), so it died on restart and never
+ * crossed devices: a cold start re-badged every room not yet opened in that
+ * process, and the web never had a mark at all.
+ *
+ * `last_read_at` is the authoritative ordering key — every count and every
+ * comparison is against it. `last_read_message_id` is carried alongside so a
+ * client can reproduce its own walk exactly (stop AT the recorded row, not
+ * merely at its instant) when a burst shares a millisecond. It is deliberately
+ * NOT a foreign key: a message can be removed, and losing the read mark because
+ * the row it named is gone would resurrect a badge the user had cleared.
+ *
+ * SI-1: every column is metadata the server already holds. No ciphertext, no
+ * plaintext, no key material — a read mark says only "this account was in this
+ * room at least this far", which the delivery cursor already implies per device.
+ */
+export const chatReads = pgTable('chat_reads', {
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // The newest row the account has seen, by server id. Informational — the
+  // ordering key is `last_read_at`.
+  lastReadMessageId: uuid('last_read_message_id').notNull(),
+  // INCLUSIVE: a message at exactly this instant has been read.
+  lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.topicId, table.userId] }),
+  // The list asks "every cursor this user holds" once per page load; the PK is
+  // topic-first and cannot serve it.
+  userIdx: index('chat_reads_user_idx').on(table.userId),
 }));
 
 // archive store (Phase 3) — past messages re-encrypted under a TAK so a newly

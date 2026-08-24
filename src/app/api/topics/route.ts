@@ -19,6 +19,7 @@ import {
 import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
 import { ARCHIVE_RETENTION_CHOICES, parseArchiveRetentionDays } from '@/lib/archiveRetention';
 import { hasNulByte } from '@/lib/textGuard';
+import { readStatesForTopics, emptyReadState } from '@/lib/chatUnread';
 
 const ROUTE = '/api/topics';
 
@@ -364,12 +365,32 @@ export async function GET(request: NextRequest) {
       .groupBy(chatMessages.topicId);
     const lastChatAtMap = Object.fromEntries(chatActivity.map((r) => [r.topicId, r.lastChatAt]));
 
-    const userTopicsWithCategory = userTopics.map((t) => ({
-      ...t,
-      category: t.categoryId ? categoryMap[t.categoryId] ?? null : null,
-      isBlinded: !!t.blindedAt,
-      lastChatAt: lastChatAtMap[t.id] ?? null,
-    }));
+    /*
+     * The account's read cursor per room, and the unread count it implies.
+     *
+     * Carried HERE rather than from a route of its own because this is the
+     * request both conversation lists already make, and a badge that needs a
+     * second round trip is a badge that renders wrong first and corrects itself.
+     *
+     * Read state is an ACCOUNT fact: before this, the mini-app kept it in an
+     * in-process Map, so it died on restart and never crossed devices, and the
+     * web had no source for a count at all. See `lib/chatUnread` for why both a
+     * cursor and a count go out, and which of the two is authoritative.
+     */
+    const readStates = await readStatesForTopics(db, session.userId, userTopics.map((t) => t.id));
+
+    const userTopicsWithCategory = userTopics.map((t) => {
+      const read = readStates[t.id] ?? emptyReadState();
+      return {
+        ...t,
+        category: t.categoryId ? categoryMap[t.categoryId] ?? null : null,
+        isBlinded: !!t.blindedAt,
+        lastChatAt: lastChatAtMap[t.id] ?? null,
+        lastReadAt: read.lastReadAt,
+        lastReadMessageId: read.lastReadMessageId,
+        unreadCount: read.unreadCount,
+      };
+    });
 
     logger.info(ROUTE, 'Topics fetched', { userId: session.userId, count: userTopicsWithCategory.length });
     return NextResponse.json({ topics: userTopicsWithCategory });

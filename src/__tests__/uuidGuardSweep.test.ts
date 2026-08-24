@@ -31,7 +31,45 @@ const KNOWN_INDIRECT_GUARDS: Record<string, string> = {
     "Both PATCH and DELETE already ran `UUID_RE.test(keyId)` (local regex, `{ error: 'keyId must be a uuid' }`, 400) before this sweep existed.",
   'src/app/api/topics/[topicId]/push/route.ts':
     "Both GET and PATCH call a shared `authorize(request, topicId)` helper that already ran `isUuid(topicId)` (from src/lib/pushPrefs.ts, `{ error: 'Invalid topicId' }`, 400) before any query.",
+  'src/app/api/topics/[topicId]/chat/read/route.ts':
+    "Both PUT and GET call a shared `gate(request, topicId)` helper that runs `isValidUUID(topicId)` (`{ error: 'Invalid topicId' }`, 400) before the membership query. The gate is shared precisely so the two handlers cannot disagree about who may write and who may read a cursor — an authorization check duplicated across handlers is one someone tightens on a single side.",
 };
+
+/**
+ * The body of each exported route handler in a file.
+ *
+ * Shared by the two checks below so they cannot disagree about what "inside a
+ * handler" means — the staleness check exists to catch an exemption whose
+ * handler has since grown a direct guard, and it can only do that if it looks
+ * at the same text the guard check does.
+ */
+function handlerSegments(text: string): Array<{ method: string; body: string }> {
+  const funcMatches = [...text.matchAll(/export async function (GET|POST|PATCH|DELETE|PUT)\s*\(/g)];
+  const bounds = [...funcMatches.map((m) => m.index!), text.length];
+  return funcMatches.map((m, i) => ({ method: m[1], body: text.slice(bounds[i], bounds[i + 1]) }));
+}
+
+/**
+ * The `*Id` path params a handler destructures but does NOT itself guard.
+ *
+ * ONE predicate, used by both checks below, because they are two sides of the
+ * same question: the sweep fails when this is non-empty and there is no
+ * exemption, and an exemption is stale exactly when this is empty.
+ *
+ * `isValidUUID(<that id>)` and not merely `isValidUUID(` — a handler can
+ * legitimately validate a uuid from the BODY (`chat/read` checks `messageId`)
+ * while taking the path param's guard from a helper, and a bare-substring test
+ * reads that as a direct guard on the path param when it is nothing of the kind.
+ */
+function unguardedPathIds(segment: string): string[] {
+  const destructure = segment.match(/const \{([^}]*)\}\s*=\s*await params;/);
+  if (!destructure) return [];
+  return destructure[1]
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => x.endsWith('Id'))
+    .filter((id) => !segment.includes(`isValidUUID(${id})`));
+}
 
 function walkRouteFiles(dir: string): string[] {
   const out: string[] = [];
@@ -60,21 +98,15 @@ describe('UUID path-param guard sweep', () => {
     '%s: every handler that destructures a uuid-shaped param guards it',
     (relPath, absPath) => {
       const text = readFileSync(absPath, 'utf8');
-      const funcMatches = [...text.matchAll(/export async function (GET|POST|PATCH|DELETE|PUT)\s*\(/g)];
-      if (funcMatches.length === 0) return; // no handlers at all (shouldn't happen for a route.ts)
+      const segments = handlerSegments(text);
+      if (segments.length === 0) return; // no handlers at all (shouldn't happen for a route.ts)
 
-      const bounds = [...funcMatches.map((m) => m.index!), text.length];
-      for (let i = 0; i < funcMatches.length; i++) {
-        const segment = text.slice(bounds[i], bounds[i + 1]);
-        const destructure = segment.match(/const \{([^}]*)\}\s*=\s*await params;/);
-        if (!destructure) continue;
-        const ids = destructure[1].split(',').map((s) => s.trim()).filter((s) => s.endsWith('Id'));
-        for (const id of ids) {
-          const hasDirectGuard = segment.includes(`isValidUUID(${id})`);
-          const isKnownIndirect = relPath in KNOWN_INDIRECT_GUARDS;
-          if (!hasDirectGuard && !isKnownIndirect) {
+      const isKnownIndirect = relPath in KNOWN_INDIRECT_GUARDS;
+      for (const { method, body: segment } of segments) {
+        for (const id of unguardedPathIds(segment)) {
+          if (!isKnownIndirect) {
             expect.fail(
-              `${relPath} ${funcMatches[i][1]} destructures \`${id}\` but has no isValidUUID guard and is not in KNOWN_INDIRECT_GUARDS`,
+              `${relPath} ${method} destructures \`${id}\` but has no isValidUUID guard and is not in KNOWN_INDIRECT_GUARDS`,
             );
           }
         }
@@ -94,10 +126,35 @@ describe('UUID path-param guard sweep', () => {
     expect(missing).toEqual([]);
   });
 
-  it('KNOWN_INDIRECT_GUARDS entries genuinely have no direct isValidUUID call (still true, not stale)', () => {
+  it('KNOWN_INDIRECT_GUARDS entries genuinely have no direct in-handler guard (still true, not stale)', () => {
+    /*
+     * "Indirect" means the handler does not run the check ITSELF, not that the
+     * file never names it. Two shapes qualify and both are real here: the guard
+     * lives in another module (`push/route.ts` -> `lib/pushPrefs.isUuid`), or it
+     * lives in a route-local helper that every handler delegates to
+     * (`chat/read/route.ts` -> `gate()`). Asserting on the whole file text
+     * would refuse the second shape and push routes toward duplicating an
+     * authorization check across handlers — which is exactly the arrangement
+     * that gets tightened on one side and not the other.
+     *
+     * What the check still catches, which is the point: an entry becomes stale
+     * the moment a handler grows its own `isValidUUID(...)` and the exemption is
+     * left behind.
+     */
     for (const rel of Object.keys(KNOWN_INDIRECT_GUARDS)) {
       const text = readFileSync(join(process.cwd(), rel), 'utf8');
-      expect(text.includes('isValidUUID(')).toBe(false);
+      const segments = handlerSegments(text);
+      const destructuring = segments.filter((seg) => /const \{[^}]*\}\s*=\s*await params;/.test(seg.body));
+      expect(
+        destructuring.length,
+        `${rel} no longer destructures a path param in any handler — the entry describes nothing`,
+      ).toBeGreaterThan(0);
+      for (const { method, body } of destructuring) {
+        expect(
+          unguardedPathIds(body).length,
+          `${rel} ${method} now guards its path param directly — remove its KNOWN_INDIRECT_GUARDS entry`,
+        ).toBeGreaterThan(0);
+      }
     }
   });
 });

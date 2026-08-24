@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -20,6 +20,13 @@ import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { usePendingChatTopicId } from '../../hooks/usePushTapRouting';
 import { takePendingChatTopicId } from '../../hooks/pushTapRouting';
+import {
+  getChatReadCursor,
+  getChatReadCursorVersion,
+  markChatRead,
+  subscribeChatReadCursors,
+  type ChatReadCursor,
+} from '../../lib/chatReadCursor';
 import type { ChatMessage, Topic } from '@openstoa/api-types';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
@@ -140,14 +147,15 @@ function makeStyles(colors: ThemeColors) {
   });
 }
 
-// Last-seen message id per topic. Set when the user opens a room; everything
-// newer than it is unread. IN MEMORY ONLY — a cold start has no marker for any
-// topic, so the first fetch after launch treats a room's whole recent window as
-// unread. That was already true of the previous boolean version (every room
-// showed a badge after a restart); making the badge a real number does not
-// change WHEN it appears, only what it says. Persisting this marker — or, better,
-// a server-side read cursor — is the remaining gap.
-const seenMessageIds = new Map<string, string>();
+// The read marker used to live here, as a `Map<topicId, messageId>` written
+// from a row's `onPress`. That made it a property of TAPPING A ROW rather than
+// of having been in the room, so the push-notification route — the pending-tap
+// effect below calls `navigation.navigate` and nothing else — recorded nothing,
+// and backing out of a room reached that way left every message just read still
+// badged. It now lives in `../../lib/chatReadCursor` and is written by
+// `ChatRoomScreen`, which is the one thing every route into a room has in
+// common. IN MEMORY still: a cold start has no cursor for a room not yet opened
+// in this process, so its recent window counts as unread. See that module.
 
 // How many messages the list pulls per topic. The badge renders anything past
 // 99 as "99+", so 100 is exactly the window at which a wider fetch could no
@@ -184,7 +192,9 @@ export function unreadPollInterval(screenFocused: boolean, isGuest: boolean): nu
  *
  * Walks from the newest row and stops at the first one the viewer has already
  * accounted for:
- *   - the last-seen id — they opened the room at that message;
+ *   - the read cursor `ChatRoomScreen` left behind — either the very message
+ *     it recorded, or anything no newer than it (see the note in the loop for
+ *     why both, not just the id);
  *   - one of their OWN messages — sending is being in the room, so everything
  *     under it has been seen. This is what keeps a room whose last three rows
  *     are mine at zero rather than counting the older rows beneath them.
@@ -194,12 +204,18 @@ export function unreadPollInterval(screenFocused: boolean, isGuest: boolean): nu
  */
 export function countUnread(
   messages: ChatMessage[],
-  lastSeenId: string | undefined,
+  cursor: ChatReadCursor | undefined,
   viewerId: string | null,
 ): number {
+  const seenAt = cursor ? new Date(cursor.createdAt).getTime() : NaN;
   let unread = 0;
   for (const message of messages) {
-    if (message.id === lastSeenId) break;
+    if (cursor && message.id === cursor.messageId) break;
+    // The id alone is not enough. The room records a message the list may no
+    // longer be holding — it was deleted, or more than `UNREAD_SCAN_LIMIT`
+    // messages have landed since — and with only the id check the walk would
+    // then run off the end of the window and report everything as unread.
+    if (Number.isFinite(seenAt) && new Date(message.createdAt).getTime() <= seenAt) break;
     if (viewerId != null && message.userId === viewerId) break;
     if (message.type !== 'message') continue;
     unread += 1;
@@ -215,6 +231,17 @@ export function ChatListScreen() {
   const sessionUserId = useOpenStoaSession((s: { userId: string | null }) => s.userId);
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
+
+  // Re-render when a room records how far it has been read. The cursors live in
+  // a module-level map, not in React state, because the room that writes them is
+  // a different screen on a different route — and the list is mounted underneath
+  // it the whole time, so without this the badge would only be recomputed if
+  // something else happened to re-render the row.
+  useSyncExternalStore(
+    subscribeChatReadCursors,
+    getChatReadCursorVersion,
+    getChatReadCursorVersion,
+  );
 
   // Chat is a fully-authenticated tab — guests see a Sign-in card instead.
   // We still call the hooks below unconditionally so rules-of-hooks holds,
@@ -239,6 +266,29 @@ export function ChatListScreen() {
   });
 
   const topics: Topic[] = Array.isArray(data) ? data : (data?.topics ?? []);
+
+  /*
+   * Seed the in-memory cursor cache from the server's ACCOUNT-level one.
+   *
+   * This is the half of the fix a client cannot do alone. The cache is per
+   * process, so before this every cold start had no cursor for any room not yet
+   * opened in that process and counted its whole recent window as unread — and
+   * a room read on the phone stayed badged on the web forever, because the two
+   * caches never met. `/api/topics` now carries the cursor, so the first list
+   * fetch after launch already knows.
+   *
+   * `markChatRead` rather than a direct write: it is monotonic, so a cursor this
+   * process has already pushed FURTHER (the user read a room a second ago and
+   * the debounced PUT has not landed) is never dragged back by a server response
+   * that predates it.
+   */
+  useEffect(() => {
+    for (const topic of topics) {
+      const t = topic as Topic & { lastReadMessageId?: string | null; lastReadAt?: string | null };
+      if (!t.lastReadMessageId || !t.lastReadAt) continue;
+      markChatRead(t.id, { id: t.lastReadMessageId, createdAt: t.lastReadAt });
+    }
+  }, [topics]);
 
   // Push tap routing, step 2 of 2 (design §13, P-O gap 5): open the room the
   // notification came from. Done from HERE, not from the tab navigator, so the
@@ -361,8 +411,7 @@ export function ChatListScreen() {
         // `countUnread` for the walk, including why a message I sent myself
         // ends it — that rule is what kept the bogus "1" off a topic whose
         // newest row is mine, and it is preserved here.
-        const lastSeenId = seenMessageIds.get(item.id);
-        const unreadCount = countUnread(messages, lastSeenId, sessionUserId);
+        const unreadCount = countUnread(messages, getChatReadCursor(item.id), sessionUserId);
         const hasUnread = unreadCount > 0;
 
         return (
@@ -370,10 +419,11 @@ export function ChatListScreen() {
             style={styles.row}
             activeOpacity={0.7}
             onPress={() => {
-              // Mark as seen before navigating
-              if (lastMessage) {
-                seenMessageIds.set(item.id, lastMessage.id);
-              }
+              // Deliberately does NOT mark anything read. The room does that,
+              // from the messages it actually rendered — marking here as well
+              // would make this route look correct while every other route into
+              // the room (a push tap, above) stayed broken, which is the exact
+              // shape of the defect this replaced.
               navigation.navigate('ChatRoom', {
                 topicId: item.id,
                 topicTitle: item.title,

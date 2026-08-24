@@ -66,11 +66,12 @@ const ME = 'nullifier-me';
 const OTHER = 'nullifier-other';
 
 /**
- * `seenMessageIds` in `ChatListScreen.tsx` is a MODULE-LEVEL `Map`, a
+ * The read cursors in `../lib/chatReadCursor` are a MODULE-LEVEL `Map`, a
  * singleton that outlives any one `renderScreen()` call (same class of
  * hazard as `sessionExpiry.ts`'s listener set, see `signInSheet.test.tsx`).
- * A fresh, never-before-seen topic id per test sidesteps it instead of
- * fighting it — there is no exported reset hook to clear the map directly.
+ * A fresh, never-before-seen topic id per test sidesteps it. Nothing in this
+ * file writes one — every case here is a topic the viewer has never opened,
+ * which is exactly what makes it the "no cursor" half of the badge.
  */
 let topicSeq = 0;
 function freshTopicId(): string {

@@ -245,9 +245,73 @@ const options: swaggerJsdoc.Options = {
                   enum: ['owner', 'admin', 'member'],
                   description: "Current user's role if member",
                 },
+                lastChatAt: {
+                  type: 'string',
+                  format: 'date-time',
+                  nullable: true,
+                  description:
+                    'When this room last had CHAT activity. Only present in the joined-topics ' +
+                    'view (no `view=all`). Order a conversation list by this, not by ' +
+                    '`lastActivityAt`, which posts bump.',
+                },
+                lastReadAt: {
+                  type: 'string',
+                  format: 'date-time',
+                  nullable: true,
+                  description:
+                    "This account's chat read cursor for the room — see the `ChatReadCursor` " +
+                    'schema. Only present in the joined-topics view.',
+                },
+                lastReadMessageId: {
+                  type: 'string',
+                  format: 'uuid',
+                  nullable: true,
+                  description: 'The message `lastReadAt` names. Joined-topics view only.',
+                },
+                unreadCount: {
+                  type: 'integer',
+                  description:
+                    'Unread chat messages past `lastReadAt`, capped at 999 — see the ' +
+                    '`ChatReadCursor` schema for the counting rule. Joined-topics view only.',
+                },
               },
             },
           ],
+        },
+        ChatReadCursor: {
+          type: 'object',
+          description:
+            "How far the calling ACCOUNT has read one conversation, and what that implies. " +
+            'Per user, not per device: reading on one device clears the badge everywhere. ' +
+            'Written by `PUT /api/topics/{topicId}/chat/read`; also embedded per topic in ' +
+            '`GET /api/topics`.',
+          properties: {
+            lastReadAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description:
+                'INCLUSIVE instant of the newest message this account has read, or null when the ' +
+                'room has never been read. This is the authoritative value — `unreadCount` is ' +
+                'derived from it.',
+            },
+            lastReadMessageId: {
+              type: 'string',
+              format: 'uuid',
+              nullable: true,
+              description:
+                'The message `lastReadAt` names, or null. Informational: use it to stop a local ' +
+                'walk exactly at that row when a burst shares a millisecond.',
+            },
+            unreadCount: {
+              type: 'integer',
+              description:
+                'Messages past the cursor, capped at 999. Counts only rows newer than ' +
+                '`lastReadAt`, never your own messages or anything beneath one (sending is being ' +
+                'in the room), and never system join/leave rows. A client that already holds a ' +
+                'message window may count locally instead; both rules are the same.',
+            },
+          },
         },
         Post: {
           type: 'object',

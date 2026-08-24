@@ -116,6 +116,19 @@ export async function secondUserPost(path: string, body?: unknown): Promise<Resp
   });
 }
 
+/** Make an authenticated PUT request as the second user */
+export async function secondUserPut(path: string, body?: unknown): Promise<Response> {
+  const { token } = await getSecondUserToken();
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
 /** Make an authenticated PATCH request as the second user */
 export async function secondUserPatch(path: string, body?: unknown): Promise<Response> {
   const { token } = await getSecondUserToken();

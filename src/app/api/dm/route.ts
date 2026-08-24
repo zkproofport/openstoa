@@ -5,6 +5,7 @@ import { topics, topicMembers, users } from '@/lib/db/schema';
 import { eq, and, ne, inArray, desc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
+import { readStatesForTopics, emptyReadState } from '@/lib/chatUnread';
 import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { canonicalDmPair } from '@/lib/dm';
@@ -66,6 +67,23 @@ const ROUTE = '/api/dm';
  *                         format: date-time
  *                         nullable: true
  *                         description: When the channel last saw activity. No message content is exposed.
+ *                       lastReadAt:
+ *                         type: string
+ *                         format: date-time
+ *                         nullable: true
+ *                         description: >-
+ *                           This account's chat read cursor for the channel, or null if never read.
+ *                           Written by `PUT /api/topics/{topicId}/chat/read` using this `topicId`.
+ *                       lastReadMessageId:
+ *                         type: string
+ *                         format: uuid
+ *                         nullable: true
+ *                         description: The message `lastReadAt` names, or null.
+ *                       unreadCount:
+ *                         type: integer
+ *                         description: >-
+ *                           Unread messages past the cursor, capped at 999 — see the
+ *                           `ChatReadCursor` schema for the counting rule.
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
@@ -177,11 +195,17 @@ export async function GET(request: NextRequest) {
       .innerJoin(users, eq(users.id, topicMembers.userId))
       .where(and(inArray(topicMembers.topicId, topicIds), ne(topicMembers.userId, session.userId)));
 
+    // Same account-level read cursor the topic list carries — a DM is a hidden
+    // 2-member topic, so `chat_reads` needs no DM-specific anything. Without it
+    // the Direct tab would be the one list still unable to badge.
+    const readStates = await readStatesForTopics(db, session.userId, topicIds);
+
     const dms = peers
       .map((p) => ({
         topicId: p.topicId,
         peer: { userId: p.peerId, nickname: p.nickname, profileImage: p.profileImage },
         lastActivityAt: lastActivityByTopic[p.topicId] ?? null,
+        ...(readStates[p.topicId] ?? emptyReadState()),
       }))
       .sort((a, b) => {
         const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;

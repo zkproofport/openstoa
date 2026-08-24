@@ -27,6 +27,8 @@ export interface ConversationTopic {
   /** Latest CHAT activity, from `GET /api/topics`. Not `lastActivityAt`, which
    *  posts bump — see the route. */
   lastChatAt?: string | null;
+  /** Unread messages past this account's read cursor, from the same route. */
+  unreadCount?: number;
 }
 
 export interface ConversationListState<T, D> {
@@ -46,6 +48,18 @@ export interface ConversationListState<T, D> {
   /** Authenticated but the account still needs a nickname. */
   needsNickname: boolean;
   reload: () => void;
+  /**
+   * Zero one room's badge locally, without waiting for a refetch.
+   *
+   * Opening a room IS reading it, and the server hears about that on a debounce
+   * from the panel. Between the two, a list that kept rendering the old count
+   * would show a badge for messages the user is looking at. This is the local
+   * CACHE half of the same fact — the server stays authoritative, and the next
+   * load overwrites whatever this set.
+   *
+   * Matches by topic id across BOTH tabs, because a DM's id IS a topic id.
+   */
+  clearUnread: (topicId: string) => void;
 }
 
 export function useConversationList<T extends ConversationTopic, D>(options?: {
@@ -107,9 +121,26 @@ export function useConversationList<T extends ConversationTopic, D>(options?: {
     })();
   }, [enabled]);
 
+  const clearUnread = useCallback((topicId: string) => {
+    if (typeof topicId !== 'string' || topicId === '') return;
+    setTopics((prev) =>
+      prev === null
+        ? prev
+        : prev.map((t) => (t.id === topicId && t.unreadCount ? { ...t, unreadCount: 0 } : t)),
+    );
+    setDms((prev) =>
+      prev === null
+        ? prev
+        : prev.map((d) => {
+            const row = d as D & { topicId?: string; unreadCount?: number };
+            return row.topicId === topicId && row.unreadCount ? { ...row, unreadCount: 0 } : d;
+          }),
+    );
+  }, []);
+
   useEffect(() => {
     reload();
   }, [reload]);
 
-  return { topics, dms, loading, error, unauthenticated, needsNickname, reload };
+  return { topics, dms, loading, error, unauthenticated, needsNickname, reload, clearUnread };
 }

@@ -1,27 +1,36 @@
 /**
  * The half of the unread badge that `chatListUnreadBadge.test.tsx` does not
- * reach: the LAST-SEEN MARKER.
+ * reach: the READ CURSOR.
  *
  * That file pins what the badge says for a topic the viewer has never opened.
- * This one pins what happens once they have — the branch inside `countUnread`
- * that stops the walk at `lastSeenId`. It was written after a mutation check
- * found that deleting that line entirely left the whole suite green: every case
- * over there starts from an empty marker map, so the marker was never the thing
- * being measured, and a fix that silently stopped honouring it would have
- * shipped (the badge would simply never clear).
+ * This one pins what happens once they have — the branches inside `countUnread`
+ * that stop the walk at the cursor. It was written after a mutation check found
+ * that deleting that line entirely left the whole suite green: every case over
+ * there starts from an empty marker map, so the marker was never the thing being
+ * measured, and a fix that silently stopped honouring it would have shipped (the
+ * badge would simply never clear).
  *
- * `seenMessageIds` is a module-level `Map` with no reset hook, so both the
- * hazard and the lever are the same fact: the marker OUTLIVES a `renderScreen`
- * call. Each test uses a fresh topic id to stay isolated from its neighbours,
- * and the "opened it" step is expressed as mount → press the row → unmount →
- * mount again, which is exactly the real sequence (enter a room, come back) and
- * does not need the map to be reachable from the test.
+ * THE "OPENED IT" STEP CHANGED, and the reason is the defect this lane fixed.
+ * It used to be "press the row", because pressing the row was what wrote the
+ * marker — and that was the bug: a marker written by the LIST records tapping a
+ * row, not being in a room, so a push-notification tap (which navigates without
+ * touching the list) recorded nothing and re-badged everything on the way back
+ * out. The writer is now `ChatRoomScreen`, so the step here is the call the room
+ * makes, `markChatRead`. That `ChatRoomScreen` really makes it is a separate
+ * question with its own file — `chatRoomMarksRead.test.tsx` mounts the room and
+ * reads the cursor back — and the two together are the whole chain, with a real
+ * end on each side.
  *
  * EDGE-CASE MATRIX (CLAUDE.md) → coverage here
  *   contract   — opening a room clears its badge: the count walks back to the
- *                marker and finds nothing newer
- *   contract   — a PARTIAL read counts only what arrived after the marker (3
- *                newer messages behind a marker set at the oldest → "3", not
+ *                cursor and finds nothing newer
+ *   contract   — a room reached WITHOUT pressing its row (the push-notification
+ *                route) clears the same way, which is the reported defect
+ *   contract   — the badge clears while the list stays MOUNTED, which is the
+ *                real sequence (the list sits underneath the open room) and the
+ *                only case that needs the screen to watch the cursor store
+ *   contract   — a PARTIAL read counts only what arrived after the cursor (3
+ *                newer messages behind a cursor set at the oldest → "3", not
  *                the whole window) — the case that distinguishes "stops at the
  *                marker" from "ignores the marker"
  *   integrity  — a join/leave row between two unread messages is not counted
@@ -37,6 +46,7 @@ import React from 'react';
 import { act } from 'react-test-renderer';
 import { renderScreen } from './harness/screen';
 import { useOpenStoaSession } from '../stores/sessionStore';
+import { markChatRead, resetChatReadCursors } from '../lib/chatReadCursor';
 import { ChatListScreen } from '../screens/chat/ChatListScreen';
 import type { ChatMessage, Topic } from '@openstoa/api-types';
 
@@ -53,7 +63,8 @@ async function settleTimers(times = 5): Promise<void> {
 const ME = 'nullifier-me';
 const OTHER = 'nullifier-other';
 
-/** Fresh id per test — `seenMessageIds` is a module singleton with no reset. */
+/** Fresh id per test as well as the reset in `beforeEach` — the topics query
+ *  is cached per id, and reusing one would answer from a neighbour's window. */
 let topicSeq = 0;
 function freshTopicId(): string {
   topicSeq += 1;
@@ -135,6 +146,7 @@ function badgeTexts(root: any): string[] {
 
 beforeEach(() => {
   requestedUrls.length = 0;
+  resetChatReadCursors();
   useOpenStoaSession.setState({
     mode: 'authenticated',
     token: 'test-token',
@@ -158,6 +170,17 @@ afterEach(() => {
     role: 'member',
   });
 });
+
+/**
+ * The user entered the room and read it.
+ *
+ * This is literally what `ChatRoomScreen` does on mount — `markChatRead` with
+ * the newest row it rendered — so the fixture and the shipped writer cannot
+ * drift into disagreeing about the cursor's shape.
+ */
+function readRoom(topicId: string, newest: ChatMessage): void {
+  expect(markChatRead(topicId, newest), 'the fixture did not actually mark anything read').toBe(true);
+}
 
 /** Mount the list, wait for both query hops, and hand back the tree. */
 async function mountList() {
@@ -184,9 +207,12 @@ describe('ChatListScreen — the last-seen marker bounds the unread count', () =
     const first = await mountList();
     expect(badgeTexts(first.rendered.root)).toEqual(['3']);
 
-    // Entering the room is what writes the marker (and navigates).
+    // Pressing the row navigates and NOTHING ELSE — the list is no longer a
+    // writer, which is what makes every route into the room behave the same.
     await first.rendered.press(first.rendered.pressableWith(`Room ${t.slice(-4)}`)!);
     expect(first.nav.navigate.calls.length, 'pressing the row should have navigated').toBe(1);
+    // ...and then the room the press opened records what it rendered.
+    readRoom(t, chat.current.messages[0]);
     first.rendered.unmount();
 
     // Come back to a list whose server data has NOT changed: everything in the
@@ -206,10 +232,10 @@ describe('ChatListScreen — the last-seen marker bounds the unread count', () =
     };
     vi.stubGlobal('fetch', fetchMock([topic(t)], chat));
 
-    // Read the room at 'old' — the marker lands there.
+    // Read the room at 'old' — the cursor lands there.
     const first = await mountList();
     expect(badgeTexts(first.rendered.root)).toEqual(['1']);
-    await first.rendered.press(first.rendered.pressableWith(`Room ${t.slice(-4)}`)!);
+    readRoom(t, chat.current.messages[0]);
     first.rendered.unmount();
 
     // Three more arrive on top of it while the user is elsewhere.
@@ -273,6 +299,37 @@ describe('ChatListScreen — the last-seen marker bounds the unread count', () =
       `chat history was requested with limit=${limit}; below 100 the "99+" badge can never render`,
     ).toBeGreaterThanOrEqual(100);
 
+    rendered.unmount();
+  });
+
+  it('CONTRACT: a badge clears without the list being remounted or refocused', async () => {
+    // The real sequence has no remount in it. The list stays mounted underneath
+    // the open room the whole time, and the cursor lives in a module-level map
+    // rather than in React state — so unless the screen SUBSCRIBES to it, the
+    // badge is whatever it was when the row last happened to render. Every other
+    // case in this file mounts a second time and would pass either way; this one
+    // is the reason the subscription exists.
+    const t = freshTopicId();
+    const chat = {
+      current: {
+        total: 2,
+        messages: [message({ id: 'm2', userId: OTHER }), message({ id: 'm1', userId: OTHER })],
+      },
+    };
+    vi.stubGlobal('fetch', fetchMock([topic(t)], chat));
+
+    const { rendered } = await mountList();
+    expect(badgeTexts(rendered.root)).toEqual(['2']);
+
+    // The room, opened on top of this list, records what it rendered.
+    await act(async () => {
+      readRoom(t, chat.current.messages[0]);
+    });
+
+    expect(
+      badgeTexts(rendered.root),
+      'the badge did not clear until the list was remounted — it is not watching the cursor',
+    ).toEqual([]);
     rendered.unmount();
   });
 

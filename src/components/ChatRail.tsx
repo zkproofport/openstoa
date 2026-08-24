@@ -203,12 +203,23 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     error: listError,
     needsNickname,
     reload: loadDms,
+    clearUnread,
   } = useConversationList<RailTopic, RailDm>();
 
   const openRoom = useCallback((r: RailRoom) => {
     setRoom(r);
     setPicking(false);
-  }, []);
+    /*
+     * Zero the badge now rather than on the next list load.
+     *
+     * The rail keeps this list mounted BESIDE the open room, so without it the
+     * user sits in a conversation looking at a count for the messages in front
+     * of them. The authoritative write happens in `ChatPanel` (debounced, see
+     * `chatReadSync`); this is only the local cache catching up first, and the
+     * next reload takes the server's number back.
+     */
+    clearUnread(r.topicId);
+  }, [clearUnread]);
 
   const backToList = useCallback(() => setRoom(null), []);
 

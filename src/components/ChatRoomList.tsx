@@ -37,12 +37,15 @@ export interface RailTopic {
   lastChatAt?: string | null;
   /** Creation time, the ranking key for a room nobody has spoken in yet. */
   createdAt?: string | null;
-  /** Optional, and currently never sent by any route — see `RoomRow`. */
+  /** Unread messages past this account's read cursor, from `GET /api/topics`.
+   *  Server-computed and account-level, so a room read on the phone arrives
+   *  here already at zero — see `src/lib/chatUnread.ts` for the counting rule. */
   unreadCount?: number;
 }
 
-/** `DmChannel` plus the same optional unread field, kept LOCAL rather than
- *  widened in `src/lib/dm.ts`: nothing outside the chat list consumes it yet. */
+/** `DmChannel` plus the same unread field, which `GET /api/dm` now sends. Kept
+ *  LOCAL rather than widened in `src/lib/dm.ts`: nothing outside the chat list
+ *  consumes it. */
 export type RailDm = DmChannel & { unreadCount?: number };
 
 export type ListTab = 'topics' | 'dms';
@@ -196,9 +199,12 @@ export function formatUnreadBadge(value: unknown): string | null {
  * chat activity into the public `sort=active` topic ordering, which is a
  * metadata channel out of this change's scope.
  *
- * `unreadCount` has no server source today — no route emits it (verified by
- * grep across `src/app/api`). The render path is wired and tested so that the
- * badge appears the day a route does emit it, and stays invisible until then.
+ * `unreadCount` comes from the server — `GET /api/topics` and `GET /api/dm`
+ * both carry it, derived from the account's read cursor in `chat_reads` by the
+ * rule in `src/lib/chatUnread.ts`. It is account-level, not per device: a room
+ * read on the phone arrives here already at zero, which is the entire reason
+ * the cursor moved server-side. Absent (an older server, a row that predates
+ * the field) still renders no badge rather than a zero pill.
  */
 function RoomRow({
   name,
