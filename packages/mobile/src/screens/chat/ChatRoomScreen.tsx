@@ -869,6 +869,55 @@ export function ChatRoomScreen() {
     refetchOnMount: 'always',
   });
 
+  /*
+   * The room as this device last rendered it, read from disk before the network
+   * answers anything.
+   *
+   * `useInfiniteQuery` is forced to `staleTime: 0, refetchOnMount: 'always'`
+   * just above — for a good reason, a just-sent message lives only in
+   * `liveMessages` and a served-stale page would lose it — but the cost is that
+   * a restarted app has NOTHING to draw until `/chat` comes back. The archive
+   * cache that covers it has existed since P3-17 and `backfill` reads and writes
+   * it on every entry; nothing ever painted from it, because a cached row held
+   * no author and the renderer needs one to name a bubble and place it.
+   *
+   * Merged LAST in `allMessages`, so the first-wins de-dupe below prefers every
+   * live source and these rows only fill what has not arrived yet. Nothing here
+   * can fail the room: a miss, an unreadable store and a first visit are the
+   * same answer, and that answer is what shipped.
+   */
+  const [cachedMessages, setCachedMessages] = useState<LocalMessage[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cached = await tak.readHistoryCache?.(topicId);
+        if (cancelled || !cached?.messages.length) return;
+        setCachedMessages(
+          cached.messages
+            // No author means no bubble: skipped rather than rendered anonymous.
+            .filter((m) => m.userId && m.nickname)
+            .map((m) => ({
+              id: m.id,
+              topicId,
+              userId: m.userId!,
+              nickname: m.nickname!,
+              profileImage: m.profileImage,
+              message: m.plaintext,
+              type: (m.type as ChatMessage['type']) ?? 'message',
+              isAI: m.isAI,
+              createdAt: m.createdAt,
+            })) as LocalMessage[],
+        );
+      } catch {
+        // A cache that cannot be read is a room that fetches.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [topicId, tak]);
+
   // ── Catch-up messages fetched via ?since=<iso> on SSE (re)connect ─────────
   // The SSE stream only delivers events that happen after the subscription
   // is live, so any messages that arrived between the previous session and
@@ -886,7 +935,7 @@ export function ChatRoomScreen() {
 
     const seen = new Set<string>();
     const merged: LocalMessage[] = [];
-    for (const m of [...sentMessages, ...historyMsgs, ...catchupMessages, ...liveMessages]) {
+    for (const m of [...sentMessages, ...historyMsgs, ...catchupMessages, ...liveMessages, ...cachedMessages]) {
       if (!seen.has(m.id)) {
         seen.add(m.id);
         // Fill pre-join rows MLS couldn't decrypt with TAK-recovered history.
@@ -901,7 +950,53 @@ export function ChatRoomScreen() {
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     return merged;
-  }, [data, sentMessages, catchupMessages, liveMessages, recovered]);
+  }, [data, sentMessages, catchupMessages, liveMessages, cachedMessages, recovered]);
+
+  /*
+   * Remember the room as rendered, so the next launch can paint before it asks.
+   *
+   * The counterpart of the cache read above. `backfill` already writes rows it
+   * OPENED, but those carry no author — it works from `ArchiveEntry`, which is
+   * ciphertext and a timestamp — so a room restored from them could show bodies
+   * with nobody attached. These rows have been through the renderer, so they
+   * have everything a bubble needs.
+   *
+   * Write-behind and unawaited: this is a copy of what is already on screen, and
+   * `writeHistoryCache` merges and bounds it. Optional-call because several
+   * suites swap the store for a partial stand-in.
+   */
+  useEffect(() => {
+    if (!allMessages.length) return;
+    const rows = allMessages
+      /*
+       * In flight, failed, locked, or bodiless: re-derived rather than stored.
+       *
+       * `message` is nullable here in a way it is not on the web — a join or
+       * leave notice carries no body — and storing one would restore a bubble
+       * with nothing in it. The type checker caught this; the filter is what
+       * keeps it caught.
+       */
+      .filter(
+        (m) =>
+          !m.pending &&
+          !m.failed &&
+          typeof m.message === 'string' &&
+          m.message !== '[unable to decrypt]',
+      )
+      .map((m) => ({
+        id: m.id,
+        createdAt: m.createdAt,
+        plaintext: m.message as string,
+        userId: m.userId,
+        nickname: m.nickname,
+        // Normalised, not widened: this record is JSON, where `undefined`
+        // drops the key and `null` costs bytes to store the absence of a value.
+        profileImage: m.profileImage ?? undefined,
+        type: m.type,
+        isAI: m.isAI,
+      }));
+    if (rows.length) void tak.writeHistoryCache?.(topicId, rows)?.catch(() => {});
+  }, [allMessages, topicId, tak]);
 
   /** Rows on screen this device cannot open. */
   const lockedCount = useMemo(
