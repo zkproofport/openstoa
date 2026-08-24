@@ -39,6 +39,7 @@ import {
   ApiTimeoutError,
   isApiTimeout,
   DEFAULT_REQUEST_TIMEOUT_MS,
+  MEDIA_DOWNLOAD_TIMEOUT_MS,
   UPLOAD_REQUEST_TIMEOUT_MS,
 } from '@/lib/apiFetch';
 
@@ -114,6 +115,29 @@ describe('apiFetch deadline', () => {
     const p = apiFetch('/api/feed', { timeoutMs: 0 }).catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(1);
     expect(await p).toBeInstanceOf(ApiTimeoutError);
+  });
+
+  it('VERY LARGE: DOWNLOADING an attachment gets the same budget as uploading it', async () => {
+    /*
+     * The direction that was missed. An upload was given 60s precisely because
+     * the clock covers a multi-megabyte body moving; the download of that same
+     * body kept the ordinary 15s, so a large attachment on a slow link is cut
+     * off mid-transfer and reported to the reader as a failed picture. A
+     * sender's uplink is usually the slower half, which is why this survived.
+     *
+     * Behavioural, not a name check: the request is still alive at 15s and
+     * rejects at 60s.
+     */
+    vi.stubGlobal('fetch', neverAnswers());
+    const p = apiFetch('/api/topics/t/chat/media?key=k', {
+      timeoutMs: MEDIA_DOWNLOAD_TIMEOUT_MS,
+    }).catch((e: unknown) => e);
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS + 1);
+    expect(await isPending(p), 'the attachment download died at the ordinary deadline').toBe(true);
+
+    await vi.advanceTimersByTimeAsync(MEDIA_DOWNLOAD_TIMEOUT_MS);
+    expect((await p as ApiTimeoutError).timeoutMs).toBe(MEDIA_DOWNLOAD_TIMEOUT_MS);
   });
 
   it('EMPTY: `timeoutMs: null` waits as long as it takes — the streaming opt-out', async () => {
@@ -339,5 +363,24 @@ describe('every browser request goes through the deadline', () => {
       );
     }
     expect(UPLOAD_REQUEST_TIMEOUT_MS).toBeGreaterThan(DEFAULT_REQUEST_TIMEOUT_MS);
+  });
+
+  it('VERY LARGE: the attachment read in ChatPanel takes that deadline, not the default', () => {
+    /*
+     * COMMENTS STRIPPED FIRST, and the assertion scoped to the call site.
+     *
+     * A bare `toContain('MEDIA_DOWNLOAD_TIMEOUT_MS')` passes on the sentence
+     * next to the option explaining the option — which is exactly what it did
+     * when the option itself was removed to check that this test bites. A
+     * source test that a comment can satisfy is testing prose.
+     */
+    const code = readFileSync(join(SRC, 'components/ChatPanel.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '');
+    const anchor = 'key=${encodeURIComponent(objectKey)}';
+    const at = code.indexOf(anchor);
+    expect(at, 'the attachment READ call site is not where this test expects it').toBeGreaterThan(-1);
+    expect(code.slice(at, at + 500)).toMatch(/timeoutMs:\s*MEDIA_DOWNLOAD_TIMEOUT_MS/);
+    expect(MEDIA_DOWNLOAD_TIMEOUT_MS).toBe(UPLOAD_REQUEST_TIMEOUT_MS);
   });
 });

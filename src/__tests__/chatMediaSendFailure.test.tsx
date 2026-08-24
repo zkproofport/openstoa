@@ -22,6 +22,7 @@ import {
   parseFailedMedia,
   serializeFailedMedia,
 } from '@/lib/chatMedia';
+import { __resetSentChatMediaCache } from '@/lib/chatMediaPlaintextCache';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /*
@@ -814,6 +815,24 @@ describe('a failed attachment lives in the conversation, like a failed text', ()
     sendStatuses = [409];
     mediaGetStatus = 500; // the picture also fails to load, so BOTH are on screen
     await attach();
+    /*
+     * Drop the sender's plaintext, because otherwise there is nothing to fetch
+     * and therefore nothing to Reload: a tab that just sent an attachment
+     * renders it from the bytes it still holds
+     * (`lib/chatMediaPlaintextCache.ts`) and never touches the network.
+     *
+     * This is not a workaround — it is the state a failed row is normally in
+     * when a reader meets it. Failed rows survive a restart
+     * (`restoredFailedRows`), the plaintext cache does not, so the row that
+     * shows Reload is the one restored into a fresh tab. The unmount/remount
+     * below IS that restart, not a shortcut for one: the row comes back out of
+     * localStorage exactly as it would after a reload.
+     */
+    __resetSentChatMediaCache();
+    await act(async () => {
+      root.render(null); // unmount everything: this is the tab closing
+    });
+    await mount();
 
     expect(bodyText()).toContain(enLocale.chat.sendFailedRetry);
     expect(bodyText()).toContain(enLocale.chat.media.reload);

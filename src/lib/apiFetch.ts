@@ -43,6 +43,26 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 export const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
+ * The deadline for DOWNLOADING one of those same megabytes back — an encrypted
+ * chat attachment, fetched as `application/octet-stream`.
+ *
+ * Defined AS the upload constant rather than as a second `60_000`, because they
+ * are one budget seen from two ends: the same file, under the same size cap,
+ * moving the other way. Written as two independent numbers they would drift, and
+ * the drift would be invisible — the direction that broke would be whichever one
+ * somebody forgot.
+ *
+ * It had the ordinary 15s, and that was a real deadline on a real transfer. An
+ * upload was given 60s precisely because the clock covers the body moving, not
+ * idle time; the download of that same body was left on the default, so a
+ * multi-megabyte attachment on a slow link aborts mid-transfer and the reader is
+ * shown "the picture failed" for a fetch that was making perfectly good
+ * progress. A sender's uplink is normally the slower half, which is why this
+ * survived: the upload it was cut against had already been given room.
+ */
+export const MEDIA_DOWNLOAD_TIMEOUT_MS = UPLOAD_REQUEST_TIMEOUT_MS;
+
+/**
  * The server was reachable and did not answer inside the deadline.
  *
  * Its own type so a caller can say "the server did not answer" rather than
