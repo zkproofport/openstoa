@@ -104,9 +104,17 @@ describe('CONTRACT: the message has no notification block', () => {
   it('sends data only', async () => {
     await provider().send(TARGET, { title: 'OpenStoa', body: 'New message', data: { topicId: 't1' } } as never);
     const msg = sentMessage();
-    // THE assertion. Add a `notification` block and Firebase displays the
-    // message itself, which is the entire defect this file exists for.
+    /*
+     * THE assertion — and it has to cover BOTH places a notification block can
+     * live. Checking only `msg.notification` let `msg.android.notification`
+     * through, and `android.notification: { channel_id }` is still a
+     * notification block: Firebase's table sends any message carrying one to
+     * the system tray in the background and never calls `onMessageReceived`.
+     * The test passed while the device showed the defect.
+     */
     expect(msg.notification).toBeUndefined();
+    expect(msg.android?.notification).toBeUndefined();
+    expect(Object.keys(msg.android ?? {})).toEqual(['priority']);
     expect(msg.data).toBeDefined();
   });
 
@@ -120,9 +128,14 @@ describe('CONTRACT: the message has no notification block', () => {
     expect(sentMessage().android.priority).toBe('HIGH');
   });
 
-  it('names the channel the app declares at registration', async () => {
+  it('names the channel in DATA, never under android.notification', async () => {
     await provider().send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never);
-    expect(sentMessage().android.notification.channel_id).toBe('chat');
+    const msg = sentMessage();
+    // `expo-notifications` reads the channel off the data message when it
+    // builds the notification. Putting it under `android.notification` names
+    // the same channel and costs the entire fix.
+    expect(msg.data.channelId).toBe('chat');
+    expect(msg.android?.notification).toBeUndefined();
   });
 
   it('reuses the access token rather than minting one per push', async () => {

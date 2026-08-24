@@ -193,6 +193,9 @@ export class FcmPushProvider implements PushProvider {
    * notification could not be delivered.
    */
   private async post(target: PushTarget, data: Record<string, string>): Promise<void> {
+    // The channel rides in `data` — see the note on `android` below for why it
+    // cannot ride in `android.notification`.
+    data.channelId = CHAT_CHANNEL_ID;
     try {
       const token = await this.accessToken();
       const url = `https://fcm.googleapis.com/v1/projects/${this.serviceAccount.project_id}/messages:send`;
@@ -205,12 +208,23 @@ export class FcmPushProvider implements PushProvider {
             // NO `notification` block. That is the whole point: with one, FCM
             // displays the message itself and the app never sees it.
             data,
-            android: {
-              priority: 'HIGH',
-              // Named so the app's own presentation lands on the right channel
-              // when it builds the notification.
-              notification: { channel_id: CHAT_CHANNEL_ID },
-            },
+            /*
+             * `priority` and NOTHING ELSE under `android`.
+             *
+             * `android.notification` is a notification block, whatever it
+             * carries. Firebase's own table is explicit: in the background a
+             * message with one goes to the system tray and `onMessageReceived`
+             * is never called, while a data-only message is handed to the app.
+             * Setting `channel_id` there — which is only how the CHANNEL is
+             * named — was enough to turn this back into the exact message shape
+             * the whole file exists to stop sending, and it was measured doing
+             * so: the tray showed `tag=FCM-Notification:...` and the app logged
+             * nothing.
+             *
+             * The channel travels in `data` instead, where
+             * `expo-notifications` reads it when IT builds the notification.
+             */
+            android: { priority: 'HIGH' },
           },
         }),
       });
