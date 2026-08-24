@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -45,8 +46,7 @@ export default function DmListPage() {
   const [needsNickname, setNeedsNickname] = useState(false);
 
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
+    loadSession()
       .then((data) => {
         if (!data?.userId) { router.replace('/'); return; }
       })

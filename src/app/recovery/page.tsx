@@ -13,6 +13,7 @@
  * this page itself.
  */
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -28,8 +29,7 @@ export default function RecoveryPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => (r.ok ? r.json() : null))
+    loadSession()
       .then((data) => {
         if (!data?.userId) {
           router.replace('/');

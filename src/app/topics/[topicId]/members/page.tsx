@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getMlsSessionStore } from '@/lib/mls/webTransport';
@@ -114,8 +115,7 @@ export default function MembersPage() {
   const chatRail = useChatRail();
 
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
+    loadSession()
       .then((data) => {
         if (!data?.userId) { router.replace('/'); return; }
         setSessionUserId(data.userId);

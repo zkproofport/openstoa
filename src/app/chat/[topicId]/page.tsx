@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -60,8 +61,7 @@ export default function TopicChatPage() {
 
   useEffect(() => {
     let alive = true;
-    apiFetch('/api/auth/session')
-      .then((r) => (r.ok ? r.json() : null))
+    loadSession()
       .then((d) => {
         if (alive) setViewerUserId(d?.userId ?? null);
       })

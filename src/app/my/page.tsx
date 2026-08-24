@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
+import { loadSession, clearSession } from '@/lib/sessionCache';
 import { useState, useEffect, useCallback, useRef, Children } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -293,14 +294,16 @@ export default function MyPage() {
 
   // Load session
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
+    loadSession()
       .then((data) => {
         if (!data?.userId) {
           router.replace('/');
           return;
         }
-        setSession(data);
+        // Narrowed, not cast: the guard above proves `userId` is present, and
+        // the shared cache types it optional because a signed-out session has
+        // none.
+        setSession({ ...data, userId: data.userId });
         if (data.profileImage) setProfileImage(data.profileImage);
         // Also fetch from profile image endpoint (session may not include it)
         apiFetch('/api/profile/image').then(r => r.ok ? r.json() : null).then(d => {
@@ -315,7 +318,9 @@ export default function MyPage() {
     setLoggingOut(true);
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' });
-      try { localStorage.removeItem('os-session'); } catch {}
+      // Through the cache that owns the key, so the module memo goes too — a
+      // stale memo showed the previous person's name until the server disagreed.
+      clearSession();
       router.push('/');
     } catch {
       setLoggingOut(false);

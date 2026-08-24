@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -77,8 +78,7 @@ function ExplorePageInner() {
 
   // ── Auth check ──
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
+    loadSession()
       .then((data) => {
         if (!data?.userId) {
           setIsGuest(true);

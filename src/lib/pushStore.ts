@@ -80,6 +80,37 @@ export async function deleteToken(
 }
 
 /**
+ * Drop a token the transport has told us is dead.
+ *
+ * FCM answers `UNREGISTERED` for a token whose app was uninstalled or whose
+ * data was cleared, and `INVALID_ARGUMENT` on `message.token` for one it will
+ * never accept. Neither is retryable and neither used to be acted on: the row
+ * stayed, every later fan-out paid a round trip to be refused again, and the
+ * user's device looked registered while receiving nothing. Observed on staging
+ * — the same row id refused on every send, for hours.
+ *
+ * Keyed on the TOKEN rather than the handle, because the transport is the only
+ * thing that knows a token is dead and a token is all it has. Scoped to nothing
+ * else on purpose: a token identifies one device registration, so deleting by
+ * it cannot touch another user's row.
+ *
+ * A device that comes back registers again — `upsertToken` on the same handle
+ * rewrites it — so this is never the end of that device's notifications, only
+ * of a dead row.
+ */
+export async function deleteTokenByValue(
+  executor: SqlExecutor,
+  pushToken: string,
+): Promise<number> {
+  const res = (await executor.execute(sql`
+    DELETE FROM push_tokens
+    WHERE push_token = ${pushToken}
+    RETURNING id
+  `)) as Rows<{ id: string }>;
+  return res.rows.length;
+}
+
+/**
  * Fan-out lookup for a content-free dispatch: every push token belonging to a
  * CURRENT member of the topic, EXCLUDING the sender. The inner join to
  * topic_members guarantees non-members contribute no token; the sender filter

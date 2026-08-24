@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { peekSession, loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import HeaderSearchBar from '@/components/HeaderSearchBar';
@@ -22,20 +23,6 @@ interface HeaderProps {
    *  AND a resolved signed-in session are present (see render below). */
   onChatToggle?: () => void;
   chatOpen?: boolean;
-}
-
-function getCachedSession(): UserSession | null {
-  try {
-    const cached = localStorage.getItem('os-session');
-    return cached ? JSON.parse(cached) : null;
-  } catch { return null; }
-}
-
-function setCachedSession(data: UserSession | null) {
-  try {
-    if (data) localStorage.setItem('os-session', JSON.stringify(data));
-    else localStorage.removeItem('os-session');
-  } catch {}
 }
 
 /**
@@ -73,23 +60,22 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
     // Hydrate from cache first (avoids flashing the "Sign in" pill for
     // already-signed-in users) and mark the session as checked so the
     // header switches from the placeholder span to the real chip.
-    const cached = getCachedSession();
+    /*
+     * The cache this header has always kept, now shared.
+     *
+     * It was the ONLY reader of `os-session` while twelve other call sites
+     * fetched the same endpoint independently — opening a topic asked twice
+     * before anything else happened. `sessionCache` owns the key now, and the
+     * request is de-duplicated across every caller on the page.
+     */
+    const cached = peekSession();
     if (cached?.userId) {
       setUser(cached);
       setSessionChecked(true);
     }
 
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.userId) {
-          setUser(data);
-          setCachedSession(data);
-        } else {
-          setUser(null);
-          setCachedSession(null);
-        }
-      })
+    loadSession()
+      .then((data) => setUser(data?.userId ? data : null))
       .catch(() => {})
       .finally(() => setSessionChecked(true));
   }, []);

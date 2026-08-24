@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
@@ -39,8 +40,7 @@ export default function RecordedPage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
+    loadSession()
       .then((data) => {
         if (data?.userId) setSessionUserId(data.userId);
       })

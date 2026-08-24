@@ -284,7 +284,24 @@ export function getPushProvider(): PushProvider | null {
   if (disabled === '1' || disabled === 'true') return null;
   if (!process.env.PUSH_MODE) return null;
   const expo = new ExpoPushProvider(process.env.EXPO_ACCESS_TOKEN);
-  const fcm = getFcmProvider();
+  /*
+   * The removal is injected rather than imported into `fcmProvider`, which
+   * knows about a wire format and nothing else. Fire-and-forget and swallowed:
+   * a chat message must not fail because a dead registration could not be
+   * tidied away, and the next send simply tries again.
+   */
+  const fcm = getFcmProvider((pushToken) => {
+    void (async () => {
+      try {
+        const { db } = await import('@/lib/db');
+        const { deleteTokenByValue } = await import('@/lib/pushStore');
+        const removed = await deleteTokenByValue(db, pushToken);
+        if (removed > 0) logger.info(ROUTE, 'removed a dead push token', { removed });
+      } catch (err) {
+        logger.warn(ROUTE, 'could not remove a dead push token', { err: String(err) });
+      }
+    })();
+  });
   return fcm ? new PlatformSplitProvider(expo, fcm) : expo;
 }
 

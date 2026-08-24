@@ -11,6 +11,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'node',
+    // A page-lifetime cache must not span test files — see the file's own note.
+    setupFiles: ['./src/__tests__/setup/resetClientCaches.ts'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
@@ -25,6 +27,7 @@ export default defineConfig({
        */
       'packages/mobile/**/*.test.tsx',
       'packages/mobile/src/__tests__/harness/**',
+      'src/__tests__/setup/**',
     ],
   },
   resolve: {

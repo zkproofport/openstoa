@@ -1,6 +1,8 @@
 'use client';
 
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
+import { sharedGet } from '@/lib/requestCache';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getMlsSessionStore } from '@/lib/mls/webTransport';
@@ -207,8 +209,7 @@ export default function TopicPageClient() {
   }
 
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
+    loadSession()
       .then((data) => {
         if (data?.userId) {
           setSessionUserId(data.userId);
@@ -260,7 +261,7 @@ export default function TopicPageClient() {
 
   async function loadTopic() {
     try {
-      const res = await apiFetch(`/api/topics/${topicId}`);
+      const res = await sharedGet(`/api/topics/${topicId}`);
       if (res.status === 401) {
         if (isGuest) { router.replace('/topics'); return; }
         router.replace('/');

@@ -10,6 +10,7 @@
  * action are the whole page.
  */
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, Suspense } from 'react';
 import { isDefaultNickname } from '@/lib/defaultNickname';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -47,8 +48,7 @@ function ProfilePageInner() {
   const [imageUploading, setImageUploading] = useState(false);
 
   useEffect(() => {
-    apiFetch('/api/auth/session')
-      .then((r) => r.json())
+    loadSession()
       .then((data) => {
         if (!data?.userId) {
           router.replace('/');

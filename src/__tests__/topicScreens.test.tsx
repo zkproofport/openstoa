@@ -28,6 +28,8 @@
  * Testing Library — that package is not a dependency here.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { resetSessionMemoForTests } from '@/lib/sessionCache';
+import { resetRequestCache } from '@/lib/requestCache';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import React, { act } from 'react';
@@ -148,15 +150,28 @@ async function mount(node: React.ReactElement) {
   }
 }
 
+/*
+ * Standing up a NEW fetch mock is this file's way of saying "a different page
+ * load". The client caches are scoped to one — `requestCache` shares an
+ * in-flight GET for a two-second window, and a test mounts several pages inside
+ * that — so the swap has to clear them too, or the second mount is answered
+ * with the first mount's topic.
+ */
+const freshPage = (o: Overrides) => {
+  resetRequestCache();
+  resetSessionMemoForTests();
+  vi.stubGlobal('fetch', mockFetch(o));
+};
+
 const mountTopic = (o: Overrides = {}) => {
   paramsMock.current = { topicId: 't1' };
-  vi.stubGlobal('fetch', mockFetch(o));
+  freshPage(o);
   return mount(<TopicPage />);
 };
 
 const mountPost = (o: Overrides = {}) => {
   paramsMock.current = { topicId: 't1', postId: 'p1' };
-  vi.stubGlobal('fetch', mockFetch(o));
+  freshPage(o);
   return mount(<PostPage />);
 };
 
@@ -522,6 +537,12 @@ describe('post detail — the body is the page, not a card', () => {
     const kebab = qa<HTMLButtonElement>('button').find((b) => b.getAttribute('aria-label') === 'Post actions');
     expect(kebab?.className).toContain('os-chip');
 
+    /*
+     * A DIFFERENT reader is a different page load, and the session cache is
+     * scoped to one — it verifies with the server once and serves that answer
+     * to every caller after it, which is the whole point of it. Tearing down
+     * the root models the new page; this models the new session.
+     */
     await act(async () => { root.unmount(); });
     container.remove();
     container = document.createElement('div');

@@ -5,6 +5,7 @@
  * event handlers / effects, never during SSR.
  */
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import { TakSessionStore, type TakTransport, type TakBundleRow, type ArchiveEntry } from './takSession';
 import * as km from './keyManager';
@@ -136,10 +137,7 @@ function encStore(): SecureKVStore {
  */
 async function sessionUserId(): Promise<string | null> {
   try {
-    const r = await apiFetch('/api/auth/session');
-    if (!r.ok) return null;
-    const d = (await r.json()) as { userId?: string };
-    return d?.userId ?? null;
+    return (await loadSession())?.userId ?? null;
   } catch {
     return null;
   }

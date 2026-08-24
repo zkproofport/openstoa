@@ -164,7 +164,16 @@ async function mintAccessToken(sa: ServiceAccount): Promise<{ token: string; exp
 export class FcmPushProvider implements PushProvider {
   private cached: { token: string; expiresAt: number } | null = null;
 
-  constructor(private readonly serviceAccount: ServiceAccount) {}
+  /**
+   * @param onDeadToken Called with a token FCM says it will never accept. This
+   * class does not know about the database — the caller supplies the removal —
+   * but something must act on the answer: without it a dead row is retried on
+   * every fan-out forever, which is what staging was doing.
+   */
+  constructor(
+    private readonly serviceAccount: ServiceAccount,
+    private readonly onDeadToken?: (pushToken: string) => void,
+  ) {}
 
   async send(target: PushTarget, payload: DummyPushPayload): Promise<void> {
     await this.post(target, {
@@ -231,10 +240,23 @@ export class FcmPushProvider implements PushProvider {
       if (!res.ok) {
         // Never the token, never the payload — only what went wrong.
         const detail = await res.text().catch(() => '');
-        logger.warn(ROUTE, 'fcm send failed', {
-          status: res.status,
-          error: extractFcmError(detail),
-        });
+        const error = extractFcmError(detail);
+        logger.warn(ROUTE, 'fcm send failed', { status: res.status, error });
+        /*
+         * TERMINAL, so stop carrying the row.
+         *
+         * `UNREGISTERED` is an uninstalled app or cleared data; an
+         * `INVALID_ARGUMENT` naming `message.token` is a value FCM will never
+         * accept. Neither is retryable, and leaving the row meant every later
+         * fan-out bought the same refusal — measured on staging, the same row
+         * id rejected on every send while the user's device showed as
+         * registered. An `INVALID_ARGUMENT` about any OTHER field is OUR bug in
+         * the payload and must not cost the user their registration.
+         */
+        if (isDeadToken(error, detail)) {
+          logger.info(ROUTE, 'dropping a token fcm will not accept', { error });
+          this.onDeadToken?.(target.pushToken);
+        }
         return;
       }
       logger.info(ROUTE, 'fcm data message sent', { platform: target.platform });
@@ -242,6 +264,21 @@ export class FcmPushProvider implements PushProvider {
       logger.warn(ROUTE, 'fcm send threw', { err: String(err) });
     }
   }
+}
+
+/**
+ * Whether FCM's answer means this token is finished.
+ *
+ * Deliberately narrow. `UNREGISTERED` and `SENDER_ID_MISMATCH` are about the
+ * token itself. `INVALID_ARGUMENT` is not — it is also what a malformed payload
+ * returns — so it only counts when the violation names `message.token`, which
+ * is the difference between dropping a dead registration and dropping a live
+ * one because we sent a bad field.
+ */
+export function isDeadToken(error: string, body: string): boolean {
+  if (error === 'UNREGISTERED' || error === 'SENDER_ID_MISMATCH') return true;
+  if (error !== 'INVALID_ARGUMENT') return false;
+  return /"field"\s*:\s*"message\.token"/.test(body);
 }
 
 /**
@@ -281,7 +318,9 @@ export function serialiseData(data: Record<string, unknown> | undefined): Record
  * delivers but cannot be dismissed. Degraded, not broken — and the caller logs
  * which one it took.
  */
-export function getFcmProvider(): FcmPushProvider | null {
+export function getFcmProvider(
+  onDeadToken?: (pushToken: string) => void,
+): FcmPushProvider | null {
   const sa = readServiceAccount(process.env.FCM_SERVICE_ACCOUNT);
-  return sa ? new FcmPushProvider(sa) : null;
+  return sa ? new FcmPushProvider(sa, onDeadToken) : null;
 }

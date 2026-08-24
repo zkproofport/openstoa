@@ -135,7 +135,7 @@ let root: Root;
 beforeEach(() => {
   vi.clearAllMocks();
   sessionAnswers = true;
-  sessionStorage.clear();
+  localStorage.clear();
   // jsdom has no layout engine and no `scrollTo`; the panel's `scrollToBottom`
   // calls it on the scroller after every paint. Counting is not what this file
   // measures — it only has to exist. Same stub `chatPanel-sync` installs.
@@ -291,7 +291,8 @@ describe('CONTRACT: the list is drawable on the first paint', () => {
    */
   it('a remembered id lets cached rows paint without waiting for /api/auth/session', async () => {
     const topic = nextTopic();
-    sessionStorage.setItem('openstoa.chat.userId', ME);
+    // The one key `Header` has always used — not a second store beside it.
+    localStorage.setItem('os-session', JSON.stringify({ userId: ME }));
     readHistoryCache.mockResolvedValue({ messages: [cached(1)], cursor: null });
     // The session lookup never answers, which is the point: if the panel still
     // paints, it is not waiting on it.
@@ -307,7 +308,7 @@ describe('CONTRACT: the list is drawable on the first paint', () => {
 
   it('without a remembered id the room still waits, rather than guessing a side', async () => {
     const topic = nextTopic();
-    sessionStorage.clear();
+    localStorage.clear();
     readHistoryCache.mockResolvedValue({ messages: [cached(1)], cursor: null });
     sessionAnswers = false;
 
@@ -318,16 +319,17 @@ describe('CONTRACT: the list is drawable on the first paint', () => {
     expect(container.textContent).not.toContain('cached body 1');
   });
 
-  it('the id is remembered once the lookup does answer', async () => {
+  it('the id is written back once the lookup does answer', async () => {
     const topic = nextTopic();
-    sessionStorage.clear();
-    await mount(topic);
+    localStorage.clear();
+    await mountFresh(topic);
     await act(async () => {
       releaseChat([wire(1)]);
       await chatPromise;
       await Promise.resolve();
     });
-    expect(sessionStorage.getItem('openstoa.chat.userId')).toBe(ME);
+    const stored = JSON.parse(localStorage.getItem('os-session') ?? 'null');
+    expect(stored?.userId, 'the shared session cache was not written').toBe(ME);
   });
 });
 

@@ -44,6 +44,8 @@
  * effect below would never re-fire.
  */
 import { apiFetch } from '@/lib/apiFetch';
+import { sharedGet } from '@/lib/requestCache';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -168,7 +170,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
     if (!room || room.kind !== 'topic') return;
     setMembers(null);
     setMembersFailed(false);
-    apiFetch(`/api/topics/${room.topicId}/members`)
+    sharedGet(`/api/topics/${room.topicId}/members`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed to load members'))))
       .then((d) => setMembers(Array.isArray(d?.members) ? d.members : []))
       .catch(() => setMembersFailed(true));
@@ -184,8 +186,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
 
   useEffect(() => {
     let alive = true;
-    apiFetch('/api/auth/session')
-      .then((r) => (r.ok ? r.json() : null))
+    loadSession()
       .then((d) => {
         if (alive) setMyUserId(d?.userId ?? null);
       })

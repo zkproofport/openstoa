@@ -25,6 +25,7 @@
  * collapsed into a single generic empty state.
  */
 import { apiFetch } from '@/lib/apiFetch';
+import { loadSession } from '@/lib/sessionCache';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from './Avatar';
@@ -47,19 +48,20 @@ const noteStyle: React.CSSProperties = {
   color: 'var(--muted)',
 };
 
-// Short-lived session cache shared by every mounted UserCard — a page that
-// renders many avatars (feed, member list) must not issue one
-// /api/auth/session request per card just to answer "is this me".
-let viewerCache: { at: number; userId: string | null } | null = null;
-const VIEWER_TTL_MS = 60_000;
+/*
+ * "Is this me?" — answered from the one place that knows.
+ *
+ * This used to keep its OWN 60-second cache, for the right reason (a feed or a
+ * member list mounts many cards and must not ask once per avatar) and as a
+ * third copy of the same value: `Header` cached it in `localStorage`, and
+ * eleven pages fetched it with no cache at all. `sessionCache` de-duplicates
+ * concurrent callers and survives a reload, so the TTL bought nothing that was
+ * not already there — and a TTL was the wrong shape anyway, since the answer
+ * only changes at sign-in and sign-out, both of which write through it.
+ */
 async function resolveViewerUserId(): Promise<string | null> {
-  if (viewerCache && Date.now() - viewerCache.at < VIEWER_TTL_MS) return viewerCache.userId;
   try {
-    const r = await apiFetch('/api/auth/session', { credentials: 'include' });
-    const d = r.ok ? await r.json() : null;
-    const userId: string | null = d?.userId ?? null;
-    viewerCache = { at: Date.now(), userId };
-    return userId;
+    return (await loadSession())?.userId ?? null;
   } catch {
     return null;
   }

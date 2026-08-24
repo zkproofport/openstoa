@@ -41,6 +41,7 @@ import {
   getFcmProvider,
   serialiseData,
   extractFcmError,
+  isDeadToken,
 } from '@/lib/fcmProvider';
 
 /** A syntactically valid RSA key, so the signer has something real to sign. */
@@ -261,5 +262,128 @@ describe('EXTERNAL FAILURE and EMPTY', () => {
     expect(getFcmProvider()).not.toBeNull();
     if (before === undefined) delete process.env.FCM_SERVICE_ACCOUNT;
     else process.env.FCM_SERVICE_ACCOUNT = before;
+  });
+});
+
+describe('A DEAD TOKEN IS DROPPED, and a live one never is', () => {
+  /*
+   * Why this exists. Nothing acted on FCM's terminal answers, so a token whose
+   * app had been uninstalled or whose data had been cleared stayed in the table
+   * and was retried on every fan-out — measured on staging, the same row id
+   * refused on every send for hours while the device showed as registered.
+   *
+   * The risk in fixing it is the opposite mistake: `INVALID_ARGUMENT` is also
+   * what a MALFORMED PAYLOAD returns, and treating that as a dead token would
+   * unregister working devices because of our own bug. Hence the field check,
+   * and hence these cases.
+   */
+  it('UNREGISTERED: the token is reported dead', async () => {
+    stubFetch({ ok: false, status: 404, body: { error: { status: 'UNREGISTERED' } } });
+    const dead: string[] = [];
+    const p = new FcmPushProvider(
+      { client_email: 'e', private_key: KEY, project_id: 'p' },
+      (t) => dead.push(t),
+    );
+    await p.send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never);
+    expect(dead).toEqual([TOKEN]);
+  });
+
+  it('INVALID_ARGUMENT on message.token: dead', async () => {
+    stubFetch({
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          status: 'INVALID_ARGUMENT',
+          details: [{ fieldViolations: [{ field: 'message.token', description: 'not valid' }] }],
+        },
+      },
+    });
+    const dead: string[] = [];
+    const p = new FcmPushProvider(
+      { client_email: 'e', private_key: KEY, project_id: 'p' },
+      (t) => dead.push(t),
+    );
+    await p.send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never);
+    expect(dead).toEqual([TOKEN]);
+  });
+
+  it('HOSTILE: INVALID_ARGUMENT on ANY OTHER field keeps the token', async () => {
+    // Our payload bug must never cost a user their registration.
+    stubFetch({
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          status: 'INVALID_ARGUMENT',
+          details: [{ fieldViolations: [{ field: 'message.android.notification' }] }],
+        },
+      },
+    });
+    const dead: string[] = [];
+    const p = new FcmPushProvider(
+      { client_email: 'e', private_key: KEY, project_id: 'p' },
+      (t) => dead.push(t),
+    );
+    await p.send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never);
+    expect(dead, 'a payload bug unregistered a working device').toEqual([]);
+  });
+
+  it.each([
+    ['QUOTA_EXCEEDED', 429],
+    ['UNAVAILABLE', 503],
+    ['INTERNAL', 500],
+  ])('RETRYABLE: %s keeps the token', async (status, http) => {
+    stubFetch({ ok: false, status: http, body: { error: { status } } });
+    const dead: string[] = [];
+    const p = new FcmPushProvider(
+      { client_email: 'e', private_key: KEY, project_id: 'p' },
+      (t) => dead.push(t),
+    );
+    await p.send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never);
+    expect(dead).toEqual([]);
+  });
+
+  it('a successful send reports nothing', async () => {
+    stubFetch({ ok: true, status: 200 });
+    const dead: string[] = [];
+    const p = new FcmPushProvider(
+      { client_email: 'e', private_key: KEY, project_id: 'p' },
+      (t) => dead.push(t),
+    );
+    await p.send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never);
+    expect(dead).toEqual([]);
+  });
+
+  it('EMPTY: no callback at all is not a crash', async () => {
+    stubFetch({ ok: false, status: 404, body: { error: { status: 'UNREGISTERED' } } });
+    await expect(
+      provider().send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never),
+    ).resolves.toBeUndefined();
+  });
+
+  it('HOSTILE: a callback that throws never reaches the caller', async () => {
+    stubFetch({ ok: false, status: 404, body: { error: { status: 'UNREGISTERED' } } });
+    const p = new FcmPushProvider({ client_email: 'e', private_key: KEY, project_id: 'p' }, () => {
+      throw new Error('db down');
+    });
+    await expect(
+      p.send(TARGET, { title: 'x', body: 'y', data: { topicId: 't1' } } as never),
+    ).resolves.toBeUndefined();
+  });
+
+  describe('isDeadToken on its own', () => {
+    it.each([
+      ['UNREGISTERED', '', true],
+      ['SENDER_ID_MISMATCH', '', true],
+      ['INVALID_ARGUMENT', '{"field":"message.token"}', true],
+      ['INVALID_ARGUMENT', '{"field":"message.data"}', false],
+      ['INVALID_ARGUMENT', '', false],
+      ['QUOTA_EXCEEDED', '{"field":"message.token"}', false],
+      ['unknown', '', false],
+      ['', '', false],
+    ])('%s + %s → %s', (error, body, expected) => {
+      expect(isDeadToken(error, body)).toBe(expected);
+    });
   });
 });
