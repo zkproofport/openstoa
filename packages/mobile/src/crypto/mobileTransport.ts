@@ -204,8 +204,14 @@ export function createTakTransport(client: OpenStoaClient): TakTransport {
     async postArchive(topicId, messageId, takVersion, archiveB64) {
       await client.post(`${base(topicId)}/archive`, { messageId, takVersion, archive: archiveB64 });
     },
-    async getArchive(topicId, since) {
+    async getArchive(topicId, since, limit) {
       const out: ArchiveEntry[] = [];
+      /*
+       * `pageSize` is what goes on the wire; `limit` is what the caller asked
+       * for. A caller that wants one row must not be handed 500 and then have
+       * 499 thrown away — the cost is the transfer, not the slice.
+       */
+      const pageSize = Math.min(limit ?? 500, 500);
       // Resume where the device left off. `since` is what makes a re-entry cost
       // the delta instead of the conversation; the loop below still exists for
       // a first visit, or for a device that has been away long enough to owe
@@ -214,9 +220,9 @@ export function createTakTransport(client: OpenStoaClient): TakTransport {
         ? `&since=${encodeURIComponent(since.createdAt)}&sinceMsg=${encodeURIComponent(since.messageId)}`
         : '';
       for (;;) {
-        const r = await client.get<{ archive: ArchiveEntry[] }>(`${base(topicId)}/archive?limit=500${cursor}`);
+        const r = await client.get<{ archive: ArchiveEntry[] }>(`${base(topicId)}/archive?limit=${pageSize}${cursor}`);
         out.push(...r.archive);
-        if (r.archive.length < 500) break;
+        if (limit !== undefined || r.archive.length < pageSize) break;
         const last = r.archive[r.archive.length - 1];
         cursor = `&since=${encodeURIComponent(last.createdAt)}&sinceMsg=${encodeURIComponent(last.messageId)}`;
       }

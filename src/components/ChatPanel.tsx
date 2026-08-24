@@ -2640,7 +2640,7 @@ export default function ChatPanel({
             // pass. It gets archived by `archiveOnSend` the moment the server
             // gives it a real id.
             .filter((m) => m.type === 'message' && !m.undecryptable && m.message && !isProvisionalId(m.id))
-            .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
+            .map((m) => ({ messageId: m.id, plaintext: m.message as string, createdAt: m.createdAt })),
           ...fromArchive,
         ];
         await getTakSessionStore().backfillMissingArchive(topicId, tierRef.current, readable);

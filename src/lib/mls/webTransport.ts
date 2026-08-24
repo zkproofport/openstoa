@@ -184,21 +184,27 @@ function httpTakTransport(): TakTransport {
       });
       if (!r.ok && r.status !== 200) throw new Error(`archive POST ${r.status}`);
     },
-    async getArchive(topicId, since) {
+    async getArchive(topicId, since, limit) {
       // Resume where the device left off. `since` is what makes a re-entry cost
       // the delta instead of the whole conversation; the walk below still runs
       // on a first visit, or for a device that has been away long enough to owe
       // more than one page.
       const out: ArchiveEntry[] = [];
+      /*
+       * `pageSize` is what goes on the wire; `limit` is what the caller asked
+       * for. A caller that wants one row must not be handed 500 and then have
+       * 499 thrown away — the cost is the transfer, not the slice.
+       */
+      const pageSize = Math.min(limit ?? 500, 500);
       let cursor = since
         ? `&since=${encodeURIComponent(since.createdAt)}&sinceMsg=${encodeURIComponent(since.messageId)}`
         : '';
       for (;;) {
-        const r = await apiFetch(`${base(topicId)}/archive?limit=500${cursor}`, { credentials: 'include' });
+        const r = await apiFetch(`${base(topicId)}/archive?limit=${pageSize}${cursor}`, { credentials: 'include' });
         if (!r.ok) throw new Error(`archive GET ${r.status}`);
         const page = (await r.json()).archive as ArchiveEntry[];
         out.push(...page);
-        if (page.length < 500) break;
+        if (limit !== undefined || page.length < pageSize) break;
         const last = page[page.length - 1];
         cursor = `&since=${encodeURIComponent(last.createdAt)}&sinceMsg=${encodeURIComponent(last.messageId)}`;
       }

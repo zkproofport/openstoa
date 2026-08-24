@@ -127,7 +127,22 @@ export interface TakTransport {
    * room entry pages the whole archive out of the server and decrypts all of it,
    * which is correct, invisible, and ruinous once a room has real history.
    */
-  getArchive(topicId: string, since?: ChatHistoryCursor): Promise<ArchiveEntry[]>;
+  getArchive(
+    topicId: string,
+    since?: ChatHistoryCursor,
+    /**
+     * Stop after this many rows.
+     *
+     * For the caller that wants ONE row and not a conversation: the archive is
+     * ordered oldest-first, so `limit: 1` is "the oldest row", which is exactly
+     * what a root check needs. Without it that check paged the entire archive
+     * out of the server to look at its first element — invisible on a new
+     * topic, ruinous on a real one, and measured doing it on staging.
+     *
+     * Omitted means "everything", which is what every other caller wants.
+     */
+    limit?: number,
+  ): Promise<ArchiveEntry[]>;
   postBundle(
     topicId: string,
     recipientUserId: string,
@@ -181,6 +196,28 @@ function deserializeWrapped(s: string): tak.WrappedBundle {
 interface LeafRef {
   identity: string;
   hpkePublicKey: Uint8Array;
+}
+
+/**
+ * A cursor just BEFORE the oldest row in `rows`, or undefined when none carries
+ * a timestamp.
+ *
+ * The nil UUID is the tiebreak on purpose. The server's keyset is exclusive —
+ * `(created_at, message_id) > (cursor…)` — so pairing the oldest timestamp with
+ * a uuid that sorts below every real one keeps that row inside the window
+ * instead of one short of it.
+ */
+function oldestCursorOf(
+  rows: Array<{ messageId: string; createdAt?: string }>,
+): ChatHistoryCursor | undefined {
+  let oldest: string | undefined;
+  for (const r of rows) {
+    if (!r.createdAt) continue;
+    if (oldest === undefined || r.createdAt < oldest) oldest = r.createdAt;
+  }
+  return oldest === undefined
+    ? undefined
+    : { createdAt: oldest, messageId: '00000000-0000-0000-0000-000000000000' };
 }
 
 export class TakSessionStore {
@@ -645,7 +682,9 @@ export class TakSessionStore {
     if (memo !== undefined) return memo;
     let rows: ArchiveEntry[];
     try {
-      rows = await this.transport.getArchive(topicId);
+      // ONE row. This asks "does the root open the oldest archived message",
+      // and the archive comes back oldest-first, so the rest was never read.
+      rows = await this.transport.getArchive(topicId, undefined, 1);
     } catch {
       return null;
     }
@@ -1348,7 +1387,7 @@ export class TakSessionStore {
   async backfillMissingArchive(
     topicId: string,
     tier: ChatTier,
-    readable: Array<{ messageId: string; plaintext: string }>,
+    readable: Array<{ messageId: string; plaintext: string; createdAt?: string }>,
   ): Promise<number> {
     if (readable.length === 0) return 0;
     // Same gate as sending: only a VERIFIED root may seal. A device that would
@@ -1358,7 +1397,26 @@ export class TakSessionStore {
 
     let archived: Set<string>;
     try {
-      archived = new Set((await this.transport.getArchive(topicId)).map((r) => r.messageId));
+      /*
+       * Only as far back as the rows this call is ABOUT.
+       *
+       * The question is "which of `readable` are already archived", and
+       * `readable` is what a room currently holds — so anything older than its
+       * oldest row can answer nothing and does not need fetching. Without this
+       * bound the check paged the WHOLE archive on every room entry to build a
+       * set it then queried a few dozen times.
+       *
+       * The tiebreak is the nil UUID because the server's cursor is exclusive
+       * on `(created_at, message_id)`: pairing the oldest timestamp with a uuid
+       * that sorts below every real one keeps the oldest readable row itself
+       * inside the window rather than one short of it.
+       *
+       * A caller that sends no `createdAt` gets the old behaviour, which is
+       * correct and merely expensive.
+       */
+      archived = new Set(
+        (await this.transport.getArchive(topicId, oldestCursorOf(readable))).map((r) => r.messageId),
+      );
     } catch {
       // Never guess the archive is empty — that would re-upload everything on
       // every transient failure.

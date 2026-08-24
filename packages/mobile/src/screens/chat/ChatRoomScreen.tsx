@@ -1167,7 +1167,7 @@ export function ChatRoomScreen() {
                 m.message !== '[unable to decrypt]' &&
                 !isProvisionalId(m.id),
             )
-            .map((m) => ({ messageId: m.id, plaintext: m.message as string })),
+            .map((m) => ({ messageId: m.id, plaintext: m.message as string, createdAt: m.createdAt })),
           ...history,
         ];
         void tak.backfillMissingArchive(topicId, tierRef.current, readable).catch(() => {});
