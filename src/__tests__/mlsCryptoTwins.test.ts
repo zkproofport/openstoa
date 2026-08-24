@@ -385,15 +385,23 @@ describe('MLS/TAK crypto: exactly one implementation', () => {
      * list rather than writing it out twice.
      */
     /*
-     * `aesGcmInterop` and `imageMetadata` are excluded because neither has a
-     * per-consumer re-export to check — they are INTERNAL to the package. The
-     * first is a runtime shim installed by `groupClient`; the second is the
-     * attachment metadata stripper `chatMedia` calls before it seals. Nothing
-     * outside the package imports either by name, so there is no copy for the
-     * four assertions below to compare. Both are still in the barrel, which is
-     * asserted separately — so "internal" never means "unreachable".
+     * `aesGcmInterop`, `imageMetadata` and `chatHistoryCache` are excluded
+     * because none has a per-consumer re-export to check — they are INTERNAL to
+     * the package. The first is a runtime shim installed by `groupClient`; the
+     * second is the attachment metadata stripper `chatMedia` calls before it
+     * seals; the third is the device-local history store that `takSession`
+     * reads before it touches the network, and it is reached only through
+     * `backfill`. Nothing outside the package imports any of them by name, so
+     * there is no copy for the four assertions below to compare. All three are
+     * still in the barrel, which is asserted separately — so "internal" never
+     * means "unreachable".
      */
-    const INTERNAL = ['index.ts', 'aesGcmInterop.ts', 'imageMetadata.ts'];
+    const INTERNAL = [
+      'index.ts',
+      'aesGcmInterop.ts',
+      'imageMetadata.ts',
+      'chatHistoryCache.ts',
+    ];
     const onDisk = readdirSync(join(ROOT, SHARED_DIR))
       .filter((f) => f.endsWith('.ts'))
       .filter((f) => !INTERNAL.includes(f))

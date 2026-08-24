@@ -204,15 +204,21 @@ export function createTakTransport(client: OpenStoaClient): TakTransport {
     async postArchive(topicId, messageId, takVersion, archiveB64) {
       await client.post(`${base(topicId)}/archive`, { messageId, takVersion, archive: archiveB64 });
     },
-    async getArchive(topicId) {
+    async getArchive(topicId, since) {
       const out: ArchiveEntry[] = [];
-      let cursor = '';
+      // Resume where the device left off. `since` is what makes a re-entry cost
+      // the delta instead of the conversation; the loop below still exists for
+      // a first visit, or for a device that has been away long enough to owe
+      // more than one page.
+      let cursor = since
+        ? `&since=${encodeURIComponent(since.createdAt)}&sinceMsg=${encodeURIComponent(since.messageId)}`
+        : '';
       for (;;) {
         const r = await client.get<{ archive: ArchiveEntry[] }>(`${base(topicId)}/archive?limit=500${cursor}`);
         out.push(...r.archive);
         if (r.archive.length < 500) break;
         const last = r.archive[r.archive.length - 1];
-        cursor = `&since=${encodeURIComponent(last.createdAt)}&sinceMsg=${last.messageId}`;
+        cursor = `&since=${encodeURIComponent(last.createdAt)}&sinceMsg=${encodeURIComponent(last.messageId)}`;
       }
       return out;
     },
@@ -510,11 +516,25 @@ export function getTakSessionStore(
         return { get: async (k: string) => m.get(k) ?? null, set: async (k: string, v: string) => void m.set(k, v) };
       })();
     const onChange = rawSecure ? () => scheduleTakKeychainBackup(client, rawSecure) : undefined;
+    /*
+     * Decrypted history goes to the LOCAL store, not the Keychain, and is
+     * encrypted at rest under the same master key as everything else here.
+     *
+     * The split matches what each holds. TAK material is small, permanent and
+     * unrecoverable once an epoch advances, which is what the Keychain is for.
+     * History is bulk, bounded, and re-derivable from the archive at any time —
+     * putting hundreds of kilobytes of it in the Keychain would crowd the one
+     * store whose contents cannot be rebuilt. Same choice `msgCache` already
+     * makes for MLS plaintext.
+     */
+    const rawLocal = adapt(hostLocalStore);
+    const historyStore = encrypting(rawLocal, rawSecure) ?? undefined;
     _takStore = new TakSessionStore(
       getMlsSessionStore(client, hostSecureStore, hostLocalStore),
       createTakTransport(client),
       store,
       onChange,
+      historyStore,
     );
   }
   return _takStore;

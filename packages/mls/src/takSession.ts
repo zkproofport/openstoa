@@ -18,6 +18,15 @@ import * as gc from './groupClient';
 import * as tak from './takClient';
 import type { MlsSessionStore, SecureKVStore } from './mlsSession';
 import { serverMayHoldKey, usesTopicRootKey, type ChatTier } from './chatTierPolicy';
+import {
+  readChatHistory,
+  writeChatHistory,
+  cursorFrom,
+  mergeChatHistory,
+  type CachedChatMessage,
+  type ChatHistoryCursor,
+  type ChatHistoryStore,
+} from './chatHistoryCache';
 
 /**
  * A topic ROW's visibility. Kept because that is what the topic API returns and
@@ -109,7 +118,15 @@ interface RootResolution {
 /** DS surface the TAK layer needs (server is crypto-free; this only moves bytes). */
 export interface TakTransport {
   postArchive(topicId: string, messageId: string, takVersion: number, archiveB64: string): Promise<void>;
-  getArchive(topicId: string): Promise<ArchiveEntry[]>;
+  /**
+   * Archive rows, ascending by (createdAt, messageId).
+   *
+   * `since` asks for only what comes AFTER that row. A caller that already holds
+   * the earlier rows — see `chatHistoryCache` — must pass it: without it every
+   * room entry pages the whole archive out of the server and decrypts all of it,
+   * which is correct, invisible, and ruinous once a room has real history.
+   */
+  getArchive(topicId: string, since?: ChatHistoryCursor): Promise<ArchiveEntry[]>;
   postBundle(
     topicId: string,
     recipientUserId: string,
@@ -174,6 +191,13 @@ export class TakSessionStore {
     // layer can re-upload the master_key-encrypted keychain backup. Optional —
     // tests and pre-Phase-4 callers omit it.
     private onKeychainChange?: () => void,
+    /**
+     * Where decrypted history is kept between visits. Optional: without it the
+     * room still works, it just pays the full archive read every time — which
+     * is exactly what shipped, so omitting it is a measurable regression rather
+     * than a broken room.
+     */
+    private historyStore?: ChatHistoryStore,
   ) {}
 
   private rootKey(t: string) {
@@ -1182,7 +1206,23 @@ export class TakSessionStore {
    */
   async backfill(topicId: string, tier: ChatTier): Promise<Array<{ messageId: string; plaintext: string }>> {
     await this.ingestBundles(topicId);
-    const rows = await this.transport.getArchive(topicId);
+
+    /*
+     * WHAT THIS DEVICE ALREADY OPENED, before asking the server for anything.
+     *
+     * A cached room contributes two things: the plaintext, which never has to
+     * be decrypted twice, and a cursor, which turns the archive read from "the
+     * whole conversation" into "whatever arrived since". Without it this method
+     * paged the entire archive out of the server on EVERY room entry and
+     * re-decrypted every row — a million-message room cost two thousand round
+     * trips and a million opens to show the same screen as last time.
+     *
+     * Nothing here can fail the room: a cache miss, an unreadable store and a
+     * first-ever visit are the same answer, and that answer is the behaviour
+     * this method has always had.
+     */
+    const cached = await readChatHistory(this.historyStore, topicId);
+    const rows = await this.transport.getArchive(topicId, cached?.cursor ?? undefined);
     /*
      * RESOLVE the public root, do not merely read the stored one.
      *
@@ -1201,19 +1241,58 @@ export class TakSessionStore {
           Boolean,
         ) as Uint8Array[])
       : [];
-    const out: Array<{ messageId: string; plaintext: string }> = [];
+    const opened: CachedChatMessage[] = [];
+    /*
+     * The cursor may only cross rows this device actually READ, and only in an
+     * unbroken run from the front.
+     *
+     * A row can arrive that cannot be opened yet — an epoch this device was not
+     * present for, a root that has not been distributed — and those rows are the
+     * whole reason the archive is re-read at all. Advancing past one would skip
+     * it on every future visit, so it would never be decrypted, and the message
+     * would sit locked forever while the key it was waiting for sat on disk.
+     * A run that stops early costs one re-fetch of rows already opened; a run
+     * that runs past a gap costs the message.
+     */
+    let contiguous: { messageId: string; createdAt: string } | null = null;
+    let runIntact = true;
     for (const r of rows) {
+      let plaintext: string | null = null;
       const keys = usesTopicRootKey(tier) ? rootKeys : [await this.epochTakForRead(topicId, r.takVersion)];
       for (const key of keys) {
         if (!key) continue;
         const pt = await tak.openArchive(key, r.messageId, r.ciphertext);
         if (pt != null) {
-          out.push({ messageId: r.messageId, plaintext: pt });
+          plaintext = pt;
           break;
         }
       }
+      if (plaintext == null) {
+        runIntact = false;
+        continue;
+      }
+      opened.push({ id: r.messageId, createdAt: r.createdAt, plaintext });
+      if (runIntact) contiguous = { messageId: r.messageId, createdAt: r.createdAt };
     }
-    return out;
+
+    /*
+     * Merge, then write back — cached first so a freshly opened copy of the same
+     * id wins, which is what `writeChatHistory` de-duplicates to.
+     *
+     * The cursor advances only over rows that were actually READ, not over rows
+     * that were fetched. A row this device cannot open yet — an epoch it was not
+     * present for, a root that has not arrived — must stay in front of the
+     * cursor, or the next visit skips past it and it is never decrypted at all.
+     */
+    // Through the same rule that stores them: concatenation alone hands the
+    // caller duplicates in the wrong order while the stored copy is correct.
+    const merged = mergeChatHistory([...(cached?.messages ?? []), ...opened]);
+    if (opened.length > 0) {
+      const advanced = cursorFrom(contiguous ? [contiguous] : []);
+      await writeChatHistory(this.historyStore, topicId, merged, advanced ?? cached?.cursor ?? null);
+    }
+
+    return merged.map((m) => ({ messageId: m.id, plaintext: m.plaintext }));
   }
 
   /**
