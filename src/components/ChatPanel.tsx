@@ -1575,6 +1575,45 @@ const paintCache = new Map<string, ChatMessage[]>();
  */
 let cachedUserId: string | null = null;
 
+/**
+ * Where that id survives a reload.
+ *
+ * `cachedUserId` is a module variable, so a refresh starts not knowing whose
+ * messages these are — and until it knows, the panel draws a spinner instead of
+ * the list, deliberately: a bubble whose side is unknown would open under
+ * someone else's name and slide across the panel a moment later.
+ *
+ * That gate is what a restored room was actually waiting for. Measured on
+ * staging, the archive cache is read and complete at 59ms while the first row
+ * appears at 380ms — the same instant `/api/auth/session` returns. Caching the
+ * history and leaving this uncached bought nothing.
+ *
+ * `sessionStorage`, not `localStorage` or the encrypted store: it is scoped to
+ * the tab, so a shared machine's next session cannot inherit it, and it is
+ * synchronous, which is the entire point — an async read would land after the
+ * first paint and the gate would still be closed for it. The value is not a
+ * secret (the server hands it to this session on request, and the reader's own
+ * name is already on screen); it is a hint that saves a round trip, and every
+ * path still reconciles with `/api/auth/session` when it answers.
+ */
+const SESSION_USER_ID_KEY = 'openstoa.chat.userId';
+
+function rememberUserId(userId: string): void {
+  try {
+    sessionStorage.setItem(SESSION_USER_ID_KEY, userId);
+  } catch {
+    /* private mode, or storage disabled: the round trip is the fallback */
+  }
+}
+
+function recallUserId(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_USER_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
 
 export default function ChatPanel({
   topicId,
@@ -1686,6 +1725,9 @@ export default function ChatPanel({
   }, [topicId, readFailedMedia, writeFailedMedia]);
   // Own-message alignment needs the caller's id. Same source the rest of the
   // web app uses for "is this me" checks (see topics/[topicId]/members).
+  // Seeded from the tab before the first render, so `sessionProbed` below can
+  // already be true and the list is drawable on the very first paint.
+  if (cachedUserId === null) cachedUserId = recallUserId();
   const [myUserId, setMyUserId] = useState<string | null>(cachedUserId);
   /*
    * Whether the session lookup has ANSWERED — which is not the same as
@@ -2349,6 +2391,7 @@ export default function ChatPanel({
       .then((d) => {
         if (!d?.userId) return;
         cachedUserId = d.userId;
+        rememberUserId(d.userId);
         if (alive) setMyUserId(d.userId);
       })
       .catch(() => {})

@@ -127,11 +127,15 @@ function wire(n: number) {
   };
 }
 
+/** False when `/api/auth/session` must hang, so a test can prove independence. */
+let sessionAnswers = true;
 let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionAnswers = true;
+  sessionStorage.clear();
   // jsdom has no layout engine and no `scrollTo`; the panel's `scrollToBottom`
   // calls it on the scroller after every paint. Counting is not what this file
   // measures — it only has to exist. Same stub `chatPanel-sync` installs.
@@ -152,7 +156,12 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/auth/session') return json({ userId: ME });
+      if (url === '/api/auth/session') {
+        // A lookup that never resolves models the reload where the panel used
+        // to sit blank waiting for it.
+        if (!sessionAnswers) return new Promise<Response>(() => {});
+        return json({ userId: ME });
+      }
       if (/^\/api\/topics\/[^/?]+$/.test(url)) {
         return json({ topic: { visibility: 'public' }, currentUserRole: 'member' });
       }
@@ -172,6 +181,32 @@ afterEach(() => {
   container.remove();
   vi.unstubAllGlobals();
 });
+
+/**
+ * Mount from a FRESH module graph.
+ *
+ * `cachedUserId` is a module variable that deliberately outlives a panel — one
+ * session lookup per page, not per room — so any earlier test that resolved it
+ * leaves the gate open and a test about the gate asserting nothing. Both the
+ * panel and the provider come from the same fresh graph, because React context
+ * identity is per module instance.
+ */
+async function mountFresh(topicId: string) {
+  vi.resetModules();
+  const { default: FreshChatPanel } = await import('@/components/ChatPanel');
+  const { I18nProvider: FreshI18nProvider } = await import('@/lib/i18n/I18nProvider');
+  await act(async () => {
+    root.render(
+      <FreshI18nProvider initialLocale="en">
+        <FreshChatPanel topicId={topicId} isGuest={false} isMember />
+      </FreshI18nProvider>,
+    );
+  });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
 
 async function mount(topicId: string) {
   await act(async () => {
@@ -239,6 +274,60 @@ describe('CONTRACT: the device paints first', () => {
     });
     expect(container.textContent).toContain('network body 9');
     expect(container.textContent).not.toContain('cached body 1');
+  });
+});
+
+describe('CONTRACT: the list is drawable on the first paint', () => {
+  /*
+   * The gate that made the whole cache pointless.
+   *
+   * The panel refuses to draw ANY row until it knows the reader's own id —
+   * correctly, since a bubble whose side is unknown would open under someone
+   * else's name and then slide across the panel. But that id lived only in a
+   * module variable, so a reload waited on `/api/auth/session` before it could
+   * render anything. Measured on staging: the archive cache was read and
+   * complete at 59ms, and the first row appeared at 380ms, exactly when that
+   * request returned. Caching the history and not the id bought nothing.
+   */
+  it('a remembered id lets cached rows paint without waiting for /api/auth/session', async () => {
+    const topic = nextTopic();
+    sessionStorage.setItem('openstoa.chat.userId', ME);
+    readHistoryCache.mockResolvedValue({ messages: [cached(1)], cursor: null });
+    // The session lookup never answers, which is the point: if the panel still
+    // paints, it is not waiting on it.
+    sessionAnswers = false;
+
+    await mountFresh(topic);
+
+    expect(
+      container.textContent,
+      'the room waited for the session lookup even though the id was known',
+    ).toContain('cached body 1');
+  });
+
+  it('without a remembered id the room still waits, rather than guessing a side', async () => {
+    const topic = nextTopic();
+    sessionStorage.clear();
+    readHistoryCache.mockResolvedValue({ messages: [cached(1)], cursor: null });
+    sessionAnswers = false;
+
+    await mountFresh(topic);
+
+    // Drawing here is the defect the gate exists to prevent — a bubble under
+    // the wrong name that jumps sides when the answer arrives.
+    expect(container.textContent).not.toContain('cached body 1');
+  });
+
+  it('the id is remembered once the lookup does answer', async () => {
+    const topic = nextTopic();
+    sessionStorage.clear();
+    await mount(topic);
+    await act(async () => {
+      releaseChat([wire(1)]);
+      await chatPromise;
+      await Promise.resolve();
+    });
+    expect(sessionStorage.getItem('openstoa.chat.userId')).toBe(ME);
   });
 });
 
