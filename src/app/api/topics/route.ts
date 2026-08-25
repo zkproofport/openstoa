@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topics, topicMembers, categories, chatMessages } from '@/lib/db/schema';
-import { eq, sql, inArray } from 'drizzle-orm';
+import { and, eq, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
@@ -345,8 +345,45 @@ export async function GET(request: NextRequest) {
         result.sort((a, b) => (b.memberCount ?? 0) - (a.memberCount ?? 0));
       }
 
+      /*
+       * The caller's own space rides ALONGSIDE the list, never inside it.
+       *
+       * It has to be there whatever is being searched or filtered — it is the
+       * one topic a person should always be able to reach — but putting it in
+       * `topics` would break the only promise that array makes: every row in it
+       * matched the query. A search for "recipes" would return a row that is
+       * not a search result, and a category filter would return a row with no
+       * category, which is exactly the leak this replaced.
+       *
+       * So it goes in `pinned`, and the client draws it above the list. The
+       * array keeps its meaning; the space keeps its guarantee.
+       */
+      /*
+       * Read on its own, NOT plucked out of `allTopics`.
+       *
+       * `allTopics` is whatever the query asked for — a search runs its `ilike`
+       * in the database, so under a search the space is simply not in that set
+       * and a `find` over it returns nothing. Depending on the result set is
+       * how "always there" quietly became "there unless you were searching".
+       */
+      const [pinned] = await db
+        .select()
+        .from(topics)
+        .where(and(eq(topics.creatorId, session.userId), eq(topics.personal, true)))
+        .limit(1);
+
       logger.info(ROUTE, 'All topics fetched', { userId: session.userId, count: result.length, sort, categorySlug });
-      return NextResponse.json({ topics: result });
+      return NextResponse.json({
+        topics: result,
+        pinned: pinned
+          ? {
+              ...pinned,
+              category: pinned.categoryId ? categoryMap[pinned.categoryId] ?? null : null,
+              memberCount: memberCountMap[pinned.id] ?? 0,
+              isMember: true,
+            }
+          : null,
+      });
     }
 
     // Default: only user's topics
@@ -404,6 +441,16 @@ export async function GET(request: NextRequest) {
         unreadCount: read.unreadCount,
       };
     });
+
+    /*
+     * The space sorts FIRST here.
+     *
+     * This branch has no category filter and no search, so it was already
+     * always present — but "present" is not the same as findable once someone
+     * belongs to thirty topics. It is the one row that is never about anyone
+     * else, so it sits where it can be reached without looking.
+     */
+    userTopicsWithCategory.sort((a, b) => Number(b.personal) - Number(a.personal));
 
     logger.info(ROUTE, 'Topics fetched', { userId: session.userId, count: userTopicsWithCategory.length });
     return NextResponse.json({ topics: userTopicsWithCategory });

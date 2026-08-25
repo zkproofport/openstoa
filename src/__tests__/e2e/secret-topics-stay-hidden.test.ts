@@ -45,13 +45,17 @@ async function login(prefix: string): Promise<{ token: string; userId: string }>
 
 interface Row { id: string; title: string; categoryId: string | null; personal?: boolean }
 
-async function list(query: string, token?: string): Promise<Row[]> {
+async function raw(query: string, token?: string): Promise<{ topics: Row[]; pinned?: Row | null }> {
   const r = await fetch(`${BASE}/api/topics${query}`, {
     headers: token ? bearer(token) : { 'Content-Type': 'application/json' },
   });
   if (!r.ok) throw new Error(`topics${query} -> ${r.status}`);
   const b = await r.json();
-  return (Array.isArray(b) ? b : b.topics) as Row[];
+  return Array.isArray(b) ? { topics: b as Row[] } : (b as { topics: Row[]; pinned?: Row | null });
+}
+
+async function list(query: string, token?: string): Promise<Row[]> {
+  return (await raw(query, token)).topics;
 }
 
 describe('a secret topic stays hidden (E2E, real container)', () => {
@@ -134,5 +138,65 @@ describe('a secret topic stays hidden (E2E, real container)', () => {
     expect({ rowsOutsideTheFilteredCategory: strays.map((t) => t.title) }).toEqual({
       rowsOutsideTheFilteredCategory: [],
     });
+  });
+});
+
+describe('the space is always reachable, whatever is being looked for', () => {
+  /*
+   * It rides ALONGSIDE the browse list rather than inside it. Inside, it would
+   * break the only promise that array makes — every row matched the query — so
+   * a search for something else would return a row that is not a result, and a
+   * category filter would return a row with no category. Beside it, the array
+   * keeps its meaning and the space keeps its guarantee.
+   *
+   * EDGE-CASE MATRIX (CLAUDE.md) → coverage
+   *   contract  → it comes back under a category filter that excludes it
+   *   contract  → it comes back under a search that cannot match it
+   *   integrity → it is NOT inside the filtered array either time
+   *   authz     → a stranger's `pinned` is their OWN space, never this one
+   *   authz     → a guest gets no pinned space at all
+   *   integrity → in the joined list it sorts FIRST
+   */
+  let owner: { token: string; userId: string };
+  let stranger: { token: string; userId: string };
+  let mine: string;
+  let categorySlug: string;
+
+  beforeAll(async () => {
+    owner = await login('pin_owner');
+    stranger = await login('pin_stranger');
+    const cats = await (await fetch(`${BASE}/api/categories`)).json();
+    categorySlug = cats.categories[0].slug;
+    mine = (await list('', owner.token)).find((t) => t.personal)!.id;
+  });
+
+  it('CONTRACT: a category filter cannot hide it', async () => {
+    const res = await raw(`?view=all&category=${categorySlug}&sort=new`, owner.token);
+    expect(res.pinned?.id).toBe(mine);
+    // ...and it is not smuggled into the filtered rows.
+    expect(res.topics.some((t) => t.id === mine)).toBe(false);
+  });
+
+  it('CONTRACT: a search that cannot match it still returns it', async () => {
+    const res = await raw(`?view=all&q=${encodeURIComponent('zzz-nothing-matches-this-' + Date.now())}`, owner.token);
+    expect(res.pinned?.id).toBe(mine);
+    expect(res.topics.some((t) => t.id === mine)).toBe(false);
+  });
+
+  it('AUTHZ: a stranger is pinned their OWN space, never this one', async () => {
+    const res = await raw('?view=all&sort=new', stranger.token);
+    expect(res.pinned?.id).not.toBe(mine);
+    expect(res.pinned?.personal).toBe(true);
+  });
+
+  it('AUTHZ: a guest gets no pinned space', async () => {
+    const res = await raw('?view=all&sort=new');
+    expect(res.pinned ?? null).toBeNull();
+  });
+
+  it('INTEGRITY: in the joined list it sorts first', async () => {
+    // Always present was already true; findable among thirty topics was not.
+    const joined = await list('', owner.token);
+    expect(joined[0]?.id).toBe(mine);
   });
 });
