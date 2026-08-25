@@ -13,6 +13,7 @@ import {
 } from '@/lib/record';
 import { keccak256, toUtf8Bytes } from 'ethers';
 import { recordOnChain } from '@/lib/contract';
+import { canActOnPost, NOT_A_MEMBER } from '@/lib/postReadable';
 
 const ROUTE = '/api/posts/[postId]/record';
 
@@ -94,6 +95,27 @@ export async function POST(
     }
 
     logger.info(ROUTE, 'Checking record policy', { userId: session.userId, postId });
+
+    /*
+     * Authorisation FIRST, before the policy check.
+     *
+     * `checkRecordPolicy` answers with things it knows about the post — "must
+     * be at least 1 hour old, 6 minutes remaining" — so running it first tells
+     * a stranger when somebody's private post was written. Acting on a post
+     * requires being able to read it; see `canActOnPost`.
+     *
+     * The post is loaded here rather than reusing the one fetched below,
+     * because that fetch happens after the policy check and moving it would
+     * reorder more than the authorisation.
+     */
+    const target = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+      columns: { topicId: true },
+    });
+    if (target && !(await canActOnPost(target.topicId, session.userId))) {
+      logger.warn(ROUTE, 'Caller may not act on this post', { userId: session.userId, postId, topicId: target.topicId });
+      return NextResponse.json({ error: NOT_A_MEMBER }, { status: 403 });
+    }
 
     // Policy check (includes post existence, age, duplicate, daily limit)
     const policy = await checkRecordPolicy(postId, session.userId);

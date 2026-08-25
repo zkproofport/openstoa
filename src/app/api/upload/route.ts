@@ -11,6 +11,7 @@ import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { stripImageMetadata, ImageMetadataError } from '@/lib/imageMetadata';
+import { loadSharp } from '@/lib/sharpModule';
 
 const ROUTE = '/api/upload';
 
@@ -31,18 +32,6 @@ function isHeicBuffer(buf: Buffer): boolean {
   if (buf.toString('ascii', 4, 8) !== 'ftyp') return false;
   const brand = buf.toString('ascii', 8, 12);
   return HEIC_FTYP_BRANDS.has(brand);
-}
-
-// Lazy-load sharp so the route doesn't blow up at import time if the
-// native binary is missing on this platform (e.g. unusual Docker base).
-type SharpModule = typeof import('sharp');
-function loadSharp(): SharpModule | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('sharp') as SharpModule;
-  } catch {
-    return null;
-  }
 }
 
 // Lazy-load heic-convert (WASM libheif). Cloud Run's libvips lacks the HEIC

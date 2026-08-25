@@ -389,7 +389,24 @@ function buildWhereConditions(
   qPattern: string | null,
   qTagPostIds: Set<string> | null,
 ) {
-  const clauses: ReturnType<typeof inArray>[] = [inArray(posts.topicId, accessibleTopicIds)];
+  const clauses: ReturnType<typeof inArray>[] = [
+    inArray(posts.topicId, accessibleTopicIds),
+    /*
+     * A deleted post is not a feed entry.
+     *
+     * Deletion is SOFT — the row stays so on-chain records and comments keep
+     * resolving — but it clears the title, the content and the media, so
+     * leaving it in a listing draws an empty card with the author's name still
+     * on it. Someone deletes their post and everyone keeps seeing that they
+     * posted, minus what they said, which is close to the opposite of what
+     * they asked for. The response carries no `isDeleted` either, so a client
+     * cannot even label it "[deleted]" — it has nothing to go on.
+     *
+     * The tombstone still answers on the post's own route, which is what the
+     * records and comments actually follow.
+     */
+    eq(posts.isDeleted, false),
+  ];
 
   if (tagFilteredPostIds !== null) {
     if (tagFilteredPostIds.length === 0) {

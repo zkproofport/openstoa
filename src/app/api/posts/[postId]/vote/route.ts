@@ -8,6 +8,7 @@ import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
 import { updatePostScore } from '@/lib/postScore';
 import { updateTopicScore } from '@/lib/topicScore';
+import { canActOnPost, NOT_A_MEMBER } from '@/lib/postReadable';
 
 const ROUTE = '/api/posts/[postId]/vote';
 
@@ -100,6 +101,16 @@ export async function POST(
       logger.warn(ROUTE, 'Post not found', { postId });
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
+    /*
+     * Acting on a post requires being able to READ it — see `canActOnPost`.
+     * Without this a signed-in stranger holding a post id could leave a mark
+     * inside somebody's private topic, where its owner sees it.
+     */
+    if (!(await canActOnPost(post.topicId, session.userId))) {
+      logger.warn(ROUTE, 'Caller may not act on this post', { userId: session.userId, postId, topicId: post.topicId });
+      return NextResponse.json({ error: NOT_A_MEMBER }, { status: 403 });
+    }
+
 
     // Topic membership is NOT required to vote — any authenticated user
     // can upvote/downvote a post they can see in the feed (Reddit-style).

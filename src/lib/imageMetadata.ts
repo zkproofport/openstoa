@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger';
+import { loadSharp } from '@/lib/sharpModule';
 
 const MODULE = 'lib/imageMetadata';
 
@@ -65,15 +66,6 @@ export class ImageMetadataError extends Error {
 
 // Lazy-load sharp so this module doesn't blow up at import time if the native
 // binary is missing on this platform (same pattern as the upload route).
-type SharpModule = typeof import('sharp');
-function loadSharp(): SharpModule | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('sharp') as SharpModule;
-  } catch {
-    return null;
-  }
-}
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 

@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
+import { canActOnPost, NOT_A_MEMBER } from '@/lib/postReadable';
 
 const ROUTE = '/api/posts/[postId]/bookmark';
 
@@ -138,6 +139,16 @@ export async function POST(
       logger.warn(ROUTE, 'Post not found', { postId });
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
+    /*
+     * Acting on a post requires being able to READ it — see `canActOnPost`.
+     * Without this a signed-in stranger holding a post id could leave a mark
+     * inside somebody's private topic, where its owner sees it.
+     */
+    if (!(await canActOnPost(post.topicId, session.userId))) {
+      logger.warn(ROUTE, 'Caller may not act on this post', { userId: session.userId, postId, topicId: post.topicId });
+      return NextResponse.json({ error: NOT_A_MEMBER }, { status: 403 });
+    }
+
 
     const existing = await db.query.bookmarks.findFirst({
       where: and(

@@ -5,6 +5,20 @@ vi.mock('@/lib/session', () => ({
   getSession: vi.fn(),
 }));
 
+vi.mock('@/lib/postReadable', () => ({
+  /*
+   * The authorisation is a dependency here, not the subject.
+   *
+   * This file is about vote arithmetic and score updates. WHO may vote — the
+   * Reddit-style rule below, which `canActOnPost` now expresses in one place —
+   * is proved end to end in
+   * `src/__tests__/e2e/acting-on-a-post-you-cannot-read.test.ts`, including
+   * that a non-member may still vote on a PUBLIC post.
+   */
+  canActOnPost: vi.fn().mockResolvedValue(true),
+  NOT_A_MEMBER: 'Not a member of this topic',
+}));
+
 vi.mock('@/lib/db', () => ({
   db: {
     query: {
@@ -299,5 +313,34 @@ describe('POST /api/posts/[postId]/vote', () => {
     // The user-facing vote action must still succeed even if score
     // recompute fails. The catch handler logs and moves on.
     expect(res.status).toBe(200);
+  });
+
+  it('AUTHZ: refuses when the caller may not act on the post', async () => {
+    /*
+     * The counterpart of the Reddit-style case above: open on a post you can
+     * see, closed on one you cannot. Without this, deleting the guard from the
+     * route would leave every test in this file green while a stranger voted
+     * on a post inside somebody's private topic — which is what was happening
+     * before the guard existed.
+     */
+    const { getSession } = await import('@/lib/session');
+    vi.mocked(getSession).mockResolvedValue({ userId: 'user-1', nickname: 'alice', verifiedAt: Date.now() });
+
+    const { db } = await import('@/lib/db');
+    vi.mocked(db.query.posts.findFirst).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
+      topicId: 'topic-1',
+      upvoteCount: 0,
+    } as never);
+
+    const { canActOnPost } = await import('@/lib/postReadable');
+    vi.mocked(canActOnPost).mockResolvedValueOnce(false);
+
+    const { POST } = await import('@/app/api/posts/[postId]/vote/route');
+    const res = await POST(
+      makeRequest('11111111-1111-1111-1111-111111111111', { value: 1 }),
+      { params: Promise.resolve({ postId: '11111111-1111-1111-1111-111111111111' }) },
+    );
+    expect(res.status).toBe(403);
   });
 });

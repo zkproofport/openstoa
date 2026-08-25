@@ -467,8 +467,16 @@ function buildWhereClause(
   qPattern: string | null,
   qTagPostIds: Set<string> | null,
 ) {
-  // Base: posts in this topic
-  const base = eq(posts.topicId, topicId);
+  /*
+   * Base: posts in this topic that still ARE posts.
+   *
+   * Deletion is soft — the row survives so on-chain records and comments keep
+   * resolving — but it clears the title, content and media. Listing one draws
+   * an empty card with the author's name still attached, so the person who
+   * deleted it is still visibly there, minus what they said. Same rule as the
+   * feed; both listings answer the same question and must not drift.
+   */
+  const base = and(eq(posts.topicId, topicId), eq(posts.isDeleted, false))!;
 
   // Tag filter: when tag slug provided but resolves to nothing, return nothing
   if (tagFilteredPostIds !== null) {
