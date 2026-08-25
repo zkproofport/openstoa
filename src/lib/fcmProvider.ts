@@ -36,6 +36,7 @@
  * present gain.
  */
 import { logger } from '@/lib/logger';
+import { apiFetch } from '@/lib/apiFetch';
 import type { PushProvider, PushTarget, DummyPushPayload, CiphertextPushPayload } from '@/lib/push';
 
 const ROUTE = 'fcm-provider';
@@ -131,7 +132,13 @@ async function mintAccessToken(sa: ServiceAccount): Promise<{ token: string; exp
   const signature = signer.sign(sa.private_key, 'base64url');
   const assertion = `${header}.${claims}.${signature}`;
 
-  const res = await fetch(GOOGLE_TOKEN_URL, {
+  /*
+   * The one call here that is NOT per-target: every android send waits on this
+   * token. Without a deadline a slow answer from Google stalls the whole
+   * dispatch batch rather than the one message it was refreshing for, which is
+   * why this is the site that most needed one.
+   */
+  const res = await apiFetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -208,7 +215,7 @@ export class FcmPushProvider implements PushProvider {
     try {
       const token = await this.accessToken();
       const url = `https://fcm.googleapis.com/v1/projects/${this.serviceAccount.project_id}/messages:send`;
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({

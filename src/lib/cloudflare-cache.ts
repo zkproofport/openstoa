@@ -5,6 +5,8 @@
 //
 // Env: CLOUDFLARE_ZONE_ID + CLOUDFLARE_PURGE_TOKEN (Zone > Cache Purge scope).
 
+import { apiFetch } from '@/lib/apiFetch';
+
 const PURGE_ENDPOINT = (zoneId: string) =>
   `https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`;
 
@@ -39,7 +41,7 @@ export async function purgeCloudflareUrls(urls: string[]): Promise<void> {
   if (!zoneId) throw new Error('CLOUDFLARE_ZONE_ID environment variable is required');
   if (!token) throw new Error('CLOUDFLARE_PURGE_TOKEN environment variable is required');
 
-  const res = await fetch(PURGE_ENDPOINT(zoneId), {
+  const res = await apiFetch(PURGE_ENDPOINT(zoneId), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,

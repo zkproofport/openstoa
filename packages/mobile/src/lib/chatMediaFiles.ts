@@ -30,6 +30,7 @@
  * so a direct import here would make this untestable AND would hide the case
  * that matters most on a real device: a host binary that predates the module.
  */
+import { MEDIA_DOWNLOAD_TIMEOUT_MS } from '@openstoa/api-types';
 import type { AttachmentFile, AttachmentFs } from './saveAttachment';
 import { chatMediaCacheFilename, chatMediaCiphertextFilename } from './chatMedia';
 
@@ -45,6 +46,54 @@ export interface DownloadCiphertextDeps {
   spec: ChatMediaFetchSpec;
   /** Names the temporary file. The AEAD context id, already validated hex. */
   mediaId: string;
+  /**
+   * Milliseconds before the download is abandoned. Defaults to the shared
+   * `MEDIA_DOWNLOAD_TIMEOUT_MS`; a parameter only so a test does not have to
+   * advance sixty seconds of fake time to prove one second of behaviour.
+   */
+  deadlineMs?: number;
+}
+
+/**
+ * Give the native download a deadline the native download cannot defeat.
+ *
+ * Every OTHER request in this package carries one (`api/timeout.ts`), and this
+ * one did not, because it is not a `fetch` — the ciphertext is streamed to disk
+ * by the host's filesystem module, which a sweep for `fetch(` walks straight
+ * past. The asymmetry that left: the WEB abandons an attachment download after
+ * `MEDIA_DOWNLOAD_TIMEOUT_MS` (`components/ChatPanel.tsx`), while here the same
+ * constant was re-exported and never used by anything. A peer that accepts the
+ * connection and then goes quiet leaves the promise pending, and the bubble
+ * spins with no error and no Reload — on the path every reader takes for every
+ * picture.
+ *
+ * A RACE, not a cancel: `AttachmentFs.download` exposes no way to stop a
+ * transfer in flight, so the transfer may well continue. That is acceptable and
+ * the alternative is not — a deadline the supervised thing can defeat is not a
+ * deadline, and what matters is that the CALLER is freed to report a retryable
+ * failure.
+ *
+ * The abandoned transfer needs nothing done to it. `Promise.race` subscribes to
+ * every promise it is given, so a download that fails long after this returned
+ * already has a handler and can never surface as an unhandled rejection — a
+ * defensive `work.catch(() => {})` here was dead code, which is how it was
+ * found. Its temporary file is left alone deliberately: deleting it would be
+ * deleting a file a transfer may still be writing to, and the next attempt
+ * reuses the same name in the same cache directory anyway.
+ */
+async function withDeadline<T>(work: Promise<T>, ms: number, url: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`attachment download timed out after ${ms}ms: ${url}`)),
+      ms,
+    );
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -61,13 +110,13 @@ export interface DownloadCiphertextDeps {
  * file per picture opened.
  */
 export async function downloadCiphertext(deps: DownloadCiphertextDeps): Promise<Uint8Array> {
-  const { fs, spec, mediaId } = deps;
+  const { fs, spec, mediaId, deadlineMs = MEDIA_DOWNLOAD_TIMEOUT_MS } = deps;
   if (!fs) throw new Error('no filesystem module in this build');
 
   const name = chatMediaCiphertextFilename(mediaId);
   let file: AttachmentFile | null = null;
   try {
-    file = await fs.download(spec.url, name, spec.headers);
+    file = await withDeadline(fs.download(spec.url, name, spec.headers), deadlineMs, spec.url);
     const bytes = await file.bytes();
     // A zero-byte file is a download that "succeeded" into nothing. Refusing it
     // here means the caller never hands an empty buffer to the decryptor, which

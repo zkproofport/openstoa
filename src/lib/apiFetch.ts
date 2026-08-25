@@ -14,6 +14,22 @@
  * `AbortController` uses already in this repo — `lib/proof.ts`, the OG routes —
  * are all SERVER-side, where nobody is watching a spinner.
  *
+ * ── Also the SERVER's outbound calls, and why they are not an exception ────
+ *
+ * Nobody waits on a push send: the chat route dispatches it fire-and-forget, so
+ * a stalled provider cannot slow or fail a message. That reasoning is why the
+ * outbound calls to Expo, FCM, Google's token endpoint and Cloudflare carried
+ * no deadline at all — and it is half an argument. What it misses is that
+ * giving up is not only for the person: undici's defaults let a silent provider
+ * hold a socket and a pending promise for roughly five minutes on an instance
+ * that has already answered, and the FCM token refresh sits on the path of
+ * EVERY android send, so one slow answer from Google stalls a whole dispatch
+ * batch rather than the one target it was for.
+ *
+ * Those call sites use this same function and the same numbers. Each already
+ * sits inside a `try` that logs and moves on, so a deadline reaching them reads
+ * as the failure it is rather than an unhandled rejection.
+ *
  * ── Why 15 seconds ────────────────────────────────────────────────────────
  *
  * The API routes answer in tens of milliseconds warm. What is slow is the

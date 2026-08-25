@@ -23,6 +23,7 @@ import type {
   KeyNeededPushPayload,
 } from '@/lib/push';
 import { logger } from '@/lib/logger';
+import { apiFetch } from '@/lib/apiFetch';
 import { getFcmProvider } from '@/lib/fcmProvider';
 
 const ROUTE = 'push-provider';
@@ -147,7 +148,11 @@ export class ExpoPushProvider implements PushProvider {
         };
         if (this.accessToken) headers.Authorization = `Bearer ${this.accessToken}`;
 
-        const res = await fetch(EXPO_PUSH_URL, {
+        // Deadline, not bare `fetch`: a silent Expo holds this socket and the
+        // promise behind it for undici's five-minute default, on an instance
+        // that answered the sender long ago. The catch below already logs and
+        // moves on to the next batch.
+        const res = await apiFetch(EXPO_PUSH_URL, {
           method: 'POST',
           headers,
           body: JSON.stringify(batch),
@@ -244,7 +249,7 @@ export class ExpoPushProvider implements PushProvider {
       if (this.accessToken) headers.Authorization = `Bearer ${this.accessToken}`;
 
       for (const group of chunk(ids, EXPO_RECEIPT_MAX)) {
-        const res = await fetch(EXPO_RECEIPT_URL, {
+        const res = await apiFetch(EXPO_RECEIPT_URL, {
           method: 'POST',
           headers,
           body: JSON.stringify({ ids: group }),
