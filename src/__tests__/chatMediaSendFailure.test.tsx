@@ -20,8 +20,9 @@ import {
   CHAT_MEDIA_RETRY_WINDOW_MS,
   MAX_CHAT_MEDIA_BYTES,
   chatMediaObjectKey,
-  parseFailedMedia,
-  serializeFailedMedia,
+  parseFailedRows,
+  type PersistedFailedRow,
+  serializeFailedRows,
 } from '@/lib/chatMedia';
 import { __resetSentChatMediaCache } from '@/lib/chatMediaPlaintextCache';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -694,9 +695,10 @@ describe('a failed attachment lives in the conversation, like a failed text', ()
     sendStatuses = [409];
     await attach();
 
-    const stored = parseFailedMedia(window.localStorage.getItem(`openstoa.failedMedia.${TOPIC}`), Date.now());
+    const stored = parseFailedRows(window.localStorage.getItem(`openstoa.failedSend.${TOPIC}`), Date.now());
     expect(stored).toHaveLength(1);
-    expect(stored[0].key).toContain(TOPIC);
+    expect(stored[0].kind).toBe('media');
+    expect((stored[0] as Extract<PersistedFailedRow, { kind: 'media' }>).key).toContain(TOPIC);
     // A reference, never the picture.
     expect(JSON.stringify(stored)).not.toContain('AQID');
   });
@@ -739,8 +741,8 @@ describe('a failed attachment lives in the conversation, like a failed text', ()
       size: 3,
     })}`;
     window.localStorage.setItem(
-      `openstoa.failedMedia.${TOPIC}`,
-      serializeFailedMedia([{ rowId: 'pending-old', body, key, createdAt: Date.now() - 60_000 }]),
+      `openstoa.failedSend.${TOPIC}`,
+      serializeFailedRows([{ kind: 'media' as const, rowId: 'pending-old', body, key, createdAt: Date.now() - 60_000 }]),
     );
     // The object is gone from storage.
     mediaGetStatus = 404;
@@ -767,10 +769,10 @@ describe('a failed attachment lives in the conversation, like a failed text', ()
       size: 3,
     })}`;
     window.localStorage.setItem(
-      `openstoa.failedMedia.${TOPIC}`,
+      `openstoa.failedSend.${TOPIC}`,
       // Older than the retry window: expired on arrival.
-      serializeFailedMedia([
-        { rowId: 'pending-stale', body, key, createdAt: Date.now() - CHAT_MEDIA_RETRY_WINDOW_MS - 1000 },
+      serializeFailedRows([
+        { kind: 'media' as const, rowId: 'pending-stale', body, key, createdAt: Date.now() - CHAT_MEDIA_RETRY_WINDOW_MS - 1000 },
       ]),
     );
     await mount();
@@ -783,14 +785,14 @@ describe('a failed attachment lives in the conversation, like a failed text', ()
     sendStatuses = [409, 201];
     await attach();
     expect(
-      parseFailedMedia(window.localStorage.getItem(`openstoa.failedMedia.${TOPIC}`), Date.now()),
+      parseFailedRows(window.localStorage.getItem(`openstoa.failedSend.${TOPIC}`), Date.now()),
     ).toHaveLength(1);
 
     await act(async () => retryButton()!.click());
     await flush();
 
     expect(
-      parseFailedMedia(window.localStorage.getItem(`openstoa.failedMedia.${TOPIC}`), Date.now()),
+      parseFailedRows(window.localStorage.getItem(`openstoa.failedSend.${TOPIC}`), Date.now()),
     ).toEqual([]);
   });
 
@@ -803,7 +805,7 @@ describe('a failed attachment lives in the conversation, like a failed text', ()
     await flush();
 
     expect(
-      parseFailedMedia(window.localStorage.getItem(`openstoa.failedMedia.${TOPIC}`), Date.now()),
+      parseFailedRows(window.localStorage.getItem(`openstoa.failedSend.${TOPIC}`), Date.now()),
     ).toEqual([]);
   });
 

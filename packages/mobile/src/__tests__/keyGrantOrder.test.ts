@@ -171,3 +171,29 @@ describe('the REAL handler keeps that order', () => {
     expect(SCREEN).toContain('requesterDeviceId !== mineDev');
   });
 });
+
+describe('the ask says what this device already has', () => {
+  /*
+   * Leaving `haveFromEpoch` off is not a visible failure — the request works,
+   * the grant works, and the person gets their history. It just means every ask
+   * says "send me everything", so a member re-seals the whole archive each
+   * time, including the stretch the asker can already read. On a long-lived
+   * room that is the difference between a small bundle and all of it.
+   *
+   * Checked at source because the field's absence is the defect, and an absent
+   * field is exactly what a happy-path test does not notice.
+   */
+  const SCREEN = readFileSync(join(SRC, 'screens/chat/ChatRoomScreen.tsx'), 'utf8');
+
+  it('CONTRACT: the request carries haveFromEpoch', () => {
+    const at = SCREEN.indexOf('keys/request`, {');
+    expect(at, 'the ask POST is missing').toBeGreaterThan(-1);
+    expect(SCREEN.slice(at, at + 200)).toContain('haveFromEpoch');
+  });
+
+  it('INTEGRITY: it comes from oldestReadableEpoch, not a hand-rolled min', () => {
+    // The rule keeps 0 as a real answer and drops nonsense; a `Math.min(...)`
+    // written inline would reintroduce both bugs it exists to prevent.
+    expect(SCREEN).toContain('oldestReadableEpoch(');
+  });
+});

@@ -80,20 +80,20 @@ import {
   ChatMediaError,
   MAX_ATTACHMENTS_PER_PICK,
   MAX_CHAT_MEDIA_BYTES,
-  addFailedMedia,
+  addFailedRow,
   base64ToBytes,
   buildChatMediaBody,
   isFailedMediaExpired,
-  parseFailedMedia,
-  removeFailedMedia,
-  serializeFailedMedia,
+  parseFailedRows,
+  removeFailedRow,
+  serializeFailedRows,
   loadEncryptedChatMedia,
   parseChatMediaBody,
   resolveChatMediaMime,
   sendEncryptedChatMedia,
   type ChatMediaEnvelope,
   type ChatMediaLoad,
-  type PersistedFailedMedia,
+  type PersistedFailedRow,
 } from '../../lib/chatMedia';
 import { rememberSentChatMedia, readSentChatMedia } from '../../lib/chatMediaPlaintextCache';
 import { displayNickname } from '../../lib/defaultNickname';
@@ -139,7 +139,13 @@ import type { ArchiveRootState, Visibility } from '../../crypto/takSession';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useThemeColors } from '../../theme/ThemeContext';
-import { askStatus, askLabelKey, askIsPressable, tierCanAsk } from '../../lib/keyRequest';
+import {
+  askStatus,
+  askLabelKey,
+  askIsPressable,
+  tierCanAsk,
+  oldestReadableEpoch,
+} from '../../lib/keyRequest';
 import KeyRequestList, { type PendingKeyRequest } from '../../components/KeyRequestList';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
@@ -673,67 +679,76 @@ export function ChatRoomScreen() {
    * object key), never the picture; the bytes stay where they were uploaded.
    * The host's non-secure KV is the right home: this is bulk state, not a key.
    */
-  const failedMediaStoreKey = `openstoa.failedMedia.${topicId}`;
-  const readFailedMedia = useCallback(async (): Promise<PersistedFailedMedia[]> => {
+  const failedRowStoreKey = `openstoa.failedSend.${topicId}`;
+  const readFailedRows = useCallback(async (): Promise<PersistedFailedRow[]> => {
     try {
-      const raw = await host.localStore?.getItem(failedMediaStoreKey);
-      return parseFailedMedia(raw ?? null, Date.now());
+      const raw = await host.localStore?.getItem(failedRowStoreKey);
+      return parseFailedRows(raw ?? null, Date.now());
     } catch {
       return [];
     }
-  }, [host, failedMediaStoreKey]);
-  const writeFailedMedia = useCallback(
-    async (list: readonly PersistedFailedMedia[]) => {
+  }, [host, failedRowStoreKey]);
+  const writeFailedRows = useCallback(
+    async (list: readonly PersistedFailedRow[]) => {
       try {
-        await host.localStore?.setItem(failedMediaStoreKey, serializeFailedMedia(list));
+        await host.localStore?.setItem(failedRowStoreKey, serializeFailedRows(list));
       } catch {
         /* storage refused — the row still shows for this session */
       }
     },
-    [host, failedMediaStoreKey],
+    [host, failedRowStoreKey],
   );
-  const forgetFailedMedia = useCallback(
-    async (rowId: string) => writeFailedMedia(removeFailedMedia(await readFailedMedia(), rowId)),
-    [readFailedMedia, writeFailedMedia],
+  const forgetFailedRow = useCallback(
+    async (rowId: string) => writeFailedRows(removeFailedRow(await readFailedRows(), rowId)),
+    [readFailedRows, writeFailedRows],
   );
 
   /* Put back what the last run could not send. */
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const rows = await readFailedMedia();
+      const rows = await readFailedRows();
       if (cancelled || rows.length === 0) return;
       const now = Date.now();
       setSentMessages((curr) => {
         const known = new Set(curr.map((m) => m.id));
         const restored = rows
           .filter((r) => !known.has(r.rowId))
-          .map(
-            (r) =>
-              ({
-                id: r.rowId,
-                message: r.body,
-                // A failed row is this client's by construction, so ownership
-                // does not wait on the session lookup.
-                userId: '',
-                nickname: '',
-                createdAt: new Date(r.createdAt).toISOString(),
-                type: 'message',
-                failed: true,
-                mediaKey: r.key,
-                // Only a HINT here — retry probes the object for real.
-                mediaExpired: isFailedMediaExpired(r, now),
-              }) as LocalMessage,
-          );
+          .map((r) => {
+            const base = {
+              id: r.rowId,
+              // A failed row is this client's by construction, so ownership
+              // does not wait on the session lookup.
+              userId: '',
+              nickname: '',
+              createdAt: new Date(r.createdAt).toISOString(),
+              type: 'message',
+              failed: true,
+            };
+            /*
+             * A restored TEXT row is the words themselves, and Retry re-seals
+             * from `message` — the same field a live failed row uses — so the
+             * two are indistinguishable from here on. No expiry: unlike an
+             * attachment, nothing it refers to can have been collected.
+             */
+            if (r.kind === 'text') return { ...base, message: r.text } as LocalMessage;
+            return {
+              ...base,
+              message: r.body,
+              mediaKey: r.key,
+              // Only a HINT here — retry probes the object for real.
+              mediaExpired: isFailedMediaExpired(r, now),
+            } as LocalMessage;
+          });
         return restored.length === 0 ? curr : [...curr, ...restored];
       });
       // Persist what the parse kept, so pruned rows are not re-read forever.
-      await writeFailedMedia(rows);
+      await writeFailedRows(rows);
     })();
     return () => {
       cancelled = true;
     };
-  }, [readFailedMedia, writeFailedMedia]);
+  }, [readFailedRows, writeFailedRows]);
   // TAK back-fill: recovered plaintext for pre-join messages MLS can't decrypt,
   // keyed by message id; merged into the list below. Topic visibility selects
   // the TAK tier (public root vs scoped) — resolved once on mount.
@@ -1141,13 +1156,14 @@ export function ChatRoomScreen() {
   const [pendingKeyRequests, setPendingKeyRequests] = useState<PendingKeyRequest[]>([]);
 
   const refreshKeyRequests = useCallback(() => {
-    if (!tierCanAsk(tier)) {
-      // Not a defect: `public` rooms get the archive root from the server, so
-      // there is nobody to ask. Logged because "nothing happened" and "nothing
-      // was supposed to happen" look identical from the outside.
-      console.log('[chat] key-request list skipped, tier=', tier);
-      return;
-    }
+    /*
+     * `public` rooms get the archive root from the server, so there is nobody
+     * to ask. Not logged: this is the common case, and a line that narrates
+     * normal behaviour on every render is the noise a real warning hides in.
+     * The FAILURE path below does log, which is what found the defect this
+     * feature shipped with.
+     */
+    if (!tierCanAsk(tier)) return;
     void (async () => {
       try {
         const res = await client.get<{ requests: PendingKeyRequest[] }>(
@@ -1199,7 +1215,20 @@ export function ChatRoomScreen() {
       setKeyAskSending(true);
       try {
         const dev = await tak.myDeviceId(topicId);
-        await client.post(`/api/topics/${topicId}/keys/request`, { deviceId: dev });
+        /*
+         * SAY WHAT WE ALREADY HAVE.
+         *
+         * Without it every ask means "send me everything", so a member re-seals
+         * the whole history each time — including the stretch this device can
+         * already read. `oldestReadableEpoch` returns null when nothing is
+         * readable, which the server reads as exactly that, and keeps 0 as the
+         * real answer it is rather than collapsing it to null.
+         */
+        const held = await tak.heldEpochs(topicId).catch(() => [] as number[]);
+        await client.post(`/api/topics/${topicId}/keys/request`, {
+          deviceId: dev,
+          haveFromEpoch: oldestReadableEpoch(held),
+        });
         setKeyAskMine({ granted: false });
       } catch {
         setKeyAskMine(null);
@@ -1887,7 +1916,7 @@ export function ChatRoomScreen() {
           curr.map((m) => (m.id === pendingId ? { ...res.message, message: text } : m)),
         );
         // The message is out, so the failed row it may have come from is done.
-        void forgetFailedMedia(pendingId);
+        void forgetFailedRow(pendingId);
         // Cache own plaintext so it survives a restart (sender can't self-decrypt).
         void mls.cachePlaintext(topicId, res.message.id, text);
         // Re-encrypt for the archive so later members can read it (Phase 3).
@@ -1896,6 +1925,34 @@ export function ChatRoomScreen() {
         // the unclaimed collector leave it alone.
         if (media) void client.claimChatMedia(topicId, media.key).catch(() => {});
       } catch {
+        /*
+         * Keep the words where the OS cannot take them.
+         *
+         * The bubble alone was not enough. It lived in component state, so a
+         * backgrounded app reclaimed by Android took the sentence with it — the
+         * user did nothing, came back, and the message was simply gone. The
+         * same defect was fixed for attachments and words were left behind,
+         * which is how a photo nobody watched fail outlived a sentence someone
+         * did.
+         *
+         * Written BEFORE the row is redrawn, because the process can die
+         * between the two, and losing it there is precisely what this fixes.
+         * Attachments are skipped: their failure path stores the envelope, and
+         * writing the same row again as text would restore a bubble of JSON.
+         */
+        if (!parseChatMediaBody(text)) {
+          await writeFailedRows(
+            addFailedRow(await readFailedRows(), {
+              kind: 'text',
+              rowId: pendingId,
+              text,
+              createdAt: Date.now(),
+            }),
+          ).catch(() => {
+            // Storage refused. The row still shows for this session, which is
+            // the behaviour that shipped before any of this existed.
+          });
+        }
         // The text stays in the bubble, never back in the composer — the reader
         // decides whether to resend or drop it.
         setSentMessages((curr) =>
@@ -1903,7 +1960,7 @@ export function ChatRoomScreen() {
         );
       }
     },
-    [mls, tak, client, topicId, buildPushArchive, forgetFailedMedia],
+    [mls, tak, client, topicId, buildPushArchive, forgetFailedRow, readFailedRows, writeFailedRows],
   );
 
   const send = useAuthGuardedAction(async () => {
@@ -1981,9 +2038,9 @@ export function ChatRoomScreen() {
        * message the user just cancelled is a leak with a timer.
        */
       if (msg.mediaKey) void client.deleteChatMedia(topicId, msg.mediaKey).catch(() => {});
-      void forgetFailedMedia(msg.id);
+      void forgetFailedRow(msg.id);
     },
-    [client, topicId, forgetFailedMedia],
+    [client, topicId, forgetFailedRow],
   );
 
   // ── Image attach helpers ──────────────────────────────────────────────────
@@ -2100,8 +2157,14 @@ export function ChatRoomScreen() {
         // Written BEFORE the row is drawn: the OS can kill this process between
         // the two, and losing it there is precisely what this fixes.
         void (async () => {
-          await writeFailedMedia(
-            addFailedMedia(await readFailedMedia(), { rowId, body, key: stored.key, createdAt: Date.now() }),
+          await writeFailedRows(
+            addFailedRow(await readFailedRows(), {
+              kind: 'media',
+              rowId,
+              body,
+              key: stored.key,
+              createdAt: Date.now(),
+            }),
           );
         })();
         setSentMessages((curr) => [

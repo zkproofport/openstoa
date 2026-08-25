@@ -35,15 +35,17 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
+import { act } from 'react-test-renderer';
+import { useOpenStoaSession } from '../stores/sessionStore';
 import {
-  MAX_PERSISTED_FAILED_MEDIA,
+  MAX_PERSISTED_FAILED_ROWS,
   buildChatMediaBody,
   chatMediaObjectKey,
-  serializeFailedMedia,
+  serializeFailedRows,
   type ChatMediaEnvelope,
-  type PersistedFailedMedia,
+  type PersistedFailedRow,
 } from '../lib/chatMedia';
-import { renderScreen, hostDouble, failedMediaKey } from './harness/screen';
+import { renderScreen, hostDouble, failedRowKey } from './harness/screen';
 import { ChatRoomScreen } from '../screens/chat/ChatRoomScreen';
 
 const TOPIC = '11111111-2222-4333-8444-555555555555';
@@ -68,10 +70,13 @@ function envelope(mediaId = 'a0b1c2d3e4f5061728394a5b6c7d8e9f'): ChatMediaEnvelo
  * `parseChatMediaBody` correctly rejected, so every fixture was silently invalid
  * and the tests were asserting against a screen that had restored nothing.
  */
-function storedRow(over: Partial<PersistedFailedMedia> & { mediaId?: string } = {}): PersistedFailedMedia {
+function storedRow(
+  over: Partial<Extract<PersistedFailedRow, { kind: 'media' }>> & { mediaId?: string } = {},
+): PersistedFailedRow {
   const { mediaId, ...rest } = over;
   const env = envelope(mediaId);
   return {
+    kind: 'media',
     rowId: 'row-1',
     body: buildChatMediaBody(env),
     key: env.key,
@@ -86,9 +91,9 @@ const RETRY_LABEL = 'openstoa.chat.sendFailedRetry';
 const EXPIRED_LABEL = 'openstoa.chat.media.expired';
 
 /** A host whose local store already holds `rows` for this topic. */
-function hostWithRows(rows: PersistedFailedMedia[]) {
+function hostWithRows(rows: PersistedFailedRow[]) {
   const host = hostDouble();
-  host.localStore.items.set(failedMediaKey(TOPIC), serializeFailedMedia(rows));
+  host.localStore.items.set(failedRowKey(TOPIC), serializeFailedRows(rows));
   return host;
 }
 
@@ -149,14 +154,14 @@ describe('CONTRACT: a failed attachment is put back on mount', () => {
 
   it('writes the PRUNED list back, so a dropped row is not re-read forever', async () => {
     // One good row, one the parser must drop (body is not an envelope).
-    const good = storedRow({ rowId: 'keep' });
-    const bad = { rowId: 'drop', body: 'just text', key: good.key, createdAt: Date.now() };
-    const host = hostWithRows([good, bad as PersistedFailedMedia]);
+    const good = storedRow({ rowId: 'keep' }) as Extract<PersistedFailedRow, { kind: 'media' }>;
+    const bad = { kind: 'media', rowId: 'drop', body: 'just text', key: good.key, createdAt: Date.now() };
+    const host = hostWithRows([good, bad as PersistedFailedRow]);
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
 
-    const written = host.localStore.items.get(failedMediaKey(TOPIC));
+    const written = host.localStore.items.get(failedRowKey(TOPIC));
     expect(written).toBeTruthy();
-    const parsed = JSON.parse(written!) as PersistedFailedMedia[];
+    const parsed = JSON.parse(written!) as PersistedFailedRow[];
     expect(parsed.map((r) => r.rowId)).toEqual(['keep']);
     rendered.unmount();
   });
@@ -166,7 +171,7 @@ describe('CONTRACT: a failed attachment is put back on mount', () => {
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
     // An empty restore must not write an empty array over a key that had none —
     // that is a write on every room entry for no reason.
-    expect(host.localStore.items.has(failedMediaKey(TOPIC))).toBe(false);
+    expect(host.localStore.items.has(failedRowKey(TOPIC))).toBe(false);
     rendered.unmount();
   });
 });
@@ -208,7 +213,7 @@ describe('EXTERNAL FAILURE: storage is not a dependency the screen may die on', 
   it('a store that THROWS on write still renders the screen', async () => {
     const host = hostWithRows([storedRow()]);
     host.api.localStore = {
-      getItem: async () => serializeFailedMedia([storedRow()]),
+      getItem: async () => serializeFailedRows([storedRow()]),
       setItem: async () => {
         throw new Error('disk full');
       },
@@ -243,7 +248,7 @@ describe('HOSTILE / EMPTY stored state never reaches the screen', () => {
   for (const [label, raw] of cases) {
     it(`renders normally for ${label}`, async () => {
       const host = hostDouble();
-      host.localStore.items.set(failedMediaKey(TOPIC), raw);
+      host.localStore.items.set(failedRowKey(TOPIC), raw);
       const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
       expect(rendered.text()).toContain('openstoa.chat.send');
       rendered.unmount();
@@ -253,7 +258,7 @@ describe('HOSTILE / EMPTY stored state never reaches the screen', () => {
   it('a row whose key disagrees with its body never reaches the screen', async () => {
     const row = storedRow();
     const tampered = { ...row, key: chatMediaObjectKey(TOPIC, 'someone-else', 'a0b1c2d3e4f5061728394a5b6c7d8e9f') };
-    const host = hostWithRows([tampered as PersistedFailedMedia]);
+    const host = hostWithRows([tampered as PersistedFailedRow]);
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
     expect(rendered.text()).not.toContain(RETRY_LABEL);
     rendered.unmount();
@@ -272,9 +277,9 @@ describe('HOSTILE / EMPTY stored state never reaches the screen', () => {
      * here rather than fixed inside a testing task.
      */
     const host = hostDouble();
-    host.localStore.items.set(failedMediaKey(TOPIC), JSON.stringify([{ rowId: 'x', body: 'text', key: 'k', createdAt: Date.now() }]));
+    host.localStore.items.set(failedRowKey(TOPIC), JSON.stringify([{ kind: 'media', rowId: 'x', body: 'text', key: 'k', createdAt: Date.now() }]));
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
-    const still = host.localStore.items.get(failedMediaKey(TOPIC));
+    const still = host.localStore.items.get(failedRowKey(TOPIC));
     expect(JSON.parse(still ?? '[]')).toHaveLength(1);
     expect(rendered.text()).not.toContain(RETRY_LABEL);
     rendered.unmount();
@@ -284,7 +289,7 @@ describe('HOSTILE / EMPTY stored state never reaches the screen', () => {
 describe('VERY LARGE: more stored rows than the cap', () => {
   it('keeps at most the cap, newest first', async () => {
     const now = Date.now();
-    const rows = Array.from({ length: MAX_PERSISTED_FAILED_MEDIA + 10 }, (_, i) =>
+    const rows = Array.from({ length: MAX_PERSISTED_FAILED_ROWS + 10 }, (_, i) =>
       storedRow({
         rowId: `row-${i}`,
         createdAt: now - i * 1000,
@@ -294,8 +299,8 @@ describe('VERY LARGE: more stored rows than the cap', () => {
     );
     const host = hostWithRows(rows);
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
-    const written = JSON.parse(host.localStore.items.get(failedMediaKey(TOPIC)) ?? '[]');
-    expect(written.length).toBeLessThanOrEqual(MAX_PERSISTED_FAILED_MEDIA);
+    const written = JSON.parse(host.localStore.items.get(failedRowKey(TOPIC)) ?? '[]');
+    expect(written.length).toBeLessThanOrEqual(MAX_PERSISTED_FAILED_ROWS);
     rendered.unmount();
   });
 });
@@ -307,5 +312,134 @@ describe('RACE: unmounting mid-restore', () => {
     // The `cancelled` guard in the restore effect is what makes this safe; without
     // it React warns about a state update on an unmounted tree.
     expect(() => rendered.unmount()).not.toThrow();
+  });
+});
+
+describe('CONTRACT: an unsent MESSAGE is put back on mount', () => {
+  /*
+   * The attachment case above shipped and words were left behind, so a photo
+   * nobody watched fail outlived a sentence someone did. These are the screen
+   * half of that fix — the storage rules are pinned in
+   * `src/__tests__/failedTextSurvivesRestart.test.ts` on the web side, where
+   * the module actually lives.
+   */
+  const textRow = (over: Partial<Extract<PersistedFailedRow, { kind: 'text' }>> = {}): PersistedFailedRow => ({
+    kind: 'text',
+    rowId: 'text-1',
+    text: '회의 늦어요 🙇',
+    createdAt: Date.now(),
+    ...over,
+  });
+
+  it('restores the words, with the controls that make them actionable', async () => {
+    const { rendered } = await renderScreen(<ChatRoomScreen />, { host: hostWithRows([textRow()]) });
+    const out = rendered.text();
+    // Both halves matter: the sentence itself, and a Retry. A restored row that
+    // renders without one is the same as no restore from the user's side.
+    expect(out).toContain('회의 늦어요 🙇');
+    expect(out).toContain(RETRY_LABEL);
+    rendered.unmount();
+  });
+
+  it('INTEGRITY: it does NOT claim the attachment expired', async () => {
+    // Nothing a text row refers to can have been collected, so the attachment
+    // explanation would be a false one for a message that can still be sent.
+    const old = textRow({ createdAt: Date.now() - 6 * 60 * 60 * 1000 });
+    const { rendered } = await renderScreen(<ChatRoomScreen />, { host: hostWithRows([old]) });
+    expect(rendered.text()).not.toContain(EXPIRED_LABEL);
+    expect(rendered.text()).toContain(RETRY_LABEL);
+    rendered.unmount();
+  });
+
+  it('a stored attachment and a stored message both come back', async () => {
+    const { rendered } = await renderScreen(<ChatRoomScreen />, {
+      host: hostWithRows([storedRow({ rowId: 'pic' }), textRow({ rowId: 'msg', text: 'both please' })]),
+    });
+    expect(rendered.text()).toContain('both please');
+    rendered.unmount();
+  });
+
+  it('a store that refuses to answer leaves the room working', async () => {
+    // Storage is optional infrastructure. A room that fails to open because a
+    // failed row could not be read is a worse outcome than the lost row.
+    const host = hostDouble();
+    host.localStore.getItem = async () => {
+      throw new Error('store unavailable');
+    };
+    const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
+    expect(rendered.text()).toContain('openstoa.chat.send');
+    rendered.unmount();
+  });
+});
+
+describe('CONTRACT: a failed send WRITES the message down', () => {
+  /*
+   * The restore tests above prove a stored row comes back. They would all still
+   * pass if nothing ever stored one — which is exactly the shape of the defect
+   * being fixed, so the write needs its own proof.
+   */
+  it('the words are in the store the moment the send fails', async () => {
+    /*
+     * Signed in, because the composer refuses to send otherwise and the sign-in
+     * sheet — not a failed send — is what the screen would show instead.
+     */
+    useOpenStoaSession.setState({
+      mode: 'authenticated',
+      token: 'test-token',
+      userId: 'me',
+      nickname: 'me',
+      needsNickname: false,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      role: 'member',
+    });
+    const host = hostDouble();
+    // Reads succeed, the POST does not: the failure this whole path exists for.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (method === 'POST' && String(input).includes('/chat')) {
+          return { ok: false, status: 503, json: async () => ({}), text: async () => '' } as unknown as Response;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ messages: [], total: 0, topic: { visibility: 'public' }, members: [] }),
+          text: async () => '',
+        } as unknown as Response;
+      }),
+    );
+
+    const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
+    const input = rendered.root.findAll((n) => n.type === 'TextInput')[0];
+    expect(input, 'no composer to type into').toBeTruthy();
+    await act(async () => {
+      (input.props.onChangeText as (t: string) => void)('놓치면 안 되는 말');
+    });
+    const sendButton = rendered.pressableWith('openstoa.chat.send');
+    expect(sendButton, 'no send control').toBeTruthy();
+    await rendered.press(sendButton!);
+
+    /*
+     * The send is fired through the auth guard, which does not hand the
+     * caller its promise — so pressing returns before the POST has failed.
+     * Waited on a WALL-CLOCK deadline rather than a fixed number of turns: a
+     * turn count that is generous when this file runs alone ran out when the
+     * whole suite was competing for the machine, and the test failed for load
+     * rather than for behaviour.
+     */
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && !host.localStore.items.has(failedRowKey(TOPIC))) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
+    const raw = host.localStore.items.get(failedRowKey(TOPIC));
+    expect(raw, 'the failed send was never written down').toBeTruthy();
+    const stored = JSON.parse(raw!) as PersistedFailedRow[];
+    expect(stored).toHaveLength(1);
+    expect(stored[0].kind).toBe('text');
+    expect((stored[0] as Extract<PersistedFailedRow, { kind: 'text' }>).text).toBe('놓치면 안 되는 말');
+    rendered.unmount();
   });
 });

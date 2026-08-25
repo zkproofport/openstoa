@@ -19,21 +19,21 @@ import {
   MAX_CHAT_MEDIA_BYTES,
   CHAT_MEDIA_CONTENT_TYPE,
   chatMediaFilename,
-  addFailedMedia,
+  addFailedRow,
   buildChatMediaBody,
   isFailedMediaExpired,
   isHeicBytes,
   loadEncryptedChatMedia,
-  parseFailedMedia,
-  removeFailedMedia,
-  serializeFailedMedia,
+  parseFailedRows,
+  removeFailedRow,
+  serializeFailedRows,
   resolveChatMediaMime,
   parseChatMediaBody,
   sendEncryptedChatMedia,
   type ChatMediaEnvelope,
   type ChatMediaLoad,
   type ChatMediaSendFailure,
-  type PersistedFailedMedia,
+  type PersistedFailedRow,
 } from '@/lib/chatMedia';
 import { convertHeicToJpeg } from '@/lib/chatMediaHeic';
 import { ChatImage, CHAT_IMAGE_SLOT_WIDTH, CHAT_IMAGE_SLOT_WIDTH_ROOMY } from '@/components/ChatImage';
@@ -1684,31 +1684,31 @@ export default function ChatPanel({
    * they come back. Rules — cap, retry window, TTL, validation — live in
    * `chatMedia.ts` so both clients keep the same ones.
    */
-  const failedMediaStorageKey = `openstoa.failedMedia.${topicId}`;
-  const readFailedMedia = useCallback((): PersistedFailedMedia[] => {
+  const failedRowStorageKey = `openstoa.failedSend.${topicId}`;
+  const readFailedRows = useCallback((): PersistedFailedRow[] => {
     if (typeof window === 'undefined') return [];
     try {
-      return parseFailedMedia(window.localStorage.getItem(failedMediaStorageKey), Date.now());
+      return parseFailedRows(window.localStorage.getItem(failedRowStorageKey), Date.now());
     } catch {
       // Private mode, quota, a corrupt entry: a failed row is worth less than
       // the room it is in.
       return [];
     }
-  }, [failedMediaStorageKey]);
-  const writeFailedMedia = useCallback(
-    (list: readonly PersistedFailedMedia[]) => {
+  }, [failedRowStorageKey]);
+  const writeFailedRows = useCallback(
+    (list: readonly PersistedFailedRow[]) => {
       if (typeof window === 'undefined') return;
       try {
-        window.localStorage.setItem(failedMediaStorageKey, serializeFailedMedia(list));
+        window.localStorage.setItem(failedRowStorageKey, serializeFailedRows(list));
       } catch {
         /* storage refused — the row still shows for this session */
       }
     },
-    [failedMediaStorageKey],
+    [failedRowStorageKey],
   );
-  const forgetFailedMedia = useCallback(
-    (rowId: string) => writeFailedMedia(removeFailedMedia(readFailedMedia(), rowId)),
-    [readFailedMedia, writeFailedMedia],
+  const forgetFailedRow = useCallback(
+    (rowId: string) => writeFailedRows(removeFailedRow(readFailedRows(), rowId)),
+    [readFailedRows, writeFailedRows],
   );
 
   /*
@@ -1724,13 +1724,26 @@ export default function ChatPanel({
    * messages, which is the whole reason they are here.
    */
   const restoredFailedRows = useCallback((): ChatMessage[] => {
-    const rows = readFailedMedia();
+    const rows = readFailedRows();
     if (rows.length === 0) return [];
     const now = Date.now();
     // Persist what the parse kept, so rows it dropped (TTL, corrupt, over the
     // cap) are not re-read forever.
-    writeFailedMedia(rows);
-    return rows.map((r) => ({
+    writeFailedRows(rows);
+    /*
+     * Attachments only, on purpose.
+     *
+     * The mini-app also keeps failed TEXT across a restart, which means keeping
+     * the words themselves — the only form a retry can re-seal from. Here that
+     * would put message plaintext in `localStorage`, where any script on the
+     * origin can read it and nothing ever clears it. Chat is blocked in the
+     * browser for the same reason keys are (see the device gate), so there is
+     * no text row to restore anyway; the filter is what keeps it that way if
+     * one ever appears.
+     */
+    return rows
+      .filter((r): r is Extract<PersistedFailedRow, { kind: 'media' }> => r.kind === 'media')
+      .map((r) => ({
       id: r.rowId,
       topicId,
       // `isOwnMessage` treats a failed row as this client's by construction, so
@@ -1745,8 +1758,8 @@ export default function ChatPanel({
       mediaKey: r.key,
       // Only a HINT here — the retry probes the object for real.
       mediaExpired: isFailedMediaExpired(r, now),
-    }));
-  }, [topicId, readFailedMedia, writeFailedMedia]);
+      }));
+  }, [topicId, readFailedRows, writeFailedRows]);
   // Own-message alignment needs the caller's id. Same source the rest of the
   // web app uses for "is this me" checks (see topics/[topicId]/members).
   /*
@@ -2151,8 +2164,8 @@ export default function ChatPanel({
         const rowId = nextPendingId();
         // Written BEFORE the row is drawn: a crash between the two would
         // otherwise lose exactly what this is here to keep.
-        writeFailedMedia(
-          addFailedMedia(readFailedMedia(), { rowId, body, key: stored.key, createdAt: Date.now() }),
+        writeFailedRows(
+          addFailedRow(readFailedRows(), { kind: 'media', rowId, body, key: stored.key, createdAt: Date.now() }),
         );
         setMessages((prev) =>
           mergeChronological(prev, [
@@ -2345,7 +2358,7 @@ export default function ChatPanel({
       if (!res.ok) throw new Error(`send failed (${res.status})`);
       const { message: payload } = await res.json();
       setMessages((prev) => prev.filter((m) => m.id !== rowId));
-      forgetFailedMedia(rowId);
+      forgetFailedRow(rowId);
       if (!payload?.id) return;
       const own: ChatMessage = { ...payload, message: body };
       decryptOnceRef.current.set(payload.id, own);
@@ -2367,7 +2380,7 @@ export default function ChatPanel({
 
   function discardFailed(msg: ChatMessage) {
     setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-    forgetFailedMedia(msg.id);
+    forgetFailedRow(msg.id);
     /*
      * Deleting the row is not enough for an attachment: its bytes are on the
      * server, and nothing else will ever mention them. Abandoning a failed send

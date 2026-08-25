@@ -741,44 +741,68 @@ export async function loadEncryptedChatMedia(
 }
 
 // ---------------------------------------------------------------------------
-// Failed attachments that survive a restart
+// Failed sends that survive a restart
 // ---------------------------------------------------------------------------
 
 /**
- * A failed attachment, kept across restarts so it is still there when the user
+ * A send that failed, kept across restarts so it is still there when the user
  * comes back.
  *
  * Why this exists: a failed row lived in component state, so it vanished on a
  * reload. On the web that is a tab the user closed on purpose. On a phone it is
  * the OS reclaiming a backgrounded app — the user did nothing, and the outcome
- * was that the photo was simply gone, with no row, no error, and the uploaded
- * bytes collected within the hour. That is worse than the original defect,
- * which at least left something on screen.
+ * was that the message was simply gone, with no row and no error. That is worse
+ * than the original defect, which at least left something on screen.
  *
- * What is stored is a REFERENCE, not a picture: the sealed body (which names an
- * object and its TAK version) and the object key. Both are already inside a
- * message the sender wrote, and both sit beside an MLS keystore that is
- * strictly more sensitive. The bytes stay where they were uploaded.
+ * BOTH KINDS, one store. Attachments were rescued first and words were left
+ * behind, which produced the odd result that a photo the user never saw arrive
+ * survived a restart while a sentence they watched fail did not. One list also
+ * means one cap, one expiry, and one read on entry, so the rows come back in
+ * the order they were written rather than as two piles.
+ *
+ * WHAT IS STORED DIFFERS BY KIND, and deliberately:
+ *   - `media` keeps a REFERENCE, never a picture — the sealed body (which names
+ *     an object and its TAK version) and the object key. The bytes stay where
+ *     they were uploaded, and retry re-sends the same envelope rather than
+ *     re-reading a file the user may no longer have selected.
+ *   - `text` keeps the WORDS, because retry re-seals from them and the bubble
+ *     has to show what the person wrote. Storing the sealed form instead would
+ *     save nothing here: this row sits in the same store as the decrypted room
+ *     history the client already keeps, beside an MLS keystore that is strictly
+ *     more sensitive. On the web it would be the first message plaintext at
+ *     rest in a browser, which is why the web keeps attachments only.
  */
-export interface PersistedFailedMedia {
-  /** The provisional row id, so a restored row can be retried and removed. */
-  rowId: string;
-  /** The sealed message body — an envelope, so it re-sends without re-uploading. */
-  body: string;
-  /** The object key, so Discard can delete the bytes. */
-  key: string;
-  /** When the send failed, epoch ms. Decides both prompts below. */
-  createdAt: number;
-}
+export type PersistedFailedRow =
+  | {
+      kind: 'media';
+      /** The provisional row id, so a restored row can be retried and removed. */
+      rowId: string;
+      /** The sealed message body — an envelope, so it re-sends without re-uploading. */
+      body: string;
+      /** The object key, so Discard can delete the bytes. */
+      key: string;
+      /** When the send failed, epoch ms. Decides both expiry rules below. */
+      createdAt: number;
+    }
+  | {
+      kind: 'text';
+      rowId: string;
+      /** Exactly what the user typed, so Retry sends that and not an approximation. */
+      text: string;
+      createdAt: number;
+    };
 
 /**
- * How long a restored row still offers RETRY.
+ * How long a restored ATTACHMENT still offers RETRY.
  *
  * Tied to the collector's grace window, because that is when the object stops
  * being there: an unclaimed attachment is collected an hour after upload, so a
  * row older than that names bytes that are probably gone. Past it the row is
  * still SHOWN — silence is the defect — but it says the attachment expired
  * rather than offering a retry that would post a message pointing at nothing.
+ *
+ * Text has no equivalent and gets none: the words are right here, so a retry an
+ * hour later sends exactly what a retry a second later would.
  */
 export const CHAT_MEDIA_RETRY_WINDOW_MS = 60 * 60 * 1000;
 
@@ -790,23 +814,35 @@ export const CHAT_MEDIA_RETRY_WINDOW_MS = 60 * 60 * 1000;
  * successful retry or by Discard — this is only the backstop for a row nobody
  * ever touched.
  */
-export const CHAT_MEDIA_FAILED_ROW_TTL_MS = 24 * 60 * 60 * 1000;
+export const CHAT_FAILED_ROW_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Newest-first cap per topic, so a broken connection cannot fill the screen. */
-export const MAX_PERSISTED_FAILED_MEDIA = 20;
+export const MAX_PERSISTED_FAILED_ROWS = 20;
 
-/** Is this row past the point where retrying could still find its object? */
-export function isFailedMediaExpired(row: PersistedFailedMedia, now: number): boolean {
+/**
+ * The longest draft worth keeping.
+ *
+ * Bounded by what the transport would accept anyway — the chat route refuses a
+ * ciphertext over 4096 bytes — so a longer string could never have been sent
+ * and storing it only fills the quota. REFUSED, never truncated: a shortened
+ * draft would restore as words the person did not write, and they would have no
+ * way to tell.
+ */
+export const MAX_PERSISTED_FAILED_TEXT_CHARS = 4096;
+
+/** Is this attachment row past the point where retrying could still find its object? */
+export function isFailedMediaExpired(row: { createdAt: number }, now: number): boolean {
   return now - row.createdAt > CHAT_MEDIA_RETRY_WINDOW_MS;
 }
 
 /**
  * Read back what was stored, discarding anything that is not a usable failed
- * row: wrong shape, a body that is not an envelope, a key that disagrees with
- * the body, or a row past its TTL. Never throws — storage is a place other
+ * row: wrong shape, an unknown kind, a body that is not an envelope, a key that
+ * disagrees with the body, a draft that is empty or longer than the transport
+ * would carry, or a row past its TTL. Never throws — storage is a place other
  * software can write to, and a corrupt entry must cost a row, not the room.
  */
-export function parseFailedMedia(raw: unknown, now: number): PersistedFailedMedia[] {
+export function parseFailedRows(raw: unknown, now: number): PersistedFailedRow[] {
   let list: unknown = raw;
   if (typeof raw === 'string') {
     try {
@@ -816,43 +852,57 @@ export function parseFailedMedia(raw: unknown, now: number): PersistedFailedMedi
     }
   }
   if (!Array.isArray(list)) return [];
-  const out: PersistedFailedMedia[] = [];
+  const out: PersistedFailedRow[] = [];
   for (const item of list) {
     if (typeof item !== 'object' || item === null) continue;
     const r = item as Record<string, unknown>;
     if (typeof r.rowId !== 'string' || !r.rowId) continue;
-    if (typeof r.key !== 'string' || typeof r.body !== 'string') continue;
     if (typeof r.createdAt !== 'number' || !Number.isFinite(r.createdAt)) continue;
-    if (now - r.createdAt > CHAT_MEDIA_FAILED_ROW_TTL_MS) continue;
+    if (now - r.createdAt > CHAT_FAILED_ROW_TTL_MS) continue;
+    if (r.kind === 'text') {
+      if (typeof r.text !== 'string') continue;
+      /*
+       * A blank draft is dropped rather than restored. There is nothing to send
+       * and nothing to show, so the row would be an empty bubble the user
+       * cannot act on — and it would hold a slot under the cap that a real
+       * unsent message needs.
+       */
+      if (r.text.trim().length === 0) continue;
+      if (r.text.length > MAX_PERSISTED_FAILED_TEXT_CHARS) continue;
+      out.push({ kind: 'text', rowId: r.rowId, text: r.text, createdAt: r.createdAt });
+      continue;
+    }
+    if (r.kind !== 'media') continue;
+    if (typeof r.key !== 'string' || typeof r.body !== 'string') continue;
     const envelope = parseChatMediaBody(r.body);
     if (!envelope || envelope.key !== r.key) continue;
-    out.push({ rowId: r.rowId, body: r.body, key: r.key, createdAt: r.createdAt });
+    out.push({ kind: 'media', rowId: r.rowId, body: r.body, key: r.key, createdAt: r.createdAt });
   }
   // Newest first, then capped: an old row is the one to lose.
   out.sort((a, b) => b.createdAt - a.createdAt);
-  return out.slice(0, MAX_PERSISTED_FAILED_MEDIA);
+  return out.slice(0, MAX_PERSISTED_FAILED_ROWS);
 }
 
 /** Add one row, keeping the newest-first cap. Same id replaces, never duplicates. */
-export function addFailedMedia(
-  list: readonly PersistedFailedMedia[],
-  row: PersistedFailedMedia,
-): PersistedFailedMedia[] {
+export function addFailedRow(
+  list: readonly PersistedFailedRow[],
+  row: PersistedFailedRow,
+): PersistedFailedRow[] {
   const next = [row, ...list.filter((r) => r.rowId !== row.rowId)];
   next.sort((a, b) => b.createdAt - a.createdAt);
-  return next.slice(0, MAX_PERSISTED_FAILED_MEDIA);
+  return next.slice(0, MAX_PERSISTED_FAILED_ROWS);
 }
 
 /** Drop one row — a successful retry, or a discard. */
-export function removeFailedMedia(
-  list: readonly PersistedFailedMedia[],
+export function removeFailedRow(
+  list: readonly PersistedFailedRow[],
   rowId: string,
-): PersistedFailedMedia[] {
+): PersistedFailedRow[] {
   return list.filter((r) => r.rowId !== rowId);
 }
 
-/** Serialise for storage. Pairs with `parseFailedMedia`. */
-export function serializeFailedMedia(list: readonly PersistedFailedMedia[]): string {
+/** Serialise for storage. Pairs with `parseFailedRows`. */
+export function serializeFailedRows(list: readonly PersistedFailedRow[]): string {
   return JSON.stringify(list);
 }
 

@@ -15,15 +15,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   CHAT_MEDIA_BODY_PREFIX,
-  CHAT_MEDIA_FAILED_ROW_TTL_MS,
+  CHAT_FAILED_ROW_TTL_MS,
   CHAT_MEDIA_RETRY_WINDOW_MS,
-  MAX_PERSISTED_FAILED_MEDIA,
-  addFailedMedia,
+  MAX_PERSISTED_FAILED_ROWS,
+  addFailedRow,
   isFailedMediaExpired,
-  parseFailedMedia,
-  removeFailedMedia,
-  serializeFailedMedia,
-  type PersistedFailedMedia,
+  parseFailedRows,
+  removeFailedRow,
+  serializeFailedRows,
+  type PersistedFailedRow,
   CHAT_MEDIA_MIME_ALLOWLIST,
   ChatMediaError,
   MAX_CHAT_MEDIA_BYTES,
@@ -530,7 +530,9 @@ describe('loadEncryptedChatMedia', () => {
 describe('failed attachments that survive a restart', () => {
   const NOW = 1_800_000_000_000;
   const body = buildChatMediaBody(envelope());
-  const row = (over: Partial<PersistedFailedMedia> = {}): PersistedFailedMedia => ({
+  type MediaRow = Extract<PersistedFailedRow, { kind: 'media' }>;
+  const row = (over: Partial<MediaRow> = {}): MediaRow => ({
+    kind: 'media',
     rowId: 'pending-1',
     body,
     key: KEY,
@@ -539,16 +541,16 @@ describe('failed attachments that survive a restart', () => {
   });
 
   it('round-trips through serialize/parse', () => {
-    expect(parseFailedMedia(serializeFailedMedia([row()]), NOW)).toEqual([row()]);
+    expect(parseFailedRows(serializeFailedRows([row()]), NOW)).toEqual([row()]);
   });
 
   it('REGRESSION: a failed row survives a reload — the whole point', () => {
     // It used to live in component state, so an OS-killed app lost the photo
     // with no row, no error, and the bytes collected within the hour.
-    const stored = serializeFailedMedia([row()]);
-    const restored = parseFailedMedia(stored, NOW + 60_000);
+    const stored = serializeFailedRows([row()]);
+    const restored = parseFailedRows(stored, NOW + 60_000);
     expect(restored).toHaveLength(1);
-    expect(parseChatMediaBody(restored[0].body)?.key).toBe(KEY);
+    expect(parseChatMediaBody((restored[0] as MediaRow).body)?.key).toBe(KEY);
   });
 
   it('EXPIRY: retry is offered inside the collector grace window and not after', () => {
@@ -559,66 +561,66 @@ describe('failed attachments that survive a restart', () => {
   });
 
   it('EXPIRY: an expired row is still KEPT — silence was the defect', () => {
-    const justExpired = parseFailedMedia(serializeFailedMedia([row()]), NOW + CHAT_MEDIA_RETRY_WINDOW_MS + 1);
+    const justExpired = parseFailedRows(serializeFailedRows([row()]), NOW + CHAT_MEDIA_RETRY_WINDOW_MS + 1);
     expect(justExpired).toHaveLength(1);
   });
 
   it('TTL: a row past a day is dropped, so it cannot become litter', () => {
-    expect(parseFailedMedia(serializeFailedMedia([row()]), NOW + CHAT_MEDIA_FAILED_ROW_TTL_MS)).toHaveLength(1);
-    expect(parseFailedMedia(serializeFailedMedia([row()]), NOW + CHAT_MEDIA_FAILED_ROW_TTL_MS + 1)).toEqual([]);
+    expect(parseFailedRows(serializeFailedRows([row()]), NOW + CHAT_FAILED_ROW_TTL_MS)).toHaveLength(1);
+    expect(parseFailedRows(serializeFailedRows([row()]), NOW + CHAT_FAILED_ROW_TTL_MS + 1)).toEqual([]);
   });
 
   it('CAP: keeps the newest and drops the oldest', () => {
-    const many = Array.from({ length: MAX_PERSISTED_FAILED_MEDIA + 5 }, (_, i) =>
+    const many = Array.from({ length: MAX_PERSISTED_FAILED_ROWS + 5 }, (_, i) =>
       row({ rowId: `r${i}`, createdAt: NOW - i * 1000 }),
     );
-    const parsed = parseFailedMedia(serializeFailedMedia(many), NOW);
-    expect(parsed).toHaveLength(MAX_PERSISTED_FAILED_MEDIA);
+    const parsed = parseFailedRows(serializeFailedRows(many), NOW);
+    expect(parsed).toHaveLength(MAX_PERSISTED_FAILED_ROWS);
     expect(parsed[0].rowId).toBe('r0');
-    expect(parsed.some((r) => r.rowId === `r${MAX_PERSISTED_FAILED_MEDIA + 4}`)).toBe(false);
+    expect(parsed.some((r) => r.rowId === `r${MAX_PERSISTED_FAILED_ROWS + 4}`)).toBe(false);
   });
 
   it('add replaces the same row id rather than duplicating it', () => {
-    const once = addFailedMedia([], row());
-    const twice = addFailedMedia(once, row({ createdAt: NOW + 5 }));
+    const once = addFailedRow([], row());
+    const twice = addFailedRow(once, row({ createdAt: NOW + 5 }));
     expect(twice).toHaveLength(1);
     expect(twice[0].createdAt).toBe(NOW + 5);
   });
 
   it('add respects the cap, and remove drops exactly one', () => {
-    let list: PersistedFailedMedia[] = [];
-    for (let i = 0; i < MAX_PERSISTED_FAILED_MEDIA + 3; i++) {
-      list = addFailedMedia(list, row({ rowId: `r${i}`, createdAt: NOW + i }));
+    let list: PersistedFailedRow[] = [];
+    for (let i = 0; i < MAX_PERSISTED_FAILED_ROWS + 3; i++) {
+      list = addFailedRow(list, row({ rowId: `r${i}`, createdAt: NOW + i }));
     }
-    expect(list).toHaveLength(MAX_PERSISTED_FAILED_MEDIA);
-    const after = removeFailedMedia(list, list[0].rowId);
-    expect(after).toHaveLength(MAX_PERSISTED_FAILED_MEDIA - 1);
+    expect(list).toHaveLength(MAX_PERSISTED_FAILED_ROWS);
+    const after = removeFailedRow(list, list[0].rowId);
+    expect(after).toHaveLength(MAX_PERSISTED_FAILED_ROWS - 1);
     expect(after.some((r) => r.rowId === list[0].rowId)).toBe(false);
   });
 
   it('HOSTILE: storage is a place other software writes to, so garbage costs a row not the room', () => {
     for (const bad of ['', 'not json', '{}', '[1,2,3]', null, undefined, 42, [{ rowId: 'x' }]]) {
-      expect(parseFailedMedia(bad, NOW), String(bad)).toEqual([]);
+      expect(parseFailedRows(bad, NOW), String(bad)).toEqual([]);
     }
   });
 
   it('HOSTILE: a row whose body is not an envelope is discarded', () => {
-    const forged = serializeFailedMedia([row({ body: 'just some text' })]);
-    expect(parseFailedMedia(forged, NOW)).toEqual([]);
+    const forged = serializeFailedRows([row({ body: 'just some text' })]);
+    expect(parseFailedRows(forged, NOW)).toEqual([]);
   });
 
   it('HOSTILE: a key that disagrees with its body is discarded', () => {
     // Otherwise Discard would delete an object the body never named.
-    const mismatched = serializeFailedMedia([row({ key: chatMediaObjectKey(TOPIC, USER, 'b'.repeat(32)) })]);
-    expect(parseFailedMedia(mismatched, NOW)).toEqual([]);
+    const mismatched = serializeFailedRows([row({ key: chatMediaObjectKey(TOPIC, USER, 'b'.repeat(32)) })]);
+    expect(parseFailedRows(mismatched, NOW)).toEqual([]);
   });
 
   it('SI-1: what is stored is a reference, never the picture', () => {
-    const stored = serializeFailedMedia([row()]);
+    const stored = serializeFailedRows([row()]);
     // The envelope names an object and a TAK version; the bytes stay uploaded.
     expect(stored).toContain(KEY);
     expect(stored).not.toContain('ciphertext');
-    expect(JSON.parse(stored)[0]).toEqual({ rowId: 'pending-1', body, key: KEY, createdAt: NOW });
+    expect(JSON.parse(stored)[0]).toEqual({ kind: 'media', rowId: 'pending-1', body, key: KEY, createdAt: NOW });
   });
 });
 

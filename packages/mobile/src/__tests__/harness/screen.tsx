@@ -184,7 +184,7 @@ export async function renderScreen(
   return { rendered, host, nav, queryClient: client };
 }
 
-/** Where the screen keeps failed attachments for one topic. */
-export function failedMediaKey(topicId: string): string {
-  return `openstoa.failedMedia.${topicId}`;
+/** Where the screen keeps failed sends — attachments and words — for one topic. */
+export function failedRowKey(topicId: string): string {
+  return `openstoa.failedSend.${topicId}`;
 }
