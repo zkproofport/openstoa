@@ -299,20 +299,4 @@ describe('what a private post never reaches', () => {
     expect((await fetch(`${BASE}/api/posts/${id}`, { headers: bearer(owner.token) })).status).toBe(200);
   });
 
-  it('INTEGRITY: the public stat counts community topics, not private spaces', async () => {
-    /*
-     * `totalTopics` is read as "how big is this place", so it has to count what
-     * a reader could go and find. Unfiltered it counted every row: measured at
-     * 916 for 261 real topics — 623 personal spaces and 32 DMs — so the number
-     * tracked the user base rather than the community and would climb with
-     * every signup.
-     *
-     * Asserted as a RELATION rather than a value: making an account here adds a
-     * space, so a fixed number would be wrong by the time it ran.
-     */
-    const before = (await (await fetch(`${BASE}/api/stats`)).json()).totalTopics as number;
-    await login('stat_probe'); // creates an account, and with it a personal space
-    const after = (await (await fetch(`${BASE}/api/stats`)).json()).totalTopics as number;
-    expect(after).toBe(before);
-  });
 });

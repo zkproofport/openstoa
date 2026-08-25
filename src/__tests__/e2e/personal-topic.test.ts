@@ -262,4 +262,26 @@ describe('the space that comes with the account (E2E, real container)', () => {
     });
     expect([200, 201]).toContain(own.status);
   });
+
+  it('CONTRACT: the JOINED list carries it, which is what the key backup enumerates', async () => {
+    /*
+     * The mini-app's TAK keychain backup lists topics with a bare
+     * `GET /api/topics` and probes each for keys. A personal space has no
+     * invite link, so that backup is its ENTIRE recovery story — the app says
+     * as much on screen. If this list ever stopped carrying it, the space would
+     * quietly drop out of the backup and nobody would find out until a phone
+     * was lost.
+     *
+     * Checked here as well as at the call site because the two can fail
+     * independently: the client could switch to `view=all` (which excludes it
+     * deliberately), or the server could stop returning it in `topics`.
+     */
+    const rows = await myTopics(owner.token);
+    expect(rows.some((t) => t.id === personal.id)).toBe(true);
+    // And it is inside `topics`, not only in some other field a prober would
+    // never read.
+    const raw = await (await fetch(`${BASE}/api/topics`, { headers: bearer(owner.token) })).json();
+    expect((raw.topics as TopicRow[]).some((t) => t.id === personal.id)).toBe(true);
+  });
+
 });
