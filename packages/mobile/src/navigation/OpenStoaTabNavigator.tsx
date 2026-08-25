@@ -6,6 +6,20 @@ import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather';
 import { ZKProofportMarkIcon } from '../components/icons';
 import { useHost } from '@openstoa/miniapp-bridge';
+import { useQuery } from '@tanstack/react-query';
+import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
+import { useOpenStoaSession } from '../stores/sessionStore';
+import { unreadTabBadge, unreadTotal, type UnreadCountable } from '../lib/unreadTotal';
+
+/**
+ * How often the badge re-asks while OpenStoa is open.
+ *
+ * Slower than `ChatListScreen`'s own 30s poll on purpose: this one runs the
+ * whole time the mini-app is open, and the reader is usually looking at
+ * something other than their rooms. React Query dedupes by key, so when the
+ * Chat tab IS open its faster interval takes over and this costs nothing extra.
+ */
+const UNREAD_BADGE_POLL_MS = 60_000;
 import { useTranslation } from 'react-i18next';
 import { FeedStack } from './stacks/FeedStack';
 import { TopicsStack } from './stacks/TopicsStack';
@@ -70,6 +84,47 @@ export function OpenStoaTabNavigator() {
   // is no parent navigator, and here the host's tab navigator is the parent), so
   // on a cold start the tap would be stranded waiting for an event that already
   // fired before this navigator existed.
+  /*
+   * FETCHES, and shares the fetch with `ChatListScreen`.
+   *
+   * A first version passed `enabled: false` here, reasoning that the Chat
+   * screen owns the query and this navigator should only observe it. That is
+   * true and useless: `ChatListScreen` is only mounted once someone opens the
+   * Chat tab, so on the Feed tab nobody was fetching and the badge stayed
+   * empty with three messages waiting — verified on the device. A badge that
+   * appears only after you have gone looking is not a badge.
+   *
+   * React Query dedupes by key, so the two subscribers share one request and
+   * one cache entry. The interval is deliberately slower than the Chat
+   * screen's: this one runs the whole time OpenStoa is open, and the reader is
+   * usually looking at something else.
+   */
+  const client = useOpenStoaClient();
+  const isGuest = useOpenStoaSession((st: { mode: string }) => st.mode) !== 'authenticated';
+  const { data: topicsData } = useQuery<{ topics?: UnreadCountable[] } | UnreadCountable[]>({
+    queryKey: ['my-topics'],
+    queryFn: () => client.get<{ topics?: UnreadCountable[] } | UnreadCountable[]>('/api/topics'),
+    enabled: !isGuest,
+    refetchInterval: UNREAD_BADGE_POLL_MS,
+    staleTime: UNREAD_BADGE_POLL_MS,
+  });
+  const rooms = Array.isArray(topicsData) ? topicsData : (topicsData?.topics ?? []);
+  const chatBadge = unreadTabBadge(rooms);
+
+  /*
+   * Push the same number up to the host, which draws the two badges the
+   * mini-app cannot reach: its own tab in the host's tab bar, and the app icon.
+   *
+   * The mini-app owns the count — it is the only side that knows what has been
+   * read — and the host owns the drawing. One call, so the three surfaces
+   * cannot disagree; a reader who sees 3 on the icon and 1 on a tab has found a
+   * bug they can see and cannot explain.
+   */
+  const total = unreadTotal(rooms);
+  useEffect(() => {
+    host.setUnreadBadge?.(total);
+  }, [host, total]);
+
   const pendingChatTopicId = usePendingChatTopicId();
   const tabNavigationRef = useRef<{ navigate: (name: string) => void } | null>(null);
   // The topic we have already switched tabs for, so neither path below jumps
@@ -182,6 +237,20 @@ export function OpenStoaTabNavigator() {
           tabBarIcon: ({ size, color }) => (
             <Feather name="message-circle" size={size} color={color} />
           ),
+          /*
+           * The waiting-messages count, on the tab itself.
+           *
+           * Until this there was no badge anywhere: not on the app icon, not on
+           * the host's OpenStoa tab, and not here — so the only way to discover
+           * a message was to open this tab and look. The per-room counts had
+           * existed for a while, which is what made the gap easy to miss; the
+           * number was there, it just never travelled up.
+           *
+           * `undefined` when there is nothing, never 0 or '': React Navigation
+           * draws a literal "0" for the first and a bare dot for the second,
+           * and a badge with nothing behind it is worse than no badge.
+           */
+          tabBarBadge: chatBadge,
         }}
       />
       <Tab.Screen

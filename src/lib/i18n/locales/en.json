@@ -644,6 +644,13 @@
       "e2ee": "New messages and images in this room are end-to-end encrypted. The service cannot read them.",
       "serverReadable": "New messages and images in this room are encrypted in transit and at rest, but this is a public topic: the service holds a key to its history and can read it.",
       "learnMore": "What this means"
+    },
+    "mobileOnly": {
+      "title": "Chat lives in the app",
+      "body": "Your conversations are end-to-end encrypted, and their keys stay on one device — your phone. A browser would leave those keys on whatever computer you happened to use, so chat is not offered here.",
+      "appStore": "Download for iPhone",
+      "playStore": "Download for Android",
+      "why": "Everything else on OpenStoa works here as usual. Moving to a new phone? Profile settings has a recovery backup for exactly that."
     }
   },
   "chatRail": {

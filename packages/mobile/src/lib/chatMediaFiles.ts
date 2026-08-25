@@ -165,8 +165,53 @@ export function writeDecrypted(deps: WriteDecryptedDeps): AttachmentFile | null 
 }
 
 /**
+ * Last time's plaintext for this attachment, if it is still on the device.
+ *
+ * DECRYPT ONCE. The display file is named from the media id and the mime, so
+ * the name a second view would write is the name the first view already wrote.
+ * Without this lookup every re-entry paid the whole read path again — measured
+ * under Hermes on a 6MB attachment: 179ms to fetch the ciphertext, 3,086ms to
+ * decrypt it, per picture, per entry. A room with ten photos paid it ten times,
+ * every time it was opened.
+ *
+ * WHY IT IS SAFE TO KEEP, since an earlier version of this file argued the
+ * opposite and deleted the file on unmount. The plaintext sits in the app's own
+ * cache directory, which is sandboxed to this app on both platforms and is not
+ * readable by another app without root. The key that opens the ciphertext is on
+ * the SAME device, in the keychain — so an attacker who can read this directory
+ * can already read the key and decrypt the archive themselves. Deleting the
+ * picture removed no capability from that attacker; it only made the honest
+ * reader pay AES again. What end-to-end encryption protects is the picture in
+ * transit and at rest ON THE SERVER, and neither is affected by a cache file
+ * here.
+ *
+ * Returns null when there is no filesystem, no such file, or the host's file
+ * object predates `exists` — all of which mean "decrypt it".
+ */
+export function existingDecrypted(deps: {
+  fs: AttachmentFs | null;
+  mime: string;
+  mediaId: string;
+}): AttachmentFile | null {
+  const { fs, mime, mediaId } = deps;
+  if (!fs) return null;
+  try {
+    const file = fs.cacheFile(chatMediaCacheFilename(mime, mediaId));
+    return file.exists === true ? file : null;
+  } catch {
+    // A cache lookup is an optimisation. It may never be the reason a picture
+    // fails to appear.
+    return null;
+  }
+}
+
+/**
  * Remove a display file. Never throws — this runs from a React cleanup, where a
  * throw would take the unmount with it.
+ *
+ * NOT called on unmount any more — see `existingDecrypted` for why keeping the
+ * file removes no capability from anyone. It stays for the paths that really do
+ * mean "drop this": a decrypt that produced the wrong bytes, and eviction.
  */
 export function discardDecrypted(file: AttachmentFile | null | undefined): void {
   if (!file) return;

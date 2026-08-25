@@ -176,6 +176,129 @@ export function sniffImageFormat(b: Uint8Array): StrippedImageFormat {
   return 'unknown';
 }
 
+/* ------------------------------------------------------------ DIMENSIONS -- */
+
+/** Pixel dimensions read out of a container header. */
+export interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+/**
+ * Read an image's pixel size WITHOUT decoding it.
+ *
+ * The reader needs these to reserve an attachment's row before the bytes
+ * arrive. Without them a picture's placeholder is one line of text tall and the
+ * row grows by hundreds of pixels the moment it decodes — four of those in one
+ * screen is what "the chat jumps to the middle" is.
+ *
+ * Header-only on purpose. This runs on the SEND path, on the JS thread, for a
+ * file that may be several megabytes; decoding to ask an image its size would
+ * cost more than the encryption does. Every format below states its size in the
+ * first few dozen bytes.
+ *
+ * Returns null rather than throwing for anything it cannot read. A missing
+ * dimension costs a layout hint; a thrown error would cost the send.
+ */
+export function readImageDimensions(input: Uint8Array): ImageDimensions | null {
+  if (!(input instanceof Uint8Array) || input.length < 8) return null;
+  switch (sniffImageFormat(input)) {
+    case 'png':
+      return readPngSize(input);
+    case 'jpeg':
+      return readJpegSize(input);
+    case 'gif':
+      return readGifSize(input);
+    case 'bmp':
+      return readBmpSize(input);
+    case 'webp':
+      return readWebpSize(input);
+    default:
+      return null;
+  }
+}
+
+/** IHDR is always the first chunk: 8-byte signature, 4 length, 4 type, then w/h. */
+function readPngSize(b: Uint8Array): ImageDimensions | null {
+  if (b.length < 24 || ascii(b, 12, 16) !== 'IHDR') return null;
+  return sane(be32(b, 16), be32(b, 20));
+}
+
+/**
+ * Walk the JPEG segments to the frame header (SOFn) and read its size.
+ *
+ * SOF0/1/2/... carry it; DHT/DRI/APPn/COM do not and are skipped by length.
+ * SOF4 (0xc4 DHT), 0xc8 and 0xcc are NOT frame markers despite sitting in the
+ * same range — a classic off-by-one that returns the Huffman table's bytes as a
+ * picture's width.
+ */
+function readJpegSize(b: Uint8Array): ImageDimensions | null {
+  let i = 2; // past SOI
+  while (i + 9 < b.length) {
+    if (b[i] !== 0xff) { i++; continue; }        // resync on a fill byte
+    const marker = b[i + 1];
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; }
+    if (marker === 0xda || marker === 0xd9) return null;   // scan data / end: no frame header
+    const len = (b[i + 2] << 8) | b[i + 3];
+    if (len < 2) return null;
+    const isFrame = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isFrame) {
+      // segment: len(2) precision(1) height(2) width(2)
+      if (i + 9 >= b.length) return null;
+      return sane((b[i + 7] << 8) | b[i + 8], (b[i + 5] << 8) | b[i + 6]);
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
+/** GIF logical screen descriptor: little-endian, immediately after the 6-byte magic. */
+function readGifSize(b: Uint8Array): ImageDimensions | null {
+  if (b.length < 10) return null;
+  return sane(b[6] | (b[7] << 8), b[8] | (b[9] << 8));
+}
+
+/** BMP: DIB header at 14; both BITMAPCOREHEADER (12) and later headers handled. */
+function readBmpSize(b: Uint8Array): ImageDimensions | null {
+  if (b.length < 26) return null;
+  const dib = le32(b, 14);
+  if (dib === 12) return sane(b[18] | (b[19] << 8), b[20] | (b[21] << 8));
+  // Height may be negative for a top-down bitmap — the sign is row order, not size.
+  return sane(le32(b, 18), Math.abs(le32(b, 22) | 0));
+}
+
+/** WebP has three container flavours and each states its size differently. */
+function readWebpSize(b: Uint8Array): ImageDimensions | null {
+  if (b.length < 30) return null;
+  const fourcc = ascii(b, 12, 16);
+  if (fourcc === 'VP8X') {
+    return sane(1 + (b[24] | (b[25] << 8) | (b[26] << 16)), 1 + (b[27] | (b[28] << 8) | (b[29] << 16)));
+  }
+  if (fourcc === 'VP8L') {
+    const bits = b[21] | (b[22] << 8) | (b[23] << 16) | (b[24] << 24);
+    return sane(1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff));
+  }
+  if (fourcc === 'VP8 ') {
+    // Lossy: 3-byte frame tag, then the 0x9d012a start code, then 14-bit w/h.
+    if (b.length < 30 || b[23] !== 0x9d || b[24] !== 0x01 || b[25] !== 0x2a) return null;
+    return sane((b[26] | (b[27] << 8)) & 0x3fff, (b[28] | (b[29] << 8)) & 0x3fff);
+  }
+  return null;
+}
+
+function be32(b: Uint8Array, i: number): number {
+  return ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
+}
+function le32(b: Uint8Array, i: number): number {
+  return (b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24)) >>> 0;
+}
+/** A dimension outside this range is a misread header, not a picture. */
+function sane(width: number, height: number): ImageDimensions | null {
+  if (!Number.isInteger(width) || !Number.isInteger(height)) return null;
+  if (width <= 0 || height <= 0 || width > 20000 || height > 20000) return null;
+  return { width, height };
+}
+
 /* ------------------------------------------------------------------ EXIF -- */
 
 const TAG_ORIENTATION = 0x0112;

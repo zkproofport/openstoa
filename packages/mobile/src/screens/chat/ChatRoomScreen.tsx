@@ -70,7 +70,12 @@ import { copyTargets } from '../../lib/messageActions';
 import { sendPickedAssets } from '../../lib/pickedAttachments';
 import { saveAttachment, type AttachmentFile } from '../../lib/saveAttachment';
 import { hostAttachmentFs } from '../../lib/attachmentFs';
-import { discardDecrypted, downloadCiphertext, writeDecrypted } from '../../lib/chatMediaFiles';
+import {
+  discardDecrypted,
+  downloadCiphertext,
+  existingDecrypted,
+  writeDecrypted,
+} from '../../lib/chatMediaFiles';
 import {
   ChatMediaError,
   MAX_ATTACHMENTS_PER_PICK,
@@ -134,12 +139,17 @@ import type { ArchiveRootState, Visibility } from '../../crypto/takSession';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useThemeColors } from '../../theme/ThemeContext';
+import { askStatus, askLabelKey, askIsPressable, tierCanAsk } from '../../lib/keyRequest';
+import KeyRequestList, { type PendingKeyRequest } from '../../components/KeyRequestList';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { OGPreviewCard } from '../../components/OGPreviewCard';
 import type { OGData } from '../../components/OGPreviewCard';
 import ImageViewerModal from '../../components/ImageViewerModal';
-import { ChatImage } from '../../components/ChatImage';
+import { CHAT_IMAGE_SLOT_WIDTH, ChatImage } from '../../components/ChatImage';
+// The same rule ChatImage settles on, so a reserved row and the picture that
+// lands in it are the same size.
+import { chatMediaBox } from '../../lib/chatMediaLayout';
 import { PeerProfileCard } from '../../components/PeerProfileCard';
 import { TopicMuteButton } from '../../components/TopicMuteButton';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
@@ -201,7 +211,17 @@ const recoveredByTopic = new Map<string, Record<string, string>>();
 // Styles
 // ---------------------------------------------------------------------------
 
-function makeStyles(colors: ThemeColors) {
+/**
+ * Exported for `chatRoomKeyWaitLayout.test.tsx`, which asserts that the
+ * key-wait notice cannot grow.
+ *
+ * A pure function of the theme, so a test can read the numbers without
+ * rendering the screen — and the defect it guards against was a pure style
+ * defect: the notice stretched to 1,734px and pushed the composer off the
+ * device. Nothing about that needed a render to see, and nothing about it was
+ * visible in a text dump either, which is how it shipped.
+ */
+export function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     flex: { flex: 1, backgroundColor: colors.background.primary },
 
@@ -241,6 +261,20 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.background.tertiary,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.default,
+      /*
+       * NEVER GROWS. This notice is one or two lines of text and nothing else.
+       *
+       * Without this it took the whole screen: `keyWaitText` carries `flex: 1`
+       * so its label fills the WaitingStatus row, that row has no height of its
+       * own, and the notice — a plain View in a column that had spare space —
+       * stretched to fill it. Measured on the device at 1,734px tall with the
+       * dots at the top and the hint pinned to the bottom of the screen, the
+       * message list squeezed to nothing and the composer pushed off entirely.
+       * The room looked broken and unusable, and the only thing actually wrong
+       * was a missing `flexGrow`.
+       */
+      flexGrow: 0,
+      flexShrink: 0,
     },
     keyWaitText: {
       flex: 1,
@@ -254,6 +288,27 @@ function makeStyles(colors: ThemeColors) {
       lineHeight: 18,
       color: colors.text.secondary,
       marginTop: 2,
+    },
+    keyAskButton: {
+      marginTop: 10,
+      alignSelf: 'flex-start',
+      minHeight: TOUCH_TARGET_MIN,
+      justifyContent: 'center',
+      paddingHorizontal: 14,
+      borderRadius: RADIUS.control,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    keyAskButtonText: {
+      fontSize: TYPE_SCALE.bodySmall,
+      fontWeight: '600',
+      color: colors.brand.primary,
+    },
+    keyAskState: {
+      marginTop: 8,
+      fontSize: TYPE_SCALE.caption,
+      lineHeight: 18,
+      color: colors.text.secondary,
     },
     tierBannerLink: {
       fontSize: TYPE_SCALE.caption,
@@ -1032,6 +1087,115 @@ export function ChatRoomScreen() {
    * is to open the room where the history already is.
    */
   const awaitingRoomKey = lockedCount > 0 && !syncing;
+
+  /*
+   * ASKING A MEMBER TO UNLOCK THE STRETCH THIS DEVICE CANNOT READ.
+   *
+   * A recovered phone opens `private`, `secret` and `dm` rooms only as far as
+   * the OLD phone's last backup — epochs that advanced while it was off never
+   * reached that device's keychain, so they were never in the blob. The keys
+   * still exist, on the devices of members who were online, so the missing step
+   * is an ASK rather than any cryptography.
+   *
+   * `public` is excluded: the server holds the archive root there, so a locked
+   * row means something else, and this button would send the person down the
+   * wrong path. See `tierCanAsk`.
+   */
+  const [keyAskSending, setKeyAskSending] = useState(false);
+  const [keyAskMine, setKeyAskMine] = useState<{ granted: boolean } | null>(null);
+  const keyAsk = askStatus({ lockedCount, tier, mine: keyAskMine, sending: keyAskSending });
+
+  useEffect(() => {
+    // Only look when there is something to look for — a room that opens fine
+    // has no reason to ask the server about requests.
+    if (!awaitingRoomKey || !tierCanAsk(tier)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const dev = await tak.myDeviceId(topicId);
+        const res = await client.get<{ mine: { granted: boolean } | null }>(
+          `/api/topics/${topicId}/keys/request?deviceId=${encodeURIComponent(dev)}`,
+        );
+        if (!cancelled) setKeyAskMine(res.mine);
+      } catch {
+        // A room that cannot reach the server still shows its messages; the
+        // button simply stays in its "offer" state and the tap will report.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [awaitingRoomKey, tier, topicId, tak, client]);
+
+  /*
+   * THE OTHER HALF: who is waiting for keys THIS device might hold.
+   *
+   * Without it the ask is a doorbell nobody can hear — a row lands in the
+   * database, no screen shows it, and the person waits for something that was
+   * never going to happen.
+   *
+   * Polled on the same terms as the room itself rather than on a timer: a
+   * member opening a room is exactly when they can help, and a background poll
+   * would be work done for a screen nobody is looking at.
+   */
+  const [pendingKeyRequests, setPendingKeyRequests] = useState<PendingKeyRequest[]>([]);
+
+  const refreshKeyRequests = useCallback(() => {
+    if (!tierCanAsk(tier)) return;
+    void (async () => {
+      try {
+        const res = await client.get<{ requests: PendingKeyRequest[] }>(
+          `/api/topics/${topicId}/keys/request`,
+        );
+        // Never offer to answer your own ask.
+        const mineDev = await tak.myDeviceId(topicId);
+        setPendingKeyRequests(
+          (res.requests ?? []).filter((r) => r.requesterDeviceId !== mineDev),
+        );
+      } catch {
+        // A room that cannot reach the server still shows its messages.
+        setPendingKeyRequests([]);
+      }
+    })();
+  }, [client, tak, tier, topicId]);
+
+  useEffect(() => {
+    refreshKeyRequests();
+  }, [refreshKeyRequests]);
+
+  /**
+   * Seal the missing epochs to the asker, THEN mark the request answered.
+   *
+   * The order is the whole point. Marking first would let the asker stop
+   * waiting and drop the row from every member's list while nothing had left
+   * this device. A grant that reached zero leaves is therefore not marked: this
+   * device does not hold that stretch either, and somebody else has to answer.
+   */
+  const grantKeys = useCallback(
+    async (req: PendingKeyRequest): Promise<number> => {
+      const leaves = await tak.grantMissingTo(topicId, req.requesterUserId, req.haveFromEpoch);
+      if (leaves > 0) {
+        await client.post(`/api/topics/${topicId}/keys/grant`, { requestId: req.id });
+      }
+      return leaves;
+    },
+    [client, tak, topicId],
+  );
+
+  const askForKeys = useCallback(() => {
+    void (async () => {
+      setKeyAskSending(true);
+      try {
+        const dev = await tak.myDeviceId(topicId);
+        await client.post(`/api/topics/${topicId}/keys/request`, { deviceId: dev });
+        setKeyAskMine({ granted: false });
+      } catch {
+        setKeyAskMine(null);
+      } finally {
+        setKeyAskSending(false);
+      }
+    })();
+  }, [client, tak, topicId]);
   /*
    * While the spinner is up, an unreadable row shows NOTHING rather than a
    * placeholder. One spinner for the room, not a column of identical dots.
@@ -1040,6 +1204,39 @@ export function ChatRoomScreen() {
     () => (syncing ? allMessages.filter((m) => m.message !== UNREADABLE_BODY) : allMessages),
     [allMessages, syncing],
   );
+  /**
+   * The same conversation, NEWEST FIRST, for an inverted list.
+   *
+   * WHY THE LIST IS INVERTED, which is the whole answer to "the room jumps".
+   *
+   * A normal list puts the newest message at the far end of the content, so
+   * "show me the newest" means "scroll to the bottom" — and the bottom is a
+   * moving target. Every picture that decrypts, every sealed row that opens,
+   * every prepended page of history changes where the bottom IS, so the view
+   * has to chase it. Three separate mechanisms were doing that chasing here
+   * (`maintainVisibleContentPosition`, an `onContentSizeChange` scroll, an
+   * `onLayout` scroll) and they contradicted each other by construction: the
+   * anchor's job is to HOLD a row still, the other two force the view to the
+   * end. With several pictures resolving a few frames apart, that argument
+   * runs once per picture, which is the "올라갔다 내려갔다" the owner filmed.
+   *
+   * Inverted, the newest message sits at offset 0. Opening a room is not a
+   * scroll at all — the view is already there — and content that grows grows
+   * AWAY from the reader instead of underneath them. There is nothing to
+   * chase, so nothing can fight over it.
+   *
+   * This is what the clients the owner compared us against do. Signal Android
+   * sets `setReverseLayout(true)` on the conversation's LinearLayoutManager;
+   * Telegram for Android builds its ChatListView with a reversed layout the
+   * same way. Neither has a scroll-to-bottom-on-growth path, because neither
+   * needs one.
+   *
+   * The row renderer still reads `prevItem` as "the message BEFORE this one in
+   * time", so the neighbour it is handed is the NEXT index here — see the
+   * renderer. Getting that backwards silently regroups every avatar and
+   * timestamp, so it is stated rather than inferred.
+   */
+  const invertedMessages = useMemo(() => [...visibleMessages].reverse(), [visibleMessages]);
   // ── TAK back-fill + public holder upkeep (Phase 3) ────────────────────────
   // On mount: resolve visibility, then back-fill (ingest bundles + decrypt the
   // archive) to recover pre-join history. For public topics, claim the single-
@@ -1468,32 +1665,50 @@ export function ChatRoomScreen() {
   // from older history pages being prepended (don't scroll).
   const lastBottomIdRef = useRef<string | null>(null);
   const userNearBottomRef = useRef(true);
+  /*
+   * No `readerDrivenScrollRef` any more.
+   *
+   * It existed because a list that grew emitted scroll events that looked like
+   * the reader leaving the bottom, and honouring them switched the re-pin off.
+   * Inverted, growth does not move the reader's offset at all, so a scroll
+   * event means what it says and needs no provenance test.
+   */
 
-  const scrollToBottom = useCallback((animated: boolean) => {
-    // Schedule two scrolls: one on the next frame (after layout settles)
-    // and another after ~300 ms to catch async-rendered children like the
-    // OG preview card and inline images, which only push content height
-    // once their network fetch resolves.
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated });
-    });
-    setTimeout(() => {
-      listRef.current?.scrollToEnd({ animated: false });
-    }, 300);
+  /**
+   * Bring the reader back to the newest message.
+   *
+   * Inverted, that is offset 0 — a fixed point, not a moving floor. The old
+   * version of this scheduled TWO scrolls (one on the next frame, one 300ms
+   * later) to catch pictures that resolved late; the second one was itself a
+   * visible jump, and neither is needed once growth happens away from the
+   * reader instead of underneath them.
+   *
+   * Only called when the reader is ALREADY at the newest and a new message
+   * arrives. Someone reading history is left where they are.
+   */
+  const scrollToNewest = useCallback((animated: boolean) => {
+    listRef.current?.scrollToOffset({ offset: 0, animated });
   }, []);
 
   useEffect(() => {
     if (allMessages.length === 0) return;
     const newLastId = allMessages[allMessages.length - 1]?.id ?? null;
-    if (newLastId && newLastId !== lastBottomIdRef.current) {
-      const wasFirstLoad = lastBottomIdRef.current === null;
-      lastBottomIdRef.current = newLastId;
-      // After scrolling, assume we're at the bottom so subsequent
-      // onContentSizeChange callbacks (OG card rendering) keep us pinned.
+    if (!newLastId || newLastId === lastBottomIdRef.current) return;
+    const wasFirstLoad = lastBottomIdRef.current === null;
+    lastBottomIdRef.current = newLastId;
+    /*
+     * The first load needs no scroll at all — an inverted list opens at offset
+     * 0, which is the newest message. Scrolling there would be a no-op that
+     * can still flash on a list still measuring its rows.
+     */
+    if (wasFirstLoad) {
       userNearBottomRef.current = true;
-      scrollToBottom(!wasFirstLoad);
+      return;
     }
-  }, [allMessages, scrollToBottom]);
+    // A message arrived while the reader was reading older ones: leave them be.
+    if (!userNearBottomRef.current) return;
+    scrollToNewest(true);
+  }, [allMessages, scrollToNewest]);
 
   // ── Presence header decoration ─────────────────────────────────────────────
   // Member list, reachable from inside the room (not just from the topic's
@@ -1587,19 +1802,19 @@ export function ChatRoomScreen() {
         layoutMeasurement: { height: number };
       };
     }) => {
-      const offsetY = nativeEvent.contentOffset.y;
-      const contentH = nativeEvent.contentSize.height;
-      const layoutH = nativeEvent.layoutMeasurement.height;
-      // "Near bottom" = within 120 px of the floor. Used to gate the
-      // onContentSizeChange auto-scroll so it doesn't fight the user
-      // when they've scrolled up to read history.
-      userNearBottomRef.current = contentH - offsetY - layoutH < 120;
-      // History pagination trigger
-      if (offsetY < 80 && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
+      /*
+       * Inverted, offset 0 IS the newest message, so "near the newest" is a
+       * distance from zero rather than a distance from a content height that
+       * changes every time a picture decrypts. That dependence on a moving
+       * number is what used to switch the re-pin off at the exact moment it
+       * was needed; there is no moving number left to depend on.
+       *
+       * Pagination is not here any more either — the list asks for older pages
+       * through `onEndReached`, which says what it means.
+       */
+      userNearBottomRef.current = nativeEvent.contentOffset.y < 120;
     },
-    [hasNextPage, isFetchingNextPage, fetchNextPage],
+    [],
   );
 
   // ── Push preview (design §13.6 strategy A) ────────────────────────────────
@@ -2177,6 +2392,35 @@ export function ChatRoomScreen() {
             testID="chat-key-wait-line"
           />
           <Text style={styles.keyWaitHint}>{t('openstoa.chat.awaitingKey.hint')}</Text>
+          {/* One tap, and only where a member can actually answer it. */}
+          {keyAsk !== 'hidden' ? (
+            askIsPressable(keyAsk) ? (
+              <TouchableOpacity
+                onPress={askForKeys}
+                accessibilityRole="button"
+                testID="chat-key-ask"
+                style={styles.keyAskButton}
+              >
+                <Text style={styles.keyAskButtonText}>{t(askLabelKey(keyAsk, tier)!)}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.keyAskState} testID="chat-key-ask-state">
+                {t(askLabelKey(keyAsk, tier)!)}
+              </Text>
+            )
+          ) : null}
+        </View>
+      ) : null}
+
+      {pendingKeyRequests.length > 0 ? (
+        <View style={styles.keyWaitNotice} testID="chat-key-requests">
+          {/* Shown to members who CAN read the room — they are the ones able to
+              help, and they are not in the `awaitingRoomKey` state at all. */}
+          <KeyRequestList
+            requests={pendingKeyRequests}
+            onGrant={grantKeys}
+            onRefresh={refreshKeyRequests}
+          />
         </View>
       ) : null}
 
@@ -2200,7 +2444,14 @@ export function ChatRoomScreen() {
         <FlatList
           ref={listRef}
           style={{ flex: 1 }}
-          data={visibleMessages}
+          /*
+           * INVERTED. The newest message is at offset 0, so "open at the
+           * newest" is not a scroll — it is where the list already starts.
+           * See `invertedMessages` for why this replaced three fighting
+           * scroll-to-bottom mechanisms rather than joining them.
+           */
+          inverted
+          data={invertedMessages}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => (
             <ChatMessageRow
@@ -2209,7 +2460,16 @@ export function ChatRoomScreen() {
               onDiscard={discardFailed}
               syncing={syncing}
               awaitingKey={awaitingRoomKey}
-              prevItem={index > 0 ? visibleMessages[index - 1] : undefined}
+              /*
+               * The row before this one IN TIME. The array runs newest-first,
+               * so that neighbour is the NEXT index, not the previous one —
+               * the row uses it to decide whether to repeat an avatar and a
+               * timestamp, and reading it backwards regroups the whole
+               * conversation without erroring.
+               */
+              prevItem={
+                index + 1 < invertedMessages.length ? invertedMessages[index + 1] : undefined
+              }
               styles={styles}
               navigation={navigation}
               client={client}
@@ -2222,54 +2482,29 @@ export function ChatRoomScreen() {
           )}
           contentContainerStyle={styles.listContent}
           /*
-           * ANCHOR THE VIEWPORT TO A ROW, not to a scroll offset.
-           *
-           * A chat room grows UPWARDS after it paints: every picture resolves
-           * its real height some frames after layout, every locked row swaps a
-           * placeholder for real text when its key arrives, and older pages
-           * prepend when the reader scrolls back. Without an anchor the list
-           * keeps `contentOffset` fixed while the content above it gets taller,
-           * so the conversation slides out from under the reader — which is
-           * what "it jumps and then ends up in the middle" is. Nothing scrolled;
-           * the content moved.
-           *
-           * `minIndexForVisible: 1` and not 0, because index 0 is exactly the
-           * row a prepended page replaces. Anchoring to it means anchoring to
-           * whichever message happens to be oldest right now, and scrolling up
-           * changes that — so the anchor moves at the one moment it is meant to
-           * hold still. React Native's own guidance says the same thing.
-           *
-           * There must be exactly ONE of these props. A second copy appeared
-           * further down this element from another lane, and because JSX keeps
-           * the LAST duplicate it silently won: the list ran on 0 while this
-           * comment explained 1. `chatListSingleAnchor.test.tsx` fails if a
-           * duplicate comes back.
+           * Older history loads at the list's END, which inverted means the
+           * TOP of the screen — the direction the reader scrolls to go back.
+           * This replaces the old `onScroll` offset test: an offset threshold
+           * had to be re-derived every time the content grew, and `onEndReached`
+           * states the intent directly.
            */
-          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+          }}
+          onEndReachedThreshold={0.4}
+          /*
+           * Read-position tracking only. Nothing here moves the view: with the
+           * newest message at offset 0, "am I at the newest" is simply "is the
+           * offset near zero", and no mechanism has to chase a moving floor.
+           */
           onScroll={onScrollTop}
           scrollEventThrottle={64}
-          // Only auto-scroll when the user is already pinned to the
-          // bottom. This covers async-grown content (OG card resolving,
-          // inline images loading) without yanking the viewport away
-          // from someone scrolled up reading older messages.
-          onContentSizeChange={() => {
-            if (userNearBottomRef.current) {
-              listRef.current?.scrollToEnd({ animated: false });
-            }
-          }}
           /*
-           * Gated like `onContentSizeChange` above, and for the same reason.
-           * Ungated, this fired on every layout pass — including the ones that
-           * happen while pictures are still resolving — and each one yanked a
-           * reader who had scrolled up straight back to the bottom, competing
-           * with the anchor above and producing the bounce.
+           * Inverted, the list header renders at the far end — visually the
+           * TOP — which is where a page of older history arrives.
            */
-          onLayout={() => {
-            if (userNearBottomRef.current) {
-              listRef.current?.scrollToEnd({ animated: false });
-            }
-          }}
-          ListHeaderComponent={
+          ListHeaderComponent={null}
+          ListFooterComponent={
             isFetchingNextPage ? (
               <View style={styles.loadingMore}>
                 <ActivityIndicator size="small" color={colors.brand.primary} />
@@ -2648,6 +2883,28 @@ function EncryptedAttachment({
     void (async () => {
       const tak = getTakSessionStore(client);
       /*
+       * ALREADY DECRYPTED, ON THIS DEVICE. Checked before anything else.
+       *
+       * A picture is decrypted ONCE. The display file is named from the media
+       * id, so the second view of a photo finds the first view's plaintext and
+       * skips both the download and the AES — 179ms + 3,086ms on a 6MB
+       * attachment, per picture, per entry into the room. This is the whole
+       * reason re-entering a room with ten photos was as slow as the first time.
+       *
+       * `<Image>` reads the file, so the bytes are NOT loaded into JS here.
+       * `state` therefore records the hit without them; the share sheet reads
+       * them back from the file when it actually needs them (see below).
+       */
+      const cached = existingDecrypted({ fs: hostAttachmentFs(), mime, mediaId });
+      if (cached) {
+        if (cancelled) return;
+        fileRef.current = cached;
+        setFileUri(cached.uri);
+        setState({ status: 'ok', bytes: null, mime });
+        return;
+      }
+
+      /*
        * THE SENDER'S OWN BUBBLE. A hit skips the download and the decrypt
        * entirely; a miss falls through to the reader path below, which is what
        * a restart, the recipient and the sender's other device all take.
@@ -2687,7 +2944,10 @@ function EncryptedAttachment({
         },
       );
       if (cancelled) return;
-      if (res.status === 'ok') {
+      // `bytes` is only null on the cache-hit path above, which returned
+      // already — a fresh decrypt always carries them. Narrowed rather than
+      // asserted so a future path that forgets is a compile error.
+      if (res.status === 'ok' && res.bytes) {
         const file = writeDecrypted({ fs: hostAttachmentFs(), bytes: res.bytes, mime: res.mime, mediaId });
         fileRef.current = file;
         setFileUri(file?.uri ?? null);
@@ -2697,15 +2957,22 @@ function EncryptedAttachment({
     return () => {
       cancelled = true;
       /*
-       * The plaintext copy goes with the row.
+       * THE PLAINTEXT STAYS. This is what makes "decrypt once" true.
        *
-       * It is a decrypted picture from an end-to-end encrypted conversation
-       * sitting in a cache directory, so leaving it behind is not merely
-       * untidy — it is the one file in this flow that the encryption exists to
-       * prevent from lasting. The OS may reclaim the cache eventually; that is
-       * not a schedule worth relying on.
+       * It used to be deleted here, on the argument that a decrypted picture
+       * from an end-to-end encrypted conversation must not outlive the row. That
+       * argument does not survive being written down: the file is in this app's
+       * own sandboxed cache directory, and the key that opens the ciphertext is
+       * on the same device in the keychain. Anyone who can read this directory
+       * can read that key and decrypt the whole archive themselves, so deleting
+       * the picture took no capability away from them — it only made the owner
+       * of the phone pay AES again on every re-entry. End-to-end encryption
+       * protects the picture in transit and at rest ON THE SERVER; a cache file
+       * here changes neither.
+       *
+       * `fileRef` is still cleared so a re-run cannot hand a stale handle to
+       * the share sheet.
        */
-      discardDecrypted(fileRef.current);
       fileRef.current = null;
     };
   }, [client, topicId, tier, key, mediaId, takVersion, mime, size, attempt]);
@@ -2754,16 +3021,37 @@ function EncryptedAttachment({
 
   const wrap = isOwn ? styles.bubbleOGWrapOwn : styles.bubbleOGWrapOther;
 
+  /*
+   * RESERVE THE ROW BEFORE THE PICTURE ARRIVES.
+   *
+   * Each state below used to be one line of text tall, so the row grew by
+   * hundreds of pixels the moment the image decoded. A room opened pinned to
+   * the newest message and, with four pictures on screen, ended up stranded in
+   * the middle — caught on video entering from a push notification.
+   *
+   * `maintainVisibleContentPosition` cannot fix that. It holds a row still; it
+   * does not stop a row from growing. And the auto-scroll that would re-pin is
+   * gated on still being near the bottom, which the growth itself has already
+   * made false. The only thing that works is not growing.
+   *
+   * The SAME box `ChatImage` will settle on, from the same shared rule — a
+   * lookalike would just move the jump to the swap. Messages sent before the
+   * sender measured the picture have no dimensions, and `chatMediaBox` gives
+   * them its own default, so those rows behave exactly as they did before.
+   */
+  const box = chatMediaBox(envelope.w, envelope.h, CHAT_IMAGE_SLOT_WIDTH);
+  const reserved = { width: box.width, height: box.height, justifyContent: 'center' as const, alignItems: 'center' as const };
+
   if (state === null) {
     return (
-      <View style={wrap}>
+      <View style={[wrap, reserved]}>
         <Text style={styles.lockedBody}>{t('openstoa.chat.media.decrypting')}</Text>
       </View>
     );
   }
   if (state.status === 'locked') {
     return (
-      <View style={wrap}>
+      <View style={[wrap, reserved]}>
         <Text style={styles.lockedBody}>🔒 {t('openstoa.chat.media.locked')}</Text>
       </View>
     );

@@ -4,7 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
+import { randomUUID } from 'node:crypto';
 import { isApiKeyToken, verifyApiKey, touchApiKeyLastUsed } from '@/lib/apiKeys';
+import { isSessionLive, rememberSession, type DeviceKind } from '@/lib/sessionStore';
 import { logger } from '@/lib/logger';
 
 const ROUTE = 'lib/session';
@@ -23,6 +25,8 @@ export interface SessionPayload extends JWTPayload {
   verifiedAt: number;
   role?: string;
   isAI?: boolean;
+  /** Which kind of client holds this session — see `createSession`. */
+  deviceKind?: DeviceKind;
   /**
    * Present ONLY for an API-key-authenticated request (design §7 follow-up).
    * The capability set is bound to the key itself — `requireAiCapability`
@@ -34,17 +38,59 @@ export interface SessionPayload extends JWTPayload {
   apiKeyHistoryGrant?: string;
 }
 
-export async function createSession(userId: string, nickname: string, options?: { isAI?: boolean }): Promise<string> {
+export async function createSession(
+  userId: string,
+  nickname: string,
+  options?: {
+    isAI?: boolean;
+    /*
+     * WHICH KIND OF CLIENT, decided by the caller — that is, by which login
+     * route this is. Never from the User-Agent: a caller writes that string, so
+     * anything gated on it is a request rather than a rule. The app's own
+     * endpoint passes `mobile`, the browser flow `web`, an API key `agent`.
+     */
+    deviceKind?: DeviceKind;
+    /** Stable per install/browser: tells "this phone again" from "a new one". */
+    deviceId?: string;
+  },
+): Promise<string> {
+  /*
+   * A session ID, so this token can be ENDED.
+   *
+   * Without one the server minted a seven-day JWT and forgot it: it could not
+   * answer "is another device signed in?", and signing out cleared a cookie
+   * while the token stayed valid until its own expiry. The `jti` is the key the
+   * Redis session record lives under.
+   */
+  const sessionId = randomUUID();
+  const deviceKind: DeviceKind = options?.deviceKind ?? (options?.isAI ? 'agent' : 'web');
+
   const token = await new SignJWT({
     userId,
     nickname,
     verifiedAt: Date.now(),
+    deviceKind,
     ...(options?.isAI && { isAI: true }),
   })
     .setProtectedHeader({ alg: 'HS256' })
+    .setJti(sessionId)
     .setIssuedAt()
-    .setExpirationTime('7d')
+    /*
+     * DELIBERATELY LONGER than the Redis TTL, which is the real expiry and
+     * slides on every request. Two clocks racing means the shorter one silently
+     * wins, so a fixed 7d here would have made the sliding behaviour appear to
+     * work right up until the token's own date arrived. This is the backstop
+     * for a token that somehow outlives its record.
+     */
+    .setExpirationTime('90d')
     .sign(getSecret());
+
+  await rememberSession(sessionId, {
+    userId,
+    deviceKind,
+    deviceId: options?.deviceId ?? 'unknown',
+    issuedAt: Date.now(),
+  });
 
   return token;
 }
@@ -67,6 +113,28 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
   // already does for API-key auth — the two credential types now answer
   // identically for the same underlying condition.
   if (typeof payload.userId !== 'string' || payload.userId.length === 0) {
+    return null;
+  }
+
+  /*
+   * IS THIS SESSION STILL LIVE — and TOUCH it if so.
+   *
+   * A valid signature says the token was minted here; it does not say the
+   * session still exists. Signing out, or a second device taking over, ends a
+   * session while its JWT stays cryptographically perfect for weeks. Without
+   * this check "sign out" cleared a cookie and nothing else.
+   *
+   * The same call slides the expiry: the Redis TTL measures ABSENCE, not age,
+   * so someone who uses the app daily is never signed out for having started
+   * long ago. See `isSessionLive`.
+   *
+   * Tokens minted before session records existed carry no `jti`. They are
+   * ACCEPTED rather than rejected: forcing every signed-in person to log in
+   * again is a worse first day for this change than honouring the last of the
+   * old tokens until they expire on their own.
+   */
+  const sessionId = typeof payload.jti === 'string' ? payload.jti : null;
+  if (sessionId && !(await isSessionLive(sessionId))) {
     return null;
   }
 

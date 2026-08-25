@@ -65,7 +65,6 @@ export default function RecoveryNudge({
   const router = useRouter();
   const pathname = usePathname();
   const [userId, setUserId] = useState<string | null>(null);
-  const [show, setShow] = useState(false);
   // The repair is account-level and idempotent; running it once per mounted
   // session is the point. Without this latch a route change inside the shell
   // would re-run it (and re-decide the banner the user just dismissed).
@@ -96,90 +95,34 @@ export default function RecoveryNudge({
       // every account already in the broken state, and it is silent by design.
       const backup = await ensureTakKeychainBackup();
 
-      if (pathname === RECOVERY_PATH) return; // already looking at the answer
-      if (readDismissed(id)) return;
-
-      let hasRecovery = false;
-      try {
-        const wraps = await keyBackupHttp().getBackup();
-        hasRecovery = !!wraps.wrappedMaster || wraps.passkeys.length > 0;
-      } catch {
-        return; // offline: never nag on a guess
-      }
-
-      setShow(shouldNudgeRecovery({ authenticated: true, dismissed: false, hasRecovery, backup }));
+      /*
+       * THE REPAIR RUNS. THE PROMPT DOES NOT.
+       *
+       * `ensureTakKeychainBackup` above is the silent half and it stays: it
+       * fixes accounts whose `tak_key_backups` row is empty because the
+       * key-change hook only fires on a NEW key, so someone who already held
+       * their keys and then registered a passkey got a wrapped master key and
+       * an empty keychain. That asks nothing of anyone.
+       *
+       * What is gone is the banner. Backing up is a BUTTON in Profile
+       * settings, pressed by someone who is moving to a new device, and the
+       * docs are where that is explained. A person who has not asked to back up
+       * is not in an error state, and the top of every page is not the place to
+       * tell them otherwise.
+       *
+       * It is also worth recording WHY removing it beats fixing it. The nudge
+       * already had a per-account dismissal — and it still came back on every
+       * launch, because the dismissal was written to a store that is optional
+       * on the mini-app's host bridge, so `?.` swallowed the write and "Not
+       * now" meant "not for thirty seconds". The fix is not a better place to
+       * record a dismissal; it is not having something to dismiss.
+       */
+      void backup;
     })();
     // `pathname` is read once, at the single run this latch permits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGuest, sessionChecked, nudgeSession]);
 
-  if (!show) return null;
-
-  const dismiss = () => {
-    if (userId) writeDismissed(userId);
-    setShow(false);
-  };
-
-  return (
-    <div
-      role="status"
-      data-testid="recovery-nudge"
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 'var(--space-4)',
-        flexWrap: 'wrap',
-        padding: 'var(--space-4)',
-        marginBottom: 'var(--space-4)',
-        background: 'color-mix(in srgb, var(--color-status-warning) 8%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--color-status-warning) 30%, transparent)',
-        borderRadius: 'var(--radius-card)',
-      }}
-    >
-      <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-        <p
-          style={{
-            fontSize: 'var(--text-body-sm)',
-            fontWeight: 600,
-            color: 'var(--color-text-primary)',
-            margin: 0,
-          }}
-        >
-          {t('recoveryNudge.title')}
-        </p>
-        {/* States the loss plainly. A prompt that says "set up recovery" without
-            saying what disappears without it is a prompt people rationally skip. */}
-        <p
-          style={{
-            fontSize: 'var(--text-caption)',
-            color: 'var(--color-text-secondary)',
-            lineHeight: 'var(--leading-base)',
-            maxWidth: '60ch',
-            margin: '2px 0 0',
-          }}
-        >
-          {t('recoveryNudge.body')}
-        </p>
-      </div>
-      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className="os-button"
-          onClick={() => router.push(RECOVERY_PATH)}
-          style={{ cursor: 'pointer' }}
-        >
-          {t('recoveryNudge.cta')}
-        </button>
-        <button
-          type="button"
-          className="os-button"
-          aria-label={t('recoveryNudge.dismissAria')}
-          onClick={dismiss}
-          style={{ cursor: 'pointer', color: 'var(--color-text-tertiary)' }}
-        >
-          {t('recoveryNudge.dismiss')}
-        </button>
-      </div>
-    </div>
-  );
+  // Nothing to render: this component is the repair, not a prompt.
+  return null;
 }

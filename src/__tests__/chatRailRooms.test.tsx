@@ -254,9 +254,13 @@ describe('unread badge — boundaries', () => {
     ['Infinity', Number.POSITIVE_INFINITY, null],
     ['numeric string', '5', null],
     ['one', 1, '1'],
-    ['nine hundred ninety-nine', 999, '999'],
-    ['one thousand', 1000, '999+'],
-    ['twelve thousand', 12345, '999+'],
+    // The display cap is 99, not 999. Both clients now read the ONE rule in
+    // `@openstoa/mls`; this module's own copy said 999 while the mini-app's row
+    // said 99, so a room with 100 unread read "100" here and "99+" on a phone.
+    ['three', 3, '3'],
+    ['ninety-nine, the last exact figure', 99, '99'],
+    ['one hundred, the first capped one', 100, '99+'],
+    ['twelve thousand', 12345, '99+'],
     ['fractional', 3.7, '3'],
   ];
 
@@ -283,7 +287,7 @@ describe('unread badge — boundaries', () => {
     expect(badge.getAttribute('aria-label')).toBe('1 unread messages');
   });
 
-  it('BOUNDARY 1000+: the badge caps at 999+ but the accessible label keeps the true count', async () => {
+  it('BOUNDARY 100+: the badge caps at 99+ but the accessible label keeps the true count', async () => {
     routeFetch(
       { topics: [{ id: 't1', title: 'Privacy', lastActivityAt: minutesAgo(1), unreadCount: 12345 }] },
       { dms: [] },
@@ -291,7 +295,9 @@ describe('unread badge — boundaries', () => {
     await mount();
 
     const badge = byTestId('chat-rail-unread-badge')[0];
-    expect(badge.textContent).toBe('999+');
+    // Capped for the pill, exact for a screen reader — the cap is a width
+    // constraint on a fixed-width row, not a limit on what is known.
+    expect(badge.textContent).toBe('99+');
     expect(badge.getAttribute('aria-label')).toBe('12345 unread messages');
   });
 

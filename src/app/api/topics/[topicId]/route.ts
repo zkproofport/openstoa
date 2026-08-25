@@ -11,6 +11,12 @@ import {
   chatMedia,
   chatMessages,
   joinRequests,
+  mlsGroups,
+  mlsCommits,
+  takBundles,
+  chatArchive,
+  archiveHolders,
+  keyRequests,
 } from '@/lib/db/schema';
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -477,6 +483,32 @@ export async function DELETE(
       // The attachment INDEX (M-1) goes with the topic; the objects it points
       // at are removed by the prefix sweep below, which needs no index at all.
       await tx.delete(chatMedia).where(eq(chatMedia.topicId, topicId));
+      /*
+       * THE E2EE TABLES, which this transaction did not touch and which made
+       * deleting any topic that had ever been chatted in FAIL WITH A 500.
+       *
+       * `mls_groups`, `mls_commits`, `tak_bundles`, `chat_archive` and
+       * `archive_holders` all reference `topics` with `ON DELETE NO ACTION`, so
+       * the final `delete(topics)` hit a foreign-key violation, the transaction
+       * rolled back, and the caller got an unhandled error. Confirmed against
+       * staging: a room with 13 commits, 13 bundles and 2 archived rows refused
+       * to delete, and the constraint named in the error was real.
+       *
+       * They were added after this handler was written and nothing linked the
+       * two — a schema-level `CASCADE` would have made the omission impossible,
+       * and is the better long-term shape; deleting them explicitly here is the
+       * change that does not need a migration to take effect. `chatDeliveryCursors`,
+       * `chatReads`, `pushTopicMutes`, `mlsDeviceJoins`, `topicArchiveRoots` and
+       * `inviteTokens` DO cascade and are deliberately absent.
+       */
+      await tx.delete(chatArchive).where(eq(chatArchive.topicId, topicId));
+      await tx.delete(archiveHolders).where(eq(archiveHolders.topicId, topicId));
+      await tx.delete(takBundles).where(eq(takBundles.topicId, topicId));
+      // Commits before the group: a commit belongs to the group it advanced.
+      // Asks for keys in a room that no longer exists have nothing to answer.
+      await tx.delete(keyRequests).where(eq(keyRequests.topicId, topicId));
+      await tx.delete(mlsCommits).where(eq(mlsCommits.topicId, topicId));
+      await tx.delete(mlsGroups).where(eq(mlsGroups.topicId, topicId));
       await tx.delete(joinRequests).where(eq(joinRequests.topicId, topicId));
       await tx.delete(topicMembers).where(eq(topicMembers.topicId, topicId));
       // inviteTokens cascade-delete with the topic.

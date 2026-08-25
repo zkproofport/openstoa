@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { sessionVerdictForStatus, userIdFromToken } from './lib/sessionVerdict';
 import { StyleSheet, View } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +20,8 @@ import { usePushRegistration } from './hooks/usePushRegistration';
 import { usePushTapRouting } from './hooks/usePushTapRouting';
 import { useChatNotificationClearing } from './hooks/useChatNotificationClearing';
 import { useAccountEvents } from './api/useAccountEvents';
+import { takeoverNotice, type TakeoverNotice } from './lib/deviceTakeover';
+import DeviceTakeoverSheet from './components/DeviceTakeoverSheet';
 // Register OpenStoa translation bundles into the shared i18next instance.
 import './i18n';
 
@@ -118,6 +121,14 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   const signInMethods = useOfferedSignInMethods();
   const [phase, setPhase] = useState<Phase>('booting');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /*
+   * Set when the server refuses a sign-in because another phone holds this
+   * account. Null the rest of the time. Kept beside `errorMsg` rather than
+   * inside it because it is NOT an error: it is a decision the person has to
+   * make, and the moment it is shown is the last moment the other phone can
+   * still back up its keys.
+   */
+  const [takeover, setTakeover] = useState<TakeoverNotice | null>(null);
 
   // Phase 6 push (design §13): register this device the moment the session is
   // authenticated, at the ROOT of the mini-app. This used to hang off
@@ -156,6 +167,9 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
       // it empty makes vote/bookmark/record buttons disabled across the app
       // (they gate on `mode === 'authenticated'` with a userId).
       const base = host.getEnvironment().openstoaBaseUrl.replace(/\/$/, '');
+      // Kept outside the `try` so the `catch` cannot see a status that was
+      // never assigned — a request that throws has no status at all.
+      let status = 0;
       try {
         // Deadlined: this one runs during `phase === 'booting'`, and without a
         // deadline a server that accepts the connection and says nothing keeps
@@ -173,6 +187,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
           },
           { path: '/api/auth/session', timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
         );
+        status = res.status;
         if (res.ok) {
           const me = (await res.json()) as {
             userId?: string;
@@ -190,13 +205,32 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
             nickname: me.nickname,
             role,
           });
-          return true;
+          return 'ok' as const;
         }
       } catch {
-        // Network failure during hydrate — fall through to guest so the
-        // app stays browsable; the user can sign in from ProfileTab later.
+        /*
+         * UNREACHABLE, not rejected. The difference decides whether the
+         * account survives.
+         *
+         * This used to return the same `false` as a refused token, and the
+         * caller reads `false` as "the token is no longer good" and calls
+         * `session.clear()`. So opening the app with no network signed the
+         * user OUT — verified on the device by disabling wifi and mobile
+         * data and relaunching: the Welcome screen, on an account that had
+         * been signed in seconds earlier. A tunnel, a lift or a plane was
+         * enough to lose the session.
+         *
+         * The token is still on the device and still perfectly valid; the
+         * only thing that happened is that nobody could be asked. Say so.
+         */
+        return 'unreachable' as const;
       }
-      return false;
+      /*
+       * The server answered and it was not a 2xx. `sessionVerdictForStatus`
+       * decides what that means — a 4xx is a refusal, a 5xx is the server
+       * failing and must not cost anyone their account.
+       */
+      return sessionVerdictForStatus(status);
     },
     [host, session],
   );
@@ -295,11 +329,46 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
         try {
           const existing = await host.getOpenStoaToken();
           if (existing) {
-            const ok = await hydrateExistingToken(existing);
-            if (ok) {
+            const hydrated = await hydrateExistingToken(existing);
+            if (hydrated === 'ok') {
               // Authenticated — prefetch the authed feed so the first
               // frame of FeedHomeScreen renders with data.
               await prefetchFeed(existing);
+              return 'ready' as const;
+            }
+            if (hydrated === 'unreachable') {
+              /*
+               * OFFLINE, SIGNED IN. The token is on the device and was never
+               * refused — there was simply nobody to ask.
+               *
+               * Going to Welcome here signed people out for being in a
+               * tunnel, and worse, `session.clear()` below threw away the
+               * token so coming back into range did not restore them. The
+               * app opens on its own content instead: the rooms and history
+               * it already holds are readable without the network, which is
+               * the whole point of keeping them on the device.
+               *
+               * The id carried IN THE TOKEN, not a second copy on disk.
+               *
+               * The session token is a signed JWT whose payload already names
+               * the account — `{ userId, nickname }` — so an offline launch has
+               * the id in its hand and needs nothing persisted beside it. A
+               * first attempt at this wrote the id to `localStore` as well and
+               * was reverted: read state moved to the SERVER in
+               * `feat(chat): move the read cursor to the server`, and a second
+               * device-local copy of who-you-are is the same duplication that
+               * decision removed.
+               *
+               * Unsigned, deliberately: this is not an authorisation check. The
+               * server verifies the signature on every request, and the only
+               * thing read here is which account's cached rooms to draw. A
+               * forged id would show its owner their own empty cache.
+               */
+              session.setSession({
+                token: existing,
+                userId: userIdFromToken(existing),
+                role: 'member',
+              });
               return 'ready' as const;
             }
             // Token rejected — fall through to Welcome.
@@ -404,7 +473,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   //   3. Auto-replay still works: the SignInSheet's `pendingActionRef`
   //      is preserved across the dismissal and fires from `onSuccess`.
   const performSignIn = useCallback<SignInLauncher>(
-    (onSuccess, method) => {
+    (onSuccess, method, takeover) => {
       if (signInInflightRef.current) return;
       signInInflightRef.current = true;
       setSignInBusy(true);
@@ -439,7 +508,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
           // caller that never resumes. That is what pinned the app on this
           // screen; the race is what unpins it.
           const auth = await Promise.race([
-            host.loginToOpenStoa({ force: true, method }),
+            host.loginToOpenStoa({ force: true, method, takeover }),
             new Promise<never>((_resolve, reject) => {
               deadlineTimer = setTimeout(
                 () => reject(new SignInTimeoutError(SIGN_IN_HARD_DEADLINE_MS)),
@@ -526,6 +595,39 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
             return;
           }
           const msg = err instanceof Error ? err.message : String(err);
+          /*
+           * ANOTHER PHONE IS SIGNED IN. Not a failure — a question.
+           *
+           * Showing `DEVICE_CONFLICT` as an error message would be the worst
+           * possible outcome here: the one moment when the OLD phone can still
+           * make a backup is right now, and a person who reads "something went
+           * wrong" will tap retry rather than go and make one. So this renders
+           * the notice, with the server's real answer about whether a backup
+           * exists, and lets them choose.
+           */
+          if (msg === 'DEVICE_CONFLICT') {
+            const raw = (err as { conflict?: unknown }).conflict;
+            console.warn(
+              `[OpenStoaApp] sign-in attempt ${attempt}: another device is signed in`,
+            );
+            setTakeover(
+              takeoverNotice(
+                {
+                  existingDevices:
+                    (raw as { existingDevices?: Array<{ kind: string; issuedAt: number }> })
+                      ?.existingDevices ?? [],
+                  // Absent fields fall to the most cautious answer, which is
+                  // "no backup" — the one that tells someone to go and make one.
+                  hasBackup: (raw as { hasBackup?: boolean })?.hasBackup === true,
+                  backupUpdatedAt:
+                    (raw as { backupUpdatedAt?: number | null })?.backupUpdatedAt ?? null,
+                },
+                Date.now(),
+              ),
+            );
+            setPhase('welcome');
+            return;
+          }
           console.warn(
             `[OpenStoaApp] sign-in attempt ${attempt} failed after ${waitedMs}ms: ${msg}`,
           );
@@ -600,13 +702,27 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
     // `signInMethods.ts` is the single place that decides, and the Developer
     // Mode read that feeds it belongs to the app, not to onboarding chrome.
     return (
-      <WelcomeScreen
-        methods={signInMethods}
-        onSignIn={handleSignIn}
-        onContinueAsGuest={handleContinueAsGuest}
-        errorMessage={errorMsg}
-        busy={signInBusy}
-      />
+      <>
+        <WelcomeScreen
+          methods={signInMethods}
+          onSignIn={handleSignIn}
+          onContinueAsGuest={handleContinueAsGuest}
+          errorMessage={errorMsg}
+          busy={signInBusy}
+        />
+        {/* Drawn OVER Welcome rather than as its own phase: the sign-in was
+            refused, so this IS the welcome screen with a question on top, and
+            dismissing it must leave the person exactly where they were. */}
+        <DeviceTakeoverSheet
+          notice={takeover}
+          onContinue={() => {
+            setTakeover(null);
+            // Same method, now with the person's answer attached.
+            performSignIn(undefined, signInMethods[0]?.id, true);
+          }}
+          onCancel={() => setTakeover(null)}
+        />
+      </>
     );
   }
 

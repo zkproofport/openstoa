@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
+/**
+ * Endpoints that only make sense on a device holding chat keys.
+ *
+ * Chat is mobile-only. A browser cannot read a room — the keys are on the phone
+ * — but it CAN join a group, advance an epoch, and post ciphertext nobody will
+ * ever decrypt, so leaving the API open to it produces damage rather than
+ * merely nothing. The UI entry points are gone; this is the part that holds
+ * when the UI is not the caller.
+ */
+const CHAT_PATH_PARTS = ['/chat', '/mls/', '/tak/'] as const;
+
+function isChatPath(pathname: string): boolean {
+  if (!pathname.startsWith('/api/topics/')) return false;
+  return CHAT_PATH_PARTS.some((part) => pathname.includes(part));
+}
+
 const PUBLIC_PATHS = [
   '/',
   '/api/auth/proof-request',
@@ -161,6 +177,36 @@ export async function middleware(request: NextRequest) {
 
   try {
     const { payload } = await jwtVerify(token, secret);
+
+    /*
+     * CHAT IS NOT AVAILABLE TO A BROWSER SESSION.
+     *
+     * Read from the token's own claim, set by whichever login route minted it,
+     * rather than from a header on this request — a per-request header would
+     * let a browser simply say `mobile` and be believed. The claim is signed,
+     * so changing it means minting a new session, which means going through a
+     * login route, which is where the kind is decided.
+     *
+     * An `agent` session is allowed through: agents reach chat with an API key
+     * whose capabilities are checked in the route (`requireAiCapability`), and
+     * they hold their own keys on the machine their owner runs them on.
+     *
+     * A token minted before this claim existed has no `deviceKind`. It is
+     * treated as `web` — the restricted answer — because the alternative is
+     * that every session issued before today keeps the access this is closing.
+     */
+    if (isChatPath(pathname)) {
+      const kind = typeof payload.deviceKind === 'string' ? payload.deviceKind : 'web';
+      if (kind === 'web') {
+        return NextResponse.json(
+          {
+            error: 'Chat is available in the ZKProofport app.',
+            code: 'CHAT_MOBILE_ONLY',
+          },
+          { status: 403 },
+        );
+      }
+    }
 
     // /profile is accessible with session but no nickname required
     if (pathname === '/profile' || pathname.startsWith('/api/profile/')) {

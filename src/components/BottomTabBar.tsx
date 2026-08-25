@@ -128,21 +128,20 @@ export default function BottomTabBar({ isGuest, hidden }: BottomTabBarProps) {
   // One list for both auth states — see the "Guest vs member" note above.
   // Only the Chat entry differs, and only in HOW it resolves, never in
   // whether it is offered.
-  const chatItem: Item = isGuest
-    ? { key: 'chat', kind: 'link', href: '/', label: t('tabbar.chat'), icon: <CommentIcon size={20} />, current: isChatActive(pathname) }
-    : {
-        key: 'chat',
-        kind: 'button',
-        onClick: () => chatRail?.openRail(null),
-        label: t('tabbar.chat'),
-        icon: <CommentIcon size={20} />,
-        current: isChatActive(pathname),
-      };
-
+  /*
+   * NO CHAT TAB. Chat is not on the web at all — a person's chat keys live on
+   * one device, the mobile app, and a browser is the one place that cannot
+   * hold: signing out cleared the session and left the MLS state, the leaf
+   * identity and the decrypted-picture cache behind, so the next person at a
+   * shared computer could read the previous person's conversation.
+   *
+   * `/chat` still resolves, and says so while pointing at the app — but a tab
+   * inviting people into a feature that is not here would be worse than
+   * useless.
+   */
   const items: Item[] = [
     { key: 'feed', kind: 'link', href: '/topics', label: t('tabbar.feed'), icon: <LayersIcon />, current: isFeedActive(pathname) },
     { key: 'topics', kind: 'link', href: '/topics/explore', label: t('tabbar.topics'), icon: <HashIcon />, current: isTopicsActive(pathname) },
-    chatItem,
     { key: 'profile', kind: 'link', href: '/my', label: t('tabbar.profile'), icon: <UserIcon />, current: isProfileActive(pathname) },
   ];
 

@@ -5,6 +5,7 @@ import { apiFetch, MEDIA_DOWNLOAD_TIMEOUT_MS, UPLOAD_REQUEST_TIMEOUT_MS } from '
 import { useQueryClient } from '@tanstack/react-query';
 import { topicKeys } from '@/lib/queryKeys';
 import { useSession } from '@/lib/useSession';
+import { cacheChatMedia, readCachedChatMedia } from '@/lib/chatMediaDiskCache';
 import { rememberSentChatMedia, readSentChatMedia } from '@/lib/chatMediaPlaintextCache';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
@@ -36,6 +37,9 @@ import {
 } from '@/lib/chatMedia';
 import { convertHeicToJpeg } from '@/lib/chatMediaHeic';
 import { ChatImage, CHAT_IMAGE_SLOT_WIDTH, CHAT_IMAGE_SLOT_WIDTH_ROOMY } from '@/components/ChatImage';
+// The same rule ChatImage settles on, so a reserved row and the picture that
+// lands in it are the same size.
+import { chatMediaBox } from '@/lib/chatMediaLayout';
 import { ackDelivery } from '@/lib/chatDeliveryAck';
 import { httpAckPost } from '@/lib/chatDeliveryAckHttp';
 import { syncChatRead } from '@/lib/chatReadSyncHttp';
@@ -1032,6 +1036,28 @@ function ChatMediaAttachment({
         created = URL.createObjectURL(new Blob([own.bytes as BlobPart], { type: own.mime }));
         setObjectUrl(created);
         setState({ status: 'ok', bytes: own.bytes, mime: own.mime });
+        // The sender's own bytes are worth keeping too: after a reload this tab
+        // is an ordinary reader of its own picture.
+        void cacheChatMedia(mediaId, own.bytes, own.mime);
+        return;
+      }
+
+      /*
+       * ALREADY DECRYPTED, ON THIS DEVICE.
+       *
+       * A picture is decrypted ONCE. `readSentChatMedia` above only covers what
+       * THIS tab sent and only until a reload; this covers anything this device
+       * has ever opened, across reloads and restarts. Without it every entry
+       * into a room re-fetched every picture's ciphertext and ran AES over it
+       * again — measured at 179ms + 3,086ms for a 6MB attachment, per picture,
+       * per entry.
+       */
+      const cachedBytes = await readCachedChatMedia(mediaId, envelope.size, mime);
+      if (cachedBytes) {
+        if (cancelled) return;
+        created = URL.createObjectURL(new Blob([cachedBytes.bytes as BlobPart], { type: cachedBytes.mime }));
+        setObjectUrl(created);
+        setState({ status: 'ok', bytes: cachedBytes.bytes, mime: cachedBytes.mime });
         return;
       }
       const res = await loadEncryptedChatMedia(
@@ -1069,9 +1095,12 @@ function ChatMediaAttachment({
         },
       );
       if (cancelled) return;
-      if (res.status === 'ok') {
+      // `bytes` is null only on a cache hit, and those returned above.
+      if (res.status === 'ok' && res.bytes) {
         created = URL.createObjectURL(new Blob([res.bytes as BlobPart], { type: res.mime }));
         setObjectUrl(created);
+        // Decrypted once, kept for next time.
+        void cacheChatMedia(mediaId, res.bytes, res.mime);
       }
       setState(res);
     })();
@@ -1083,12 +1112,44 @@ function ChatMediaAttachment({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId, tier, key, mediaId, takVersion, mime, attempt]);
 
+  /*
+   * RESERVE THE ROW BEFORE THE PICTURE ARRIVES.
+   *
+   * Every state below used to be one line of text tall, so a row grew by
+   * hundreds of pixels the moment its image decoded. A screen holding four of
+   * them opened pinned to the newest message and ended up stranded in the
+   * middle — measured here at 258px from the bottom, and caught on video
+   * entering from a push notification.
+   *
+   * `maintainVisibleContentPosition` cannot fix that: it holds a row still, it
+   * does not stop a row from growing, and the auto-scroll that would re-pin is
+   * gated on still being near the bottom — false by the time the growth is done.
+   * The only thing that works is not growing.
+   *
+   * The aspect ratio comes from the envelope. Messages sent before the sender
+   * measured it have none, so they fall back to 4:3 — the same guess as before,
+   * but now stated once instead of implied by a text line's height.
+   */
+  const slotWidth = roomy ? CHAT_IMAGE_SLOT_WIDTH_ROOMY : CHAT_IMAGE_SLOT_WIDTH;
+  /*
+   * The SAME box the picture will occupy, from the same shared rule — not a
+   * lookalike. A placeholder that reserves a different size just moves the jump
+   * from "when the image loads" to "when it replaces the placeholder".
+   *
+   * `chatMediaBox` handles the clamping (a 1179x2556 screenshot is cropped
+   * rather than squeezed to 175px wide), so this is exactly what `ChatImage`
+   * settles on once it has the bytes.
+   */
+  const box = chatMediaBox(envelope.w, envelope.h, slotWidth);
+  const reserve = { width: box.width, height: box.height } as const;
+
   const noticeStyle = {
-    display: 'inline-flex',
+    ...reserve,
+    display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 'var(--space-2)',
     marginTop: 4,
-    maxWidth: '85%',
     fontSize: roomy ? 14 : 13,
     color: 'var(--color-text-tertiary)',
     border: '1px dashed var(--color-border-default)',
@@ -1711,6 +1772,16 @@ export default function ChatPanel({
    */
   const [sessionProbed, setSessionProbed] = useState(cachedUserId !== null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The conversation NEWEST-FIRST, for the reversed column.
+   *
+   * `messages` stays oldest-first everywhere else — it is what the archive, the
+   * catch-up and the read cursor all reason about, and reversing the source of
+   * truth to suit a CSS property would be the wrong way round. This is the one
+   * place the order flips, and it flips for rendering only.
+   */
+  const renderOrder = useMemo(() => [...messages].reverse(), [messages]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const esRef = useRef<EventSource | null>(null);
@@ -1737,9 +1808,7 @@ export default function ChatPanel({
 
   // ── Scroll bookkeeping ─────────────────────────────────────────────────────
   /** Distance from the bottom captured just before older messages prepend. */
-  const pendingScrollAnchorRef = useRef<number | null>(null);
   const userNearBottomRef = useRef(true);
-  const initialScrolledRef = useRef(false);
   /**
    * The bottom row's CONTENT, not its id. Decryption does not change an id —
    * `catchUpArchive` replaces bodies in place — so an id was a key that could
@@ -2376,23 +2445,22 @@ export default function ChatPanel({
   }, [isGuest, panelSession, sessionVerified]);
 
   /**
-   * Scroll the message list to the bottom.
+   * Bring the reader back to the newest message.
    *
-   * Scrolls `scrollerRef` DIRECTLY rather than calling `scrollIntoView` on the
-   * bottom sentinel. `scrollIntoView` walks up and scrolls EVERY scrollable
-   * ancestor, including the document — so once the panel became a normal flex
-   * child of the page (the chat rail) instead of a `position: fixed` layer,
-   * opening a room yanked the whole page down with it. Setting `scrollTop` on
-   * the panel's own scroller cannot move anything outside the panel.
+   * Offset 0, a FIXED point in the reversed column — not `scrollHeight`, which
+   * changed under this function every time a picture decrypted and was the
+   * reason it had to be called again and again.
    *
-   * `smooth` only for messages arriving while the user is already at the
-   * bottom; entering a room jumps instantly, since animating a scroll the user
-   * never initiated is what reads as the page "running away".
+   * Sets `scrollTop` on the panel's own scroller rather than calling
+   * `scrollIntoView` on a sentinel: `scrollIntoView` walks up and scrolls EVERY
+   * scrollable ancestor including the document, so once the panel became an
+   * ordinary flex child of the page it yanked the whole page down with it.
+   *
+   * `smooth` only for a message arriving while the reader is already at the
+   * newest. Nothing calls this on entry any more — the list opens there.
    */
-  const scrollToBottom = useCallback((smooth = false) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  const scrollToNewest = useCallback((smooth = false) => {
+    scrollerRef.current?.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
   /**
@@ -2409,10 +2477,12 @@ export default function ChatPanel({
     if (!cursor) return;
     loadingOlderRef.current = true;
     setLoadingOlder(true);
-    // Anchor on the distance from the BOTTOM: prepending grows scrollHeight, so
-    // restoring this distance keeps the row the user is reading under the cursor.
-    const el = scrollerRef.current;
-    pendingScrollAnchorRef.current = el ? el.scrollHeight - el.scrollTop : null;
+    /*
+     * No anchor to save. In the reversed column an older page is appended at
+     * the DOM end, which is the visual TOP, so it grows the content away from
+     * the reader and their offset still means the same thing. Measured: adding
+     * a ten-row page moved the newest row by 0px.
+     */
     try {
       const res = await apiFetch(
         `/api/topics/${topicId}/chat?limit=${HISTORY_PAGE_LIMIT}&before=${encodeURIComponent(cursor)}`,
@@ -2424,13 +2494,11 @@ export default function ChatPanel({
       const more = raws.length >= HISTORY_PAGE_LIMIT;
       const decrypted = await ingest(raws);
       if (!mountedRef.current) return;
-      if (decrypted.length === 0) pendingScrollAnchorRef.current = null;
       applyIncoming(decrypted);
       hasMoreHistoryRef.current = more;
       setHasMoreHistory(more);
     } catch {
       // Transient failure: keep `hasMoreHistory` so the user can retry.
-      pendingScrollAnchorRef.current = null;
     } finally {
       loadingOlderRef.current = false;
       if (mountedRef.current) setLoadingOlder(false);
@@ -2440,185 +2508,117 @@ export default function ChatPanel({
   const handleScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
       const el = e.currentTarget;
-      // "Near bottom" decides whether an incoming message may steal the scroll
-      // position from someone reading history further up.
-      userNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-      if (el.scrollTop < 80) void loadOlder();
+      /*
+       * Read through `Math.abs` rather than through the raw sign.
+       *
+       * In a reversed column the newest message is at offset 0 and scrolling
+       * back gives a NEGATIVE `scrollTop` — measured here as -240 against a
+       * 240px scrollable range. Chrome and Firefox agree on that sign; Safari
+       * has reported it positive across versions, and this code has no reason
+       * to care which. The magnitude is the distance from the newest message
+       * either way, so taking it makes the geometry the only thing being
+       * relied on.
+       */
+      const fromNewest = Math.abs(el.scrollTop);
+      // Whether an incoming message may pull the view — it may not, while the
+      // reader is further back reading history.
+      userNearBottomRef.current = fromNewest < 120;
+      // The far end is the oldest message, and reaching it asks for more.
+      if (el.scrollHeight - el.clientHeight - fromNewest < 80) void loadOlder();
     },
     [loadOlder],
   );
 
-  // Restore the scroll position BEFORE paint whenever a page of older messages
-  // was just prepended. Runs ahead of the auto-scroll effect below (layout
-  // effects flush first), so the two never fight.
-  useBrowserLayoutEffect(() => {
-    const anchor = pendingScrollAnchorRef.current;
-    if (anchor == null) return;
-    pendingScrollAnchorRef.current = null;
-    const el = scrollerRef.current;
-    if (el) el.scrollTop = Math.max(0, el.scrollHeight - anchor);
-  }, [messages]);
-
-  // Auto-scroll only when the BOTTOM of the list moved (a new message), never
-  // when older history prepended — and only if the user was already at the
-  // bottom, so reading history is not interrupted by someone else typing.
-  // A device that joins the group AFTER the root was handed out receives
-  // nothing, and until now that lasted "until some other device happens to
-  // reopen the chat" — reproducibly minutes, or forever. Re-check on a slow
-  // timer while the room is open. `distributeRootWhenGroupChanged` is a
-  // no-op unless the MLS epoch actually advanced, so the steady-state cost is
-  // one commits-since GET, not a bundle per tick.
-  useEffect(() => {
-    if (isGuest || !isMember) return;
-    // Backoff from a short first interval: a device that joins right after the
-    // hand-out is the case that matters, and making it wait a fixed half-minute
-    // is the whole complaint. Quiet rooms settle to one cheap check a minute.
-    let delay = 3_000;
-    let timer: ReturnType<typeof setTimeout>;
-    let alive = true;
-    const schedule = () => {
-      timer = setTimeout(() => {
-        void getTakSessionStore()
-          .distributeRootWhenGroupChanged(topicId, tierRef.current)
-          .catch(() => {})
-          .finally(() => {
-            if (!alive) return;
-            delay = Math.min(delay * 2, 60_000);
-            schedule();
-          });
-      }, delay);
-    };
-    schedule();
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, [isGuest, isMember, topicId]);
-
-  useEffect(() => {
-    messagesRef.current = messages;
-    // The in-memory copy, for a re-entry inside this same page load.
-    if (messages.length) paintCache.set(topicId, messages);
-    /*
-     * And the DURABLE copy, so a reload does not start from a blank pane.
-     *
-     * `paintCache` alone dies with the page: measured on staging, re-entering a
-     * room inside one page load paints in 102ms and the same room after a
-     * refresh took 637ms, because nothing could be drawn until `/chat` came
-     * back. The design note for this cache (`openstoa-chat-history-decision.md`)
-     * already called for it — "painted from cache; nothing refetched" — and the
-     * reason it had not happened is that the cached record held no author, so
-     * it could restore bodies but not bubbles.
-     *
-     * Not awaited and never able to fail the room: this is a write-behind of
-     * what is already on screen. `writeHistoryCache` merges and bounds it.
-     */
-    if (messages.length) {
-      /*
-       * Called through an optional-call, not a plain one.
-       *
-       * The store is swapped for a partial stand-in in a dozen test files, and
-       * a plain call turns "this build has no history cache" into a crash on
-       * every render — which is the opposite of what the cache is: an
-       * optimisation the room is correct without. Optional-call keeps the
-       * contract the code already claims, in tests and in any future build that
-       * ships a narrower store.
-       */
-      void getTakSessionStore()
-        .writeHistoryCache?.(
-          topicId,
-          messages
-            // A row still in flight has no server id to merge on, and a locked
-            // row has no plaintext worth keeping — both are re-derived.
-            .filter((m) => !m.pending && !m.failed && !m.undecryptable)
-            .map((m) => ({
-              id: m.id,
-              createdAt: m.createdAt,
-              plaintext: m.message,
-              userId: m.userId,
-              nickname: m.nickname,
-              profileImage: m.profileImage,
-              type: m.type,
-              isAI: m.isAI,
-            })),
-        )
-        ?.catch(() => {});
-    }
-    oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
-    const bottom = messages.length > 0 ? messages[messages.length - 1] : null;
-    /*
-     * KEYED ON CONTENT, not on the bottom row's id.
-     *
-     * The id was the bug. Decryption never changes ids — `catchUpArchive`
-     * replaces bodies in place on the rows already in state — so the pass that
-     * finally makes a room readable produced an unchanged id and returned here
-     * before scrolling. The reader was left looking at wherever the locked,
-     * empty rows had happened to put them.
-     *
-     * It compounded with `initialScrolledRef`, which the FIRST paint sets while
-     * the list is still `syncing` (a centred spinner, no rows at all) or every
-     * row is locked and renders nothing. So the scroll that was recorded as
-     * "done" was a scroll over no content, and every row then grew twice: once
-     * as it decrypted, once as its <img> loaded. The second growth is the
-     * observer below; this handles the first.
-     *
-     * `lockedCount` and `syncing` are in the key because a decrypt anywhere in
-     * the list — not only in the last row — changes how far the bottom is, and
-     * `syncing` flipping false swaps a spinner for the whole conversation.
-     */
-    const bottomKey = bottom
-      ? [
-          bottom.id,
-          bottom.undecryptable ? 'locked' : 'open',
-          bottom.message.length,
-          lockedCount,
-          syncing ? 'syncing' : 'live',
-        ].join('|')
-      : null;
-    if (bottomKey === lastBottomKeyRef.current) return;
-    lastBottomKeyRef.current = bottomKey;
-    if (!bottom) return;
-    if (!initialScrolledRef.current || userNearBottomRef.current) {
-      const isFirstPaint = !initialScrolledRef.current;
-      initialScrolledRef.current = true;
-      scrollToBottom(!isFirstPaint);
-    }
-  }, [messages, lockedCount, syncing, scrollToBottom]);
+  /*
+   * No anchor restore. It existed to undo the shift a prepended page caused in
+   * a normal column; a reversed one has no shift to undo.
+   */
 
   /**
-   * Re-pin to the bottom when the list GROWS under a reader who is already
-   * there — an `<img>` that finished loading, a row that decrypted after paint,
-   * a late web font.
+   * Write what is on screen back to the device's history cache.
    *
-   * A React effect cannot see any of those: they change the layout without
-   * changing the state the effect above is keyed on. An image is the loud case,
-   * because its box is zero until the bytes arrive and then it is hundreds of
-   * pixels, so every attachment silently pushed the conversation below the fold
-   * of a scroller that had already been told it was at the bottom.
-   *
-   * Observing the CONTENT box rather than hooking each image keeps this out of
-   * `ChatImage` and covers the other two causes for free. Deliberately narrow:
-   * growth only (a shrink is a row being removed, and chasing it would fight
-   * the reader), never while a page of older history is mid-prepend (that path
-   * restores its own anchor), and never unless the reader was already at the
-   * bottom — so reading history is not interrupted by a picture two screens up.
+   * Its OWN effect. This used to sit inside the scroll effect, so deleting the
+   * scrolling deleted the cache write with it — silently, because a cache is by
+   * definition something the room is correct without, and only
+   * `chatHistoryPaintsFromCache` noticed. Two unrelated concerns sharing an
+   * effect is how one of them disappears during work on the other.
    */
   useEffect(() => {
-    const content = contentRef.current;
-    if (!content || typeof ResizeObserver === 'undefined') return;
-    let lastHeight = content.getBoundingClientRect().height;
-    const ro = new ResizeObserver(() => {
-      const height = content.getBoundingClientRect().height;
-      const grew = height > lastHeight;
-      lastHeight = height;
-      if (!grew) return;
-      if (!initialScrolledRef.current || !userNearBottomRef.current) return;
-      if (pendingScrollAnchorRef.current != null) return;
-      scrollToBottom();
-    });
-    ro.observe(content);
-    return () => ro.disconnect();
-  }, [scrollToBottom]);
+    if (messages.length === 0) return;
+    /*
+     * Called through an optional-call, not a plain one.
+     *
+     * The store is swapped for a partial stand-in in a dozen test files, and a
+     * plain call turns "this build has no history cache" into a crash on every
+     * render — the opposite of what the cache is.
+     */
+    void getTakSessionStore()
+      .writeHistoryCache?.(
+        topicId,
+        messages
+          // A row still in flight has no server id to merge on, and a locked
+          // row has no plaintext worth keeping — both are re-derived.
+          .filter((m) => !m.pending && !m.failed && !m.undecryptable)
+          .map((m) => ({
+            id: m.id,
+            createdAt: m.createdAt,
+            plaintext: m.message,
+            userId: m.userId,
+            nickname: m.nickname,
+            profileImage: m.profileImage,
+            type: m.type,
+            isAI: m.isAI,
+          })),
+      )
+      ?.catch(() => {});
+  }, [messages, topicId]);
+
+  /*
+   * A message arriving while the reader is already at the newest pulls the view
+   * along. Nothing else does.
+   *
+   * What this REPLACED is the point. The old version keyed on the bottom row's
+   * id, its decrypted length, `lockedCount` and `syncing`, because in a normal
+   * column every one of those changed where the bottom was — a row decrypting
+   * moved it without changing any id, so the key had to carry the body length
+   * to notice. None of that is true here: the newest message is at offset 0
+   * whatever happens to the rows above it, so a decrypt is not a scroll event
+   * and there is nothing to re-derive.
+   *
+   * There is also no first-paint scroll left. The list opens at the newest
+   * message because that is where offset 0 is.
+   */
+  useEffect(() => {
+    /*
+     * The paging cursor travels with the list, not with the scroll: it is the
+     * id of the OLDEST row on screen, and `loadOlder` asks for what came
+     * before it. It lived inside the old bottom-scroll effect and has nothing
+     * to do with scrolling — losing it silently disabled history paging, which
+     * `chatPanel-sync` caught by getting no `before=` request from a click.
+     */
+    oldestIdRef.current = messages.length > 0 ? messages[0].id : null;
+
+    const bottom = messages[messages.length - 1];
+    const bottomId = bottom ? bottom.id : null;
+    if (bottomId === lastBottomKeyRef.current) return;
+    const isFirstPaint = lastBottomKeyRef.current === null;
+    lastBottomKeyRef.current = bottomId;
+    if (isFirstPaint || !bottomId) return;
+    if (!userNearBottomRef.current) return;
+    scrollToNewest(true);
+  }, [messages, scrollToNewest]);
+
+  /*
+   * No growth observer.
+   *
+   * It existed to re-pin after an `<img>` finished loading, a row decrypted
+   * after paint, or a late web font changed the metrics — all of which moved
+   * the floor in a normal column. In the reversed one the newest message is at
+   * offset 0 and growth happens above it, so there is nothing to re-pin.
+   * Measured: a middle row growing 400px moved the newest row by 0px.
+   *
+   * It was also the last thing keeping `contentRef` load-bearing for layout.
+   */
 
   // Provision archive access for later members, by tier. public: claim the
   // single-winner holder lease (409 = someone else holds it, no-op) and the
@@ -2859,8 +2859,6 @@ export default function ChatPanel({
     lastBottomKeyRef.current = null;
     hasConnectedRef.current = false;
     catchupRunningRef.current = false;
-    pendingScrollAnchorRef.current = null;
-    initialScrolledRef.current = false;
     userNearBottomRef.current = true;
 
     /*
@@ -3204,47 +3202,33 @@ export default function ChatPanel({
         <div ref={contentRef} style={{
           ...measureStyle,
           display: 'flex',
-          flexDirection: 'column',
+          /*
+           * BOTTOM-UP, which is what makes the newest message a FIXED point
+           * rather than a moving one.
+           *
+           * `column-reverse` reverses the flex flow, so the first child in the
+           * DOM lands at the visual BOTTOM and `scrollTop: 0` IS the newest
+           * message. Everything that used to chase the floor — a
+           * `scrollToBottom` on every message change, a `ResizeObserver`
+           * re-pinning after each picture, a saved-anchor restore around a
+           * prepended page, an `initialScrolledRef` first-paint scroll — was
+           * chasing a number that changed every time a picture decrypted, and
+           * they contradicted each other while doing it. That argument is what
+           * the owner filmed as "올라갔다 내려갔다".
+           *
+           * Measured in this browser rather than assumed. With a 300px viewport
+           * over 30 rows: at rest `scrollTop` is 0 and the newest row's bottom
+           * edge sits on the container's; growing a MIDDLE row by 400px moves
+           * that edge by 0px; appending a 10-row older page moves it by 0px.
+           * The browser holds the bottom itself, so there is nothing left to
+           * re-pin — which is also why KakaoTalk and Telegram never show this.
+           *
+           * `margin-top: auto` is gone with it: in a reversed column a short
+           * conversation already rests against the composer.
+           */
+          flexDirection: 'column-reverse',
           gap: roomy ? 8 : 6,
-          // Short conversations sit on the composer instead of floating at the
-          // top of a tall column. `margin-top: auto` (not justify-content) so a
-          // long list still scrolls from the very first message.
-          ...(fullHeight ? { marginTop: 'auto' } : null),
         }}>
-          {/* Older history. Scrolling to the top loads the next page too; the
-              button exists so a short panel (a non-fullHeight host barely
-              scrolls) and keyboard users are not stuck at 50 messages. It
-              disappears once the beginning of the topic is reached. */}
-          {hasMoreHistory && (
-            <button
-              type="button"
-              onClick={() => void loadOlder()}
-              disabled={loadingOlder}
-              style={{
-                alignSelf: 'center',
-                background: 'transparent',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-pill)',
-                color: 'var(--muted)',
-                cursor: loadingOlder ? 'default' : 'pointer',
-                // Uppercase-adjacent mono meta control, not running copy —
-                // the label floor (12px) applies. Was 11px.
-                fontSize: 'var(--text-label)',
-                fontFamily: 'var(--font-mono)',
-                padding: '3px var(--space-3)',
-                marginBottom: 4,
-                opacity: loadingOlder ? 0.5 : 1,
-                minHeight: 'var(--touch-target-min)',
-              }}
-            >
-              {loadingOlder ? t('chat.loading') : t('chat.loadEarlier')}
-            </button>
-          )}
-          {/* Only when there is something WRONG. While the room key is still on
-              its way the centred spinner below is the whole story — a notice
-              under the header said the same thing twice and pushed the first
-              message up behind it. */}
-          {!syncing && <LockedHistoryNotice syncing={false} lockedCount={lockedCount} />}
           {!isGuest && isMember && !sessionProbed ? (
             /* Which side a bubble belongs on is not yet knowable. Drawing now
                would put the reader's own messages under someone else's name and
@@ -3264,11 +3248,16 @@ export default function ChatPanel({
               {t('chat.noMessagesYet')}
             </div>
           ) : (
-            messages.map((msg, i) => {
+            renderOrder.map((msg, i) => {
               // Same-author messages within 60s collapse into a single
               // group (matches the mobile chat). Hide the nickname row
               // and trim the gap.
-              const prev = messages[i - 1];
+              //
+              // `renderOrder` runs newest-first for the reversed column, so the
+              // message BEFORE this one in time is the NEXT index. Reading it
+              // as `i - 1` would regroup every avatar and timestamp against the
+              // wrong neighbour — silently, since both are valid rows.
+              const prev = renderOrder[i + 1];
               const grouped =
                 prev != null &&
                 prev.type === 'message' &&
@@ -3291,6 +3280,45 @@ export default function ChatPanel({
                 />
               );
             })
+          )}
+          {/* Sits with the OLDEST messages, which is what it is about — so it goes
+              late in the DOM, where the reversed column puts it at the top.
+              First in the DOM it rendered under the newest message instead.
+              Only when there is something WRONG. While the room key is still on
+              its way the centred spinner below is the whole story — a notice
+              under the header said the same thing twice and pushed the first
+              message up behind it. */}
+          {!syncing && <LockedHistoryNotice syncing={false} lockedCount={lockedCount} />}
+          {/* Older history — LAST in the DOM, which the reversed column renders at
+              the visual TOP: above the oldest message, where a reader
+              scrolling back arrives. Scrolling to the top loads the next page too; the
+              button exists so a short panel (a non-fullHeight host barely
+              scrolls) and keyboard users are not stuck at 50 messages. It
+              disappears once the beginning of the topic is reached. */}
+          {hasMoreHistory && (
+            <button
+              type="button"
+              onClick={() => void loadOlder()}
+              disabled={loadingOlder}
+              style={{
+                alignSelf: 'center',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-pill)',
+                color: 'var(--muted)',
+                cursor: loadingOlder ? 'default' : 'pointer',
+                // Uppercase-adjacent mono meta control, not running copy —
+                // the label floor (12px) applies. Was 11px.
+                fontSize: 'var(--text-label)',
+                fontFamily: 'var(--font-mono)',
+                padding: '3px var(--space-3)',
+                marginTop: 4,
+                opacity: loadingOlder ? 0.5 : 1,
+                minHeight: 'var(--touch-target-min)',
+              }}
+            >
+              {loadingOlder ? t('chat.loading') : t('chat.loadEarlier')}
+            </button>
           )}
         </div>
       </div>

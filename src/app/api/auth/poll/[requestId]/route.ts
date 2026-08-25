@@ -14,6 +14,8 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { deviceFromRequest } from '@/lib/deviceFromRequest';
+import { checkDeviceTakeover } from '@/lib/deviceTakeoverGate';
 import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/auth/poll/[requestId]';
@@ -203,7 +205,26 @@ export async function GET(
       nullifier,
       nickname,
     });
-    const token = await createSession(nullifier, nickname);
+    /*
+     * ONE PERSON, ONE PHONE — and the old one is told, not surprised.
+     * The rule itself lives in `checkDeviceTakeover`, shared with every other
+     * human login path so it cannot be enforced at one door and not the next.
+     */
+    const device = deviceFromRequest(request);
+    const decision = await checkDeviceTakeover({
+      userId: nullifier,
+      deviceKind: device.kind,
+      deviceId: device.id,
+      takeover: url.searchParams.get('takeover') === '1',
+    });
+    if (decision.kind === 'conflict') {
+      return NextResponse.json(decision.body, { status: 409 });
+    }
+
+    const token = await createSession(nullifier, nickname, {
+      deviceKind: device.kind,
+      deviceId: device.id,
+    });
 
     logger.info(ROUTE, 'Session created, sending 200', { requestId, nullifier, needsNickname });
 

@@ -23,6 +23,9 @@ import Link from 'next/link';
 import Avatar from './Avatar';
 import Spinner from './Spinner';
 import { relativeTime } from '@/lib/utils';
+// `export { x } from '…'` re-exports WITHOUT binding the name locally, and this
+// module calls it below — so it is imported and re-exported separately.
+import { formatUnreadBadge } from '@/lib/chatUnreadBadge';
 import type { DmChannel } from '@/lib/dm';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -165,19 +168,15 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
   );
 }
 
-/**
- * Badge text for an unread count, or `null` when there is nothing to show.
+/*
+ * `formatUnreadBadge` moved to `@openstoa/mls`.
  *
- * Absent, zero, negative, non-finite and non-numeric all mean "no badge" —
- * a JSON payload that happens to carry `unreadCount: null` must not render an
- * empty pill. Above 999 the literal count would widen the row past the title,
- * so it caps; the true number still goes to the accessible label.
+ * Two copies of it existed under the same name and disagreed: this one capped
+ * at "999+", the mini-app's row capped at "99+", so a room with 100 unread read
+ * "100" in the browser and "99+" on the phone. Re-exported here so the callers
+ * and the tests that already import it from this module keep working.
  */
-export function formatUnreadBadge(value: unknown): string | null {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) return null;
-  const n = Math.floor(value);
-  return n > 999 ? '999+' : String(n);
-}
+export { formatUnreadBadge };
 
 /**
  * One conversation row: avatar, a two-line block (title + inline unread badge,

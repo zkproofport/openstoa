@@ -223,20 +223,11 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
               as the removed links above. `onChatToggle` is only passed by
               `CommunityLayout`, so standalone Header usages (recovery/docs/
               profile pages) never render a button with nothing to toggle. */}
-          {user && onChatToggle && (
-            <button
-              type="button"
-              onClick={onChatToggle}
-              aria-pressed={chatOpen}
-              aria-label={chatOpen ? t('chat.close') : t('header.openChat')}
-              title={chatOpen ? t('chat.close') : t('header.openChat')}
-              className="os-header-btn header-dupe-mobile"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-              </svg>
-            </button>
-          )}
+          {/* NO CHAT TOGGLE. Chat is not on the web: a person's keys live on one
+              device, the mobile app, and a browser cannot hold that line —
+              signing out left the MLS state, the leaf identity and the
+              decrypted-picture cache behind, so the next person at a shared
+              computer could read the previous person's conversation. */}
 
           {/* FIX6: language is not an auth-gated preference — visible for
               guests and signed-in users alike, unlike every link above it.

@@ -102,7 +102,7 @@ describe('session', () => {
     expect(payload!.nickname).toBe('charlie');
     expect(payload!.verifiedAt).toBeGreaterThanOrEqual(before);
     expect(payload!.verifiedAt).toBeLessThanOrEqual(after);
-    // Should have exp claim (7d)
+    // Should have exp claim (the JWT backstop — Redis owns the real expiry)
     expect(payload!.exp).toBeDefined();
     expect(payload!.iat).toBeDefined();
   });
@@ -115,10 +115,35 @@ describe('session', () => {
     vi.setSystemTime(now);
     const token = await createSession('user-expired', 'expireduser');
 
-    // Tokens now last 7 days; advance 8 days to confirm expiry.
-    vi.setSystemTime(new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000));
+    /*
+     * The JWT's own expiry is now the BACKSTOP, not the session's lifetime.
+     *
+     * The real expiry moved to the Redis record, which slides on every verified
+     * request (`SESSION_TTL_SECONDS`), so a person who uses the app daily is
+     * never signed out for having started long ago. The token is minted with a
+     * deliberately LONGER date so two clocks cannot race — if this were still
+     * 7d, the fixed date would silently win and the sliding behaviour would
+     * appear to work right up until it arrived.
+     *
+     * 91 days: one past the mint, which is what proves the backstop still fires
+     * rather than that expiry was removed.
+     */
+    vi.setSystemTime(new Date(now.getTime() + 91 * 24 * 60 * 60 * 1000));
     const payload = await verifySession(token);
     expect(payload).toBeNull();
+  });
+
+  it('BOUNDARY: still valid at 8 days — the old fixed window is gone', async () => {
+    // Day eight is where the previous contract expired. A change that
+    // reinstates a short fixed `exp` fails here rather than quietly signing
+    // everyone out mid-week.
+    vi.useFakeTimers();
+    const { createSession, verifySession } = await import('@/lib/session');
+    const now = new Date('2026-01-01T00:00:00Z');
+    vi.setSystemTime(now);
+    const token = await createSession('user-day8', 'day8user');
+    vi.setSystemTime(new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000));
+    expect(await verifySession(token)).not.toBeNull();
   });
 
   it('should return null for a random non-JWT string', async () => {

@@ -1,4 +1,5 @@
 import type { HostApi } from '@openstoa/miniapp-bridge';
+import { installDeviceId } from '../lib/installDeviceId';
 import type { RefreshResponse } from '@openstoa/api-types';
 import { CHAT_MEDIA_CONTENT_TYPE } from '../lib/chatMedia';
 import {
@@ -474,6 +475,21 @@ export class OpenStoaClient {
     const url = `${this.baseUrl}${path}`;
     const headers = new Headers(init.headers ?? {});
     if (token) headers.set('Authorization', `Bearer ${token}`);
+
+    /*
+     * WHICH DEVICE THIS IS — sent on every request, not just at login.
+     *
+     * The server keeps one session per person and needs to tell "the same phone
+     * again" from "a second device"; it also decides chat availability from the
+     * kind. Sending it once at sign-in would leave every later request unable to
+     * answer either question, and the server would have to trust a months-old
+     * record instead of what is in front of it.
+     *
+     * Neither value is a credential — see `deviceFromRequest` on the server for
+     * why a declaration is enough here and where it stops being enough.
+     */
+    headers.set('x-openstoa-device-kind', 'mobile');
+    headers.set('x-openstoa-device-id', await installDeviceId(this.host.secureStore));
     if (init.body && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }

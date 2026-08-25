@@ -15,6 +15,7 @@ import LocaleSwitcher from '@/components/LocaleSwitcher';
 import ThemeToggle from '@/components/ThemeToggle';
 import { truncateId, resizeImage } from '@/lib/utils';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import { wipeLocalKeys } from '@/lib/mls/wipeLocalKeys';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -328,6 +329,29 @@ export default function MyPage() {
       // Through the cache that owns the key, so the module memo goes too — a
       // stale memo showed the previous person's name until the server disagreed.
       clearSession();
+
+      /*
+       * ERASE THE KEY MATERIAL TOO.
+       *
+       * Signing out used to clear the session and stop. The MLS ClientState
+       * stayed in IndexedDB, this browser's leaf identity in `localStorage`,
+       * and — worst, because it is not even ciphertext — the decrypted-picture
+       * cache on disk. Closing the browser changed none of it, so on a shared
+       * machine the next person could open the same browser and read the
+       * previous person's end-to-end encrypted conversation, pictures included.
+       *
+       * Chat has since left the web, and this is NOT therefore unnecessary:
+       * everyone who used it before today already has that material in their
+       * browser, and signing out is the one moment we are certain of being able
+       * to remove it.
+       *
+       * AWAITED, not fired and forgotten — the redirect below can tear the page
+       * down mid-delete, and a half-wiped store is worse than an untouched one
+       * because it looks clean. `wipeLocalKeys` never rejects, so this cannot
+       * strand anyone on the settings page.
+       */
+      await wipeLocalKeys();
+
       router.push('/');
     } catch {
       setLoggingOut(false);

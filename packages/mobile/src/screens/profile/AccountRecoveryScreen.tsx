@@ -138,7 +138,23 @@ export function AccountRecoveryScreen() {
       if (!mk) throw new Error('Recovery failed — wrong code, or no recovery-code backup exists.');
       await recoverDevice(client, mk, secureStore, host.localStore);
       setRecoverCode('');
-      setMsg('Recovered. Your chat history will reload.');
+      /*
+       * NOT "your chat history will reload" — that promise is false for three
+       * of the four tiers.
+       *
+       * The backup holds the keys the OTHER device actually received. Epochs
+       * that advanced while it was off never reached it, so they were never in
+       * the manifest and are not in the blob. Public rooms come back in full
+       * (the server holds the archive root); private, secret and DM rooms come
+       * back only as far as that snapshot, and the rest arrives when another
+       * member's device grants those epochs — see `grantPrivateHistory`.
+       *
+       * Saying "history will reload" and then showing empty rooms is how a
+       * person concludes the app lost their messages, which is worse than the
+       * truth and harder to undo.
+       */
+      setMsg(t('openstoa.recovery.recovered'));
+      setPartial(t('openstoa.recovery.gapNotice'));
     });
 
   const recoverWithPasskeyFlow = () =>
@@ -148,7 +164,8 @@ export function AccountRecoveryScreen() {
       const mk = await km.recoverWithPasskey(kb.unb64(prfOutputB64), http.getBackup);
       if (!mk) throw new Error('Recovery failed — this passkey has no backup on file.');
       await recoverDevice(client, mk, secureStore, host.localStore);
-      setMsg('Recovered with passkey. Your chat history will reload.');
+      setMsg(t('openstoa.recovery.recovered'));
+      setPartial(t('openstoa.recovery.gapNotice'));
     });
 
   return (

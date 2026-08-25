@@ -1101,6 +1101,65 @@ export class TakSessionStore {
    * (private/secret). Only epochs we actually hold are sent; the recipient
    * cannot read any epoch outside this grant (revocation by omission).
    */
+  /**
+   * Which epoch keys THIS device holds for a topic, oldest first.
+   *
+   * Read from the manifest, which is the only enumerable record — a secure
+   * store cannot be listed (Keychain has no enumeration), so keys are tracked
+   * explicitly as they are written. A key in the manifest whose value has gone
+   * is skipped rather than reported: offering to grant something that is not
+   * there produces an empty bundle and a person who stops waiting for nothing.
+   */
+  async heldEpochs(topicId: string): Promise<number[]> {
+    const raw = await this.store.get(this.manifestKey());
+    if (!raw) return [];
+    const prefix = `tak.epoch.${topicId}.`;
+    const out: number[] = [];
+    for (const k of Object.keys(JSON.parse(raw) as Record<string, true>)) {
+      if (!k.startsWith(prefix)) continue;
+      const e = Number(k.slice(prefix.length));
+      if (!Number.isSafeInteger(e) || e < 0) continue;
+      if ((await this.store.get(k)) == null) continue;
+      out.push(e);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /**
+   * Answer someone's request: hand them every epoch they are missing.
+   *
+   * `haveFromEpoch` is the oldest epoch the asker can ALREADY read, so only
+   * what sits below it needs sending; null means they can read none of it and
+   * want everything this device has.
+   *
+   * WHY IT IS A SEPARATE METHOD from `grantPrivateHistory`. That one is an
+   * automatic, time-windowed grant to every member who has not had one — it
+   * answers "someone joined". This answers "someone asked", which is a
+   * different question with a different scope, and is the ONLY grant path for
+   * `secret`, where auto-granting is deliberately not done.
+   *
+   * Returns the number of leaves the bundle was sealed to. Zero means there was
+   * nothing to send — this device does not hold the missing stretch either, and
+   * the caller must NOT then mark the request answered, or the asker stops
+   * waiting for something that never left.
+   */
+  async grantMissingTo(
+    topicId: string,
+    recipientUserId: string,
+    haveFromEpoch: number | null,
+  ): Promise<number> {
+    const held = await this.heldEpochs(topicId);
+    /*
+     * `haveFromEpoch === 0` is a real answer — "I can read from the very first
+     * epoch" — and the falsy check that treats it as null would re-send the
+     * entire history every time. Compared against null explicitly for that
+     * reason.
+     */
+    const missing = haveFromEpoch === null ? held : held.filter((e) => e < haveFromEpoch);
+    if (missing.length === 0) return 0;
+    return this.grantScoped(topicId, recipientUserId, missing);
+  }
+
   async grantScoped(topicId: string, recipientUserId: string, epochs: number[]): Promise<number> {
     const taks: Record<string, string> = {};
     for (const e of epochs) {
@@ -1256,7 +1315,7 @@ export class TakSessionStore {
    * cannot read its cache is a room that fetches, which is what it did before.
    */
   async readHistoryCache(topicId: string): Promise<CachedChatHistory | null> {
-    return readChatHistory(this.historyStore, topicId);
+    return readChatHistory(this.historyStore, await this.mls.accountId(), topicId);
   }
 
   /**
@@ -1269,9 +1328,11 @@ export class TakSessionStore {
    * skip rows it has never read.
    */
   async writeHistoryCache(topicId: string, messages: CachedChatMessage[]): Promise<void> {
-    const existing = await readChatHistory(this.historyStore, topicId);
+    const account = await this.mls.accountId();
+    const existing = await readChatHistory(this.historyStore, account, topicId);
     await writeChatHistory(
       this.historyStore,
+      account,
       topicId,
       mergeChatHistory([...(existing?.messages ?? []), ...messages]),
       existing?.cursor ?? null,
@@ -1295,7 +1356,7 @@ export class TakSessionStore {
      * first-ever visit are the same answer, and that answer is the behaviour
      * this method has always had.
      */
-    const cached = await readChatHistory(this.historyStore, topicId);
+    const cached = await readChatHistory(this.historyStore, await this.mls.accountId(), topicId);
     const rows = await this.transport.getArchive(topicId, cached?.cursor ?? undefined);
     /*
      * RESOLVE the public root, do not merely read the stored one.
@@ -1363,7 +1424,13 @@ export class TakSessionStore {
     const merged = mergeChatHistory([...(cached?.messages ?? []), ...opened]);
     if (opened.length > 0) {
       const advanced = cursorFrom(contiguous ? [contiguous] : []);
-      await writeChatHistory(this.historyStore, topicId, merged, advanced ?? cached?.cursor ?? null);
+      await writeChatHistory(
+        this.historyStore,
+        await this.mls.accountId(),
+        topicId,
+        merged,
+        advanced ?? cached?.cursor ?? null,
+      );
     }
 
     return merged.map((m) => ({ messageId: m.id, plaintext: m.plaintext }));

@@ -344,7 +344,12 @@ export async function POST(request: NextRequest) {
       nullifier,
       nickname,
     });
-    const token = await createSession(nullifier, nickname, { isAI: true });
+    const token = await createSession(nullifier, nickname, {
+      isAI: true,
+      // This endpoint exists only for agents; there is nothing to declare.
+      deviceKind: 'agent',
+      deviceId: 'ai',
+    });
 
     logger.info(ROUTE, 'Session created, sending 200', { challengeId, nullifier, needsNickname });
 

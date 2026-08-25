@@ -241,11 +241,72 @@ const CONSUMERS = ['web', 'mobile', 'sdk'] as const;
  * three-consumer table above cannot describe it. Checked by its own block
  * below, including the claim that the SDK does not use it.
  */
+/**
+ * Shared code that currently has ONE consumer, listed so a second copy is a
+ * failure rather than a discovery.
+ *
+ * `chatMediaDiskCache` is the web's half of "a picture is decrypted once": an
+ * `IndexedDB` row holding the plaintext of anything this device has opened. The
+ * mini-app implements the same RULE against the filesystem instead
+ * (`chatMediaFiles.existingDecrypted`), because a phone shows a picture from a
+ * `file://` URI and has nowhere to put a blob. Two implementations of one rule
+ * is exactly the shape that produced the badge-cap drift, so the asymmetry is
+ * written down here rather than left to be rediscovered.
+ */
+const WEB_ONLY_SHARED = [
+  {
+    name: 'chatMediaDiskCache',
+    web: 'src/lib/chatMediaDiskCache.ts',
+  },
+];
+
+describe.each(WEB_ONLY_SHARED)('$name (web-only, by design)', ({ name, web }) => {
+  it('SHAPE: web holds a re-export, not an implementation', () => {
+    expect(read(web)).toMatch(/export \* from '\.\.\/\.\.\/packages\/mls\/src\//);
+  });
+
+  it('TARGET: the implementation really is in packages/mls/src', () => {
+    // Reading it IS the assertion: `read` throws if the file is not there.
+    expect(read(`packages/mls/src/${name}.ts`).length).toBeGreaterThan(0);
+  });
+
+  it('the mini-app does NOT import it — the reason it is web-only', () => {
+    // The mini-app implements the same rule against the filesystem. If it ever
+    // imports THIS module the asymmetry is gone and the table above is wrong.
+    const mobile = join(ROOT, 'packages/mobile/src');
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const child = join(dir, entry.name);
+        if (entry.isDirectory()) walk(child);
+        else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+          if (readFileSync(child, 'utf8').includes(name)) hits.push(relative(ROOT, child));
+        }
+      }
+    };
+    walk(mobile);
+    expect(hits).toEqual([]);
+  });
+});
+
 const UI_SHARED = [
   {
     name: 'chatMediaLayout',
     web: 'src/lib/chatMediaLayout.ts',
     mobile: 'packages/mobile/src/lib/chatMediaLayout.ts',
+  },
+  {
+    /*
+     * How an unread count is WRITTEN on a conversation row.
+     *
+     * Listed because the two copies had already drifted: under the same name
+     * `formatUnreadBadge`, the mini-app's row capped at "99+" and the web's at
+     * "999+", so a room with 100 unread said "99+" on a phone and "100" in a
+     * browser. Both clients draw that badge; the agent SDK draws nothing.
+     */
+    name: 'chatUnreadBadge',
+    web: 'src/lib/chatUnreadBadge.ts',
+    mobile: 'packages/mobile/src/lib/chatUnreadBadge.ts',
   },
   {
     /*
@@ -421,6 +482,9 @@ describe('MLS/TAK crypto: exactly one implementation', () => {
       .filter((f) => f.endsWith('.ts'))
       .filter((f) => !INTERNAL.includes(f))
       .filter((f) => !UI_SHARED.some((m) => `${m.name}.ts` === f))
+      // Web-only shared modules have their own block above, with their own
+      // three assertions — including the one that keeps them web-only.
+      .filter((f) => !WEB_ONLY_SHARED.some((m) => `${m.name}.ts` === f))
       .map((f) => f.replace(/\.ts$/, ''))
       .sort();
     expect(MODULES.map((m) => m.name).sort()).toEqual(onDisk);

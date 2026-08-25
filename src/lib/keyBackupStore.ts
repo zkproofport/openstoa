@@ -86,7 +86,13 @@ export async function upsertTakBackup(db: DB, userId: string, ciphertext: Buffer
     .onConflictDoUpdate({ target: takKeyBackups.userId, set: { ciphertext, updatedAt: new Date() } });
 }
 
-export async function getTakBackup(db: DB, userId: string): Promise<{ ciphertext: Buffer } | null> {
+export async function getTakBackup(
+  db: DB,
+  userId: string,
+): Promise<{ ciphertext: Buffer; updatedAt: Date | null } | null> {
   const row = await db.query.takKeyBackups.findFirst({ where: eq(takKeyBackups.userId, userId) });
-  return row ? { ciphertext: row.ciphertext } : null;
+  // `updatedAt` is surfaced because "you have a backup" and "you have a backup
+  // from before you joined any of these rooms" are different answers, and only
+  // the second one tells someone their keys are about to be lost.
+  return row ? { ciphertext: row.ciphertext, updatedAt: row.updatedAt ?? null } : null;
 }

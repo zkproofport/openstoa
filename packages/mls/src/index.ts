@@ -31,6 +31,7 @@ export * from './chatMedia';
 export * from './chatTierPolicy';
 export * from './imageMetadata';
 export * from './chatMediaLayout';
+export * from './chatUnreadBadge';
 /*
  * The sender's own plaintext, kept for the lifetime of the process.
  *
@@ -39,4 +40,5 @@ export * from './chatMediaLayout';
  * are shared: the web builds a blob URL and the mini-app writes a file.
  */
 export * from './chatMediaPlaintextCache';
+export * from './chatMediaDiskCache';
 export * from './chatHistoryCache';

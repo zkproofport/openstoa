@@ -13,9 +13,38 @@ const DOTS = 3;
 /** One pass across all the dots, in ms. */
 const CYCLE_MS = 1500;
 
+/**
+ * Pull ONLY the type metrics out of a caller's label style.
+ *
+ * A dot has to sit on the label's baseline, so it needs the same size and line
+ * height — and nothing else. Taking the whole style is what let a caller's
+ * `flex: 1` reach the dots; naming the two properties makes that impossible
+ * rather than merely unlikely.
+ */
+function typography(style: StyleProp<TextStyle>): TextStyle {
+  const flat = StyleSheet.flatten(style) ?? {};
+  const out: TextStyle = {};
+  if (flat.fontSize !== undefined) out.fontSize = flat.fontSize;
+  if (flat.lineHeight !== undefined) out.lineHeight = flat.lineHeight;
+  return out;
+}
+
+/**
+ * The finished style for one dot, given the caller's label style.
+ *
+ * Exported for `chatRoomKeyWaitLayout.test.tsx`. The defect it guards against
+ * was pure style — a `flex: 1` reaching the dots — so the assertion belongs on
+ * the computed style, not on a render.
+ */
+export function __waitingDotStyle(style: StyleProp<TextStyle>): TextStyle {
+  return { ...styles.dot, ...typography(style) };
+}
+
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'baseline' },
   dots: { flexDirection: 'row' },
+  /* A dot never grows: it is one glyph beside a label, not a column. */
+  dot: { flexGrow: 0, flexShrink: 0 },
 });
 
 /**
@@ -81,7 +110,26 @@ export function WaitingStatus({ label, color, style, testID }: WaitingStatusProp
           three animated full stops read aloud are noise. */}
       <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no">
         {dots.map((dot, i) => (
-          <Animated.Text key={i} style={[style, { color, opacity: dot }]}>
+          /*
+           * `styles.dot`, NOT the caller's `style`.
+           *
+           * The dots used to reuse the label's style wholesale, which was fine
+           * until a caller passed one containing layout. `ChatRoomScreen`'s
+           * `keyWaitText` carries `flex: 1` — meant to make the LABEL fill the
+           * row so the dots sit at its end — and handing that to each dot gave
+           * every dot `flexGrow: 1` and `flexBasis: 0` as well. Measured on the
+           * device: the three dots took a third of the screen width each
+           * (x=39-374, 372-706, 706-1041), the label collapsed to zero width
+           * and stretched to 1,734px tall, and the composer was pushed off the
+           * screen. The room looked completely broken.
+           *
+           * Only the two things a dot actually shares with its label are taken:
+           * the type metrics, so it sits on the same line, and the colour.
+           */
+          <Animated.Text
+            key={i}
+            style={[__waitingDotStyle(style), { color, opacity: dot }]}
+          >
             ·
           </Animated.Text>
         ))}

@@ -5,6 +5,8 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { deviceFromRequest } from '@/lib/deviceFromRequest';
+import { revokeSession } from '@/lib/sessionStore';
 import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 
@@ -136,7 +138,15 @@ export async function PUT(request: NextRequest) {
     // can swap its persisted token. Without this, the mini-app keeps
     // using the OLD JWT (stale nickname) and the next /api/auth/session
     // refetch rolls the UI back to the previous nickname.
-    const token = await createSession(session.userId, nickname);
+    // Re-minting for the new name is still the SAME session — revoke the old
+    // record so one device does not accumulate one live session per rename.
+    if (typeof session.jti === 'string') await revokeSession(session.jti, session.userId);
+    const device = deviceFromRequest(request);
+    const token = await createSession(session.userId, nickname, {
+      isAI: session.isAI === true,
+      deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : 'web'),
+      deviceId: device.id,
+    });
     const response = NextResponse.json({ nickname, token });
     setSessionCookie(response, token);
     return response;

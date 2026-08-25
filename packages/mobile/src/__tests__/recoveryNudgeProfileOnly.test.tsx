@@ -131,7 +131,28 @@ afterEach(() => {
 });
 
 describe('the recovery banner is mounted on Profile and nowhere else', () => {
-  it('CONTRACT: exactly one file in the mini-app renders <RecoveryNudge/>', () => {
+  it('CONTRACT: NO file in the mini-app renders <RecoveryNudge/>', () => {
+    /*
+     * The banner is gone entirely — it is not "on Profile only" any more.
+     *
+     * Narrowing it to the Profile tab was the previous step and it was still
+     * wrong: the prompt appeared because a backup had never been made, which is
+     * not the same as a backup being NEEDED. Someone who has no intention of
+     * moving devices was told, every visit, to do a thing they did not need,
+     * and dismissing it did not settle the question because the condition that
+     * raised it never changed.
+     *
+     * A backup is something a person does when they are about to need it —
+     * changing phones — and that moment is now handled where it actually
+     * happens: signing in on a second device warns first, with the server's
+     * real answer about whether a backup exists (see `deviceTakeover`). The
+     * rest of the time it is a button in Profile → Chat recovery, and nothing
+     * nags.
+     *
+     * The REPAIR is unaffected and its cases below still stand: it fixes
+     * accounts already in the broken state and must keep running for someone
+     * who never opens Profile at all.
+     */
     const mounts = walk(SRC)
       .filter((file) => RENDERS_BANNER.test(stripComments(readFileSync(file, 'utf8'))))
       .map((file) => relative(SRC, file).split(/[\\/]/).join('/'))
@@ -139,9 +160,19 @@ describe('the recovery banner is mounted on Profile and nowhere else', () => {
 
     expect(
       mounts,
-      'the banner is a Profile-tab prompt; every other surface must not render it, ' +
-        'and it must be rendered somewhere or it does nothing at all',
-    ).toEqual([THE_MOUNT]);
+      'the recovery banner was removed; a backup is a Profile button and a ' +
+        'second-device warning, never an unprompted nag',
+    ).toEqual([]);
+  });
+
+  it('CONTRACT: Profile still offers the backup as something you choose to do', () => {
+    // Removing the nag must not remove the ABILITY. If this ever fails, the
+    // feature is unreachable and the second-device warning has nothing to
+    // point at.
+    const profile = stripComments(
+      readFileSync(join(SRC, 'screens/profile/EditProfileScreen.tsx'), 'utf8'),
+    );
+    expect(profile).toContain("navigate('AccountRecovery')");
   });
 
   it('CONTRACT: that screen is the Profile tab, not a screen that happens to be nearby', () => {

@@ -78,6 +78,9 @@ const COLOR_SWEPT_FILES = [
   'src/app/layout.tsx',
   'src/components/Header.tsx',
   'src/components/ThemeToggle.tsx',
+  // What the web shows in place of chat. Every colour it draws is a token, so
+  // it belongs in the swept list rather than the excluded one.
+  'src/components/ChatOnMobileOnly.tsx',
   'src/components/icons.tsx',
   'src/app/ask/page.tsx',
   'src/app/chat/page.tsx',

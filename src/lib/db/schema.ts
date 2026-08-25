@@ -344,6 +344,62 @@ export const mlsCommits = pgTable('mls_commits', {
 // The CVE-2024-47080/-47824 device-identity check (§5.5) is performed by the
 // SENDER client before wrapping; the server additionally enforces the envelope
 // (recipient is a current member with a published device package, SI-4 caps).
+/**
+ * "Please unlock the history for me" — one row per asking device.
+ *
+ * WHY IT NEEDS A TABLE AT ALL. After a recovery on a new phone, private, secret
+ * and DM rooms open only as far as the OLD phone's last backup: epochs that
+ * advanced while it was off were never in that device's keychain, so they were
+ * never in the blob. The one place those keys still exist is another member's
+ * device. Somebody has to be ASKED, and the asking has to survive the moment —
+ * the member who can grant is usually not looking at their phone right now.
+ *
+ * WHAT THE SERVER LEARNS, and it is deliberately little: that a device would
+ * like keys for a topic. Not which messages, not the keys themselves — the
+ * grant travels as an HPKE-sealed `tak_bundles` row the server cannot open, the
+ * same as every other key delivery.
+ *
+ * NO FK ON THE IDS, matching `tak_bundles` directly above and for the same
+ * reason: the MLS leaf credential carries a device id, not a user nullifier, so
+ * a row here names what the requesting client believes about itself. The grant
+ * is addressed by leaf regardless, so a lie buys nothing.
+ */
+export const keyRequests = pgTable('key_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  topicId: uuid('topic_id').references(() => topics.id).notNull(),
+  requesterUserId: text('requester_user_id').notNull(),
+  /** Which leaf to seal the grant to — the same address `tak_bundles` uses. */
+  requesterDeviceId: text('requester_device_id').notNull(),
+  /**
+   * The oldest epoch the requester can already read, or null when it can read
+   * none. A grant only has to cover what is BELOW this, so a member handing
+   * keys over does not re-send what the asker already holds.
+   */
+  haveFromEpoch: integer('have_from_epoch'),
+  /**
+   * Set when a member grants. Kept rather than deleted so a second device does
+   * not re-ask for something already answered, and so "asked and never
+   * answered" is distinguishable from "never asked".
+   */
+  grantedAt: timestamp('granted_at', { withTimezone: true }),
+  /** Who granted. Informational — the bundle itself is the real artefact. */
+  grantedByUserId: text('granted_by_user_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // Members of a topic list the OPEN requests they could answer.
+  topicIdx: index('key_requests_topic_idx').on(table.topicId, table.grantedAt),
+  /*
+   * One open request per device per topic. Without this, a screen that retries
+   * on every mount turns one person's tap into a queue nobody will read to the
+   * end — and the second row would tell a granting member nothing the first did
+   * not already say.
+   */
+  oneOpenPerDevice: uniqueIndex('key_requests_one_open_idx').on(
+    table.topicId,
+    table.requesterDeviceId,
+  ),
+}));
+
 export const takBundles = pgTable('tak_bundles', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id).notNull(),

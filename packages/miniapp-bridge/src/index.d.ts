@@ -53,7 +53,7 @@ export interface PushNotificationTap {
 export interface HostApi {
   getEnvironment(): HostEnvironmentInfo;
   getOpenStoaToken(): Promise<string | null>;
-  loginToOpenStoa(opts?: { force?: boolean; method?: 'oidc' | 'mdl' }): Promise<AuthResult>;
+  loginToOpenStoa(opts?: { force?: boolean; method?: 'oidc' | 'mdl'; takeover?: boolean }): Promise<AuthResult>;
   logoutFromOpenStoa(): Promise<void>;
   setOpenStoaToken(token: string): Promise<void>;
   /** Optional secure KV storage (Keychain/Keystore) for MLS state persistence. */
@@ -66,6 +66,12 @@ export interface HostApi {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
   };
+  /**
+   * How many messages are waiting, so the host can badge its own OpenStoa tab
+   * and the app icon. The mini-app owns the number; the host owns the drawing.
+   * See the full note on `HostApi.setUnreadBadge` in `types.ts`.
+   */
+  setUnreadBadge?(count: number): void;
   /** Optional WebAuthn PRF (react-native-passkeys) for Phase 4 E2EE key recovery. */
   passkeyPrf?(opts: {
     mode: 'create' | 'get';

@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { deviceFromRequest } from '@/lib/deviceFromRequest';
+import { revokeSession } from '@/lib/sessionStore';
 
 const ROUTE = '/api/auth/refresh';
 
@@ -70,8 +72,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  /*
+   * A refresh REPLACES a session rather than adding one. Without the revoke the
+   * old record stayed live, so a phone that had refreshed a few times looked
+   * like several devices and the one-device rule fired against its own user.
+   */
+  const device = deviceFromRequest(request);
+  if (typeof session.jti === 'string') await revokeSession(session.jti, user.id);
   const newToken = await createSession(user.id, user.nickname, {
     isAI: session.isAI === true,
+    // The kind is carried over, not re-declared: a refresh is the same client
+    // it was at sign-in, and reading the header again would let a session
+    // change kind mid-life — a browser refreshing its way into chat.
+    deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : 'web'),
+    deviceId: device.id,
   });
 
   // 7 days in ms — must mirror session.ts setExpirationTime('7d')

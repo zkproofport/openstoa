@@ -128,16 +128,16 @@ describe('AUTHZ: guest vs signed-in tab sets', () => {
   // destination a guest was offered was the one thing they had not asked to
   // do yet. Signing in is now contextual, at the point the tapped action
   // actually requires it, which is also what the header does at these widths.
-  it('guest sees the SAME four tabs as a member — Feed, Topics, Chat, Profile', async () => {
+  it('guest sees the SAME three tabs as a member — Feed, Topics, Profile', async () => {
     await render({ isGuest: true });
     const keys = tabs().map((el) => el.getAttribute('data-testid'));
-    expect(keys).toEqual(['tabbar-feed', 'tabbar-topics', 'tabbar-chat', 'tabbar-profile']);
+    expect(keys).toEqual(['tabbar-feed', 'tabbar-topics', 'tabbar-profile']);
   });
 
-  it('signed-in member sees exactly Feed, Topics, Chat, Profile', async () => {
+  it('signed-in member sees exactly Feed, Topics, Profile', async () => {
     await render({ isGuest: false });
     const keys = tabs().map((el) => el.getAttribute('data-testid'));
-    expect(keys).toEqual(['tabbar-feed', 'tabbar-topics', 'tabbar-chat', 'tabbar-profile']);
+    expect(keys).toEqual(['tabbar-feed', 'tabbar-topics', 'tabbar-profile']);
   });
 
   it('the two tab sets are identical, key for key', async () => {
@@ -159,44 +159,29 @@ describe('AUTHZ: guest vs signed-in tab sets', () => {
   });
 });
 
-describe('CONTRACT: Chat tab', () => {
-  it('MEMBER: is a button, not a link (no dead-URL destination)', async () => {
+/**
+ * THERE IS NO CHAT TAB, and that is the requirement.
+ *
+ * Chat is not on the web. A person's chat keys live on ONE device — the mobile
+ * app — and a browser is the one place that cannot hold: signing out cleared
+ * the session and left the MLS state, the leaf identity and the
+ * decrypted-picture cache behind, so the next person at a shared computer could
+ * read the previous person's end-to-end encrypted conversation.
+ *
+ * This block used to assert the tab was a button for members, a link for
+ * guests, and that it opened the rail. All of that described a feature that is
+ * gone; what replaces it is the assertion that no entry point invites anyone
+ * into it.
+ */
+describe('CONTRACT: there is no Chat tab', () => {
+  it('MEMBER: no chat tab is rendered', async () => {
     await render({ isGuest: false });
-    const chatTab = tab('chat');
-    expect(chatTab?.tagName).toBe('BUTTON');
-    expect(chatTab?.getAttribute('href')).toBeNull();
+    expect(tab('chat')).toBeNull();
   });
 
-  it('GUEST: is a link to the sign-in surface / — openRail is gated on !isGuest, so a button there would do nothing', async () => {
+  it('GUEST: no chat tab either — the tab set does not change with auth', async () => {
     await render({ isGuest: true });
-    const chatTab = tab('chat');
-    expect(chatTab?.tagName).toBe('A');
-    expect(chatTab?.getAttribute('href')).toBe('/');
-  });
-
-  it('GUEST: the bar renders no <button> at all — nothing that could reach the gated rail', async () => {
-    await render({ isGuest: true });
-    expect(container.querySelectorAll('[data-testid="bottom-tabbar"] button')).toHaveLength(0);
-    expect(chatRailMock.openRail).not.toHaveBeenCalled();
-  });
-
-  it('MEMBER: clicking it calls openRail(null) exactly once', async () => {
-    await render({ isGuest: false });
-    await act(async () => {
-      (tab('chat') as HTMLButtonElement).click();
-    });
-    expect(chatRailMock.openRail).toHaveBeenCalledTimes(1);
-    expect(chatRailMock.openRail).toHaveBeenCalledWith(null);
-  });
-
-  it('RACE: clicking it when no rail API is published (useChatRail() -> null) does not throw', async () => {
-    chatRailMock.current = null;
-    await render({ isGuest: false });
-    await expect(
-      act(async () => {
-        (tab('chat') as HTMLButtonElement).click();
-      }),
-    ).resolves.not.toThrow();
+    expect(tab('chat')).toBeNull();
   });
 });
 
@@ -206,7 +191,7 @@ describe('RESULT: aria-current follows usePathname()', () => {
     await render({ isGuest: false });
     expect(tab('feed')?.getAttribute('aria-current')).toBe('page');
     expect(tab('topics')?.getAttribute('aria-current')).toBeNull();
-    expect(tab('chat')?.getAttribute('aria-current')).toBeNull();
+    expect(tab('chat')).toBeNull(); // the tab itself, not its attribute
     expect(tab('profile')?.getAttribute('aria-current')).toBeNull();
   });
 
@@ -224,10 +209,12 @@ describe('RESULT: aria-current follows usePathname()', () => {
     expect(tab('feed')?.getAttribute('aria-current')).toBeNull();
   });
 
-  it('Chat is current on /dm', async () => {
+  it('/dm marks NOTHING current — there is no tab for it any more', async () => {
+    // The route may still resolve for a while; the tab bar must not grow a
+    // chat entry back just because a path that once had one is visited.
     pathnameMock.current = '/dm';
     await render({ isGuest: false });
-    expect(tab('chat')?.getAttribute('aria-current')).toBe('page');
+    expect(tab('chat')).toBeNull();
   });
 
   it('Profile is current on /my', async () => {
@@ -251,17 +238,17 @@ describe('UTF-8: Korean locale', () => {
     const text = container.textContent ?? '';
     expect(text).toContain('피드');
     expect(text).toContain('토픽');
-    expect(text).toContain('채팅');
+    expect(text).not.toContain('채팅'); // no chat tab in either locale
     expect(text).toContain('프로필');
     expect(text).not.toContain('tabbar.');
   });
 
-  it('a guest gets the same four Korean labels — the tab set does not change with auth, so neither do the labels', async () => {
+  it('a guest gets the same three Korean labels — the tab set does not change with auth, so neither do the labels', async () => {
     await render({ isGuest: true }, 'ko');
     const text = container.textContent ?? '';
     expect(text).toContain('피드');
     expect(text).toContain('토픽');
-    expect(text).toContain('채팅');
+    expect(text).not.toContain('채팅'); // no chat tab in either locale
     expect(text).toContain('프로필');
     expect(text).not.toContain('tabbar.');
     // The Korean labels are longer than the English ones and nothing in the

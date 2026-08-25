@@ -82,8 +82,12 @@ describe('LeftSidebar — English (default locale)', () => {
     const t = text();
     expect(t).toContain('Start a Topic');
     expect(t).toContain('Browse');
-    expect(t).toContain('Conversations');
-    expect(t).toContain('Chat');
+    // Chat is not on the web any more, so there is no Conversations group to
+    // translate. Asserting its ABSENCE keeps this case honest: a string that
+    // reappears without a decision fails here rather than shipping a nav entry
+    // to a surface that cannot read a room.
+    expect(t).not.toContain('Conversations');
+    expect(t).not.toContain('Chat'); // removed with web chat — see the note above
     expect(t).toContain('All');
     expect(t).toContain('My Topics');
     expect(t).toContain('Explore Topics');
@@ -121,8 +125,8 @@ describe('LeftSidebar — Korean', () => {
     const t = text();
     expect(t).toContain('토픽 만들기'); // Start a Topic
     expect(t).toContain('둘러보기'); // Browse
-    expect(t).toContain('대화'); // Conversations
-    expect(t).toContain('채팅'); // Chat
+    expect(t).not.toContain('대화'); // Conversations — removed with web chat
+    expect(t).not.toContain('채팅'); // Chat — removed with web chat
     expect(t).toContain('전체'); // All
     expect(t).toContain('내 토픽'); // My Topics
     expect(t).toContain('토픽 둘러보기'); // Explore Topics

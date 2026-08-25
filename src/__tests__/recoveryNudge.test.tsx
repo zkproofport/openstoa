@@ -205,105 +205,45 @@ describe('RecoveryNudge — repair', () => {
   });
 });
 
-describe('RecoveryNudge — the banner', () => {
-  it('appears for a user with history and no recovery, and names the loss', async () => {
-    await render();
-    expect(banner()).not.toBeNull();
-    expect(banner()?.textContent).toContain(en.recoveryNudge.title);
-    expect(banner()?.textContent).toContain(en.recoveryNudge.body);
-  });
-
-  it('CONFIGURED: never appears once a passkey wrap exists', async () => {
-    backend.passkeys = [{ credentialId: 'c1', prfWrapped: 'w' }];
-    await render();
-    expect(banner()).toBeNull();
-  });
-
-  it('CONFIGURED: never appears once a recovery-code wrap exists', async () => {
-    backend.wrappedMaster = 'wrapped';
-    await render();
-    expect(banner()).toBeNull();
-  });
-
-  it('EMPTY: never appears for a user with no chat history yet', async () => {
-    backend.outcome = 'empty';
-    await render();
-    expect(banner()).toBeNull();
-  });
-
-  it('EXTERNAL FAILURE: an unreadable backup endpoint produces no banner', async () => {
-    backend.backupThrows = true;
+/**
+ * THERE IS NO BANNER, and that is the requirement.
+ *
+ * This block used to assert that a prompt appeared for anyone with chat history
+ * and no recovery, that it could be dismissed, and that the dismissal stuck.
+ * The owner's decision replaced all of it: backing up is a BUTTON in Profile
+ * settings, pressed by someone moving to a new device, and the docs are where
+ * that is explained. Someone who has not asked to back up is not in an error
+ * state, and the top of every page is not the place to tell them otherwise.
+ *
+ * Removing it beat fixing it, and the reason is worth keeping. The nudge
+ * already HAD a per-account dismissal and it still reappeared on every launch:
+ * the dismissal was written to a store that is optional on the mini-app's host
+ * bridge, so `?.` swallowed the write and "Not now" meant "not for thirty
+ * seconds". Reproduced on a real device. A better place to record a dismissal
+ * would have been one more layer on a thing that should not exist.
+ *
+ * The SILENT REPAIR is a different job and its cases are above, untouched — it
+ * fixes accounts whose backup row is empty and asks nothing of anyone.
+ */
+describe('RecoveryNudge — there is no banner', () => {
+  it('CONTRACT: renders nothing for a user with history and no recovery', async () => {
+    // The exact case the banner used to fire on.
     await render();
     expect(banner()).toBeNull();
   });
 
-  it('does NOT block: it is a status strip, not a dialog or an overlay', async () => {
-    await render();
-    const el = banner() as HTMLElement;
-    expect(el.getAttribute('role')).toBe('status');
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(el.style.position).toBe(''); // no fixed/absolute overlay covering the page
-  });
-
-  it('the CTA routes to the existing recovery surface rather than duplicating it', async () => {
-    await render();
-    const cta = [...container.querySelectorAll('button')].find((b) => b.textContent === en.recoveryNudge.cta)!;
-    await act(async () => {
-      cta.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
-    expect(backend.pushed).toEqual(['/recovery']);
-  });
-
-  it('DISMISSED: dismissing hides it now and persists so it never re-nags', async () => {
-    await render();
-    const dismiss = [...container.querySelectorAll('button')].find((b) => b.textContent === en.recoveryNudge.dismiss)!;
-    await act(async () => {
-      dismiss.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
-    expect(banner()).toBeNull();
-    expect(localStorage.getItem(recoveryNudgeDismissKey('user-1'))).toBe('1');
-
-    // A fresh mount — i.e. the next session — stays quiet.
-    act(() => root.unmount());
-    container.remove();
+  it('CONTRACT: renders nothing on any path, including /recovery', async () => {
+    backend.pathname = '/recovery';
     await render();
     expect(banner()).toBeNull();
   });
 
-  it("DISMISSED: another account's dismissal does not silence this one", async () => {
-    localStorage.setItem(recoveryNudgeDismissKey('someone-else'), '1');
+  it('INTEGRITY: the repair still runs while nothing is rendered', async () => {
+    // The point of keeping this component at all. If the banner's removal ever
+    // takes the repair with it, this goes red rather than an account silently
+    // keeping an empty backup row.
     await render();
-    expect(banner()).not.toBeNull();
-  });
-
-  it('MOUNTED: the app shell renders it, on both surfaces', () => {
-    // A perfectly correct component nobody mounts fixes nothing — and the mount
-    // point is the whole difference between "repairs every account" and
-    // "repairs the accounts that happen to visit one screen". Asserted against
-    // the source so deleting either line fails here.
-    const root = path.resolve(__dirname, '../..');
-    const web = readFileSync(path.join(root, 'src/components/CommunityLayout.tsx'), 'utf-8');
-    expect(web).toContain('<RecoveryNudge isGuest={isGuest} sessionChecked={sessionChecked} />');
-
-    // The mini-app SPLIT the two jobs this component does on the web. Its
-    // banner is a Profile-tab prompt now (product decision — it nagged from
-    // first launch on every tab), so what has to be mounted app-wide there is
-    // the silent repair, and the assertion follows it: `RecoveryRepairProvider`
-    // wraps the whole tab navigator. Whether the banner itself is mounted, and
-    // nowhere but Profile, is asserted over the whole mini-app source tree in
-    // `packages/mobile/src/__tests__/recoveryNudgeProfileOnly.test.tsx` —
-    // a stronger check than this one, and it needs that package's harness.
-    const mobile = readFileSync(path.join(root, 'packages/mobile/src/OpenStoaApp.tsx'), 'utf-8');
-    expect(mobile.replace(/\s+/g, ' ')).toContain(
-      '<RecoveryRepairProvider> <OpenStoaTabNavigator /> </RecoveryRepairProvider>',
-    );
-  });
-
-  it('i18n: the banner renders in Korean, never a raw key', async () => {
-    await render({ isGuest: false, sessionChecked: true }, 'ko');
-    expect(banner()?.textContent).toContain(ko.recoveryNudge.title);
-    expect(banner()?.textContent).toContain(ko.recoveryNudge.body);
-    expect(banner()?.textContent).not.toContain('recoveryNudge.');
-    expect(banner()?.textContent).not.toContain(en.recoveryNudge.title);
+    expect(backend.ensureCalls).toBe(1);
+    expect(banner()).toBeNull();
   });
 });

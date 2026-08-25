@@ -96,11 +96,23 @@ export function ChatImage({
         // The box, stated. `overflow: hidden` is what performs the crop for the
         // badge and the fade; `object-fit` performs it for the picture itself.
         width: box.width,
-        height: box.height,
-        // The bubble caps its own children at 85% of the column, which on a
-        // very narrow panel is less than the slot. Shrinking is the right
-        // answer there; `cover` absorbs it by cropping slightly more, where
-        // overflowing would put the picture outside the bubble.
+        /*
+         * The RATIO is the box, not the pixel height.
+         *
+         * The bubble caps its own children at 85% of the column, so on a narrow
+         * panel the slot does not fit and `max-width` shrinks the width. A
+         * stated `height` does not shrink with it, and the box then renders
+         * TALLER relative to its width than the clamp allows: measured at
+         * 236x400 for a 1179x2556 screenshot, ratio 0.59 against a 0.75 bound —
+         * 27% longer than the cap, which is the exact "runs longer than
+         * KakaoTalk" complaint the clamp exists to answer, reappearing wherever
+         * the panel is narrow.
+         *
+         * `aspect-ratio` against an explicit width still reserves the row
+         * before the bytes arrive — the whole point of computing a box up front
+         * — while letting the height track whatever width the bubble grants.
+         */
+        aspectRatio: `${box.width} / ${box.height}`,
         maxWidth: '100%',
         overflow: 'hidden',
         borderRadius: 'var(--radius-card)',

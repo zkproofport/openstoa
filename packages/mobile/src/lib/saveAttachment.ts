@@ -46,6 +46,20 @@ export interface AttachmentFile {
   /** Read the file back. Used to hand a displayed picture to the share sheet. */
   bytes(): Promise<Uint8Array>;
   delete(): void;
+  /**
+   * Is there already a file here?
+   *
+   * This is what lets a picture be decrypted ONCE. The display cache is named
+   * from the media id, so re-entering a room can find last time's plaintext
+   * instead of paying the download and the AES again — 3,086ms of a 6MB
+   * attachment, per view, per entry.
+   *
+   * OPTIONAL, and every caller treats a missing implementation as "not there".
+   * The mini-app borrows this filesystem from the host binary, so a phone
+   * running an older host has an object without it; a required member would
+   * turn that into a crash on the one path the cache exists to make faster.
+   */
+  exists?: boolean;
 }
 
 /** Somewhere temporary to put a copy that exists only to be handed on. */

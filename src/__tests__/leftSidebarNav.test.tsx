@@ -210,35 +210,48 @@ describe('LeftSidebar — right-aligned count (Explore Topics)', () => {
   });
 });
 
-describe('LeftSidebar — unread badge on Chat', () => {
-  it('EMPTY: no unreadChatCount prop renders no badge', async () => {
+describe('LeftSidebar — there is no chat entry on the web', () => {
+  /*
+   * This block used to assert the opposite: a Chat row, its unread badge, and
+   * the counting rules for 0 / 1..99 / 99+. All of it is gone, and asserting
+   * its ABSENCE is not a smaller test — it is the one that matters now.
+   *
+   * WHY THE ROW WENT. A browser cannot read a room: the keys are on the phone
+   * and never leave it. What it COULD do was join the group, advance an epoch
+   * and post ciphertext nobody would ever open — damage rather than nothing.
+   * On top of that, signing out cleared the session and left the MLS state in
+   * IndexedDB, the leaf identity in `localStorage`, and the decrypted-picture
+   * cache on disk, so the next person at a shared machine could read the
+   * previous person's conversation.
+   *
+   * The badge rules did not disappear with it — they moved to
+   * `@openstoa/mls/chatUnreadBadge`, which the mini-app uses and which has its
+   * own boundary cases for 0 / 1..99 / 99+.
+   */
+  it('CONTRACT: a member with an unread count still gets no chat row', async () => {
+    stubFetch();
+    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked unreadChatCount={7} />);
+
+    expect(byTestId('left-nav-chat')).toHaveLength(0);
+  });
+
+  it('BOUNDARY: a large unread count renders nothing rather than a stray "99+"', async () => {
+    // A count arriving from a stale prop must not resurrect the entry point.
+    stubFetch();
+    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked unreadChatCount={150} />);
+
+    expect(container.textContent).not.toContain('99+');
+    expect(byTestId('left-nav-chat')).toHaveLength(0);
+  });
+
+  it('INTEGRITY: passing onOpenChat does not bring the row back', async () => {
+    // The prop may still exist on the type for a while. A leftover caller must
+    // not be able to reinstate a surface that was removed on purpose.
     stubFetch();
     await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />);
 
-    const chat = byTestId('left-nav-chat')[0];
-    expect(chat.textContent).not.toMatch(/\d/);
-  });
-
-  it('CONTRACT: unreadChatCount=0 renders no badge (0 unread = nothing to flag)', async () => {
-    stubFetch();
-    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} unreadChatCount={0} />);
-
-    const chat = byTestId('left-nav-chat')[0];
-    expect(chat.textContent).not.toMatch(/\d/);
-  });
-
-  it('BOUNDARY: unreadChatCount=1..99 renders the exact figure', async () => {
-    stubFetch();
-    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} unreadChatCount={7} />);
-
-    expect(byTestId('left-nav-chat')[0].textContent).toContain('7');
-  });
-
-  it('BOUNDARY: unreadChatCount=150 caps the displayed badge at "99+"', async () => {
-    stubFetch();
-    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} unreadChatCount={150} />);
-
-    expect(byTestId('left-nav-chat')[0].textContent).toContain('99+');
+    expect(byTestId('left-nav-chat')).toHaveLength(0);
+    expect(container.textContent).not.toContain('Conversations');
   });
 });
 
@@ -249,18 +262,17 @@ describe('LeftSidebar — guest vs member gating', () => {
 
     expect(rowByText('My Topics')).toBeUndefined();
     expect(byTestId('left-nav-chat')).toHaveLength(0);
-    // The group label itself must not appear either — an empty disclosure
-    // whose only row is hidden is worse than no group at all.
     expect(container.textContent).not.toContain('Conversations');
   });
 
-  it('AUTHZ: a member (isGuest=false) with onOpenChat sees both', async () => {
+  it('AUTHZ: a member sees My Topics — and, like a guest, no chat', async () => {
     stubFetch();
     await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />);
 
     expect(rowByText('My Topics')).toBeDefined();
-    expect(byTestId('left-nav-chat')).toHaveLength(1);
-    expect(container.textContent).toContain('Conversations');
+    // The one place member and guest now agree: chat is on the phone.
+    expect(byTestId('left-nav-chat')).toHaveLength(0);
+    expect(container.textContent).not.toContain('Conversations');
   });
 });
 
@@ -269,8 +281,9 @@ describe('LeftSidebar — focus-visible + long-label layout contract', () => {
     stubFetch();
     await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />);
 
-    for (const label of ['Start a Topic', 'All', 'Explore Topics', 'My Topics', 'On-Chain Records', 'Chat']) {
-      const row = rowByText(label) ?? byTestId('left-nav-chat')[0];
+    // 'Chat' is deliberately absent from this list — the web has no chat row.
+    for (const label of ['Start a Topic', 'All', 'Explore Topics', 'My Topics', 'On-Chain Records']) {
+      const row = rowByText(label);
       expect(row?.classList.contains('os-nav-row'), label).toBe(true);
     }
   });
@@ -340,11 +353,14 @@ describe('LeftSidebar — group open/closed state persists across remount', () =
 });
 
 describe('LeftSidebar — group labels render in both locales', () => {
-  it('en/ko: Browse and Conversations group labels', async () => {
+  it('en/ko: the Browse group label — and no Conversations group in either locale', async () => {
     stubFetch();
     await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />, 'en');
     expect(container.textContent).toContain('Browse');
-    expect(container.textContent).toContain('Conversations');
+    // The Conversations group went with web chat. Checked in BOTH locales
+    // because a removal that only lands in English is how a stray Korean
+    // string survives a cleanup.
+    expect(container.textContent).not.toContain('Conversations');
 
     await act(async () => { root.unmount(); });
     container.remove();
@@ -353,7 +369,7 @@ describe('LeftSidebar — group labels render in both locales', () => {
     root = createRoot(container);
     await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />, 'ko');
     expect(container.textContent).toContain('둘러보기');
-    expect(container.textContent).toContain('대화');
+    expect(container.textContent).not.toContain('대화');
   });
 });
 
@@ -534,53 +550,22 @@ describe('LeftSidebar — Preferences group', () => {
 
 // ── Chat row: hidden only where the bottom tab bar already provides it ──────
 
-describe('LeftSidebar — Chat group is suppressed at phone width only', () => {
-  it('CONTRACT: the WHOLE Conversations group (label included) carries the mobile-dupe class, not just the row', async () => {
+describe('LeftSidebar — the Chat group is gone, not merely hidden', () => {
+  /*
+   * This block used to check that the Conversations group carried a
+   * `mobile-dupe` class: the row existed on desktop and was hidden by CSS at
+   * phone width, where the bottom tab bar already offered chat.
+   *
+   * There is no row to hide now. The distinction still matters enough to keep
+   * a case for: hiding with CSS leaves a mounted element that a keyboard or a
+   * screen reader can still reach, and "chat is not available here" has to be
+   * true for those users too — not just for the ones who can see the layout.
+   */
+  it('CONTRACT: no chat row is mounted at any width, hidden or otherwise', async () => {
     stubFetch();
     await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />);
 
-    const group = byTestId('left-nav-chat')[0].closest('details') as HTMLDetailsElement;
-    expect(group.classList.contains('os-nav-mobile-dupe')).toBe(true);
-    // Hiding the row alone would leave an empty labelled disclosure, which
-    // is the same anti-pattern the guest branch already avoids.
-    expect(group.querySelector('summary')?.textContent).toContain('Conversations');
-  });
-
-  it('CONTRACT: the row is still MOUNTED (CSS hiding, not a JS breakpoint read) — desktop keeps its only chat entry', async () => {
-    stubFetch();
-    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />);
-
-    // No matchMedia dependency: the component renders identically at every
-    // width, and `CommunityLayout` + this rule decide what is on screen.
-    expect(byTestId('left-nav-chat')).toHaveLength(1);
-  });
-
-  it('CONTRACT: the row still opens the rail when it IS visible (hiding did not break the action)', async () => {
-    stubFetch();
-    const onOpenChat = vi.fn();
-    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={onOpenChat} />);
-
-    await act(async () => { (byTestId('left-nav-chat')[0] as HTMLButtonElement).click(); });
-    expect(onOpenChat).toHaveBeenCalledTimes(1);
-  });
-
-  it('CONTRACT: globals.css hides that class below 767px only — the same cut as MOBILE_QUERY / the drawer swap', () => {
-    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf-8');
-    const block = css.match(/@media \(max-width: 767px\) {[^@]*?\.os-nav-mobile-dupe\s*{[^}]*}/s);
-    expect(block, '.os-nav-mobile-dupe must be hidden inside a (max-width: 767px) block').not.toBeNull();
-    expect(block![0]).toMatch(/display:\s*none/);
-    // No min-width counterpart: the rule must not also hide it on desktop.
-    expect(css).not.toMatch(/@media \(min-width: 768px\) {[^@]*?\.os-nav-mobile-dupe/s);
-  });
-
-  it('CONTRACT: exactly one element claims that class (one rule, one purpose)', async () => {
-    const sidebar = readFileSync(join(process.cwd(), 'src/components/LeftSidebar.tsx'), 'utf-8');
-    expect(sidebar.match(/className="os-nav-mobile-dupe"/g)).toHaveLength(1);
-
-    stubFetch();
-    await renderSidebar(<LeftSidebar isGuest={false} sessionChecked onOpenChat={() => {}} />);
-    const hidden = container.querySelectorAll('.os-nav-mobile-dupe');
-    expect(hidden).toHaveLength(1);
-    expect(hidden[0].tagName).toBe('DETAILS');
+    expect(byTestId('left-nav-chat')).toHaveLength(0);
+    expect(container.querySelectorAll('.mobile-dupe')).toHaveLength(0);
   });
 });

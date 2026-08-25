@@ -109,37 +109,38 @@ describe('signed in, inside CommunityLayout (onChatToggle passed)', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ userId: 'me', nickname: 'me' }))));
   });
 
-  it('CONTRACT: the chat rail toggle is present and is the ONLY chat/DM entry point', async () => {
+  it('CONTRACT: there is no chat entry in the header at all', async () => {
+    /*
+     * This used to assert the toggle was PRESENT and was the only chat entry.
+     * Chat left the web entirely: a browser cannot read a room (the keys are on
+     * the phone), and what it could do instead was join the group, advance an
+     * epoch and post ciphertext nobody would open. The header is one of the
+     * three entry points that went; the others were the bottom tab bar and the
+     * left-nav group.
+     */
     await render({ onChatToggle: vi.fn(), chatOpen: false });
 
-    expect(container.querySelector('button[aria-label="Open chat"]')).not.toBeNull();
-    // The old full-page "Messages" link to /dm is gone.
+    expect(container.querySelector('button[aria-label="Open chat"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Close chat"]')).toBeNull();
     expect(container.querySelector('a[href="/dm"]')).toBeNull();
     expect(container.textContent).not.toContain('Messages');
+  });
+
+  it('INTEGRITY: passing onChatToggle does not bring the button back', async () => {
+    // The prop may outlive the button for a release. A leftover caller must not
+    // be able to reinstate a surface that was removed on purpose — the same
+    // guard the left-nav and tab-bar suites carry.
+    const onChatToggle = vi.fn();
+    await render({ onChatToggle, chatOpen: true });
+
+    expect(container.querySelector('button[aria-pressed]')).toBeNull();
+    expect(onChatToggle).not.toHaveBeenCalled();
   });
 
   it('FIX8: no /recovery link in the top-level nav', async () => {
     await render({ onChatToggle: vi.fn(), chatOpen: false });
 
     expect(container.querySelector('a[href="/recovery"]')).toBeNull();
-  });
-
-  it('clicking the chat toggle invokes onChatToggle', async () => {
-    const onChatToggle = vi.fn();
-    await render({ onChatToggle, chatOpen: false });
-
-    await act(async () => {
-      (container.querySelector('button[aria-label="Open chat"]') as HTMLButtonElement).click();
-    });
-    expect(onChatToggle).toHaveBeenCalledTimes(1);
-  });
-
-  it('reflects the open state via aria-pressed / aria-label', async () => {
-    await render({ onChatToggle: vi.fn(), chatOpen: true });
-
-    const btn = container.querySelector('button[aria-pressed]') as HTMLButtonElement;
-    expect(btn.getAttribute('aria-pressed')).toBe('true');
-    expect(btn.getAttribute('aria-label')).toBe('Close chat');
   });
 });
 
@@ -238,13 +239,14 @@ describe('MOBILE: below 768px the header keeps only the hamburger + logo mark', 
     expect(css()).toMatch(/\.header-hamburger\s*{\s*display: flex !important/);
   });
 
-  it('MEMBER: theme toggle, language select, chat toggle and nickname chip are all hidden', async () => {
+  it('MEMBER: theme toggle, language select and nickname chip are all hidden', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ userId: 'me', nickname: 'me' }))));
     await render({ onMenuToggle: vi.fn(), onChatToggle: vi.fn(), chatOpen: false });
 
     expect(hidden(container.querySelector('button[aria-label^="Switch to"], button[title^="Switch to"]'))).toBe(true);
     expect(hidden(container.querySelector('select[aria-label="Language"]'))).toBe(true);
-    expect(hidden(container.querySelector('button[aria-label="Open chat"]'))).toBe(true);
+    // No chat toggle to hide — it is not rendered at any width.
+    expect(container.querySelector('button[aria-label="Open chat"]')).toBeNull();
     expect(hidden(container.querySelector('a[href="/my"]'))).toBe(true);
   });
 

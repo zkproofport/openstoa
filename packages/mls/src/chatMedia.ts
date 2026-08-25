@@ -28,7 +28,7 @@
  * attachment and a 9MB one, and `chatMediaCiphertextFilename` for how the
  * mini-app receives them without crossing the RN bridge.
  */
-import { stripImageMetadata } from './imageMetadata';
+import { readImageDimensions, stripImageMetadata } from './imageMetadata';
 
 /**
  * Marks a message body as an attachment envelope rather than text.
@@ -244,6 +244,25 @@ export interface ChatMediaEnvelope {
   mime: string;
   /** Plaintext byte length, for progress and for sanity-checking a decrypt. */
   size: number;
+  /**
+   * Pixel dimensions of the image, so a reader can RESERVE ITS ROW before the
+   * bytes arrive.
+   *
+   * Without these the placeholder is one line of text tall and the row grows by
+   * hundreds of pixels the moment the picture decodes. Four of those in one
+   * screen is what "the chat jumps to the middle when I open it" actually is:
+   * the view was pinned to the newest message, the rows BELOW the anchor grew,
+   * and the bottom walked away from the reader. `maintainVisibleContentPosition`
+   * cannot help — it holds a row still, it does not stop a row from growing —
+   * and the auto-scroll that would re-pin is gated on still being near the
+   * bottom, which by then is false.
+   *
+   * OPTIONAL, and must stay optional: every message sent before this field
+   * existed has no dimensions, and those rows still have to render. Readers
+   * fall back to a fixed aspect ratio.
+   */
+  w?: number;
+  h?: number;
 }
 
 /**
@@ -427,10 +446,28 @@ export function parseChatMediaBody(body: unknown): ChatMediaEnvelope | null {
   if (typeof e.size !== 'number' || !Number.isInteger(e.size) || e.size <= 0 || e.size > MAX_CHAT_MEDIA_BYTES) {
     return null;
   }
+  /*
+   * Dimensions are OPTIONAL but, when present, must be sane: a bad pair would
+   * reserve a row of the wrong size, which is the very defect this exists to
+   * fix. Rejected individually rather than failing the whole envelope, because
+   * an unopenable attachment is worse than one that lays out imprecisely.
+   */
+  const dim = (v: unknown): number | undefined =>
+    typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= 20000 ? v : undefined;
+
   // The key embeds the AEAD context, so an envelope naming one media id and a
   // key ending in another is inconsistent by construction — a hand-edited body.
   if (!e.key.endsWith(`/${e.mediaId}.bin`)) return null;
-  return { v: 1, key: e.key, mediaId: e.mediaId, takVersion: e.takVersion, mime: e.mime, size: e.size };
+  return {
+    v: 1,
+    key: e.key,
+    mediaId: e.mediaId,
+    takVersion: e.takVersion,
+    mime: e.mime,
+    size: e.size,
+    w: dim(e.w),
+    h: dim(e.h),
+  };
 }
 
 /** Whether a body is an attachment, without paying for a full parse. */
@@ -585,6 +622,18 @@ export async function sendEncryptedChatMedia(
     throw new ChatMediaError('upload-failed', err instanceof Error ? err.message : String(err));
   }
 
+  /*
+   * Measured from the STRIPPED bytes, which is what the reader will decode —
+   * a strip can re-emit orientation but never changes the pixel grid, so this
+   * is the size the reader's row has to be. Header-only, so it costs
+   * microseconds next to the seal that just ran.
+   *
+   * Null is fine and must stay fine: an unreadable header means the reader
+   * falls back to a fixed aspect, exactly as it does for every message sent
+   * before this field existed.
+   */
+  const dims = readImageDimensions(plaintext);
+
   const envelope: ChatMediaEnvelope = {
     v: 1,
     key: objectKey,
@@ -594,6 +643,8 @@ export async function sendEncryptedChatMedia(
     // The STRIPPED length: this is what was sealed, so it is what the reader
     // will get back and what the envelope has to describe.
     size: plaintext.length,
+    w: dims?.width,
+    h: dims?.height,
   };
   try {
     await deps.send(buildChatMediaBody(envelope));
@@ -637,7 +688,16 @@ export async function sendEncryptedChatMedia(
  * conflating them is what produces a permanent spinner that explains nothing.
  */
 export type ChatMediaLoad =
-  | { status: 'ok'; bytes: Uint8Array; mime: string }
+  /*
+   * `bytes` is NULL on a cache hit.
+   *
+   * A picture that was already decrypted on this device is displayed straight
+   * from its file, so there is nothing to carry here — and carrying it would
+   * mean reading a multi-megabyte plaintext back into JS for a row that only
+   * needs a URI. The one caller that really does want the bytes (the share
+   * sheet) reads them from the file when the button is pressed.
+   */
+  | { status: 'ok'; bytes: Uint8Array | null; mime: string }
   /** No key for this attachment YET. Same state as archive-locked history. */
   | { status: 'locked' }
   /** The ciphertext could not be fetched. Retryable. */

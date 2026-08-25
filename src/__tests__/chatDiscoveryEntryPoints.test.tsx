@@ -122,144 +122,57 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe('CommunityLayout — left-nav "Chat" entry (list)', () => {
-  it('CONTRACT: clicking it opens the rail with a room: null request (the list)', async () => {
-    await render(<CommunityLayout isGuest={false} sessionChecked={true}><div /></CommunityLayout>);
+/*
+ * THE WEB HAS NO CHAT ENTRY POINTS. This file used to enumerate them and prove
+ * each opened the rail correctly; it now proves each is GONE, which is the
+ * contract that has to hold.
+ *
+ * There were FOUR, and the fourth is why this file keeps its shape rather than
+ * being deleted: the left-nav group, the header toggle, the bottom tab bar —
+ * and "Open topic chat" in the RightSidebar, which only appears on a topic page
+ * and was still shipping after the other three were removed. An enumeration is
+ * what caught it. A deleted file would not have.
+ *
+ * WHY THEY WENT. A browser cannot read a room — the keys are on the phone and
+ * never leave it. What it could do was join the group, advance an epoch and post
+ * ciphertext nobody would ever open. And signing out cleared the session while
+ * leaving the MLS state in IndexedDB, the leaf identity in `localStorage` and
+ * the decrypted-picture cache on disk, so the next person at a shared machine
+ * could read the previous person's conversation.
+ */
+describe('the web has no chat entry point, on any surface', () => {
+  it('CONTRACT: the left-nav "Chat" entry is gone for a member', async () => {
+    await render(<CommunityLayout isGuest={false} sessionChecked><div /></CommunityLayout>);
+    expect(byTestId('left-nav-chat')[0]).toBeUndefined();
+  });
 
-    // Not open yet — no rail mounted.
+  it('CONTRACT: the RightSidebar "Open topic chat" entry is gone on a topic page', async () => {
+    // The one that survived the first three removals.
+    await render(
+      <CommunityLayout isGuest={false} sessionChecked topicId="t1" topicTitle="A topic">
+        <div />
+      </CommunityLayout>,
+    );
+    expect(byTestId('topic-open-chat')[0]).toBeUndefined();
+  });
+
+  it('MOUNT-UNIQUE: no ChatRail is mounted at all', async () => {
+    await render(
+      <CommunityLayout isGuest={false} sessionChecked topicId="t1" topicTitle="A topic">
+        <div />
+      </CommunityLayout>,
+    );
     expect(byTestId('chat-rail')).toHaveLength(0);
-
-    const chatBtn = byTestId('left-nav-chat')[0] as HTMLButtonElement;
-    expect(chatBtn).toBeDefined();
-    await act(async () => { chatBtn.click(); });
-
-    expect(byTestId('chat-rail')).toHaveLength(1);
-    expect(railProps.current).toMatchObject({ openRequest: { room: null, nonce: 1 } });
   });
 
-  it('AUTHZ: a guest sees no "Chat" entry at all (not a disabled one)', async () => {
-    await render(<CommunityLayout isGuest={true} sessionChecked={true}><div /></CommunityLayout>);
-
-    expect(byTestId('left-nav-chat')).toHaveLength(0);
-  });
-
-  it('MOUNT-UNIQUE: exactly one ChatRail is ever mounted, however the rail was opened', async () => {
-    await render(<CommunityLayout isGuest={false} sessionChecked={true}><div /></CommunityLayout>);
-    await act(async () => { (byTestId('left-nav-chat')[0] as HTMLButtonElement).click(); });
-
-    expect(byTestId('chat-rail')).toHaveLength(1);
-  });
-
-  it('REPEAT: clicking the SAME entry point twice advances the request nonce both times', async () => {
-    await render(<CommunityLayout isGuest={false} sessionChecked={true}><div /></CommunityLayout>);
-    const chatBtn = byTestId('left-nav-chat')[0] as HTMLButtonElement;
-
-    await act(async () => { chatBtn.click(); });
-    expect(railProps.current).toMatchObject({ openRequest: { room: null, nonce: 1 } });
-
-    await act(async () => { chatBtn.click(); });
-    expect(railProps.current).toMatchObject({ openRequest: { room: null, nonce: 2 } });
-  });
-});
-
-describe('CommunityLayout — RightSidebar "Open topic chat" entry (topic-specific)', () => {
-  it('CONTRACT: clicking it opens the rail requesting THAT exact topic room', async () => {
+  it('AUTHZ: a guest sees none of them either', async () => {
+    // Guest and member now agree about chat, which they did not before.
     await render(
-      <CommunityLayout
-        isGuest={false}
-        sessionChecked={true}
-        topicId="t1"
-        topicTitle="Zoning Law"
-        topicDescription="desc"
-        topicMemberCount={4}
-      >
+      <CommunityLayout isGuest sessionChecked topicId="t1" topicTitle="A topic">
         <div />
       </CommunityLayout>,
     );
-
-    const btn = byTestId('topic-open-chat')[0] as HTMLButtonElement;
-    expect(btn).toBeDefined();
-    await act(async () => { btn.click(); });
-
-    expect(byTestId('chat-rail')).toHaveLength(1);
-    expect(railProps.current).toMatchObject({
-      openRequest: { room: { kind: 'topic', topicId: 't1', title: 'Zoning Law' }, nonce: 1 },
-    });
-  });
-
-  it('UTF-8: a Korean + emoji topic title survives into the request unmodified', async () => {
-    const title = '법률 상담 🏛️ zk';
-    await render(
-      <CommunityLayout isGuest={false} sessionChecked={true} topicId="t1" topicTitle={title}>
-        <div />
-      </CommunityLayout>,
-    );
-
-    await act(async () => { (byTestId('topic-open-chat')[0] as HTMLButtonElement).click(); });
-
-    expect(railProps.current).toMatchObject({ openRequest: { room: { topicId: 't1', title } } });
-  });
-
-  it('EMPTY: on a non-topic page (no topicId/topicTitle) the entry is simply absent', async () => {
-    await render(<CommunityLayout isGuest={false} sessionChecked={true}><div /></CommunityLayout>);
-
-    expect(byTestId('topic-open-chat')).toHaveLength(0);
-  });
-
-  it('AUTHZ: a guest sees no "Open topic chat" entry even on a topic page', async () => {
-    await render(
-      <CommunityLayout isGuest={true} sessionChecked={true} topicId="t1" topicTitle="Zoning Law">
-        <div />
-      </CommunityLayout>,
-    );
-
-    expect(byTestId('topic-open-chat')).toHaveLength(0);
-  });
-});
-
-describe('LeftSidebar — in isolation', () => {
-  it('renders the Chat entry only when onOpenChat is passed, and invokes it on click', async () => {
-    const onOpenChat = vi.fn();
-    await render(
-      <LeftSidebar isGuest={false} sessionChecked={true} onOpenChat={onOpenChat} />,
-    );
-
-    const btn = byTestId('left-nav-chat')[0] as HTMLButtonElement;
-    expect(btn).toBeDefined();
-    await act(async () => { btn.click(); });
-    expect(onOpenChat).toHaveBeenCalledTimes(1);
-  });
-
-  it('EMPTY: renders nothing for the Chat entry when onOpenChat is omitted', async () => {
-    await render(<LeftSidebar isGuest={false} sessionChecked={true} />);
-
-    expect(byTestId('left-nav-chat')).toHaveLength(0);
-  });
-});
-
-describe('RightSidebar — in isolation', () => {
-  it('renders "Open topic chat" only with a topic in view AND onOpenChat passed, and invokes it on click', async () => {
-    const onOpenChat = vi.fn();
-    await render(
-      <RightSidebar topicId="t1" topicTitle="Zoning Law" onOpenChat={onOpenChat} />,
-    );
-
-    const btn = byTestId('topic-open-chat')[0] as HTMLButtonElement;
-    expect(btn).toBeDefined();
-    await act(async () => { btn.click(); });
-    expect(onOpenChat).toHaveBeenCalledTimes(1);
-  });
-
-  it('EMPTY: no topic in view -> no "Open topic chat" entry even if onOpenChat is passed', async () => {
-    const onOpenChat = vi.fn();
-    await render(<RightSidebar onOpenChat={onOpenChat} />);
-
-    expect(byTestId('topic-open-chat')).toHaveLength(0);
-  });
-
-  it('renders nothing for the entry when onOpenChat is omitted, even with a topic in view', async () => {
-    await render(<RightSidebar topicId="t1" topicTitle="Zoning Law" />);
-
-    expect(byTestId('topic-open-chat')).toHaveLength(0);
+    expect(byTestId('left-nav-chat')[0]).toBeUndefined();
+    expect(byTestId('topic-open-chat')[0]).toBeUndefined();
   });
 });

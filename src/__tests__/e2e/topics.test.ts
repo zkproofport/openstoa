@@ -521,4 +521,55 @@ describe.sequential('Topics endpoints', () => {
     expect(getRes.status).toBe(404);
   });
 
+  /**
+   * REGRESSION: a topic that has been CHATTED IN can be deleted.
+   *
+   * The case above deletes a topic nobody ever spoke in, and that is why the
+   * defect it misses survived. Five tables arrived with E2EE — `mls_groups`,
+   * `mls_commits`, `tak_bundles`, `chat_archive`, `archive_holders` — all
+   * referencing `topics` with `ON DELETE NO ACTION`, and the delete handler
+   * touched none of them. So the final `delete(topics)` hit a foreign-key
+   * violation, the transaction rolled back, and the owner of any room with a
+   * single message in it got a 500 and could never remove it.
+   *
+   * Found on staging, where a room holding 13 commits and 13 bundles refused
+   * to go. What makes it reproducible here is CHATTING FIRST: posting one
+   * message is what creates the MLS group and the rows that blocked the
+   * delete.
+   */
+  it('REGRESSION: DELETE succeeds on a topic that has been chatted in', async () => {
+    const created = await authPost('/api/topics', {
+      title: `E2E Topic Delete AfterChat ${Date.now()}`,
+      description: 'Deleting a room someone actually spoke in',
+      visibility: 'public',
+      categoryId: categoryA.id,
+    });
+    expect(created.status).toBe(201);
+    const chattedTopicId = (await created.json()).topic.id;
+
+    /*
+     * A real sealed message. The server is blind (SI-1) and stores the bytes
+     * without opening them, which is all this case needs — what matters is
+     * that the row exists and that posting it creates the MLS group behind it.
+     */
+    const posted = await authPost(`/api/topics/${chattedTopicId}/chat`, {
+      ciphertext: Buffer.from([0xde, 0xad, 0xbe, 0xef]).toString('base64'),
+      epoch: 1,
+    });
+    expect(posted.status).toBe(201);
+
+    // The message really is there — otherwise this case would pass for the
+    // wrong reason on a build where posting silently failed.
+    const listed = await authGet(`/api/topics/${chattedTopicId}/chat?limit=5`);
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).messages.length).toBeGreaterThan(0);
+
+    const del = await authDelete(`/api/topics/${chattedTopicId}`);
+    expect(del.status).toBe(200);
+    expect((await del.json()).deleted).toBe(true);
+
+    const gone = await authGet(`/api/topics/${chattedTopicId}`);
+    expect(gone.status).toBe(404);
+  });
+
 });

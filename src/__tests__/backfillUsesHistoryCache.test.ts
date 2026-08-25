@@ -83,7 +83,14 @@ function harness(rows: Row[]) {
   // A room that already holds its root: this file is about the READ path, and a
   // root negotiation in the middle of it would count opens nobody asked for.
   const takStore = { get: async () => null, set: async () => {} };
-  const mls = {} as never;
+  /*
+   * The cache is keyed by ACCOUNT as well as room, so the double has to answer
+   * who is signed in. An empty object used to be enough; it no longer is, and
+   * that is the point — a session that cannot name its account writes nothing,
+   * because an unattributed cache of decrypted messages is the defect the key
+   * change exists to prevent.
+   */
+  const mls = { accountId: async () => '0xtest-account' } as never;
 
   vi.spyOn(tak, 'openArchive').mockImplementation(async (_k, _id, ct: string) => {
     opens += 1;

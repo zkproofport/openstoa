@@ -580,7 +580,9 @@
     },
     "recovery": {
       "keychainUploadFailed": "Your recovery key is saved, but this device could not upload its chat keys just now. Reopen this screen while online to finish the backup.",
-      "keychainUntrusted": "Your recovery key is saved. This device's chat keys were not uploaded, because they do not match the backup already on your account — recover on this device first, then set recovery up again."
+      "keychainUntrusted": "Your recovery key is saved. This device's chat keys were not uploaded, because they do not match the backup already on your account — recover on this device first, then set recovery up again.",
+      "recovered": "Recovered. Rooms will reload as their keys come back.",
+      "gapNotice": "Some rooms may stay empty for a while. Your keys were backed up on your other device, so anything that happened AFTER its last backup is not in it — for private, secret and direct rooms, another member's device has to hand those keys over before that stretch becomes readable. Public rooms reload in full straight away."
     },
     "recoveryNudge": {
       "title": "Back up your chat keys",
@@ -589,6 +591,38 @@
       "dismiss": "Not now",
       "dismissAria": "Dismiss the chat recovery reminder",
       "close": "Close"
+    },
+    "takeover": {
+      "noBackup": {
+        "title": "Back up on your other phone first",
+        "body": "Signing in here ends the session on your other phone, and your chat keys stay there — they do not travel with your account. Without a backup, the private rooms it joined become unreadable on both phones, permanently.\n\nThe only device that can still make that backup is the one that is signed in right now. Open ZKProofport on it, go to Profile → Chat recovery, and come back."
+      },
+      "staleBackup": {
+        "title": "Your backup is {{days}} days old",
+        "body": "Rooms you joined since then are not in it, and neither is anything sent in them. If your other phone is still signed in, backing up again on it takes a moment and keeps everything — it is the only device that can, and only while it is still signed in."
+      },
+      "ready": {
+        "title": "This will sign out your other phone",
+        "body": "Your chat keys stay on that phone, so after signing in here you will need to restore from your backup to read your rooms. Anything that happened after its last backup is not in it — for private, secret and direct rooms, another member has to hand those keys over before that stretch becomes readable."
+      },
+      "restoreNote": "Next step on this phone: Profile → Chat recovery → Restore.",
+      "continue": "Sign in here anyway",
+      "backUpFirst": "I'll back up first",
+      "cancel": "Cancel"
+    },
+    "keyRequest": {
+      "askMember": "Ask a member to unlock this history",
+      "askPeer": "Ask them to unlock this history",
+      "sending": "Asking…",
+      "waiting": "Asked. A member can unlock it from their phone.",
+      "waitingPeer": "Asked. They can unlock it from their phone.",
+      "granted": "Unlocked — these messages will open shortly.",
+      "failed": "Could not send the request. Try again.",
+      "pendingTitle": "Someone is waiting for keys",
+      "pendingRow": "A member cannot read part of this room's history.",
+      "grant": "Unlock for them",
+      "retryGrant": "Try again",
+      "cannotHelp": "This device does not have that stretch either."
     }
   }
 }

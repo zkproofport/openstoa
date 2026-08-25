@@ -24,7 +24,6 @@ import { reportFailure } from '../../api/failure';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { PostCard } from '../../components/PostCard';
-import { RecoveryNudge } from '../../components/RecoveryNudge';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { GatedImage } from '../../components/GatedImage';
@@ -796,15 +795,13 @@ export function ProfileHomeScreen() {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <>
-            {/* The ONLY mount of the chat-key recovery banner. It is a
-                Profile-tab prompt by product decision — the feed and the
-                topic list have no business raising chat keys — and mounting
-                it here rather than gating a root-level mount on the focused
-                route is what makes that true by construction. The silent
-                repair behind it runs app-wide from `RecoveryRepairProvider`
-                (`OpenStoaApp.tsx`), not from this screen. Renders null unless
-                the account actually has unprotected history. */}
-            <RecoveryNudge />
+            {/* No recovery banner.
+                Backing up is a BUTTON in settings, pressed by someone moving to
+                a new device, and the docs are where that is explained. Someone
+                who has not asked to back up is not in an error state, and the
+                top of their Profile is not the place to say otherwise. The
+                SILENT repair still runs app-wide from `RecoveryRepairProvider`
+                (`OpenStoaApp.tsx`) and asks nothing of anyone. */}
             {/* Header */}
             <View style={styles.header}>
               <TouchableOpacity

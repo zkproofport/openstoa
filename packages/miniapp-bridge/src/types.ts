@@ -85,6 +85,17 @@ export interface HostApi {
      * Omitted → the host's default (OIDC).
      */
     method?: 'oidc' | 'mdl';
+    /**
+     * End the session on the account's other phone.
+     *
+     * Omitted on the first attempt, so the server can REFUSE with a 409 and
+     * name what it found. The chat keys live on that other phone and do not
+     * travel with the account, so taking over without a backup makes its
+     * private rooms unreadable on both devices — permanently, and only the
+     * phone that is signed in at that moment can still prevent it. Pass true
+     * only after the person has seen `takeoverNotice` and chosen to continue.
+     */
+    takeover?: boolean;
   }): Promise<AuthResult>;
 
   /** Drop the cached token; subsequent API calls must re-authenticate. */
@@ -122,6 +133,29 @@ export interface HostApi {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
   };
+
+  /**
+   * Tell the host how many messages are waiting, so it can badge what the
+   * mini-app cannot reach: its own tab in the host's tab bar, and the app icon
+   * on the home screen.
+   *
+   * THE GAP THIS CLOSES. There were no badges anywhere. A push that arrived
+   * while the app was closed left nothing behind once its notification was
+   * swiped away; opening the app said nothing; and even inside OpenStoa the
+   * only way to find a waiting message was to open the Chat tab and look. The
+   * per-room counts had existed for a while, which is what made it easy to
+   * miss — the number was there, it just never travelled up.
+   *
+   * ONE NUMBER, THREE SURFACES. The mini-app owns the count because it is the
+   * only side that knows what has been read; the host owns the drawing because
+   * the tab bar and the icon are its. Three badges that disagree are worse than
+   * none, so there is exactly one call and the host uses the same value for
+   * both of the surfaces it controls.
+   *
+   * Optional, and called without awaiting: an older host binary simply has no
+   * badges, which is the state everything was in before this existed.
+   */
+  setUnreadBadge?(count: number): void;
 
   /**
    * Optional host-provided WebAuthn PRF (hmac-secret) for Phase 4 E2EE key

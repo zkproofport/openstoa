@@ -147,6 +147,23 @@ export class MlsSessionStore {
    * works either way; only attribution is lost, and inventing a user id here
    * would be worse than losing it.
    */
+  /**
+   * The signed-in account, or null when nothing has told us.
+   *
+   * Exposed so on-device caches can be namespaced by account. They cannot ask
+   * the provider themselves — it is supplied by the wiring layer, and a second
+   * copy of that wiring is a second place for the two to disagree about who is
+   * signed in.
+   */
+  async accountId(): Promise<string | null> {
+    if (!this.userIdProvider) return null;
+    try {
+      return (await this.userIdProvider()) || null;
+    } catch {
+      return null;
+    }
+  }
+
   private async mintIdentity(): Promise<string> {
     if (!this.userIdProvider) return this.identity;
     try {

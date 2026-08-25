@@ -181,32 +181,16 @@ export default function RightSidebar({
               <span>{topicMemberCount === 1 ? t('rightSidebar.member') : t('rightSidebar.members')}</span>
             </div>
           )}
-          {onOpenChat && (
-            <button
-              type="button"
-              onClick={onOpenChat}
-              data-testid="topic-open-chat"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                marginTop: 'var(--space-2)',
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                fontSize: 'var(--text-caption)',
-                fontWeight: 600,
-                color: 'var(--accent)',
-                cursor: 'pointer',
-                transition: 'opacity 0.15s',
-                minHeight: 'var(--touch-target-min)',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-            >
-              {t('rightSidebar.openTopicChat')} {'→'}
-            </button>
-          )}
+          {/*
+            THE "Open topic chat" ENTRY IS GONE — the fourth of four.
+            Chat is not available on the web. A browser cannot read a room: the
+            keys live on the phone and never leave it. What a browser COULD do
+            from here was join the group, advance an epoch, and post ciphertext
+            nobody would ever open — damage rather than nothing. The bottom tab,
+            the header toggle and the left-nav group went with it; this one is
+            the easiest to miss because it only appears on a topic page.
+            See `ChatOnMobileOnly`.
+          */}
         </div>
       )}
 

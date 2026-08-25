@@ -634,36 +634,8 @@ export default function LeftSidebar({
               breakpoint in JS because it must not MOUNT (a hidden-but-
               mounted chat surface opens a second SSE stream); nothing here
               is stateful, so that cost buys nothing. */}
-      {onOpenChat && (
-        <NavGroup
-          id="conversations"
-          label={t('sidebar.conversations')}
-          open={groupState.conversations}
-          onToggle={toggleGroup}
-          className="os-nav-mobile-dupe"
-        >
-          <button
-            type="button"
-            onClick={onOpenChat}
-            data-testid="left-nav-chat"
-            className="os-nav-row"
-            onMouseEnter={() => setHoveredItem('open-chat')}
-            onMouseLeave={() => setHoveredItem(null)}
-            style={{
-              ...navRowStyle(false),
-              ...(hoveredItem === 'open-chat' ? { background: 'var(--surface-hover)' } : {}),
-            }}
-          >
-            <span style={navIconStyle(false)}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-              </svg>
-            </span>
-            <span style={navLabelStyle}>{t('sidebar.chat')}</span>
-            {chatBadge !== null && <span style={navBadgeStyle}>{chatBadge}</span>}
-          </button>
-        </NavGroup>
-      )}
+      {/* NO CONVERSATIONS GROUP. Chat is not on the web — see `ChatOnMobileOnly`
+          for why a browser is the one place a person's chat keys cannot live. */}
 
       {/* Categories with popular topics */}
       <NavGroup id="categories" label={t('sidebar.categories')} open={groupState.categories} onToggle={toggleGroup}>

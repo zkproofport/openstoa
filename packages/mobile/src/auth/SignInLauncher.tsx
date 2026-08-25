@@ -36,6 +36,16 @@ import type { SignInMethodId } from './signInMethods';
 export type SignInLauncher = (
   onSuccess?: () => void,
   method?: SignInMethodId,
+  /**
+   * End the session on the account's other phone.
+   *
+   * Left out on the first attempt so the server can refuse and say what it
+   * found — the chat keys are on that other phone and do not travel with the
+   * account, and the only device that can still back them up is the one signed
+   * in at that moment. Passed as true only after the person has read the
+   * notice and chosen to continue.
+   */
+  takeover?: boolean,
 ) => void;
 
 const SignInLauncherContext = createContext<SignInLauncher | null>(null);

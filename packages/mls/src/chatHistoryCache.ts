@@ -136,8 +136,30 @@ interface StoredIndex {
   rooms: IndexEntry[];
 }
 
-function roomKey(topicId: string): string {
-  return `${ROOM_PREFIX}${topicId}`;
+/*
+ * THE ACCOUNT IS PART OF THE KEY.
+ *
+ * It was not, and that was a leak. This record holds DECRYPTED messages, and
+ * the key was the topic id alone — so on a phone where one person signed out
+ * and another signed in, the second person's app read the first person's
+ * plaintext for any room they both belonged to, including the stretch before
+ * they joined, which is precisely the history the tier policy withholds from
+ * them. `chatListCache` had already been namespaced by account; this file had
+ * not, so one of the two caches on the same device disagreed about whose data
+ * it was.
+ *
+ * Old entries written under the un-namespaced key are simply unreachable now.
+ * They are left rather than migrated: OpenStoa has not shipped, so there is no
+ * installed base to carry, and the cache is re-derivable from the archive by
+ * design.
+ */
+function roomKey(accountId: string, topicId: string): string {
+  return `${ROOM_PREFIX}${accountId}/${topicId}`;
+}
+
+/** The eviction index is per-account for the same reason the rooms are. */
+function indexKey(accountId: string): string {
+  return `${INDEX_KEY}/${accountId}`;
 }
 
 /**
@@ -236,9 +258,9 @@ export function mergeChatHistory(
   return kept.reverse();
 }
 
-async function readIndex(store: ChatHistoryStore): Promise<StoredIndex> {
+async function readIndex(store: ChatHistoryStore, accountId: string): Promise<StoredIndex> {
   try {
-    const raw = await store.get(INDEX_KEY);
+    const raw = await store.get(indexKey(accountId));
     if (raw) {
       const parsed = JSON.parse(raw) as StoredIndex;
       if (parsed?.v === VERSION && Array.isArray(parsed.rooms)) {
@@ -265,11 +287,17 @@ async function readIndex(store: ChatHistoryStore): Promise<StoredIndex> {
  */
 export async function readChatHistory(
   store: ChatHistoryStore | undefined,
+  /**
+   * Whose cache this is. REQUIRED, and a miss when absent: an unattributed
+   * record is the defect this parameter exists to prevent, so there is no
+   * "unknown account" bucket to fall back into.
+   */
+  accountId: string | null | undefined,
   topicId: string,
 ): Promise<CachedChatHistory | null> {
-  if (!store || !topicId.trim()) return null;
+  if (!store || !accountId || !topicId.trim()) return null;
   try {
-    const raw = await store.get(roomKey(topicId));
+    const raw = await store.get(roomKey(accountId, topicId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredRoom;
     if (parsed?.v !== VERSION || !Array.isArray(parsed.messages)) return null;
@@ -303,18 +331,20 @@ export async function readChatHistory(
  */
 export async function writeChatHistory(
   store: ChatHistoryStore | undefined,
+  /** Whose cache this is — see `readChatHistory`. Without it nothing is written. */
+  accountId: string | null | undefined,
   topicId: string,
   messages: CachedChatMessage[],
   cursor: ChatHistoryCursor | null,
 ): Promise<void> {
-  if (!store || !topicId.trim()) return;
+  if (!store || !accountId || !topicId.trim()) return;
   try {
     const kept = mergeChatHistory(messages);
     if (kept.length === 0) return;
     const body = JSON.stringify({ v: VERSION, cursor, messages: kept } satisfies StoredRoom);
-    await store.set(roomKey(topicId), body);
+    await store.set(roomKey(accountId, topicId), body);
 
-    const index = await readIndex(store);
+    const index = await readIndex(store, accountId);
     const seq = index.seq + 1;
     const rooms = index.rooms.filter((r) => r.topicId !== topicId);
     rooms.push({ topicId, bytes: utf8Length(body), seq });
@@ -331,11 +361,11 @@ export async function writeChatHistory(
       total -= room.bytes;
       // Best-effort: an un-clearable room stays on disk but leaves the index,
       // so the budget is still honoured for everything counted from here on.
-      await store.set(roomKey(room.topicId), '').catch(() => {});
+      await store.set(roomKey(accountId, room.topicId), '').catch(() => {});
     }
 
     await store.set(
-      INDEX_KEY,
+      indexKey(accountId),
       JSON.stringify({ v: VERSION, seq, rooms: survivors } satisfies StoredIndex),
     );
   } catch {

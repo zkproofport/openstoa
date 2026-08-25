@@ -118,10 +118,23 @@ function frame(): HTMLElement {
   return el as HTMLElement;
 }
 
-const boxOf = () => ({
-  width: Number.parseFloat(frame().style.width),
-  height: Number.parseFloat(frame().style.height),
-});
+/**
+ * The reserved box, read the way the component now states it.
+ *
+ * The frame no longer carries a pixel `height`. It carries a WIDTH and an
+ * `aspect-ratio`, because the bubble caps its children at 85% of the column and
+ * a stated height does not shrink with the width that cap imposes — a 1179x2556
+ * screenshot came out 236x400, ratio 0.59 against a 0.75 bound. The height
+ * these tests assert on is therefore derived from the ratio rather than read
+ * from a property that is deliberately absent; jsdom computes no layout, so
+ * reading `style.height` here returned NaN, not a wrong number.
+ */
+const boxOf = () => {
+  const style = frame().style;
+  const width = Number.parseFloat(style.width);
+  const [w, h] = style.aspectRatio.split('/').map((part) => Number.parseFloat(part));
+  return { width, height: Math.round((width * h) / w) };
+};
 
 const img = () => container.querySelector('img');
 const badge = () => container.querySelector('[data-testid="chat-image-cropped-badge"]');

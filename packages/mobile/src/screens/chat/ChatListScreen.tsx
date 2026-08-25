@@ -1,3 +1,4 @@
+import { formatUnreadBadge } from '../../lib/chatUnreadBadge';
 import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
@@ -9,6 +10,8 @@ import {
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useHost } from '@openstoa/miniapp-bridge';
+import { readCachedChatList, writeCachedChatList, type CachedChatRoom } from '../../lib/chatListCache';
 import { useTranslation } from 'react-i18next';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { sortConversationsByActivity } from '../../lib/chatSort';
@@ -225,6 +228,7 @@ export function countUnread(
 
 export function ChatListScreen() {
   const { t } = useTranslation();
+  const host = useHost();
   const client = useOpenStoaClient();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
@@ -267,7 +271,42 @@ export function ChatListScreen() {
     refetchInterval: unreadPollInterval(screenFocused, isGuest),
   });
 
-  const topics: Topic[] = Array.isArray(data) ? data : (data?.topics ?? []);
+  const fetched: Topic[] = Array.isArray(data) ? data : (data?.topics ?? []);
+
+  /*
+   * THE ROOMS THIS DEVICE ALREADY KNOWS ABOUT.
+   *
+   * Seeded from the device store on mount so a cold start with no network shows
+   * the list instead of an error page. Reproduced on a real device by turning
+   * wifi and mobile data off and relaunching: "Couldn't load chats — Could not
+   * reach the server", and not one room, including rooms whose whole history
+   * was already decrypted and sitting on the phone. The rooms had not gone
+   * anywhere; the LIST of them existed only in a server response.
+   */
+  const [cachedTopics, setCachedTopics] = useState<CachedChatRoom[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void readCachedChatList(host.localStore, sessionUserId).then((rooms) => {
+      if (!cancelled) setCachedTopics(rooms);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [host.localStore, sessionUserId]);
+
+  // A successful fetch REPLACES the cache — a room the account has left has to
+  // disappear, and merging would keep it on screen forever.
+  useEffect(() => {
+    if (!data) return;
+    void writeCachedChatList(host.localStore, sessionUserId, fetched);
+  }, [data, fetched, host.localStore, sessionUserId]);
+
+  /*
+   * The server's answer when there is one, the device's memory when there is
+   * not. Never both: a fetch that succeeded is authoritative, including when it
+   * returns nothing, because "you have left every room" is a real answer.
+   */
+  const topics: Topic[] = data ? fetched : (cachedTopics as unknown as Topic[]);
 
   /*
    * Seed the in-memory cursor cache from the server's ACCOUNT-level one.
@@ -376,7 +415,14 @@ export function ChatListScreen() {
     );
   }
 
-  if (error) {
+  /*
+   * The error page only when there is NOTHING to show.
+   *
+   * A failed refresh used to replace the whole screen, so one lost request hid
+   * every room the device already had. Offline that is the entire product: the
+   * history is on the phone and the reader is locked out of it by a banner.
+   */
+  if (error && topics.length === 0) {
     return (
       <QueryErrorState
         title={t('openstoa.chat.error.title')}
@@ -507,7 +553,9 @@ export function ChatListScreen() {
               {unreadCount > 0 ? (
                 <View style={styles.unreadBadge}>
                   <Text style={styles.unreadBadgeText}>
-                    {unreadCount > 99 ? '99+' : String(unreadCount)}
+                    {/* The shared rule — the web row had its own copy capped at
+                        "999+", so 100 unread read differently on each client. */}
+                    {formatUnreadBadge(unreadCount)}
                   </Text>
                 </View>
               ) : null}

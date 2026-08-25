@@ -5,6 +5,8 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { logger } from '@/lib/logger';
+import { deviceFromRequest } from '@/lib/deviceFromRequest';
+import { checkDeviceTakeover } from '@/lib/deviceTakeoverGate';
 import { unhandledRouteError } from '@/lib/apiError';
 
 const ROUTE = '/api/auth/dev-login';
@@ -73,7 +75,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const token = await createSession(userId, nickname, { isAI });
+    const device = deviceFromRequest(request);
+    const deviceKind = isAI ? 'agent' : device.kind;
+
+    /*
+     * THE SAME ONE-PHONE RULE AS THE REAL LOGIN.
+     *
+     * This is a dev endpoint, but it is a HUMAN login path — the emulator and
+     * the E2E suite reach an account through it. Leaving the rule out would
+     * mean the behaviour under test is not the behaviour that ships, and the
+     * first place anyone would notice is production.
+     *
+     * `takeover` comes from the body rather than a query string because this
+     * endpoint is a POST; the shape is otherwise identical to the poll route's.
+     */
+    const decision = await checkDeviceTakeover({
+      userId,
+      deviceKind,
+      deviceId: device.id,
+      takeover: body.takeover === true,
+    });
+    if (decision.kind === 'conflict') {
+      return NextResponse.json(decision.body, { status: 409 });
+    }
+
+    const token = await createSession(userId, nickname, {
+      isAI,
+      // An AI is an agent no matter what header it sent.
+      deviceKind,
+      deviceId: device.id,
+    });
 
     logger.info(ROUTE, existing ? 'Dev user reused' : 'Dev user created', {
       userId,

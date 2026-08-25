@@ -1,29 +1,41 @@
 // @vitest-environment jsdom
 /**
- * The room scrolls to the bottom when it becomes READABLE, not only when a new
- * message arrives.
+ * The reader keeps seeing the NEWEST message while the room fills in — and the
+ * panel does it by geometry, not by chasing.
  *
- * The defect: the auto-scroll effect was keyed on the bottom row's ID, and
- * decryption never changes an id — `catchUpArchive` replaces bodies in place on
- * rows that are already in state. So the pass that finally turns a wall of
- * locked placeholders into a conversation returned before scrolling, and the
- * reader was left looking at wherever the empty rows had happened to put them.
+ * WHAT THIS FILE USED TO ASSERT, and why it was rewritten. The panel rendered a
+ * normal column and scrolled to the floor whenever anything changed, so these
+ * tests COUNTED scrolls: a decrypt had to produce one, a growing `<img>` had to
+ * produce one. That is what the mechanism did, and the mechanism was wrong.
+ * Three of them ran at once — an anchor holding a row still, an
+ * `onContentSizeChange`-equivalent forcing the floor, a first-paint scroll —
+ * and with several pictures resolving a few frames apart they took turns
+ * winning. The owner filmed the result twice ("올라갔다 내려갔다").
  *
- * It compounded with `initialScrolledRef`, which the FIRST paint sets — a paint
- * where every row is locked and renders nothing. The scroll recorded as "done"
- * was a scroll over no content, and each row then grew twice: once as it
- * decrypted, and once as its `<img>` loaded.
+ * The column is now `column-reverse`: the newest message is at offset 0, so
+ * everything that grows, grows AWAY from the reader. Measured in Chrome before
+ * the change was written — a 300px viewport over 30 rows, `scrollTop` 0 at
+ * rest; growing a MIDDLE row by 400px moved the newest row's edge by 0px;
+ * appending a 10-row older page moved it by 0px. Signal Android
+ * (`setReverseLayout(true)`) and Telegram Android do the same, which is why
+ * neither shows this and why KakaoTalk does not either.
+ *
+ * So the correct assertion INVERTED. A decrypt must now produce NO scroll, and
+ * a picture loading must produce NO scroll — a scroll there would mean the
+ * chasing came back. What still has to hold is the guarantee itself, and that
+ * is asserted structurally.
  *
  * EDGE-CASE MATRIX → coverage
- *   contract   → decryption in place re-runs the bottom scroll
- *   contract   → an <img> finishing its load re-pins the bottom
- *   authz/read → a reader who has scrolled UP is never yanked back down
- *   boundary   → a shrink is not chased
+ *   contract   → the column is reversed, which is what makes offset 0 the newest
+ *   contract   → rows render newest-first, so the reversed column reads in order
+ *   contract   → decryption in place scrolls NOTHING
+ *   contract   → an <img> finishing its load scrolls NOTHING
+ *   contract   → a message ARRIVING while the reader is at the newest does pull
+ *   authz/read → a reader who has scrolled UP is never yanked down
  *   empty      → an empty room scrolls nothing
  *
- * jsdom has no layout engine, so `scrollTo` calls are counted rather than
- * positions measured — the same instrument `chatPanel-sync.test.tsx` uses, and
- * `scrollToBottom` calls exactly that (see its doc comment in ChatPanel).
+ * jsdom has no layout engine, so scrolls are COUNTED rather than positions
+ * measured — the same instrument `chatPanel-sync.test.tsx` uses.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { flushQueries } from './harness/providers';
@@ -88,20 +100,9 @@ class FakeEventSource {
     this.listeners.set(type, l);
   }
   close() {}
-}
-
-/** The panel's growth observer, captured so a test can fire it deliberately. */
-class FakeResizeObserver {
-  static instances: FakeResizeObserver[] = [];
-  target: Element | null = null;
-  constructor(public cb: () => void) {
-    FakeResizeObserver.instances.push(this);
-  }
-  observe(el: Element) {
-    this.target = el;
-  }
-  disconnect() {
-    this.target = null;
+  /** Deliver one server-sent event to whoever subscribed to `type`. */
+  emit(type: string, event: { data: string }) {
+    for (const fn of this.listeners.get(type) ?? []) fn(event);
   }
 }
 
@@ -167,21 +168,51 @@ async function mount(topicId = TOPIC) {
   await flush();
 }
 
-/** The panel's own scroller — the element `scrollToBottom` writes to. */
-function scroller(): HTMLElement {
-  const observed = FakeResizeObserver.instances.at(-1)?.target;
-  if (!observed?.parentElement) throw new Error('the message list was never observed');
-  return observed.parentElement;
+/**
+ * The reversed message column.
+ *
+ * Found by the property under test rather than by a test id: the column IS the
+ * element whose `flex-direction` is `column-reverse`, so a change that drops
+ * the reversal fails the lookup instead of quietly passing a weaker assertion
+ * against some other div.
+ */
+function content(): HTMLElement {
+  const el = Array.from(container.querySelectorAll<HTMLElement>('div')).find(
+    (d) => d.style.flexDirection === 'column-reverse',
+  );
+  if (!el) throw new Error('no reversed message column: the panel is not inverted');
+  return el;
 }
 
-/** Grow the observed content box and let the observer see it. */
+/** The panel's own scroller — the reversed column's parent. */
+function scroller(): HTMLElement {
+  const parent = content().parentElement;
+  if (!parent) throw new Error('the message column has no scroller');
+  return parent;
+}
+
+/** Push one row down the stream, the way a message really arrives. */
+function deliver(row: Record<string, unknown>) {
+  const source = FakeEventSource.instances.at(-1);
+  if (!source) throw new Error('the panel never opened a stream');
+  // The stream carries the message row ITSELF, not a wrapper — see the
+  // panel's `message` listener, which parses `e.data` straight into `ingest`.
+  source.emit('message', { data: JSON.stringify(row) });
+}
+
+/**
+ * Grow the message column, as a picture resolving its height does.
+ *
+ * No observer to fire any more — that was the point of removing it — so this
+ * changes the box and lets React settle. If anything still reacts to a growing
+ * list by scrolling, the assertions catch it.
+ */
 async function grow(height: number) {
-  const ro = FakeResizeObserver.instances.at(-1)!;
-  Object.defineProperty(ro.target!, 'getBoundingClientRect', {
+  Object.defineProperty(content(), 'getBoundingClientRect', {
     value: () => ({ height }) as DOMRect,
     configurable: true,
   });
-  await act(async () => ro.cb());
+  await act(async () => {});
   await flush(2);
 }
 
@@ -203,7 +234,6 @@ beforeEach(() => {
   };
   window.localStorage.clear();
   vi.stubGlobal('EventSource', FakeEventSource as unknown as typeof EventSource);
-  vi.stubGlobal('ResizeObserver', FakeResizeObserver as unknown as typeof ResizeObserver);
   installFetch();
 });
 
@@ -211,16 +241,41 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   FakeEventSource.instances = [];
-  FakeResizeObserver.instances = [];
   vi.unstubAllGlobals();
 });
 
 describe('scrolling to the bottom when the room becomes readable', () => {
-  it('CONTRACT: decrypting rows in place re-runs the bottom scroll', async () => {
+  it('CONTRACT: the message column is REVERSED, which is what pins the newest', async () => {
     await mount();
-    // The first paint has already happened, over rows that render nothing.
+    await act(async () => releaseBackfill([{ messageId: 'm3', plaintext: 'three' }]));
+    await flush();
+
+    // Every guarantee below rests on this one property. Asserted directly so a
+    // future edit that drops it fails here rather than in a bug report.
+    expect(content().style.flexDirection).toBe('column-reverse');
+  });
+
+  it('CONTRACT: rows render NEWEST-FIRST, so the reversed column reads in order', async () => {
+    await mount();
+    await act(async () =>
+      releaseBackfill([
+        { messageId: 'm1', plaintext: 'one' },
+        { messageId: 'm2', plaintext: 'two' },
+        { messageId: 'm3', plaintext: 'three' },
+      ]),
+    );
+    await flush();
+
+    const text = content().textContent ?? '';
+    // Reversed, the FIRST child is at the visual bottom. Newest first in the
+    // DOM is therefore newest at the bottom on screen; getting this backwards
+    // renders the whole conversation upside down without erroring.
+    expect(text.indexOf('three')).toBeLessThan(text.indexOf('one'));
+  });
+
+  it('CONTRACT: decrypting rows in place scrolls NOTHING', async () => {
+    await mount();
     const afterFirstPaint = scrollCalls;
-    expect(afterFirstPaint).toBeGreaterThan(0);
 
     await act(async () => {
       releaseBackfill([
@@ -232,23 +287,43 @@ describe('scrolling to the bottom when the room becomes readable', () => {
     await flush();
 
     expect(container.textContent, 'the rows never decrypted').toContain('three');
-    expect(
-      scrollCalls,
-      'the pass that made the room readable did not scroll — ids do not change when a body does',
-    ).toBeGreaterThan(afterFirstPaint);
+    /*
+     * The inversion of the old assertion. Bodies arriving cannot move the
+     * newest message, so a scroll here would mean something started chasing the
+     * floor again — the exact regression this file now exists to catch.
+     */
+    expect(scrollCalls, 'a decrypt scrolled: the chasing came back').toBe(afterFirstPaint);
   });
 
-  it('CONTRACT: an attachment finishing its load re-pins the bottom', async () => {
+  it('CONTRACT: an attachment finishing its load scrolls NOTHING', async () => {
     await mount();
     await act(async () => releaseBackfill([{ messageId: 'm3', plaintext: 'three' }]));
     await flush();
     const before = scrollCalls;
 
     // An <img> is zero-high until its bytes arrive and hundreds of pixels
-    // afterwards. No state changes, so no effect can see it — only the box does.
+    // afterwards. In the reversed column that growth happens above the newest
+    // message, so nothing has to move — and there is no observer left to fire.
     await grow(900);
 
-    expect(scrollCalls, 'the list grew under a reader at the bottom and nothing moved').toBeGreaterThan(before);
+    expect(scrollCalls, 'a picture loading scrolled: the chasing came back').toBe(before);
+  });
+
+  it('CONTRACT: a message ARRIVING while the reader is at the newest pulls the view', async () => {
+    await mount();
+    await act(async () => releaseBackfill([{ messageId: 'm3', plaintext: 'three' }]));
+    await flush();
+    const before = scrollCalls;
+
+    // The one case that still scrolls: a row appears at the newest end while
+    // the reader is sitting there. Delivered the way the panel really receives
+    // one — over the stream.
+    await act(async () => {
+      deliver({ ...wire(4), message: null });
+    });
+    await flush(2);
+
+    expect(scrollCalls, 'a new message did not bring the reader with it').toBeGreaterThan(before);
   });
 
   it('AUTHZ-of-attention: a reader who scrolled UP is never yanked back down', async () => {
@@ -256,30 +331,26 @@ describe('scrolling to the bottom when the room becomes readable', () => {
     await act(async () => releaseBackfill([{ messageId: 'm3', plaintext: 'three' }]));
     await flush();
 
+    /*
+     * Reversed, distance from the newest is |scrollTop| — the panel reads it
+     * through `Math.abs` because Chrome and Firefox report it negative and
+     * Safari has reported it positive. 200 either way is "scrolled back".
+     */
     const el = scroller();
     Object.defineProperty(el, 'scrollHeight', { value: 4000, configurable: true });
     Object.defineProperty(el, 'clientHeight', { value: 400, configurable: true });
-    el.scrollTop = 200;
+    el.scrollTop = -200;
     await act(async () => {
       el.dispatchEvent(new Event('scroll', { bubbles: true }));
     });
     const before = scrollCalls;
 
-    await grow(2000);
+    await act(async () => {
+      deliver({ ...wire(5), message: null });
+    });
+    await flush(2);
 
-    expect(scrollCalls, 'reading history was interrupted by a picture loading below').toBe(before);
-  });
-
-  it('BOUNDARY: a shrink is not chased', async () => {
-    await mount();
-    await act(async () => releaseBackfill([{ messageId: 'm3', plaintext: 'three' }]));
-    await flush();
-    await grow(900);
-    const before = scrollCalls;
-
-    await grow(100);
-
-    expect(scrollCalls).toBe(before);
+    expect(scrollCalls, 'reading history was interrupted by someone else typing').toBe(before);
   });
 
   it('EMPTY: a room with no messages scrolls nothing', async () => {
