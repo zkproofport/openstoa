@@ -58,7 +58,7 @@ import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutat
 import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
-import { topicKeys } from '@openstoa/api-types';
+import { topicKeys, UNREADABLE_BODY } from '@openstoa/api-types';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '../../lib/chatStatus';
 import {
   getChatReadCursorIso,
@@ -943,7 +943,7 @@ export function ChatRoomScreen() {
         seen.add(m.id);
         // Fill pre-join rows MLS couldn't decrypt with TAK-recovered history.
         merged.push(
-          m.message === '[unable to decrypt]' && recovered[m.id] ? { ...m, message: recovered[m.id] } : m,
+          m.message === UNREADABLE_BODY && recovered[m.id] ? { ...m, message: recovered[m.id] } : m,
         );
       }
     }
@@ -984,7 +984,7 @@ export function ChatRoomScreen() {
           !m.pending &&
           !m.failed &&
           typeof m.message === 'string' &&
-          m.message !== '[unable to decrypt]',
+          m.message !== UNREADABLE_BODY,
       )
       .map((m) => ({
         id: m.id,
@@ -1003,7 +1003,7 @@ export function ChatRoomScreen() {
 
   /** Rows on screen this device cannot open. */
   const lockedCount = useMemo(
-    () => allMessages.reduce((n, m) => (m.message === '[unable to decrypt]' ? n + 1 : n), 0),
+    () => allMessages.reduce((n, m) => (m.message === UNREADABLE_BODY ? n + 1 : n), 0),
     [allMessages],
   );
   /*
@@ -1037,7 +1037,7 @@ export function ChatRoomScreen() {
    * placeholder. One spinner for the room, not a column of identical dots.
    */
   const visibleMessages = useMemo(
-    () => (syncing ? allMessages.filter((m) => m.message !== '[unable to decrypt]') : allMessages),
+    () => (syncing ? allMessages.filter((m) => m.message !== UNREADABLE_BODY) : allMessages),
     [allMessages, syncing],
   );
   // ── TAK back-fill + public holder upkeep (Phase 3) ────────────────────────
@@ -1165,7 +1165,7 @@ export function ChatRoomScreen() {
               (m) =>
                 m.type === 'message' &&
                 m.message &&
-                m.message !== '[unable to decrypt]' &&
+                m.message !== UNREADABLE_BODY &&
                 !isProvisionalId(m.id),
             )
             .map((m) => ({ messageId: m.id, plaintext: m.message as string, createdAt: m.createdAt })),
@@ -1276,7 +1276,7 @@ export function ChatRoomScreen() {
           after: settled,
           recovered: history.length,
           locked: allMessagesRef.current.reduce(
-            (n, m) => (m.message === '[unable to decrypt]' ? n + 1 : n),
+            (n, m) => (m.message === UNREADABLE_BODY ? n + 1 : n),
             0,
           ),
         });
@@ -2829,7 +2829,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
    * stays short — it only has to distinguish "not yet" from "not at all".
    */
   const content: string =
-    rawContent === '[unable to decrypt]'
+    rawContent === UNREADABLE_BODY
       ? t(awaitingKey ? 'openstoa.chat.lockedMessageSyncing' : 'openstoa.chat.lockedMessage')
       : rawContent;
   /*
@@ -2979,7 +2979,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
   // verbatim as "[unable to decrypt]", which reads as corruption. While the
   // room key is still on its way this is loading, not failure — say so, and
   // never show the marker itself either way.
-  const locked = item.message === '[unable to decrypt]';
+  const locked = item.message === UNREADABLE_BODY;
   const bodyStyle = isOwn ? styles.bubbleTextOwn : styles.bubbleTextOther;
   const linkStyle = isOwn ? styles.linkOwn : styles.linkOther;
 

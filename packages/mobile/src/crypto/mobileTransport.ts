@@ -10,6 +10,7 @@
  * Keystore persistence + reload resilience are a follow-up, mirroring the web
  * IndexedDB follow-up).
  */
+import { UNREADABLE_BODY } from '@openstoa/api-types';
 import type { ChatMessage } from '@openstoa/api-types';
 import type { OpenStoaClient } from '../api/openstoaClient';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
@@ -638,14 +639,13 @@ export async function recoverDevice(
  * (openstoa/src/components/ChatPanel.tsx `toDisplayMessage`).
  */
 /**
- * The one string the mini-app uses for "no readable body right now".
+ * Re-export. The definition, and the reason it is load-bearing, live in
+ * `@openstoa/api-types` — the cipher writes this sentinel, the room screen
+ * reads it, and neither calls this module, so none of the three owns it.
  *
- * Named because it is load-bearing rather than cosmetic: the archive back-fill
- * only rewrites rows equal to it, the locked count only counts those rows, the
- * sync filter only hides those rows — and the delivery ack must refuse to claim
- * them. A row that misses this string is invisible to every one of those.
+ * Kept as an export because callers already import it from here.
  */
-export const UNREADABLE_BODY = '[unable to decrypt]';
+export { UNREADABLE_BODY };
 
 export async function toDisplayMessageMls(
   store: MlsSessionStore,

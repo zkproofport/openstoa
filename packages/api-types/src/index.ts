@@ -278,3 +278,5 @@ export * from './queryKeys';
  * would have left the other giving up sooner on the same operation.
  */
 export * from './timeouts';
+
+export * from './chatSentinels';

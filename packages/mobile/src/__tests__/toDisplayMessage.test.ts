@@ -282,24 +282,36 @@ describe('toDisplayMessageMls — a purged row stays visible to the machinery th
      * being resolvable and renders as a permanent placeholder — the failure
      * this whole block exists to prevent, in its other direction.
      *
-     * The two sides are spelled differently on purpose, and the assertions
-     * follow that: `mobileTransport` now exports UNREADABLE_BODY, so the value
-     * is pinned at its DEFINITION (one place, where a reword would happen);
-     * `ChatRoomScreen` still writes the literal at each of its call sites, so
-     * those are counted. When the screen adopts the constant too, the count
-     * below stops meaning anything and should be replaced by an import check —
-     * it will go red and say so, which is the point.
+     * The screen HAS now adopted the constant, which is the handoff the older
+     * version of this assertion predicted: counting literals in
+     * `ChatRoomScreen` stopped meaning anything the moment there were none
+     * left to count. What replaces it is the check that actually holds the two
+     * sides together — the screen imports the same symbol this function emits.
+     *
+     * The exhaustive version (no file in the package spells the string out,
+     * every producer and consumer imports it) lives in
+     * `unreadableSentinelSingleSource.test.ts`; this one keeps a local guard so
+     * a failure here still points at the function that emits the sentinel.
      */
     const screen = readFileSync(
       new URL('../screens/chat/ChatRoomScreen.tsx', import.meta.url),
       'utf8',
     );
-    // The back-fill merge, the locked count and the still-syncing filter.
-    const matches = screen.match(/'\[unable to decrypt\]'/g) ?? [];
-    expect(matches.length, 'ChatRoomScreen must still key off this exact sentinel').toBeGreaterThanOrEqual(3);
+    const importsSentinel = /UNREADABLE_BODY\s*}?\s*from\s*'@openstoa\/api-types'/.test(screen);
+    expect(importsSentinel, 'ChatRoomScreen must key off the shared sentinel, not a copy').toBe(true);
+    expect(screen.includes("'[unable to decrypt]'"), 'no re-typed copies may creep back in').toBe(false);
 
-    const transport = readFileSync(new URL('../crypto/mobileTransport.ts', import.meta.url), 'utf8');
-    expect(transport).toContain(`UNREADABLE_BODY = '${PLACEHOLDER}'`);
+    /*
+     * The definition moved OUT of the transport and into the shared package,
+     * because the cipher writes this sentinel too and the screen reads it —
+     * three layers that never call each other, so none of them owns it. Pinned
+     * at its new home, which is the one place a reword would happen.
+     */
+    const definition = readFileSync(
+      new URL('../../../api-types/src/chatSentinels.ts', import.meta.url),
+      'utf8',
+    );
+    expect(definition).toContain(`UNREADABLE_BODY = '${PLACEHOLDER}'`);
   });
 
   it('integrity: UTF-8 plaintext (Korean, emoji) is returned verbatim', async () => {

@@ -1,3 +1,4 @@
+import { UNREADABLE_BODY } from '@openstoa/api-types';
 import type { ChatMessage, GroupCipher, SealedMessage } from '@openstoa/api-types';
 
 /**
@@ -91,7 +92,7 @@ export async function toDisplayMessage(topicId: string, raw: ChatMessage): Promi
       try {
         text = await placeholderGroupCipher.open(topicId, raw.sealed);
       } catch {
-        text = '[unable to decrypt]';
+        text = UNREADABLE_BODY;
       }
     }
     return { ...raw, message: text };

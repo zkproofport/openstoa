@@ -33,6 +33,20 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      /*
+       * The workspace package is not installed into `node_modules`, so a BARE
+       * specifier only resolves where something maps it — the mini-app's own
+       * config does, this one did not.
+       *
+       * It went unnoticed because `import type` is erased before the module
+       * ever loads: every mini-app file that named this package did so for
+       * types only, and the `.tsx` files that import VALUES from it are
+       * excluded above. The first `.ts` file to import a value — the MLS
+       * transport, for the undecryptable-body sentinel — failed to load here
+       * and took fifteen unrelated tests with it, none of which named the
+       * cause. Aliased to the same source file the mini-app config points at.
+       */
+      '@openstoa/api-types': path.resolve(__dirname, './packages/api-types/src/index.ts'),
     },
   },
 });
