@@ -2,9 +2,9 @@
  * Mobile wiring for the MLS session manager: an MlsTransport over the host's
  * authenticated OpenStoaClient (Bearer), plus a per-session device identity.
  *
- * The client throws `Error("METHOD path → STATUS: body")` on non-2xx, so we
- * recover the HTTP status from the message to map 404 (no group yet) / 409
- * (epoch-CAS conflict) the way the session manager expects.
+ * The client throws `OpenStoaApiError` on non-2xx, and its `status` is what maps
+ * 404 (no group yet) / 409 (epoch-CAS conflict) the way the session manager
+ * expects.
  *
  * Device identity + MLS state are in-memory for the app session (Keychain/
  * Keystore persistence + reload resilience are a follow-up, mirroring the web
@@ -25,7 +25,33 @@ import * as km from './keyManager';
 import { b64, unb64 } from './keyBackup';
 import { ackDelivery } from '../lib/chatDeliveryAck';
 
+/**
+ * The HTTP status of a failed request, or null if it did not come from one.
+ *
+ * READ OFF THE ERROR, not out of its text. This used to regex `err.message`
+ * for `→ 404:`, which held only while that message happened to be the
+ * flattened `METHOD path → STATUS: body` string. When `OpenStoaApiError`
+ * started putting the server's own SENTENCE in `message` (so screens could
+ * show a refusal instead of the API's shape) and moved the flattened form to
+ * `debugMessage`, this quietly began returning null for every request.
+ *
+ * The damage was not a bad log line. `getGroupInfo` maps 404 to "no group
+ * yet"; with the status unreadable it rethrew instead, so MLS bootstrap never
+ * reached its genesis branch and every topic created on this client got NO
+ * `mls_groups` row — a room where nobody, ever, can send a message. `postCommit`
+ * lost its 409 epoch-CAS retry the same way. Both failed in silence.
+ *
+ * Duck-typed on `kind` rather than `instanceof`: the same class arriving
+ * through two module instances is a real hazard in a mini-app bundled into a
+ * host, and an identity check that fails there would reintroduce exactly this
+ * bug. The regex stays only as a fallback for anything still throwing the old
+ * flattened string.
+ */
 function statusOf(e: unknown): number | null {
+  const api = e as { kind?: unknown; status?: unknown } | null;
+  if (api && api.kind === 'API_ERROR' && typeof api.status === 'number') {
+    return api.status;
+  }
   const m = String(e instanceof Error ? e.message : e).match(/→ (\d{3}):/);
   return m ? parseInt(m[1], 10) : null;
 }
