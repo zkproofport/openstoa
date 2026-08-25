@@ -655,9 +655,21 @@ export function TopicDetailScreen() {
         ) : null}
         {isMember ? (
           <Text style={styles.retentionNote}>
-            {isUnlimitedRetention(topic.chatArchiveRetentionDays ?? 0)
-              ? t('openstoa.topicDetail.archiveRetention.noteUnlimited')
-              : t('openstoa.topicDetail.archiveRetention.noteWindowed')}
+            {/*
+              A personal space has its own sentence, because the usual one is a
+              promise it cannot keep.
+              
+              Both standard notes are written around "a member who joins later"
+              — that is what retention is FOR. Nobody joins this room later;
+              every door answers 403. Telling the owner what a future member
+              will be able to read describes a person who will never exist, and
+              quietly suggests this space could be shared after all.
+            */}
+            {topic.personal
+              ? t('openstoa.topicDetail.archiveRetention.notePersonal')
+              : isUnlimitedRetention(topic.chatArchiveRetentionDays ?? 0)
+                ? t('openstoa.topicDetail.archiveRetention.noteUnlimited')
+                : t('openstoa.topicDetail.archiveRetention.noteWindowed')}
           </Text>
         ) : null}
         {isMember ? null : topic.visibility && topic.visibility !== 'public' ? (

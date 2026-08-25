@@ -51,6 +51,12 @@ export interface Topic {
    *  Absent on an older payload, which means unlimited — see
    *  `packages/mobile/src/lib/archiveRetention.ts`. */
   chatArchiveRetentionDays?: number;
+  /**
+   * The caller's own space — a secret topic with exactly one member, made when
+   * the account was. Every door into it answers 403, so anything a client says
+   * about who else can see or join this topic is false here.
+   */
+  personal?: boolean;
 }
 
 export interface PostMedia {

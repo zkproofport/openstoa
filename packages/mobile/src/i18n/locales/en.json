@@ -256,7 +256,8 @@
         "days90": "Chat history: 90 days",
         "days30": "Chat history: 30 days",
         "noteUnlimited": "This topic keeps its chat archive indefinitely, so a member who joins later can read the whole conversation.",
-        "noteWindowed": "Chat older than this window is deleted for everyone, so a member who joins later sees only what is left."
+        "noteWindowed": "Chat older than this window is deleted for everyone, so a member who joins later sees only what is left.",
+        "notePersonal": "Kept for you, indefinitely. Nobody else can join this space, so nobody else will ever read it."
       },
       "leave": "Leave topic",
       "leaveConfirmTitle": "Leave this topic?",
