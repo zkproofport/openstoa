@@ -10,9 +10,14 @@
  * THE MOMENT MATTERS. Prompting at signup is prompting about nothing: a fresh
  * account holds no TAK keys, so a backup then snapshots an empty keychain and
  * the warning ("you could lose your chat history") names something that does not
- * exist yet. The moment there IS something to lose is when chat keys exist —
- * i.e. once the user has joined a topic and opened its chat. `backup` carries
- * exactly that signal, because the session-boot repair already had to ask:
+ * exist yet. The moment there IS something to lose is when chat keys exist.
+ *
+ * That is deliberately NOT the same question as "has this person joined a
+ * topic". Every account now comes with its own space, so membership exists from
+ * the first second and would fire this prompt about an empty keychain again.
+ * Keys appear when a chat is actually opened, whichever topic it belongs to,
+ * and `backup` carries exactly that signal because the session-boot repair
+ * already had to ask:
  *
  *   'uploaded'  this device's chat keys just went up  → there is history to lose
  *   'present'   the account already has a snapshot     → there is history to lose

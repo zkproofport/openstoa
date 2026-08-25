@@ -78,3 +78,45 @@ describe('every browse-list caller shows the pinned space', () => {
     expect(route).toMatch(/pinned:/);
   });
 });
+
+describe('the space changes when there is something to lose', () => {
+  /*
+   * Before the personal space, a brand-new account held nothing: no membership,
+   * no chat keys, nothing recovery could protect. The prompt could reasonably
+   * wait, and the module said so — "once the user has joined a topic".
+   *
+   * That sentence is now false. Membership exists from the first second,
+   * because the account arrives with its own space. What has NOT changed is the
+   * thing the rule actually keys on: keys exist once a chat is opened. Had the
+   * rule been written against membership — which the old comment invited —
+   * every new account would now be prompted to protect an empty keychain, and
+   * the warning would name a history that does not exist.
+   *
+   * EDGE-CASE MATRIX (CLAUDE.md) → coverage
+   *   contract  → the rule still keys on keys, never on membership
+   *   integrity → the reasoning no longer points at joining a topic
+   *   integrity → both copies stay byte-identical, which is what keeps the web
+   *               and the mini-app from drifting apart on this
+   */
+  const WEB = readFileSync(join(ROOT, 'src/lib/recoveryNudge.ts'), 'utf8');
+  const MOBILE = readFileSync(join(ROOT, 'packages/mobile/src/lib/recoveryNudge.ts'), 'utf8');
+
+  it('CONTRACT: the decision reads the backup signal, not membership', () => {
+    const fn = WEB.slice(WEB.indexOf('export function shouldNudgeRecovery'));
+    const body = fn.slice(0, fn.indexOf('\n}'));
+    expect(body).toContain('input.backup');
+    for (const wrong of ['member', 'topic', 'joined']) {
+      expect(body.toLowerCase(), `the rule now keys on ${wrong}`).not.toContain(wrong);
+    }
+  });
+
+  it('INTEGRITY: the reasoning no longer says "joined a topic"', () => {
+    expect(WEB).not.toMatch(/once the user has joined a topic/);
+  });
+
+  it('INTEGRITY: the two copies are byte-identical', () => {
+    // The comment is the part people read before changing the rule, so a fix
+    // applied to one copy and not the other is how the clients drift.
+    expect(MOBILE).toBe(WEB);
+  });
+});
