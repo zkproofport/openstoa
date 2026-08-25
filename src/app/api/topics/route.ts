@@ -343,18 +343,21 @@ export async function GET(request: NextRequest) {
         (t.visibility !== 'secret' || userTopicIds.has(t.id)) &&
         !t.blindedAt &&
         /*
-         * No exemption for a personal space here, deliberately.
+         * The caller's own space is NEVER in this array. It rides alongside, in
+         * `pinned` — see the response below.
          *
-         * This is the BROWSE list — things to discover and join — and a space
-         * nobody can join has nothing to offer it. An earlier version exempted
-         * it from the category filter so it would "always show", which broke
-         * the one promise this list makes: every row it returns is in the
-         * category that was asked for.
+         * Stated as its own condition rather than left to the filters, which is
+         * the bug this replaces. A category filter dropped it because it has no
+         * category, and a search dropped it because the `ilike` runs in the
+         * database — so both filtered cases looked correct while the plain
+         * unfiltered browse, the commonest request of the three, returned it in
+         * `topics` AND in `pinned`. A client drawing the pinned row above the
+         * list then showed "My space" twice.
          *
-         * It always shows anyway, in the list that matters: the joined-topics
-         * branch below applies no category filter at all, and that is what
-         * both the Topics tab and the chat list read.
+         * This is also the BROWSE list — things to discover and join — and a
+         * space nobody can join has nothing to offer it.
          */
+        !t.personal &&
         (!filterCategoryId || t.categoryId === filterCategoryId),
       );
 

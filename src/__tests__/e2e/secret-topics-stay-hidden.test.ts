@@ -170,6 +170,24 @@ describe('the space is always reachable, whatever is being looked for', () => {
     mine = (await list('', owner.token)).find((t) => t.personal)!.id;
   });
 
+  it('REGRESSION: the PLAIN browse returns it once — beside, not inside', async () => {
+    /*
+     * The case the first round of these tests missed, and the commonest of the
+     * three. Both filtered cases passed for reasons that had nothing to do with
+     * the rule: a category filter dropped the space because it has no category,
+     * and a search dropped it because the `ilike` runs in the database. With
+     * neither applied, nothing was excluding it, so it came back in `topics`
+     * AND in `pinned` — and a client drawing the pinned row above the list
+     * showed "My space" twice.
+     *
+     * Asserting "exactly once, and on the pinned side" rather than "present",
+     * because present was already true when it was wrong.
+     */
+    const res = await raw('?view=all&sort=new', owner.token);
+    expect(res.pinned?.id).toBe(mine);
+    expect(res.topics.filter((t) => t.id === mine)).toHaveLength(0);
+  });
+
   it('CONTRACT: a category filter cannot hide it', async () => {
     const res = await raw(`?view=all&category=${categorySlug}&sort=new`, owner.token);
     expect(res.pinned?.id).toBe(mine);
