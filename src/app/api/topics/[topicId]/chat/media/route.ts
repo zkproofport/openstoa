@@ -350,6 +350,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     claimQuietly(topicId, key);
 
     /*
+     * The SUCCESSFUL read is logged, as the successful write above it already
+     * was. Only the failures were, which made a delivered attachment and one
+     * that never left the server look identical from the outside — on
+     * 2026-08-25 that absence was twice read as evidence that a client had
+     * served a picture from cache, when nothing here could have said either
+     * way. `size` because a download and a cache hit differ by exactly these
+     * bytes, and the key because it is the only handle both ends share.
+     */
+    logger.info(ROUTE, 'Served encrypted attachment', {
+      userId: gate.session.userId,
+      topicId,
+      key,
+      size: bytes.length,
+    });
+
+    /*
      * ONE response shape: the ciphertext, as bytes.
      *
      * It used to answer base64-in-JSON, for a real reason — React Native cannot
