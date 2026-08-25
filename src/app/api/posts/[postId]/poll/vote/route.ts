@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { pollVotes, pollOptions } from '@/lib/db/schema';
+import { pollVotes, pollOptions, posts } from '@/lib/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
 import { getPollByPostId, loadPollsForPosts } from '@/lib/polls';
+import { canActOnPost, NOT_A_MEMBER } from '@/lib/postReadable';
 
 const ROUTE = '/api/posts/[postId]/poll/vote';
 
@@ -75,6 +76,26 @@ export async function POST(
     const poll = await getPollByPostId(postId);
     if (!poll) {
       return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
+    }
+
+    /*
+     * Voting in a poll is acting on the post that carries it.
+     *
+     * This route was the fifth of its kind and the one still missing the check:
+     * a signed-in stranger holding a post id could vote in a poll inside
+     * somebody's private topic, and the owner would see the tally move.
+     * Observed as a 200 before this existed.
+     *
+     * Checked BEFORE the closes-at and option validation below, so a refusal
+     * says nothing about the poll — not whether it is open, not how many
+     * options it has.
+     */
+    const host = await db.query.posts.findFirst({
+      where: eq(posts.id, postId),
+      columns: { topicId: true },
+    });
+    if (!host || !(await canActOnPost(host.topicId, session.userId))) {
+      return NextResponse.json({ error: NOT_A_MEMBER }, { status: 403 });
     }
     if (poll.closesAt && poll.closesAt.getTime() < Date.now()) {
       return NextResponse.json({ error: 'Poll is closed' }, { status: 409 });

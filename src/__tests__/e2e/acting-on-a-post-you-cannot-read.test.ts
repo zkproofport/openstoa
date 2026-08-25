@@ -124,4 +124,50 @@ describe('acting on a post you cannot read (E2E, real container)', () => {
     const r = await fetch(url, { ...init, headers: bearer(stranger.token) });
     expect([200, 201]).toContain(r.status);
   });
+
+  it('AUTHZ: a stranger cannot vote in a poll inside a personal space', async () => {
+    /*
+     * The fifth route of the same kind, and the one still missing the check
+     * after the first four were fixed — found by sweeping every post-write
+     * route for an authorisation call rather than by remembering it existed.
+     *
+     * A poll is worse than a reaction in one way: the tally moves, and the
+     * owner sees a number they did not put there.
+     */
+    const mine = await (await fetch(`${BASE}/api/topics`, { headers: bearer(owner.token) })).json();
+    const space = (mine.topics as Array<{ id: string; personal?: boolean }>).find((t) => t.personal)!.id;
+
+    const made = await (
+      await fetch(`${BASE}/api/topics/${space}/posts`, {
+        method: 'POST',
+        headers: bearer(owner.token),
+        body: JSON.stringify({
+          title: `zz-poll-${Date.now().toString(36)}`,
+          content: 'private',
+          poll: { question: 'mine only?', options: ['a', 'b'] },
+        }),
+      })
+    ).json();
+    const id = made.post?.id ?? made.id;
+
+    const full = await (await fetch(`${BASE}/api/posts/${id}`, { headers: bearer(owner.token) })).json();
+    const optionId = ((full.post ?? full).poll?.options ?? [])[0]?.id;
+    expect(optionId, 'the poll did not come back with options').toBeTruthy();
+
+    const r = await fetch(`${BASE}/api/posts/${id}/poll/vote`, {
+      method: 'POST',
+      headers: bearer(stranger.token),
+      body: JSON.stringify({ optionIds: [optionId] }),
+    });
+    expect(r.status).toBe(403);
+
+    // ...and the owner can still vote in their own poll.
+    const own = await fetch(`${BASE}/api/posts/${id}/poll/vote`, {
+      method: 'POST',
+      headers: bearer(owner.token),
+      body: JSON.stringify({ optionIds: [optionId] }),
+    });
+    expect([200, 201]).toContain(own.status);
+  });
+
 });
