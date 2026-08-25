@@ -28,6 +28,10 @@ const ROUTE = '/api/topics/[topicId]/leave';
  *       `left: false`, so a double-tap or a retry is never an error.
  *
  *
+ *       A PERSONAL SPACE refuses this with 409. There is nobody to hand it to and nobody left
+ *       behind; it goes when the ACCOUNT is deleted, not before.
+ *
+ *
  *       The topic OWNER cannot leave while owning it — transfer ownership first
  *       (`PATCH /api/topics/{topicId}/members` with `role: owner`). This is the
  *       same rule account deletion enforces.

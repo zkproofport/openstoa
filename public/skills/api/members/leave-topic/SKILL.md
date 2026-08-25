@@ -14,6 +14,8 @@ Removes the caller's own membership. The counterpart to `POST /api/topics/{topic
 
 Idempotent: leaving a topic you are not a member of succeeds and reports `left: false`, so a double-tap or a retry is never an error.
 
+A PERSONAL SPACE refuses this with 409. There is nobody to hand it to and nobody left behind; it goes when the ACCOUNT is deleted, not before.
+
 The topic OWNER cannot leave while owning it — transfer ownership first (`PATCH /api/topics/{topicId}/members` with `role: owner`). This is the same rule account deletion enforces.
 
 Chat: leaving deletes the membership row, which is what gates access. The MLS leaf is evicted separately by the next member to open the chat (the server holds no keys and cannot commit — SI-1). A client that leaves should also drop its own local group state and archive keys for the topic.

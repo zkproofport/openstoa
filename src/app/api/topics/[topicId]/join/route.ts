@@ -30,6 +30,9 @@ const ROUTE = '/api/topics/[topicId]/join';
  *     tags: [Topics]
  *     summary: Join or request to join topic
  *     description: |
+ *       **A personal space refuses this with 403.** It is another account's private space and
+ *       admits no second member, ever.
+ *
  *       Joins a topic. Response depends on `visibility` and `proofType`:
  *         - `public`: joins immediately (201).
  *         - `private`: **not joinable here (403)** — invite only. Use

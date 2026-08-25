@@ -16,6 +16,10 @@ const ROUTE = '/api/topics/join/[inviteCode]';
  *     tags: [Topics]
  *     summary: Lookup topic by invite code
  *     description: |
+ *       **A personal space answers 404 here, not 403.** It stores an invite code because the
+ *       column requires one, never because it admits anyone — and a refusal would confirm the
+ *       code names a real topic. Treat it as an invalid code, because that is what it is.
+ *
  *       Looks up a topic by its invite code, before joining it.
  *
  *       **Read the gate before you try the door.** The response carries
