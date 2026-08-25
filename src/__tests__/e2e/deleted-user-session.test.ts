@@ -44,15 +44,26 @@ function bearer(token: string) {
 }
 
 /**
- * Hard-delete a `users` row directly — the app itself has no path to do
- * this. A freshly dev-logged-in user owns no topics/posts/memberships yet,
- * so a bare DELETE needs no FK cleanup on their side.
+ * Hard-delete a `users` row directly — the app itself has no path to do this.
+ *
+ * A freshly dev-logged-in account is no longer empty: it is created with its
+ * own personal space, which means a membership row and a topic row that both
+ * point at it. A bare `DELETE FROM users` therefore fails on the membership
+ * foreign key, and it fails BEFORE any of the assertions below run — the
+ * failure looks like the product broke when in fact the fixture's assumption
+ * expired.
+ *
+ * The rows are removed in reference order, which is also the only order a real
+ * hard delete could use. What is being simulated is unchanged: a session whose
+ * subject no longer exists.
  */
 async function hardDeleteUser(userId: string): Promise<void> {
   if (!DB_URL) throw new Error('hardDeleteUser requires DATABASE_URL');
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
+    await client.query(`DELETE FROM topic_members WHERE user_id = $1`, [userId]);
+    await client.query(`DELETE FROM topics WHERE creator_id = $1 AND personal`, [userId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
   } finally {
     await client.end();

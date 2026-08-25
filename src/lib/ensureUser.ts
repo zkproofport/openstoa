@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { defaultNickname } from '@/lib/defaultNickname';
+import { ensurePersonalTopic } from '@/lib/personalTopic';
 
 /**
  * The account behind a nullifier, created with a default name if it is new.
@@ -23,6 +24,16 @@ export async function ensureUser(nullifier: string): Promise<{ nickname: string;
   const nickname = defaultNickname(nullifier);
   try {
     await db.insert(users).values({ id: nullifier, nickname });
+    /*
+     * The account's own space, made with the account.
+     *
+     * Here rather than at first visit so the person finds it already there —
+     * a space you have to go and create reads as a feature to set up, and
+     * most never do. Unawaited failure is deliberate: `ensurePersonalTopic`
+     * answers null rather than throwing, and a sign-in must not fail because
+     * a topic row did not insert. The next sign-in makes it.
+     */
+    await ensurePersonalTopic(nullifier);
     return { nickname, created: true };
   } catch (err) {
     // Two sign-ins for the same account raced. `id` is the primary key, so the

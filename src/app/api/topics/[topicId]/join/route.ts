@@ -19,6 +19,7 @@ import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
+import { PERSONAL_TOPIC_CLOSED } from '@/lib/personalTopic';
 
 const ROUTE = '/api/topics/[topicId]/join';
 
@@ -206,6 +207,15 @@ export async function POST(
     }
 
     // Check if already a member
+    /*
+     * A personal space has no doors. Refused here rather than hidden in the
+     * client: a button that is merely not drawn is still a route anyone can
+     * call, and what is behind this one is somebody's private space.
+     */
+    if (topic.personal) {
+      return NextResponse.json({ error: PERSONAL_TOPIC_CLOSED }, { status: 403 });
+    }
+
     const existingMembership = await db.query.topicMembers.findFirst({
       where: and(
         eq(topicMembers.topicId, topicId),

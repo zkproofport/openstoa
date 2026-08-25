@@ -134,3 +134,48 @@ describe('how much to ask for', () => {
     expect(oldestReadableEpoch([-3, -1])).toBeNull();
   });
 });
+
+describe('a room with nobody else in it', () => {
+  /*
+   * THE TRAP. A personal space is a secret topic, so the tier says `secret` and
+   * every rule about asking a member applies to it — except the one that
+   * matters: there is no member to ask. Without this the room offers "ask a
+   * member to unlock this history", the person taps it, the request is filed
+   * perfectly, and nothing ever answers. A control that cannot work is worse
+   * than none: it replaces the true answer — only your recovery code brings
+   * this back — with an indefinite wait.
+   *
+   * EDGE-CASE MATRIX (CLAUDE.md) → coverage
+   *   contract  → locked rows in a personal space say so, and offer nothing
+   *   integrity → the answer is not pressable; there is nothing to press
+   *   boundary  → nothing locked means nothing shown, personal or not
+   *   integrity → a NORMAL secret room still offers the ask
+   *   race      → an in-flight send still reads as sending, not as alone
+   */
+  const base = { tier: 'secret', mine: null, sending: false };
+
+  it('CONTRACT: locked rows in your own space explain, rather than offer', () => {
+    expect(askStatus({ ...base, lockedCount: 3, personal: true })).toBe('alone');
+    expect(askLabelKey('alone', 'secret')).toBe('openstoa.keyRequest.aloneHere');
+  });
+
+  it('INTEGRITY: there is nothing to press', () => {
+    expect(askIsPressable('alone')).toBe(false);
+  });
+
+  it('BOUNDARY: nothing locked shows nothing, personal or not', () => {
+    expect(askStatus({ ...base, lockedCount: 0, personal: true })).toBe('hidden');
+  });
+
+  it('INTEGRITY: an ordinary secret room still offers the ask', () => {
+    // The flag must not leak into rooms that DO have someone to ask.
+    expect(askStatus({ ...base, lockedCount: 3, personal: false })).toBe('offer');
+    expect(askStatus({ ...base, lockedCount: 3 })).toBe('offer');
+  });
+
+  it('RACE: a send in flight still reads as sending', () => {
+    // `sending` is about a request this device just made; it wins, or the
+    // spinner vanishes mid-flight and the person taps again.
+    expect(askStatus({ ...base, lockedCount: 3, personal: true, sending: true })).toBe('sending');
+  });
+});

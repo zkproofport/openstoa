@@ -1,0 +1,2 @@
+ALTER TABLE "topics" ADD COLUMN "personal" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "topics_personal_owner_idx" ON "topics" USING btree ("creator_id") WHERE personal;

@@ -165,6 +165,16 @@ export async function GET(
       }
     }
 
+    /*
+     * A personal space stores an invite code because the column is NOT NULL,
+     * never because it is meant to admit anyone. Treated as NO SUCH INVITE
+     * rather than as a refusal: a 403 would confirm the code maps to a real
+     * topic, and someone probing codes would learn that an account exists and
+     * which code belongs to it. "Invalid invite code" is both truthful — it is
+     * not a valid invite — and silent.
+     */
+    if (topic?.personal) topic = undefined;
+
     if (!topic) {
       logger.warn(ROUTE, 'Invalid invite code', { inviteCode });
       return NextResponse.json(

@@ -318,6 +318,19 @@ export async function GET(request: NextRequest) {
       const visibleTopics = allTopics.filter((t) =>
         (t.visibility !== 'secret' || userTopicIds.has(t.id)) &&
         !t.blindedAt &&
+        /*
+         * No exemption for a personal space here, deliberately.
+         *
+         * This is the BROWSE list — things to discover and join — and a space
+         * nobody can join has nothing to offer it. An earlier version exempted
+         * it from the category filter so it would "always show", which broke
+         * the one promise this list makes: every row it returns is in the
+         * category that was asked for.
+         *
+         * It always shows anyway, in the list that matters: the joined-topics
+         * branch below applies no category filter at all, and that is what
+         * both the Topics tab and the chat list read.
+         */
         (!filterCategoryId || t.categoryId === filterCategoryId),
       );
 

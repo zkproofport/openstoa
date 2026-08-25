@@ -803,6 +803,8 @@ export function ChatRoomScreen() {
   // Same value as the ref, as state: an attachment row decrypts in an effect,
   // so the tier has to reach it as a PROP that changes when the lookup lands.
   const [visibility, setVisibility] = useState<Visibility>('public');
+  /** True in the caller's own space — a topic with exactly one member. */
+  const [isPersonal, setIsPersonal] = useState(false);
   /*
    * Which claim this room may make. `public` until the visibility lookup lands,
    * which is the tier that promises the LEAST — a room can be upgraded to "the
@@ -1118,7 +1120,7 @@ export function ChatRoomScreen() {
    */
   const [keyAskSending, setKeyAskSending] = useState(false);
   const [keyAskMine, setKeyAskMine] = useState<{ granted: boolean } | null>(null);
-  const keyAsk = askStatus({ lockedCount, tier, mine: keyAskMine, sending: keyAskSending });
+  const keyAsk = askStatus({ lockedCount, tier, mine: keyAskMine, sending: keyAskSending, personal: isPersonal });
 
   useEffect(() => {
     // Only look when there is something to look for — a room that opens fine
@@ -1347,8 +1349,9 @@ export function ChatRoomScreen() {
          * it does (`TopicDetailScreen` on save).
          */
         const tj = await queryClient.ensureQueryData<{
-          topic?: { visibility?: string };
+          topic?: { visibility?: string; personal?: boolean };
           visibility?: string;
+          personal?: boolean;
           currentUserRole?: string | null;
         }>({
           queryKey: topicKeys.detail(topicId),
@@ -1360,6 +1363,8 @@ export function ChatRoomScreen() {
           setVisibility(v);
         }
         tierRef.current = chatTierOf(visibilityRef.current, kind === 'dm');
+        // A room of one: the ask control has nobody to ask. See `askStatus`.
+        setIsPersonal(Boolean(tj?.topic?.personal ?? tj?.personal));
         roleRef.current = tj?.currentUserRole ?? null;
       } catch {}
       let history: Array<{ messageId: string; plaintext: string }> = [];

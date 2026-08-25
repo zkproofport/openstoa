@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, text, uuid, boolean, timestamp, primaryKey, integer, real, varchar, uniqueIndex, index, jsonb, bigint, customType } from 'drizzle-orm/pg-core';
 
 // Postgres `bytea` — drizzle-orm has no first-class bytea, so we declare a
@@ -96,10 +97,36 @@ export const topics = pgTable('topics', {
   lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow(),
   blindedAt: timestamp('blinded_at', { withTimezone: true }),
   blindedBy: varchar('blinded_by', { length: 10 }), // 'owner' | 'admin'
+  /**
+   * The owner's OWN space — one per account, made when the account is.
+   *
+   * It is an ordinary secret topic in every other respect: it sits in the
+   * owner's topic list, takes posts, and has the same E2EE chat. That is the
+   * point, and it is why this is a FLAG rather than a `kind`: the listings
+   * filter on `kind = 'topic'`, so a personal topic given its own kind would
+   * vanish from the one list it has to appear in.
+   *
+   * What the flag changes is only who can ever be in it — no invite, no code,
+   * no request, no direct join. A space that can be shared by accident is not
+   * the thing being offered, so the refusals live at the routes: a client that
+   * forgets to hide a button must not be able to open the room to someone.
+   */
+  personal: boolean('personal').notNull().default(false),
 }, (table) => ({
   // Postgres treats NULLs as distinct, so normal topics (dm_pair = NULL) never
   // collide here; only DM rows are constrained to one per canonical pair.
   dmPairIdx: uniqueIndex('topics_dm_pair_idx').on(table.dmPair),
+  /*
+   * ONE personal topic per account, enforced by the database.
+   *
+   * Two sign-ins racing is ordinary, not exotic — a phone and an agent can
+   * arrive on the same second. A check-then-insert would hand that account two
+   * private spaces with its posts split between them, and nothing would ever
+   * tell the person which one they were looking at.
+   */
+  personalOwnerIdx: uniqueIndex('topics_personal_owner_idx')
+    .on(table.creatorId)
+    .where(sql`personal`),
 }));
 
 export const topicMembers = pgTable('topic_members', {

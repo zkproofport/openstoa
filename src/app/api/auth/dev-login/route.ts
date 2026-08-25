@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { deviceFromRequest } from '@/lib/deviceFromRequest';
 import { checkDeviceTakeover } from '@/lib/deviceTakeoverGate';
 import { unhandledRouteError } from '@/lib/apiError';
+import { ensurePersonalTopic } from '@/lib/personalTopic';
 
 const ROUTE = '/api/auth/dev-login';
 /**
@@ -65,6 +66,8 @@ export async function POST(request: NextRequest) {
     if (!existing) {
       try {
         await db.insert(users).values({ id: userId, nickname });
+        // Same space every real account gets — see `ensurePersonalTopic`.
+        await ensurePersonalTopic(userId);
       } catch (error) {
         // Two calls for the same new name can race between the read and the
         // write. The loser re-reads rather than failing: both callers asked

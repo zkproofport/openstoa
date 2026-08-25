@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users, topicMembers, topics, bookmarks } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { cookies } from 'next/headers';
 
@@ -67,11 +67,20 @@ export async function DELETE(request: NextRequest) {
   const userId = session.userId;
   logger.info(ROUTE, 'DELETE account: starting anonymization', { userId });
 
-  // 2. Check if user owns any topics
+  /*
+   * 2. Check if user owns any topics — except their own space.
+   *
+   * The rule is about people left behind: a community topic whose owner walks
+   * away strands everyone still in it, so ownership has to be handed over
+   * first. A PERSONAL space has nobody in it but the person leaving, and
+   * nobody it could be handed to, so applying the rule there refuses every
+   * account deletion in the product — which is what it did the moment personal
+   * spaces existed. It goes with the account instead, below.
+   */
   const ownedTopics = await db
     .select({ id: topics.id, title: topics.title })
     .from(topics)
-    .where(eq(topics.creatorId, userId));
+    .where(and(eq(topics.creatorId, userId), eq(topics.personal, false)));
 
   if (ownedTopics.length > 0) {
     logger.warn(ROUTE, 'DELETE account: user owns topics, blocking deletion', { userId, topicCount: ownedTopics.length });
@@ -81,7 +90,30 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  // 3. Delete topic memberships
+  /*
+   * 3. The personal space goes with the account.
+   *
+   * Leaving the row would keep a secret topic alive with no members and no way
+   * to reach it, and — because the unique index is on `(creator_id) where
+   * personal` — it would also block this account from ever getting a fresh
+   * space if the same nullifier signed in again.
+   *
+   * Deleted BEFORE the memberships so the membership row that points at it is
+   * still there to be cleaned up by the same sweep. Its posts and chat rows go
+   * with it: unlike a community topic, there is no one else whose reading of
+   * this history is being taken away.
+   */
+  const [ownSpace] = await db
+    .select({ id: topics.id })
+    .from(topics)
+    .where(and(eq(topics.creatorId, userId), eq(topics.personal, true)));
+  if (ownSpace) {
+    await db.delete(topicMembers).where(eq(topicMembers.topicId, ownSpace.id));
+    await db.delete(topics).where(eq(topics.id, ownSpace.id));
+    logger.info(ROUTE, 'DELETE account: removed the personal space', { userId, topicId: ownSpace.id });
+  }
+
+  // 4. Delete topic memberships
   await db.delete(topicMembers).where(eq(topicMembers.userId, userId));
   logger.info(ROUTE, 'DELETE account: deleted topic memberships', { userId });
 

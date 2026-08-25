@@ -622,7 +622,8 @@
       "pendingRow": "A member cannot read part of this room's history.",
       "grant": "Unlock for them",
       "retryGrant": "Try again",
-      "cannotHelp": "This device does not have that stretch either."
+      "cannotHelp": "This device does not have that stretch either.",
+      "aloneHere": "Only your recovery code can bring this back — nobody else is here to unlock it."
     }
   }
 }

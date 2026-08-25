@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
 import crypto from 'crypto';
+import { PERSONAL_TOPIC_CLOSED } from '@/lib/personalTopic';
 
 const ROUTE = '/api/topics/[topicId]/invite';
 
@@ -79,6 +80,15 @@ export async function POST(
     }
 
     // Only members can generate invite tokens
+    /*
+     * A personal space has no doors. Refused here rather than hidden in the
+     * client: a button that is merely not drawn is still a route anyone can
+     * call, and what is behind this one is somebody's private space.
+     */
+    if (topic.personal) {
+      return NextResponse.json({ error: PERSONAL_TOPIC_CLOSED }, { status: 403 });
+    }
+
     const membership = await db.query.topicMembers.findFirst({
       where: and(
         eq(topicMembers.topicId, topicId),

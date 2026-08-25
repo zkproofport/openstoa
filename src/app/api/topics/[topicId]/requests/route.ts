@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { joinRequests, topicMembers, users } from '@/lib/db/schema';
+import { joinRequests, topicMembers, topics, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
+import { PERSONAL_TOPIC_CLOSED } from '@/lib/personalTopic';
 
 const ROUTE = '/api/topics/[topicId]/requests';
 
@@ -179,6 +180,23 @@ export async function PATCH(
 
     if (action !== 'approve' && action !== 'reject') {
       return NextResponse.json({ error: 'Action must be approve or reject' }, { status: 400 });
+    }
+
+    /*
+     * A personal space admits nobody, approval included.
+     *
+     * Nothing creates a join request for one today, so this is unreachable —
+     * which is exactly why it is here. "Unreachable" is a property of the code
+     * as it stands this week, and this branch INSERTS A MEMBER: if a request
+     * ever arrives by some path nobody predicted, the cost of the omission is
+     * a stranger inside someone's private space.
+     */
+    const topic = await db.query.topics.findFirst({
+      where: eq(topics.id, topicId),
+      columns: { personal: true },
+    });
+    if (topic?.personal) {
+      return NextResponse.json({ error: PERSONAL_TOPIC_CLOSED }, { status: 403 });
     }
 
     // Check caller is owner or admin

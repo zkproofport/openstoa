@@ -23,6 +23,16 @@ export type AskableTier = 'private' | 'secret' | 'dm';
 export interface AskState {
   /** Rows on screen this device cannot open. */
   lockedCount: number;
+  /**
+   * The room is the caller's OWN space — a topic with exactly one member.
+   *
+   * The tier says `secret`, so without this the room would offer "ask a member
+   * to unlock this history" in a room that HAS no other member. The person taps
+   * it, the request is filed correctly, and nobody ever answers, because there
+   * is nobody. A button that cannot work is worse than no button: it replaces
+   * the true answer — only your recovery code brings this back — with a wait.
+   */
+  personal?: boolean;
   /** The room's tier. `public` never needs an ask — the server has the root. */
   tier: string;
   /** What the server said about this device's own request, if anything. */
@@ -34,6 +44,8 @@ export interface AskState {
 export type AskStatus =
   /** Nothing is locked, or the tier cannot be asked about. */
   | 'hidden'
+  /** Locked rows in a room with nobody else in it — say so, offer nothing. */
+  | 'alone'
   /** Locked rows and no request yet — offer the button. */
   | 'offer'
   /** Asked, waiting for a member. */
@@ -57,6 +69,9 @@ export function tierCanAsk(tier: string): tier is AskableTier {
 export function askStatus(s: AskState): AskStatus {
   if (s.sending) return 'sending';
   if (s.lockedCount <= 0 || !tierCanAsk(s.tier)) return 'hidden';
+  // Checked before every other outcome: in a room of one there is no request
+  // to be waiting on and no grant that could arrive.
+  if (s.personal) return 'alone';
   if (s.mine?.granted) return 'granted';
   if (s.mine) return 'waiting';
   return 'offer';
@@ -71,6 +86,8 @@ export function askStatus(s: AskState): AskStatus {
  */
 export function askLabelKey(status: AskStatus, tier: string): string | null {
   switch (status) {
+    case 'alone':
+      return 'openstoa.keyRequest.aloneHere';
     case 'offer':
       return tier === 'dm' ? 'openstoa.keyRequest.askPeer' : 'openstoa.keyRequest.askMember';
     case 'sending':
