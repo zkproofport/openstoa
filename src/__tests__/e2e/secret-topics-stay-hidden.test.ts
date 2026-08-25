@@ -218,3 +218,63 @@ describe('the space is always reachable, whatever is being looked for', () => {
     expect(joined[0]?.id).toBe(mine);
   });
 });
+
+describe('what a private post never reaches', () => {
+  /*
+   * The list endpoints hide the TOPIC. This is the other half: the posts
+   * inside it are ordinary post rows, and every feed, search and tag listing
+   * reads those rows rather than the topic list. A topic that is invisible
+   * while its contents are not would be worse than no privacy at all, because
+   * the person believes the opposite.
+   *
+   * Probed with a marker string nobody else could produce, so a hit is proof
+   * rather than a coincidence, and asserted from a SECOND account and from no
+   * account at all — the two readers who must never see it.
+   *
+   * EDGE-CASE MATRIX (CLAUDE.md) → coverage
+   *   authz     → a stranger's feed does not contain it
+   *   authz     → a GUEST feed does not contain it
+   *   authz     → a stranger searching its exact title finds nothing
+   *   contract  → the OWNER does see it, or the test proves nothing
+   */
+  let owner: { token: string; userId: string };
+  let stranger: { token: string; userId: string };
+  let marker: string;
+
+  beforeAll(async () => {
+    owner = await login('feed_owner');
+    stranger = await login('feed_stranger');
+    const space = (await list('', owner.token)).find((t) => t.personal)!.id;
+    marker = `zz-private-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    await fetch(`${BASE}/api/topics/${space}/posts`, {
+      method: 'POST',
+      headers: bearer(owner.token),
+      body: JSON.stringify({ title: marker, content: 'nobody else should ever read this' }),
+    });
+  });
+
+  async function feed(query: string, token?: string): Promise<string> {
+    const r = await fetch(`${BASE}/api/feed${query}`, {
+      headers: token ? bearer(token) : { 'Content-Type': 'application/json' },
+    });
+    return r.ok ? r.text() : '';
+  }
+
+  it('CONTRACT: the owner sees their own note — otherwise nothing below counts', async () => {
+    expect(await feed('?sort=new&limit=100', owner.token)).toContain(marker);
+  });
+
+  it('AUTHZ: a stranger\'s feed does not carry it', async () => {
+    expect(await feed('?sort=new&limit=100', stranger.token)).not.toContain(marker);
+  });
+
+  it('AUTHZ: a guest feed does not carry it', async () => {
+    expect(await feed('?sort=new&limit=100')).not.toContain(marker);
+  });
+
+  it('AUTHZ: a stranger searching the exact title finds nothing', async () => {
+    // Search runs its match in the database and filters visibility afterwards,
+    // which is the shape that hides a missing filter until someone searches.
+    expect(await feed(`?q=${encodeURIComponent(marker)}`, stranger.token)).not.toContain(marker);
+  });
+});
