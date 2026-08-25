@@ -399,16 +399,22 @@ export function TopicDetailScreen() {
       label: t('openstoa.topicDetail.members'),
       action: () => navigation.navigate('TopicMembers', { topicId }),
     });
-    if (isOwnerOrAdmin) {
+    if (isOwnerOrAdmin && !topic?.personal) {
       items.push({
         label: t('openstoa.topicDetail.requests'),
         action: () => navigation.navigate('TopicRequests', { topicId }),
       });
     }
-    // Only owner/admin may invite to a non-public topic — the route refuses
-    // everyone else, and an action that always fails is worse than an absent
-    // one (same rule as the missing Leave action below).
-    if (topic?.visibility === 'public' || isOwnerOrAdmin) {
+    /*
+     * Same rule, one case further: a personal space has no invite either.
+     *
+     * The route answers 403 to the owner as much as to anyone — that is the
+     * whole feature — so drawing the button offers a share that cannot happen
+     * and, worse, tells the owner their private space is shareable. `Requests`
+     * above is skipped for the same reason: nothing can ever create one, so the
+     * screen behind it is permanently empty.
+     */
+    if (!topic?.personal && (topic?.visibility === 'public' || isOwnerOrAdmin)) {
     items.push({
       label: t('openstoa.topicDetail.invite'),
       // Opens the share sheet through the dialog rather than straight away:
@@ -434,7 +440,7 @@ export function TopicDetailScreen() {
       });
     }
     return items;
-  }, [isMember, isOwner, isOwnerOrAdmin, navigation, t, topicId, confirmLeave, topic?.visibility]);
+  }, [isMember, isOwner, isOwnerOrAdmin, navigation, t, topicId, confirmLeave, topic?.visibility, topic?.personal]);
 
   const showActionsSheet = useCallback(() => {
     if (headerActionItems.length === 0) return;

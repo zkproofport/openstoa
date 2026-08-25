@@ -122,7 +122,18 @@ function ExplorePageInner() {
       const res = await apiFetch(url);
       if (!res.ok) throw new Error('failed');
       const data = await res.json();
-      setTopics(data.topics ?? []);
+      /*
+       * The caller's own space arrives BESIDE the list, and belongs on top of it.
+       *
+       * The server keeps it out of `topics` deliberately: that array promises
+       * every row in it matched the sort and the category filter, and the space
+       * matches neither — it has no category. Putting it back at the front here
+       * is what makes it reachable from this page without making that promise
+       * false. Filtered so a server that later includes it cannot produce two.
+       */
+      const rows = (data.topics ?? []) as Topic[];
+      const pinned = data.pinned as Topic | null | undefined;
+      setTopics(pinned ? [pinned, ...rows.filter((t) => t.id !== pinned.id)] : rows);
     } catch {
       setFailed(true);
     } finally {

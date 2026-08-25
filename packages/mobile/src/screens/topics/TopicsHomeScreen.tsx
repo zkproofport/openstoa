@@ -38,6 +38,15 @@ type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicsHome'>;
 
 interface TopicsListResponse {
   topics: Topic[];
+  /**
+   * The caller's own space, sent alongside the list rather than inside it.
+   *
+   * `topics` promises that every row in it matched the query — the search and
+   * the category filter — and the space matches neither, so including it there
+   * would make a filtered list return a row with no category. Null for a guest,
+   * and for any account whose space has not been made yet.
+   */
+  pinned?: Topic | null;
 }
 
 interface CategoryItem {
@@ -158,7 +167,21 @@ export function TopicsHomeScreen() {
       if (activeCategory) params.set('category', activeCategory);
       if (q) params.set('q', q);
       const res = await client.get<TopicsListResponse>(`/api/topics?${params.toString()}`);
-      return res.topics ?? [];
+      /*
+       * The caller's own space arrives BESIDE the list, and belongs on top of it.
+       *
+       * The server keeps it out of `topics` on purpose: that array promises
+       * every row in it matched the search and the category filter, and the
+       * space matches neither — it has no category and is not a search result.
+       * Putting it back here is what makes "always in the topic list" true
+       * without making that promise false.
+       *
+       * Dropped in when a row for it is somehow already present, so a future
+       * server that does include it cannot produce two.
+       */
+      const rows = res.topics ?? [];
+      if (!res.pinned) return rows;
+      return [res.pinned, ...rows.filter((t) => t.id !== res.pinned!.id)];
     },
   });
 
