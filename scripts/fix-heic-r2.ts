@@ -22,6 +22,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
+import { purgeCloudflareUrls } from '../src/lib/cloudflare-cache';
 // heic-convert ships libheif as WASM so it works regardless of sharp's bundled libvips.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const heicConvert: (opts: { buffer: Buffer; format: 'JPEG' | 'PNG'; quality?: number }) => Promise<ArrayBuffer> = require('heic-convert');
@@ -164,33 +165,6 @@ async function convertAndUpload(cand: Candidate): Promise<{ srcSize: number; out
   // returned here.
   const url = `${R2_PUBLIC_URL}/${cand.key.split('/').map(encodeURIComponent).join('/')}`;
   return { srcSize: srcBuf.length, outSize: outBuf.length, url };
-}
-
-// Cloudflare purge_cache wrapper. Cloudflare accepts max 30 URLs / call,
-// so we batch. Throws when env is missing (caller decides whether to
-// continue with leftover stale-cached objects or abort).
-async function purgeCloudflareUrls(urls: string[]): Promise<void> {
-  if (urls.length === 0) return;
-  const zoneId = process.env.CLOUDFLARE_ZONE_ID;
-  const token = process.env.CLOUDFLARE_PURGE_TOKEN;
-  if (!zoneId || !token) {
-    throw new Error(
-      'CLOUDFLARE_ZONE_ID and CLOUDFLARE_PURGE_TOKEN must be set to purge edge cache after PUT',
-    );
-  }
-  for (let i = 0; i < urls.length; i += 30) {
-    const batch = urls.slice(i, i + 30);
-    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: batch }),
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`purge_cache ${res.status}: ${text}`);
-    const parsed = JSON.parse(text);
-    if (!parsed.success) throw new Error(`purge_cache: ${JSON.stringify(parsed.errors)}`);
-    console.log(`  [purge] ${batch.length} URL(s) purged`);
-  }
 }
 
 async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {

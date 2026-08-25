@@ -111,6 +111,9 @@ export default function KeyRequestList({ requests, onGrant, onRefresh }: KeyRequ
       color: colors.brand.primary,
     },
     state: {
+      // `flex: 1` so a long answer wraps inside the row instead of pushing
+      // the row wider than the card it sits in.
+      flex: 1,
       fontSize: TYPE_SCALE.caption,
       color: colors.text.secondary,
     },
@@ -123,19 +126,34 @@ export default function KeyRequestList({ requests, onGrant, onRefresh }: KeyRequ
       <Text style={styles.title}>{t('openstoa.keyRequest.pendingTitle')}</Text>
       {requests.map((req) => {
         const state = states[askKey(req)] ?? 'idle';
+        /*
+         * ONCE THERE IS AN ANSWER, THE ANSWER IS THE ROW.
+         *
+         * Found on a real phone: tapping "Unlock for them" on a device that did
+         * not hold the range put the answer beside the description, and the two
+         * texts fought over one line — the description collapsed to "A member
+         * c…" while the answer kept its full width. Neither half could be read.
+         *
+         * The description exists to explain why a BUTTON is there. When the
+         * button is gone it explains nothing, so it goes too and the answer
+         * takes the width it needs.
+         */
+        const settled = state === 'done' || state === 'cannot';
         return (
           <View key={req.id} style={styles.row} testID={`key-request-${req.id}`}>
-            <View style={styles.who}>
-              {/*
-                The nickname is not in the payload — the request names a user id
-                and a device id, and resolving names here would mean a lookup per
-                row for a screen a member glances at. What matters is that
-                SOMEONE is waiting, and that is what the line says.
-              */}
-              <Text style={styles.whoText} numberOfLines={1}>
-                {t('openstoa.keyRequest.pendingRow')}
-              </Text>
-            </View>
+            {settled ? null : (
+              <View style={styles.who}>
+                {/*
+                  The nickname is not in the payload — the request names a user
+                  id and a device id, and resolving names here would mean a
+                  lookup per row for a screen a member glances at. What matters
+                  is that SOMEONE is waiting, and that is what the line says.
+                */}
+                <Text style={styles.whoText} numberOfLines={1}>
+                  {t('openstoa.keyRequest.pendingRow')}
+                </Text>
+              </View>
+            )}
             {state === 'sending' ? (
               <ActivityIndicator color={colors.brand.primary} />
             ) : state === 'idle' || state === 'failed' ? (

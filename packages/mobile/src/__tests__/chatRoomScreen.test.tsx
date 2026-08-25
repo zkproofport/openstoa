@@ -411,7 +411,7 @@ describe('CONTRACT: a failed send WRITES the message down', () => {
     );
 
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
-    const input = rendered.root.findAll((n) => n.type === 'TextInput')[0];
+    const input = rendered.root.findAll((n) => (n.type as unknown as string) === 'TextInput')[0];
     expect(input, 'no composer to type into').toBeTruthy();
     await act(async () => {
       (input.props.onChangeText as (t: string) => void)('놓치면 안 되는 말');

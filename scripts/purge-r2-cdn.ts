@@ -15,6 +15,7 @@
 import { config as loadEnv } from 'dotenv';
 import path from 'path';
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { purgeCloudflareUrls, CLOUDFLARE_PURGE_BATCH } from '../src/lib/cloudflare-cache';
 
 loadEnv({ path: path.resolve(__dirname, '../.env.local') });
 
@@ -58,18 +59,6 @@ async function* listKeys(prefix?: string): AsyncGenerator<string> {
   } while (token);
 }
 
-async function purgeBatch(batch: string[]): Promise<void> {
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${CF_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files: batch }),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`purge_cache ${res.status}: ${text}`);
-  const parsed = JSON.parse(text);
-  if (!parsed.success) throw new Error(`purge_cache: ${JSON.stringify(parsed.errors)}`);
-}
-
 async function main() {
   console.log(`Mode: ${DRY_RUN ? 'DRY-RUN' : 'LIVE'}`);
   console.log(`Bucket: ${R2_BUCKET_NAME}`);
@@ -88,11 +77,18 @@ async function main() {
     return;
   }
 
+  /*
+   * Batched HERE as well as inside `purgeCloudflareUrls`, and deliberately: a
+   * sweep is thousands of URLs, and this loop is what lets one rejected batch
+   * be reported and stepped over instead of ending the run. Handing the whole
+   * list to the shared function would purge the same URLs with the same
+   * batching and then lose everything after the first failure.
+   */
   let purged = 0;
-  for (let i = 0; i < urls.length; i += 30) {
-    const batch = urls.slice(i, i + 30);
+  for (let i = 0; i < urls.length; i += CLOUDFLARE_PURGE_BATCH) {
+    const batch = urls.slice(i, i + CLOUDFLARE_PURGE_BATCH);
     try {
-      await purgeBatch(batch);
+      await purgeCloudflareUrls(batch);
       purged += batch.length;
       console.log(`  purged ${purged}/${urls.length}`);
     } catch (err) {

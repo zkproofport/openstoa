@@ -151,16 +151,40 @@ describe('outbound calls give up on their own', () => {
    * with every call site reverted to a bare `fetch`, which is precisely the
    * state this file exists to prevent — so the last one reads the call sites.
    */
+  const stripComments = (src: string): string =>
+    src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
   it('leaves no bare fetch in the modules that talk to a provider', () => {
     const root = join(process.cwd(), 'src', 'lib');
     const offenders = ['pushProvider.ts', 'fcmProvider.ts', 'cloudflare-cache.ts'].filter((file) =>
-      /(?<!api)\bfetch\(/.test(
-        readFileSync(join(root, file), 'utf8')
-          .replace(/\/\*[\s\S]*?\*\//g, '')
-          .replace(/^\s*\/\/.*$/gm, ''),
-      ),
+      /(?<!api)\bfetch\(/.test(stripComments(readFileSync(join(root, file), 'utf8'))),
     );
 
     expect({ modulesCallingFetchDirectly: offenders }).toEqual({ modulesCallingFetchDirectly: [] });
+  });
+
+  /*
+   * THE SCRIPTS COUNT, and this is the half that was missing.
+   *
+   * The rule above was enforced on `cloudflare-cache.ts` — which, at the time
+   * it was written, nothing imported. The two maintenance scripts that actually
+   * purge each carried their own copy built on a bare `fetch`, so a Cloudflare
+   * that accepted the connection and never answered hung the sweep with no
+   * deadline to stop it. Three implementations of one rule, and the guard sat
+   * on the one that never ran.
+   *
+   * They import the shared function now. This asserts they kept doing so,
+   * because re-inlining it is a two-line change that nothing else would catch.
+   */
+  it('the purge scripts use the shared client, not their own fetch', () => {
+    const root = join(process.cwd(), 'scripts');
+    const offenders = ['purge-r2-cdn.ts', 'fix-heic-r2.ts'].filter((file) => {
+      const src = stripComments(readFileSync(join(root, file), 'utf8'));
+      return /\bfetch\(/.test(src) || !src.includes('purgeCloudflareUrls');
+    });
+
+    expect({ scriptsPurgingWithoutTheSharedClient: offenders }).toEqual({
+      scriptsPurgingWithoutTheSharedClient: [],
+    });
   });
 });
