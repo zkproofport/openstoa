@@ -31,7 +31,30 @@ export function useAuthGuardedAction<TArgs extends unknown[]>(
   return useCallback(
     (...args: TArgs) => {
       gate.require(() => {
-        void fnRef.current(...args);
+        /*
+         * A rejection here used to vanish. `void fn()` drops the promise, so
+         * every one of these actions failed in total silence — no bubble, no
+         * alert, no log. That is how a broken image picker looked identical to
+         * a cancelled one for a whole night of testing: the native module was
+         * throwing NoSuchMethodError and nothing on any screen said so.
+         *
+         * Actions that CAN report their own failure still do; this is the
+         * floor, not a replacement. It stays out of the UI on purpose —
+         * seventeen call sites already alert where an alert belongs, and
+         * adding one here would double them.
+         */
+        try {
+          const ran = fnRef.current(...args);
+          if (ran && typeof (ran as Promise<void>).catch === 'function') {
+            (ran as Promise<void>).catch((err: unknown) => {
+              console.error('[useAuthGuardedAction] action rejected', err);
+            });
+          }
+        } catch (err: unknown) {
+          // Threw before returning a promise — a synchronous action, or an
+          // async one that failed while evaluating its own arguments.
+          console.error('[useAuthGuardedAction] action threw', err);
+        }
       });
     },
     [gate],

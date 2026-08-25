@@ -1847,6 +1847,15 @@ export function ChatRoomScreen() {
       );
     } catch (err: unknown) {
       /*
+       * The row about to be drawn says "this did not send" and offers Retry.
+       * It does NOT say why, and it cannot — the reason is a sentence for a
+       * developer, not for the sender. Written here in full (CLAUDE.md: never
+       * truncate a server-side log) because the alternative is what happened
+       * on 2026-08-25: an attachment failing with the cause sitting in
+       * `err.message`, discarded one line later, and a night spent guessing.
+       */
+      console.error('[chat/media] attachment send failed', err);
+      /*
        * WHERE the failure is reported depends on whether a message exists yet.
        *
        * Before the bytes are stored — an unsupported file, no room key, a
