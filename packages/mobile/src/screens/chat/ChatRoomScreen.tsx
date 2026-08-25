@@ -1141,7 +1141,13 @@ export function ChatRoomScreen() {
   const [pendingKeyRequests, setPendingKeyRequests] = useState<PendingKeyRequest[]>([]);
 
   const refreshKeyRequests = useCallback(() => {
-    if (!tierCanAsk(tier)) return;
+    if (!tierCanAsk(tier)) {
+      // Not a defect: `public` rooms get the archive root from the server, so
+      // there is nobody to ask. Logged because "nothing happened" and "nothing
+      // was supposed to happen" look identical from the outside.
+      console.log('[chat] key-request list skipped, tier=', tier);
+      return;
+    }
     void (async () => {
       try {
         const res = await client.get<{ requests: PendingKeyRequest[] }>(
@@ -1152,8 +1158,14 @@ export function ChatRoomScreen() {
         setPendingKeyRequests(
           (res.requests ?? []).filter((r) => r.requesterDeviceId !== mineDev),
         );
-      } catch {
-        // A room that cannot reach the server still shows its messages.
+      } catch (e) {
+        /*
+         * SAY WHY. A silent catch here cost an hour of device debugging: the
+         * list simply did not appear, and nothing distinguished "no requests"
+         * from "the fetch failed". The room still works without it, so this
+         * stays non-fatal — but it stops being invisible.
+         */
+        console.warn('[chat] key-request list failed', String(e));
         setPendingKeyRequests([]);
       }
     })();

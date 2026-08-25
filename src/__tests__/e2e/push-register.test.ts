@@ -20,6 +20,7 @@
  * test provisions its own user via /api/auth/dev-login (non-production only).
  */
 import { describe, it, expect, beforeAll } from 'vitest';
+import { E2E_DEVICE_HEADERS } from './helpers';
 import { PUSH_HANDLE_MAX_BYTES, PUSH_TOKEN_MAX_BYTES } from '@/lib/pushStore';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:3200';
@@ -28,7 +29,9 @@ async function devLogin(): Promise<{ token: string; userId: string }> {
   const nickname = `e2e_push_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const res = await fetch(`${BASE}/api/auth/dev-login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // The suite stands in for the mobile app; a login that declares nothing
+    // defaults to `web`, and chat / MLS / TAK are refused to a web session.
+    headers: { 'Content-Type': 'application/json', ...E2E_DEVICE_HEADERS },
     body: JSON.stringify({ nickname }),
   });
   if (!res.ok) throw new Error(`dev-login failed: ${res.status} ${await res.text()}`);

@@ -11,6 +11,7 @@ import {
   secondUserDelete,
   authDelete,
   getBaseUrl,
+  E2E_DEVICE_HEADERS,
 } from './helpers';
 
 /**
@@ -36,7 +37,9 @@ const HOLDER_ROOT_FP = 'e2e-holder-root-fingerprint';
 async function freshUser(): Promise<{ token: string; userId: string }> {
   const res = await fetch(`${getBaseUrl()}/api/auth/dev-login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // The suite stands in for the mobile app; a login that declares nothing
+    // defaults to `web`, and chat / MLS / TAK are refused to a web session.
+    headers: { 'Content-Type': 'application/json', ...E2E_DEVICE_HEADERS },
     body: JSON.stringify({ nickname: `e2e_tak_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}` }),
   });
   if (!res.ok) throw new Error(`dev-login failed: ${res.status}`);

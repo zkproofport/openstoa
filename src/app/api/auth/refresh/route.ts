@@ -5,7 +5,6 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { deviceFromRequest } from '@/lib/deviceFromRequest';
-import { revokeSession } from '@/lib/sessionStore';
 
 const ROUTE = '/api/auth/refresh';
 
@@ -73,13 +72,18 @@ export async function POST(request: NextRequest) {
   }
 
   /*
-   * A refresh REPLACES a session rather than adding one. Without the revoke the
-   * old record stayed live, so a phone that had refreshed a few times looked
-   * like several devices and the one-device rule fired against its own user.
+   * A REFRESH IS THE SAME SESSION, re-minted.
+   *
+   * It has to produce a new token — the expiry and the nickname are claims —
+   * but nothing about the session changed. Revoking the old record killed the
+   * old token, so any request already in flight with it failed, and a second
+   * holder was signed out without being told. Re-minting under the same `jti`
+   * keeps one record and leaves both tokens working, which is also what stops
+   * a phone that refreshes often from looking like several devices.
    */
   const device = deviceFromRequest(request);
-  if (typeof session.jti === 'string') await revokeSession(session.jti, user.id);
   const newToken = await createSession(user.id, user.nickname, {
+    sessionId: typeof session.jti === 'string' ? session.jti : undefined,
     isAI: session.isAI === true,
     // The kind is carried over, not re-declared: a refresh is the same client
     // it was at sign-in, and reading the header again would let a session

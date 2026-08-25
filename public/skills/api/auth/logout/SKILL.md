@@ -10,9 +10,10 @@ metadata:
 
 # Logout (clears session cookie)
 
-Clears the server-side session cookie. Bearer-token callers should additionally drop the
-token from their own storage — there is no server-side blacklist; logout is purely a
-client-side concern for Bearer flows. Safe to call without an active session.
+Ends the session on the server and clears the cookie. The token is revoked, so a Bearer
+caller that keeps its copy gains nothing by presenting it afterwards — the session record
+is gone and every route that verifies a session will answer 401. Safe to call without an
+active session.
 
 **Endpoint:** `POST /api/auth/logout`
 **Auth:** none

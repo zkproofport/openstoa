@@ -1148,14 +1148,38 @@ export class TakSessionStore {
     recipientUserId: string,
     haveFromEpoch: number | null,
   ): Promise<number> {
-    const held = await this.heldEpochs(topicId);
     /*
-     * `haveFromEpoch === 0` is a real answer — "I can read from the very first
-     * epoch" — and the falsy check that treats it as null would re-send the
-     * entire history every time. Compared against null explicitly for that
-     * reason.
+     * WHICH EPOCHS EXIST comes from the ARCHIVE, not from this device's key
+     * manifest — and getting that wrong is why the first version granted
+     * nothing.
+     *
+     * A member holding the archive ROOT does not store one key per epoch; it
+     * DERIVES them (`getEpochTak`). So the manifest lists a root and no epochs,
+     * and enumerating it found an empty set on exactly the device best able to
+     * help. The archive rows carry `takVersion`, which is the epoch each row
+     * was sealed under — the real answer to "what is there to hand over".
+     *
+     * `grantPrivateHistory` already reads it this way; this now agrees with it.
      */
-    const missing = haveFromEpoch === null ? held : held.filter((e) => e < haveFromEpoch);
+    await this.cacheCurrentEpochTak(topicId);
+    const rows = await this.transport.getArchive(topicId);
+    const epochs = new Set<number>();
+    for (const r of rows) {
+      /*
+       * `haveFromEpoch === 0` is a real answer — "I can read from the very
+       * first epoch" — and the falsy check that treats it as null would re-send
+       * the whole history every time. Compared against null explicitly.
+       */
+      if (haveFromEpoch !== null && r.takVersion >= haveFromEpoch) continue;
+      epochs.add(r.takVersion);
+    }
+
+    // Only epochs this device can actually produce a key for. Offering one it
+    // cannot derive would send an empty bundle and stop the asker waiting.
+    const missing: number[] = [];
+    for (const e of [...epochs].sort((a, b) => a - b)) {
+      if (await this.getEpochTak(topicId, e)) missing.push(e);
+    }
     if (missing.length === 0) return 0;
     return this.grantScoped(topicId, recipientUserId, missing);
   }

@@ -26,6 +26,7 @@
  * substitute a fake device key to steal history.
  */
 import * as gc from './groupClient';
+import { leafBelongsTo } from './leafIdentity';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -277,7 +278,25 @@ export function findRecipientLeaves(state: gc.GroupState, recipientUserId: strin
     if (!node || node.nodeType !== 'leaf' || !node.leaf) continue;
     const cred = node.leaf.credential;
     if (!cred || cred.credentialType !== 'basic' || !cred.identity) continue;
-    if (dec.decode(cred.identity) === recipientUserId) {
+    /*
+     * MATCH THE ACCOUNT, not the whole credential.
+     *
+     * A leaf identity is `<userId>:<deviceId>` (see `leafIdentity`), so an
+     * exact comparison against a user id could never match anything — and the
+     * only caller, `grantScoped`, passes a user id. Every scoped grant sealed
+     * to zero leaves and returned 0, which at the HTTP layer is
+     * indistinguishable from "this device held no keys". The one place it was
+     * visible was a person waiting for history that never arrived.
+     *
+     * `leafBelongsTo` is the same rule removal already uses to find every
+     * device an account owns, which is exactly what a grant needs too.
+     *
+     * A legacy leaf with no user part is not attributed — the same refusal
+     * `userIdOfLeaf` makes, and for the same reason: it belongs to SOMEBODY,
+     * and guessing would hand keys to the wrong person.
+     */
+    const identity = dec.decode(cred.identity);
+    if (leafBelongsTo(identity, recipientUserId) || identity === recipientUserId) {
       out.push({ leafIndex: i / 2, hpkePublicKey: node.leaf.hpkePublicKey });
     }
   }

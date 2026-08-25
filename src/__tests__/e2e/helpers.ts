@@ -55,6 +55,24 @@ export function getBaseUrl(): string {
  *     over budget) — this only removes accidental cross-file budget
  *     inheritance, never exempts anyone from the limit itself.
  */
+/**
+ * WHAT KIND OF CLIENT THE SUITE IS PRETENDING TO BE.
+ *
+ * Chat, MLS and TAK are refused to a `web` session — the keys live on a phone
+ * and a browser that joined a group could only advance epochs and post
+ * ciphertext nobody would ever open. A login that declares nothing defaults to
+ * `web`, which is the safe answer for a real client and the wrong one here:
+ * these tests stand in for the mobile app, so they have to say so.
+ *
+ * The device id is per-process rather than per-call. Sharing one id across the
+ * suite is what makes it ONE phone: distinct ids would look like a fleet of
+ * second devices and trip the one-phone rule against the suite itself.
+ */
+export const E2E_DEVICE_HEADERS: Record<string, string> = {
+  'x-openstoa-device-kind': 'mobile',
+  'x-openstoa-device-id': `e2e-suite-${randomBytes(8).toString('hex')}`,
+};
+
 export function freshSyntheticIp(): string {
   return Array.from({ length: 8 }, () => randomBytes(2).toString('hex')).join(':');
 }
@@ -81,7 +99,7 @@ export async function getSecondUserToken(): Promise<{ token: string; userId: str
 
   const res = await fetch(`${BASE_URL}/api/auth/dev-login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...E2E_DEVICE_HEADERS },
     body: JSON.stringify({ nickname: `e2e_second_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}` }),
   });
 
@@ -221,7 +239,20 @@ export async function publicGet(path: string): Promise<Response> {
 export async function publicPost(path: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': freshSyntheticIp() },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': freshSyntheticIp(),
+      /*
+       * The device declaration rides on EVERY call, not just the ones that mint
+       * a session — because several files sign in through `publicPost` and
+       * patching them one at a time is how the next file added forgets. The
+       * headers are inert on a request that does not create a session.
+       *
+       * Without it those logins default to `web`, and chat / MLS / TAK come
+       * back 403 in tests that have nothing to do with device kinds.
+       */
+      ...E2E_DEVICE_HEADERS,
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
 }

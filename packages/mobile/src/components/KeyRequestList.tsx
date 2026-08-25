@@ -25,14 +25,9 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../theme/ThemeContext';
 import { TYPE_SCALE, RADIUS, TOUCH_TARGET_MIN } from '../theme';
+import { askKey, type PendingKeyRequest } from '../lib/keyRequest';
 
-/** One person waiting, as the server describes them. */
-export interface PendingKeyRequest {
-  id: string;
-  requesterUserId: string;
-  requesterDeviceId: string;
-  haveFromEpoch: number | null;
-}
+export type { PendingKeyRequest };
 
 export interface KeyRequestListProps {
   requests: PendingKeyRequest[];
@@ -59,7 +54,7 @@ export default function KeyRequestList({ requests, onGrant, onRefresh }: KeyRequ
    */
   useEffect(() => {
     setStates((prev) => {
-      const live = new Set(requests.map((r) => r.id));
+      const live = new Set(requests.map(askKey));
       const next: Record<string, RowState> = {};
       for (const [id, st] of Object.entries(prev)) if (live.has(id)) next[id] = st;
       return next;
@@ -68,16 +63,16 @@ export default function KeyRequestList({ requests, onGrant, onRefresh }: KeyRequ
 
   const grant = useCallback(
     (req: PendingKeyRequest) => {
-      setStates((s) => ({ ...s, [req.id]: 'sending' }));
+      setStates((s) => ({ ...s, [askKey(req)]: 'sending' }));
       void (async () => {
         try {
           const leaves = await onGrant(req);
-          setStates((s) => ({ ...s, [req.id]: leaves > 0 ? 'done' : 'cannot' }));
+          setStates((s) => ({ ...s, [askKey(req)]: leaves > 0 ? 'done' : 'cannot' }));
           if (leaves > 0) onRefresh?.();
         } catch {
           // A failure has to be visible: silently returning to a button is
           // indistinguishable from not having tapped, and the person taps again.
-          setStates((s) => ({ ...s, [req.id]: 'failed' }));
+          setStates((s) => ({ ...s, [askKey(req)]: 'failed' }));
         }
       })();
     },
@@ -127,7 +122,7 @@ export default function KeyRequestList({ requests, onGrant, onRefresh }: KeyRequ
     <View style={styles.wrap} testID="key-request-list">
       <Text style={styles.title}>{t('openstoa.keyRequest.pendingTitle')}</Text>
       {requests.map((req) => {
-        const state = states[req.id] ?? 'idle';
+        const state = states[askKey(req)] ?? 'idle';
         return (
           <View key={req.id} style={styles.row} testID={`key-request-${req.id}`}>
             <View style={styles.who}>

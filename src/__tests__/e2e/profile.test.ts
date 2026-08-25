@@ -8,6 +8,7 @@ import {
   getBaseUrl,
   getAuthToken,
   requireObjectStorage,
+  E2E_DEVICE_HEADERS,
 } from './helpers';
 
 // Profile-specific helper: PUT /api/profile/nickname (not PATCH)
@@ -66,7 +67,9 @@ async function getSecondNicknameUserToken(): Promise<string> {
   if (secondUserNicknameToken) return secondUserNicknameToken;
   const res = await fetch(`${getBaseUrl()}/api/auth/dev-login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // The suite stands in for the mobile app; a login that declares nothing
+    // defaults to `web`, and chat / MLS / TAK are refused to a web session.
+    headers: { 'Content-Type': 'application/json', ...E2E_DEVICE_HEADERS },
     body: JSON.stringify({ nickname: `e2e_prof_b_${Date.now().toString(36)}` }),
   });
   if (!res.ok) throw new Error(`dev-login failed: ${res.status}`);

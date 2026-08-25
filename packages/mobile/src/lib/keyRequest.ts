@@ -108,3 +108,38 @@ export function oldestReadableEpoch(epochs: readonly number[]): number | null {
   }
   return min;
 }
+
+/** One person waiting, as the server describes them. */
+export interface PendingKeyRequest {
+  id: string;
+  requesterUserId: string;
+  requesterDeviceId: string;
+  haveFromEpoch: number | null;
+  /**
+   * When the ask was last made. Re-asking REPLACES the row rather than adding
+   * one, so the id stays the same and this is the only thing that moves.
+   */
+  createdAt?: string | null;
+}
+
+/**
+ * Identity for the purpose of "have I already answered this?".
+ *
+ * The id alone was wrong. Re-asking keeps the row — and so the id — while
+ * changing what is being asked for, so a member who had answered "this device
+ * does not have that stretch" kept seeing that answer for a NEW question they
+ * might well be able to help with. Including the timestamp makes a re-ask what
+ * it actually is: a different ask.
+ *
+ * It lives here rather than in the list component because it is a rule about
+ * data, and a renderer is the one place it cannot be checked without a UI
+ * toolkit — the web test config loads this file and cannot load React Native.
+ */
+export function askKey(r: PendingKeyRequest): string {
+  /*
+   * Length-prefixed, so an id containing the separator cannot be read as an id
+   * plus a timestamp. Not reachable with server-generated UUIDs today — which
+   * is exactly when key-collision bugs get written.
+   */
+  return `${r.id.length}:${r.id}@${r.createdAt ?? ''}`;
+}

@@ -247,3 +247,72 @@ describe('one human, one phone', () => {
     expect((other.body.existingDevices as unknown[]).length).toBe(1);
   });
 });
+
+describe('re-minting a token does not sign anybody out', () => {
+  /*
+   * THE REGRESSION THIS EXISTS FOR, and it reached the whole E2E suite before
+   * anyone noticed what it was. Renaming yourself re-mints the token — the
+   * nickname is a JWT claim — and the first version of that revoked the old
+   * session. So the OLD token died, and every other holder of it was signed
+   * out without being told: a second tab, a request already in flight, and the
+   * shared token this suite passes between fifty files.
+   *
+   * Thirty-nine files went red at once and every one of them reported a 401 on
+   * an unrelated endpoint. Nothing pointed at a rename.
+   *
+   * A rename and a refresh both produce a new token; neither is a new session.
+   */
+  it('CONTRACT: after a rename, the OLD token still works', async () => {
+    const who = name('rename');
+    const s = await login({ nickname: who, kind: 'mobile', device: deviceId('p') });
+    const old = s.body.token as string;
+    expect(await sessionStatus(old)).toBe(200);
+
+    // PUT is the method this route exposes — guessing POST and falling back was
+    // a way of not looking it up, and it hid a 403 behind a branch.
+    const renamed = await fetch(`${BASE}/api/profile/nickname`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${old}`, 'Content-Type': 'application/json' },
+      // `^[a-zA-Z0-9_]{2,20}$` — the suite's generated names are longer than
+      // that, so the new name is built to the rule rather than derived.
+      body: JSON.stringify({ nickname: `rn_${Math.random().toString(36).slice(2, 10)}` }),
+    });
+    expect(renamed.status).toBe(200);
+
+    expect(await sessionStatus(old), 'the rename signed the old token out').toBe(200);
+  });
+
+  it('CONTRACT: after a refresh, the OLD token still works', async () => {
+    const who = name('refresh');
+    const s = await login({ nickname: who, kind: 'mobile', device: deviceId('p') });
+    const old = s.body.token as string;
+
+    const r = await fetch(`${BASE}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${old}`, 'Content-Type': 'application/json' },
+    });
+    expect(r.status).toBe(200);
+    const fresh = ((await r.json()) as { token: string }).token;
+
+    expect(await sessionStatus(old), 'the refresh signed the old token out').toBe(200);
+    expect(await sessionStatus(fresh)).toBe(200);
+  });
+
+  it('INTEGRITY: neither one makes the account look like a second device', async () => {
+    // The accumulation the revoke was meant to prevent. Re-minting under the
+    // same session id is what actually prevents it.
+    const who = name('nostack');
+    const dev = deviceId('one');
+    const s = await login({ nickname: who, kind: 'mobile', device: dev });
+    const tok = s.body.token as string;
+
+    await fetch(`${BASE}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+    });
+
+    const second = await login({ nickname: who, kind: 'mobile', device: deviceId('two') });
+    expect(second.status).toBe(409);
+    expect((second.body.existingDevices as unknown[]).length).toBe(1);
+  });
+});

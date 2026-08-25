@@ -52,6 +52,19 @@ export async function createSession(
     deviceKind?: DeviceKind;
     /** Stable per install/browser: tells "this phone again" from "a new one". */
     deviceId?: string;
+    /**
+     * Re-mint the SAME session rather than starting a new one.
+     *
+     * A rename and a refresh both have to produce a new token — the nickname
+     * and the expiry live in the JWT — but neither is a new session, and
+     * treating them as one was a real defect: the old token was revoked, so
+     * every other holder of it was signed out without being told. A second
+     * tab, an in-flight request, or a test suite sharing the token all died
+     * the moment somebody changed their display name.
+     *
+     * Keeping the id means one record, both tokens valid, nothing accumulated.
+     */
+    sessionId?: string;
   },
 ): Promise<string> {
   /*
@@ -62,7 +75,7 @@ export async function createSession(
    * while the token stayed valid until its own expiry. The `jti` is the key the
    * Redis session record lives under.
    */
-  const sessionId = randomUUID();
+  const sessionId = options?.sessionId ?? randomUUID();
   const deviceKind: DeviceKind = options?.deviceKind ?? (options?.isAI ? 'agent' : 'web');
 
   const token = await new SignJWT({

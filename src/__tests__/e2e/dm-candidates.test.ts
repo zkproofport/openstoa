@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { getBaseUrl, publicGet } from './helpers';
+import { getBaseUrl, publicGet , E2E_DEVICE_HEADERS } from './helpers';
 
 /**
  * `GET /api/dm/candidates` over real HTTP against a running container.
@@ -57,7 +57,9 @@ function uniq(prefix: string): string {
 async function devLogin(nickname: string): Promise<DevUser> {
   const res = await fetch(`${BASE_URL}/api/auth/dev-login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // The suite stands in for the mobile app; a login that declares nothing
+    // defaults to `web`, and chat / MLS / TAK are refused to a web session.
+    headers: { 'Content-Type': 'application/json', ...E2E_DEVICE_HEADERS },
     body: JSON.stringify({ nickname }),
   });
   if (!res.ok) throw new Error(`dev-login failed: ${res.status} ${await res.text()}`);

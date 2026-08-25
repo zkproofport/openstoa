@@ -6,7 +6,6 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { deviceFromRequest } from '@/lib/deviceFromRequest';
-import { revokeSession } from '@/lib/sessionStore';
 import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 
@@ -138,14 +137,24 @@ export async function PUT(request: NextRequest) {
     // can swap its persisted token. Without this, the mini-app keeps
     // using the OLD JWT (stale nickname) and the next /api/auth/session
     // refetch rolls the UI back to the previous nickname.
-    // Re-minting for the new name is still the SAME session — revoke the old
-    // record so one device does not accumulate one live session per rename.
-    if (typeof session.jti === 'string') await revokeSession(session.jti, session.userId);
+    /*
+     * A RENAME IS NOT A NEW SESSION.
+     *
+     * The new name has to go into a new token — it is a JWT claim — but the
+     * session behind it is the same one. Revoking the old record here killed
+     * the OLD token, and every other holder of it was signed out without being
+     * told: a second tab, an in-flight request, a test suite sharing it. The
+     * shape of the bug was that changing a display name logged people out.
+     *
+     * Re-minting under the same `jti` gives one record, both tokens valid, and
+     * no accumulation — which was the only thing the revoke was for.
+     */
     const device = deviceFromRequest(request);
     const token = await createSession(session.userId, nickname, {
       isAI: session.isAI === true,
       deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : 'web'),
       deviceId: device.id,
+      sessionId: typeof session.jti === 'string' ? session.jti : undefined,
     });
     const response = NextResponse.json({ nickname, token });
     setSessionCookie(response, token);

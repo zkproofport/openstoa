@@ -28,7 +28,17 @@ export async function setup() {
   console.log('[E2E Setup] Performing dev-login for User A...');
   const res = await fetch(`${baseUrl}/api/auth/dev-login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    /*
+     * The suite stands in for the mobile app, so it declares `mobile`. A login
+     * that says nothing defaults to `web`, and chat / MLS / TAK are refused to
+     * a web session — the keys live on a phone. Without this every chat test
+     * gets a 403 that has nothing to do with what it is testing.
+     */
+    headers: {
+      'Content-Type': 'application/json',
+      'x-openstoa-device-kind': 'mobile',
+      'x-openstoa-device-id': `e2e-global-${Date.now().toString(36)}`,
+    },
     body: JSON.stringify({ nickname: `e2e_user_${Date.now().toString(36)}` }),
   });
 
