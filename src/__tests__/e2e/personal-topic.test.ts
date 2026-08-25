@@ -156,4 +156,55 @@ describe('the space that comes with the account (E2E, real container)', () => {
     const row = (await myTopics(owner.token)).find((t) => t.id === id);
     expect(row?.personal ?? false).toBe(false);
   });
+
+  it('AUTHZ: the owner cannot LEAVE it, and is told why truthfully', async () => {
+    /*
+     * Leaving used to answer "Transfer topic ownership before leaving" — the
+     * same impossible instruction that deadlocked account deletion. There is
+     * nobody to transfer this one to; a message that cannot be acted on reads
+     * as a bug in the app rather than as a rule.
+     */
+    const r = await fetch(`${BASE}/api/topics/${personal.id}/leave`, {
+      method: 'POST',
+      headers: bearer(owner.token),
+    });
+    expect(r.status).toBe(409);
+    const body = await r.json();
+    expect(body.error).not.toMatch(/transfer/i);
+  });
+
+  it('AUTHZ: the owner cannot DELETE it — it would not come back', async () => {
+    /*
+     * The space is made once, when the account is. A successful delete is
+     * therefore permanent, and leaves a product that used to have a private
+     * space and now does not, with nothing to press to get it back.
+     */
+    const r = await fetch(`${BASE}/api/topics/${personal.id}`, {
+      method: 'DELETE',
+      headers: bearer(owner.token),
+    });
+    expect(r.status).toBe(403);
+
+    // ...and it is still there afterwards, which is the part that matters.
+    const mine = (await myTopics(owner.token)).filter((t) => t.personal);
+    expect(mine.map((t) => t.id)).toEqual([personal.id]);
+  });
+
+  it('CONTRACT: emptying it still works — the posts inside can be deleted', async () => {
+    // Refusing the topic delete must not trap somebody who simply wants it
+    // clear; that is what they actually want in the moment.
+    const made = await (
+      await fetch(`${BASE}/api/topics/${personal.id}/posts`, {
+        method: 'POST',
+        headers: bearer(owner.token),
+        body: JSON.stringify({ title: 'delete me', content: 'temporary' }),
+      })
+    ).json();
+    const postId = made.post?.id ?? made.id;
+    const del = await fetch(`${BASE}/api/posts/${postId}`, {
+      method: 'DELETE',
+      headers: bearer(owner.token),
+    });
+    expect([200, 204]).toContain(del.status);
+  });
 });

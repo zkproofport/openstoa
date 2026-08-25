@@ -8,6 +8,7 @@ import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
+import { PERSONAL_TOPIC_CLOSED } from '@/lib/personalTopic';
 
 const ROUTE = '/api/topics/[topicId]/leave';
 
@@ -106,6 +107,19 @@ export async function POST(
      * no role changes, no deletion. Account deletion already refuses for this
      * reason; refusing here too keeps one rule rather than two that disagree.
      */
+    /*
+     * A personal space is refused for a different reason, and has to SAY so.
+     *
+     * The message below tells the caller to hand ownership over first. For this
+     * topic that is not something they failed to do — it is not possible at
+     * all: every door answers 403, so there is nobody to hand it to. An
+     * instruction that cannot be carried out reads as a bug in the app, and it
+     * is the same impossible sentence that deadlocked account deletion.
+     */
+    if (topic.personal) {
+      return NextResponse.json({ error: PERSONAL_TOPIC_CLOSED }, { status: 409 });
+    }
+
     if (topic.creatorId === session.userId) {
       logger.warn(ROUTE, 'Owner attempted to leave own topic', { topicId, userId: session.userId });
       return NextResponse.json(

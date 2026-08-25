@@ -26,6 +26,7 @@ import { buildProofRequirement } from '@/lib/proof-guides';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteR2Prefix, topicObjectPrefix } from '@/lib/r2';
 import { hasNulByte } from '@/lib/textGuard';
+import { PERSONAL_TOPIC_CLOSED } from '@/lib/personalTopic';
 
 const ROUTE = '/api/topics/[topicId]';
 
@@ -437,6 +438,22 @@ export async function DELETE(
     if (!topic) {
       logger.warn(ROUTE, 'Topic not found for deletion', { topicId });
       return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    }
+
+    /*
+     * A personal space cannot be deleted, because it would not come back.
+     *
+     * It is made once, when the account is — not on every sign-in — so a
+     * successful DELETE here is permanent, and the person is left with a
+     * product that used to have a private space and now does not, with nothing
+     * to press to get it back. Emptying it is what they actually want in that
+     * moment, and deleting the posts and messages inside still works.
+     *
+     * Deleting the ACCOUNT still removes it; that path takes the space with the
+     * account rather than stranding either one.
+     */
+    if (topic.personal) {
+      return NextResponse.json({ error: PERSONAL_TOPIC_CLOSED }, { status: 403 });
     }
 
     // Authorization: global admin OR topic owner (topicMembers.role = 'owner').
