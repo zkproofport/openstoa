@@ -277,4 +277,42 @@ describe('what a private post never reaches', () => {
     // which is the shape that hides a missing filter until someone searches.
     expect(await feed(`?q=${encodeURIComponent(marker)}`, stranger.token)).not.toContain(marker);
   });
+
+  it('AUTHZ: the post itself is refused by id, to a stranger and to a guest', async () => {
+    /*
+     * A feed that hides it is not the same as a post that is protected: the id
+     * is in the owner's own responses, so "you would have to know the id" is a
+     * thing an attacker often does.
+     */
+    const made = await (
+      await fetch(`${BASE}/api/topics/${(await list('', owner.token)).find((t) => t.personal)!.id}/posts`, {
+        method: 'POST',
+        headers: bearer(owner.token),
+        body: JSON.stringify({ title: `${marker}-direct`, content: 'private' }),
+      })
+    ).json();
+    const id = made.post?.id ?? made.id;
+
+    expect((await fetch(`${BASE}/api/posts/${id}`, { headers: bearer(stranger.token) })).status).toBe(403);
+    expect((await fetch(`${BASE}/api/posts/${id}`)).status).toBe(401);
+    // ...and the owner still reads their own.
+    expect((await fetch(`${BASE}/api/posts/${id}`, { headers: bearer(owner.token) })).status).toBe(200);
+  });
+
+  it('INTEGRITY: the public stat counts community topics, not private spaces', async () => {
+    /*
+     * `totalTopics` is read as "how big is this place", so it has to count what
+     * a reader could go and find. Unfiltered it counted every row: measured at
+     * 916 for 261 real topics — 623 personal spaces and 32 DMs — so the number
+     * tracked the user base rather than the community and would climb with
+     * every signup.
+     *
+     * Asserted as a RELATION rather than a value: making an account here adds a
+     * space, so a fixed number would be wrong by the time it ran.
+     */
+    const before = (await (await fetch(`${BASE}/api/stats`)).json()).totalTopics as number;
+    await login('stat_probe'); // creates an account, and with it a personal space
+    const after = (await (await fetch(`${BASE}/api/stats`)).json()).totalTopics as number;
+    expect(after).toBe(before);
+  });
 });
