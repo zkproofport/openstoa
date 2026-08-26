@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { assertPublicUrl, safeFetch, BlockedUrlError } from '@/lib/outboundUrl';
 
 // Browser-like User-Agent so hosts (LinkedIn CDN, GitHub OG renderer, etc.)
 // serve us the same response they'd give a regular browser. The mobile
@@ -31,7 +32,10 @@ const FETCH_TIMEOUT_MS = 8_000;
  *       - name: src
  *         in: query
  *         required: true
- *         description: Absolute http/https image URL to proxy
+ *         description: >-
+ *           Absolute http/https image URL to proxy. Same destination rules as `/api/og`: the host
+ *           must resolve to a public address and every redirect hop is re-checked, otherwise `400
+ *           Invalid URL`. This route returns the upstream BYTES, so the check matters more here.
  *         schema:
  *           type: string
  *     responses:
@@ -52,24 +56,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing src param' }, { status: 400 });
   }
 
-  let parsed: URL;
+  /*
+   * Same guard as `/api/og`, and it matters more here: this route returns the
+   * upstream BYTES. See `@/lib/outboundUrl`.
+   */
   try {
-    parsed = new URL(src);
-  } catch {
-    return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    return NextResponse.json({ error: 'Invalid protocol' }, { status: 400 });
+    await assertPublicUrl(src);
+  } catch (err) {
+    if (err instanceof BlockedUrlError) {
+      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+    }
+    throw err;
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const upstream = await fetch(src, {
+    const { response: upstream } = await safeFetch(src, {
       signal: controller.signal,
-      redirect: 'follow',
       headers: {
         'User-Agent': BROWSER_UA,
         Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',

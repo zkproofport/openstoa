@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { assertPublicUrl, safeFetch, BlockedUrlError } from '@/lib/outboundUrl';
 
 interface OGData {
   title: string | null;
@@ -69,7 +70,13 @@ function extractFavicon(html: string, baseUrl: string): string | null {
  *       - name: url
  *         in: query
  *         required: true
- *         description: URL to scrape OG metadata from (must be http/https)
+ *         description: >-
+ *           URL to scrape OG metadata from. Must be http/https AND resolve to a public address —
+ *           loopback, link-local (including the cloud metadata endpoint), and RFC 1918 ranges are
+ *           refused with `400`, as is a hostname that resolves into one. Redirects are followed by
+ *           hand and every hop is checked the same way, so a public URL that redirects inward is
+ *           refused at that hop. Every refusal returns the same `400 Invalid URL` on purpose: the
+ *           error must not tell a caller which internal hosts exist.
  *         schema:
  *           type: string
  *     responses:
@@ -165,16 +172,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing url param' }, { status: 400 });
   }
 
+  /*
+   * Protocol AND destination. This route fetches from inside our network on
+   * behalf of a caller who is not logged in, so a bare protocol check let
+   * `?url=http://community:3200` come back `200 {"title":"community"}`. See
+   * `@/lib/outboundUrl` for what is refused and why.
+   */
   let parsed: URL;
   try {
-    parsed = new URL(url);
-  } catch {
-    return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
-  }
-
-  // Only allow http/https
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    return NextResponse.json({ error: 'Invalid protocol' }, { status: 400 });
+    parsed = await assertPublicUrl(url);
+  } catch (err) {
+    if (err instanceof BlockedUrlError) {
+      // One answer for every refusal: a caller must not be able to tell
+      // "that host is private" from "that is not a URL", or the error itself
+      // maps the network.
+      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+    }
+    throw err;
   }
 
   // YouTube short-circuit: use the official oEmbed endpoint instead of
@@ -194,14 +208,15 @@ export async function GET(req: NextRequest) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    const res = await fetch(url, {
+    // Redirects are followed by hand (`safeFetch`) so each hop is checked;
+    // `redirect: 'follow'` would walk a 302 straight into the private network.
+    const { response: res } = await safeFetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': BROWSER_UA,
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'en-US,en;q=0.9',
       },
-      redirect: 'follow',
     });
     clearTimeout(timeout);
 
