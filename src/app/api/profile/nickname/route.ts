@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isReservedNickname } from '@/lib/defaultNickname';
-import { getSession, createSession, setSessionCookie } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { deviceFromRequest } from '@/lib/deviceFromRequest';
 import { unhandledRouteError } from '@/lib/apiError';
 import { requireAiCapability } from '@/lib/aiPermissions';
 
@@ -164,16 +163,26 @@ export async function PUT(request: NextRequest) {
      * Re-minting under the same `jti` gives one record, both tokens valid, and
      * no accumulation — which was the only thing the revoke was for.
      */
-    const device = deviceFromRequest(request);
-    const token = await createSession(session.userId, nickname, {
-      isAI: session.isAI === true,
-      deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : 'web'),
-      deviceId: device.id,
-      sessionId: typeof session.jti === 'string' ? session.jti : undefined,
-    });
-    const response = NextResponse.json({ nickname, token });
-    setSessionCookie(response, token);
-    return response;
+    /*
+     * NO NEW TOKEN. A rename is not a new session.
+     *
+     * The nickname was a JWT claim, so changing it meant re-minting — and
+     * re-minting is where `deviceKind` was rewritten. The old line read
+     *
+     *     deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : 'web')
+     *
+     * which is a safe default when READING a token that predates the claim, and
+     * a verdict when WRITING one. A phone whose session predated it came back
+     * from a rename as a browser session and lost chat — for a reason with no
+     * connection to what the person did. Measured: `/api/topics` 200 while
+     * `chat`, `chat/subscribe` and `mls/group-info` all answered 403.
+     *
+     * `GET /api/auth/session` now reads the nickname from the users table, so
+     * the claim on the existing token is merely stale and nothing consults it.
+     * The session record, the device kind and the expiry stay exactly as they
+     * were — which is the truth. Nothing about the session changed.
+     */
+    return NextResponse.json({ nickname });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'PUT', error);
   }

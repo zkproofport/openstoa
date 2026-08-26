@@ -450,19 +450,23 @@ export function EditProfileScreen() {
 
   const nicknameMutation = useMutation({
     mutationFn: (newNickname: string) =>
-      client.put<{ nickname: string; token?: string }>('/api/profile/nickname', { nickname: newNickname }),
-    onSuccess: async (data) => {
-      // 0. Server reissues the JWT with the new nickname embedded in its
-      //    claims. Web clients pick this up via Set-Cookie, but the mini-app
-      //    is on Bearer auth — and openstoaClient keeps its own in-memory
-      //    cachedToken on top of the host-persisted token. Update both
-      //    via client.updateToken so the very next refetch carries the
-      //    fresh claims instead of the stale Bearer. Await before
-      //    invalidateQueries to avoid the refetch racing the write.
-      if (data.token) {
-        await client.updateToken(data.token);
-      }
-      // Push the change into all consumers right away:
+      client.put<{ nickname: string }>('/api/profile/nickname', { nickname: newNickname }),
+      onSuccess: async (data) => {
+        /*
+         * NO TOKEN TO ADOPT. A rename is not a new session.
+         *
+         * This used to swap the Bearer, because the nickname was a JWT claim and
+         * the route re-minted to carry it. That re-mint is gone: re-issuing also
+         * rewrote `deviceKind`, so a phone that changed its display name came
+         * back as a browser session and lost chat — for a reason with no
+         * connection to what the person did.
+         *
+         * `GET /api/auth/session` now reads the nickname from the users table,
+         * so the claim on the token in hand is simply stale and nothing reads
+         * it. The token, the session record and the expiry all stay as they
+         * were, which is the truth about what a rename changed.
+         */
+        // Push the change into all consumers right away:
       // 1. React Query cache so any mounted view (ProfileHome, FeedHome
       //    via author display, etc.) re-renders without waiting for the
       //    server refetch round-trip.
