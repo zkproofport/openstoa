@@ -19,7 +19,28 @@ import { ensurePersonalTopic } from '@/lib/personalTopic';
  */
 export async function ensureUser(nullifier: string): Promise<{ nickname: string; created: boolean }> {
   const existing = await db.query.users.findFirst({ where: eq(users.id, nullifier) });
-  if (existing) return { nickname: existing.nickname, created: false };
+  if (existing) {
+    /*
+     * Also for an account that already exists — not only at creation.
+     *
+     * Two comments in this file and in `personalTopic.ts` promised that a
+     * missing space "will be made on their next sign-in". It was not: this
+     * early return skipped `ensurePersonalTopic` entirely, so every account
+     * created before that function existed had no space and never would. Found
+     * on staging, where a member's chat list showed their topics and no "My
+     * space" at all, while a fresh sign-in had one.
+     *
+     * Safe to call on every sign-in: `ensurePersonalTopic` is idempotent by
+     * contract, returns the existing id when there is one, and the unique index
+     * on `(creator_id) where personal` is what actually enforces one per
+     * account. The cost is one indexed lookup per sign-in.
+     *
+     * Not awaited for the same reason the creation path gives: a sign-in must
+     * not fail because a topic row did not insert.
+     */
+    void ensurePersonalTopic(nullifier);
+    return { nickname: existing.nickname, created: false };
+  }
 
   const nickname = defaultNickname(nullifier);
   try {

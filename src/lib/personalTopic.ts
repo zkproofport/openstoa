@@ -18,7 +18,8 @@ import { and, eq } from 'drizzle-orm';
  * refusals are at the routes, not in the UI: a client that forgets to hide a
  * button must not be able to open someone's private space to a stranger.
  *
- * MADE AT ACCOUNT CREATION, not on first visit. Someone who signs in and finds
+ * MADE AT ACCOUNT CREATION, not on first visit — and re-ensured on every
+ * sign-in after, which is what catches an account older than this function. Someone who signs in and finds
  * it already there reads it as part of the account; someone who has to find a
  * "create" button reads it as a feature to set up, and most never will.
  *
@@ -40,8 +41,11 @@ export const PERSONAL_TOPIC_TITLE = 'My space';
  * than an exception.
  *
  * Returns null when the row could not be made. The caller is signing someone
- * in, and a missing personal space must never cost them that — it will be made
- * on their next sign-in.
+ * in, and a missing personal space must never cost them that — the next sign-in
+ * makes it, and `ensureUser` calls this on EVERY sign-in rather than only at
+ * account creation so that promise is true. It was not always: the
+ * existing-account branch used to return before reaching here, which left every
+ * account made before this function existed without a space, permanently.
  */
 export async function ensurePersonalTopic(userId: string): Promise<string | null> {
   try {

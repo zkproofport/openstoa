@@ -62,6 +62,31 @@ describe('every path that creates an account creates its space', () => {
     expect({ accountPathsWithoutASpace: forgot }).toEqual({ accountPathsWithoutASpace: [] });
   });
 
+  it('CONTRACT: an account that ALREADY EXISTS gets one too, on any sign-in', () => {
+    /*
+     * The half this file used to miss, and the reason a staging member had a
+     * chat list with their topics in it and no "My space" at all.
+     *
+     * `ensureUser` returns early for an account it finds — that is the whole
+     * point of the function — and the early return skipped `ensurePersonalTopic`
+     * entirely. So every account created before that function existed had no
+     * space and never would, while two comments (here and in `personalTopic.ts`)
+     * said it "will be made on their next sign-in". It was not.
+     *
+     * Asserted on the EXISTING branch specifically. The creation branch is
+     * covered above, and a fix that only satisfied that one would leave the
+     * accounts this is for exactly where they were.
+     */
+    const src = readFileSync(join(ROOT, 'lib', 'ensureUser.ts'), 'utf8');
+    const earlyReturn = src.slice(
+      src.indexOf('if (existing)'),
+      src.indexOf('created: false }'),
+    );
+    expect(earlyReturn, 'ensureUser: the existing-account branch must ensure the space').toMatch(
+      /ensurePersonalTopic\(\s*nullifier\s*\)/,
+    );
+  });
+
   it('INTEGRITY: the space is made for the account that was just created', () => {
     /*
      * Passing the wrong id is the mistake this shape invites — both files have
