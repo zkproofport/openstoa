@@ -23,6 +23,8 @@ const FOLLOW_UP_QUESTIONS = [
   ['How do I set up the MCP server?', 'What USDC amount is needed for proof generation?', 'How do I use the OpenAPI spec?', 'What is on-chain recording?'],
 ];
 
+import { isSafeUrl } from '@/lib/sanitizePostHtml';
+
 // ---- Simple inline markdown renderer (no dependencies) ----
 
 function escapeHtml(str: string): string {
@@ -40,7 +42,22 @@ function renderInline(text: string): string {
     .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
     .replace(/_([^_\n]+?)_/g, '<em>$1</em>')
     .replace(/`([^`\n]+?)`/g, '<code style="background:var(--color-brand-primary-muted);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:0.88em;color:var(--color-brand-primary)">$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--color-brand-primary);text-decoration:underline;text-underline-offset:2px">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) =>
+      /*
+       * The URL is the one thing `escapeHtml` above cannot help with:
+       * `javascript:alert(1)` contains no character it rewrites, so a link
+       * from a markdown answer used to become that href verbatim. The text of
+       * an answer is model output, and a model's output is influenced by the
+       * question — so this is not "our own content" in any useful sense.
+       *
+       * This screen is disabled (see the `if (true)` return below), which is
+       * why it is a trap rather than a live hole: whoever re-enables it would
+       * inherit the sink without a reason to look for it.
+       */
+      isSafeUrl(url)
+        ? `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--color-brand-primary);text-decoration:underline;text-underline-offset:2px">${label}</a>`
+        : label,
+    );
 }
 
 function renderMarkdown(raw: string): string {

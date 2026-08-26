@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { sanitizePostHtml } from '@/lib/sanitizePostHtml';
 import LinkPreview from './LinkPreview';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -510,7 +511,19 @@ export default function SNSContent({
   );
 
   // 3. Auto-link remaining URLs
-  const linkedHtml = useMemo(() => autoLinkUrls(htmlAfterImgs), [htmlAfterImgs]);
+  /*
+   * Sanitise LAST, at the point the string becomes DOM.
+   *
+   * Doing it on write would leave every body already in the database
+   * dangerous, and there is more than one writer — mobile, web and the agent
+   * API all create posts. This is the single place the string is handed to
+   * `dangerouslySetInnerHTML`, so it is the only place that has to be right.
+   * See `@/lib/sanitizePostHtml` for what a real browser did before this.
+   */
+  const linkedHtml = useMemo(
+    () => sanitizePostHtml(autoLinkUrls(htmlAfterImgs)),
+    [htmlAfterImgs],
+  );
 
   // Combine explicit + legacy media for the gallery render.
   const galleryImages = useMemo(() => {
