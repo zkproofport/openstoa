@@ -56,6 +56,16 @@ function bearer(token: string) {
  * The rows are removed in reference order, which is also the only order a real
  * hard delete could use. What is being simulated is unchanged: a session whose
  * subject no longer exists.
+ *
+ * The delete must also be CHECKED, not just issued. `DATABASE_URL` being set
+ * says a database is reachable; it does not say it is the database
+ * `E2E_BASE_URL` writes to. Point this file at staging with a local
+ * `DATABASE_URL` still exported and every statement here succeeds against zero
+ * rows, the account stays alive, and the first assertion reports
+ * `expected 201 to be 401` — which reads as "the product stopped returning 401"
+ * when the truth is "nothing was ever deleted". That is how this ran on
+ * 2026-08-26. `db-helpers.ts` already guards its own queries this way; the
+ * gate here was the weaker one, so it is brought in line.
  */
 async function hardDeleteUser(userId: string): Promise<void> {
   if (!DB_URL) throw new Error('hardDeleteUser requires DATABASE_URL');
@@ -64,7 +74,16 @@ async function hardDeleteUser(userId: string): Promise<void> {
   try {
     await client.query(`DELETE FROM topic_members WHERE user_id = $1`, [userId]);
     await client.query(`DELETE FROM topics WHERE creator_id = $1 AND personal`, [userId]);
-    await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
+    const { rowCount } = await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
+    if (rowCount === 0) {
+      throw new Error(
+        `DB/HTTP mismatch: user ${userId} was created over HTTP at ${getBaseUrl()} seconds ago, ` +
+          `but DELETE FROM users removed 0 rows through DATABASE_URL. These are different ` +
+          `databases, so nothing was deleted and the assertions below would describe a live ` +
+          `account. Point DATABASE_URL at the database ${getBaseUrl()} writes to ` +
+          `(./scripts/db-proxy.sh <env> proxy), or unset it to skip this file.`,
+      );
+    }
   } finally {
     await client.end();
   }
