@@ -289,6 +289,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ? 'public, max-age=31536000, immutable'
           : 'private, max-age=31536000, immutable',
         'X-Content-Type-Options': 'nosniff',
+        /*
+         * These bytes came from a user. `nosniff` stops a PNG being read as
+         * HTML, but it does NOT stop an SVG being read as SVG — and an SVG
+         * runs script when it is navigated to directly, on OUR origin, where
+         * the session cookie lives. `stripSvg` removes the executable parts on
+         * upload; this makes the served copy inert regardless, which is what
+         * covers anything uploaded before that existed.
+         *
+         * `default-src 'none'` blocks script, fetch and subresources;
+         * `style-src 'unsafe-inline'` keeps SVG's own `style=` presentation
+         * working, since styling cannot execute; `sandbox` drops same-origin
+         * so even a stored payload has no origin to act on. Raster images are
+         * unaffected — they load no subresources and run nothing.
+         */
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       },
     });
   } catch (error) {

@@ -207,12 +207,55 @@ export function userObjectPrefix(userId: string): string {
  * outcome, not a fallback for convenience: it is why the upload route asks for
  * a topicId wherever one exists.
  */
+/**
+ * Make a caller-supplied filename safe to be the last segment of an object key.
+ *
+ * It used to go in verbatim, which meant the CALLER chose part of the key:
+ *
+ *   "a/b/evil.png"     -> .../posts/<uuid>/a/b/evil.png   extra segments; the
+ *                         reverse parser then refuses to read it back, so the
+ *                         object is written and orphaned
+ *   "../../evil.png"   -> 500
+ *   "." / 300 chars    -> 500
+ *
+ * The 500s were the object store refusing a key the app should never have
+ * built. A filename is a label shown back to a person, not a path — so
+ * separators and control characters are removed rather than escaped, and the
+ * length is capped. An input with nothing usable left gets a generated name;
+ * the upload succeeds either way, because the picture is what the person
+ * wanted and its name is decoration.
+ */
+export function safeObjectFilename(filename: string): string {
+  const base = (filename ?? '')
+    .split(/[/\\]/)          // keep the last path-ish component, never the path
+    .pop()!
+    .split('')
+    .filter((c) => c.charCodeAt(0) >= 0x20 && c.charCodeAt(0) !== 0x7f)
+    .join('')
+    .replace(/[\u0000-\u001f\u007f%?#]/g, '')
+    .trim();
+
+  // "." and ".." survive the filter above and are not names.
+  const cleaned = /^\.+$/.test(base) ? '' : base;
+  if (!cleaned) return `upload-${randomUUID()}`;
+
+  // Cap the NAME, keeping the extension, so a long upload still reads as an
+  // image to whatever opens it.
+  const MAX = 120;
+  if (cleaned.length <= MAX) return cleaned;
+  const dot = cleaned.lastIndexOf('.');
+  if (dot <= 0 || cleaned.length - dot > 12) return cleaned.slice(0, MAX);
+  const ext = cleaned.slice(dot);
+  return cleaned.slice(0, MAX - ext.length) + ext;
+}
+
 export function uploadObjectKey(
   purpose: UploadPurpose,
   userId: string,
   topicId: string | null,
-  filename: string,
+  rawFilename: string,
 ): string {
+  const filename = safeObjectFilename(rawFilename);
   const unique = randomUUID();
   if (purpose === 'avatar' || !topicId) {
     const folder = purpose === 'avatar' ? USER_SUBFOLDER.avatar : USER_SUBFOLDER.untopiced;

@@ -433,15 +433,46 @@ function stripGif(buf: Buffer): Buffer {
 
 /*
  * SVG has no EXIF container; its metadata is XML — `<metadata>` elements
- * (RDF/Inkscape/Adobe authorship), XMP packets and comments. We remove those
- * textually and leave the drawing alone.
+ * (RDF/Inkscape/Adobe authorship), XMP packets and comments.
+ *
+ * This used to stop there and say "leave the drawing alone", which was the
+ * whole problem: an SVG drawing can RUN. The route served the uploaded bytes
+ * back as `image/svg+xml` from our own origin, so
+ *
+ *   <svg onload="alert(1)"><script>alert(document.domain)</script></svg>
+ *
+ * came back byte-identical to a logged-out visitor of a public topic. Opening
+ * that URL executes on the OpenStoa origin, and the mobile app opens every
+ * outbound link in its own WebView, so "just a link" is not a defence.
+ *
+ * So this strips two different things for two different reasons: authorship
+ * metadata (privacy, as before) and anything executable (safety, new). The
+ * media route ALSO serves a CSP that forbids script — belt and braces, because
+ * a textual sanitiser on an XML dialect this permissive should never be the
+ * only thing standing there.
  */
 function stripSvg(buf: Buffer): Buffer {
   const text = buf.toString('utf8');
   const cleaned = text
+    // -- authorship metadata
     .replace(/<\?xpacket[\s\S]*?\?>/gi, '')
     .replace(/<metadata\b[\s\S]*?<\/metadata\s*>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '');
+    .replace(/<!--[\s\S]*?-->/g, '')
+    // -- anything that executes
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<script\b[^>]*\/>/gi, '')
+    // `<foreignObject>` embeds arbitrary HTML, which brings its own handlers.
+    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject\s*>/gi, '')
+    // `<set attributeName="onload" .../>` and friends animate an attribute
+    // into existence, so removing handlers alone is not enough.
+    .replace(/<(set|animate|animateTransform|animateMotion)\b[\s\S]*?(\/>|<\/\1\s*>)/gi, '')
+    // Event handlers in any quoting style, including unquoted.
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '')
+    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
+    // `href="javascript:…"`, `xlink:href="data:text/html,…"`.
+    .replace(/(xlink:)?href\s*=\s*"(?:\s|&#\w+;)*(?:javascript|data)\s*:[^"]*"/gi, '')
+    .replace(/(xlink:)?href\s*=\s*'(?:\s|&#\w+;)*(?:javascript|data)\s*:[^']*'/gi, '');
   return Buffer.from(cleaned, 'utf8');
 }
 
