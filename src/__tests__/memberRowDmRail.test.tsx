@@ -25,6 +25,7 @@
  *                  resolve there) — pinned separately by userCard.test.tsx's
  *                  non-`mountWithRail` cases, not duplicated here
  */
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -141,7 +142,22 @@ afterEach(async () => {
   __resetChatRailStore();
 });
 
-describe('member-row DM opens the rail (FIX1 + FIX4 regression)', () => {
+/*
+ * SUSPENDED WITH CHAT, NOT DELETED.
+ *
+ * Every assertion below describes a chat surface the web no longer serves:
+ * `CHAT_ON_WEB` is `false` (see `src/lib/chatOnWeb.ts` for why the room list,
+ * the rail and these pages are gated), so the pages render `ChatNotOnWeb`
+ * instead of a room and these cases would be asserting against a notice.
+ *
+ * Gated on the constant rather than commented out, so that the day chat comes
+ * back to the web these run again as written — a commented-out suite is a
+ * suite nobody notices is missing. `chatStaysOffForAnOldBrowser.test.tsx` is
+ * the case that stays live meanwhile, and it fails if the flag is flipped.
+ */
+const CHAT_SUITES_RUN = CHAT_ON_WEB;
+
+describe.skipIf(!CHAT_SUITES_RUN)('member-row DM opens the rail (FIX1 + FIX4 regression)', () => {
   it('CONTRACT + MOUNT-UNIQUE: clicking a member row DM button opens the rail exactly once and does not navigate', async () => {
     routeFetch();
 

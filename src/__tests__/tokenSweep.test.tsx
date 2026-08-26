@@ -46,6 +46,7 @@ import type { Locale } from '@/lib/i18n';
  * COLOR_SWEPT_FILES for the wider color-only guarantee.
  */
 const SWEPT_FILES = [
+  'src/components/ChatNotOnWeb.tsx',
   'src/components/LeftSidebar.tsx',
   'src/components/PostCard.tsx',
   'src/components/Badge.tsx',

@@ -16,6 +16,7 @@
  *   large    — a very long nickname does not break rendering (CSS clips it)
  *   ui       — outside click and Escape both close the popover
  */
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -194,7 +195,10 @@ describe('AUTHZ — Message button gating', () => {
     expect(messageBtn()).toBeNull();
   });
 
-  it('CONTRACT: a candidate shows the button; clicking starts a DM and navigates', async () => {
+  /* Suspended with chat, not deleted — `CHAT_ON_WEB` is false, so the button
+     this asserts on is gated out. The case below asserts the state that IS
+     live. See `src/lib/chatOnWeb.ts`. */
+  it.skipIf(!CHAT_ON_WEB)('CONTRACT: a candidate shows the button; clicking starts a DM and navigates', async () => {
     isDmCandidateMock.mockResolvedValue(true);
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -215,6 +219,20 @@ describe('AUTHZ — Message button gating', () => {
     expect(pushMock).toHaveBeenCalledWith('/dm/dm-topic-1');
     // FIX9: starting a DM invalidates the candidates cache immediately.
     expect(invalidateDmCandidatesMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('while chat is off on the web, the DM button is not offered at all', () => {
+  /*
+   * The case that stays live where the three above went quiet. A DM opens in
+   * the chat rail, and the rail is gated on `CHAT_ON_WEB`; a button that looks
+   * live and does nothing is worse than no button, which is the whole reason
+   * the gate reaches this far out.
+   */
+  it.skipIf(CHAT_ON_WEB)('a perfectly DM-able person still shows no button', async () => {
+    isDmCandidateMock.mockResolvedValue(true);
+    await mount();
+    expect(messageBtn()).toBeNull();
   });
 });
 
@@ -298,7 +316,7 @@ describe('content safety and i18n', () => {
     expect(popover()!.textContent).toContain('acme.com');
   });
 
-  it('the DM button reads "DM", not "Message"', async () => {
+  it.skipIf(!CHAT_ON_WEB)('the DM button reads "DM", not "Message"', async () => {
     isDmCandidateMock.mockResolvedValue(true);
     await mount();
     await act(async () => { trigger().click(); });
@@ -394,7 +412,9 @@ describe('three honest end-states — self / no badges / not DM-able', () => {
   });
 });
 
-describe('DM lands in the chat rail when one is reachable (see chatRailContext.tsx)', () => {
+/* Suspended with chat, not deleted — the rail these cases open is gated on
+   `CHAT_ON_WEB`. They run again as written when chat returns to the web. */
+describe.skipIf(!CHAT_ON_WEB)('DM lands in the chat rail when one is reachable (see chatRailContext.tsx)', () => {
   it('CONTRACT: with a rail published, starting a DM calls openRail with the room and does NOT navigate', async () => {
     isDmCandidateMock.mockResolvedValue(true);
     const fetchMock = vi.fn((input: RequestInfo | URL) => {

@@ -1,5 +1,7 @@
 'use client';
 
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
+import ChatNotOnWeb from '@/components/ChatNotOnWeb';
 import { apiFetch } from '@/lib/apiFetch';
 import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useCallback } from 'react';
@@ -39,6 +41,19 @@ interface TopicSummary {
 }
 
 export default function TopicChatPage() {
+  /*
+   * Chat is not on the web — `lib/chatOnWeb.ts` says why, and the rail that used
+   * to list rooms is gated on the same constant. Hiding the buttons and leaving
+   * this page reachable would not be a gate: the rail's own "open in new tab"
+   * target is this URL, and it is in people's history and bookmarks.
+ *
+   * Nothing below is deleted. When the mobile-app notice comes back, flip
+   * `CHAT_ON_WEB` and this early return goes with it.
+   */
+  if (!CHAT_ON_WEB) {
+    return <ChatNotOnWeb />;
+  }
+
   const params = useParams();
   const router = useRouter();
   const { t } = useTranslation();

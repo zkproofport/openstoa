@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import LeftSidebar from '@/components/LeftSidebar';
 import RightSidebar from '@/components/RightSidebar';
 import ChatRail from '@/components/ChatRail';
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import BottomTabBar from '@/components/BottomTabBar';
 import RecoveryNudge from '@/components/RecoveryNudge';
 import { useMediaQuery, DESKTOP_CHAT_QUERY } from '@/hooks/useMediaQuery';
@@ -209,7 +210,14 @@ export default function CommunityLayout({
    */
   useAccountEvents(!isGuest);
 
-  const showRail = !isGuest && railOpen;
+  /*
+   * `CHAT_ON_WEB` is false, so the rail never opens — see `lib/chatOnWeb.ts`
+   * for why the room list came out. The rest of the rail's machinery
+   * (`openRail`, the request nonce, the stored preference) is deliberately
+   * left intact: when the mobile-app notice button comes back, this reads
+   * `!isGuest && railOpen` again and nothing else has to be rebuilt.
+   */
+  const showRail = CHAT_ON_WEB && !isGuest && railOpen;
 
   return (
     <>

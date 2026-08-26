@@ -12,6 +12,7 @@ import Badge from '@/components/Badge';
 import Spinner from '@/components/Spinner';
 import UserCard from '@/components/UserCard';
 import { useChatRail } from '@/lib/chatRailContext';
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import InviteDialog from '@/components/InviteDialog';
@@ -700,7 +701,11 @@ export default function MembersPage() {
                   Rendered only once the session is known and never on your own
                   row: /api/dm rejects a self-DM with 400, so offering it would
                   be a button whose only outcome is an error. */}
-              {sessionUserId && member.userId !== sessionUserId && (
+                {/* `CHAT_ON_WEB` is false: the rail this opens is gated on the
+                    same constant and `/dm/{id}` now renders the mobile-app
+                    notice, so the button would look live and do nothing. Not
+                    deleted — it reads `sessionUserId` again when chat returns. */}
+                {CHAT_ON_WEB && sessionUserId && member.userId !== sessionUserId && (
                 <button
                   onClick={() => handleStartDm(member.userId, member.nickname, member.profileImage)}
                   disabled={dmLoading !== null}

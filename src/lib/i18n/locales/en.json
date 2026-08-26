@@ -651,6 +651,10 @@
       "appStore": "Download for iPhone",
       "playStore": "Download for Android",
       "why": "Everything else on OpenStoa works here as usual. Moving to a new phone? Profile settings has a recovery backup for exactly that."
+    },
+    "notOnWeb": {
+      "title": "Chat is in the app",
+      "body": "Your chat keys stay on one device, so a browser cannot open a room. Open ZKProofport on your phone to read and reply."
     }
   },
   "chatRail": {

@@ -33,6 +33,7 @@
  *   SI-1         — only /api/topics and /api/dm are requested; no message
  *                  body or preview is fetched or rendered
  */
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -148,7 +149,22 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe('/chat — the two-tab list', () => {
+/*
+ * SUSPENDED WITH CHAT, NOT DELETED.
+ *
+ * Every assertion below describes a chat surface the web no longer serves:
+ * `CHAT_ON_WEB` is `false` (see `src/lib/chatOnWeb.ts` for why the room list,
+ * the rail and these pages are gated), so the pages render `ChatNotOnWeb`
+ * instead of a room and these cases would be asserting against a notice.
+ *
+ * Gated on the constant rather than commented out, so that the day chat comes
+ * back to the web these run again as written — a commented-out suite is a
+ * suite nobody notices is missing. `chatStaysOffForAnOldBrowser.test.tsx` is
+ * the case that stays live meanwhile, and it fails if the flag is flipped.
+ */
+const CHAT_SUITES_RUN = CHAT_ON_WEB;
+
+describe.skipIf(!CHAT_SUITES_RUN)('/chat — the two-tab list', () => {
   it('CONTRACT: renders BOTH tabs, Topics selected first', async () => {
     routeFetch(routes({ topics: [] }, { dms: [] }));
     await mount();
@@ -211,7 +227,7 @@ describe('/chat — the two-tab list', () => {
   });
 });
 
-describe('/chat — opening a room', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('/chat — opening a room', () => {
   it('CONTRACT: a topic row navigates THIS tab to /chat/{id}', async () => {
     routeFetch(routes({ topics: [TOPIC] }, { dms: [] }));
     await mount();
@@ -245,7 +261,7 @@ describe('/chat — opening a room', () => {
   });
 });
 
-describe('/chat — authorization', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('/chat — authorization', () => {
   it('AUTHZ: an expired session (401) is sent to the login/landing page', async () => {
     routeFetch(routes({ error: 'Not authenticated' }, { error: 'Not authenticated' }, { topicsStatus: 401, dmsStatus: 401 }));
     await mount();
@@ -266,7 +282,7 @@ describe('/chat — authorization', () => {
   });
 });
 
-describe('/chat — failure handling', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('/chat — failure handling', () => {
   it('EXT-FAILURE: a 500 shows an error and a Retry that really refetches — never a silent empty list', async () => {
     let call = 0;
     routeFetch([
@@ -307,7 +323,7 @@ describe('/chat — failure handling', () => {
   });
 });
 
-describe('/chat — content rendering', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('/chat — content rendering', () => {
   it('UTF-8: a Korean + emoji topic title and DM nickname render intact', async () => {
     const title = '법률 상담 🏛️ zk';
     const nickname = '김철수 🚀';

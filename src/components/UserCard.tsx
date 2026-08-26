@@ -32,6 +32,7 @@ import Avatar from './Avatar';
 import Badge from './Badge';
 import { isDmCandidate, invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 import { useChatRail } from '@/lib/chatRailContext';
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export interface UserCardBadge {
@@ -281,7 +282,15 @@ export default function UserCard({
               {t('userCard.notDmable', { nickname })}
             </p>
           )}
-          {!isSelf && resolvedViewer != null && canDm && (
+          {/*
+            `CHAT_ON_WEB` is false, so a DM has nowhere to open — the rail is
+            gated on the same constant and the `/dm/{id}` fallback this button
+            falls back to now renders the mobile-app notice instead of a room.
+            Offering it anyway leaves a control that looks live and does
+            nothing, which is the exact failure this gate exists to stop.
+            Not deleted: when chat returns, this reads `canDm` again.
+          */}
+          {CHAT_ON_WEB && !isSelf && resolvedViewer != null && canDm && (
             <button
               type="button"
               onClick={startDm}

@@ -26,6 +26,7 @@
  * (not dead text) that overlays the shared `TopicMembersList.tsx` treatment
  * above `ChatPanel` — boundary 1/2/many members and a failed fetch.
  */
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -128,7 +129,22 @@ function topic(over: Partial<Record<string, unknown>> = {}) {
   return { topic: { id: TOPIC, title: 'Zoning Law', description: 'chat', memberCount: 4, isMember: true, ...over } };
 }
 
-describe('AUTHZ', () => {
+/*
+ * SUSPENDED WITH CHAT, NOT DELETED.
+ *
+ * Every assertion below describes a chat surface the web no longer serves:
+ * `CHAT_ON_WEB` is `false` (see `src/lib/chatOnWeb.ts` for why the room list,
+ * the rail and these pages are gated), so the pages render `ChatNotOnWeb`
+ * instead of a room and these cases would be asserting against a notice.
+ *
+ * Gated on the constant rather than commented out, so that the day chat comes
+ * back to the web these run again as written — a commented-out suite is a
+ * suite nobody notices is missing. `chatStaysOffForAnOldBrowser.test.tsx` is
+ * the case that stays live meanwhile, and it fails if the flag is flipped.
+ */
+const CHAT_SUITES_RUN = CHAT_ON_WEB;
+
+describe.skipIf(!CHAT_SUITES_RUN)('AUTHZ', () => {
   it('401 redirects to the login page and mounts nothing', async () => {
     routeFetch([[`/api/topics/${TOPIC}`, () => json({ error: 'Not authenticated' }, false, 401)]]);
     await render();
@@ -155,7 +171,7 @@ describe('AUTHZ', () => {
   });
 });
 
-describe('CONTRACT', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('CONTRACT', () => {
   it('renders bare: no site chrome (Header nav / left or right sidebar) is mounted', async () => {
     routeFetch([[`/api/topics/${TOPIC}`, () => json(topic())]]);
     await render();
@@ -195,7 +211,7 @@ describe('CONTRACT', () => {
   });
 });
 
-describe('content', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('content', () => {
   it('EMPTY: a topic with memberCount 0 still renders (no crash on the "0 members" pluralization)', async () => {
     routeFetch([[`/api/topics/${TOPIC}`, () => json(topic({ memberCount: 0 }))]]);
     await render();
@@ -221,7 +237,7 @@ describe('content', () => {
   });
 });
 
-describe('EXT-FAILURE', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('EXT-FAILURE', () => {
   it('a 500 shows an error with a way back, and mounts no panel', async () => {
     routeFetch([[`/api/topics/${TOPIC}`, () => json({ error: 'boom' }, false, 500)]]);
     await render();
@@ -239,7 +255,7 @@ describe('EXT-FAILURE', () => {
   });
 });
 
-describe('members overlay (FIX3)', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('members overlay (FIX3)', () => {
   async function flush(times = 6) {
     for (let i = 0; i < times; i++) {
       await act(async () => {

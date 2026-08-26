@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -156,7 +157,22 @@ afterEach(async () => {
 
 // ── DM list page ─────────────────────────────────────────────────────────────
 
-describe('/dm — DM list', () => {
+/*
+ * SUSPENDED WITH CHAT, NOT DELETED.
+ *
+ * Every assertion below describes a chat surface the web no longer serves:
+ * `CHAT_ON_WEB` is `false` (see `src/lib/chatOnWeb.ts` for why the room list,
+ * the rail and these pages are gated), so the pages render `ChatNotOnWeb`
+ * instead of a room and these cases would be asserting against a notice.
+ *
+ * Gated on the constant rather than commented out, so that the day chat comes
+ * back to the web these run again as written — a commented-out suite is a
+ * suite nobody notices is missing. `chatStaysOffForAnOldBrowser.test.tsx` is
+ * the case that stays live meanwhile, and it fails if the flag is flipped.
+ */
+const CHAT_SUITES_RUN = CHAT_ON_WEB;
+
+describe.skipIf(!CHAT_SUITES_RUN)('/dm — DM list', () => {
   it('AUTHZ: a session without a userId is sent back to the login page', async () => {
     routeFetch([
       ['/api/auth/session', () => json({})],
@@ -378,7 +394,7 @@ describe('/dm — DM list', () => {
 
 // ── DM conversation view ─────────────────────────────────────────────────────
 
-describe('/dm/[topicId] — conversation', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('/dm/[topicId] — conversation', () => {
   beforeEach(() => {
     paramsMock.current = { topicId: DM_A };
   });
@@ -519,7 +535,7 @@ describe('/dm/[topicId] — conversation', () => {
 
 // ── Message action on the member list ────────────────────────────────────────
 
-describe('/topics/[topicId]/members — Message action', () => {
+describe.skipIf(!CHAT_SUITES_RUN)('/topics/[topicId]/members — Message action', () => {
   function memberRoutes(members: Array<{ userId: string; nickname: string; role: string }>, me = 'me') {
     return [
       ['/api/auth/session', () => json({ userId: me })] as [string, () => Response],
