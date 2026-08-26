@@ -13,6 +13,10 @@ import WebView from 'react-native-webview';
 import type { WebViewNavigation, WebViewMethods, WebViewProgressEvent } from 'react-native-webview';
 import Feather from 'react-native-vector-icons/Feather';
 import { useThemeColors } from '../../theme/ThemeContext';
+import { TYPE_SCALE } from '../../theme/tokens';
+import { useTranslation } from 'react-i18next';
+import { Text } from 'react-native';
+import { isOpenableUrl } from '../../utils/safeExternalUrl';
 
 export type InAppBrowserRouteParams = {
   url: string;
@@ -23,6 +27,14 @@ export function InAppBrowserScreen() {
   const route = useRoute<any>();
   const { url } = route.params as InAppBrowserRouteParams;
   const { colors } = useThemeColors();
+  const { t } = useTranslation();
+  /*
+   * Every stack routes outbound links through this screen, so this is the one
+   * place that has to ask what the URL is before `javaScriptEnabled` gets it.
+   * A link in a post body is whatever its author typed. See
+   * `../../utils/safeExternalUrl`.
+   */
+  const openable = isOpenableUrl(url);
   const [progress, setProgress] = useState(0);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -70,6 +82,21 @@ export function InAppBrowserScreen() {
       // user dismissed
     }
   }, [currentUrl]);
+
+  // Placed after every hook: an early return above them would make the
+  // hook order depend on the URL.
+  if (!openable) {
+    return (
+      <View style={[styles.blocked, { backgroundColor: colors.background.primary }]}>
+        <Text style={[styles.blockedTitle, { color: colors.text.primary }]}>
+          {t('openstoa.inAppBrowser.blockedTitle')}
+        </Text>
+        <Text style={[styles.blockedBody, { color: colors.text.secondary }]}>
+          {t('openstoa.inAppBrowser.blockedBody')}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
@@ -130,6 +157,9 @@ function ToolbarBtn({ icon, disabled, onPress, color, dim }: {
 }
 
 const styles = StyleSheet.create({
+  blocked: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
+  blockedTitle: { fontSize: TYPE_SCALE.bodyLarge, fontWeight: '600', textAlign: 'center' },
+  blockedBody: { fontSize: TYPE_SCALE.bodySmall, textAlign: 'center', lineHeight: 20 },
   container: {
     flex: 1,
   },

@@ -6,6 +6,7 @@ import { RADIUS, TYPE_SCALE } from '../theme/tokens';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useMediaAuthToken } from '../hooks/useMediaAuthToken';
 import { gatedMediaHeaders } from '../utils/gatedMedia';
+import { isOpenableUrl } from '../utils/safeExternalUrl';
 
 export interface PostContentProps {
   /** HTML-formatted post body. Mirrors the web's `post.content` field which
@@ -234,7 +235,9 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
       a: {
         onPress: (_e: unknown, href: string) => {
           if (onPressLink) onPressLink(href);
-          else void Linking.openURL(href).catch(() => undefined);
+          // A body's href is whatever its author typed; `javascript:` and
+          // `file:` are not links to a page. See `../utils/safeExternalUrl`.
+          else if (isOpenableUrl(href)) void Linking.openURL(href).catch(() => undefined);
         },
       },
     }),
@@ -290,7 +293,7 @@ export function PostContent({ content, maxLines, omitImages, onPressLink }: Post
               style={{ color: colors.brand.primary, textDecorationLine: 'underline' }}
               onPress={() => {
                 if (onPressLink) onPressLink(seg.url!);
-                else void Linking.openURL(seg.url!).catch(() => undefined);
+                else if (isOpenableUrl(seg.url)) void Linking.openURL(seg.url!).catch(() => undefined);
               }}
             >
               {seg.text}

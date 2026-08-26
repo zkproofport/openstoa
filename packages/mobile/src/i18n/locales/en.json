@@ -625,6 +625,10 @@
       "retryGrant": "Try again",
       "cannotHelp": "This device does not have that stretch either.",
       "aloneHere": "Only your recovery code can bring this back — nobody else is here to unlock it."
+    },
+    "inAppBrowser": {
+      "blockedTitle": "This link cannot be opened",
+      "blockedBody": "Links in posts open as web pages. This one is not a web address."
     }
   }
 }

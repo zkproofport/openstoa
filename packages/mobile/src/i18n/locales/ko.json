@@ -625,6 +625,10 @@
       "retryGrant": "다시 시도",
       "cannotHelp": "이 기기도 그 구간을 갖고 있지 않습니다.",
       "aloneHere": "이 기록은 복구 코드로만 돌아옵니다 — 여기엔 열어줄 사람이 없습니다."
+    },
+    "inAppBrowser": {
+      "blockedTitle": "이 링크는 열 수 없습니다",
+      "blockedBody": "글 속 링크는 웹 페이지로 열립니다. 이 주소는 웹 주소가 아닙니다."
     }
   }
 }
