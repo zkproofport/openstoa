@@ -216,8 +216,22 @@ export function getMlsSessionStore(
     // Encrypt both at rest under the master_key (rootStore = the secure store).
     const store = encrypting(rawSecure, rawSecure);
     const msgCache = encrypting(rawLocal, rawSecure);
-    _store = new MlsSessionStore(createMlsTransport(client), deviceIdentity(), store, msgCache, () =>
-      sessionUserId(client),
+    /*
+     * `rawSecure` — NOT `store` — for the device identity.
+     *
+     * `store` is sealed under the master_key, and an unopenable value there reads
+     * as absent, which mints a new leaf and orphans the epochs this device already
+     * holds. The identity is `<userId>:<deviceId>`, which the server already keeps
+     * in plain text, so there is nothing to protect by sealing it and everything
+     * to lose. See the `identityStore` parameter on `MlsSessionStore`.
+     */
+    _store = new MlsSessionStore(
+      createMlsTransport(client),
+      deviceIdentity(),
+      store,
+      msgCache,
+      () => sessionUserId(client),
+      rawSecure,
     );
   }
   return _store;

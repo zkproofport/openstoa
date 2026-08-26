@@ -162,9 +162,25 @@ let _store: MlsSessionStore | null = null;
 export function getMlsSessionStore(): MlsSessionStore {
   if (!_store) {
     // MLS ClientState + decrypted message cache, both at-rest encrypted under the
-    // master_key. Keys are namespaced (mls.state.* / mls.identity / mls.msg.*).
+    // master_key. Keys are namespaced (mls.state.* / mls.msg.*).
     const s = encStore();
-    _store = new MlsSessionStore(httpTransport(), deviceIdentity(), s, s, sessionUserId);
+    /*
+     * `mls.identity` is the exception, and goes to the RAW store.
+     *
+     * Sealed, an unopenable value reads as absent, which mints a new leaf and
+     * leaves every earlier epoch unreadable. It is also not a secret: the leaf is
+     * `<userId>:<deviceId>` and the server keeps it in plain text in
+     * `mls_device_joins.leaf_identity`. Sealing it protected nothing and made the
+     * one value that must outlive a key rotation depend on the key.
+     */
+    _store = new MlsSessionStore(
+      httpTransport(),
+      deviceIdentity(),
+      s,
+      s,
+      sessionUserId,
+      idbStore(),
+    );
   }
   return _store;
 }
