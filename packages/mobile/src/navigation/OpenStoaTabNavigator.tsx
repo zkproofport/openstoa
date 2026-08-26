@@ -251,6 +251,24 @@ export function OpenStoaTabNavigator() {
            * and a badge with nothing behind it is worse than no badge.
            */
           tabBarBadge: chatBadge,
+            /*
+             * Room rows and this badge agree on the NUMBER — both go through
+             * `formatUnreadBadge`, so 103 unread is "99+" on each. They did not
+             * agree on what was DRAWN: React Navigation's default badge is a
+             * fixed-width circle sized for one or two digits, so "99+" was
+             * clipped to "9…" while the room row beside it read "99+".
+             * Measured on the device at 103 unread (2026-08-26).
+             *
+             * `minWidth` + horizontal padding rather than a bigger fixed width:
+             * a single digit keeps its circle, and three characters get the room
+             * they need instead of an ellipsis.
+             */
+            tabBarBadgeStyle: {
+              minWidth: 20,
+              paddingHorizontal: 5,
+              fontSize: TYPE_SCALE.label,
+              lineHeight: 16,
+            },
         }}
       />
       <Tab.Screen
