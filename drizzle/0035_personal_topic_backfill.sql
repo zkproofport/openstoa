@@ -26,6 +26,19 @@
 --
 -- No invite can ever be made from a personal topic, but the column is NOT NULL
 -- and unique, so a constant would collide on the second row.
+--
+-- Deleted accounts are skipped. Deletion is a soft delete that keeps the user
+-- row, but `DELETE /api/account` explicitly removes the personal space first
+-- (account/route.ts:111-112). Backfilling over the whole table would put that
+-- space back for someone who asked for it to go — a one-shot resurrection of
+-- exactly the row the deletion path deleted on purpose. Measured: seeded with
+-- 196 accounts of which 5 were deleted, the unguarded version created 5 spaces
+-- for them.
+--
+-- Reactivation is a different question and is NOT decided here: nothing blocks
+-- a deleted account from signing in again, and `ensureUser` makes the space at
+-- that point. This clause only declines to make one for an account that is not
+-- there to ask.
 INSERT INTO "topics" (
   "id", "title", "description", "creator_id", "invite_code",
   "visibility", "kind", "personal"
@@ -40,10 +53,11 @@ SELECT
   'topic',
   true
 FROM "users" u
-WHERE NOT EXISTS (
-  SELECT 1 FROM "topics" t
-  WHERE t."creator_id" = u."id" AND t."personal"
-);
+WHERE u."deleted_at" IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM "topics" t
+    WHERE t."creator_id" = u."id" AND t."personal"
+  );
 --> statement-breakpoint
 -- Membership, or the owner cannot open their own room: every read goes through
 -- `topic_members`, and a topic whose creator is not a member is invisible to
