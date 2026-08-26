@@ -11,6 +11,7 @@ import { attachTagsToPosts } from '@/lib/postTags';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { normaliseSearchQuery } from '@/lib/search';
+import { resolveVisibleTopicIds } from '@/lib/visibleTopics';
 
 const ROUTE = '/api/feed';
 
@@ -27,6 +28,7 @@ const ROUTE = '/api/feed';
  *       Supports sorting, tag filtering, and category filtering.
  *     operationId: getFeed
  *     security: []
+ *     x-auth-optional: true
  *     x-related-skills: [list-topics, list-posts, get-post]
  *     parameters:
  *       - name: sort
@@ -179,7 +181,7 @@ export async function GET(request: NextRequest) {
       logger.info(ROUTE, 'Guest fetching feed');
 
       // Accessible topics: public only
-      const accessibleTopicIds = await resolvePublicTopicIds(categoryTopicIds);
+      const accessibleTopicIds = await resolveVisibleTopicIds(null, categoryTopicIds);
 
       if (accessibleTopicIds.length === 0) {
         return NextResponse.json({ posts: [] });
@@ -257,7 +259,7 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // Accessible topics: public topics UNION topics where user is a member
-      accessibleTopicIds = await resolveAccessibleTopicIds(session.userId, categoryTopicIds);
+      accessibleTopicIds = await resolveVisibleTopicIds(session.userId, categoryTopicIds);
     }
 
     if (accessibleTopicIds.length === 0) {
@@ -324,59 +326,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }
-}
-
-/**
- * Resolve public topic IDs, optionally filtered by category.
- */
-async function resolvePublicTopicIds(categoryTopicIds: string[] | null): Promise<string[]> {
-  if (categoryTopicIds !== null) {
-    if (categoryTopicIds.length === 0) return [];
-    const rows = await db
-      .select({ id: topics.id })
-      .from(topics)
-      .where(and(eq(topics.visibility, 'public'), isNull(topics.blindedAt), inArray(topics.id, categoryTopicIds)));
-    return rows.map((r) => r.id);
-  }
-
-  const rows = await db
-    .select({ id: topics.id })
-    .from(topics)
-    .where(and(eq(topics.visibility, 'public'), isNull(topics.blindedAt)));
-  return rows.map((r) => r.id);
-}
-
-/**
- * Resolve accessible topic IDs for an authenticated user (public + member topics),
- * optionally filtered by category.
- */
-async function resolveAccessibleTopicIds(userId: string, categoryTopicIds: string[] | null): Promise<string[]> {
-  // Get user's member topics (exclude blinded)
-  const memberships = await db
-    .select({ topicId: topicMembers.topicId })
-    .from(topicMembers)
-    .innerJoin(topics, eq(topicMembers.topicId, topics.id))
-    .where(and(eq(topicMembers.userId, userId), isNull(topics.blindedAt)));
-  const memberTopicIds = memberships.map((m) => m.topicId);
-
-  // Get public non-blinded topics
-  const publicRows = await db
-    .select({ id: topics.id })
-    .from(topics)
-    .where(and(eq(topics.visibility, 'public'), isNull(topics.blindedAt)));
-  const publicTopicIds = publicRows.map((r) => r.id);
-
-  // Union (deduplicate)
-  const allAccessible = [...new Set([...memberTopicIds, ...publicTopicIds])];
-
-  // Apply category filter if present
-  if (categoryTopicIds !== null) {
-    if (categoryTopicIds.length === 0) return [];
-    const categorySet = new Set(categoryTopicIds);
-    return allAccessible.filter((id) => categorySet.has(id));
-  }
-
-  return allAccessible;
 }
 
 /**
