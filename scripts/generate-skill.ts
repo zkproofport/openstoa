@@ -446,9 +446,24 @@ function buildSingleEndpointBody(
     lines.push(desc, '');
   }
 
+  /*
+   * Three states, not two. `security: []` used to render a flat "none", which
+   * is true about what is REQUIRED and misleading about what the caller gets:
+   * on `/api/tags`, `/api/feed` and `/api/topics` a session is optional but
+   * changes the ANSWER — a guest sees public content, a member sees theirs as
+   * well. An agent reading "Auth: none" has no reason to send its key, and
+   * then silently receives less than it could. `x-auth-optional: true` on the
+   * operation says so out loud.
+   */
   const noAuth = Array.isArray(op.security) && op.security.length === 0;
+  const authOptional = (op as { 'x-auth-optional'?: boolean })['x-auth-optional'] === true;
+  const authLine = noAuth
+    ? authOptional
+      ? 'optional — works without a token, but a token returns more (see the description)'
+      : 'none'
+    : 'Bearer token or session cookie';
   lines.push(`**Endpoint:** \`${method.toUpperCase()} ${apiPath}\``);
-  lines.push(`**Auth:** ${noAuth ? 'none' : 'Bearer token or session cookie'}`);
+  lines.push(`**Auth:** ${authLine}`);
 
   const pathParams = (op.parameters ?? []).filter((p) => p.in === 'path');
   if (pathParams.length > 0) {

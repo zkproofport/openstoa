@@ -39,6 +39,7 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *       receive an empty list. With view=all, all visible topics are returned with sorting support.
  *     operationId: listTopics
  *     security: []
+ *     x-auth-optional: true
  *     parameters:
  *       - name: view
  *         in: query

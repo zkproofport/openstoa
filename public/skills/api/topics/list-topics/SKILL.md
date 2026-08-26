@@ -13,7 +13,7 @@ metadata:
 Authentication optional. Without auth, returns public and private topics (excludes secret). With auth, includes membership status and secret topics the user belongs to. Without view=all, authenticated users see only their joined topics; unauthenticated users receive an empty list. With view=all, all visible topics are returned with sorting support.
 
 **Endpoint:** `GET /api/topics`
-**Auth:** none
+**Auth:** optional — works without a token, but a token returns more (see the description)
 
 **Query parameters:**
 - `view` (enum<all>) — Set to "all" to see all visible topics instead of only joined topics

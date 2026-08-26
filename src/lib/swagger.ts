@@ -427,7 +427,11 @@ const options: swaggerJsdoc.Options = {
             id: { type: 'string', format: 'uuid', description: 'Unique tag identifier' },
             name: { type: 'string', description: 'Display name' },
             slug: { type: 'string', description: 'URL-safe slug (used for filtering)' },
-            postCount: { type: 'integer', description: 'Number of posts using this tag' },
+            postCount: {
+              type: 'integer',
+              description:
+                'Posts carrying this tag that the CALLER can see — public topics plus, with a session, the ones they belong to. Not a global total: the same tag reports a different number to a different caller. Deleted posts are excluded.',
+            },
             createdAt: { type: 'string', format: 'date-time', description: 'Creation timestamp' },
           },
         },

@@ -13,7 +13,7 @@ metadata:
 Returns posts across all accessible topics (like Reddit's home feed). Guests see only posts from public topics. Authenticated users see posts from public topics plus topics where they are a member. Supports sorting, tag filtering, and category filtering.
 
 **Endpoint:** `GET /api/feed`
-**Auth:** none
+**Auth:** optional — works without a token, but a token returns more (see the description)
 
 **Query parameters:**
 - `sort` (enum<hot|new|top|active>) — Sort order
