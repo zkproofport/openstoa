@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-
-/**
- * Endpoints that only make sense on a device holding chat keys.
- *
- * Chat is mobile-only. A browser cannot read a room — the keys are on the phone
- * — but it CAN join a group, advance an epoch, and post ciphertext nobody will
- * ever decrypt, so leaving the API open to it produces damage rather than
- * merely nothing. The UI entry points are gone; this is the part that holds
- * when the UI is not the caller.
- */
-const CHAT_PATH_PARTS = ['/chat', '/mls/', '/tak/'] as const;
-
-function isChatPath(pathname: string): boolean {
-  if (!pathname.startsWith('/api/topics/')) return false;
-  return CHAT_PATH_PARTS.some((part) => pathname.includes(part));
-}
+import { isChatPath } from '@/lib/chatPaths';
 
 const PUBLIC_PATHS = [
   '/',
