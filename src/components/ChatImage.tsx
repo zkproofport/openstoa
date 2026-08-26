@@ -59,6 +59,17 @@ export interface ChatImageProps {
   slotWidth: number;
   /** Shown only when the rule actually cropped. Owned by the caller, which owns i18n. */
   croppedLabel: string;
+  /**
+   * What the SENDER measured, when the attachment envelope carries it.
+   *
+   * The browser is still the authority — this only decides the shape of the
+   * row while `probeImageSize` is outstanding. Without it the rule has nothing
+   * to work from and falls back to a square, so the row moves the moment the
+   * picture decodes. The mini-app twin carries the same pair for the same
+   * reason; measured there at +80px for a screenshot and -144px for a panorama.
+   */
+  hintWidth?: number;
+  hintHeight?: number;
   'data-testid'?: string;
 }
 
@@ -67,6 +78,8 @@ export function ChatImage({
   alt,
   slotWidth,
   croppedLabel,
+  hintWidth,
+  hintHeight,
   'data-testid': testId,
 }: ChatImageProps) {
   const [size, setSize] = useState<ChatImageNaturalSize | null>(null);
@@ -83,7 +96,13 @@ export function ChatImage({
     };
   }, [src]);
 
-  const box: ChatMediaBox = chatMediaBox(size?.width, size?.height, slotWidth);
+  /*
+   * The probe wins once it lands; the hint only stands in until then. A sender
+   * that measured wrong costs one reflow, not a permanently wrong box.
+   */
+  const shownWidth = size?.width ?? hintWidth;
+  const shownHeight = size?.height ?? hintHeight;
+  const box: ChatMediaBox = chatMediaBox(shownWidth, shownHeight, slotWidth);
 
   return (
     <span

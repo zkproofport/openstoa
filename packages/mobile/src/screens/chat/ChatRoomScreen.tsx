@@ -3184,6 +3184,8 @@ function EncryptedAttachment({
           uri={fileUri}
           accessibilityLabel={t('openstoa.chat.media.alt')}
           croppedLabel={t('openstoa.chat.media.cropped')}
+          hintWidth={envelope.w}
+          hintHeight={envelope.h}
           testID="encrypted-attachment-image"
         />
       </TouchableOpacity>

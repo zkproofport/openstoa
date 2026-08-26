@@ -58,6 +58,18 @@ export interface ChatImageProps {
   slotWidth?: number;
   /** Shown only when the rule actually cropped. Caller owns i18n. */
   croppedLabel: string;
+  /**
+   * What the SENDER measured, when the attachment envelope carries it.
+   *
+   * `Image.getSize` is still the authority — this only decides what the row
+   * looks like during the wait. Without it the rule has nothing to work from
+   * and falls back to a square, so a screenshot's row grew 80px and a panorama's
+   * shrank 144px the instant the file finished decoding: the same jump the
+   * envelope was added to remove, one step later than the reserved placeholder
+   * that already fixed the first half.
+   */
+  hintWidth?: number;
+  hintHeight?: number;
   testID?: string;
 }
 
@@ -66,6 +78,8 @@ export function ChatImage({
   accessibilityLabel,
   slotWidth = CHAT_IMAGE_SLOT_WIDTH,
   croppedLabel,
+  hintWidth,
+  hintHeight,
   testID,
 }: ChatImageProps) {
   const [size, setSize] = useState<ChatImageNaturalSize | null>(null);
@@ -82,7 +96,14 @@ export function ChatImage({
     };
   }, [uri]);
 
-  const box: ChatMediaBox = chatMediaBox(size?.width, size?.height, slotWidth);
+  /*
+   * The probe wins once it lands; the hint only stands in until then. A sender
+   * that measured wrong is corrected by the file itself, so a bad hint costs
+   * one reflow rather than a permanently wrong box.
+   */
+  const shownWidth = size?.width ?? hintWidth;
+  const shownHeight = size?.height ?? hintHeight;
+  const box: ChatMediaBox = chatMediaBox(shownWidth, shownHeight, slotWidth);
 
   /*
    * The crop is performed by the CLIPPING VIEW, not by `resizeMode`.
@@ -93,7 +114,7 @@ export function ChatImage({
    * and the wrapper clips the overflow, which puts the surviving pixels at
    * whichever edge the rule asked for.
    */
-  const measurable = size && size.width > 0 && size.height > 0;
+  const measurable = Boolean(shownWidth && shownHeight && shownWidth > 0 && shownHeight > 0);
   /*
    * The cover scale: whichever axis needs the most enlargement to reach the
    * box, so the picture covers it on both. Getting this from the WIDTH alone
@@ -101,10 +122,10 @@ export function ChatImage({
    * vertically — it left a panorama letterboxed inside its own crop.
    */
   const scale = measurable
-    ? Math.max(box.width / size!.width, box.height / size!.height)
+    ? Math.max(box.width / shownWidth!, box.height / shownHeight!)
     : 1;
-  const drawWidth = measurable ? Math.round(size!.width * scale) : box.width;
-  const drawHeight = measurable ? Math.round(size!.height * scale) : box.height;
+  const drawWidth = measurable ? Math.round(shownWidth! * scale) : box.width;
+  const drawHeight = measurable ? Math.round(shownHeight! * scale) : box.height;
   /*
    * `|| 0` normalises the negative zero that `-Math.round(0)` produces. It
    * lays out identically, but it reads as a real offset in a snapshot and in

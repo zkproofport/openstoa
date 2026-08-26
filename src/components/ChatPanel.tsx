@@ -1223,6 +1223,8 @@ function ChatMediaAttachment({
           alt={t('chat.media.alt')}
           slotWidth={roomy ? CHAT_IMAGE_SLOT_WIDTH_ROOMY : CHAT_IMAGE_SLOT_WIDTH}
           croppedLabel={t('chat.media.cropped')}
+          hintWidth={envelope.w}
+          hintHeight={envelope.h}
           data-testid="chat-media-image"
         />
       </a>
