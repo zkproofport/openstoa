@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
       userId,
       deviceKind,
       deviceId: device.id,
+      devicePublicKey: device.publicKey,
       takeover: body.takeover === true,
     });
     if (decision.kind === 'conflict') {

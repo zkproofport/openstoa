@@ -122,7 +122,8 @@
   "askPage": {
     "title": "OpenStoa AI",
     "unavailable": "This feature is currently unavailable.",
-    "backToHome": "Back to home"
+    "backToHome": "Back to home",
+    "inputPlaceholder": "Ask anything about OpenStoa…"
   },
   "explorePage": {
     "loadFailed": "Failed to load topics",
@@ -702,7 +703,8 @@
     "docs": "Docs",
     "openChat": "Open chat",
     "anonFallback": "anon",
-    "signIn": "Sign in"
+    "signIn": "Sign in",
+    "searchPlaceholder": "Search posts, tags…"
   },
   "rightSidebar": {
     "aboutTopic": "About this topic",
@@ -860,7 +862,10 @@
     "joined": "Joined",
     "pinnedAriaLabel": "Pinned post",
     "recordedOnBase": "Recorded on Base",
-    "recordCount": "{{count}} record{{suffix}}"
+    "recordCount": "{{count}} record{{suffix}}",
+    "titlePlaceholder": "Post title",
+    "bodyPlaceholder": "Write your post...",
+    "commentPlaceholder": "Share your thoughts..."
   },
   "snsEditor": {
     "placeholder": "Write something…",
@@ -1066,5 +1071,24 @@
     "historyAlready": "You already had the chat history this link carries.",
     "historyWrongTopic": "This link carried history keys for a different topic, so they were not used. Ask for a fresh invite if you need the history.",
     "historyNone": "This invite carried no chat history. You will see messages sent from now on."
+  },
+  "a11y": {
+    "sendMessage": "Send message",
+    "postActions": "Post actions",
+    "memberOfTopic": "You are a member of this topic",
+    "pinnedPost": "Pinned post",
+    "search": "Search",
+    "clearSearch": "Clear search",
+    "previousImage": "Previous image",
+    "nextImage": "Next image",
+    "previous": "Previous",
+    "next": "Next",
+    "addReaction": "Add reaction",
+    "upvote": "Upvote",
+    "downvote": "Downvote",
+    "youtubeVideo": "YouTube video",
+    "vimeoVideo": "Vimeo video",
+    "copyResponse": "Copy response",
+    "deleteComment": "Delete comment"
   }
 }

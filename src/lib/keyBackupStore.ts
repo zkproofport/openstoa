@@ -33,9 +33,16 @@ export async function upsertKeyBackup(db: DB, userId: string, wrappedMaster: Buf
     .onConflictDoUpdate({ target: keyBackups.userId, set: { wrappedMaster, updatedAt: new Date() } });
 }
 
-export async function getKeyBackup(db: DB, userId: string): Promise<{ wrappedMaster: Buffer } | null> {
+export async function getKeyBackup(
+  db: DB,
+  userId: string,
+): Promise<{ wrappedMaster: Buffer; updatedAt: Date | null } | null> {
   const row = await db.query.keyBackups.findFirst({ where: eq(keyBackups.userId, userId) });
-  return row ? { wrappedMaster: row.wrappedMaster } : null;
+  // `updatedAt` travels with the wrap because every screen that asks "is there
+  // a backup" also has to ask "how old is it" — a wrap made before the rooms
+  // someone is in now is not the same answer as a current one, and the two were
+  // only distinguishable on the sign-in conflict path (`deviceTakeoverGate`).
+  return row ? { wrappedMaster: row.wrappedMaster, updatedAt: row.updatedAt ?? null } : null;
 }
 
 export async function deleteKeyBackup(db: DB, userId: string): Promise<void> {
@@ -66,9 +73,14 @@ export async function upsertPasskeyWrap(
 export async function listPasskeyWraps(
   db: DB,
   userId: string,
-): Promise<Array<{ credentialId: string; prfWrapped: Buffer }>> {
+): Promise<Array<{ credentialId: string; prfWrapped: Buffer; createdAt: Date | null }>> {
   const rows = await db.query.keyBackupPasskeys.findMany({ where: eq(keyBackupPasskeys.userId, userId) });
-  return rows.map((r) => ({ credentialId: r.credentialId, prfWrapped: r.prfWrapped }));
+  return rows.map((r) => ({
+    credentialId: r.credentialId,
+    prfWrapped: r.prfWrapped,
+    // A passkey wrap is never rewritten, so its creation IS its freshness.
+    createdAt: r.createdAt ?? null,
+  }));
 }
 
 export async function deletePasskeyWrap(db: DB, userId: string, credentialId: string): Promise<number> {

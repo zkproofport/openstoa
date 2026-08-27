@@ -128,8 +128,20 @@ describe('master_key backup + recovery', () => {
 });
 
 describe('TakSessionStore keychain snapshot (export/import + manifest + onChange)', () => {
-  // public archiveOnSend does not touch MLS state, so a null mls is safe here.
-  const noMls = null as unknown as MlsSessionStore;
+  /*
+   * public `archiveOnSend` does not touch MLS state, so these cases never need
+   * a real session — but the store now REGISTERS AN EPOCH LISTENER in its
+   * constructor (it takes the per-epoch key for every epoch the device passes
+   * through, which is what stops an away member losing history), so a literal
+   * `null` no longer survives construction.
+   *
+   * A stub rather than a looser constructor: making the production code tolerate
+   * a missing session would turn a wiring mistake into a device that silently
+   * stops collecting keys, which is the failure this whole area is about.
+   */
+  const noMls = {
+    setEpochListener: () => {},
+  } as unknown as MlsSessionStore;
   // A transport that accepts the first fingerprint claim per topic, like the
   // server's compare-and-set — so archiveOnSend can mint a genesis root.
   function noopTransport() {

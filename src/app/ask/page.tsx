@@ -161,10 +161,11 @@ function TypingIndicator() {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const { t } = useTranslation();
   return (
     <button
       onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {} }}
-      title="Copy response"
+      title={t('a11y.copyResponse')}
       style={{
         background: 'none', border: 'none', cursor: 'pointer',
         padding: '4px 6px', borderRadius: 5,
@@ -522,7 +523,7 @@ export default function AskPage() {
               value={input}
               onChange={(e) => { setInput(e.target.value); autoResize(); }}
               onKeyDown={handleKeyDown}
-              placeholder="Ask anything about OpenStoa…"
+              placeholder={t('askPage.inputPlaceholder')}
               rows={1}
               maxLength={2000}
               style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--color-text-primary)', fontSize: 14, fontFamily: 'var(--font-sans)', resize: 'none', lineHeight: 1.55, padding: 0, minHeight: 22, maxHeight: 120, overflow: 'auto' }}
@@ -531,7 +532,7 @@ export default function AskPage() {
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || loading}
               style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: input.trim() && !loading ? 'var(--color-brand-primary)' : 'var(--color-brand-primary-muted)', color: input.trim() && !loading ? 'var(--color-text-inverted)' : 'var(--color-border-strong)', cursor: input.trim() && !loading ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}
-              aria-label="Send message"
+              aria-label={t('a11y.sendMessage')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
             </button>

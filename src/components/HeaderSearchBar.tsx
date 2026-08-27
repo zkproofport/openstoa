@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // Sticky header search input — mirrors the mobile SearchBar pattern so
 // users on web have the same entry point. Submit on Enter or magnifier
@@ -9,6 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 // search across every post the viewer can see. The mobile feed does the
 // same when the user submits from the global SearchBar.
 export default function HeaderSearchBar() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -73,8 +75,8 @@ export default function HeaderSearchBar() {
         inputMode="search"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Search posts, tags…"
-        aria-label="Search"
+        placeholder={t('header.searchPlaceholder')}
+        aria-label={t('a11y.search')}
         style={{
           background: 'transparent',
           border: 'none',
@@ -91,7 +93,7 @@ export default function HeaderSearchBar() {
         <button
           type="button"
           onClick={clear}
-          aria-label="Clear search"
+          aria-label={t('a11y.clearSearch')}
           style={{
             background: 'none',
             border: 'none',

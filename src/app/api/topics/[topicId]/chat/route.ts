@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { chatMessages, topicMembers, users } from '@/lib/db/schema';
+import { chatMessages, topicMembers, topics, users } from '@/lib/db/schema';
 import { eq, and, desc, count, gt, gte, lt } from 'drizzle-orm';
 import { getRedis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
@@ -452,7 +452,8 @@ export async function POST(
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    const { ciphertext, epoch, takVersion, pushArchive } = body as Record<string, unknown>;
+    const { ciphertext, epoch, takVersion, pushArchive, type: messageType } =
+      body as Record<string, unknown>;
 
     // SI-1: the server must never accept a plaintext chat body. User messages
     // are end-to-end encrypted and arrive only as sealed `ciphertext`.
@@ -496,6 +497,52 @@ export async function POST(
       where: eq(users.id, session.userId),
     });
 
+      /*
+       * `notice` — a message the SYSTEM addresses to this person, sealed.
+       *
+       * NOT a `join`/`leave` system row: those carry `systemText`, a PLAINTEXT
+       * column the server reads (SI-1). A recovery code cannot go there — it is
+       * the value that opens `master_key`, and storing it in the clear defeats
+       * everything it protects. A notice is sealed like any other message; only
+       * its TYPE differs.
+       *
+       * NOT an ordinary message either. The client draws the bubble on the RIGHT
+       * when the row's `userId` matches the reader, and the reader's own token is
+       * what files this — so the recovery note appeared as something the person
+       * had written to themselves. They had not. A notice renders as a RECEIVED
+       * bubble: it keeps tap-to-copy (a code that cannot be copied is barely a
+       * copy) without claiming an author.
+       *
+       * PERSONAL ROOM ONLY. Otherwise anyone could post something that looks
+       * like it came from the system into a room they share — "the system"
+       * telling members to paste a code somewhere is a phishing primitive. A
+       * person's own space has nobody to deceive.
+       */
+      let rowType: 'message' | 'notice' = 'message';
+      if (messageType !== undefined && messageType !== null) {
+        if (messageType !== 'notice') {
+          return NextResponse.json(
+            { error: "type must be 'notice' when present" },
+            { status: 400 },
+          );
+        }
+        const topicRow = await db.query.topics.findFirst({
+          where: eq(topics.id, topicId),
+          columns: { personal: true, creatorId: true },
+        });
+        if (!topicRow?.personal || topicRow.creatorId !== session.userId) {
+          logger.warn(ROUTE, 'notice refused outside the caller own personal room', {
+            userId: session.userId,
+            topicId,
+          });
+          return NextResponse.json(
+            { error: 'A notice may only be filed in your own space' },
+            { status: 403 },
+          );
+        }
+        rowType = 'notice';
+      }
+
     const [inserted] = await db
       .insert(chatMessages)
       .values({
@@ -504,7 +551,7 @@ export async function POST(
         ciphertext: sealedBytes,
         epoch,
         takVersion: (takVersion as number | undefined) ?? null,
-        type: 'message',
+        type: rowType,
         isAI: session.isAI ?? false,
       })
       .returning();

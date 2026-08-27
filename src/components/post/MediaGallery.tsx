@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import ImageLightbox from '@/components/ImageLightbox';
 import { withImageVersion } from '@/lib/imageCacheBuster';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface MediaGalleryProps {
   images?: string[];
@@ -29,6 +30,7 @@ function detectVideoEmbed(url: string): { type: 'youtube' | 'vimeo'; id: string;
 //   detail  → horizontal swipeable carousel, dots, click-to-zoom into
 //             the lightbox at the matching index
 export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGalleryProps) {
+  const { t } = useTranslation();
   const imgs = images ?? [];
   const vids = videos ?? [];
   const total = imgs.length + vids.length;
@@ -222,14 +224,14 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
           ) : current.embed?.type === 'youtube' ? (
             <iframe
               src={`https://www.youtube.com/embed/${current.embed.id}`}
-              title="YouTube video"
+              title={t('a11y.youtubeVideo')}
               allowFullScreen
               style={{ width: '100%', height: '100%', border: 'none' }}
             />
           ) : current.embed?.type === 'vimeo' ? (
             <iframe
               src={`https://player.vimeo.com/video/${current.embed.id}`}
-              title="Vimeo video"
+              title={t('a11y.vimeoVideo')}
               allowFullScreen
               style={{ width: '100%', height: '100%', border: 'none' }}
             />
@@ -256,7 +258,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
                 e.stopPropagation();
                 setIndex((i) => Math.max(0, i - 1));
               }}
-              aria-label="Previous"
+              aria-label={t('a11y.previous')}
               style={arrowStyle('left')}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
@@ -272,7 +274,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
                 e.stopPropagation();
                 setIndex((i) => Math.min(slides.length - 1, i + 1));
               }}
-              aria-label="Next"
+              aria-label={t('a11y.next')}
               style={arrowStyle('right')}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>

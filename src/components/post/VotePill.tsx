@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowUpIcon, ArrowDownIcon } from '@/components/icons';
 import { usePostMutations, type VoteState } from '@/hooks/usePostMutations';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface VotePillProps {
   postId: string;
@@ -29,6 +30,7 @@ export default function VotePill({
   onChange,
   size = 'md',
 }: VotePillProps) {
+  const { t } = useTranslation();
   const [state, setState] = useState<VoteState>({
     userVoted: (userVoted ?? null) as 1 | -1 | null,
     upvoteCount,
@@ -110,7 +112,7 @@ export default function VotePill({
         type="button"
         onClick={(e) => apply(1, e)}
         disabled={disabled || pending}
-        aria-label="Upvote"
+        aria-label={t('a11y.upvote')}
         style={{
           background: 'none',
           border: 'none',
@@ -145,7 +147,7 @@ export default function VotePill({
         type="button"
         onClick={(e) => apply(-1, e)}
         disabled={disabled || pending}
-        aria-label="Downvote"
+        aria-label={t('a11y.downvote')}
         style={{
           background: 'none',
           border: 'none',

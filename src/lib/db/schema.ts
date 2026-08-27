@@ -303,7 +303,15 @@ export const chatMessages = pgTable('chat_messages', {
   ciphertext: bytea('ciphertext'), // sealed message bytes; NULL for system rows
   epoch: bigint('epoch', { mode: 'number' }), // group epoch the ciphertext was sealed under
   takVersion: integer('tak_version'), // Topic Archive Key version (Phase 3); NULL pre-archive
-  type: varchar('type', { length: 10 }).notNull().default('message'), // 'message' | 'join' | 'leave'
+  // 'message' | 'join' | 'leave' | 'notice'.
+  //
+  // `notice` is the odd one and the reason this comment grew: it is SEALED like
+  // a message (its body is `ciphertext`, never `system_text` — see SI-1 above)
+  // but it is not FROM the person whose token filed it. The client draws it as a
+  // received bubble so a system message does not masquerade as something the
+  // reader wrote to themselves, while keeping the tap-to-copy an ordinary
+  // message has. Only a person's own space accepts one.
+  type: varchar('type', { length: 10 }).notNull().default('message'),
   isAI: boolean('is_ai').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
