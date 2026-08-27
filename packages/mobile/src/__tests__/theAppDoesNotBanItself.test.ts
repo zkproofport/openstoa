@@ -88,6 +88,26 @@ describe('the app does not ban itself', () => {
     expect(sent).toBe(1);
   });
 
+  it('BOUNDARY: the memory is short — a read two seconds later asks again', async () => {
+    /*
+     * The window exists to swallow a render cascade, which the load balancer
+     * measured at 0.26-0.79 seconds between reads. It must NOT become a cache:
+     * another device can write this row, and a stale answer about whether the
+     * account has a backup is exactly the kind of false reassurance this
+     * project keeps having to remove.
+     */
+    let sent = 0;
+    const client = clientWith(async () => {
+      sent += 1;
+      return ok({ ok: true });
+    });
+
+    await client.get('/api/keys/backup');
+    await new Promise((r) => setTimeout(r, 2_100));
+    await client.get('/api/keys/backup');
+    expect(sent).toBe(2);
+  });
+
   it('CONTRACT: a write to the key rows makes the next read ask again', async () => {
     let sent = 0;
     const client = clientWith(async () => {

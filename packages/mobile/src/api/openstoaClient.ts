@@ -130,11 +130,16 @@ const _inFlightGets = new Map<string, Promise<unknown>>();
  * FIFTY-SIX times in one minute — a render cascade, each read one after the
  * next, never two at once. So nothing overlapped and nothing was shared.
  *
- * Five seconds. The only thing that changes this row is a write from this same
- * app, and those clear it below, so the window cannot serve a value the person
- * has already invalidated. Longer would start hiding another device's work.
+ * TWO seconds, from the measurement rather than a guess. In the recorded burst
+ * the reads were 0.26 to 0.79 seconds apart — median 0.39, and not one gap
+ * over a second. Two seconds clears the widest of those with room to spare.
+ *
+ * Going longer buys nothing and costs something: the only thing that changes
+ * this row is a write, from this app (cleared below) or from ANOTHER device,
+ * and every extra second is a second this one shows a stale answer about the
+ * account's backup. The first draft said five seconds for no reason at all.
  */
-const READ_MEMORY_MS = 5_000;
+const READ_MEMORY_MS = 2_000;
 const _recentReads = new Map<string, { at: number; value: unknown }>();
 
 let _pausedUntilMs = 0;

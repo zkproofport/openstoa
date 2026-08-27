@@ -636,7 +636,8 @@
       "codePlaceholder": "복구 코드 입력",
       "recoverWithCode": "코드로 복구",
       "identity": "신원 {{id}}…",
-      "passkeyNoBackup": "복구하지 못했습니다 — 이 패스키로 저장된 백업이 없습니다."
+      "passkeyNoBackup": "복구하지 못했습니다 — 이 패스키로 저장된 백업이 없습니다.",
+      "keysPending": "채팅 키는 아직 받지 못했습니다. 복구 자체는 끝났고, 키는 잠시 뒤 자동으로 받아옵니다. 다시 복구하지 않아도 됩니다."
     },
     "recoveryNudge": {
       "title": "채팅 키를 백업하세요",

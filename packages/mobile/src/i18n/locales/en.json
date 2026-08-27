@@ -636,7 +636,8 @@
       "codePlaceholder": "Enter recovery code",
       "recoverWithCode": "Recover with code",
       "identity": "Identity {{id}}…",
-      "passkeyNoBackup": "Recovery failed — this passkey has no backup on file."
+      "passkeyNoBackup": "Recovery failed — this passkey has no backup on file.",
+      "keysPending": "The chat keys have not arrived yet. The recovery itself is done and the keys are fetched again on their own — there is no need to recover a second time."
     },
     "recoveryNudge": {
       "title": "Back up your chat keys",

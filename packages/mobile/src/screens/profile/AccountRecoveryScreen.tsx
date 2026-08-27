@@ -146,7 +146,7 @@ export function AccountRecoveryScreen() {
   const recoverAndReopenRooms = useCallback(
     async (masterKey: Uint8Array) => {
       if (!secureStore) throw new Error('Secure storage unavailable on this device.');
-      await recoverDevice(client, masterKey, secureStore, host.localStore);
+      return recoverDevice(client, masterKey, secureStore, host.localStore);
     },
     [client, secureStore, host.localStore],
   );
@@ -160,7 +160,7 @@ export function AccountRecoveryScreen() {
       }
       const mk = await km.recoverWithRecoveryCode(code, http.getBackup);
       if (!mk) throw new Error('Recovery failed — wrong code, or no recovery-code backup exists.');
-      await recoverAndReopenRooms(mk);
+      const outcome = await recoverAndReopenRooms(mk);
       setRecoverCode('');
       /*
        * NOT "your chat history will reload" — that promise is false for three
@@ -178,7 +178,16 @@ export function AccountRecoveryScreen() {
        * truth and harder to undo.
        */
       setMsg(t('openstoa.recovery.recovered'));
-      setPartial(t('openstoa.recovery.gapNotice'));
+      /*
+       * The chat keys could not be READ this time. Say that, rather than the
+       * gap notice, which describes a different and much smaller shortfall.
+       * The master key is in either way — see `RecoverOutcome`.
+       */
+      setPartial(
+        outcome === 'keys-pending'
+          ? t('openstoa.recovery.keysPending')
+          : t('openstoa.recovery.gapNotice'),
+      );
     });
 
   const recoverWithPasskeyFlow = () =>

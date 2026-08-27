@@ -704,6 +704,19 @@ export function keyBackupHttp(client: OpenStoaClient) {
 }
 
 /**
+ * How far a recovery got.
+ *
+ * `recovered` — master key in, chat keys in. `no-keys-yet` — master key in, and
+ * the account has no chat-key snapshot to restore, which is the right outcome
+ * for someone who had not chatted yet. `keys-pending` — master key in, the
+ * snapshot could not be READ this time; the boot-time repair retries it.
+ *
+ * None of these is a failure: the step that cannot be repeated is the master
+ * key, and it succeeded in all three.
+ */
+export type RecoverOutcome = 'recovered' | 'no-keys-yet' | 'keys-pending';
+
+/**
  * Install a recovered master_key + restore the TAK keychain from the server
  * backup. Resets the store singletons so they rebuild under the recovered key;
  * chat then re-joins MLS as a new leaf and reads archived history the keychain
@@ -714,17 +727,39 @@ export async function recoverDevice(
   recoveredMasterKey: Uint8Array,
   hostSecureStore: HostSecureStore,
   hostLocalStore?: HostSecureStore,
-): Promise<void> {
+): Promise<RecoverOutcome> {
   const rootStore = adapt(hostSecureStore)!;
   await km.installMasterKey(rootStore, recoveredMasterKey);
   _masterKeyPromise = Promise.resolve(recoveredMasterKey);
   _store = null;
   _takStore = null; // rebuild under the recovered key
   const tak = getTakSessionStore(client, hostSecureStore, hostLocalStore);
-  const keychain = await km.restoreTakKeychain(recoveredMasterKey, () => keyBackupHttp(client).getTakBackup());
+
+  /*
+   * THE MASTER KEY IS ALREADY IN. A failure from here is not a failed recovery.
+   *
+   * WHAT HAPPENED, on a phone 2026-08-27. The read of the chat-key bundle was
+   * refused once — the edge was rate-limiting us — and the throw travelled all
+   * the way to the screen, which told the person their recovery had failed. It
+   * had not: the half that cannot be retried, installing the master key, was
+   * already durable, and the half that failed is retried on its own by the
+   * boot-time repair. Reporting "failed" for that costs the person the one
+   * thing they came to do, and invites them to burn their code again.
+   */
+  let keychain: Record<string, string> | null = null;
+  try {
+    keychain = await km.restoreTakKeychain(recoveredMasterKey, () =>
+      keyBackupHttp(client).getTakBackup(),
+    );
+  } catch (e) {
+    report('recover/keychain-read-failed', { error: String(e) });
+    bumpCryptoGeneration();
+    return 'keys-pending';
+  }
   if (keychain) await tak.importKeychain(keychain);
   // Last, so listeners see a device whose keys are already in place.
   bumpCryptoGeneration();
+  return keychain ? 'recovered' : 'no-keys-yet';
 }
 
 /**
