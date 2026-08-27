@@ -13,6 +13,7 @@
 import { UNREADABLE_BODY } from '@openstoa/api-types';
 import type { ChatMessage } from '@openstoa/api-types';
 import type { OpenStoaClient } from '../api/openstoaClient';
+import { rateLimitedUntil } from '../api/openstoaClient';
 import { MlsSessionStore, type MlsTransport, type SecureKVStore } from './mlsSession';
 import {
   TakSessionStore,
@@ -586,8 +587,23 @@ function takBackupRetry(): BackupRetry {
 }
 
 function scheduleTakKeychainBackup(client: OpenStoaClient, rootStore: SecureKVStore): void {
-  _takBackupUpload = async () =>
-    _takStore ? landed(await pushTakKeychain(client, rootStore, _takStore)) : false;
+  _takBackupUpload = async () => {
+    /*
+     * DO NOT SPEND A REQUEST WHILE THE EDGE IS BANNING US.
+     *
+     * Every request during the pause counts towards it, so a retry here is the
+     * one thing guaranteed to keep the ban alive. Reporting `false` leaves the
+     * schedule alone: it will come back on its own, by which time the clock has
+     * run down. Measured 2026-08-27 — the phone banned itself and its own
+     * retries held it there.
+     */
+    const until = rateLimitedUntil();
+    if (Date.now() < until) {
+      report('backup/paused', { untilMs: until });
+      return false;
+    }
+    return _takStore ? landed(await pushTakKeychain(client, rootStore, _takStore)) : false;
+  };
   takBackupRetry().schedule();
 }
 

@@ -77,6 +77,100 @@ export class OpenStoaApiError extends Error {
 }
 
 /**
+ * The edge is refusing this client for a while — too many requests.
+ *
+ * SEPARATE FROM EVERY OTHER FAILURE, because the remedy is the opposite one.
+ * A 400 means stop and fix the request; a 500 means try again; a 429 means
+ * STOP SENDING, and anything that retries it promptly keeps the ban alive.
+ *
+ * WHAT THIS COST, on a phone 2026-08-27. The rate limit is 100 requests a
+ * minute per address, then five minutes of 429. Three independent parts of the
+ * app read the same two backup rows on their own schedules — five reads of
+ * `/api/keys/backup` inside three seconds at one point — so the app banned
+ * itself, and then its retries kept it banned. On screen the person read
+ * "Something went wrong. Please try again", in English, which is wrong twice:
+ * trying again is exactly what must not happen, and nothing was wrong with
+ * what they did.
+ */
+/*
+ * ONE clock for the whole app, not one per caller.
+ *
+ * The ban is per ADDRESS, so it applies to every request the phone makes, and a
+ * screen that does not know about it will spend the pause re-arming it. Holding
+ * the deadline in the module means the next caller — any caller — refuses
+ * locally instead of spending a request to be told again.
+ */
+/*
+ * ONE flight per identical GET, shared by everyone who asks during it.
+ *
+ * THE DEFECT THIS CLOSES, measured through the load balancer 2026-08-27:
+ * `/api/keys/backup` was read FIVE times inside three seconds. Nothing was
+ * wrong with any one caller — the recovery screen, the boot-time repair and the
+ * backup retry each read it on their own schedule and none of them knew about
+ * the others. Together they crossed a hundred requests a minute and the edge
+ * banned the phone for five minutes.
+ *
+ * Reads only. A POST is an instruction and two of them are two instructions;
+ * collapsing those would be a different and much worse defect.
+ *
+ * NAMED PATHS, not every GET. Sharing a chat-history read would hand a caller
+ * an answer fetched a moment before its own question, and the room's tests
+ * caught exactly that. These two are different: they are one row per account
+ * that several independent parts read on their own timers, and two reads a
+ * millisecond apart cannot differ.
+ */
+const SHAREABLE_READS = new Set(['/api/keys/backup', '/api/keys/tak-backup']);
+const _inFlightGets = new Map<string, Promise<unknown>>();
+
+/*
+ * And a short memory of the ANSWER, because the readers are not simultaneous.
+ *
+ * Sharing a flight only helps callers that overlap. Measured through the load
+ * balancer 2026-08-27: opening the recovery screen read `/api/keys/backup`
+ * FIFTY-SIX times in one minute — a render cascade, each read one after the
+ * next, never two at once. So nothing overlapped and nothing was shared.
+ *
+ * Five seconds. The only thing that changes this row is a write from this same
+ * app, and those clear it below, so the window cannot serve a value the person
+ * has already invalidated. Longer would start hiding another device's work.
+ */
+const READ_MEMORY_MS = 5_000;
+const _recentReads = new Map<string, { at: number; value: unknown }>();
+
+let _pausedUntilMs = 0;
+
+/** Epoch ms until which the edge is refusing us; 0 when it is not. */
+export function rateLimitedUntil(): number {
+  return _pausedUntilMs;
+}
+
+/**
+ * Test seam: forget everything this module remembers between requests.
+ *
+ * The pause, the shared flights and the brief read memory all outlive a single
+ * client, which is the point of them — and which is exactly why a test that
+ * forgets one of them starts passing or failing on the order its neighbours
+ * ran in. One function so a caller cannot clear half of it.
+ */
+export function clearRateLimitPause(): void {
+  _pausedUntilMs = 0;
+  _inFlightGets.clear();
+  _recentReads.clear();
+}
+
+export class OpenStoaRateLimitedError extends Error {
+  readonly kind = 'RATE_LIMITED' as const;
+  constructor(
+    readonly path: string,
+    /** When the edge said it would accept requests again, in epoch ms. */
+    readonly retryAfterMs: number,
+  ) {
+    super('요청이 잠시 너무 많았습니다. 잠시 후 다시 시도해 주세요.');
+    this.name = 'OpenStoaRateLimitedError';
+  }
+}
+
+/**
  * The request never reached the server — aeroplane mode, no signal, DNS, a
  * dropped connection mid-flight.
  *
@@ -503,6 +597,17 @@ export class OpenStoaClient {
     // when `clientMode === 'guest'` and we explicitly skipped the
     // Authorization header. That bug is what made joined topics keep
     // showing after logout.
+    /*
+     * Refuse locally while the edge is banning us.
+     *
+     * Sending anyway is what kept the ban alive: every request during the pause
+     * counts, so an app with a few independent pollers can hold itself out
+     * indefinitely. Failing here costs nothing and lets the clock run down.
+     */
+    if (Date.now() < _pausedUntilMs) {
+      throw new OpenStoaRateLimitedError(path, _pausedUntilMs);
+    }
+
     let res = await this.send(url, { ...fetchInit, headers, credentials: 'omit' }, path, timeoutMs);
     if (res.status === 401) {
       // Guest (or anyone without a token) → don't auto-trigger login.
@@ -549,6 +654,18 @@ export class OpenStoaClient {
       }
     }
 
+    if (res.status === 429) {
+      /*
+       * Believe `Retry-After` when the edge sends one, and otherwise assume the
+       * documented ban — five minutes. Guessing SHORTER would re-arm the ban,
+       * which is the failure this exists to stop.
+       */
+      const header = res.headers.get('retry-after');
+      const seconds = header && /^\d+$/.test(header) ? Number(header) : 300;
+      _pausedUntilMs = Date.now() + seconds * 1000;
+      throw new OpenStoaRateLimitedError(path, _pausedUntilMs);
+    }
+
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new OpenStoaApiError(
@@ -564,9 +681,42 @@ export class OpenStoaClient {
   }
 
   get<T>(path: string, options?: RequestOptions): Promise<T> {
-    return this.request<T>(path, { ...options, method: 'GET' });
+    /*
+     * Share a read that is already on its way. See `_inFlightGets` above: the
+     * callers are independent by design and cannot coordinate between
+     * themselves, so the one place that can is here.
+     *
+     * Keyed by mode too — a guest and a signed-in reader of the same path are
+     * asking different questions and must not be handed each other's answer.
+     */
+    if (!SHAREABLE_READS.has(path)) {
+      return this.request<T>(path, { ...options, method: 'GET' });
+    }
+
+    const key = `${this.mode}\u0000${path}`;
+
+    const remembered = _recentReads.get(key);
+    if (remembered && Date.now() - remembered.at < READ_MEMORY_MS) {
+      return Promise.resolve(remembered.value as T);
+    }
+
+    const existing = _inFlightGets.get(key);
+    if (existing) return existing as Promise<T>;
+
+    const flight = this.request<T>(path, { ...options, method: 'GET' })
+      .then((value) => {
+        _recentReads.set(key, { at: Date.now(), value });
+        return value;
+      })
+      .finally(() => {
+        _inFlightGets.delete(key);
+      });
+    _inFlightGets.set(key, flight);
+    return flight;
   }
   post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    // A write to these rows makes every remembered read of them wrong.
+    if (path.startsWith('/api/keys/')) _recentReads.clear();
     return this.request<T>(path, {
       ...options,
       method: 'POST',
