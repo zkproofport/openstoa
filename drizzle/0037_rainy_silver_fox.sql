@@ -1,11 +1,14 @@
-CREATE TABLE "device_signing_keys" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"user_id" text NOT NULL,
-	"device_id" text NOT NULL,
-	"public_key" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now(),
-	"last_proved_at" timestamp with time zone
-);
---> statement-breakpoint
-ALTER TABLE "device_signing_keys" ADD CONSTRAINT "device_signing_keys_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "device_signing_user_device_idx" ON "device_signing_keys" USING btree ("user_id","device_id");
+-- Intentionally empty. 0036 already created `device_signing_keys` by hand.
+--
+-- WHY THIS FILE EXISTS AT ALL. 0036 was hand-written, so drizzle's snapshot
+-- never learned the table was there, and `drizzle-kit generate` emitted a second
+-- CREATE for it on the next schema change. The boot migrator skips a duplicate
+-- CREATE (it tolerates 42P07), so nothing broke — but the generated file also
+-- carried an `ADD CONSTRAINT ... _user_id_users_id_fk`, and 0036's inline
+-- `REFERENCES` had produced a constraint under a DIFFERENT name. Different names
+-- do not collide, so that one would have SUCCEEDED and left the table carrying
+-- two identical foreign keys.
+--
+-- The accompanying 0037 snapshot is kept: it is what teaches drizzle the table
+-- exists, so the next `generate` stops re-emitting this. Deleting the file
+-- instead is what the previous attempt did, and the hook simply regenerated it.
