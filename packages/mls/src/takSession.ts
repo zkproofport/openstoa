@@ -303,10 +303,21 @@ export class TakSessionStore {
   private async recordKey(storeKey: string): Promise<void> {
     const raw = await this.store.get(this.manifestKey());
     const set: Record<string, true> = raw ? (JSON.parse(raw) as Record<string, true>) : {};
-    if (!set[storeKey]) {
-      set[storeKey] = true;
-      await this.store.set(this.manifestKey(), JSON.stringify(set));
-    }
+    /*
+     * ANNOUNCE ONLY A REAL CHANGE — the same rule `setRoot` below already
+     * follows, and the one line this function was missing.
+     *
+     * Every mount and every join re-records keys the manifest already lists.
+     * Announcing those re-armed the backup retry, and arming it RESETS its
+     * ladder to the shortest delay, so the ladder never grew: measured through
+     * the load balancer 2026-08-27, one phone read `/api/keys/backup`
+     * FIFTY-SIX times in a minute, crossed the edge's hundred-a-minute limit,
+     * and was banned for five — during which the person's recovery could not
+     * run and the screen blamed them in English.
+     */
+    if (set[storeKey]) return;
+    set[storeKey] = true;
+    await this.store.set(this.manifestKey(), JSON.stringify(set));
     this.onKeychainChange?.();
   }
 
