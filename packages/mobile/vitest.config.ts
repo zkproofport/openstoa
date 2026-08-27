@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 /**
  * `react-test-renderer` and `react` come from the HOST app's install.
@@ -54,7 +55,39 @@ import path from 'node:path';
  * JSX transform imports it by that specifier, and aliasing only `react` leaves
  * a second copy reachable through the back door.
  */
-const HOST_MODULES = path.resolve(__dirname, '../../../proofport-app/node_modules');
+/*
+ * Where `react` and `react-test-renderer` come from.
+ *
+ * The host app next door is preferred, and that preference is the whole reason
+ * this is not a plain devDependency: borrowing its copy is what keeps exactly
+ * ONE React in play when the mini-app is loaded through the `file:` symlink.
+ *
+ * But `proofport-app` is a separate private repository, so a CI runner that
+ * checked out `openstoa` alone has no such directory — which is why this job
+ * type-checked and never ran a single one of the 1,354 mini-app tests. The
+ * fallback is `typecheck/node_modules`: a root that exists for exactly this
+ * problem and, deliberately, is NOT on any ancestor path of `src/`, so Metro
+ * cannot reach it and the built app still sees one React.
+ *
+ * NO SILENT THIRD OPTION. If neither exists, this throws by name. Letting the
+ * alias point at a path that is not there does not fail — Node resolves `react`
+ * the ordinary way instead, and the tests run against a second copy whose hooks
+ * belong to a different renderer. That failure reads as a broken test rather
+ * than a broken config, which is how it would survive.
+ */
+function reactModulesDir(): string {
+  const host = path.resolve(__dirname, '../../../proofport-app/node_modules');
+  const ci = path.resolve(__dirname, 'typecheck/node_modules');
+  for (const dir of [host, ci]) {
+    if (existsSync(path.join(dir, 'react-test-renderer', 'package.json'))) return dir;
+  }
+  throw new Error(
+    `No react-test-renderer found. Looked in:\n  ${host}\n  ${ci}\n` +
+      'Run `npm ci --legacy-peer-deps` in packages/mobile/typecheck, or check out proofport-app next door.',
+  );
+}
+
+const HOST_MODULES = reactModulesDir();
 const HARNESS = path.resolve(__dirname, 'src/__tests__/harness');
 
 export default defineConfig({

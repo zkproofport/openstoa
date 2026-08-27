@@ -26,7 +26,9 @@
  * See `liveDeviceSessions`.
  */
 
+import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
+import { deviceSigningKeys } from '@/lib/db/schema';
 import { getTakBackup } from '@/lib/keyBackupStore';
 import {
   liveDeviceSessions,
@@ -73,6 +75,23 @@ export interface TakeoverCheck {
   deviceKind: DeviceKind;
   /** This install's id, so "the same phone again" is not treated as a second one. */
   deviceId: string;
+  /**
+   * This device's registered signing key, when it has one.
+   *
+   * WHY A SECOND ANSWER TO "IS THIS THE SAME PHONE". `deviceId` is a string the
+   * client generates and keeps; lose it — a store that cannot be read, a
+   * reinstall on Android — and the phone arrives under a new one. The gate then
+   * files its OWN previous session under `others` and tells the person they are
+   * about to sign out another phone, naming a device that does not exist and
+   * warning that the chat keys went with it. Seen on 2026-08-26: the account had
+   * accumulated sessions this way and the prompt fired on every sign-in.
+   *
+   * A key answers the same question without being lose-able in that way: two
+   * ids that map to one registered public key are one device. Absent (a first
+   * sign-in, or a client that has not registered yet) the id is all there is,
+   * which is the previous behaviour rather than a downgrade.
+   */
+  devicePublicKey?: string;
   /** True only when the person has seen the warning and chose to continue. */
   takeover: boolean;
 }
@@ -85,6 +104,44 @@ export interface TakeoverCheck {
  * remembered the check but forgot the revoke would leave the account with two
  * live phones and no warning the next time.
  */
+/**
+ * Every device id that this account has registered under the given public key,
+ * plus the id being presented.
+ *
+ * The presented id is always included: a device that has not registered yet is
+ * still itself, and excluding it would make a first sign-in look like a second
+ * phone — the exact false alarm this function exists to remove.
+ */
+async function idsSharingKey(
+  userId: string,
+  deviceId: string,
+  publicKey: string | undefined,
+): Promise<Set<string>> {
+  const ids = new Set<string>([deviceId]);
+  if (!publicKey) return ids;
+
+  try {
+    const rows = await db.query.deviceSigningKeys.findMany({
+      where: eq(deviceSigningKeys.userId, userId),
+    });
+    for (const r of rows) {
+      if (r.publicKey === publicKey) ids.add(r.deviceId);
+    }
+  } catch (e) {
+    /*
+     * A lookup that fails must not turn one phone into two. Falling back to the
+     * id alone is the previous behaviour: the prompt may appear when it should
+     * not, which is a nuisance. The other direction — silently treating a real
+     * second phone as this one — would skip a warning about losing chat keys.
+     */
+    logger.warn(MODULE, 'could not read device keys; falling back to the id alone', {
+      userId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return ids;
+}
+
 export async function checkDeviceTakeover(check: TakeoverCheck): Promise<TakeoverDecision> {
   /*
    * Only a phone is subject to the rule, because only a phone holds the keys
@@ -94,8 +151,21 @@ export async function checkDeviceTakeover(check: TakeoverCheck): Promise<Takeove
   if (check.deviceKind !== 'mobile') return { kind: 'allow' };
 
   const live = await liveDeviceSessions(check.userId);
-  const mine = live.filter((s) => s.deviceId === check.deviceId);
-  const others = live.filter((s) => s.deviceId !== check.deviceId);
+
+  /*
+   * Which ids belong to THIS device, by key rather than by name.
+   *
+   * A device that has proved itself is recognised under every id it has ever
+   * used, so an id that was lost and replaced no longer splits one phone into
+   * two. Falls back to the id alone when there is no key to compare — a first
+   * sign-in has nothing registered yet.
+   */
+  const sameDevice = await idsSharingKey(check.userId, check.deviceId, check.devicePublicKey);
+  const isMine = (s: { deviceId?: string }) =>
+    typeof s.deviceId === 'string' && sameDevice.has(s.deviceId);
+
+  const mine = live.filter(isMine);
+  const others = live.filter((s) => !isMine(s));
 
   /*
    * ONE SESSION PER DEVICE, not one per sign-in.

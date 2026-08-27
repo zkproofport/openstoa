@@ -6,12 +6,23 @@ COPY package.json ./
 RUN npm install
 
 FROM base AS builder
+# Identify the artifact. Passed by docker-compose from git; `unknown` if the
+# build came from somewhere that did not supply them, which is itself worth
+# seeing on /api/health.
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ENV BUILD_COMMIT=$BUILD_COMMIT
+ENV BUILD_TIME=$BUILD_TIME
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
 FROM base AS runner
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ENV BUILD_COMMIT=$BUILD_COMMIT
+ENV BUILD_TIME=$BUILD_TIME
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs

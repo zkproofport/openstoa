@@ -119,6 +119,21 @@ export interface HostApi {
   secureStore?: {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    /**
+     * Delete one entry. OPTIONAL — an older host binary simply has none.
+     *
+     * Needed by "erase this device from OpenStoa" (Profile → Device data),
+     * which is the only caller that may remove a secure value. There is
+     * deliberately NO `getAllKeys` counterpart here: the iOS Keychain and the
+     * Android Keystore cannot be enumerated, on any version, which is why the
+     * mini-app keeps a manifest of the archive keys it wrote and derives the
+     * rest of the key names from the topic ids it knows.
+     *
+     * Without it the erase reports itself BLOCKED rather than succeeding
+     * quietly. For this particular button, a silent no-op is the worst outcome
+     * available: the person believes their keys are gone, and they are not.
+     */
+    removeItem?(key: string): Promise<void>;
   };
 
   /**
@@ -132,6 +147,27 @@ export interface HostApi {
   localStore?: {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    /**
+     * Delete one entry. OPTIONAL — see `secureStore.removeItem`.
+     *
+     * `AsyncStorage.removeItem` on ZKProofport.
+     */
+    removeItem?(key: string): Promise<void>;
+    /**
+     * Every key in the store. OPTIONAL, and the pair to `removeItem`.
+     *
+     * `AsyncStorage.getAllKeys` on ZKProofport. Needed because the message and
+     * history caches are keyed by topic and message id — there is no list of
+     * them anywhere else, so without enumeration "clear the cache" cannot find
+     * what it is meant to clear.
+     *
+     * WHAT COMES BACK IS THE HOST'S WHOLE STORE, not a mini-app slice: the
+     * host's own OpenStoa auth cache is in here, and so is anything else the
+     * wallet app keeps. The mini-app filters to the key families it owns and
+     * KEEPS everything it does not recognise (`lib/deviceData.ts`), which is
+     * why this can be a plain listing rather than a namespaced one.
+     */
+    getAllKeys?(): Promise<string[]>;
   };
 
   /**

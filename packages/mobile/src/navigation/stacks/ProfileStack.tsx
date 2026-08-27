@@ -6,6 +6,7 @@ import { EditProfileScreen } from '../../screens/profile/EditProfileScreen';
 import { AccountRecoveryScreen } from '../../screens/profile/AccountRecoveryScreen';
 import { AiPermissionsScreen } from '../../screens/profile/AiPermissionsScreen';
 import { NotificationSettingsScreen } from '../../screens/profile/NotificationSettingsScreen';
+import { DeviceStorageScreen } from '../../screens/profile/DeviceStorageScreen';
 import { PostDetailScreen } from '../../screens/feed/PostDetailScreen';
 import { PostCreateScreen } from '../../screens/topics/PostCreateScreen';
 import { TopicDetailScreen } from '../../screens/topics/TopicDetailScreen';
@@ -18,6 +19,8 @@ export type ProfileStackParamList = {
   AccountRecovery: undefined;
   AiPermissions: undefined;
   NotificationSettings: undefined;
+  // Clear the caches, or erase this device's OpenStoa data including its keys.
+  DeviceStorage: undefined;
   // Posts/topics opened from Profile (bookmarks, likes, my-posts, my-topics)
   // live INSIDE this stack so the back arrow returns to Profile, not Feed.
   PostDetail: { postId: string };
@@ -39,9 +42,14 @@ export function ProfileStack() {
     <Stack.Navigator key={i18n.language} screenOptions={screenOptions}>
       <Stack.Screen name="ProfileHome" component={ProfileHomeScreen} options={{ title: t('openstoa.tabs.profile') }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: t('openstoa.profile.editTitle') }} />
-      <Stack.Screen name="AccountRecovery" component={AccountRecoveryScreen} options={{ title: 'Chat recovery' }} />
+      <Stack.Screen name="AccountRecovery" component={AccountRecoveryScreen} options={{ title: t('openstoa.recovery.title') }} />
       <Stack.Screen name="AiPermissions" component={AiPermissionsScreen} options={{ title: t('openstoa.apiKeys.title') }} />
-      <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ title: 'Notifications' }} />
+      <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ title: t('openstoa.notificationSettings.sectionTitle') }} />
+      <Stack.Screen
+        name="DeviceStorage"
+        component={DeviceStorageScreen}
+        options={{ title: t('openstoa.deviceData.title') }}
+      />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ title: t('openstoa.feed.postTitle') }} />
       <Stack.Screen name="PostCreate" component={PostCreateScreen} options={{ title: t('openstoa.topics.newPostTitle') }} />
       <Stack.Screen name="TopicDetail" component={TopicDetailScreen} options={{ title: t('openstoa.topics.detailTitle') }} />

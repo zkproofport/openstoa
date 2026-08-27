@@ -206,6 +206,10 @@ describe('takForPush — the receive-side keychain mirror', () => {
       readState: async () => {
         throw new Error('no local group state');
       },
+      // Registered by the store's constructor: it takes the per-epoch key for
+      // every epoch the device passes through. A fake without it cannot
+      // construct, and this fake is deliberately broken elsewhere.
+      setEpochListener: () => {},
     } as unknown as MlsSessionStore;
     const tak = new TakSessionStore(brokenMls, new MemoryTak(), memKv());
     await expect(tak.takForPush('missing', 'private')).resolves.toBeNull();
@@ -256,6 +260,10 @@ describe('sealForPush — hostile input and degradation', () => {
       readState: async () => {
         throw new Error('no local group state');
       },
+      // Registered by the store's constructor: it takes the per-epoch key for
+      // every epoch the device passes through. A fake without it cannot
+      // construct, and this fake is deliberately broken elsewhere.
+      setEpochListener: () => {},
     } as unknown as MlsSessionStore;
     const tak = new TakSessionStore(brokenMls, new MemoryTak(), kv);
     await expect(tak.sealForPush('missing', 'body', 'private')).resolves.toBeNull();

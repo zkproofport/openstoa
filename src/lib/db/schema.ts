@@ -303,7 +303,15 @@ export const chatMessages = pgTable('chat_messages', {
   ciphertext: bytea('ciphertext'), // sealed message bytes; NULL for system rows
   epoch: bigint('epoch', { mode: 'number' }), // group epoch the ciphertext was sealed under
   takVersion: integer('tak_version'), // Topic Archive Key version (Phase 3); NULL pre-archive
-  type: varchar('type', { length: 10 }).notNull().default('message'), // 'message' | 'join' | 'leave'
+  // 'message' | 'join' | 'leave' | 'notice'.
+  //
+  // `notice` is the odd one and the reason this comment grew: it is SEALED like
+  // a message (its body is `ciphertext`, never `system_text` — see SI-1 above)
+  // but it is not FROM the person whose token filed it. The client draws it as a
+  // received bubble so a system message does not masquerade as something the
+  // reader wrote to themselves, while keeping the tap-to-copy an ordinary
+  // message has. Only a person's own space accepts one.
+  type: varchar('type', { length: 10 }).notNull().default('message'),
   isAI: boolean('is_ai').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -330,6 +338,45 @@ export const mlsGroups = pgTable('mls_groups', {
 // publishes KeyPackages here; an existing member consumes exactly one (atomic,
 // SI-3) to MLS-Add that device to a group. `consumed_at` enforces single-use;
 // `is_last_resort` packages are reusable fallbacks (always-on AI members).
+/**
+ * The signing key that proves an install is the same one as last time.
+ *
+ * NOT `device_key_packages` below, which holds MLS KeyPackages — those are
+ * consumed on use, one per join, and say nothing about continuity. This is one
+ * long-lived Ed25519 public key per device, and the private half never leaves
+ * the phone.
+ *
+ * WHY IT EXISTS. `deviceId` used to be a random string the client made up and
+ * sent in a header; the server stored it and believed it, having nothing else.
+ * Lose the string and the phone becomes a stranger to itself — staging held one
+ * account on one phone with 48 distinct ids across epochs 1→58 in one room, each
+ * a leaf that left the epochs before it unreadable. Learn the string and anyone
+ * can claim to be that device from anywhere. A name can be lost and a name can
+ * be copied; holding a private key is neither.
+ *
+ * `device_id` stays as the human-facing handle ("your other phone"), but it is
+ * no longer what decides. The public key is.
+ */
+export const deviceSigningKeys = pgTable('device_signing_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  /** Matches the id the client already sends; one key per device per account. */
+  deviceId: text('device_id').notNull(),
+  /** Ed25519 public key, base64. The suite MLS already uses — no new primitive. */
+  publicKey: text('public_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  /** Last successful challenge. Answers "when did this device last prove itself". */
+  lastProvedAt: timestamp('last_proved_at', { withTimezone: true }),
+}, (table) => ({
+  /*
+   * One key per (account, device). A device that re-registers is either the same
+   * key — a no-op — or a genuinely new install that lost its private half, and
+   * the second case has to be visible rather than silently appended: appending
+   * is how one phone became forty-eight rows.
+   */
+  userDeviceIdx: uniqueIndex('device_signing_user_device_idx').on(table.userId, table.deviceId),
+}));
+
 export const deviceKeyPackages = pgTable('device_key_packages', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').references(() => users.id).notNull(), // nullifier

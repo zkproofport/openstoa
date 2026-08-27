@@ -20,7 +20,25 @@ declare module 'expo-file-system' {
   }
 
   export class Directory {
+    /**
+     * A directory instance may be created for a path that does not exist, so
+     * the constructor takes the same URI parts `File` does.
+     */
+    constructor(...uris: (string | File | Directory)[]);
     readonly uri: string;
+    /** False for a path that is not there — a cache directory nothing has written to yet. */
+    readonly exists: boolean;
+    /** File name, extension included. */
+    readonly name: string;
+    /**
+     * The directory's contents, SYNCHRONOUSLY, throwing when it does not exist.
+     *
+     * Sub-directories come back too, hence the union. The only caller
+     * (`deviceDataErase`, through `hostAttachmentFs.listCache`) reads `.name`
+     * and matches it against the mini-app's own filename prefix, which is what
+     * lets it work over a cache directory shared with the host app.
+     */
+    list(): (Directory | File)[];
   }
 
   /**
@@ -33,6 +51,13 @@ declare module 'expo-file-system' {
     constructor(...uris: (string | File | Directory)[]);
     readonly uri: string;
     readonly exists: boolean;
+    /** File name, extension included. Read by `Directory.list()` callers. */
+    readonly name: string;
+    /**
+     * Bytes. `0` when the file does not exist or cannot be read — expo's own
+     * wording, and the reason a missing file needs no separate branch.
+     */
+    readonly size: number;
     /**
      * Bytes, WITHOUT base64.
      *

@@ -185,8 +185,23 @@ export class ChatClient {
      * of the one device that still held them.
      */
     const enc = EncryptingKVStore.lazy(raw, () => this.masterKey(), this.globalStore);
-    const mls = new MlsSessionStore(mlsTransport(this.rest), identity, enc, enc, () =>
-      this.sessionUserId(),
+    /*
+     * `raw` — not `enc` — for the device identity.
+     *
+     * Sealed under the master_key, a value that cannot be opened reads as absent
+     * (`EncryptingKVStore.get`), so one bad read mints a new leaf and orphans the
+     * epochs this client already holds. Measured on staging via the mobile client:
+     * 48 device ids for one account across epochs 1→58. The identity is not a
+     * secret — the server stores `<userId>:<deviceId>` in plain text — so sealing
+     * it bought nothing and cost the history.
+     */
+    const mls = new MlsSessionStore(
+      mlsTransport(this.rest),
+      identity,
+      enc,
+      enc,
+      () => this.sessionUserId(),
+      raw,
     );
     const tak = new TakSessionStore(mls, takTransport(this.rest), enc);
     s = { mls, tak };

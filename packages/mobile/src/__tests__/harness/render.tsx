@@ -13,6 +13,7 @@
  */
 import React from 'react';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 export interface Rendered {
   root: ReactTestInstance;
@@ -38,10 +39,32 @@ function collectText(node: ReactTestInstance): string {
   return out;
 }
 
+/**
+ * A query client per render, so screens that read or invalidate a cache work
+ * here without every test knowing they do.
+ *
+ * WITHOUT THIS, adding `useQueryClient` to a screen breaks every unrelated test
+ * that renders it, with an error naming react-query rather than the screen —
+ * which is what happened on 2026-08-27 when the recovery screen started telling
+ * open rooms to re-decrypt. The tests were right and the harness was thin.
+ *
+ * Retries off and no logger noise: a test asserting on a failure should see it
+ * on the first attempt, not three seconds later.
+ */
+function freshQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  });
+}
+
 export async function render(element: React.ReactElement): Promise<Rendered> {
   let renderer!: TestRenderer.ReactTestRenderer;
+  const queryClient = freshQueryClient();
+  const wrap = (el: React.ReactElement) => (
+    <QueryClientProvider client={queryClient}>{el}</QueryClientProvider>
+  );
   await act(async () => {
-    renderer = TestRenderer.create(element);
+    renderer = TestRenderer.create(wrap(element));
   });
   // Let effects that kicked off promises settle before anyone asserts.
   await flush();
@@ -72,8 +95,9 @@ export async function render(element: React.ReactElement): Promise<Rendered> {
       await flush();
     },
     async update(next) {
+      // Same provider, or an update drops the screen's query client mid-test.
       await act(async () => {
-        renderer.update(next);
+        renderer.update(wrap(next));
       });
       await flush();
     },
@@ -91,5 +115,63 @@ export async function flush(times = 6): Promise<void> {
     await act(async () => {
       await Promise.resolve();
     });
+  }
+}
+
+/**
+ * Drain until `done()` is true, rather than a fixed number of times.
+ *
+ * WHY THIS EXISTS. `flush()` runs six ticks, which is a guess about how long the
+ * effect under test takes — and a guess that goes stale the moment somebody adds
+ * an `await` to a module three levels down. That happened on 2026-08-26:
+ * `crypto/deviceKey.ts` moved its native import from static to
+ * `await import(...)`, which put the key generation one dynamic-import tick
+ * further away, and `deviceProofLatchesPerAccount` failed FOUR cases in one full
+ * run and passed on the next two. The assertions were right; the waiting was.
+ *
+ * Raising the count would only move the cliff. Waiting on the CONDITION removes
+ * it: a chain that finishes in two ticks costs two, and one that grows next year
+ * still passes.
+ *
+ * The cap is a real failure, not a longer wait — a predicate that never becomes
+ * true means the effect did not run, and hanging the suite would hide that.
+ */
+export async function flushUntil(
+  done: () => boolean,
+  { max = 200, label = 'condition' }: { max?: number; label?: string } = {},
+): Promise<void> {
+  for (let i = 0; i < max; i++) {
+    if (done()) return;
+    await act(async () => {
+      await Promise.resolve();
+      /*
+       * AND a real timer, which is what buys the work under test actual TIME.
+       *
+       * THE FLAKE THIS FIXES, seen once in a full-suite run on 2026-08-27 and
+       * not when the file ran alone. The chain under test reaches
+       * `signChallenge` → `loadEd()`, a DYNAMIC `import()`. Draining microtasks
+       * 200 times costs about ten milliseconds; a cold module load on a machine
+       * running the whole suite in parallel takes far longer, so the budget ran
+       * out and the helper reported "the effect did not complete" — which reads
+       * as a defect in the code rather than as a stopwatch set too short. The
+       * second run found the module cached and passed, which is the signature.
+       *
+       * NOT a starved queue: `act` already lets timers run, and removing this
+       * line does not break a test written that way. The axis is elapsed time,
+       * so a timer per tick is the fix — the same 200 ticks now span hundreds
+       * of milliseconds instead of ten.
+       *
+       * No test that uses this helper runs fake timers, so a real timer is safe.
+       */
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
+  }
+  if (!done()) {
+    throw new Error(
+      `flushUntil: ${label} was still false after ${max} ticks — the effect under ` +
+        'test did not complete. This is a real failure, not a slow one.',
+    );
   }
 }

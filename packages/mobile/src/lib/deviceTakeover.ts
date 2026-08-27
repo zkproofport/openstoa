@@ -74,14 +74,44 @@ export interface TakeoverNotice {
 export const BACKUP_STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
+ * How much a backup is worth right now: nothing, something old, or current.
+ *
+ * SEPARATE FROM THE WORDING because two screens ask the same question about the
+ * same backup and must never answer it differently. This one is consulted by
+ * the takeover warning below and by the "erase this device" gate
+ * (`deviceData.eraseConfirm`) — a second copy of the arithmetic would drift the
+ * first time the window changed, and the drift would show up as one screen
+ * calling a backup fresh while the other calls it stale.
+ *
+ * `now` is a parameter so the boundary is testable without touching the clock.
+ */
+export function backupStanding(
+  backup: { hasBackup: boolean; backupUpdatedAt: number | null },
+  now: number,
+): 'none' | 'stale' | 'fresh' {
+  if (!backup.hasBackup || backup.backupUpdatedAt === null) return 'none';
+
+  /*
+   * Guard the arithmetic, not just the value. A backup timestamp in the future
+   * — clock skew, a device set wrong — would otherwise compute a negative age
+   * and read as freshly made, which is the one answer that must never be given
+   * by mistake. Treat anything not plausibly in the past as stale.
+   */
+  const age = now - backup.backupUpdatedAt;
+  if (!Number.isFinite(age) || age < 0 || age > BACKUP_STALE_AFTER_MS) return 'stale';
+  return 'fresh';
+}
+
+/**
  * Decide what to say.
  *
  * `now` is a parameter so the boundary is testable without touching the clock.
  */
 export function takeoverNotice(conflict: DeviceConflict, now: number): TakeoverNotice {
   const others = Array.isArray(conflict.existingDevices) ? conflict.existingDevices.length : 0;
+  const standing = backupStanding(conflict, now);
 
-  if (!conflict.hasBackup || conflict.backupUpdatedAt === null) {
+  if (standing === 'none') {
     return {
       severity: 'blocked',
       titleKey: 'openstoa.takeover.noBackup.title',
@@ -99,16 +129,9 @@ export function takeoverNotice(conflict: DeviceConflict, now: number): TakeoverN
     };
   }
 
-  /*
-   * Guard the arithmetic, not just the value. A backup timestamp in the future
-   * — clock skew, a device set wrong — would otherwise compute a negative age
-   * and read as freshly made, which is the one answer that must never be given
-   * by mistake. Treat anything not plausibly in the past as stale.
-   */
-  const age = now - conflict.backupUpdatedAt;
-  const stale = !Number.isFinite(age) || age < 0 || age > BACKUP_STALE_AFTER_MS;
+  const age = now - (conflict.backupUpdatedAt ?? 0);
 
-  if (stale) {
+  if (standing === 'stale') {
     return {
       severity: 'stale',
       titleKey: 'openstoa.takeover.staleBackup.title',

@@ -18,6 +18,7 @@
  * everywhere at once, which is the point: there is no longer an odd copy out to
  * become the next `openMedia`.
  */
+export * from './backupRetry';
 export * from './groupClient';
 export * from './aesGcmInterop';
 export * from './mlsSession';

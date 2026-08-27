@@ -90,7 +90,13 @@ function harness(rows: Row[]) {
    * because an unattributed cache of decrypted messages is the defect the key
    * change exists to prevent.
    */
-  const mls = { accountId: async () => '0xtest-account' } as never;
+  // `setEpochListener` is registered by the store's constructor — it takes the
+  // per-epoch key for every epoch the device passes through. A fake without it
+  // cannot construct.
+  const mls = {
+    accountId: async () => '0xtest-account',
+    setEpochListener: () => {},
+  } as never;
 
   vi.spyOn(tak, 'openArchive').mockImplementation(async (_k, _id, ct: string) => {
     opens += 1;

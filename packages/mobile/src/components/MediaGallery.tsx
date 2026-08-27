@@ -12,6 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { VideoEmbed } from './VideoEmbed';
@@ -20,6 +21,21 @@ import { GatedImage } from './GatedImage';
 
 export interface MediaGalleryProps {
   images?: string[];
+  /**
+   * What each picture SAYS, keyed by its URL — the author's own description.
+   *
+   * A map rather than a parallel array because the caller merges pictures from
+   * two sources (the structured media list and the ones parsed out of the post
+   * body) and de-duplicates them; an index-aligned array would have to survive
+   * that merge, and the first re-order would attach one picture's description
+   * to another. Wrong descriptions are worse than none: a reader who cannot see
+   * the picture has no way to notice the mismatch.
+   *
+   * A URL that is absent from the map has no description. A URL mapped to the
+   * EMPTY STRING is different — the author marked it decorative and it must be
+   * hidden from screen readers entirely.
+   */
+  imageAlts?: Record<string, string>;
   videos?: string[];
   /** `feed` shows a thumbnail-style gallery with the first video only plus
    *  a "+N" badge for any extra videos; `detail` plays every video inline. */
@@ -32,6 +48,27 @@ export interface MediaGalleryProps {
    *  (the carousel still pages horizontally on drag — paging vs tap is
    *  disambiguated by the gesture system). */
   onImagePress?: (index: number) => void;
+}
+
+/**
+ * The accessibility props for one picture.
+ *
+ * THREE OUTCOMES, because a picture can say three different things:
+ *
+ *   a description   announce it
+ *   `alt=""`        the author marked it decorative — hide it from the reader
+ *                   entirely rather than announcing "image"
+ *   nothing at all  leave the platform's default alone; inventing a label from
+ *                   the filename would announce "IMG underscore 4021 dot jpeg",
+ *                   which is noise a reader cannot tell from a real caption
+ *
+ * The middle case is the one that gets collapsed into the last by accident, and
+ * it is the only one where the author made an explicit choice.
+ */
+function altProps(alt: string | undefined) {
+  if (alt === undefined) return {};
+  if (alt === '') return { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const };
+  return { accessible: true, accessibilityRole: 'image' as const, accessibilityLabel: alt };
 }
 
 interface ParsedVideo {
@@ -166,12 +203,14 @@ function makeStyles(colors: ThemeColors) {
  */
 export function MediaGallery({
   images: imagesProp,
+  imageAlts,
   videos,
   mode = 'detail',
   horizontalPadding = 32,
   onImagePress,
 }: MediaGalleryProps) {
   const { colors } = useThemeColors();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   // Kept as a plain, un-resolved list: `GatedImage` below owns BOTH halves of
@@ -289,6 +328,7 @@ export function MediaGallery({
                   <Pressable onPress={() => handleImageTap(i)}>
                     <GatedImage
                       uri={uri}
+                      {...altProps(imageAlts?.[uri])}
                       style={[
                         styles.galleryImage,
                         { width: itemWidth, height: imageHeight },
@@ -360,7 +400,7 @@ export function MediaGallery({
             <TouchableOpacity
               style={styles.lightboxCloseBtn}
               onPress={closeLightbox}
-              accessibilityLabel="Close"
+              accessibilityLabel={t('openstoa.common.close')}
             >
               <Text style={styles.lightboxCloseLabel}>×</Text>
             </TouchableOpacity>
@@ -394,6 +434,7 @@ export function MediaGallery({
                 >
                   <GatedImage
                     uri={uri}
+                    {...altProps(imageAlts?.[uri])}
                     style={{ width: windowWidth, height: windowHeight - 80 }}
                     resizeMode="contain"
                   />

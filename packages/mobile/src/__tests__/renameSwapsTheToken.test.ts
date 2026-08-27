@@ -1,26 +1,41 @@
-/**
- * A rename hands back a new token, and this client has to start using it.
+/*
+ * A rename changes a name. It must not change the session.
  *
- * WHY IT MATTERS. The nickname is a JWT CLAIM. The token the app sent with the
- * rename still names the old one, so a client that keeps it shows the old name
- * everywhere the claim is the source — including `GET /api/auth/session`, which
- * is what the profile screen reads on its next refetch. Nothing errors: the old
- * token stays valid (a rename is not a new session), so the only symptom is a
- * person renaming themselves and watching the app keep the old name.
+ * THIS FILE USED TO ASSERT THE OPPOSITE, and it was right at the time. The
+ * nickname was a JWT claim, so the route re-minted the token to carry the new
+ * one and the client had to adopt it; a client that kept the old Bearer showed
+ * the old name until it next signed in. Four cases guarded that swap.
  *
- * WHY A SOURCE CHECK. Both halves are one line each — `await
- * client.updateToken(data.token)` in the screen, and `token` in the route's
- * response — and deleting either produces a build that passes every existing
- * test. Nothing else in either repo asserts the swap, which is how a one-line
- * deletion becomes a bug report about "renaming doesn't work".
+ * WHAT CHANGED, and why the swap had to go rather than be guarded harder.
+ * Re-minting rewrote `deviceKind` at the same time:
+ *
+ *     deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : 'web')
+ *
+ * Reading a missing claim as `web` is a safe answer about one request. WRITING
+ * it is a verdict about every request that follows. So a phone whose session
+ * predated that claim went to change its display name and came back a browser —
+ * and the chat gate then refused every chat, MLS and TAK call from the app
+ * itself. Measured on staging: `/api/topics` 200 while `chat`,
+ * `chat/subscribe` and `mls/group-info` all answered 403.
+ *
+ * The fix is not a safer re-mint. It is that a rename has no business minting
+ * anything: `GET /api/auth/session` reads the nickname from the users table
+ * now, so the claim is merely stale and nothing consults it.
+ *
+ * So the guard is inverted. The cases below fail if the re-mint comes back.
+ *
+ * WHY A SOURCE CHECK. Each half is one line — a `createSession` call in the
+ * route, an `updateToken` in the screen — and either could be reintroduced by
+ * someone fixing "the name looks stale in some cached view" without seeing what
+ * it costs. Nothing else in either repo asserts their absence.
  *
  * EDGE-CASE MATRIX (CLAUDE.md) → coverage
- *   contract  → the screen adopts the returned token
- *   contract  → it adopts it BEFORE re-reading the session, or the refetch
- *               carries the stale claim and undoes the rename on screen
- *   contract  → the server actually SENDS a token to adopt
- *   integrity → the adopted token reaches persistent storage, not just memory,
- *               so the next launch is not back on the old claim
+ *   contract  → the route does not mint a session
+ *   contract  → the route does not send a token back
+ *   contract  → the screen does not adopt one
+ *   integrity → `deviceKind` is not written anywhere on the rename path
+ *   integrity → the session route reads the nickname from the table, so the
+ *               stale claim is genuinely unread rather than merely unused today
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -31,52 +46,47 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const MOBILE = join(HERE, '..');
 const OPENSTOA = join(MOBILE, '..', '..', '..');
 
-const SCREEN = readFileSync(join(MOBILE, 'screens/profile/EditProfileScreen.tsx'), 'utf8');
-const CLIENT = readFileSync(join(MOBILE, 'api/openstoaClient.ts'), 'utf8');
-const ROUTE = readFileSync(join(OPENSTOA, 'src/app/api/profile/nickname/route.ts'), 'utf8');
+/** Source with comments stripped — a comment must not be able to satisfy a case. */
+function code(path: string): string {
+  return readFileSync(path, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
 
-describe('renaming yourself in the mini-app', () => {
-  it('CONTRACT: the screen adopts the token the rename returned', () => {
-    expect(SCREEN).toMatch(/updateToken\(\s*data\.token\s*\)/);
+const ROUTE = code(join(OPENSTOA, 'src/app/api/profile/nickname/route.ts'));
+const SESSION_ROUTE = code(join(OPENSTOA, 'src/app/api/auth/session/route.ts'));
+const SCREEN = code(join(MOBILE, 'screens/profile/EditProfileScreen.tsx'));
+
+describe('renaming yourself does not re-mint the session', () => {
+  it('CONTRACT: the route does not mint a session', () => {
+    expect(ROUTE).not.toContain('createSession(');
   });
 
-  it('CONTRACT: it adopts it BEFORE invalidating the session query', () => {
+  it('CONTRACT: the route does not send a token back', () => {
+    // `NextResponse.json({ nickname })` and nothing else. A `token` field would
+    // be a client's invitation to swap its Bearer again.
+    expect(ROUTE).not.toMatch(/json\(\{[^}]*\btoken\b/);
+  });
+
+  it('INTEGRITY: `deviceKind` is not written anywhere on the rename path', () => {
     /*
-     * Order is the whole thing. `invalidateQueries` triggers a refetch of
-     * `/api/auth/session`, and that request carries whatever token the client
-     * holds at that moment. Invalidating first means the refetch goes out on
-     * the OLD token, comes back with the OLD name, and overwrites the new one
-     * the user just set — the rename appears to fail.
+     * The specific harm, named. Even a "correct-looking" carry here is a write
+     * of a value that was only ever a read-time default.
      */
-    const swap = SCREEN.indexOf('updateToken(data.token)');
-    const invalidate = SCREEN.indexOf('invalidateQueries', swap);
-    expect(swap, 'the swap is missing').toBeGreaterThan(-1);
-    expect(invalidate, 'no invalidate after the swap').toBeGreaterThan(swap);
-    // Awaited, or the refetch races it and the order above buys nothing.
-    expect(SCREEN.slice(swap - 20, swap)).toContain('await');
+    expect(ROUTE).not.toContain('deviceKind');
   });
 
-  it('INTEGRITY: adopting a token persists it, not just caches it in memory', () => {
-    // A memory-only swap works until the app restarts, and then the person is
-    // back on the old claim with no idea why the name reverted.
-    const fn = CLIENT.slice(CLIENT.indexOf('async updateToken('));
-    const body = fn.slice(0, fn.indexOf('\n  }'));
-    expect(body).toContain('setOpenStoaToken');
+  it('CONTRACT: the screen does not adopt a token', () => {
+    expect(SCREEN).not.toContain('updateToken(');
   });
 
-  it('CONTRACT: the server actually returns a token to adopt', () => {
-    // The client half is useless if the route stops sending it, and the route
-    // has no test of its own for the body shape.
-    expect(ROUTE).toMatch(/NextResponse\.json\(\s*\{\s*nickname,\s*token\s*\}/);
-  });
-
-  it('CONTRACT: the response schema DECLARES the token', () => {
+  it('INTEGRITY: the session route reads the nickname from the users table', () => {
     /*
-     * Agents read the generated skill file, which is built from this JSDoc. The
-     * schema listed `nickname` only, so the prose told agents to swap a field
-     * the machine-readable half said did not exist.
+     * Without this the whole change is unsound rather than merely different:
+     * the claim would still be the source, and dropping the re-mint would leave
+     * a rename invisible until the next sign-in.
      */
-    const responses = ROUTE.slice(ROUTE.indexOf('*     responses:'), ROUTE.indexOf('*       400:'));
-    expect(responses).toContain('token:');
+    expect(SESSION_ROUTE).toContain('users.nickname');
+    expect(SESSION_ROUTE).toMatch(/nickname\s*=\s*user\[0\]\?\.nickname/);
   });
 });

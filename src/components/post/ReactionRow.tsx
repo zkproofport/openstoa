@@ -3,6 +3,7 @@
 import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
 import { usePostMutations, type ReactionSummary } from '@/hooks/usePostMutations';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface ReactionRowProps {
   postId: string;
@@ -29,6 +30,7 @@ export default function ReactionRow({
   initialKnown,
   onChange,
 }: ReactionRowProps) {
+  const { t } = useTranslation();
   const [state, setState] = useState<ReactionSummary[]>(reactions ?? []);
   const [showPicker, setShowPicker] = useState(false);
   const [pending, setPending] = useState(false);
@@ -117,7 +119,7 @@ export default function ReactionRow({
               e.stopPropagation();
               setShowPicker((v) => !v);
             }}
-            aria-label="Add reaction"
+            aria-label={t('a11y.addReaction')}
             style={{
               background: showPicker ? 'var(--color-bg-tertiary)' : 'var(--color-bg-secondary)',
               border: '1px solid var(--color-border-default)',

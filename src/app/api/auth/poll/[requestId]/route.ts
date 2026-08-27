@@ -215,6 +215,7 @@ export async function GET(
       userId: nullifier,
       deviceKind: device.kind,
       deviceId: device.id,
+      devicePublicKey: device.publicKey,
       takeover: url.searchParams.get('takeover') === '1',
     });
     if (decision.kind === 'conflict') {

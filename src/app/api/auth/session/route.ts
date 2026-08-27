@@ -46,15 +46,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ authenticated: false });
     }
 
-    // Fetch totalRecorded and role from users table
-    const user = await db.select({ totalRecorded: users.totalRecorded, role: users.role }).from(users).where(eq(users.id, session.userId)).limit(1);
+    /*
+     * The NICKNAME COMES FROM THE TABLE, not from the token.
+     *
+     * It used to be read off the JWT claim, which meant a rename had to mint a
+     * new token to be visible — and re-minting is where `deviceKind` got
+     * rewritten. A phone that changed its display name came back as a browser
+     * session and lost chat, for a reason with no connection to what the person
+     * did. The claim is a snapshot from sign-in; the table is the answer.
+     *
+     * This row was already being fetched for `totalRecorded` and `role`, so the
+     * nickname rides along on a query that was happening anyway.
+     */
+    const user = await db.select({ nickname: users.nickname, totalRecorded: users.totalRecorded, role: users.role }).from(users).where(eq(users.id, session.userId)).limit(1);
     const totalRecorded = user[0]?.totalRecorded ?? 0;
     const role = user[0]?.role ?? 'user';
+    // Falls back to the claim only when the row is gone, which is a deleted
+    // account mid-request — rare, and the claim is the last thing known to be true.
+    const nickname = user[0]?.nickname ?? session.nickname;
 
-    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname: session.nickname, totalRecorded, role, isAI: session.isAI });
+    logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname, totalRecorded, role, isAI: session.isAI });
     return NextResponse.json({
       userId: session.userId,
-      nickname: session.nickname,
+      nickname,
       verifiedAt: session.verifiedAt,
       totalRecorded,
       ...(role === 'admin' ? { role } : {}),

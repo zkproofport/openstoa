@@ -247,7 +247,7 @@ jobs:
   # typecheck above is what this job actually guarantees.
   # ---------------------------------------------------------------------------
   mini-app:
-    name: mini-app (typecheck)
+    name: mini-app (typecheck + tests)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -269,6 +269,25 @@ jobs:
       - name: Type check
         working-directory: packages/mobile
         run: npm run typecheck
+
+      # -----------------------------------------------------------------------
+      # THE MINI-APP'S OWN TESTS. This job type-checked and stopped, so 1,354
+      # cases across 100 files never ran in CI — including every guard written
+      # for the recovery code, the device erase and the backup retry, all of
+      # which live here rather than in the server tree.
+      #
+      # A type check cannot see any of what those guard: a warning that lies
+      # about where a key is kept, an erase that reports success while keys
+      # remain, a retry that gives up after one attempt. All three type-check
+      # perfectly.
+      #
+      # `vitest run` and not `npm test` — the bare script starts vitest in WATCH
+      # mode, which on a runner means a job that hangs until it is cancelled and
+      # reports neither pass nor fail.
+      # -----------------------------------------------------------------------
+      - name: Tests
+        working-directory: packages/mobile
+        run: npx vitest run -c vitest.config.ts --reporter=basic
 
   # ---------------------------------------------------------------------------
   # MCP stdio binary smoke test.

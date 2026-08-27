@@ -23,6 +23,7 @@ import {
   type OsPushState,
 } from '../../hooks/pushPermission';
 import { useThemeColors } from '../../theme/ThemeContext';
+import { useTranslation } from 'react-i18next';
 import type { ThemeColors } from '../../theme/colors';
 import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../../theme/tokens';
 
@@ -107,6 +108,7 @@ export function NotificationSettingsScreen() {
   const userId = useOpenStoaSession((s) => s.userId);
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
 
   const prefsQuery = useQuery<PushPreferences>({
     queryKey: ['push', 'preferences'],
@@ -140,7 +142,7 @@ export function NotificationSettingsScreen() {
       setOsState((prev) => applyRegistrationOutcome(prev, outcome));
     },
     onError: (e) => {
-      Alert.alert('Save failed', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('openstoa.common.saveFailed'), e instanceof Error ? e.message : String(e));
     },
   });
 
@@ -150,8 +152,8 @@ export function NotificationSettingsScreen() {
     // http(s) URL the WebView could render.
     void Linking.openSettings().catch(() => {
       Alert.alert(
-        'Could not open settings',
-        'Open your device Settings app and enable notifications for ZKProofport.',
+        t('openstoa.notificationSettings.openSettingsFailedTitle'),
+        t('openstoa.notificationSettings.openSettingsFailedBody'),
       );
     });
   }, []);
@@ -168,7 +170,7 @@ export function NotificationSettingsScreen() {
     return (
       <View style={[styles.root, styles.center]}>
         <Text style={[styles.intro, { paddingHorizontal: 32, textAlign: 'center' }]}>
-          Couldn&apos;t load your notification settings. Pull back and try again.
+          {t('openstoa.notifications.loadFailed')}
         </Text>
       </View>
     );
@@ -180,9 +182,9 @@ export function NotificationSettingsScreen() {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.scroll}>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
+        <Text style={styles.sectionTitle}>{t('openstoa.notificationSettings.sectionTitle')}</Text>
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>Push notifications</Text>
+          <Text style={styles.rowLabel}>{t('openstoa.notificationSettings.pushLabel')}</Text>
           <Switch
             value={enabled}
             disabled={saveMutation.isPending}
@@ -192,39 +194,31 @@ export function NotificationSettingsScreen() {
         </View>
         <Text style={styles.rowHint}>
           {enabled
-            ? 'New chat messages notify this device.'
-            : 'All notifications are off — no topic will notify you.'}
+            ? t('openstoa.notificationSettings.onHint')
+            : t('openstoa.notificationSettings.offHint')}
         </Text>
         <Text style={styles.rowHint}>
-          This is the account-wide switch and it wins over per-topic settings: while it is off, no
-          topic notifies you even if it is not muted. Mute a single chat from that chat room&apos;s
-          header.
-          {mutedCount > 0
-            ? ` You currently have ${mutedCount} muted ${mutedCount === 1 ? 'topic' : 'topics'}.`
-            : ''}
+          {t('openstoa.notificationSettings.accountWide')}
+          {mutedCount > 0 ? t('openstoa.notificationSettings.mutedCount', { count: mutedCount }) : ''}
         </Text>
 
         {osState === 'blocked' && (
           <View style={styles.blockedBox}>
-            <Text style={styles.blockedText}>
-              Your device is blocking notifications for this app, so turning this on here has no
-              effect on its own. Allow notifications in system settings first.
-            </Text>
+            <Text style={styles.blockedText}>{t('openstoa.notificationSettings.blocked')}</Text>
             <TouchableOpacity
               style={styles.settingsButton}
               onPress={openSystemSettings}
               activeOpacity={0.8}
               accessibilityRole="button"
             >
-              <Text style={styles.settingsButtonText}>Open system settings</Text>
+              <Text style={styles.settingsButtonText}>{t('openstoa.notificationSettings.openSystemSettings')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {osState === 'prompt' && enabled && (
           <Text style={styles.rowHint}>
-            Your device hasn&apos;t been asked for notification permission yet — it will prompt the
-            first time a message arrives for you.
+            {t('openstoa.notifications.permissionNotAsked')}
           </Text>
         )}
       </View>

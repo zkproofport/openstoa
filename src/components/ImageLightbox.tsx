@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { withImageVersion } from '@/lib/imageCacheBuster';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 function CloseIcon() {
   return (
@@ -43,6 +44,7 @@ interface ImageLightboxProps {
 // dot indicator shows position, Escape closes. Falls back to single
 // image mode when `src` is passed.
 export default function ImageLightbox({ src, images, initialIndex = 0, onClose }: ImageLightboxProps) {
+  const { t } = useTranslation();
   const list = images && images.length > 0 ? images : src ? [src] : [];
   const [index, setIndex] = useState(() =>
     Math.max(0, Math.min(initialIndex, list.length - 1)),
@@ -139,7 +141,7 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
           e.stopPropagation();
           onClose();
         }}
-        aria-label="Close"
+        aria-label={t('common.close')}
         style={{
           position: 'absolute',
           top: 16,
@@ -167,7 +169,7 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
             e.stopPropagation();
             setIndex((i) => Math.max(0, i - 1));
           }}
-          aria-label="Previous image"
+          aria-label={t('a11y.previousImage')}
           style={{ ...arrowBtnStyle, left: 16 }}
         >
           <ChevronLeft />
@@ -181,7 +183,7 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
             e.stopPropagation();
             setIndex((i) => Math.min(list.length - 1, i + 1));
           }}
-          aria-label="Next image"
+          aria-label={t('a11y.nextImage')}
           style={{ ...arrowBtnStyle, right: 16 }}
         >
           <ChevronRight />

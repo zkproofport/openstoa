@@ -84,6 +84,27 @@ export class MlsSessionStore {
      * chat and is simply not attributable — see `leafIdentity.ts`.
      */
     private userIdProvider?: () => Promise<string | null>,
+    /**
+     * Where the DEVICE IDENTITY is kept — deliberately NOT `store`.
+     *
+     * `store` is sealed under the device master_key, and `EncryptingKVStore.get`
+     * reports a value it cannot open as ABSENT (see `keyManager.ts`). Keeping the
+     * identity there means one unreadable master_key turns it into "no identity
+     * yet", which mints a fresh one, which joins as a NEW LEAF and leaves the old
+     * epochs unreadable. Measured on staging: one account, one phone, 48 distinct
+     * device ids across epochs 1→58 in `private` and 41 across 2→42 in `dm`.
+     *
+     * The identity is not a secret to begin with. `leafIdentity()` is
+     * `<userId>:<deviceId>` and the server stores it in plain text in
+     * `mls_device_joins.leaf_identity` — verified against the staging row. Sealing
+     * it locally protects nothing and makes the one value that MUST outlive a key
+     * rotation depend on the key.
+     *
+     * So it goes in the raw store. Absent, this falls back to `store`, which is
+     * the previous behaviour rather than a silent downgrade: a caller with only
+     * one store is no worse off than before.
+     */
+    private identityStore?: SecureKVStore,
   ) {}
 
   /**
@@ -180,22 +201,41 @@ export class MlsSessionStore {
     // mobile case) produces a different state key every restart → restore never
     // matches → it always re-joins as a new leaf, dropping history. Persist the
     // first identity and reuse it thereafter.
-    if (this.store) {
+    const idStore = this.identityStore ?? this.store;
+    if (idStore) {
+      /*
+       * A read that THROWS is not a read that said "nothing is here".
+       *
+       * The old shape caught the throw and carried on with the in-memory
+       * identity — which is random per launch — so a transient store failure
+       * minted a new leaf and dropped the history under the old one. Silent, and
+       * only visible later as "Waiting for the key…" on messages this device
+       * wrote itself.
+       *
+       * Now a failed read stops the bootstrap. Chat is unavailable until the
+       * store answers, which is the honest outcome: the alternative is chat that
+       * works while quietly discarding the past.
+       */
+      let savedId: string | null;
       try {
-        const savedId = await this.store.get('mls.identity');
-        if (savedId) this.identity = savedId;
-        else await this.store.set('mls.identity', await this.mintIdentity());
-      } catch {
-        /* fall through with the in-memory identity */
+        savedId = await idStore.get('mls.identity');
+      } catch (err) {
+        throw new Error(
+          'MLS identity store unreadable — refusing to mint a new leaf, which ' +
+            'would orphan this device history. Cause: ' +
+            (err instanceof Error ? err.message : String(err)),
+        );
       }
-      // Re-read rather than trusting what we just wrote: on the write path the
-      // mint result is the identity, but a concurrent bootstrap may have won,
-      // and two leaves for one device is exactly what persisting it prevents.
-      try {
-        const id = await this.store.get('mls.identity');
+
+      if (savedId) {
+        this.identity = savedId;
+      } else {
+        await idStore.set('mls.identity', await this.mintIdentity());
+        // Re-read rather than trusting what we just wrote: on the write path the
+        // mint result is the identity, but a concurrent bootstrap may have won,
+        // and two leaves for one device is exactly what persisting it prevents.
+        const id = await idStore.get('mls.identity');
         if (id) this.identity = id;
-      } catch {
-        /* keep whatever we have */
       }
     }
 
@@ -245,11 +285,64 @@ export class MlsSessionStore {
   }
 
   /** Pull and apply any commits newer than our current epoch. */
+  /**
+   * Called as the group state PASSES THROUGH an epoch, with that epoch's state
+   * in hand.
+   *
+   * WHY IT EXISTS. MLS ratchets forward: once a commit is applied, the previous
+   * epoch's secrets are gone and nothing can derive them again. The archive
+   * layer needs a key PER EPOCH for the `private` and `secret` tiers, and it
+   * only ever derived one for the epoch the device happened to be standing in.
+   *
+   * So a member who was simply away — still a member, never removed — came back
+   * to a catch-up that walked N → N+5 in a loop and silently left four epochs
+   * behind. Every message sent during those epochs was unreadable to them, with
+   * no error anywhere: `epochTakForRead` answers `null` for a past epoch and the
+   * row renders as undecryptable. They had to ask another member for a grant,
+   * and the automatic grant path is bounded to 30 days.
+   *
+   * The state is PASSED IN rather than read back. `readState` takes the same
+   * per-topic lock this runs inside, so a listener that re-read the state would
+   * deadlock the first time anybody missed a commit.
+   *
+   * NOTHING HERE MAY THROW INTO CHAT. A key that cannot be derived is a message
+   * that cannot be read later; a catch-up that dies is a room that cannot be
+   * opened at all.
+   */
+  private epochListener?: (topicId: string, epoch: number, state: gc.GroupState) => Promise<void>;
+
+  /** Register the listener. One per session store; the last registration wins. */
+  setEpochListener(
+    fn: (topicId: string, epoch: number, state: gc.GroupState) => Promise<void>,
+  ): void {
+    this.epochListener = fn;
+  }
+
+  private async announceEpoch(topicId: string, s: Session): Promise<void> {
+    if (!this.epochListener) return;
+    try {
+      await this.epochListener(topicId, gc.currentEpoch(s.state), s.state);
+    } catch {
+      // See the note above: never into chat.
+    }
+  }
+
   private async catchUp(topicId: string, s: Session): Promise<void> {
     const commits = await this.transport.getCommitsSince(topicId, gc.currentEpoch(s.state));
+    if (commits.length === 0) return;
+
+    /*
+     * The epoch we are STANDING IN before moving, not just the ones ahead.
+     * Messages can have arrived here while the device was away, and the moment
+     * the first commit lands this epoch's key is unrecoverable — so it has to be
+     * taken now or never.
+     */
+    await this.announceEpoch(topicId, s);
+
     for (const c of commits) {
       if (c.epoch <= gc.currentEpoch(s.state)) continue;
       s.state = await gc.processCommit(s.state, c.commit);
+      await this.announceEpoch(topicId, s);
     }
   }
 
@@ -408,7 +501,15 @@ export class MlsSessionStore {
     return this.withLock(topicId, async () => {
       const s = await this.getSession(topicId);
       try {
+        /*
+         * The epoch being LEFT is announced first — same reason as in
+         * `catchUp`. A live commit arriving over SSE ends the current epoch just
+         * as finally as a batch of missed ones does, and this is the last
+         * moment its key can be derived.
+         */
+        await this.announceEpoch(topicId, s);
         s.state = await gc.processCommit(s.state, commitB64);
+        await this.announceEpoch(topicId, s);
       } catch {
         // Out-of-order/duplicate commit — reconcile via catch-up.
         await this.catchUp(topicId, s);

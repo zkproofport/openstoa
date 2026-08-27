@@ -23,6 +23,7 @@ import {
   type ArchiveRootClaim,
 } from './takSession';
 import * as km from './keyManager';
+import { BackupRetry } from './backupRetry';
 import { b64, unb64 } from './keyBackup';
 import { ackDelivery } from '../lib/chatDeliveryAck';
 
@@ -216,8 +217,22 @@ export function getMlsSessionStore(
     // Encrypt both at rest under the master_key (rootStore = the secure store).
     const store = encrypting(rawSecure, rawSecure);
     const msgCache = encrypting(rawLocal, rawSecure);
-    _store = new MlsSessionStore(createMlsTransport(client), deviceIdentity(), store, msgCache, () =>
-      sessionUserId(client),
+    /*
+     * `rawSecure` — NOT `store` — for the device identity.
+     *
+     * `store` is sealed under the master_key, and an unopenable value there reads
+     * as absent, which mints a new leaf and orphans the epochs this device already
+     * holds. The identity is `<userId>:<deviceId>`, which the server already keeps
+     * in plain text, so there is nothing to protect by sealing it and everything
+     * to lose. See the `identityStore` parameter on `MlsSessionStore`.
+     */
+    _store = new MlsSessionStore(
+      createMlsTransport(client),
+      deviceIdentity(),
+      store,
+      msgCache,
+      () => sessionUserId(client),
+      rawSecure,
     );
   }
   return _store;
@@ -521,13 +536,83 @@ export async function ensureTakKeychainBackup(
 // Debounced upload of the master_key-encrypted TAK keychain (design §6.4.1) so a
 // recovered master_key re-reads all archived history without another member
 // online. Best-effort; a failure never breaks chat.
-let _takBackupTimer: ReturnType<typeof setTimeout> | null = null;
+/*
+ * RETRIED UNTIL IT LANDS, not "until the next keychain change".
+ *
+ * That comment used to sit on the line below and it was the whole retry policy.
+ * It holds for somebody who writes keys often; the person this backup exists
+ * for may not touch one for weeks, so a single failed upload meant no backup at
+ * all — while the app still handed them a recovery code that would come back
+ * and open nothing. `BackupRetry` climbs a ladder and WRAPS back to the fast
+ * end rather than settling at the ceiling, because the failure that lasts is
+ * usually a phone that was somewhere without signal, and that phone deserves a
+ * quick attempt soon after it returns. See `@openstoa/mls`'s `backupRetry.ts`.
+ */
+/*
+ * ONE retry for the whole process, whoever asks for it.
+ *
+ * Two callers want an upload — a keychain write, and `RecoveryRepair` finding
+ * the account has no backup. Giving each its own ladder would put two uploads
+ * on the same account, and the upload MERGES local keys into whatever the
+ * server holds, so the later write can drop what the earlier one added. One
+ * instance, and the newest caller supplies the closure.
+ */
+let _takBackupRetry: BackupRetry | null = null;
+let _takBackupUpload: (() => Promise<boolean>) | null = null;
+
+/**
+ * Which outcomes mean the account is backed up.
+ *
+ * `empty` and `present` are done — there was nothing to send, or the server
+ * already had it. `untrusted` is NOT: the server row could not be safely merged
+ * (see the clobber guard), so this device's keys are not up there, and the
+ * condition clears on its own once the right master_key is loaded. Retrying it
+ * costs one GET on a widening schedule and is the difference between a backup
+ * that arrives late and one that never arrives.
+ */
+function landed(outcome: TakBackupOutcome): boolean {
+  return outcome === 'uploaded' || outcome === 'present' || outcome === 'empty';
+}
+
+function takBackupRetry(): BackupRetry {
+  if (!_takBackupRetry) {
+    _takBackupRetry = new BackupRetry(
+      async () => (await _takBackupUpload?.()) ?? false,
+      { setTimeout, clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) },
+      (e) => report('backup/retry', { ...e }),
+    );
+  }
+  return _takBackupRetry;
+}
+
 function scheduleTakKeychainBackup(client: OpenStoaClient, rootStore: SecureKVStore): void {
-  if (_takBackupTimer) clearTimeout(_takBackupTimer);
-  _takBackupTimer = setTimeout(() => {
-    // retried on the next keychain change
-    if (_takStore) void pushTakKeychain(client, rootStore, _takStore);
-  }, 1500);
+  _takBackupUpload = async () =>
+    _takStore ? landed(await pushTakKeychain(client, rootStore, _takStore)) : false;
+  takBackupRetry().schedule();
+}
+
+/**
+ * Keep trying an account-level backup that just failed.
+ *
+ * `RecoveryRepair` runs `ensureTakKeychainBackup` once per account per launch
+ * and then latches on the user id. Without this, a failure there waited for the
+ * app to be killed and reopened — and nothing told the person that was what was
+ * needed, because the repair is silent by design.
+ */
+export function retryTakKeychainBackup(
+  client: OpenStoaClient,
+  hostSecureStore: HostSecureStore,
+  hostLocalStore?: HostSecureStore,
+): void {
+  _takBackupUpload = async () =>
+    landed(await uploadTakKeychainNow(client, hostSecureStore, hostLocalStore));
+  takBackupRetry().schedule();
+}
+
+/** Sign-out and erase: stop trying, and forget who we were trying for. */
+export function stopTakKeychainBackupRetry(): void {
+  _takBackupRetry?.cancel();
+  _takBackupUpload = null;
 }
 
 let _takStore: TakSessionStore | null = null;
@@ -622,6 +707,108 @@ export async function recoverDevice(
   const tak = getTakSessionStore(client, hostSecureStore, hostLocalStore);
   const keychain = await km.restoreTakKeychain(recoveredMasterKey, () => keyBackupHttp(client).getTakBackup());
   if (keychain) await tak.importKeychain(keychain);
+  // Last, so listeners see a device whose keys are already in place.
+  bumpCryptoGeneration();
+}
+
+/**
+ * The MLS leaf identity this device has persisted, or null if it has none yet.
+ *
+ * Read from the RAW secure store, not the encrypting one, because that is where
+ * `mlsSession` puts it — see the `identityStore` note in `getMlsSessionStore`.
+ * Exported for the device-data erase, which needs it to derive the
+ * `mls.state.<identity>.<topicId>` key names: the Keychain cannot be
+ * enumerated, so a key nobody can name survives a wipe.
+ */
+export async function readDeviceIdentity(hostSecureStore?: HostSecureStore): Promise<string | null> {
+  const raw = adapt(hostSecureStore);
+  if (!raw) return null;
+  try {
+    return await raw.get('mls.identity');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drop every in-process handle to this device's chat keys.
+ *
+ * WHY AN ERASE IS NOT FINISHED WITHOUT IT. `_masterKeyPromise`, `_store` and
+ * `_takStore` are module singletons holding a live master_key and open
+ * sessions. Deleting the stored copies while those are alive leaves the key in
+ * memory and, worse, leaves writers that will happily persist it again — the
+ * next message decrypt re-creates a master_key, and the device the person just
+ * erased is quietly re-keyed with something no backup covers.
+ *
+ * Same three fields `recoverDevice` resets, for the same reason.
+ */
+/**
+ * A COUNTER THAT GOES UP WHENEVER THIS DEVICE'S CHAT KEYS CHANGE.
+ *
+ * THE DEFECT IT EXISTS FOR, measured on a phone on 2026-08-27. A secret room
+ * was left open; the person recovered with their code on another tab and came
+ * back. All five epoch keys were restored — the log says so — and the room
+ * still read `키를 기다리는 중…` a minute and a half later. Leaving and
+ * re-entering opened it at once. Nobody would guess to do that; they read a
+ * recovery that "succeeded" over an empty room as their messages being gone.
+ *
+ * WHY NOTHING NOTICED, and why invalidating the query is not enough on its own
+ * — this was tried first and did not work. The room decrypts inside its query
+ * function using the MLS session it holds, and that session is the module
+ * singleton `_store`, which `recoverDevice` sets to null so the NEXT caller
+ * builds a fresh one. The room's next caller is its next RENDER. Invalidating
+ * from the recovery screen refetches immediately, while the room still holds
+ * the dead session, so the rows come back locked, the entry is fresh again,
+ * and returning to the room refetches nothing.
+ *
+ * So the room has to move first. It subscribes here, a bump re-renders it —
+ * which is when it picks up the new session — and only then does it ask for
+ * its history again. The ordering is inside the room, where it can be relied
+ * on, instead of across two screens where it cannot.
+ *
+ * ONE COUNTER, NOT ONE PER CALLER. Recovery raises it today because that is
+ * the path that was measured. A device RECEIVING epochs another member granted
+ * looks like the same shape of hole — `useAccountEvents` applies them app-wide
+ * and tells no screen either — but that path has not been reproduced on a
+ * device, so it is named here rather than assumed and wired blind. Whoever
+ * confirms it raises this counter from wherever the ingest lands; nothing else
+ * has to change.
+ */
+let cryptoGeneration = 0;
+const cryptoGenerationListeners = new Set<() => void>();
+
+/** Announce that this device's chat keys changed. Safe to call often. */
+export function bumpCryptoGeneration(): void {
+  cryptoGeneration += 1;
+  for (const fn of cryptoGenerationListeners) {
+    try {
+      fn();
+    } catch {
+      // A listener that throws must not stop the others from hearing.
+    }
+  }
+}
+
+/** For `useSyncExternalStore`. */
+export function subscribeCryptoGeneration(fn: () => void): () => void {
+  cryptoGenerationListeners.add(fn);
+  return () => cryptoGenerationListeners.delete(fn);
+}
+
+/** For `useSyncExternalStore`. */
+export function getCryptoGeneration(): number {
+  return cryptoGeneration;
+}
+
+export function resetChatCryptoState(): void {
+  _masterKeyPromise = null;
+  _store = null;
+  _takStore = null;
+  _identity = null;
+  // A pending upload would re-read the store we are about to empty and push
+  // whatever it found — or nothing — over the account's real backup. The retry
+  // ladder goes with it: an armed retry outlives the state it was retrying for.
+  stopTakKeychainBackupRetry();
 }
 
 /**
@@ -652,7 +839,16 @@ export async function toDisplayMessageMls(
   topicId: string,
   raw: ChatMessage,
 ): Promise<ChatMessage> {
-  if (raw?.type === 'message') {
+  /*
+   * `notice` decrypts by the same path as `message`, and forgetting that is how
+   * it shipped empty.
+   *
+   * A notice is sealed exactly like a member's message — only its authorship
+   * differs (see `messageSide`). This gate used to name `message` alone, so a
+   * notice skipped the cache lookup entirely and rendered as an empty bubble on
+   * a real phone: no text, no "Waiting for the key…", nothing to read.
+   */
+  if (raw?.type === 'message' || raw?.type === 'notice') {
     let text = '';
     if (raw.sealed?.ciphertext) {
       try {

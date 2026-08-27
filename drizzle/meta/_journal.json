@@ -253,6 +253,20 @@
       "when": 1787681371771,
       "tag": "0035_personal_topic_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787690000000,
+      "tag": "0036_device_signing_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787791981821,
+      "tag": "0037_rainy_silver_fox",
+      "breakpoints": true
     }
   ]
 }

@@ -45,9 +45,35 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const recovery = await getKeyBackup(db, session.userId);
     const passkeys = await listPasskeyWraps(db, session.userId);
+
+    /*
+     * WHEN, not just whether.
+     *
+     * "You have a backup" and "you have a backup from four months ago" are
+     * different answers to a person about to erase the only device that holds
+     * their chat keys — rooms joined since that date are not in it. The
+     * sign-in conflict path already returns this (`deviceTakeoverGate`); the
+     * clients that ask outside a conflict, like Profile → Device data, had no
+     * way to get it and would have had to treat every backup as current or
+     * every backup as stale. Both are wrong in the direction that costs
+     * history.
+     *
+     * The NEWEST wrap wins: any single one of them recovers the same
+     * master_key, so the account is as protected as its most recent copy.
+     * A row with no timestamp (pre-default) contributes nothing rather than
+     * contributing zero, which would read as 1970 and mark a good backup
+     * stale.
+     */
+    const stamps = [
+      recovery?.updatedAt?.getTime(),
+      ...passkeys.map((p) => p.createdAt?.getTime()),
+    ].filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+
     return NextResponse.json({
       wrappedMaster: recovery ? recovery.wrappedMaster.toString('base64') : null,
       passkeys: passkeys.map((p) => ({ credentialId: p.credentialId, prfWrapped: p.prfWrapped.toString('base64') })),
+      /** Epoch ms of the most recent wrap, or null when there is none. */
+      backupUpdatedAt: stamps.length > 0 ? Math.max(...stamps) : null,
     });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);

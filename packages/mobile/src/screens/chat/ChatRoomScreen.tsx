@@ -1,5 +1,5 @@
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchWithTimeout } from '../../api/timeout';
-import React, {
+import React, { useSyncExternalStore,
   useCallback,
   useEffect,
   useMemo,
@@ -56,6 +56,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutation';
 import { useTranslation } from 'react-i18next';
+import { isOwnMessage } from '../../lib/messageSide';
 import Feather from 'react-native-vector-icons/Feather';
 import type { ChatMessage } from '@openstoa/api-types';
 import { topicKeys, UNREADABLE_BODY } from '@openstoa/api-types';
@@ -146,6 +147,8 @@ import {
   tierCanAsk,
   oldestReadableEpoch,
 } from '../../lib/keyRequest';
+import { chatEmptyLabelKey, chatEmptyReason } from '../../lib/chatEmptyState';
+import { getCryptoGeneration, subscribeCryptoGeneration } from '../../crypto/mobileTransport';
 import KeyRequestList, { type PendingKeyRequest } from '../../components/KeyRequestList';
 import type { ThemeColors } from '../../theme/colors';
 import { formatRelativeTime } from '../../utils/relativeTime';
@@ -803,8 +806,15 @@ export function ChatRoomScreen() {
   // Same value as the ref, as state: an attachment row decrypts in an effect,
   // so the tier has to reach it as a PROP that changes when the lookup lands.
   const [visibility, setVisibility] = useState<Visibility>('public');
-  /** True in the caller's own space — a topic with exactly one member. */
+  /** True in the caller's own space — the topic the account is created with. */
   const [isPersonal, setIsPersonal] = useState(false);
+  /**
+   * Members in this room, including this account; `null` until the lookup lands.
+   *
+   * The ask control needs to know whether anyone could answer, and the flag
+   * above only knows that about ONE room per account. See `nobodyToAsk`.
+   */
+  const [memberCount, setMemberCount] = useState<number | null>(null);
   /*
    * Which claim this room may make. `public` until the visibility lookup lands,
    * which is the tier that promises the LEAST — a room can be upgraded to "the
@@ -943,6 +953,38 @@ export function ChatRoomScreen() {
     staleTime: 0,
     refetchOnMount: 'always',
   });
+
+  /*
+   * WHEN THIS DEVICE'S CHAT KEYS CHANGE, ASK FOR THE HISTORY AGAIN.
+   *
+   * A room left open through a recovery stayed locked — see the counter's own
+   * comment in `mobileTransport`. Invalidating from the recovery screen does
+   * not work: the refetch lands while this screen still holds the MLS session
+   * from before the recovery, the rows come back locked, and the entry is no
+   * longer stale so returning refetches nothing.
+   *
+   * Subscribing here fixes the ORDER. A bump re-renders this screen first, so
+   * `mls` above is already the rebuilt session by the time the effect below
+   * asks for the history — the two steps cannot get out of sequence because
+   * they are both inside one component.
+   */
+  const cryptoGeneration = useSyncExternalStore(subscribeCryptoGeneration, getCryptoGeneration);
+  const firstGeneration = useRef(cryptoGeneration);
+  useEffect(() => {
+    // Not on mount: the query has just fetched with the session it has.
+    if (cryptoGeneration === firstGeneration.current) return;
+    void queryClient.invalidateQueries({ queryKey: topicKeys.chat(topicId) });
+  }, [cryptoGeneration, queryClient, topicId]);
+
+  /*
+   * WHAT AN EMPTY LIST MEANS, decided once and outside the render tree.
+   *
+   * `아직 메시지가 없어요` used to render under every empty list, including
+   * the one that is empty because the fetch failed. See `chatEmptyReason`.
+   */
+  const emptyLabelKey = chatEmptyLabelKey(
+    chatEmptyReason({ historyStatus, streamStatus: status }),
+  );
 
   /*
    * The room as this device last rendered it, read from disk before the network
@@ -1120,7 +1162,14 @@ export function ChatRoomScreen() {
    */
   const [keyAskSending, setKeyAskSending] = useState(false);
   const [keyAskMine, setKeyAskMine] = useState<{ granted: boolean } | null>(null);
-  const keyAsk = askStatus({ lockedCount, tier, mine: keyAskMine, sending: keyAskSending, personal: isPersonal });
+  const keyAsk = askStatus({
+    lockedCount,
+    tier,
+    mine: keyAskMine,
+    sending: keyAskSending,
+    personal: isPersonal,
+    memberCount,
+  });
 
   useEffect(() => {
     // Only look when there is something to look for — a room that opens fine
@@ -1349,9 +1398,10 @@ export function ChatRoomScreen() {
          * it does (`TopicDetailScreen` on save).
          */
         const tj = await queryClient.ensureQueryData<{
-          topic?: { visibility?: string; personal?: boolean };
+          topic?: { visibility?: string; personal?: boolean; memberCount?: number };
           visibility?: string;
           personal?: boolean;
+          memberCount?: number;
           currentUserRole?: string | null;
         }>({
           queryKey: topicKeys.detail(topicId),
@@ -1365,6 +1415,11 @@ export function ChatRoomScreen() {
         tierRef.current = chatTierOf(visibilityRef.current, kind === 'dm');
         // A room of one: the ask control has nobody to ask. See `askStatus`.
         setIsPersonal(Boolean(tj?.topic?.personal ?? tj?.personal));
+        // The same question asked of the membership rather than of a flag, so
+        // an ordinary room everyone else left answers it too. Left at `null`
+        // when the field is missing — unknown must not read as alone.
+        const mc = tj?.topic?.memberCount ?? tj?.memberCount;
+        setMemberCount(typeof mc === 'number' && Number.isFinite(mc) ? mc : null);
         roleRef.current = tj?.currentUserRole ?? null;
       } catch {}
       let history: Array<{ messageId: string; plaintext: string }> = [];
@@ -2213,7 +2268,7 @@ export function ChatRoomScreen() {
   const pickFromLibrary = useAuthGuardedAction(async () => {
     const ImagePicker = loadImagePicker();
     if (!ImagePicker) {
-      Alert.alert('Image picker unavailable', 'The host app needs to be rebuilt to include expo-image-picker.');
+      Alert.alert(t('openstoa.attach.pickerUnavailableTitle'), t('openstoa.attach.pickerUnavailableBody'));
       return;
     }
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -2280,12 +2335,12 @@ export function ChatRoomScreen() {
   const pasteFromClipboard = useCallback(async () => {
     const Clipboard = loadClipboard();
     if (!Clipboard) {
-      Alert.alert('Clipboard unavailable', 'The host app needs to be rebuilt to include the clipboard native module.');
+      Alert.alert(t('openstoa.attach.clipboardUnavailableTitle'), t('openstoa.attach.clipboardUnavailableBody'));
       return;
     }
     const hasImage = await Clipboard.hasImage();
     if (!hasImage) {
-      Alert.alert('No image in clipboard');
+      Alert.alert(t('openstoa.attach.noImageInClipboard'));
       return;
     }
     // `data:<mime>;base64,<payload>` — split rather than re-read: the payload
@@ -2303,7 +2358,11 @@ export function ChatRoomScreen() {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ['Cancel', 'Photo library', 'Paste from clipboard'],
+          options: [
+            t('openstoa.common.cancel'),
+            t('openstoa.attach.photoLibrary'),
+            t('openstoa.attach.pasteFromClipboard'),
+          ],
           cancelButtonIndex: 0,
         },
         (buttonIndex) => {
@@ -2312,13 +2371,13 @@ export function ChatRoomScreen() {
         },
       );
     } else {
-      Alert.alert('Attach image', undefined, [
-        { text: 'Photo library', onPress: pickFromLibrary },
-        { text: 'Paste from clipboard', onPress: pasteFromClipboard },
-        { text: 'Cancel', style: 'cancel' },
+      Alert.alert(t('openstoa.attach.title'), undefined, [
+        { text: t('openstoa.attach.photoLibrary'), onPress: pickFromLibrary },
+        { text: t('openstoa.attach.pasteFromClipboard'), onPress: pasteFromClipboard },
+        { text: t('openstoa.common.cancel'), style: 'cancel' },
       ]);
     }
-  }, [pickFromLibrary, pasteFromClipboard]);
+  }, [pickFromLibrary, pasteFromClipboard, t]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   /*
@@ -2591,15 +2650,26 @@ export function ChatRoomScreen() {
               </View>
             ) : null
           }
+          /*
+           * An empty list is not the same as an empty room. While a fetch is
+           * still in flight there is no sentence at all, so nothing flickers
+           * into view and straight back out.
+           */
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={styles.emptyText}>{t('openstoa.chat.noMessagesYet')}</Text>
-            </View>
+            emptyLabelKey ? (
+              <View style={styles.center}>
+                <Text style={styles.emptyText}>{t(emptyLabelKey)}</Text>
+              </View>
+            ) : null
           }
         />
       )}
 
-      <OfflineNotice offline={status !== 'open'} styles={styles} />
+      <OfflineNotice
+        offline={status !== 'open' && status !== 'rejected'}
+        signedOut={status === 'rejected'}
+        styles={styles}
+      />
 
       {/* Input bar */}
       <View style={styles.inputRow}>
@@ -2654,6 +2724,7 @@ export function ChatRoomScreen() {
       onClose={() => setImageViewer(null)}
       onSave={imageViewer?.save}
       saveLabel={t('openstoa.chat.media.save')}
+      closeLabel={t('openstoa.chat.media.close')}
     />
     <PeerProfileCard
       target={profileTarget}
@@ -2716,6 +2787,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
 
 function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, tier }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
+  const { t } = useTranslation();
 
   // System messages (join / leave only — every other type renders as a
   // regular message bubble below). The previous code did `type !==
@@ -2723,11 +2795,21 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
   // non-'message' / non-'join' row (including 'ai') as "left the room"
   // and dropped the body entirely.
   if (item.type === 'join' || item.type === 'leave') {
-    const verb = item.type === 'join' ? 'joined' : 'left';
+    /*
+     * Built by the translator, not glued together here. The old shape was
+     * `{item.nickname} {verb} the room`, which is English on a Korean screen —
+     * and invisible to the leftover-English sweep, because the sweep read the
+     * text BETWEEN the tags and this had expressions in the middle of it.
+     */
     return (
       <View style={styles.systemRow}>
         <Text style={styles.systemMsg}>
-          {item.nickname} {verb} the room
+          {t(
+            item.type === 'join'
+              ? 'openstoa.chat.joinedRoom'
+              : 'openstoa.chat.leftRoom',
+            { nickname: item.nickname },
+          )}
         </Text>
       </View>
     );
@@ -2748,7 +2830,9 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
   // A provisional row is mine by construction — it has not been near the server
   // yet, so there is no userId to compare. Deciding by comparison alone put the
   // bubble on the LEFT until the server answered, then slid it right.
-  const isOwn = item.pending || item.failed ? true : item.userId === sessionUserId;
+  // The decision lives in `lib/messageSide` so it can be guarded; the screen
+  // cannot be rendered with an ordinary message in a unit test. See that file.
+  const isOwn = isOwnMessage(item, sessionUserId);
   // Own messages render as someone else's on device, and the two candidate
   // causes — a session with no userId, or ids that differ in shape — are
   // indistinguishable from the outside. Log the comparison ONCE per mismatched
@@ -2792,7 +2876,25 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
  */
 const OFFLINE_NOTICE_AFTER_MS = 10_000;
 
-function OfflineNotice({ offline, styles }: { offline: boolean; styles: Styles }) {
+function OfflineNotice({
+  offline,
+  signedOut,
+  styles,
+}: {
+  offline: boolean;
+  /*
+   * The server REFUSED the credential — twice, each time with a freshly read
+   * token. Not the same thing as a connection that dropped, and it must not say
+   * "reconnecting": there is nothing to reconnect to until the person signs in
+   * again, and a message that keeps promising a recovery that cannot happen is
+   * the reason somebody sits waiting instead of acting.
+   *
+   * Shown at once rather than after the ten-second delay. The delay exists so a
+   * momentary blip does not blink a banner; a refusal is not momentary.
+   */
+  signedOut: boolean;
+  styles: Styles;
+}) {
   const { t } = useTranslation();
   const [show, setShow] = useState(false);
   useEffect(() => {
@@ -2806,11 +2908,11 @@ function OfflineNotice({ offline, styles }: { offline: boolean; styles: Styles }
     return () => clearTimeout(timer);
   }, [offline]);
 
-  if (!show) return null;
+  if (!show && !signedOut) return null;
   return (
     <View style={styles.offlineBar} accessibilityLiveRegion="polite" accessibilityRole="alert">
       <Text style={styles.offlineBarText} numberOfLines={2}>
-        {t('openstoa.chat.offline.body')}
+        {t(signedOut ? 'openstoa.signInPrompt.expiredTitle' : 'openstoa.chat.offline.body')}
       </Text>
       <TouchableOpacity
         onPress={() => setShow(false)}
@@ -3370,7 +3472,20 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           messages don't repeat the name, so there's no tap target on them —
           the reader can scroll up to the group header or use the member
           list instead. */}
-      {!isOwn && !sameAuthor ? (
+        {/*
+          * A NOTICE NAMES NOBODY. It is filed with the reader's own token — the
+          * only token that can seal into their room — so `item.nickname` is the
+          * READER'S, and heading the bubble with it says they wrote something
+          * they did not. Moving it to the received side (`messageSide`) fixed
+          * the SIDE and left the NAME: on a phone it read as a message from
+          * yourself, addressed to yourself. The chat list had the same defect
+          * and its own fix (`chatPreview`); this is the room's half.
+          *
+          * FOR THE NEXT EDIT: `{!isOwn && !sameAuthor ?` appears TWICE in this
+          * file — here, and around the timestamp below. A first attempt at this
+          * landed on the timestamp and changed nothing a person could see.
+          */}
+        {!isOwn && item.type !== 'notice' && !sameAuthor ? (
         <TouchableOpacity
           style={styles.bubbleAuthorRow}
           activeOpacity={0.6}
@@ -3484,8 +3599,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
           </TouchableOpacity>
         ) : null}
 
-        {/* Timestamp right of bubble for other users */}
-        {!isOwn && !sameAuthor ? (
+          {!isOwn && !sameAuthor ? (
           <Text style={[styles.bubbleTime, styles.bubbleTimeOther]}>{timeLabel}</Text>
         ) : null}
       </View>

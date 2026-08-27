@@ -122,7 +122,8 @@
   "askPage": {
     "title": "OpenStoa AI",
     "unavailable": "현재 이 기능은 사용할 수 없습니다.",
-    "backToHome": "홈으로 돌아가기"
+    "backToHome": "홈으로 돌아가기",
+    "inputPlaceholder": "OpenStoa에 대해 무엇이든 물어보세요…"
   },
   "explorePage": {
     "loadFailed": "토픽을 불러오지 못했습니다",
@@ -702,7 +703,8 @@
     "docs": "문서",
     "openChat": "채팅 열기",
     "anonFallback": "익명",
-    "signIn": "로그인"
+    "signIn": "로그인",
+    "searchPlaceholder": "게시글, 태그 검색…"
   },
   "rightSidebar": {
     "aboutTopic": "이 토픽 정보",
@@ -860,7 +862,10 @@
     "joined": "가입됨",
     "pinnedAriaLabel": "고정된 게시물",
     "recordedOnBase": "Base에 기록됨",
-    "recordCount": "기록 {{count}}건"
+    "recordCount": "기록 {{count}}건",
+    "titlePlaceholder": "글 제목",
+    "bodyPlaceholder": "내용을 적어 주세요...",
+    "commentPlaceholder": "생각을 나눠 주세요..."
   },
   "snsEditor": {
     "placeholder": "내용을 입력하세요…",
@@ -1066,5 +1071,24 @@
     "historyAlready": "이 링크가 담고 있는 대화 기록은 이미 가지고 있습니다.",
     "historyWrongTopic": "이 링크에 다른 토픽의 기록 키가 담겨 있어 사용하지 않았습니다. 기록이 필요하면 새 초대를 요청하세요.",
     "historyNone": "이 초대에는 대화 기록이 담겨 있지 않습니다. 지금부터의 메시지를 볼 수 있습니다."
+  },
+  "a11y": {
+    "sendMessage": "메시지 보내기",
+    "postActions": "글 작업",
+    "memberOfTopic": "이 토픽의 멤버입니다",
+    "pinnedPost": "고정된 글",
+    "search": "검색",
+    "clearSearch": "검색어 지우기",
+    "previousImage": "이전 사진",
+    "nextImage": "다음 사진",
+    "previous": "이전",
+    "next": "다음",
+    "addReaction": "반응 추가",
+    "upvote": "추천",
+    "downvote": "비추천",
+    "youtubeVideo": "유튜브 영상",
+    "vimeoVideo": "비메오 영상",
+    "copyResponse": "답변 복사",
+    "deleteComment": "댓글 삭제"
   }
 }

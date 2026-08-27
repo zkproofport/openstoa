@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { postKeys, topicKeys } from '@openstoa/api-types';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useOpenStoaClient } from './useOpenStoaClient';
 import { patchPostInAllCaches } from '../utils/postCachePatch';
 import { OpenStoaApiError } from '../api/openstoaClient';
@@ -41,6 +42,7 @@ export interface ReactionSummary {
  * spin up parallel useState + setQueriesData logic in screens.
  */
 export function usePostMutations(postId: string) {
+  const { t } = useTranslation();
   const client = useOpenStoaClient();
   const queryClient = useQueryClient();
 
@@ -97,8 +99,8 @@ export function usePostMutations(postId: string) {
         }));
         if (isNotAMember(e)) {
           Alert.alert(
-            'Join the topic first',
-            'Only members of this topic can vote on its posts. Tap the topic name to open it and join.',
+            t('openstoa.common.joinFirstTitle'),
+            t('openstoa.common.joinFirstBody'),
           );
         }
       }

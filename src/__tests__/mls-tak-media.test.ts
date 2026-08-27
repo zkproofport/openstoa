@@ -157,7 +157,7 @@ describe('media seal / open', () => {
      */
     const root = tak.generatePublicRootKey();
     const store = kv({ 'tak.root.public-topic': Buffer.from(root).toString('base64') });
-    const session = new TakSessionStore({} as never, transport(), store);
+    const session = new TakSessionStore({ setEpochListener: () => {} } as never, transport(), store);
 
     const plain = new Uint8Array([4, 2]);
     const sealed = await session.sealMedia('public-topic', MEDIA, plain, 'public');
@@ -176,7 +176,7 @@ describe('media seal / open', () => {
     // No stored root, and the server cannot be asked → 'unverified', so there
     // is no key this device may seal under.
     const store = kv({});
-    const session = new TakSessionStore({} as never, transport({ offline: true }), store);
+    const session = new TakSessionStore({ setEpochListener: () => {} } as never, transport({ offline: true }), store);
     expect(await session.sealMedia('public-topic', MEDIA, new Uint8Array([1]), 'public')).toBeNull();
     const opened = await session.openMedia('public-topic', MEDIA, 0, new Uint8Array([1, 2, 3]), 'public');
     expect(opened).toEqual({ ok: false, reason: 'no-key' });
@@ -185,7 +185,7 @@ describe('media seal / open', () => {
   it('H2/H3: holding a key but failing to open is decrypt, never no-key', async () => {
     const root = tak.generatePublicRootKey();
     const store = kv({ 'tak.root.public-topic': Buffer.from(root).toString('base64') });
-    const session = new TakSessionStore({} as never, transport(), store);
+    const session = new TakSessionStore({ setEpochListener: () => {} } as never, transport(), store);
     const sealed = await session.sealMedia('public-topic', MEDIA, new Uint8Array([1, 2, 3]), 'public');
     const tampered = new Uint8Array(sealed!.ciphertext);
     tampered[tampered.length - 1] ^= 0xff;
@@ -198,7 +198,7 @@ describe('media seal / open', () => {
   it('a scoped tier opens only the epoch the envelope names', async () => {
     const epoch3 = tak.generatePublicRootKey();
     const store = kv({ 'tak.epoch.secret-topic.3': Buffer.from(epoch3).toString('base64') });
-    const session = new TakSessionStore({} as never, transport(), store);
+    const session = new TakSessionStore({ setEpochListener: () => {} } as never, transport(), store);
     const sealed = await tak.sealMediaBytes(epoch3, MEDIA, new Uint8Array([8]));
 
     const ok = await session.openMedia('secret-topic', MEDIA, 3, sealed, 'secret');

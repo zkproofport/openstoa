@@ -81,6 +81,47 @@ export async function POST(request: NextRequest) {
    * keeps one record and leaves both tokens working, which is also what stops
    * a phone that refreshes often from looking like several devices.
    */
+  /*
+   * A SESSION THAT NEVER SAID WHAT IT IS CANNOT BE REFRESHED.
+   *
+   * `deviceKind` is decided once, by the login route that minted the session,
+   * because that is the only moment the server has any grounds for an opinion:
+   * afterwards all it has is a header the caller writes. Sessions issued before
+   * the claim existed carry no such decision.
+   *
+   * The old line filled the gap with `'web'` — and, crucially, WROTE that into
+   * the new token. Reading a missing claim as `web` at the gate is a safe answer
+   * about one request; storing it is a verdict about every request that follows,
+   * and one nobody made. A phone whose session predated the claim was therefore
+   * not waiting to be recognised: every refresh made it more definitely a
+   * browser, for seven more days, and chat stayed 403 until somebody signed out
+   * and in by hand. Measured on staging: `/api/topics` 200 while `chat`,
+   * `chat/subscribe` and `mls/group-info` were all 403 CHAT_MOBILE_ONLY.
+   *
+   * Guessing the other way is worse. `deviceFromRequest` reads a header, so
+   * adopting the session as `mobile` because it looks like a phone would let any
+   * browser holding a pre-claim token into chat by sending one line.
+   *
+   * So neither guess. Send it back to the one place that can decide — a fresh
+   * sign-in. It costs the person one login, once, and it is bounded: no session
+   * minted from today lacks the claim, so this branch empties itself.
+   *
+   * NOT a permanent gate on refresh. The moment every live session carries a
+   * kind, this is dead code, and deleting it then is correct.
+   */
+  if (typeof session.deviceKind !== 'string' && session.isAI !== true) {
+    logger.info(ROUTE, 'Refusing to refresh a session with no device kind', {
+      userId: session.userId,
+    });
+    return NextResponse.json(
+      {
+        error: 'This session predates device identification. Please sign in again.',
+        code: 'SESSION_NEEDS_REAUTH',
+      },
+      { status: 401 },
+    );
+  }
+
   const device = deviceFromRequest(request);
   const newToken = await createSession(user.id, user.nickname, {
     sessionId: typeof session.jti === 'string' ? session.jti : undefined,
@@ -88,7 +129,7 @@ export async function POST(request: NextRequest) {
     // The kind is carried over, not re-declared: a refresh is the same client
     // it was at sign-in, and reading the header again would let a session
     // change kind mid-life — a browser refreshing its way into chat.
-    deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : 'web'),
+    deviceKind: session.isAI === true ? 'agent' : session.deviceKind,
     deviceId: device.id,
   });
 

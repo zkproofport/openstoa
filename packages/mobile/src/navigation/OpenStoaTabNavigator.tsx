@@ -54,9 +54,10 @@ function isFullScreenModalRoute(route: any): boolean {
 // Placeholder component — never actually rendered; the tabPress listener
 // preempts navigation and dispatches host.exitToHost() instead.
 function NoopExitScreen() {
+  const { t } = useTranslation();
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Returning to ZKProofport…</Text>
+      <Text>{t('openstoa.common.returningToHost')}</Text>
     </View>
   );
 }

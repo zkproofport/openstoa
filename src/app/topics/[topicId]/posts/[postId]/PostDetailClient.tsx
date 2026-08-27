@@ -24,6 +24,7 @@ import { collectPostMedia, stripVideoUrls } from '@/lib/postMedia';
 import type { ReactionSummary } from '@/hooks/usePostMutations';
 import type { Poll } from '@/lib/polls';
 import { formatDate, truncateId } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ interface Comment {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function PostDetailClient() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const topicId = params.topicId as string;
@@ -578,7 +580,7 @@ export default function PostDetailClient() {
                 <button
                   type="button"
                   onClick={() => setMenuOpen((v) => !v)}
-                  aria-label="Post actions"
+                  aria-label={t('a11y.postActions')}
                   aria-expanded={menuOpen}
                   // `.os-chip` supplies the 36px target and — the part an
                   // inline style cannot express — the focus ring. The open
@@ -694,7 +696,7 @@ export default function PostDetailClient() {
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Post title"
+                placeholder={t('postCard.titlePlaceholder')}
                 style={{
                   width: '100%',
                   background: 'var(--color-bg-secondary)',
@@ -713,7 +715,7 @@ export default function PostDetailClient() {
               />
               <SNSEditor
                 topicId={topicId}
-                placeholder="Write your post..."
+                placeholder={t('postCard.bodyPlaceholder')}
                 onChange={setEditorState}
                 minHeight={180}
                 initialState={editorState}
@@ -825,7 +827,7 @@ export default function PostDetailClient() {
                     padding: '1px 6px',
                     lineHeight: 1.2,
                   }}
-                  aria-label="You are a member of this topic"
+                  aria-label={t('a11y.memberOfTopic')}
                 >
                   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />
@@ -893,7 +895,7 @@ export default function PostDetailClient() {
                   verticalAlign: '-0.12em',
                   marginRight: '0.32em',
                 }}
-                aria-label="Pinned post"
+                aria-label={t('a11y.pinnedPost')}
               >
                 <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
               </svg>
@@ -1088,7 +1090,7 @@ export default function PostDetailClient() {
                               cursor: deletingCommentId === comment.id ? 'not-allowed' : 'pointer',
                               flexShrink: 0,
                             }}
-                            title="Delete comment"
+                            title={t('a11y.deleteComment')}
                           >
                             <TrashIcon size={14} />
                           </button>
@@ -1154,7 +1156,7 @@ export default function PostDetailClient() {
                 id="comment"
                 value={commentContent}
                 onChange={(e) => setCommentContent(e.target.value)}
-                placeholder="Share your thoughts..."
+                placeholder={t('postCard.commentPlaceholder')}
                 rows={4}
                 style={{
                   width: '100%',

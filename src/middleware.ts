@@ -134,7 +134,27 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
     if (isApiRoute(pathname)) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      /*
+       * A MACHINE-READABLE VERDICT, not just a sentence.
+       *
+       * `error` is written for a person and gets translated, reworded and
+       * shortened; nothing may branch on it. A client that receives a refusal
+       * has one decision to make — keep this credential and retry, or throw it
+       * away and ask the person to sign in — and until this code existed there
+       * was no way to tell those apart from the response.
+       *
+       * That gap is what let the chat stream retry a dead token forever: the
+       * server said no, correctly, every time, and the client had nothing to
+       * act on. See `reconnectingStream.ts`, which now stops after two refusals.
+       *
+       * `no-credential` means none was sent. Distinct from a refused one: a
+       * guest simply has not signed in, and telling them their session died
+       * would be a lie about something that never existed.
+       */
+      return NextResponse.json(
+        { error: 'Not authenticated', code: 'no-credential' },
+        { status: 401 },
+      );
     }
     const loginUrl = new URL('/', request.url);
     loginUrl.searchParams.set('returnTo', pathname);
@@ -223,7 +243,18 @@ export async function middleware(request: NextRequest) {
       return clearCookie(NextResponse.next());
     }
     if (isApiRoute(pathname)) {
-      return clearCookie(NextResponse.json({ error: 'Invalid session' }, { status: 401 }));
+      /*
+       * `credential-dead` — the token was READ and REFUSED: expired, or signed
+       * with a key this server does not accept. Re-sending it will never work,
+       * so a client that keeps it is knocking on a door that will not open.
+       *
+       * The cookie is cleared for browsers. A mobile client holds a Bearer
+       * token the server cannot reach, so this code is the only way to tell it
+       * to drop what it has.
+       */
+      return clearCookie(
+        NextResponse.json({ error: 'Invalid session', code: 'credential-dead' }, { status: 401 }),
+      );
     }
     const loginUrl = new URL('/', request.url);
     loginUrl.searchParams.set('returnTo', pathname);

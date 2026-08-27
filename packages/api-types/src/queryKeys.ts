@@ -47,6 +47,20 @@ export const topicKeys = {
   requests: (topicId: string) => ['topic', topicId, 'requests'] as const,
   /** Chat history for the room: `/api/topics/{id}/chat`. */
   chat: (topicId: string) => ['chat-history', topicId] as const,
+  /**
+   * Every room's chat history — an invalidation prefix.
+   *
+   * Written here rather than by hand at the call site for the reason at the
+   * top of this file: `['chat-history']` is a prefix of every room's key and
+   * `['chat']` is a prefix of nothing, and the two are one character apart.
+   *
+   * The caller that needs it is RECOVERY. Restoring the keychain does not tell
+   * an open room anything — measured on a phone on 2026-08-27, a room left
+   * open through a recovery still read `키를 기다리는 중…` two and a half
+   * minutes later, and only opened when the person left and came back. Nobody
+   * would guess to do that; they would conclude the recovery failed.
+   */
+  chatAll: () => ['chat-history'] as const,
 } as const;
 
 /** The signed-in account: `/api/auth/session`. */

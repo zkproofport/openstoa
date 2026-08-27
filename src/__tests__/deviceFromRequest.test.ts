@@ -40,14 +40,35 @@ describe('deviceFromRequest', () => {
     expect(d).toEqual({ kind: 'mobile', id: 'abc123' });
   });
 
-  it('EMPTY: no headers at all → web, unknown', () => {
-    expect(deviceFromRequest(req({}))).toEqual({ kind: 'web', id: 'unknown' });
+  it('EMPTY: no headers at all → web, and an id that is unique to this request', () => {
+    /*
+     * NOT the literal `'unknown'`, and the change is the fix rather than a
+     * loosened assertion. Every device that failed to identify itself used to
+     * receive the SAME id, so the server merged distinct phones into one row —
+     * one person's key state overwriting another's, which is how a device that
+     * had never been seen appeared to be an existing one.
+     */
+    const d = deviceFromRequest(req({}));
+    expect(d.kind).toBe('web');
+    expect(d.id).toMatch(/^unknown-[0-9a-f-]{36}$/);
+  });
+
+  it('ACCUMULATING: ten unidentified requests get ten different ids', () => {
+    /*
+     * THE AXIS THE DEFECT LIVED ON. A single call cannot tell a unique id from
+     * a constant one — the old code passed every single-call assertion in this
+     * file while collapsing every anonymous device into one row.
+     */
+    const ids = new Set(Array.from({ length: 10 }, () => deviceFromRequest(req({})).id));
+    expect(ids.size).toBe(10);
   });
 
   it('EMPTY: empty and whitespace-only are not the same as absent, and both still fall back', () => {
     expect(deviceFromRequest(req({ [DEVICE_KIND_HEADER]: '' })).kind).toBe('web');
     expect(deviceFromRequest(req({ [DEVICE_KIND_HEADER]: '   ' })).kind).toBe('web');
-    expect(deviceFromRequest(req({ [DEVICE_ID_HEADER]: '   ' })).id).toBe('unknown');
+    // Whitespace is not an identity either — it falls back the same way absence
+    // does, to an id nothing else will collide with.
+    expect(deviceFromRequest(req({ [DEVICE_ID_HEADER]: '   ' })).id).toMatch(/^unknown-/);
   });
 
   it('INTEGRITY: the fallback is the RESTRICTED kind', () => {

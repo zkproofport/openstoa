@@ -9,6 +9,8 @@ import { useOpenStoaSession } from './stores/sessionStore';
 import { ThemeProvider, useThemeColors } from './theme/ThemeContext';
 import { BootScreen } from './components/BootScreen';
 import { RecoveryRepairProvider } from './components/RecoveryRepair';
+import { FirstRunRecoveryProvider } from './components/FirstRunRecovery';
+import { useDeviceProof } from './hooks/useDeviceProof';
 import { WelcomeScreen } from './screens/onboarding/WelcomeScreen';
 import { SignInSheetProvider } from './components/SignInSheet';
 import { queryClient } from './api/queryClient';
@@ -137,6 +139,12 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   // session to bind a token to) and deduped per identity inside the hook, so it
   // fires exactly once per authenticated session rather than per mount.
   usePushRegistration(session.mode === 'authenticated');
+
+  // Register this device's signing key with the account, next to push for the
+  // same reason: it is account-level, it must not depend on which tab loads
+  // first, and it runs once per signed-in session. Silent on every failure —
+  // see `useDeviceProof`.
+  useDeviceProof(session.mode === 'authenticated');
 
   // Tap routing (P-O gap 5). Subscribed unconditionally and from the root: a
   // cold-start tap arrives while this component is still on the BootScreen, and
@@ -744,9 +752,15 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
               master_key and nothing to restore. It renders no UI of its own.
               The VISIBLE banner it decides on is `<RecoveryNudge />`, mounted
               on the Profile screen alone (see `RecoveryNudge.tsx`). */}
-          <RecoveryRepairProvider>
-            <OpenStoaTabNavigator />
-          </RecoveryRepairProvider>
+          {/* The first-run sheet wraps the navigator for the same reason the
+              repair does: it must reach an account whichever tab the mini-app
+              lands on, and the mini-app opens on the feed, not on Profile. It
+              draws nothing until `recoveryPrompt` says to ask. */}
+          <FirstRunRecoveryProvider>
+            <RecoveryRepairProvider>
+              <OpenStoaTabNavigator />
+            </RecoveryRepairProvider>
+          </FirstRunRecoveryProvider>
         </View>
       </SignInSheetProvider>
     </SignInLauncherProvider>

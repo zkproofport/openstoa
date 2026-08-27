@@ -192,6 +192,20 @@ const MODULES = [
     sdk: 'packages/sdk/src/mls/keyBackup.ts',
   },
   {
+    /*
+     * Keeping the TAK keychain backup trying until it lands. Shared because the
+     * schedule IS the contract — a ladder that wraps back to its fast end rather
+     * than settling at a five-minute ceiling — and a client that quietly used a
+     * capped backoff would leave a phone that was underground waiting out the
+     * rest of a long step just as its signal returned.
+     */
+    name: 'backupRetry',
+    signature: 'export class BackupRetry {',
+    web: 'src/lib/mls/backupRetry.ts',
+    mobile: 'packages/mobile/src/crypto/backupRetry.ts',
+    sdk: 'packages/sdk/src/mls/backupRetry.ts',
+  },
+  {
     name: 'aiMember',
     signature: 'export async function botPublishKeyPackage(',
     web: 'src/lib/mls/aiMember.ts',
@@ -377,6 +391,11 @@ const CONFIGURED_CONSUMER = {
  * file never calls — so the global `crypto.subtle` is left untouched.
  */
 const IMPORTERS: Record<string, Record<string, () => Promise<Record<string, unknown>>>> = {
+  backupRetry: {
+    web: () => import('@/lib/mls/backupRetry'),
+    mobile: () => import('../../packages/mobile/src/crypto/backupRetry'),
+    sdk: () => import('../../packages/sdk/src/mls/backupRetry'),
+  },
   groupClient: {
     web: () => import('@/lib/mls/groupClient'),
     mobile: () => import('../../packages/mobile/src/crypto/groupClient'),
@@ -428,6 +447,7 @@ const IMPORTERS: Record<string, Record<string, () => Promise<Record<string, unkn
     sdk: () => import('../../packages/sdk/src/chatTierPolicy'),
   },
   shared: {
+    backupRetry: () => import('../../packages/mls/src/backupRetry'),
     groupClient: () => import('../../packages/mls/src/groupClient'),
     mlsSession: () => import('../../packages/mls/src/mlsSession'),
     takSession: () => import('../../packages/mls/src/takSession'),

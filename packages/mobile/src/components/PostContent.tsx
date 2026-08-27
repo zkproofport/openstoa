@@ -32,6 +32,42 @@ export function extractFirstImage(html: string): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * One attribute out of one tag, decoded, or `undefined` when it is absent.
+ *
+ * ABSENT AND EMPTY ARE DIFFERENT ANSWERS. `alt=""` is a decision the author
+ * made — this picture is decorative, skip it — and collapsing it into "no alt"
+ * would make a screen reader announce something the author asked it not to.
+ *
+ * Entities are decoded because an author writing `Q&A chart` produces
+ * `alt="Q&amp;A chart"` in the stored HTML, and reading it back raw would
+ * announce the ampersand spelled out.
+ */
+function attributeOf(tag: string, name: string): string | undefined {
+  const m = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, 'i').exec(tag);
+  if (!m) return undefined;
+  const raw = m[2] !== undefined ? m[2] : (m[3] ?? '');
+  return decodeEntities(raw);
+}
+
+/**
+ * The five entities an HTML sanitiser is guaranteed to have produced.
+ *
+ * Deliberately not a general decoder: this text goes to a screen reader, and a
+ * wrong expansion is read aloud as fact. `&amp;` must be resolved LAST or
+ * `&amp;lt;` — an author writing the literal text `&lt;` — would come out as
+ * `<`, which is the classic double-decode.
+ */
+function decodeEntities(v: string): string {
+  return v
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
 /** Media item type matching the web PostCard's compact gallery. */
 export interface MediaItem {
   type: 'image' | 'youtube' | 'vimeo';
@@ -39,6 +75,29 @@ export interface MediaItem {
   src: string;
   /** Display thumbnail URL (empty string if Vimeo without a known thumb). */
   thumbnail: string;
+  /**
+   * The picture's own description, as the author wrote it.
+   *
+   * WHY IT IS HERE. Pulling images out of the post body into a thumbnail strip
+   * used to read the `src` attribute and nothing else, so every description the
+   * author had written was dropped on the floor — the web kept it in the HTML,
+   * the phone threw it away. Somebody using a screen reader heard "image" where
+   * a sighted reader saw a caption.
+   *
+   * THREE STATES, NOT TWO, and the difference is the whole reason this is
+   * `string | undefined` rather than `string`:
+   *
+   *   undefined   no `alt` attribute at all — the author said nothing
+   *   ''          `alt=""` — the author said, deliberately, that this picture
+   *               carries no meaning. A screen reader must SKIP it, and
+   *               substituting a filename here would be worse than silence.
+   *   'a chart'   a description to announce
+   *
+   * Never a filename, never the URL. A reader hearing
+   * "IMG underscore 4021 dot jpeg" learns nothing and cannot tell that from a
+   * real description.
+   */
+  alt?: string;
 }
 
 /**
@@ -51,10 +110,20 @@ export function extractMediaItems(html: string): MediaItem[] {
   const items: MediaItem[] = [];
   const safe = html || '';
 
-  const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-  let imgM: RegExpExecArray | null;
-  while ((imgM = imgRegex.exec(safe)) !== null) {
-    items.push({ type: 'image', src: imgM[1], thumbnail: imgM[1] });
+  /*
+   * Whole TAGS, then attributes out of each one.
+   *
+   * The old pattern reached for `src` directly, which meant it could only ever
+   * see `src` — `alt` was invisible to it whichever side of the tag it sat on.
+   * Matching the tag first means the attribute order in the author's HTML stops
+   * mattering, which it should never have.
+   */
+  const imgTagRegex = /<img\b[^>]*>/gi;
+  let tagM: RegExpExecArray | null;
+  while ((tagM = imgTagRegex.exec(safe)) !== null) {
+    const src = attributeOf(tagM[0], 'src');
+    if (!src) continue;
+    items.push({ type: 'image', src, thumbnail: src, alt: attributeOf(tagM[0], 'alt') });
   }
 
   const ytRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/g;

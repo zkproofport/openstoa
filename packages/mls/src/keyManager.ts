@@ -197,6 +197,15 @@ export async function restoreTakKeychain(
 export interface KeyBackupState {
   wrappedMaster: string | null; // recovery-code wrap
   passkeys: Array<{ credentialId: string; prfWrapped: string }>;
+  /**
+   * Epoch ms of the most recent wrap, or null when there is none.
+   *
+   * OPTIONAL so a client reading an older server still type-checks; a client
+   * that gets `undefined` must treat it exactly as `null` — see
+   * `deviceTakeover.backupStanding`, where "we do not know when" resolves to
+   * the cautious answer rather than to "recent".
+   */
+  backupUpdatedAt?: number | null;
 }
 
 /**

@@ -83,6 +83,10 @@ interface ArchiveReaders {
  */
 function store(transport: TakTransport): ArchiveReaders {
   const mls = {
+    // The store registers an epoch listener on construction — it takes the
+    // per-epoch key for every epoch the device passes through, which is what
+    // stops an away member losing history. A fake without it cannot construct.
+    setEpochListener: () => {},
     // Returns the epoch without running the callback: the caller only wants
     // `currentEpoch(state)`, and there is no MLS state here to give it.
     readState: async () => 0,
