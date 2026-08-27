@@ -71,7 +71,7 @@ export function ChatStack() {
               onPress={() => navigation.navigate('DmList')}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel="Direct messages"
+              accessibilityLabel={t('openstoa.dm.title')}
             >
               <Feather name="send" size={20} color={colors.text.primary} />
             </Pressable>

@@ -73,7 +73,14 @@
         "members": "Couldn't load members",
         "requests": "Couldn't load requests",
         "messages": "Couldn't load messages"
-      }
+      },
+      "shareFailed": "Share failed",
+      "uploadFailed": "Upload failed",
+      "saveFailed": "Save failed",
+      "joinFirstTitle": "Join the topic first",
+      "joinFirstBody": "Only members of this topic can vote on its posts. Tap the topic name to open it and join.",
+      "back": "Back",
+      "close": "Close"
     },
     "postCard": {
       "author": {
@@ -102,7 +109,8 @@
         "enableMessage": "Verify your organization email with an OIDC proof to enable a domain badge.",
         "generateProof": "Generate proof",
         "cancel": "Cancel",
-        "error": "Failed to enable domain badge"
+        "error": "Failed to enable domain badge",
+        "noWorkspaceProof": "No workspace verification found. Join a workspace-gated topic with a Google Workspace or Microsoft 365 proof to unlock this badge."
       },
       "notSet": "Not set",
       "badges": "Badges",
@@ -131,7 +139,8 @@
       "recorded": "{{count}} recorded",
       "postsCount": "posts",
       "recordedCount": "records",
-      "searchPlaceholder": "Search my posts…"
+      "searchPlaceholder": "Search my posts…",
+      "adminChip": "Admin"
     },
     "editProfile": {
       "nickname": "Nickname",
@@ -169,7 +178,18 @@
         "tooLong": "Maximum 20 characters",
         "charset": "Only letters, numbers, and underscore allowed",
         "reserved": "Names starting with \"openstoa\" are reserved for this project."
-      }
+      },
+      "uploadPhoto": "Upload\nPhoto",
+      "avatarHint": "Profile photo (optional)\nAuto-resized to 200×200.",
+      "changePhoto": "Change photo",
+      "nicknameOk": "Looks good",
+      "nicknameHint": "Letters, numbers, underscores only",
+      "notificationsSection": "Notifications",
+      "pushSettings": "Push notification settings",
+      "chatRecoverySection": "Chat recovery",
+      "chatRecoveryAction": "Back up & recover encrypted chat keys",
+      "removePhotoTitle": "Remove profile photo",
+      "removePhotoBody": "Remove your profile photo?"
     },
     "topics": {
       "detailTitle": "Topic",
@@ -388,7 +408,8 @@
       "resetMessage": "Clear everything you've written so far? The saved draft will also be removed.",
       "resetConfirm": "Reset",
       "imageLimitTitle": "Image limit",
-      "imageLimitMessage": "You can attach up to {{max}} images."
+      "imageLimitMessage": "You can attach up to {{max}} images.",
+      "tagsLabel": "Tags"
     },
     "pollEditor": {
       "title": "Poll",
@@ -506,7 +527,8 @@
         "saved": "Saved to Photos.",
         "saveUnavailable": "Saving needs a newer version of the app.",
         "title": "Image",
-        "cropped": "See full image"
+        "cropped": "See full image",
+        "close": "Close"
       },
       "tierClaim": {
         "e2ee": "New messages and images in this room are end-to-end encrypted. The service cannot read them.",
@@ -516,7 +538,10 @@
       "awaitingKey": {
         "body": "Catching up on {{count}} earlier messages",
         "hint": "They unlock as soon as a device that already has them shares the key. If one of them is yours, opening this chat there does it right away."
-      }
+      },
+      "youPrefix": "You",
+      "historySignedOut": "Signed out, so the conversation could not be loaded.",
+      "historyUnavailable": "The conversation could not be loaded."
     },
     "dm": {
       "title": "Direct Messages",
@@ -583,7 +608,27 @@
       "keychainUploadFailed": "Your recovery key is saved, but this device could not upload its chat keys just now. Reopen this screen while online to finish the backup.",
       "keychainUntrusted": "Your recovery key is saved. This device's chat keys were not uploaded, because they do not match the backup already on your account — recover on this device first, then set recovery up again.",
       "recovered": "Recovered. Rooms will reload as their keys come back.",
-      "gapNotice": "Some rooms may stay empty for a while. Your keys were backed up on your other device, so anything that happened AFTER its last backup is not in it — for private, secret and direct rooms, another member's device has to hand those keys over before that stretch becomes readable. Public rooms reload in full straight away."
+      "gapNotice": "Some rooms may stay empty for a while. Your keys were backed up on your other device, so anything that happened AFTER its last backup is not in it — for private, secret and direct rooms, another member's device has to hand those keys over before that stretch becomes readable. Public rooms reload in full straight away.",
+      "title": "Chat recovery",
+      "intro": "End-to-end encrypted chat keys live only on your devices. Set up recovery so you can restore your history if you lose them. We never see your keys.",
+      "statusLabel": "Status",
+      "statusChecking": "Checking…",
+      "statusSetUp": "Recovery is set up",
+      "statusPasskeys": "{{count}} passkey(s)",
+      "statusCode": "recovery code",
+      "statusNotSetUp": "Not set up — you could permanently lose chat history if you lose your devices.",
+      "backUpTitle": "Back up",
+      "secureUnavailable": "Secure storage is unavailable, so backup is disabled here.",
+      "registerPasskey": "Register a passkey",
+      "generateCode": "Generate a recovery code",
+      "writeItDown": "Write this down. It is shown only once:",
+      "savedIt": "I've saved it",
+      "recoverTitle": "Recover on this device",
+      "recoverWithPasskey": "Recover with a passkey",
+      "codePlaceholder": "Enter recovery code",
+      "recoverWithCode": "Recover with code",
+      "identity": "Identity {{id}}…",
+      "passkeyNoBackup": "Recovery failed — this passkey has no backup on file."
     },
     "recoveryNudge": {
       "title": "Back up your chat keys",
@@ -592,6 +637,16 @@
       "dismiss": "Not now",
       "dismissAria": "Dismiss the chat recovery reminder",
       "close": "Close"
+    },
+    "backupNotice": {
+      "none": {
+        "heading": "Your chats are locked to this phone",
+        "body": "Every message in your rooms is encrypted with a key that exists only on this device. There is no copy of it — not on our servers, not anywhere.\n\nIf this phone is reset or replaced, if you erase the app's data from Profile, or — on Android — if you reinstall the app, that key goes with it, and none of these conversations can be opened again by anyone, including us.\n\nProfile → Chat recovery makes a recovery key you can keep somewhere else. It takes a moment, and it is the only thing that undoes this."
+      },
+      "unopenable": {
+        "heading": "Your recovery key would not open these chats",
+        "body": "This account has a recovery key, but the chat keys on this phone are not inside the backup that key restores — it was made under a different key, and this device cannot add to it without destroying it.\n\nAs it stands, recovering would bring the account back and leave these conversations unreadable.\n\nOpen Profile → Chat recovery on this phone and set recovery up again from here."
+      }
     },
     "takeover": {
       "noBackup": {
@@ -624,11 +679,87 @@
       "grant": "Unlock for them",
       "retryGrant": "Try again",
       "cannotHelp": "This device does not have that stretch either.",
-      "aloneHere": "Only your recovery code can bring this back — nobody else is here to unlock it."
+      "aloneHere": "Only your recovery code can bring this back — nobody else is here to unlock it.",
+      "askUnsure": "Request the key"
     },
     "inAppBrowser": {
       "blockedTitle": "This link cannot be opened",
       "blockedBody": "Links in posts open as web pages. This one is not a web address."
+    },
+    "firstRunRecovery": {
+      "title": "Save your recovery key",
+      "bodyFirstRun": "Your chat history is encrypted with keys that live on this phone and nowhere else. This key is the only way to read it again on another device — or on this one, if it is ever reset.",
+      "bodyNoBackup": "This account has no recovery key. Without one, losing this phone means losing every encrypted conversation on it — no one, including us, can bring it back.",
+      "warning": "A copy stays in your own space — but it is locked by the same key, so it is not a backup. Keep one outside this app.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "stored": "I have saved it",
+      "later": "Not now",
+      "generating": "Creating your recovery key…",
+      "failed": "Could not create a recovery key. You can try again from Profile → Chat recovery.",
+      "noteHeading": "Your recovery key",
+      "noteWarning": "Keep a copy OUTSIDE this app. This message is encrypted with the same keys it protects — if this phone loses them, you will not be able to read this either."
+    },
+    "deviceData": {
+      "title": "Device data",
+      "row": "Clear cache, or erase this device",
+      "running": "Working…",
+      "clearCache": {
+        "title": "Clear cache",
+        "explain": "Frees up space by deleting copies this device can download again: decrypted messages, room history, the room list and saved pictures. Your keys are not touched, and every room stays open — the next visit is just slower.",
+        "action": "Clear cache",
+        "confirmTitle": "Clear cache?",
+        "confirmBody": "Everything deleted here comes back from the server the next time you open a room. Your chat keys and room memberships are not affected."
+      },
+      "eraseDevice": {
+        "title": "Erase from this device",
+        "explain": "Deletes everything OpenStoa keeps on this phone, including the chat keys. This device is signed out and can no longer read any room it is in.",
+        "backupFirst": "Back up your keys first — Profile → Chat recovery. Without a backup this cannot be undone by anyone, including us.",
+        "action": "Erase from this device",
+        "confirmTitle": "Erase this device?",
+        "confirmBody": "The chat keys on this phone will be deleted and you will be signed out. You can get your rooms back by signing in again and restoring from your backup.",
+        "staleBackupTitle": "Erase this device?",
+        "staleBackupBody": "Your last key backup was {{days}} days ago. Any room you joined since then is not in it, and those rooms will be unreadable after this. Rooms covered by the backup can be restored after signing in again.",
+        "noBackupTitle": "You have no key backup",
+        "noBackupBody": "There is no backup of this device's chat keys. Back them up first — Profile → Chat recovery — and this becomes reversible.",
+        "finalTitle": "Erase without a backup?",
+        "finalBody": "Erasing without a backup permanently destroys this device's chat history. No one can recover it — not another device, not the server, not us.",
+        "finalAction": "Erase permanently"
+      },
+      "result": {
+        "doneTitle": "Done",
+        "doneBody": "Everything was removed.",
+        "partialTitle": "Partly done",
+        "partialBody": "Some items could not be removed. Try again, and if the numbers do not change, restart the app first.",
+        "blockedTitle": "This version cannot do that",
+        "blockedBody": "This version of the app cannot delete stored data. Update ZKProofport and try again — nothing was removed.",
+        "counts": "{{keys}} stored items and {{files}} files removed, {{kept}} kept."
+      },
+      "size": {
+        "line": "Clearing frees about {{free}}. About {{keep}} stays — your keys, room membership and archive."
+      }
+    },
+    "notificationSettings": {
+      "sectionTitle": "Notifications",
+      "pushLabel": "Push notifications",
+      "onHint": "New chat messages notify this device.",
+      "offHint": "All notifications are off — no topic will notify you.",
+      "accountWide": "This is the account-wide switch and it wins over per-topic settings: while it is off, no topic notifies you even if it is not muted. Mute a single chat from that chat room's header.",
+      "mutedCount": " You currently have {{count}} muted topic(s).",
+      "blocked": "Your device is blocking notifications for this app, so turning this on here has no effect on its own. Allow notifications in system settings first.",
+      "openSystemSettings": "Open system settings",
+      "openSettingsFailedTitle": "Could not open settings",
+      "openSettingsFailedBody": "Open your device Settings app and enable notifications for ZKProofport."
+    },
+    "attach": {
+      "title": "Attach image",
+      "photoLibrary": "Photo library",
+      "pasteFromClipboard": "Paste from clipboard",
+      "noImageInClipboard": "No image in clipboard",
+      "pickerUnavailableTitle": "Image picker unavailable",
+      "pickerUnavailableBody": "The host app needs to be rebuilt to include expo-image-picker.",
+      "clipboardUnavailableTitle": "Clipboard unavailable",
+      "clipboardUnavailableBody": "The host app needs to be rebuilt to include the clipboard native module."
     }
   }
 }

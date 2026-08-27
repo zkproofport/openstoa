@@ -896,7 +896,7 @@ export function PostDetailScreen() {
       await Share.share({ message: url, url, title: post?.title ?? 'OpenStoa post' });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert('Share failed', msg);
+      Alert.alert(t('openstoa.common.shareFailed'), msg);
     }
   }, [client, post?.topicId, post?.title, postId]);
 

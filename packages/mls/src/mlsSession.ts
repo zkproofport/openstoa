@@ -285,11 +285,64 @@ export class MlsSessionStore {
   }
 
   /** Pull and apply any commits newer than our current epoch. */
+  /**
+   * Called as the group state PASSES THROUGH an epoch, with that epoch's state
+   * in hand.
+   *
+   * WHY IT EXISTS. MLS ratchets forward: once a commit is applied, the previous
+   * epoch's secrets are gone and nothing can derive them again. The archive
+   * layer needs a key PER EPOCH for the `private` and `secret` tiers, and it
+   * only ever derived one for the epoch the device happened to be standing in.
+   *
+   * So a member who was simply away — still a member, never removed — came back
+   * to a catch-up that walked N → N+5 in a loop and silently left four epochs
+   * behind. Every message sent during those epochs was unreadable to them, with
+   * no error anywhere: `epochTakForRead` answers `null` for a past epoch and the
+   * row renders as undecryptable. They had to ask another member for a grant,
+   * and the automatic grant path is bounded to 30 days.
+   *
+   * The state is PASSED IN rather than read back. `readState` takes the same
+   * per-topic lock this runs inside, so a listener that re-read the state would
+   * deadlock the first time anybody missed a commit.
+   *
+   * NOTHING HERE MAY THROW INTO CHAT. A key that cannot be derived is a message
+   * that cannot be read later; a catch-up that dies is a room that cannot be
+   * opened at all.
+   */
+  private epochListener?: (topicId: string, epoch: number, state: gc.GroupState) => Promise<void>;
+
+  /** Register the listener. One per session store; the last registration wins. */
+  setEpochListener(
+    fn: (topicId: string, epoch: number, state: gc.GroupState) => Promise<void>,
+  ): void {
+    this.epochListener = fn;
+  }
+
+  private async announceEpoch(topicId: string, s: Session): Promise<void> {
+    if (!this.epochListener) return;
+    try {
+      await this.epochListener(topicId, gc.currentEpoch(s.state), s.state);
+    } catch {
+      // See the note above: never into chat.
+    }
+  }
+
   private async catchUp(topicId: string, s: Session): Promise<void> {
     const commits = await this.transport.getCommitsSince(topicId, gc.currentEpoch(s.state));
+    if (commits.length === 0) return;
+
+    /*
+     * The epoch we are STANDING IN before moving, not just the ones ahead.
+     * Messages can have arrived here while the device was away, and the moment
+     * the first commit lands this epoch's key is unrecoverable — so it has to be
+     * taken now or never.
+     */
+    await this.announceEpoch(topicId, s);
+
     for (const c of commits) {
       if (c.epoch <= gc.currentEpoch(s.state)) continue;
       s.state = await gc.processCommit(s.state, c.commit);
+      await this.announceEpoch(topicId, s);
     }
   }
 
@@ -448,7 +501,15 @@ export class MlsSessionStore {
     return this.withLock(topicId, async () => {
       const s = await this.getSession(topicId);
       try {
+        /*
+         * The epoch being LEFT is announced first — same reason as in
+         * `catchUp`. A live commit arriving over SSE ends the current epoch just
+         * as finally as a batch of missed ones does, and this is the last
+         * moment its key can be derived.
+         */
+        await this.announceEpoch(topicId, s);
         s.state = await gc.processCommit(s.state, commitB64);
+        await this.announceEpoch(topicId, s);
       } catch {
         // Out-of-order/duplicate commit — reconcile via catch-up.
         await this.catchUp(topicId, s);

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import EventSource from 'react-native-sse';
+import { useEffect, useState } from 'react';
+import { openReconnectingStream } from './reconnectingStream';
+import { useOpenStoaSession } from '../stores/sessionStore';
 import { useHost } from '@openstoa/miniapp-bridge';
 import type { ChatMessage, PresencePayload } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
@@ -18,7 +19,14 @@ type SSECustomEventName = 'presence' | 'ping';
 export interface UseChatSocketResult {
   messages: ChatMessage[];
   presence: PresencePayload | null;
-  status: 'idle' | 'connecting' | 'open' | 'error' | 'closed';
+  /**
+   * `rejected` is terminal and means the SERVER refused the credential twice,
+   * each time with a freshly read token — the session is dead and no amount of
+   * waiting revives it. Distinct from `error`, which is a connection that
+   * dropped and will be retried, because the two need opposite sentences on
+   * screen: "reconnecting" is a lie once the server has said no.
+   */
+  status: 'idle' | 'connecting' | 'open' | 'error' | 'closed' | 'rejected';
   error: string | null;
 }
 
@@ -38,53 +46,44 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
   const [presence, setPresence] = useState<PresencePayload | null>(null);
   const [status, setStatus] = useState<UseChatSocketResult['status']>('idle');
   const [error, setError] = useState<string | null>(null);
-  const esRef = useRef<EventSource<SSECustomEventName> | null>(null);
 
   useEffect(() => {
     if (!topicId) {
       setStatus('idle');
       return;
     }
-    let cancelled = false;
 
-    (async () => {
-      try {
-        setStatus('connecting');
-        const token = await host.getOpenStoaToken();
-        if (!token) {
-          throw new Error('Not authenticated — cannot open chat socket');
-        }
-        if (cancelled) return;
-
-        const url = `${host.getEnvironment().openstoaBaseUrl}/api/topics/${topicId}/chat/subscribe`;
-        const es = new EventSource<SSECustomEventName>(url, {
-          headers: { Authorization: `Bearer ${token}` },
-          // react-native-sse handles reconnect via its own polling timer.
-        });
-        esRef.current = es;
-
-        es.addEventListener('open', () => {
-          if (cancelled) return;
-          setStatus('open');
-          setError(null);
-        });
-
-        const onMessage = (e: any) => {
-          if (cancelled) return;
+    /*
+     * The stream owns its own reconnect, and re-reads the token on every
+     * attempt. Until 2026-08-27 the token was read once and baked into the
+     * connection's headers; `react-native-sse` then retried that same dead
+     * credential after a session refresh, so the "Reconnecting to the chat
+     * server…" banner appeared and never cleared while sends failed and sat
+     * offering Resend. Reported from an iPhone.
+     */
+    const stream = openReconnectingStream<SSECustomEventName>({
+      url: () => `${host.getEnvironment().openstoaBaseUrl}/api/topics/${topicId}/chat/subscribe`,
+      token: () => host.getOpenStoaToken(),
+      // A guest has no session to lose; see `isAuthenticated` in the stream.
+      isAuthenticated: () => useOpenStoaSession.getState().mode === 'authenticated',
+      onStatus: (s, detail) => {
+        setStatus(s);
+        setError(s === 'error' || s === 'rejected' ? (detail ?? 'SSE error') : null);
+      },
+      on: {
+        message: (event) => {
           try {
-            const raw = JSON.parse(e.data) as ChatMessage;
-            // Decrypt the sealed body before display (async); dedupe by id.
-            // NOTE: the sender's OWN message can't be decrypted here (MLS sender
-            // ratchet advanced) → it surfaces as "[unable to decrypt]". The send
-            // path must optimistically echo the local plaintext (same fix as
-            // web ChatPanel) — finalize during simulator verification (P2-21).
-            // .catch is mandatory: an unhandled rejection here would drop the
-            // live row silently AND surface as an unhandled promise rejection.
-            // toDisplayMessageMls already degrades per row, so this only covers
-            // a future regression — it must never take the socket down.
-            toDisplayMessageMls(mls, topicId, raw)
+            const raw = JSON.parse(event.data ?? '') as ChatMessage;
+            /*
+             * The sender's OWN message cannot be decrypted here — the MLS
+             * sender ratchet has moved on — so it surfaces as unreadable and
+             * the send path echoes the local plaintext instead.
+             *
+             * `.catch` is mandatory: an unhandled rejection would drop the live
+             * row silently AND surface as an unhandled promise rejection.
+             */
+            void toDisplayMessageMls(mls, topicId, raw)
               .then((data) => {
-                if (cancelled) return;
                 setMessages((prev) =>
                   prev.some((m) => m.id === data.id) ? prev : [...prev, data],
                 );
@@ -92,53 +91,25 @@ export function useChatSocket(topicId: string | null | undefined): UseChatSocket
               .catch(() => {
                 /* undecryptable live row — the history refetch shows it later */
               });
-          } catch (err) {
+          } catch {
             // ignore malformed
           }
-        };
-
-        const onPresence = (e: any) => {
-          if (cancelled) return;
+        },
+        presence: (event) => {
           try {
-            const data = JSON.parse(e.data) as PresencePayload;
-            setPresence(data);
-          } catch (err) {
+            setPresence(JSON.parse(event.data ?? '') as PresencePayload);
+          } catch {
             // ignore malformed
           }
-        };
+        },
+        ping: () => {
+          /* keepalive */
+        },
+      },
+    });
 
-        const onPing = () => { /* keepalive */ };
-
-        const onError = (e: any) => {
-          if (cancelled) return;
-          setStatus('error');
-          setError(e?.message ?? 'SSE error');
-        };
-
-        es.addEventListener('message', onMessage);
-        es.addEventListener('presence', onPresence);
-        es.addEventListener('ping', onPing);
-        es.addEventListener('error', onError);
-      } catch (err) {
-        if (cancelled) return;
-        setStatus('error');
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      try {
-        esRef.current?.close();
-      } catch {
-        /* ignore */
-      }
-      esRef.current = null;
-      // Do not call setStatus here — the next effect invocation will set its
-      // own status. Calling it unconditionally would race with 'connecting'
-      // already set by the new effect on the same render cycle.
-    };
-  }, [topicId, host]);
+    return () => stream.close();
+  }, [topicId, host, mls]);
 
   return { messages, presence, status, error };
 }

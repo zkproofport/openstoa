@@ -127,6 +127,30 @@ export function AccountRecoveryScreen() {
       await refresh();
     });
 
+  /**
+   * ONE PLACE TO RECOVER, so a fourth way cannot be added that skips a step.
+   *
+   * Telling the open rooms is NOT done here, and the first attempt at this
+   * did it here and did not work. `recoverDevice` raises a counter the rooms
+   * subscribe to; a room re-renders on the bump — which is when it picks up
+   * the rebuilt MLS session — and only then asks for its history again.
+   * Invalidating from this screen instead refetches while the room still
+   * holds the session from before the recovery, so the rows come back locked
+   * and the entry is no longer stale. See the counter in `mobileTransport`.
+   *
+   * What this function is for is narrower and still worth having: every way
+   * to recover calls `recoverDevice` through here and nowhere else, so a
+   * fourth way cannot be added that skips whatever else recovery grows.
+   * There is a guard on that.
+   */
+  const recoverAndReopenRooms = useCallback(
+    async (masterKey: Uint8Array) => {
+      if (!secureStore) throw new Error('Secure storage unavailable on this device.');
+      await recoverDevice(client, masterKey, secureStore, host.localStore);
+    },
+    [client, secureStore, host.localStore],
+  );
+
   const recoverWithCode = () =>
     run(async () => {
       if (!secureStore) throw new Error('Secure storage unavailable on this device.');
@@ -136,7 +160,7 @@ export function AccountRecoveryScreen() {
       }
       const mk = await km.recoverWithRecoveryCode(code, http.getBackup);
       if (!mk) throw new Error('Recovery failed — wrong code, or no recovery-code backup exists.');
-      await recoverDevice(client, mk, secureStore, host.localStore);
+      await recoverAndReopenRooms(mk);
       setRecoverCode('');
       /*
        * NOT "your chat history will reload" — that promise is false for three
@@ -162,72 +186,75 @@ export function AccountRecoveryScreen() {
       if (!secureStore || !host.passkeyPrf) throw new Error('Passkey recovery is unavailable on this device.');
       const { prfOutputB64 } = await host.passkeyPrf({ mode: 'get', saltB64: PRF_SALT_B64 });
       const mk = await km.recoverWithPasskey(kb.unb64(prfOutputB64), http.getBackup);
-      if (!mk) throw new Error('Recovery failed — this passkey has no backup on file.');
-      await recoverDevice(client, mk, secureStore, host.localStore);
+      if (!mk) throw new Error(t('openstoa.recovery.passkeyNoBackup'));
+      await recoverAndReopenRooms(mk);
       setMsg(t('openstoa.recovery.recovered'));
       setPartial(t('openstoa.recovery.gapNotice'));
     });
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Chat recovery</Text>
-      <Text style={styles.sub}>
-        End-to-end encrypted chat keys live only on your devices. Set up recovery so you can restore
-        your history if you lose them. We never see your keys.
-      </Text>
+      <Text style={styles.title}>{t('openstoa.recovery.title')}</Text>
+      <Text style={styles.sub}>{t('openstoa.recovery.intro')}</Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardLabel}>Status</Text>
+        <Text style={styles.cardLabel}>{t('openstoa.recovery.statusLabel')}</Text>
         <Text style={[styles.status, { color: hasBackup ? colors.text.primary : colors.status.warning }]}>
           {state == null
-            ? 'Checking…'
+            ? t('openstoa.recovery.statusChecking')
             : hasBackup
-              ? `Recovery is set up${state.passkeys.length ? ` · ${state.passkeys.length} passkey(s)` : ''}${state.wrappedMaster ? ' · recovery code' : ''}.`
-              : 'Not set up — you could permanently lose chat history if you lose your devices.'}
+              ? `${[
+                  t('openstoa.recovery.statusSetUp'),
+                  ...(state.passkeys.length
+                    ? [t('openstoa.recovery.statusPasskeys', { count: state.passkeys.length })]
+                    : []),
+                  ...(state.wrappedMaster ? [t('openstoa.recovery.statusCode')] : []),
+                ].join(' · ')}.`
+              : t('openstoa.recovery.statusNotSetUp')}
         </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Back up</Text>
-        {!canBackup && <Text style={styles.sub}>Secure storage is unavailable, so backup is disabled here.</Text>}
+        <Text style={styles.cardTitle}>{t('openstoa.recovery.backUpTitle')}</Text>
+        {!canBackup && <Text style={styles.sub}>{t('openstoa.recovery.secureUnavailable')}</Text>}
         {canUsePasskey && (
           <TouchableOpacity style={styles.btn} disabled={busy || !canBackup} onPress={addPasskey}>
-            <Text style={styles.btnText}>Register a passkey</Text>
+            <Text style={styles.btnText}>{t('openstoa.recovery.registerPasskey')}</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity style={styles.btn} disabled={busy || !canBackup} onPress={genRecoveryCode}>
-          <Text style={styles.btnText}>Generate a recovery code</Text>
+          <Text style={styles.btnText}>{t('openstoa.recovery.generateCode')}</Text>
         </TouchableOpacity>
         {shownCode && (
           <View style={{ marginTop: 12 }}>
-            <Text style={styles.cardLabel}>Write this down. It is shown only once:</Text>
+            <Text style={styles.cardLabel}>{t('openstoa.recovery.writeItDown')}</Text>
             <Text selectable style={styles.code}>
               {shownCode}
             </Text>
             <TouchableOpacity style={styles.btn} onPress={() => setShownCode(null)}>
-              <Text style={styles.btnText}>I&apos;ve saved it</Text>
+              <Text style={styles.btnText}>{t('openstoa.recovery.savedIt')}</Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Recover on this device</Text>
+        <Text style={styles.cardTitle}>{t('openstoa.recovery.recoverTitle')}</Text>
         {canUsePasskey && (
           <TouchableOpacity style={styles.btn} disabled={busy} onPress={recoverWithPasskeyFlow}>
-            <Text style={styles.btnText}>Recover with a passkey</Text>
+            <Text style={styles.btnText}>{t('openstoa.recovery.recoverWithPasskey')}</Text>
           </TouchableOpacity>
         )}
         <TextInput
           value={recoverCode}
           onChangeText={setRecoverCode}
-          placeholder="Enter recovery code"
+          placeholder={t('openstoa.recovery.codePlaceholder')}
           placeholderTextColor={colors.text.tertiary}
           autoCapitalize="characters"
           style={styles.input}
         />
         <TouchableOpacity style={styles.btn} disabled={busy || !recoverCode.trim()} onPress={recoverWithCode}>
-          <Text style={styles.btnText}>Recover with code</Text>
+          <Text style={styles.btnText}>{t('openstoa.recovery.recoverWithCode')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -238,7 +265,7 @@ export function AccountRecoveryScreen() {
           half-built recovery is the defect this screen was reported for. */}
       {partial && <Text style={styles.partial}>{partial}</Text>}
       {err && <Text style={styles.error}>{err}</Text>}
-      {session?.userId ? <Text style={styles.footId}>Identity {session.userId.slice(0, 8)}…</Text> : null}
+      {session?.userId ? <Text style={styles.footId}>{t('openstoa.recovery.identity', { id: session.userId.slice(0, 8) })}</Text> : null}
     </ScrollView>
   );
 }

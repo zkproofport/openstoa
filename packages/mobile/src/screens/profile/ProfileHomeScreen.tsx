@@ -643,7 +643,7 @@ export function ProfileHomeScreen() {
       Alert.alert(
         t('openstoa.profile.domainBadge.enableTitle'),
         // Matches web copy in openstoa/src/app/my/page.tsx:877.
-        'No workspace verification found. Join a workspace-gated topic with a Google Workspace or Microsoft 365 proof to unlock this badge.',
+        t('openstoa.profile.domainBadge.noWorkspaceProof'),
       );
       return;
     }
@@ -836,7 +836,7 @@ export function ProfileHomeScreen() {
                 <Text style={styles.nickname}>{session.nickname}</Text>
                 {session.role === 'admin' && (
                   <View style={styles.adminChip}>
-                    <Text style={styles.adminChipText}>Admin</Text>
+                    <Text style={styles.adminChipText}>{t('openstoa.profile.adminChip')}</Text>
                   </View>
                 )}
               </View>

@@ -56,15 +56,30 @@ export interface HostApi {
   loginToOpenStoa(opts?: { force?: boolean; method?: 'oidc' | 'mdl'; takeover?: boolean }): Promise<AuthResult>;
   logoutFromOpenStoa(): Promise<void>;
   setOpenStoaToken(token: string): Promise<void>;
-  /** Optional secure KV storage (Keychain/Keystore) for MLS state persistence. */
+  /**
+   * Optional secure KV storage (Keychain/Keystore) for MLS state persistence.
+   *
+   * KEEP IN LOCKSTEP WITH `types.ts`. This file is what the `types` field of
+   * package.json points at, so it — not `types.ts` — is the declaration every
+   * CONSUMER compiles against. A member added to one and not the other compiles
+   * green inside this package and red in the host app, which is exactly how
+   * `removeItem` came to exist in the contract and be unimplementable by the
+   * only host there is.
+   */
   secureStore?: {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    /** Delete one entry. Optional — an older host does not have it. */
+    removeItem?(key: string): Promise<void>;
   };
   /** Optional non-secure local KV (AsyncStorage) for the decrypted-message cache. */
   localStore?: {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    /** Delete one entry. Optional — an older host does not have it. */
+    removeItem?(key: string): Promise<void>;
+    /** Every key in the store, wallet entries included. Optional. */
+    getAllKeys?(): Promise<string[]>;
   };
   /**
    * How many messages are waiting, so the host can badge its own OpenStoa tab

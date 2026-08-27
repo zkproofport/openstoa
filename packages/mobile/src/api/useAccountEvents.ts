@@ -15,7 +15,7 @@
  * the server cannot open. This stream only decides WHEN a holder tries.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import EventSource from 'react-native-sse';
+import { openReconnectingStream } from './reconnectingStream';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
@@ -50,7 +50,6 @@ export function useAccountEvents(): void {
   const [deviceHandle, setDeviceHandle] = useState<string | null>(() => getPushRoutingHandle());
   useEffect(() => subscribePushRoutingHandle(setDeviceHandle), []);
 
-  const esRef = useRef<EventSource<AccountEventName> | null>(null);
   /**
    * Topics with a grant in flight.
    *
@@ -122,44 +121,46 @@ export function useAccountEvents(): void {
 
   useEffect(() => {
     // Guests have no account to receive anything for, and opening the stream
-    // would only earn a 401 and a reconnect loop.
+    // would only earn a 401 and a rebuild loop.
     if (mode !== 'authenticated') return;
-    let cancelled = false;
 
-    (async () => {
-      const token = await host.getOpenStoaToken().catch(() => null);
-      if (!token || cancelled) return;
+    /*
+     * The stream owns its own reconnect, and re-reads the token on every
+     * attempt. Until 2026-08-27 the token was read once and baked into the
+     * connection's headers; `react-native-sse` then retried that same dead
+     * credential forever after a session refresh, and because this stream had
+     * no error listener at all, nothing said so. `key-needed` simply stopped
+     * arriving and rooms sat on "Waiting for the key…".
+     */
+    const stream = openReconnectingStream<AccountEventName>({
+      url: () => {
+        const base = `${host.getEnvironment().openstoaBaseUrl}/api/me/events`;
+        return deviceHandle ? `${base}?device=${encodeURIComponent(deviceHandle)}` : base;
+      },
+      token: () => host.getOpenStoaToken().catch(() => null),
+      /*
+       * This effect only runs for an authenticated session (`mode !== …` above
+       * returns early), so the answer is constant here — but it is passed
+       * EXPLICITLY rather than left to the default. A default that has to be
+       * right for two different callers is a default that will be wrong for
+       * one of them the next time it is changed.
+       */
+      isAuthenticated: () => true,
+      on: {
+        'key-needed': (event) => {
+          let topicId: string | null = null;
+          try {
+            const data = JSON.parse(event.data ?? '{}') as KeyNeededData;
+            if (typeof data.topicId === 'string' && data.topicId) topicId = data.topicId;
+          } catch {
+            // A payload this client cannot read is not worth acting on, and not
+            // worth surfacing either — the room's retry still covers the topic.
+          }
+          if (topicId) grant(topicId);
+        },
+      },
+    });
 
-      const base = `${host.getEnvironment().openstoaBaseUrl}/api/me/events`;
-      const url = deviceHandle ? `${base}?device=${encodeURIComponent(deviceHandle)}` : base;
-      const es = new EventSource<AccountEventName>(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      esRef.current = es;
-
-      es.addEventListener('key-needed', (event) => {
-        if (cancelled) return;
-        let topicId: string | null = null;
-        try {
-          const data = JSON.parse((event as { data?: string }).data ?? '{}') as KeyNeededData;
-          if (typeof data.topicId === 'string' && data.topicId) topicId = data.topicId;
-        } catch {
-          // A payload this client cannot read is not worth acting on, and not
-          // worth surfacing either — the room's retry still covers the topic.
-        }
-        if (topicId) grant(topicId);
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      try {
-        esRef.current?.removeAllEventListeners();
-        esRef.current?.close();
-      } catch {
-        // already closed
-      }
-      esRef.current = null;
-    };
+    return () => stream.close();
   }, [host, mode, deviceHandle, grant]);
 }

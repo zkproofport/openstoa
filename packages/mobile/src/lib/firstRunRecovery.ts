@@ -24,6 +24,20 @@
  * because a flag was lost is silence about the one thing that cannot be undone.
  */
 
+/*
+ * Has a sheet already been raised in THIS process?
+ *
+ * Deliberately module scope and deliberately not persisted — see the note in
+ * `recoveryPrompt`. Persisting it is what made one dismissal silence every later
+ * account on the phone.
+ */
+let shownThisLaunch = false;
+
+/** Test seam: a fresh launch. */
+export function resetRecoveryLaunchMark(): void {
+  shownThisLaunch = false;
+}
+
 /** Where the "this install has shown it" mark lives. */
 export const RECOVERY_SHOWN_KEY = 'openstoa.recovery.shown.v1';
 
@@ -72,26 +86,39 @@ export async function recoveryPrompt(
    * The local mark is read but not obeyed on its own: it only suppresses the
    * SAME launch asking twice.
    */
-  let shown: string | null = null;
-  try {
-    shown = await store.getItem(RECOVERY_SHOWN_KEY);
-  } catch {
-    /*
-     * A store that cannot be read is not a reason to skip. The cost of asking
-     * twice is a dismissed sheet; the cost of not asking is unrecoverable.
-     */
-  }
-  if (shown === 'pending') return { kind: 'none' };
+  /*
+   * ONLY THIS LAUNCH IS SUPPRESSED, and only in memory.
+   *
+   * THE DEFECT THIS REPLACES, measured on a device on 2026-08-27. The mark was
+   * read from the STORE, so a single "Not now" wrote `pending` and left it
+   * there — and every account that signed in on that install afterwards was
+   * silently skipped. Three accounts, two recovery keys: the third started with
+   * no way back and was never asked.
+   *
+   * The mark in the store is still written, because `isFirstRun` above is a
+   * genuine install-level question ("has this phone ever been through this") and
+   * it chooses the WORDING. What it must never do is decide whether to ask at
+   * all. The comment on this branch already said asking again is right; the code
+   * disagreed with it.
+   *
+   * In memory, so it dies with the process — which is exactly the scope of "do
+   * not stack two sheets in one launch".
+   */
+  if (shownThisLaunch) return { kind: 'none' };
 
   return { kind: 'show', reason: 'no-backup' };
 }
 
 /** Mark that this launch is showing it, so a re-render does not stack sheets. */
 export async function markRecoveryShown(store: LocalFlagStore): Promise<void> {
+  // The in-memory half FIRST and unconditionally: it is what actually stops two
+  // sheets stacking, and a store that refuses the write must not cost us that.
+  shownThisLaunch = true;
   try {
     await store.setItem(RECOVERY_SHOWN_KEY, 'pending');
   } catch {
-    // Losing the mark costs a duplicate prompt, which is the safe direction.
+    // Losing the mark costs a differently-worded prompt next launch, not a
+    // missing one — which is the safe direction.
   }
 }
 

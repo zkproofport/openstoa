@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps, NativeStackNavigationOptions } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../theme/ThemeContext';
 import { TYPE_SCALE } from '../theme/tokens';
 
@@ -18,6 +19,7 @@ const HEADER_HEIGHT = 44;
 function MiniAppHeader({ navigation, options, back }: NativeStackHeaderProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useThemeColors();
+  const { t } = useTranslation();
   const title = options.title ?? '';
   const showBack = !!back && options.headerBackVisible !== false;
   const HeaderRight = options.headerRight;
@@ -35,7 +37,7 @@ function MiniAppHeader({ navigation, options, back }: NativeStackHeaderProps) {
             style={styles.backButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t('openstoa.common.back')}
           >
             <Text style={[styles.backChevron, { color: colors.text.primary }]}>{'‹'}</Text>
           </Pressable>

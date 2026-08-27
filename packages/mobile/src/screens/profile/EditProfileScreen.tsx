@@ -401,7 +401,7 @@ export function EditProfileScreen() {
   const pickAndUploadImage = useCallback(async () => {
     const ImagePicker = loadImagePicker();
     if (!ImagePicker) {
-      Alert.alert('Image picker unavailable', 'The host app needs to be rebuilt to include expo-image-picker.');
+      Alert.alert(t('openstoa.attach.pickerUnavailableTitle'), t('openstoa.attach.pickerUnavailableBody'));
       return;
     }
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -420,7 +420,7 @@ export function EditProfileScreen() {
       void queryClient.invalidateQueries({ queryKey: ['profile', 'image'] });
       void queryClient.invalidateQueries({ queryKey: sessionKeys.current() });
     } catch (err) {
-      Alert.alert('Upload failed', err instanceof Error ? err.message : String(err));
+      Alert.alert(t('openstoa.common.uploadFailed'), err instanceof Error ? err.message : String(err));
     } finally {
       setImageUploading(false);
     }
@@ -438,10 +438,10 @@ export function EditProfileScreen() {
   });
 
   const handleRemoveImage = useCallback(() => {
-    Alert.alert('Remove profile photo', 'Remove your profile photo?', [
+    Alert.alert(t('openstoa.editProfile.removePhotoTitle'), t('openstoa.editProfile.removePhotoBody'), [
       { text: t('openstoa.common.cancel'), style: 'cancel' },
       {
-        text: 'Remove',
+        text: t('openstoa.editProfile.remove'),
         style: 'destructive',
         onPress: () => removeImageMutation.mutate(),
       },
@@ -637,13 +637,13 @@ export function EditProfileScreen() {
                   {imageUploading ? (
                     <ActivityIndicator size="small" color={colors.text.tertiary} />
                   ) : (
-                    <Text style={styles.avatarPlaceholderText}>{'Upload\nPhoto'}</Text>
+                    <Text style={styles.avatarPlaceholderText}>{t('openstoa.editProfile.uploadPhoto')}</Text>
                   )}
                 </TouchableOpacity>
               )}
             </View>
             <View>
-              <Text style={styles.avatarHint}>{'Profile photo (optional)\nAuto-resized to 200×200.'}</Text>
+              <Text style={styles.avatarHint}>{t('openstoa.editProfile.avatarHint')}</Text>
               {profileImageUrl ? (
                 <TouchableOpacity
                   style={styles.avatarUploadBtn}
@@ -653,7 +653,7 @@ export function EditProfileScreen() {
                   {imageUploading ? (
                     <ActivityIndicator size="small" color={colors.text.secondary} />
                   ) : (
-                    <Text style={styles.avatarUploadBtnText}>Change photo</Text>
+                    <Text style={styles.avatarUploadBtnText}>{t('openstoa.editProfile.changePhoto')}</Text>
                   )}
                 </TouchableOpacity>
               ) : null}
@@ -698,11 +698,9 @@ export function EditProfileScreen() {
           {validationError ? (
             <Text style={[styles.validationText, styles.validationErr]}>{validationError}</Text>
           ) : isNicknameValid && nickname ? (
-            <Text style={[styles.validationText, styles.validationOk]}>Looks good</Text>
+            <Text style={[styles.validationText, styles.validationOk]}>{t('openstoa.editProfile.nicknameOk')}</Text>
           ) : (
-            <Text style={[styles.validationText, styles.validationHint]}>
-              Letters, numbers, underscores only
-            </Text>
+            <Text style={[styles.validationText, styles.validationHint]}>{t('openstoa.editProfile.nicknameHint')}</Text>
           )}
           <Text style={styles.charCount}>{nickname.length}/20</Text>
         </View>
@@ -748,23 +746,23 @@ export function EditProfileScreen() {
         {/* Notifications — the account-wide push switch (P-M), reconciled with
             the OS notification permission on the settings screen itself. */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <Text style={styles.sectionTitle}>{t('openstoa.editProfile.notificationsSection')}</Text>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('NotificationSettings')}
           >
-            <Text style={styles.actionButtonText}>Push notification settings</Text>
+            <Text style={styles.actionButtonText}>{t('openstoa.editProfile.pushSettings')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Chat recovery (Phase 4 E2EE key backup / recovery) */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Chat recovery</Text>
+          <Text style={styles.sectionTitle}>{t('openstoa.editProfile.chatRecoverySection')}</Text>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('AccountRecovery')}
           >
-            <Text style={styles.actionButtonText}>Back up &amp; recover encrypted chat keys</Text>
+            <Text style={styles.actionButtonText}>{t('openstoa.editProfile.chatRecoveryAction')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -827,6 +825,20 @@ export function EditProfileScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        {/* Device data — clear the caches, or erase this device entirely.
+            Sits ABOVE the account actions and below Chat recovery on purpose:
+            the erase is only safe once a backup exists, and the row that makes
+            one should be read first. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('openstoa.deviceData.title')}</Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('DeviceStorage')}
+          >
+            <Text style={styles.actionButtonText}>{t('openstoa.deviceData.row')}</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Account actions */}
         <View style={styles.section}>

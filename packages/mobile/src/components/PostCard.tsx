@@ -462,7 +462,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
       await Share.share({ message: url, url, title: post.title ?? 'OpenStoa post' });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert('Share failed', msg);
+      Alert.alert(t('openstoa.common.shareFailed'), msg);
     }
   }, [client, post.id, post.topicId, post.title]);
 
@@ -673,6 +673,22 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           (picsum.photos) at the gallery you'll see two different random
           images and that is the service's behaviour, not a bug here. */}
       <MediaGallery
+        /*
+         * The authors' own descriptions, carried through from the post body.
+         *
+         * Built from the SAME list the gallery draws, so a picture that appears
+         * in both sources keeps whichever description exists rather than
+         * silently getting none. Pictures with no description are simply absent
+         * from the map — see `altProps` in MediaGallery for why an absent entry
+         * and an empty one are handled differently.
+         */
+        imageAlts={(() => {
+          const out: Record<string, string> = {};
+          for (const m of mediaItems) {
+            if (m.type === 'image' && m.alt !== undefined) out[m.src] = m.alt;
+          }
+          return out;
+        })()}
         images={(() => {
           const fromMedia = post.media?.images ?? [];
           const fromContent = mediaItems.filter((m) => m.type === 'image').map((m) => m.src);

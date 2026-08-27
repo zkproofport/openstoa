@@ -245,3 +245,144 @@ describe('the recovery key is created once', () => {
     expect(sink.current.prompt).toBeNull();
   });
 });
+
+/*
+ * THE SHEET MUST NOT STRAND ON "Creating your recovery key…".
+ *
+ * SEEN ON A PHONE, 2026-08-27. Signing in sends the app to the proof screen, so
+ * it spends ~84s in the background. On return `backups` is re-fetched and its
+ * new object identity re-runs the effect. The old shape set `cancelled = true`
+ * in the CLEANUP — which React calls on every dependency change, not only on
+ * unmount — so the in-flight `createCode()` resolved into a discarded `setCode`,
+ * and the re-run hit the `started` latch and returned. Server log:
+ * `recovery-code master_key backup stored {"bytes":60}`. Screen: "Creating your
+ * recovery key…", forever. No code meant no note was ever filed either.
+ *
+ * WHAT THE EXISTING NINE CASES MISSED. They re-render with the SAME deps, which
+ * does not re-run the effect at all — so the cleanup never fired and the bug
+ * could not appear. The axis that finds it is a re-render with a CHANGED
+ * dependency while the creation is still in flight.
+ *
+ * EDGE-CASE MATRIX (CLAUDE.md) → coverage
+ *   race      → a dep changes mid-flight: the code still arrives
+ *   race      → and exactly one key is created, not two
+ *   integrity → an error mid-flight still surfaces after a dep change
+ *   boundary  → N dep changes in a row, all before the promise settles
+ */
+describe('a dependency change mid-creation does not strand the sheet', () => {
+  /** A `createCode` the test resolves by hand, so "in flight" is a real state. */
+  function deferred() {
+    let settle: (v: string) => void = () => {};
+    let fail: (e: Error) => void = () => {};
+    let calls = 0;
+    const createCode = () => {
+      calls += 1;
+      return new Promise<string>((res, rej) => {
+        settle = res;
+        fail = rej;
+      });
+    };
+    return {
+      createCode,
+      resolve: (v: string) => settle(v),
+      reject: (e: Error) => fail(e),
+      get calls() {
+        return calls;
+      },
+    };
+  }
+
+  it('RACE: the code still arrives when `backups` changes mid-flight', async () => {
+    const d = deferred();
+    const s = store();
+    const sink = { current: null as unknown };
+    const base: FirstRunRecoveryDeps = {
+      authenticated: true,
+      store: s,
+      backups: { hasRecoveryWrap: false, hasPasskey: false },
+      isFirstRun: true,
+      createCode: d.createCode,
+    };
+
+    const r = await render(<Probe deps={base} sink={sink} />);
+    await flush();
+    expect(d.calls).toBe(1);
+
+    // The app came back from the proof screen and the query re-fetched: same
+    // values, NEW object. This is what re-runs the effect.
+    await r.update(
+      <Probe deps={{ ...base, backups: { hasRecoveryWrap: false, hasPasskey: false } }} sink={sink} />,
+    );
+    await flush();
+
+    d.resolve('THE-CODE');
+    await flush();
+
+    expect((sink.current as State).code).toBe('THE-CODE');
+    // ...and the re-run must not have started a second creation, which would
+    // replace the wrap the person is about to write down.
+    expect(d.calls).toBe(1);
+    r.unmount();
+  });
+
+  it('BOUNDARY: five dep changes before it settles still deliver one code', async () => {
+    // One change could be a coincidence of ordering; five cannot.
+    const d = deferred();
+    const s = store();
+    const sink = { current: null as unknown };
+    const base: FirstRunRecoveryDeps = {
+      authenticated: true,
+      store: s,
+      backups: { hasRecoveryWrap: false, hasPasskey: false },
+      isFirstRun: true,
+      createCode: d.createCode,
+    };
+
+    const r = await render(<Probe deps={base} sink={sink} />);
+    await flush();
+    for (let i = 0; i < 5; i++) {
+      await r.update(
+        <Probe deps={{ ...base, backups: { hasRecoveryWrap: false, hasPasskey: false } }} sink={sink} />,
+      );
+      await flush();
+    }
+
+    d.resolve('LATE-CODE');
+    await flush();
+
+    expect((sink.current as State).code).toBe('LATE-CODE');
+    expect(d.calls).toBe(1);
+    r.unmount();
+  });
+
+  it('INTEGRITY: a failure mid-flight still reaches the sheet after a dep change', async () => {
+    /*
+     * The other half. If a discarded rejection left `error` null the sheet would
+     * sit on "Creating…" just as it did — a different road to the same stranded
+     * screen.
+     */
+    const d = deferred();
+    const s = store();
+    const sink = { current: null as unknown };
+    const base: FirstRunRecoveryDeps = {
+      authenticated: true,
+      store: s,
+      backups: { hasRecoveryWrap: false, hasPasskey: false },
+      isFirstRun: true,
+      createCode: d.createCode,
+    };
+
+    const r = await render(<Probe deps={base} sink={sink} />);
+    await flush();
+    await r.update(
+      <Probe deps={{ ...base, backups: { hasRecoveryWrap: false, hasPasskey: false } }} sink={sink} />,
+    );
+    await flush();
+
+    d.reject(new Error('upload refused'));
+    await flush();
+
+    expect((sink.current as State).error).toContain('upload refused');
+    r.unmount();
+  });
+});

@@ -143,7 +143,20 @@ export interface Comment {
   isAI: boolean;
 }
 
-export type ChatMessageType = 'message' | 'join' | 'leave';
+/**
+ * What a chat row IS, which decides both where its body lives and how it draws.
+ *
+ * `message`  from a member. Body is `sealed`; the server never reads it.
+ * `join`     membership event. Body is `message` (plaintext nicknames only).
+ * `leave`    likewise.
+ * `notice`   from the SYSTEM to one person, and the odd one worth explaining:
+ *            its body is `sealed` like a message — a recovery code cannot live
+ *            in the plaintext column the server reads (SI-1) — but it is NOT
+ *            from the person whose token filed it. Drawn as a RECEIVED bubble,
+ *            so it keeps tap-to-copy while not claiming an author. Accepted
+ *            only in the caller's own personal space.
+ */
+export type ChatMessageType = 'message' | 'join' | 'leave' | 'notice';
 
 /**
  * A user message body sealed by the topic's GroupCipher. The server stores
@@ -184,7 +197,7 @@ export interface ChatMessage {
    */
   message?: string | null;
   /**
-   * Sealed body for user messages (`type` = 'message'). Null for system rows.
+   * Sealed body for `message` AND `notice` rows. Null for `join`/`leave`.
    * Clients decrypt this via the topic GroupCipher; the server never does.
    */
   sealed?: SealedMessage | null;

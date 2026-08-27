@@ -20,6 +20,7 @@ import { useOpenStoaSession } from '../../stores/sessionStore';
 import { QueryErrorState } from '../../components/QueryErrorState';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
+import { chatPreview } from '../../lib/chatPreview';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { usePendingChatTopicId } from '../../hooks/usePushTapRouting';
 import { takePendingChatTopicId } from '../../hooks/pushTapRouting';
@@ -529,16 +530,7 @@ export function ChatListScreen() {
                   style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]}
                   numberOfLines={1}
                 >
-                  {lastMessage
-                    ? lastMessage.type === 'message'
-                      ? // E2EE user messages carry no plaintext on the wire (body
-                        // is in `sealed`). Decrypting here is unsafe — open() would
-                        // bootstrap/rejoin the MLS group and churn epochs just from
-                        // viewing the list — so show a placeholder instead.
-                        `${lastMessage.nickname}: ${t('openstoa.chat.encryptedMessage')}`
-                      : // System rows (join/leave) carry public text in `message`.
-                        `${lastMessage.nickname}: ${lastMessage.message}`
-                    : t('openstoa.chat.noMessagesYet')}
+                    {chatPreview(lastMessage, t, { personal: item.personal, meUserId: sessionUserId })}
                 </Text>
               )}
             </View>

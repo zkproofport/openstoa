@@ -103,6 +103,17 @@ vi.mock('../crypto/mobileTransport', () => ({
   recoverDevice: vi.fn(),
   getDeviceMasterKey: vi.fn(),
   uploadTakKeychainNow: vi.fn(),
+  /*
+   * The provider also files the no-backup notice into the person's own room
+   * (`sendBackupNotice`), which needs a sealer and a way to read history. This
+   * file is about WHERE the banner is mounted, so those are stubbed rather than
+   * exercised — `backupNoticeFiledOnce.test.ts` owns that behaviour. They must
+   * still EXIST: this mock replaces the module wholesale, so a missing export
+   * is a thrown error inside the effect, not a silent no-op.
+   */
+  getMlsSessionStore: () => ({ seal: vi.fn(async () => ({ ciphertext: 'x', epoch: 0 })) }),
+  toDisplayMessageMls: vi.fn(async (_store: unknown, _topicId: string, row: unknown) => row),
+  UNREADABLE_BODY: '[unable to decrypt]',
 }));
 
 import { RecoveryNudge } from '../components/RecoveryNudge';

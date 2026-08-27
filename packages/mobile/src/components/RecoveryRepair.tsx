@@ -28,13 +28,40 @@
  *    waits until there is something to lose rather than firing at signup. The
  *    banner is Profile-only by product decision: a person reading the feed does
  *    not need to be told about chat keys.
+ *
+ * 3. THE NOTICE IN THE PERSON'S OWN ROOM (`sendBackupNotice`), for the account
+ *    that has nothing backed up. It lands here rather than in a screen because
+ *    this effect is the one place that already knows both halves of the answer
+ *    — what the keychain upload found, and what wraps the server holds — and
+ *    because it must not depend on anybody visiting a tab.
+ *
+ *    IT IS NOT A SECOND BANNER. The banner is a thing you see if you are on
+ *    Profile and have not dismissed it; the message is a thing that raises an
+ *    unread count, stays in the chat list, and is still there next month. That
+ *    is why it is sent BEFORE the dismissal check below: dismissing the banner
+ *    says "stop showing me this here", not "I have a backup now".
+ *
+ *    Once, ever, per distinct fact — enforced by reading the room, since only
+ *    this device can. See `sendBackupNotice.ts`.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { ChatMessage } from '@openstoa/api-types';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
-import { ensureTakKeychainBackup, keyBackupHttp } from '../crypto/mobileTransport';
+import {
+  ensureTakKeychainBackup,
+  retryTakKeychainBackup,
+  getMlsSessionStore,
+  keyBackupHttp,
+  toDisplayMessageMls,
+  UNREADABLE_BODY,
+} from '../crypto/mobileTransport';
 import { recoveryNudgeDismissKey, shouldNudgeRecovery } from '../lib/recoveryNudge';
+import { backupHealth } from '../lib/backupHealth';
+import { refuseUnreadable, type OpenRow } from '../lib/personalRoomNote';
+import { sendBackupNotice } from '../lib/sendBackupNotice';
 
 export interface RecoveryNudgeState {
   /** Should the Profile banner be on screen right now? */
@@ -63,6 +90,7 @@ export function RecoveryRepairProvider({ children }: { children?: React.ReactNod
   const host = useHost();
   const client = useOpenStoaClient();
   const session = useOpenStoaSession();
+  const { t } = useTranslation();
 
   const [show, setShow] = useState(false);
   // The repair is account-level and idempotent; running it once per signed-in
@@ -109,6 +137,70 @@ export function RecoveryRepairProvider({ children }: { children?: React.ReactNod
       // the broken state, and it is silent by design.
       const backup = await ensureTakKeychainBackup(client, secureStore, localStore);
 
+      /*
+       * A failed repair used to end here. This effect latches on the user id
+       * (`ranFor`), so nothing tried again until the app was killed and
+       * reopened — and the repair is silent by design, so the person was never
+       * told that was what it needed. Offline, an expired session and a server
+       * hiccup all clear by themselves; the ladder waits them out and comes
+       * back to a fast attempt rather than settling at its ceiling.
+       */
+      if (backup === 'failed' || backup === 'untrusted') {
+        retryTakKeychainBackup(client, secureStore, localStore);
+      }
+
+      /*
+       * Read the wraps BEFORE the dismissal check, and file the notice from
+       * them, because the two prompts answer to different things. Dismissing
+       * the banner means "stop putting this at the top of my Profile"; it does
+       * not mean the account acquired a backup. The message in the person's own
+       * room is the copy that survives that dismissal — it raises an unread
+       * count once, stays in the chat list, and is still findable a month later
+       * when they go looking for what the banner said.
+       */
+      let wraps: Awaited<ReturnType<ReturnType<typeof keyBackupHttp>['getBackup']>> | null = null;
+      try {
+        wraps = await keyBackupHttp(client).getBackup();
+      } catch {
+        // Offline. Claim nothing — not to the banner, not to the room.
+      }
+
+      /*
+       * Fire-and-forget, and deliberately unreported. Everything it can hit is
+       * either "already said" or "could not tell", and neither is something to
+       * interrupt somebody with; a red line here would read as the account
+       * having a NEW problem rather than as a reminder failing to be delivered.
+       */
+      const mls = getMlsSessionStore(client, secureStore, localStore);
+      const open: OpenRow = async (topicId, row) =>
+        (await toDisplayMessageMls(mls, topicId, row as ChatMessage)).message ?? '';
+
+      void sendBackupNotice(
+        client,
+        mls,
+        // A row this device cannot decrypt makes the whole scan inconclusive —
+        // see `refuseUnreadable` for why silence is the right answer there.
+        refuseUnreadable(open, UNREADABLE_BODY),
+        backupHealth({
+          authenticated: true,
+          hasRecoveryWrap: wraps ? !!wraps.wrappedMaster : null,
+          hasPasskey: wraps ? wraps.passkeys.length > 0 : null,
+          keychain: backup,
+        }),
+        {
+          none: {
+            heading: t('openstoa.backupNotice.none.heading'),
+            body: t('openstoa.backupNotice.none.body'),
+          },
+          unopenable: {
+            heading: t('openstoa.backupNotice.unopenable.heading'),
+            body: t('openstoa.backupNotice.unopenable.body'),
+          },
+        },
+      ).catch(() => {
+        /* never the thing that breaks a session */
+      });
+
       let dismissed = false;
       try {
         dismissed = (await localStore?.getItem(recoveryNudgeDismissKey(userId))) === '1';
@@ -119,17 +211,12 @@ export function RecoveryRepairProvider({ children }: { children?: React.ReactNod
       }
       if (dismissed) return;
 
-      let hasRecovery = false;
-      try {
-        const wraps = await keyBackupHttp(client).getBackup();
-        hasRecovery = !!wraps.wrappedMaster || wraps.passkeys.length > 0;
-      } catch {
-        return; // offline: never nag on a guess
-      }
+      if (!wraps) return; // offline: never nag on a guess
+      const hasRecovery = !!wraps.wrappedMaster || wraps.passkeys.length > 0;
 
       setShow(shouldNudgeRecovery({ authenticated: true, dismissed: false, hasRecovery, backup }));
     })();
-  }, [authenticated, userId, secureStore, localStore, client]);
+  }, [authenticated, userId, secureStore, localStore, client, t]);
 
   const dismiss = useCallback(() => {
     setShow(false);

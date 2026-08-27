@@ -66,6 +66,19 @@ export interface AttachmentFile {
 export interface AttachmentFs {
   cacheFile(name: string): AttachmentFile;
   /**
+   * Bytes for one cache file, for the storage figure on the device-data screen.
+   *
+   * OPTIONAL, because the two consumers are not the same: `deviceDataSize` uses
+   * it and reports a named gap without it, while every attachment path here does
+   * not need it at all. A required member would force a stub into every test
+   * double in the file — and a stub returning 0 is exactly the wrong shape for a
+   * measurement.
+   *
+   * Deliberately separate from `cacheFile`, which hands back a `delete()`: a
+   * measurement runs when a SCREEN OPENS and must not be able to destroy.
+   */
+  cacheFileSize?(name: string): Promise<number>;
+  /**
    * Download `url` to a cache file called `name`, natively.
    *
    * Not `fetch`. React Native cannot dependably receive binary over `fetch` —
@@ -78,6 +91,20 @@ export interface AttachmentFs {
    * thrown error rather than a file full of an error page.
    */
   download(url: string, name: string, headers: Record<string, string>): Promise<AttachmentFile>;
+  /**
+   * The names of the files currently in that cache directory.
+   *
+   * OPTIONAL for the same reason `AttachmentFile.exists` is: the mini-app
+   * borrows this filesystem from the host binary, so a phone running an older
+   * host has an object without it. Every caller treats a missing implementation
+   * as "the cache cannot be listed" and SAYS so, rather than as "the cache is
+   * empty" — the two look identical and mean opposite things.
+   *
+   * Used only by the device-data erase (`lib/deviceDataErase.ts`). The
+   * directory is shared with the host app, so the caller matches on the
+   * `openstoa-` filename prefix rather than emptying it.
+   */
+  listCache?(): Promise<string[]>;
 }
 
 /**

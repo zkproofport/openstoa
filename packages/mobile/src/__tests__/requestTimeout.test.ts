@@ -395,12 +395,31 @@ describe('EXCLUSION: long-lived connections do not inherit the deadline', () => 
   const SRC = join(__dirname, '..', 'api');
   const read = (f: string) => readFileSync(join(SRC, f), 'utf8');
 
-  for (const file of ['chatSocket.ts', 'useAccountEvents.ts']) {
-    it(`${file} streams over EventSource and issues no fetch of its own`, () => {
+  /*
+   * The two halves live in different files now, and that is the point rather
+   * than an inconvenience.
+   *
+   * Both hooks used to construct their own `EventSource`, with their own
+   * reconnect handling — and both got it wrong the same way: the token was read
+   * once and baked into the connection's headers, so after a session refresh
+   * they retried a dead credential forever. Opening a stream now goes through
+   * `reconnectingStream.ts`, which owns the token re-read and the backoff, and
+   * a separate guard asserts nothing else may construct one.
+   *
+   * So the mechanism check moved to the helper, and what stays on the hooks is
+   * the half that is about THEM: neither may start issuing deadlined requests.
+   */
+  it('the shared stream helper is what opens the connection', () => {
+    expect(read('reconnectingStream.ts')).toContain('new EventSource');
+  });
+
+  for (const file of ['chatSocket.ts', 'useAccountEvents.ts', 'reconnectingStream.ts']) {
+    it(`${file} issues no fetch of its own`, () => {
       const src = read(file);
-      expect(src).toContain('new EventSource');
       // No `fetch(` anywhere: not a bare one, not `client.request`, nothing
-      // that the client's default deadline could reach.
+      // that the client's default deadline could reach. A 15-second abort on a
+      // stream that is meant to stay open for the life of a screen would break
+      // message delivery and the key handover, quietly.
       expect(src).not.toMatch(/\bfetch\s*\(/);
       expect(src).not.toMatch(/\bfetchWithTimeout\s*\(/);
     });

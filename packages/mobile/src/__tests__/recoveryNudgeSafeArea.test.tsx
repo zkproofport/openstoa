@@ -71,12 +71,21 @@ const transport = vi.hoisted(() => ({
 //
 // `ensureTakKeychainBackup` is reached from `RecoveryRepairProvider` now, not
 // from the banner — same module, same mock.
+//
+// The provider also files the no-backup notice into the person's own room, so
+// the sealing and history-reading exports it reaches for have to exist here —
+// this mock replaces the module wholesale, and a missing export is a throw
+// inside the effect rather than a silent no-op. Stubs, not behaviour:
+// `backupNoticeFiledOnce.test.ts` is where that is exercised.
 vi.mock('../crypto/mobileTransport', () => ({
   ensureTakKeychainBackup: transport.ensureTakKeychainBackup,
   keyBackupHttp: () => ({ getBackup: transport.getBackup }),
   recoverDevice: vi.fn(),
   getDeviceMasterKey: vi.fn(),
   uploadTakKeychainNow: vi.fn(),
+  getMlsSessionStore: () => ({ seal: vi.fn(async () => ({ ciphertext: 'x', epoch: 0 })) }),
+  toDisplayMessageMls: vi.fn(async (_store: unknown, _topicId: string, row: unknown) => row),
+  UNREADABLE_BODY: '[unable to decrypt]',
 }));
 
 import { RecoveryNudge } from '../components/RecoveryNudge';

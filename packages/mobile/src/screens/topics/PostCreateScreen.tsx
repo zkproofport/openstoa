@@ -685,7 +685,7 @@ function PostCreateScreenAuthed() {
   const pickFromLibrary = useCallback(async () => {
     const ImagePicker = loadImagePicker();
     if (!ImagePicker) {
-      Alert.alert('Image picker unavailable', 'The host app needs to be rebuilt to include expo-image-picker.');
+      Alert.alert(t('openstoa.attach.pickerUnavailableTitle'), t('openstoa.attach.pickerUnavailableBody'));
       return;
     }
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -760,7 +760,7 @@ function PostCreateScreenAuthed() {
       setImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert('Upload failed', msg);
+      Alert.alert(t('openstoa.common.uploadFailed'), msg);
     } finally {
       setUploading(false);
     }
@@ -769,18 +769,18 @@ function PostCreateScreenAuthed() {
   const openAttachSheet = useCallback(() => {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Cancel', 'Photo library'], cancelButtonIndex: 0 },
+        { options: [t('openstoa.common.cancel'), t('openstoa.attach.photoLibrary')], cancelButtonIndex: 0 },
         (buttonIndex) => {
           if (buttonIndex === 1) pickFromLibrary();
         },
       );
     } else {
-      Alert.alert('Attach image', undefined, [
-        { text: 'Photo library', onPress: pickFromLibrary },
-        { text: 'Cancel', style: 'cancel' },
+      Alert.alert(t('openstoa.attach.title'), undefined, [
+        { text: t('openstoa.attach.photoLibrary'), onPress: pickFromLibrary },
+        { text: t('openstoa.common.cancel'), style: 'cancel' },
       ]);
     }
-  }, [pickFromLibrary]);
+  }, [pickFromLibrary, t]);
 
   const removeImage = useCallback((index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
@@ -1048,7 +1048,7 @@ function PostCreateScreenAuthed() {
             ) : null}
 
             {/* Tags */}
-            <Text style={[styles.label, styles.labelSpaced]}>Tags</Text>
+            <Text style={[styles.label, styles.labelSpaced]}>{t('openstoa.postCreate.tagsLabel')}</Text>
             <View style={styles.tagRow}>
               {tags.map((tag, i) => (
                 <View key={tag} style={styles.tagChip}>

@@ -56,39 +56,69 @@ export function useFirstRunRecovery(deps: FirstRunRecoveryDeps): FirstRunRecover
   const [prompt, setPrompt] = useState<RecoveryPrompt | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * ONE creation per launch, and its RESULT IS NOT THROWN AWAY when the effect
+   * re-runs.
+   *
+   * THE DEFECT, on a phone 2026-08-27. Signing in sends the app to the proof
+   * screen, so it spends ~84s in the background. Coming back re-fetches
+   * `backups`, whose new object identity re-runs this effect — and the old shape
+   * set `cancelled = true` in the CLEANUP, which React calls on every dependency
+   * change, not only on unmount. So the in-flight `createCode()` finished, its
+   * `setCode` was discarded as "cancelled", and the re-run hit the `started`
+   * latch and returned. The server had the wrap (`recovery-code master_key
+   * backup stored, 60 bytes`); the sheet said "Creating your recovery key…"
+   * forever, and no note was ever filed because there was no code to file.
+   *
+   * The promise is held in a ref instead. A re-run ATTACHES to it rather than
+   * starting a second one or dropping the first — and "stop listening" now means
+   * unmounted, which is the only moment nobody is waiting.
+   */
   const started = useRef(false);
+  const inFlight = useRef<Promise<string> | null>(null);
+  const alive = useRef(true);
+
+  // Unmount only. An empty dependency array is the point: this must NOT run when
+  // `backups` changes, which is exactly what went wrong before.
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
-    /*
-     * Nothing to decide until all three are known. `backups` in particular:
-     * asking before the server has answered would show the sheet to an account
-     * that already has a key, and the first thing it would do is make a second
-     * one — replacing the wrap the person may have written down months ago.
-     */
+    alive.current = true;
     if (!authenticated || !store || !backups) return;
+
+    const adopt = (p: Promise<string>) => {
+      p.then((c) => {
+        if (alive.current) setCode(c);
+      }).catch((e) => {
+        if (alive.current) setError(e instanceof Error ? e.message : String(e));
+      });
+    };
+
+    // Already creating, or already created: take that result. Returning here
+    // without adopting is what stranded the sheet.
+    if (inFlight.current) {
+      adopt(inFlight.current);
+      return;
+    }
     if (started.current) return;
 
-    let cancelled = false;
     void (async () => {
       const decision = await recoveryPrompt(store, backups, { isFirstRun });
-      if (cancelled || decision.kind !== 'show') return;
+      if (!alive.current || decision.kind !== 'show') return;
 
       // Claim the launch BEFORE the await, so a second render cannot also enter.
       started.current = true;
       setPrompt(decision);
       await markRecoveryShown(store);
 
-      try {
-        const c = await createCode();
-        if (!cancelled) setCode(c);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
+      inFlight.current = createCode();
+      adopt(inFlight.current);
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [authenticated, store, backups, isFirstRun, createCode]);
 
   const onStored = useCallback(() => {

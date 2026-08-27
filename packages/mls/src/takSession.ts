@@ -236,7 +236,48 @@ export class TakSessionStore {
      * than a broken room.
      */
     private historyStore?: ChatHistoryStore,
-  ) {}
+  ) {
+    /*
+     * TAKE THE KEY FOR EVERY EPOCH THIS DEVICE PASSES THROUGH.
+     *
+     * MLS ratchets forward: the moment a commit is applied, the epoch it left
+     * can never be derived again. `private` and `secret` seal their archive
+     * per epoch, and until this listener existed the only epoch ever derived
+     * was the one the device happened to be standing in.
+     *
+     * So a member who was merely AWAY — still a member, never removed — came
+     * back to a catch-up that walked N → N+5 in a loop and silently lost four
+     * epochs. Every message sent in them was unreadable, with no error: the
+     * read path answers `null` for a past epoch and the bubble renders as
+     * undecryptable. Their only route back was asking another member for a
+     * grant, and the automatic grant is bounded to 30 days — so an absence
+     * longer than that took the messages for good.
+     *
+     * NOT A WEAKENING. This device was a member during those epochs; the
+     * messages were sealed for the group it belonged to. A REMOVED device
+     * stops receiving commits, so it never reaches those epochs to derive
+     * anything — which is the property per-epoch keys are actually for, and it
+     * is untouched.
+     *
+     * DERIVED FOR EVERY TIER, including the topic-root ones that will never
+     * read them. The tier is a per-call argument here, not a property of the
+     * store, so it is not known at commit time — and 32 bytes per membership
+     * change is a smaller price than a room that cannot be read.
+     */
+    this.mls.setEpochListener(async (topicId, epoch, state) => {
+      /*
+       * Already held → nothing to do. NOT a correctness guard, and saying so
+       * because mutation testing said so first: `deriveEpochTak` is a pure
+       * function of (state, topic, epoch), so re-deriving writes the same
+       * bytes and removing this line breaks no test. What it saves is the
+       * write — and with it the keychain-change callback, which schedules a
+       * backup upload. Without it every catch-up re-uploads the whole keychain
+       * to say nothing new.
+       */
+      if (await this.getEpochTak(topicId, epoch)) return;
+      await this.setEpochTak(topicId, epoch, await tak.deriveEpochTak(state, topicId, epoch));
+    });
+  }
 
   private rootKey(t: string) {
     return `tak.root.${t}`;
@@ -413,6 +454,33 @@ export class TakSessionStore {
       set[k] = true;
     }
     await this.store.set(this.manifestKey(), JSON.stringify(set));
+
+    /*
+     * FORGET WHAT WE CONCLUDED WITH THE OLD KEYS. Arriving keys are the one
+     * event that invalidates every answer to "which root do I hold" — and every
+     * one of those answers is memoised below for speed.
+     *
+     * THE DEFECT, found by writing the end-to-end recovery test on 2026-08-27
+     * and observed rather than reasoned about: a phone that opens a room BEFORE
+     * recovering resolves the root with nothing in hand, generates one, and
+     * caches that resolution. `verified` is then cached for the whole session by
+     * design (a write-once fingerprint cannot change under you). Entering the
+     * recovery code after that wrote the real root to disk and changed nothing
+     * on screen — `backfill` kept returning an empty history while
+     * `archiveRootState` cheerfully answered `verified`, about a key that was no
+     * longer the one being used. The person saw their code accepted and their
+     * conversation still gone.
+     *
+     * That order is not exotic; it is the ONLY order that happens. Nobody
+     * recovers a phone they have not first watched fail.
+     *
+     * ONLY this map. The neighbouring memos cannot go stale and clearing them
+     * would be decoration: `rootPromises` deletes its own entry in a `finally`,
+     * and `oldestRowProbe` is keyed by the root itself, so a different root is
+     * a different question. Mutation testing said so before this comment did —
+     * removing either clear() changed no result.
+     */
+    this.rootResolutions.clear();
   }
 
   // In-flight resolveRoot per topic. Without this, a holder that resolves

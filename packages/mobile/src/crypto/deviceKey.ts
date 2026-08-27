@@ -34,7 +34,26 @@
  * `react-native-quick-crypto` (already a dependency) provides it. No new
  * primitive, no new native module.
  */
-import { Ed } from 'react-native-quick-crypto';
+/*
+ * LOADED LAZILY, and that is not a micro-optimisation.
+ *
+ * A static import puts the NATIVE module in the import graph of everything that
+ * transitively reaches this file — which, since the recovery sheet and the
+ * device proof mounted at the app root, is now `OpenStoaApp` itself. Any test
+ * that renders the app then has to know about a native module it never
+ * exercises, and `signInHang.test.tsx` failed to collect for exactly that
+ * reason: not a wrong assertion, a module that cannot load off a device.
+ *
+ * `await import` keeps `vi.mock` working — vitest intercepts resolution, not the
+ * syntax — so the suites that stand Ed25519 in for the native curve are
+ * unaffected.
+ */
+type EdCtor = (typeof import('react-native-quick-crypto'))['Ed'];
+let edPromise: Promise<EdCtor> | null = null;
+function loadEd(): Promise<EdCtor> {
+  if (!edPromise) edPromise = import('react-native-quick-crypto').then((m) => m.Ed);
+  return edPromise;
+}
 
 /** Where the private key lives. Namespaced — the store is shared with the host. */
 export const DEVICE_KEY_STORE_KEY = 'openstoa.device.key.v1';
@@ -110,6 +129,7 @@ async function resolve(store: SecureStoreLike): Promise<DeviceKeyPair> {
     );
   }
 
+  const Ed = await loadEd();
   const ed = new Ed('ed25519', {} as never);
   await ed.generateKeyPair();
   const pair: DeviceKeyPair = {
@@ -147,6 +167,7 @@ export async function signChallenge(
   nonceB64: string,
 ): Promise<string> {
   const { privateKey } = await deviceKeyPair(store);
+  const Ed = await loadEd();
   const ed = new Ed('ed25519', {} as never);
   const sig = await ed.sign(unb64(nonceB64), unb64(privateKey));
   return b64(sig);
@@ -158,6 +179,7 @@ export async function verifyChallenge(
   nonceB64: string,
   signatureB64: string,
 ): Promise<boolean> {
+  const Ed = await loadEd();
   const ed = new Ed('ed25519', {} as never);
   return ed.verify(unb64(signatureB64), unb64(nonceB64), unb64(publicKeyB64));
 }

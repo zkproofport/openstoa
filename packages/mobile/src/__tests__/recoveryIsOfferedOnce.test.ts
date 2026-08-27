@@ -38,6 +38,7 @@ import {
   markRecoveryShown,
   markRecoveryStored,
   RECOVERY_SHOWN_KEY,
+  resetRecoveryLaunchMark,
   type LocalFlagStore,
   type BackupState,
 } from '../lib/firstRunRecovery';
@@ -71,6 +72,11 @@ const HAS_PASSKEY: BackupState = { hasRecoveryWrap: false, hasPasskey: true };
 let s: ReturnType<typeof store>;
 beforeEach(() => {
   s = store();
+  // Each case is a fresh LAUNCH. The "already asked" latch is in memory now —
+  // see `recoveryPrompt` — so it has to be cleared the way a process restart
+  // clears it, or one case silences the next and the suite lies in the same
+  // direction the defect did.
+  resetRecoveryLaunchMark();
 });
 
 describe('offering the recovery code', () => {
@@ -173,5 +179,110 @@ describe('offering the recovery code', () => {
     }
 
     expect(asked).toEqual([0, 1, 2]);
+  });
+});
+
+/*
+ * ONE DISMISSAL MUST NOT SILENCE THE NEXT ACCOUNT — found on a device, 2026-08-27.
+ *
+ * Three sign-ins on one phone produced three accounts and only TWO recovery
+ * keys. The third was never asked and started with no way back.
+ *
+ * The cause was scope. `markRecoveryShown` wrote `pending` to the STORE, and
+ * `recoveryPrompt` read it back and returned `none` — so a single "Not now"
+ * became a permanent mark on the install, and every account that signed in on
+ * that phone afterwards was skipped in silence. The branch's own comment said
+ * asking again was right; the code did the opposite.
+ *
+ * The suppression is now in memory and lasts one launch, which is the scope it
+ * was always described as having. The stored mark survives and still chooses the
+ * WORDING (`first-run` vs `no-backup`) — it just no longer decides whether to
+ * ask.
+ *
+ * EDGE-CASE MATRIX (CLAUDE.md) → coverage
+ *   race        → two asks in one launch: the second is suppressed
+ *   contract    → a NEW launch asks again after a dismissal
+ *   integrity   → five accounts in a row are each asked (the cumulative axis)
+ *   integrity   → a stored `pending` from an older build does not suppress
+ *   boundary    → an unreadable store still asks
+ */
+describe('a dismissal is scoped to its launch, not to the phone', () => {
+  it('RACE: two asks inside one launch — the second is suppressed', async () => {
+    // The behaviour that IS wanted: a re-render must not stack a second sheet.
+    resetRecoveryLaunchMark();
+    const s1 = store();
+    expect((await recoveryPrompt(s1, NO_BACKUP, { isFirstRun: false })).kind).toBe('show');
+    await markRecoveryShown(s1);
+    expect((await recoveryPrompt(s1, NO_BACKUP, { isFirstRun: false })).kind).toBe('none');
+  });
+
+  it('CONTRACT: a NEW launch asks again after a dismissal', async () => {
+    /*
+     * "Not now" leaves `pending` in the store on purpose — it records that this
+     * install has been through it. What it must not do is answer the next
+     * launch's question.
+     */
+    const s1 = store();
+    resetRecoveryLaunchMark();
+    await markRecoveryShown(s1);
+    expect(s1.data.get(RECOVERY_SHOWN_KEY)).toBe('pending');
+
+    resetRecoveryLaunchMark(); // the process restarted
+    expect((await recoveryPrompt(s1, NO_BACKUP, { isFirstRun: false })).kind).toBe('show');
+  });
+
+  it('INTEGRITY: five accounts in a row on one phone are EACH asked', async () => {
+    /*
+     * The cumulative axis, and the shape the device actually produced. A single
+     * account passing proves the branch runs once; it says nothing about the
+     * second person to use the phone — or, as here, the same person signing in
+     * again after a logout, which mints a new account.
+     *
+     * The store is shared across all five because it is one install.
+     */
+    const shared = store();
+    const asked: number[] = [];
+
+    for (let account = 0; account < 5; account++) {
+      resetRecoveryLaunchMark(); // each sign-in is its own launch of the flow
+      const p = await recoveryPrompt(shared, NO_BACKUP, { isFirstRun: false });
+      if (p.kind === 'show') asked.push(account);
+      // Every one of them dismisses rather than storing — the worst case.
+      await markRecoveryShown(shared);
+    }
+
+    expect(asked).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('INTEGRITY: a stored `pending` left by an older build does not suppress', async () => {
+    // Phones in the field already carry this value. The fix must not depend on
+    // it being absent.
+    const s1 = store();
+    await s1.setItem(RECOVERY_SHOWN_KEY, 'pending');
+    resetRecoveryLaunchMark();
+
+    expect((await recoveryPrompt(s1, NO_BACKUP, { isFirstRun: false })).kind).toBe('show');
+  });
+
+  it('BOUNDARY: an unreadable store still asks', async () => {
+    resetRecoveryLaunchMark();
+    const broken: LocalFlagStore = {
+      getItem: async () => {
+        throw new Error('keystore unavailable');
+      },
+      setItem: async () => {},
+    };
+    expect((await recoveryPrompt(broken, NO_BACKUP, { isFirstRun: false })).kind).toBe('show');
+  });
+
+  it('CONTRACT: an account WITH a backup is still never asked', async () => {
+    // The fix widens who gets asked; it must not start pestering accounts that
+    // already have a key on file.
+    resetRecoveryLaunchMark();
+    const s1 = store();
+    const withWrap = { hasRecoveryWrap: true, hasPasskey: false };
+    for (let i = 0; i < 5; i++) {
+      expect((await recoveryPrompt(s1, withWrap, { isFirstRun: false })).kind).toBe('none');
+    }
   });
 });
