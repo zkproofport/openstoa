@@ -12,6 +12,12 @@
  * STARVING the timer queue. Removing the fix did not break it, because `act`
  * already lets timers run. The axis that matters is elapsed time, so that is
  * what these measure.
+ *
+ * `.tsx`, not `.ts`, because it imports the render harness. The WEB config runs
+ * this package's `.ts` logic tests in its own sweep and excludes the `.tsx`
+ * ones — a `.ts` file that reaches into the harness is pulled into a project
+ * with no react renderer installed, and fails there for a reason that has
+ * nothing to do with what it asserts.
  */
 import { describe, expect, it } from 'vitest';
 import { flushUntil } from './harness/render';
