@@ -157,6 +157,140 @@ describe('the Korean UI does not fall back to English', () => {
     expect(englishInKorean).toEqual([]);
   });
 
+  /*
+   * THE HOLE THIS CLOSES, found on a phone 2026-08-27. A chat system row read
+   * `{item.nickname} {verb} the room` — English in front of a Korean reader,
+   * and none of the places above could see it. Every one of them matches a
+   * COMPLETE literal; this sentence was glued together from two expressions and
+   * a bare fragment, so the text between the tags never looked like a string.
+   *
+   * So: take what is between `<Text>` and `</Text>`, delete the expressions, and
+   * read what is left over. Two English words in a row is a sentence fragment
+   * somebody forgot to translate. One word is not — `{size} MB` and `{n} KB` are
+   * units, and flagging those would teach people to ignore this test.
+   */
+  it('no sentence is glued together from expressions and bare English', () => {
+    const found: string[] = [];
+    const OPEN = /<Text\b/g;
+    const TWO_WORDS = /\b[A-Za-z]{2,}[\u2019']?[A-Za-z]*\s+[A-Za-z]{2,}\b/;
+
+    /*
+     * Balanced, because JSX nests. A non-nesting `\{[^{}]*\}` closes on the
+     * FIRST `}` of `style={{ a: 1 }}` and leaks the rest of the file into what
+     * this test thinks is prose — which is how the first draft reported a
+     * hundred lines of source as an untranslated sentence.
+     */
+    function stripExpressions(src: string): string {
+      let out = '';
+      let depth = 0;
+      for (const ch of src) {
+        if (ch === '{') depth += 1;
+        else if (ch === '}') depth = Math.max(0, depth - 1);
+        else if (depth === 0) out += ch;
+        if (ch === '}' && depth === 0) out += ' ';
+      }
+      return out;
+    }
+
+    /** The children of ONE `<Text>`, stopping at its matching close. */
+    function childrenOf(text: string, from: number): string | null {
+      let depth = 1;
+      const tag = /<(\/?)Text\b[^>]*?(\/?)>/g;
+      tag.lastIndex = from;
+      for (let m = tag.exec(text); m; m = tag.exec(text)) {
+        if (m[2] === '/') continue; // self-closing
+        depth += m[1] === '/' ? -1 : 1;
+        if (depth === 0) return text.slice(from, m.index);
+      }
+      return null;
+    }
+
+    /*
+     * Where the opening tag ends — NOT the first `>`. `onPress={() => x()}`
+     * puts a `>` inside an attribute, and stopping there hands the rest of the
+     * attribute list to the prose check as if a person had typed it.
+     */
+    function endOfOpenTag(text: string, from: number): number | null {
+      let depth = 0;
+      for (let i = from; i < text.length; i += 1) {
+        const ch = text[i];
+        if (ch === '{') depth += 1;
+        else if (ch === '}') depth -= 1;
+        else if (ch === '>' && depth === 0) return i + 1;
+      }
+      return null;
+    }
+
+    for (const file of UI_FILES) {
+      const text = fs.readFileSync(file, 'utf8');
+      for (const open of text.matchAll(OPEN)) {
+        const start = endOfOpenTag(text, open.index ?? 0);
+        if (start === null) continue;
+        if (text[start - 2] === '/') continue; // self-closing
+        const inner = childrenOf(text, start);
+        if (inner === null) continue;
+        // Nested elements are their own rows; only this one's own words count.
+        const bare = stripExpressions(inner)
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/&[a-z]+;/g, "'")
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!bare || !TWO_WORDS.test(bare)) continue;
+        if (ENGLISH_ON_PURPOSE.has(bare)) continue;
+        found.push(
+          `${path.relative(SRC, file)}:${lineOf(text, open.index ?? 0)}  조각 문장  "${bare}"`,
+        );
+      }
+    }
+
+    expect(found).toEqual([]);
+  });
+
+  /*
+   * THE THIRD SHAPE, found on a phone 2026-08-27 after the first two were shut.
+   * The topic search box read "Search topics" on a Korean screen — and the code
+   * was innocent: it called the translator properly. What it also did was carry
+   * `defaultValue: 'Search topics'`, and the Korean file had no such key, so
+   * i18next did exactly what it was told and served the English.
+   *
+   * A sweep for hardcoded English cannot see this: the English is in a fallback,
+   * which is the one place it is supposed to be. The question this asks instead
+   * is whether the key it falls back FROM actually exists.
+   */
+  it('no screen falls back to an English default because the Korean key is missing', () => {
+    const ko = JSON.parse(
+      fs.readFileSync(path.join(SRC, 'i18n/locales/ko.json'), 'utf8'),
+    ) as Record<string, unknown>;
+
+    const hasKey = (dotted: string): boolean => {
+      let cur: unknown = ko;
+      for (const part of dotted.split('.')) {
+        if (typeof cur !== 'object' || cur === null) return false;
+        cur = (cur as Record<string, unknown>)[part];
+      }
+      return typeof cur === 'string' && cur.length > 0;
+    };
+
+    const CALL = /\bt\(\s*'([^']+)'\s*,\s*\{[^}]*defaultValue:\s*'([^']*)'/g;
+    const found: string[] = [];
+    let calls = 0;
+
+    for (const file of UI_FILES) {
+      const text = fs.readFileSync(file, 'utf8');
+      for (const m of text.matchAll(CALL)) {
+        calls += 1;
+        if (hasKey(m[1])) continue;
+        found.push(
+          `${path.relative(SRC, file)}:${lineOf(text, m.index ?? 0)}  빠진 번역  ${m[1]}  →  "${m[2]}"`,
+        );
+      }
+    }
+
+    // A rule that matched nothing would pass while every key was missing.
+    expect(calls).toBeGreaterThan(0);
+    expect(found).toEqual([]);
+  });
+
   it('the file list is not empty — an empty sweep would pass silently', () => {
     // The scan above reports nothing when it reads nothing, and a broken path
     // looks exactly like a clean codebase.

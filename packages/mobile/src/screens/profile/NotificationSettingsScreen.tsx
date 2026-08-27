@@ -170,7 +170,7 @@ export function NotificationSettingsScreen() {
     return (
       <View style={[styles.root, styles.center]}>
         <Text style={[styles.intro, { paddingHorizontal: 32, textAlign: 'center' }]}>
-          Couldn&apos;t load your notification settings. Pull back and try again.
+          {t('openstoa.notifications.loadFailed')}
         </Text>
       </View>
     );
@@ -218,8 +218,7 @@ export function NotificationSettingsScreen() {
 
         {osState === 'prompt' && enabled && (
           <Text style={styles.rowHint}>
-            Your device hasn&apos;t been asked for notification permission yet — it will prompt the
-            first time a message arrives for you.
+            {t('openstoa.notifications.permissionNotAsked')}
           </Text>
         )}
       </View>

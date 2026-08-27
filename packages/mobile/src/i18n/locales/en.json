@@ -80,7 +80,9 @@
       "joinFirstTitle": "Join the topic first",
       "joinFirstBody": "Only members of this topic can vote on its posts. Tap the topic name to open it and join.",
       "back": "Back",
-      "close": "Close"
+      "close": "Close",
+      "returningToHost": "Returning to ZKProofport…",
+      "refresh": "Refresh"
     },
     "postCard": {
       "author": {
@@ -140,7 +142,8 @@
       "postsCount": "posts",
       "recordedCount": "records",
       "searchPlaceholder": "Search my posts…",
-      "adminChip": "Admin"
+      "adminChip": "Admin",
+      "settingsA11y": "Settings"
     },
     "editProfile": {
       "nickname": "Nickname",
@@ -251,7 +254,9 @@
         "joined": "Joined",
         "groupLabel": "Which topics"
       },
-      "inviteOnly": "Invite only"
+      "inviteOnly": "Invite only",
+      "searchPlaceholder": "Search topics",
+      "searchEmpty": "No topics match your search"
     },
     "topicDetail": {
       "members": "Members",
@@ -409,7 +414,8 @@
       "resetConfirm": "Reset",
       "imageLimitTitle": "Image limit",
       "imageLimitMessage": "You can attach up to {{max}} images.",
-      "tagsLabel": "Tags"
+      "tagsLabel": "Tags",
+      "tagHint": "· press Enter or comma to add"
     },
     "pollEditor": {
       "title": "Poll",
@@ -541,7 +547,9 @@
       },
       "youPrefix": "You",
       "historySignedOut": "Signed out, so the conversation could not be loaded.",
-      "historyUnavailable": "The conversation could not be loaded."
+      "historyUnavailable": "The conversation could not be loaded.",
+      "joinedRoom": "{{nickname}} entered the chat",
+      "leftRoom": "{{nickname}} left the chat"
     },
     "dm": {
       "title": "Direct Messages",
@@ -760,6 +768,10 @@
       "pickerUnavailableBody": "The host app needs to be rebuilt to include expo-image-picker.",
       "clipboardUnavailableTitle": "Clipboard unavailable",
       "clipboardUnavailableBody": "The host app needs to be rebuilt to include the clipboard native module."
+    },
+    "notifications": {
+      "loadFailed": "Couldn't load your notification settings. Pull back and try again.",
+      "permissionNotAsked": "Your device hasn't been asked for notification permission yet — it will prompt the first time a message arrives for you."
     }
   }
 }

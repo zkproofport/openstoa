@@ -1104,7 +1104,7 @@ function PostCreateScreenAuthed() {
               </View>
             ) : null}
             <Text style={styles.tagHint}>
-              {tags.length}/{MAX_TAGS} · press Enter or comma to add
+              {tags.length}/{MAX_TAGS} {t('openstoa.postCreate.tagHint')}
             </Text>
 
           </>

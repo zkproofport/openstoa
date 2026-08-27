@@ -144,6 +144,28 @@ export async function flushUntil(
     if (done()) return;
     await act(async () => {
       await Promise.resolve();
+      /*
+       * AND a real timer, which is what buys the work under test actual TIME.
+       *
+       * THE FLAKE THIS FIXES, seen once in a full-suite run on 2026-08-27 and
+       * not when the file ran alone. The chain under test reaches
+       * `signChallenge` → `loadEd()`, a DYNAMIC `import()`. Draining microtasks
+       * 200 times costs about ten milliseconds; a cold module load on a machine
+       * running the whole suite in parallel takes far longer, so the budget ran
+       * out and the helper reported "the effect did not complete" — which reads
+       * as a defect in the code rather than as a stopwatch set too short. The
+       * second run found the module cached and passed, which is the signature.
+       *
+       * NOT a starved queue: `act` already lets timers run, and removing this
+       * line does not break a test written that way. The axis is elapsed time,
+       * so a timer per tick is the fix — the same 200 ticks now span hundreds
+       * of milliseconds instead of ten.
+       *
+       * No test that uses this helper runs fake timers, so a real timer is safe.
+       */
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
     });
   }
   if (!done()) {

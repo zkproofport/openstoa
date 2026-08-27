@@ -80,7 +80,9 @@
       "joinFirstTitle": "먼저 토픽에 참여하세요",
       "joinFirstBody": "이 토픽의 글은 멤버만 투표할 수 있습니다. 토픽 이름을 눌러 열고 참여해 주세요.",
       "back": "뒤로",
-      "close": "닫기"
+      "close": "닫기",
+      "returningToHost": "ZKProofport로 돌아가는 중…",
+      "refresh": "새로고침"
     },
     "postCard": {
       "author": {
@@ -140,7 +142,8 @@
       "postsCount": "개 글",
       "recordedCount": "회 기록",
       "searchPlaceholder": "내 글 검색…",
-      "adminChip": "관리자"
+      "adminChip": "관리자",
+      "settingsA11y": "설정"
     },
     "editProfile": {
       "nickname": "닉네임",
@@ -251,7 +254,9 @@
         "joined": "참여 중",
         "groupLabel": "토픽 범위"
       },
-      "inviteOnly": "초대 전용"
+      "inviteOnly": "초대 전용",
+      "searchPlaceholder": "토픽 검색…",
+      "searchEmpty": "검색과 맞는 토픽이 없어요"
     },
     "topicDetail": {
       "members": "구성원",
@@ -409,7 +414,8 @@
       "resetConfirm": "초기화",
       "imageLimitTitle": "이미지 최대 개수",
       "imageLimitMessage": "최대 {{max}}장까지 첨부할 수 있어요.",
-      "tagsLabel": "태그"
+      "tagsLabel": "태그",
+      "tagHint": "· 엔터나 쉼표로 추가"
     },
     "pollEditor": {
       "title": "투표",
@@ -541,7 +547,9 @@
       },
       "youPrefix": "나",
       "historySignedOut": "로그인이 풀려 대화를 불러오지 못했습니다.",
-      "historyUnavailable": "대화를 불러오지 못했습니다."
+      "historyUnavailable": "대화를 불러오지 못했습니다.",
+      "joinedRoom": "{{nickname}}님이 채팅방에 입장했습니다",
+      "leftRoom": "{{nickname}}님이 채팅방을 나갔습니다"
     },
     "dm": {
       "title": "다이렉트 메시지",
@@ -760,6 +768,10 @@
       "pickerUnavailableBody": "이 기능을 쓰려면 호스트 앱을 다시 빌드해야 합니다 (expo-image-picker 미포함).",
       "clipboardUnavailableTitle": "클립보드를 쓸 수 없습니다",
       "clipboardUnavailableBody": "이 기능을 쓰려면 호스트 앱을 다시 빌드해야 합니다 (클립보드 모듈 미포함)."
+    },
+    "notifications": {
+      "loadFailed": "알림 설정을 불러오지 못했습니다. 뒤로 갔다가 다시 시도해 주세요.",
+      "permissionNotAsked": "이 기기는 아직 알림 권한을 요청받지 않았습니다. 메시지가 처음 도착할 때 물어봅니다."
     }
   }
 }

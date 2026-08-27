@@ -2787,6 +2787,7 @@ function reportOwnershipMismatch(messageUserId: string | null | undefined, sessi
 
 function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePress, onAuthorPress, syncing, awaitingKey, onRetry, onDiscard, onLongPress, topicId, tier }: RowProps) {
   const sessionUserId = useOpenStoaSession((s) => s.userId);
+  const { t } = useTranslation();
 
   // System messages (join / leave only — every other type renders as a
   // regular message bubble below). The previous code did `type !==
@@ -2794,11 +2795,21 @@ function ChatMessageRow({ item, prevItem, styles, navigation, client, onImagePre
   // non-'message' / non-'join' row (including 'ai') as "left the room"
   // and dropped the body entirely.
   if (item.type === 'join' || item.type === 'leave') {
-    const verb = item.type === 'join' ? 'joined' : 'left';
+    /*
+     * Built by the translator, not glued together here. The old shape was
+     * `{item.nickname} {verb} the room`, which is English on a Korean screen —
+     * and invisible to the leftover-English sweep, because the sweep read the
+     * text BETWEEN the tags and this had expressions in the middle of it.
+     */
     return (
       <View style={styles.systemRow}>
         <Text style={styles.systemMsg}>
-          {item.nickname} {verb} the room
+          {t(
+            item.type === 'join'
+              ? 'openstoa.chat.joinedRoom'
+              : 'openstoa.chat.leftRoom',
+            { nickname: item.nickname },
+          )}
         </Text>
       </View>
     );
