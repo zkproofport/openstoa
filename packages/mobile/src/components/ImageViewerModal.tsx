@@ -132,10 +132,17 @@ export default function ImageViewerModal({
           // Centres a short picture; lets a tall one start at the top, where
           // reading it starts.
           contentContainerStyle={scrolls ? undefined : styles.centred}
-          // The bar sits over the top of the picture, so the first screenful
-          // would otherwise be hidden behind it.
-          contentInset={{ top: barHeight + topInset }}
-          contentOffset={{ x: 0, y: -(barHeight + topInset) }}
+          /*
+           * The inset is for the SCROLLING case only.
+           *
+           * The bar sits over the top of a picture that scrolls, so without it
+           * the first screenful hides behind the bar. A picture that already
+           * fits needs none — and applying it anyway pushed the whole thing a
+           * hundred points down the screen, which is exactly what it looked
+           * like: centred, but centred inside a box that started below the top.
+           */
+          contentInset={scrolls ? { top: barHeight + topInset } : undefined}
+          contentOffset={scrolls ? { x: 0, y: -(barHeight + topInset) } : undefined}
           scrollEnabled={scrolls}
           showsVerticalScrollIndicator={scrolls}
         >
@@ -199,7 +206,15 @@ export default function ImageViewerModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
+    /*
+     * OPAQUE. The five percent of translucency left the chat visible behind
+     * the picture — message bubbles and the composer showing through the empty
+     * space around a photo, which reads as a rendering fault rather than a
+     * viewer. Every photo viewer people already use is solid, and nothing here
+     * needs to be seen through: the way back is the close control, not a
+     * glimpse of what is underneath.
+     */
+    backgroundColor: '#000',
   },
   imageArea: {
     flex: 1,

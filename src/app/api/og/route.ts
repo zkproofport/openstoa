@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertPublicUrl, safeFetch, BlockedUrlError } from '@/lib/outboundUrl';
+import { logger } from '@/lib/logger';
+
+const ROUTE = '/api/og';
 
 interface OGData {
   title: string | null;
@@ -221,6 +224,22 @@ export async function GET(req: NextRequest) {
     clearTimeout(timeout);
 
     if (!res.ok) {
+      /*
+       * SAY WHAT THE SITE ACTUALLY ANSWERED.
+       *
+       * Every upstream failure used to collapse into one word, so a site that
+       * refuses bots, a site that is down, and a site that redirects us in a
+       * loop were indistinguishable from here. That cost an afternoon on
+       * yozm.wishket.com: it answers 200 from a laptop in Korea and something
+       * else to this server, and there was no way to learn which something.
+       */
+      logger.warn(ROUTE, 'upstream refused the preview fetch', {
+        url,
+        status: res.status,
+        statusText: res.statusText,
+        server: res.headers.get('server'),
+        via: res.headers.get('x-amz-cf-pop') ?? res.headers.get('via'),
+      });
       return NextResponse.json({ error: 'Fetch failed' }, { status: 502 });
     }
 
