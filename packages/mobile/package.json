@@ -29,6 +29,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@noble/hashes": "2.0.1",
     "@types/react": "*",
     "jsdom": "^28.1.0",
     "ts-mls": "^1.6.2",
