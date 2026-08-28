@@ -242,6 +242,24 @@ export interface RequestOptions extends RequestInit {
    */
   allowGuest?: boolean;
   /**
+   * The person is waiting on this, so the local rate-limit pause does not
+   * apply to it.
+   *
+   * THE DEFECT THIS EXISTS FOR, on a phone 2026-08-28. The pause was added to
+   * stop the app re-arming its own ban, and it was put in the one place every
+   * request passes — which included the Send button. Someone typed a message,
+   * tapped Send, and it never left the phone: the load balancer log for that
+   * minute has no `POST /chat` at all, only the 429s that set the pause a
+   * moment earlier. Their message failed for a reason that was never about
+   * them.
+   *
+   * The pause is worth having for REPEATING work, which is what floods. A
+   * single tap is one request, and the pause length is a GUESS — five minutes
+   * when the edge sends no `Retry-After`, which may be far longer than the
+   * real ban. Refusing a person's action on a guess is the wrong trade.
+   */
+  userInitiated?: boolean;
+  /**
    * Override the request deadline, in milliseconds — or `null` for none.
    *
    * Defaults to `DEFAULT_REQUEST_TIMEOUT_MS`. Raise it for a request whose body
@@ -603,13 +621,16 @@ export class OpenStoaClient {
     // Authorization header. That bug is what made joined topics keep
     // showing after logout.
     /*
-     * Refuse locally while the edge is banning us.
+     * Refuse locally while the edge is banning us — BACKGROUND WORK ONLY.
      *
      * Sending anyway is what kept the ban alive: every request during the pause
      * counts, so an app with a few independent pollers can hold itself out
      * indefinitely. Failing here costs nothing and lets the clock run down.
+     *
+     * A request the person is waiting on is exempt (see `userInitiated`): it is
+     * one request, and the pause is a guess that may outlast the real ban.
      */
-    if (Date.now() < _pausedUntilMs) {
+    if (!init.userInitiated && Date.now() < _pausedUntilMs) {
       throw new OpenStoaRateLimitedError(path, _pausedUntilMs);
     }
 
@@ -658,6 +679,14 @@ export class OpenStoaClient {
         throw new GuestAuthRequiredError(path);
       }
     }
+
+    /*
+     * A reply means the edge is letting us through, so any pause we were
+     * holding is over. Worth clearing rather than waiting out the guess: the
+     * five-minute default is only used when the edge sends no `Retry-After`,
+     * and it is usually longer than the truth.
+     */
+    if (res.ok && _pausedUntilMs !== 0) _pausedUntilMs = 0;
 
     if (res.status === 429) {
       /*

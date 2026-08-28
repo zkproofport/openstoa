@@ -1964,11 +1964,17 @@ export function ChatRoomScreen() {
          */
         const media = parseChatMediaBody(text);
         const pushArchive = await buildPushArchive(text);
-        const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
-          ciphertext: sealed.ciphertext,
-          epoch: sealed.epoch,
-          ...(pushArchive ? { pushArchive } : {}),
-        });
+        // Someone tapped Send and is watching for it — the local rate-limit
+        // pause must not swallow it. See `userInitiated` on the client.
+        const res = await client.post<{ message: ChatMessage }>(
+          `/api/topics/${topicId}/chat`,
+          {
+            ciphertext: sealed.ciphertext,
+            epoch: sealed.epoch,
+            ...(pushArchive ? { pushArchive } : {}),
+          },
+          { userInitiated: true },
+        );
         if (!res?.message?.id) throw new Error('no message id');
         // Swap the provisional row for the stored one IN PLACE, so the bubble
         // does not jump: same position, real id, no longer pending.
@@ -2167,10 +2173,11 @@ export function ChatRoomScreen() {
              * BODY, and this body is an envelope, so the recipient's
              * notification would read as a line of JSON.
              */
-            const res = await client.post<{ message: ChatMessage }>(`/api/topics/${topicId}/chat`, {
-              ciphertext: sealed.ciphertext,
-              epoch: sealed.epoch,
-            });
+            const res = await client.post<{ message: ChatMessage }>(
+              `/api/topics/${topicId}/chat`,
+              { ciphertext: sealed.ciphertext, epoch: sealed.epoch },
+              { userInitiated: true },
+            );
             if (!res?.message?.id) return;
             setSentMessages((curr) =>
               curr.some((m) => m.id === res.message.id) ? curr : [...curr, { ...res.message, message: body }],
