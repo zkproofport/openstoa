@@ -30,6 +30,8 @@
   },
   "devDependencies": {
     "@types/react": "*",
+    "jsdom": "^28.1.0",
+    "ts-mls": "^1.6.2",
     "typescript": "*",
     "vitest": "^3.2.4"
   },
