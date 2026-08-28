@@ -20,7 +20,10 @@
  * comment-box label) are fixed; brand names are exempt by name below.
  *
  * The docs page is exempt by PATH, not by pattern, so a new English sentence
- * anywhere else still fails.
+ * anywhere else still fails. That exemption is the OWNER'S CALL, confirmed
+ * 2026-08-28: that page is for developers integrating against the API and
+ * stays English. Do not "fix" its sixteen strings — and do not widen the
+ * exemption to anything else on the strength of this line.
  *
  * ── Prose cannot satisfy this ────────────────────────────────────────────
  *
