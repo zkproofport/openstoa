@@ -29,6 +29,8 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@hpke/core": "1.9.0",
+    "@noble/ciphers": "2.1.1",
     "@noble/hashes": "2.0.1",
     "@types/react": "*",
     "jsdom": "^28.1.0",
