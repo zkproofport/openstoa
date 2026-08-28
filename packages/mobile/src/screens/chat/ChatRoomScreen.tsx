@@ -1845,9 +1845,18 @@ export function ChatRoomScreen() {
   // second member-list surface. DM rooms skip this: the "members" are
   // already the two people named in the header (see `kind` above).
   const openMembers = useCallback(() => {
+    /*
+     * Pushed on THIS stack, not jumped to under Topics.
+     *
+     * Jumping tabs put the member list on a stack it does not belong to, as
+     * the only route there — so it drew no back arrow and the only way out was
+     * the tab bar, which cannot return you to the conversation you were
+     * reading. Found on the device: the screen opened and there was no way
+     * back to the room.
+     */
     (navigation as unknown as { navigate: (name: string, params: unknown) => void }).navigate(
-      'TopicsTab',
-      { screen: 'TopicMembers', params: { topicId } },
+      'TopicMembers',
+      { topicId },
     );
   }, [navigation, topicId]);
 

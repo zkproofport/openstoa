@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import Feather from 'react-native-vector-icons/Feather';
 import { ChatListScreen } from '../../screens/chat/ChatListScreen';
 import { ChatRoomScreen } from '../../screens/chat/ChatRoomScreen';
+import { TopicMembersScreen } from '../../screens/topics/TopicMembersScreen';
 import { DmListScreen } from '../../screens/chat/DmListScreen';
 import { NewConversationScreen } from '../../screens/chat/NewConversationScreen';
 import { InAppBrowserScreen } from '../../screens/common/InAppBrowserScreen';
@@ -24,6 +25,17 @@ export type ChatStackParamList = {
   // (the more common case) rather than crashing on a missing param.
   ChatRoom: { topicId: string; topicTitle?: string; kind?: 'topic' | 'dm' };
   InAppBrowser: { url: string; title?: string };
+  /*
+   * The member list, hosted HERE as well as under Topics.
+   *
+   * The room's Members control used to jump to the Topics tab and show it
+   * there. On the device that is a dead end: the screen arrives as the only
+   * route pushed on a stack it does not belong to, so it draws no back arrow
+   * and there is no way out except the tab bar — and the tab bar cannot take
+   * you back to the conversation you were reading. Pushed on this stack it
+   * behaves the way anyone expects: back returns to the room.
+   */
+  TopicMembers: { topicId: string };
 };
 
 const Stack = createNativeStackNavigator<ChatStackParamList>();
@@ -79,6 +91,11 @@ export function ChatStack() {
         })}
       />
       <Stack.Screen name="DmList" component={DmListScreen} options={{ title: t('openstoa.dm.title') }} />
+      <Stack.Screen
+        name="TopicMembers"
+        component={TopicMembersScreen}
+        options={{ title: t('openstoa.members.title') }}
+      />
       <Stack.Screen
         name="NewConversation"
         component={NewConversationScreen}

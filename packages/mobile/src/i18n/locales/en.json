@@ -715,6 +715,7 @@
       "title": "Device data",
       "row": "Clear cache, or erase this device",
       "running": "Working…",
+      "checking": "Checking your key backup…",
       "clearCache": {
         "title": "Clear cache",
         "explain": "Frees up space by deleting copies this device can download again: decrypted messages, room history, the room list and saved pictures. Your keys are not touched, and every room stays open — the next visit is just slower.",

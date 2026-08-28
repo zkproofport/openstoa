@@ -192,6 +192,19 @@ export function DeviceStorageScreen() {
        * one, and warning them about a backup they have is how a warning stops
        * being read.
        */
+      /*
+       * THE SHEET OPENS FIRST, before the answer is asked for.
+       *
+       * It used to open only once the backup answer came back, so on the device
+       * a press did nothing visible for as long as that round trip took — and
+       * on a destructive control, nothing visible reads as broken. Pressed
+       * twice, nothing both times, which is exactly what happened here on
+       * 2026-08-28. What follows is a local deletion; there is no reason for a
+       * network read to stand between the press and the sheet.
+       */
+      setConfirm(null);
+      setStep('checking');
+
       let facts = { hasBackup: false, backupUpdatedAt: null as number | null };
       if (scope === 'device') {
         try {
@@ -206,7 +219,10 @@ export function DeviceStorageScreen() {
         }
       }
       setConfirm(eraseConfirm(scope, facts, Date.now()));
-      setStep('confirm');
+      // Only if the sheet is still the one we opened. Someone who cancelled
+      // while the answer was in flight must not have it reopened underneath
+      // them by a reply they are no longer waiting for.
+      setStep((current) => (current === 'checking' ? 'confirm' : current));
     },
     [client],
   );
@@ -268,8 +284,13 @@ export function DeviceStorageScreen() {
     setConfirm(null);
   }, []);
 
+  // A press is refused while one is already being handled — a control that
+  // looks idle invites a second press, and this one deletes things.
+  const busy = step === 'checking' || step === 'running';
+
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+    <View style={styles.root}>
+      <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('openstoa.deviceData.clearCache.title')}</Text>
         <Text style={styles.body}>{t('openstoa.deviceData.clearCache.explain')}</Text>
@@ -295,9 +316,11 @@ export function DeviceStorageScreen() {
             </Text>
           )}
         <TouchableOpacity
-          style={styles.action}
+          style={[styles.action, busy && styles.actionBusy]}
           onPress={() => void ask('cache')}
+          disabled={busy}
           accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
         >
           <Text style={styles.actionText}>{t('openstoa.deviceData.clearCache.action')}</Text>
         </TouchableOpacity>
@@ -313,9 +336,11 @@ export function DeviceStorageScreen() {
           */}
         <Text style={styles.warning}>{t('openstoa.deviceData.eraseDevice.backupFirst')}</Text>
         <TouchableOpacity
-          style={[styles.action, styles.actionDanger]}
+          style={[styles.action, styles.actionDanger, busy && styles.actionBusy]}
           onPress={() => void ask('device')}
+          disabled={busy}
           accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
         >
           <Text style={[styles.actionText, styles.actionDangerText]}>
             {t('openstoa.deviceData.eraseDevice.action')}
@@ -323,6 +348,16 @@ export function DeviceStorageScreen() {
         </TouchableOpacity>
       </View>
 
+      </ScrollView>
+
+      {/*
+        OUTSIDE the scrolling area, deliberately.
+        A modal nested inside a `ScrollView` did not appear at all on the device
+        under the new rendering engine — the sheet's markup was in the bundle,
+        the state said open, and the screen never changed. Its own sibling at
+        the root of the screen is where it belongs anyway: it covers the screen,
+        it does not scroll with the content.
+      */}
       <DeviceDataSheet
         step={step}
         confirm={confirm}
@@ -330,13 +365,14 @@ export function DeviceStorageScreen() {
         onProceed={() => void proceed()}
         onClose={close}
       />
-    </ScrollView>
+    </View>
   );
 }
 
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background.secondary },
+    actionBusy: { opacity: 0.5 },
     content: { padding: 16, gap: 16 },
     section: {
       backgroundColor: colors.background.primary,

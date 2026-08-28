@@ -33,6 +33,16 @@ import { eraseWasBlocked, eraseWasComplete } from '../lib/deviceDataErase';
 
 /** Where the flow is. The sheet is closed at `null`. */
 export type DeviceDataStep =
+  /**
+   * Open, but still finding out whether a backup exists.
+   *
+   * The sheet used to wait for that answer before opening at all, so on a slow
+   * link a destructive control looked simply dead — pressed twice, nothing,
+   * both times. Opening first and filling the answer in second is what makes a
+   * press visibly land. Nothing can be confirmed from here; the only control is
+   * the way out.
+   */
+  | 'checking'
   /** First confirmation. */
   | 'confirm'
   /** Second confirmation — only reachable when `confirm.requiresSecondConfirm`. */
@@ -65,17 +75,28 @@ export default function DeviceDataSheet({
   const { t } = useTranslation();
   const { colors } = useThemeColors();
 
-  if (!step || !confirm) return null;
+  // `confirm` is absent while the backup answer is still on its way, and the
+  // sheet must be up by then — that wait is exactly when a person needs to see
+  // that their press did something.
+  if (!step || (step !== 'checking' && !confirm)) return null;
 
   const styles = makeStyles(colors);
-  const destructive = confirm.scope === 'device';
+  const destructive = confirm?.scope === 'device';
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <ScrollView contentContainerStyle={styles.content}>
-            {step === 'done' && report ? (
+            {step === 'checking' ? (
+              <>
+                <Text style={styles.title}>{t('openstoa.deviceData.checking')}</Text>
+                <ActivityIndicator color={colors.brand.primary} />
+                <TouchableOpacity style={styles.plain} onPress={onClose}>
+                  <Text style={styles.plainText}>{t('openstoa.common.cancel')}</Text>
+                </TouchableOpacity>
+              </>
+            ) : step === 'done' && report ? (
               <Report report={report} styles={styles} t={t} onClose={onClose} />
             ) : step === 'running' ? (
               <>
@@ -111,9 +132,9 @@ export default function DeviceDataSheet({
               </>
             ) : (
               <>
-                <Text style={styles.title}>{t(confirm.titleKey)}</Text>
+                <Text style={styles.title}>{t(confirm!.titleKey)}</Text>
                 <Text style={destructive ? styles.warning : styles.body}>
-                  {t(confirm.bodyKey, confirm.bodyValues)}
+                  {t(confirm!.bodyKey, confirm!.bodyValues)}
                 </Text>
                 <TouchableOpacity
                   style={[styles.primary, destructive && styles.primaryDanger]}
@@ -122,7 +143,7 @@ export default function DeviceDataSheet({
                 >
                   <Text style={styles.primaryText}>
                     {t(
-                      confirm.scope === 'cache'
+                      confirm!.scope === 'cache'
                         ? 'openstoa.deviceData.clearCache.action'
                         : 'openstoa.deviceData.eraseDevice.action',
                     )}
