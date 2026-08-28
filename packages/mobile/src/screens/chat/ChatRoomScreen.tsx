@@ -141,6 +141,11 @@ type LocalMessage = ChatMessage & {
 
 
 import { useChatSocket } from '../../api/chatSocket';
+import {
+  EDGE_REFUSAL_RETRIES,
+  edgeRefusalRetryDelayMs,
+  isEdgeRefusal,
+} from '../../api/openstoaClient';
 import { getMlsSessionStore, getTakSessionStore, toDisplayMessageMls, ackDeliveryMls, report } from '../../crypto/mobileTransport';
 import {
   mirrorPushSessionToSharedKeychain,
@@ -351,6 +356,16 @@ export function makeStyles(colors: ThemeColors) {
       alignItems: 'center',
       gap: 6,
       paddingRight: 6,
+      /*
+       * Never squeezed out of the row.
+       *
+       * These controls sit to the LEFT of a bubble that may claim 75% of the
+       * width, in a row aligned to the right — so when the bubble ran wide
+       * (a pasted link is one long unbreakable word) the overflow went off the
+       * left edge of the screen and Retry became unreachable. The bubble gives
+       * way instead; it has text that wraps, and these do not.
+       */
+      flexShrink: 0,
     },
     sendFailedMark: {
       color: colors.status.danger,
@@ -535,6 +550,9 @@ export function makeStyles(colors: ThemeColors) {
     },
     bubble: {
       maxWidth: '75%' as const,
+      // Give way to the failed-send controls rather than pushing them off the
+      // screen — see `sendFailed`.
+      flexShrink: 1,
       borderRadius: RADIUS.modal,
       paddingHorizontal: 12,
       paddingVertical: 8,
@@ -2757,7 +2775,7 @@ export function ChatRoomScreen() {
       url={imageViewer?.uri ?? null}
       onClose={() => setImageViewer(null)}
       onSave={imageViewer?.save}
-      saveLabel={t('openstoa.chat.media.save')}
+      saveLabel={t('openstoa.chat.media.share')}
       closeLabel={t('openstoa.chat.media.close')}
     />
     <PeerProfileCard
@@ -3432,7 +3450,22 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
         }
         console.log('[OG] result', { firstUrl, hasTitle: !!res?.title, hasImage: !!res?.image, raw: res });
         return res;
-      } catch {
+      } catch (err) {
+        /*
+         * A refusal from OUR OWN edge is not an answer about the link.
+         *
+         * Everything below treats a failure as "this site has no preview" and
+         * remembers it for an hour. When the edge was rate-limiting us, that
+         * turned a moment's refusal into a permanent verdict: the card for a
+         * perfectly good link never came back, not on scroll, not on reopening
+         * the room. Seen on 2026-08-28 — a Claude link and a Naver place link
+         * both lost their card that way, and the second one had already been
+         * scraped successfully; only the picture was refused.
+         *
+         * Rethrow so the query records a failure instead of caching a null,
+         * and let it retry once.
+         */
+        if (isEdgeRefusal(err)) throw err;
         // No card for this link. The message text is rendered either way, so a
         // site that refuses server-side fetches (reddit answers ours with a
         // 502) costs the preview, never the message.
@@ -3443,9 +3476,14 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
     // image directly) — saves a wasted server hit per image message.
     enabled: firstUrl !== null && !imageUrl,
     staleTime: 60 * 60 * 1000, // 1 hour
-    // A link with no preview is the normal outcome for plenty of sites, not a
-    // transient error — retrying just repeats a request already answered.
-    retry: false,
+    /*
+     * A link with no preview is the normal outcome for plenty of sites, not a
+     * transient error — retrying just repeats a request already answered. The
+     * one exception is our own edge refusing us, which says nothing about the
+     * link; that one is worth asking again once the ban has had time to lift.
+     */
+    retry: (count, err) => isEdgeRefusal(err) && count < EDGE_REFUSAL_RETRIES,
+    retryDelay: edgeRefusalRetryDelayMs,
   });
 
   const hasOG = ogData != null && (ogData.title != null || ogData.image != null);

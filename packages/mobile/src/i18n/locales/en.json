@@ -530,6 +530,7 @@
         "locked": "Encrypted image — this device has no key for it yet",
         "reload": "Reload",
         "save": "Save",
+        "share": "Share",
         "saveFailed": "Could not save that image.",
         "saved": "Saved to Photos.",
         "saveUnavailable": "Saving needs a newer version of the app.",

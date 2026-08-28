@@ -12,6 +12,7 @@
  * screen (which probes the object); this only draws the answer.
  */
 import React from 'react';
+import Feather from 'react-native-vector-icons/Feather';
 import {
   ActivityIndicator,
   Text,
@@ -22,6 +23,18 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+/*
+ * Icons, not words.
+ *
+ * These controls sit to the left of a bubble that may claim three quarters of
+ * the width, so "Resend" and "Delete" spelled out pushed themselves off the
+ * left edge of the screen — Retry became literally unreachable on a message
+ * carrying a long link. Two glyphs cost a fifth of the space and read the same
+ * in every language the app ships. The words survive as the accessibility
+ * label, which is the half a screen reader needed anyway.
+ */
+const ICON_SIZE = 18;
+
 export interface MessageFailedControlsProps {
   /**
    * The attachment's bytes are gone — the collector took them before the app
@@ -31,14 +44,17 @@ export interface MessageFailedControlsProps {
    */
   expired?: boolean;
   /**
-   * The retry is in flight — show a spinner where Retry was.
+   * The retry is in flight — a spinner replaces BOTH controls.
    *
    * Without it, pressing Retry looked like nothing happened. A send that fails
    * before it reaches the network fails in milliseconds, so the row flickered
    * and came back reading exactly as before; the only honest reading was that
-   * the button was dead. Discard stays live throughout, because a retry can sit
-   * on the request deadline for half a minute and being unable to give up is
-   * worse than the small chance of discarding one that then succeeds.
+   * the button was dead.
+   *
+   * Discard goes too. It was left live at first, on the reasoning that an
+   * attempt can sit on the deadline for half a minute — but a Delete beside a
+   * spinner invites discarding a message that is still on its way, and the
+   * attempt is bounded by that deadline anyway.
    */
   retrying?: boolean;
   onRetry: () => void;
@@ -66,21 +82,37 @@ export function MessageFailedControls({
   return (
     <View style={styles.sendFailed}>
       <Text style={styles.sendFailedMark}>!</Text>
-      {expired ? (
-        <Text style={styles.lockedBody}>{t('openstoa.chat.media.expired')}</Text>
-      ) : retrying ? (
+      {/* Only the spinner stands alone. Discard is the way out of both other
+          states, and an expired attachment has nothing BUT a way out. */}
+      {retrying ? (
         <ActivityIndicator
           size="small"
           accessibilityLabel={t('openstoa.chat.sendFailedRetrying')}
         />
       ) : (
-        <TouchableOpacity onPress={onRetry} activeOpacity={0.7}>
-          <Text style={styles.sendFailedAction}>{t('openstoa.chat.sendFailedRetry')}</Text>
-        </TouchableOpacity>
+        <>
+          {expired ? (
+            <Text style={styles.lockedBody}>{t('openstoa.chat.media.expired')}</Text>
+          ) : (
+            <TouchableOpacity
+              onPress={onRetry}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('openstoa.chat.sendFailedRetry')}
+            >
+              <Feather name="refresh-cw" size={ICON_SIZE} style={styles.sendFailedAction} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={onDiscard}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('openstoa.chat.sendFailedDiscard')}
+          >
+            <Feather name="x" size={ICON_SIZE} style={styles.sendFailedDiscard} />
+          </TouchableOpacity>
+        </>
       )}
-      <TouchableOpacity onPress={onDiscard} activeOpacity={0.7}>
-        <Text style={styles.sendFailedDiscard}>{t('openstoa.chat.sendFailedDiscard')}</Text>
-      </TouchableOpacity>
     </View>
   );
 }

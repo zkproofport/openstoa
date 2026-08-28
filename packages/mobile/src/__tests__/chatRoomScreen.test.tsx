@@ -85,7 +85,15 @@ function storedRow(
   };
 }
 
-/** The label `MessageFailedControls` renders for a row that can still retry. */
+/**
+ * How a row that can still retry is recognised.
+ *
+ * Found as a CONTROL, not as text on the screen: the retry is a refresh glyph
+ * now — spelled out it was being pushed off the left edge by a wide bubble —
+ * and the words survive only as its accessibility label, which is exactly what
+ * a person using a screen reader hears. Four tests here went red on that change
+ * while still describing the right contract.
+ */
 const RETRY_LABEL = 'openstoa.chat.sendFailedRetry';
 /** ...and the one it renders instead once the object has probably been collected. */
 const EXPIRED_LABEL = 'openstoa.chat.media.expired';
@@ -148,7 +156,7 @@ describe('CONTRACT: a failed attachment is put back on mount', () => {
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host: hostWithRows([row]) });
     // The row is back, and it is back with its controls — a restored row that
     // renders without a retry is the same as no restore from the user's side.
-    expect(rendered.text()).toContain(RETRY_LABEL);
+    expect(rendered.pressableWith(RETRY_LABEL)).toBeDefined();
     rendered.unmount();
   });
 
@@ -180,7 +188,7 @@ describe('BOUNDARY: the expiry hint', () => {
   it('a row inside the retry window is not marked expired', async () => {
     const row = storedRow({ createdAt: Date.now() - 60_000 });
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host: hostWithRows([row]) });
-    expect(rendered.text()).toContain(RETRY_LABEL);
+    expect(rendered.pressableWith(RETRY_LABEL)).toBeDefined();
     rendered.unmount();
   });
 
@@ -191,7 +199,7 @@ describe('BOUNDARY: the expiry hint', () => {
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host: hostWithRows([row]) });
     const text = rendered.text();
     expect(text).toContain(EXPIRED_LABEL);
-    expect(text).not.toContain(RETRY_LABEL);
+    expect(rendered.pressableWith(RETRY_LABEL)).toBeUndefined();
     rendered.unmount();
   });
 });
@@ -260,7 +268,7 @@ describe('HOSTILE / EMPTY stored state never reaches the screen', () => {
     const tampered = { ...row, key: chatMediaObjectKey(TOPIC, 'someone-else', 'a0b1c2d3e4f5061728394a5b6c7d8e9f') };
     const host = hostWithRows([tampered as PersistedFailedRow]);
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
-    expect(rendered.text()).not.toContain(RETRY_LABEL);
+    expect(rendered.pressableWith(RETRY_LABEL)).toBeUndefined();
     rendered.unmount();
   });
 
@@ -281,7 +289,7 @@ describe('HOSTILE / EMPTY stored state never reaches the screen', () => {
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host });
     const still = host.localStore.items.get(failedRowKey(TOPIC));
     expect(JSON.parse(still ?? '[]')).toHaveLength(1);
-    expect(rendered.text()).not.toContain(RETRY_LABEL);
+    expect(rendered.pressableWith(RETRY_LABEL)).toBeUndefined();
     rendered.unmount();
   });
 });
@@ -337,7 +345,7 @@ describe('CONTRACT: an unsent MESSAGE is put back on mount', () => {
     // Both halves matter: the sentence itself, and a Retry. A restored row that
     // renders without one is the same as no restore from the user's side.
     expect(out).toContain('회의 늦어요 🙇');
-    expect(out).toContain(RETRY_LABEL);
+    expect(rendered.pressableWith(RETRY_LABEL)).toBeDefined();
     rendered.unmount();
   });
 
@@ -347,7 +355,7 @@ describe('CONTRACT: an unsent MESSAGE is put back on mount', () => {
     const old = textRow({ createdAt: Date.now() - 6 * 60 * 60 * 1000 });
     const { rendered } = await renderScreen(<ChatRoomScreen />, { host: hostWithRows([old]) });
     expect(rendered.text()).not.toContain(EXPIRED_LABEL);
-    expect(rendered.text()).toContain(RETRY_LABEL);
+    expect(rendered.pressableWith(RETRY_LABEL)).toBeDefined();
     rendered.unmount();
   });
 

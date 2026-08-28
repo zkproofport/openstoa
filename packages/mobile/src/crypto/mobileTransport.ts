@@ -397,11 +397,53 @@ function armDiagnostics(client: OpenStoaClient): void {
   _diagClient = client;
 }
 
+/*
+ * Lines waiting to be sent, and the timer that will send them.
+ *
+ * One request per line cost TEN of the sixty-nine requests a single room open
+ * spent on 2026-08-28 — against a limit of a hundred a minute, which the open
+ * crossed, taking the link preview and the chat subscription down with it.
+ * Narration must not be the reason a person's chat stops working.
+ *
+ * Half a second: long enough that a burst of steps rides in one request, short
+ * enough that the last line before a crash has usually left. Lines are dropped
+ * past a cap rather than grown without bound, and the reader is told how many,
+ * because a silently truncated log reads as a complete one.
+ */
+const DIAG_FLUSH_MS = 500;
+const DIAG_MAX_LINES = 100;
+let _diagQueue: { step: string; detail: Record<string, unknown> }[] = [];
+let _diagDropped = 0;
+let _diagTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushDiagnostics(): void {
+  _diagTimer = null;
+  const lines = _diagQueue;
+  const dropped = _diagDropped;
+  _diagQueue = [];
+  _diagDropped = 0;
+  if (lines.length === 0) return;
+  void _diagClient
+    ?.post('/api/diag/e2ee', { lines, ...(dropped ? { dropped } : {}) })
+    .catch(() => {});
+}
+
+/** Test seam: send whatever is queued right now, and forget the timer. */
+export function flushDiagnosticsNow(): void {
+  if (_diagTimer) clearTimeout(_diagTimer);
+  flushDiagnostics();
+}
+
 export function report(step: string, detail: Record<string, unknown>): void {
   try {
     console.log('[TAKBACKUP]', step, JSON.stringify(detail));
+    if (_diagQueue.length >= DIAG_MAX_LINES) {
+      _diagDropped += 1;
+      return;
+    }
+    _diagQueue.push({ step, detail });
     // Fire-and-forget: diagnosing a failure must never cause one.
-    void _diagClient?.post('/api/diag/e2ee', { step, detail }).catch(() => {});
+    if (!_diagTimer) _diagTimer = setTimeout(flushDiagnostics, DIAG_FLUSH_MS);
   } catch {
     // Diagnostics must never be the thing that breaks chat.
   }

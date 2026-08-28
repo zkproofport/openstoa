@@ -53,23 +53,32 @@ describe('a retry that is under way', () => {
     expect(r.text()).not.toContain(LABEL['openstoa.chat.sendFailedRetry']);
   });
 
-  it('keeps Discard live, because a retry can sit on the deadline for half a minute', async () => {
-    const { element, onDiscard } = setup({ retrying: true });
+  it('hides Discard too, so nothing invites deleting a message still on its way', async () => {
+    const { element } = setup({ retrying: true });
     const r = await render(element);
 
+    expect(r.pressableWith(LABEL['openstoa.chat.sendFailedDiscard'])).toBeUndefined();
+    expect(r.text()).not.toContain(LABEL['openstoa.chat.sendFailedDiscard']);
+  });
+
+  it('the spinner outranks an expired attachment — one thing at a time', async () => {
+    const { element } = setup({ retrying: true, expired: true });
+    const r = await render(element);
+
+    expect(r.text()).not.toContain(LABEL['openstoa.chat.media.expired']);
+  });
+
+  it('CONTRACT: an expired attachment keeps Discard, its only way out', async () => {
+    const { element, onDiscard } = setup({ expired: true });
+    const r = await render(element);
+
+    // No retry — the bytes are gone — but a dead end with no exit would leave
+    // the row on screen for good.
+    expect(r.pressableWith(LABEL['openstoa.chat.sendFailedRetry'])).toBeUndefined();
     const discard = r.pressableWith(LABEL['openstoa.chat.sendFailedDiscard']);
     expect(discard).toBeDefined();
     await r.press(discard!);
     expect(onDiscard).toHaveBeenCalledTimes(1);
-  });
-
-  it('an attachment whose bytes are gone says so rather than spinning forever', async () => {
-    // Expired outranks retrying: there is nothing left to send, so a spinner
-    // would promise an attempt that will not be made.
-    const { element } = setup({ retrying: true, expired: true });
-    const r = await render(element);
-
-    expect(r.text()).toContain(LABEL['openstoa.chat.media.expired']);
   });
 
   it('BOUNDARY: not retrying draws exactly what it always drew', async () => {

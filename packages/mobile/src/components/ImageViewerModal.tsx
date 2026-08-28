@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
+  ScrollView,
   StatusBar,
   StyleSheet,
   TouchableOpacity,
@@ -12,6 +13,7 @@ import Feather from 'react-native-vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RADIUS } from '../theme/tokens';
 import { GatedImage } from './GatedImage';
+import { probeImageSize } from './ChatImage';
 
 interface Props {
   url: string | null;
@@ -19,12 +21,12 @@ interface Props {
   /**
    * Offer a way to keep this picture. Optional because not every image the
    * viewer shows is one this device holds the bytes for — a plaintext image
-   * from before attachments were encrypted is a remote URL, and "save" for
+   * from before attachments were encrypted is a remote URL, and offering it for
    * that would mean a download this component has no business starting.
    */
   onSave?: () => void;
   /**
-   * The save control's accessible name. NOT drawn.
+   * The control's accessible name. NOT drawn.
    *
    * The control is an icon, so this is what a screen reader announces and the
    * only reason the caller still owns the string — an unlabelled icon button is
@@ -46,9 +48,16 @@ interface Props {
  * ground fixes it for every image rather than for the ones that happen to be
  * dark, and it is where every photo viewer people already use puts them.
  *
- * ICONS, NOT WORDS. "Save" is a word that needs translating, gets clipped, and
- * grows the control; a download glyph is understood without either. The strings
- * stay as accessible names.
+ * ICONS, NOT WORDS. A word needs translating, gets clipped, and grows the
+ * control; a glyph is understood without any of that. The strings stay as
+ * accessible names.
+ *
+ * A SHARE GLYPH, NOT A DOWNLOAD ARROW. The arrow promises that pressing it puts
+ * the picture in the photo library, and that is not what happens: it opens the
+ * system share sheet, where saving to Photos is one choice among sending it to
+ * another app or cancelling. `saveAttachment` even reports those three outcomes
+ * separately. An icon that promises what the code does not do is the defect —
+ * reported as "누르면 바로 안 받고 공유하기가 뜬다".
  *
  * CLOSE LEFT, SAVE RIGHT — opposite ends, because they do opposite things and a
  * destructive-adjacent mis-tap ("I meant to keep it, I dismissed it") is the one
@@ -69,10 +78,45 @@ export default function ImageViewerModal({
 }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+
+  /*
+   * A TALL PICTURE IS SHOWN AT FULL WIDTH AND SCROLLED, not shrunk to fit.
+   *
+   * Fitting the whole image on one screen is right for a photo and useless for
+   * a screenshot: a phone-page capture is roughly 1:9 here, so fitting it made
+   * a sliver about a tenth of the screen wide with nothing readable in it. The
+   * same picture in KakaoTalk opens at full width and scrolls down, which is
+   * what anyone opening a screenshot is trying to do — read it.
+   *
+   * The measurement is the picture's own. Until it lands, the old fit-to-screen
+   * behaviour holds, so nothing flickers and an unreadable size just keeps it.
+   */
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    setNatural(null);
+    if (!url) return;
+    let alive = true;
+    void probeImageSize(url).then((size) => {
+      if (!alive || !size || size.width <= 0 || size.height <= 0) return;
+      setNatural(size);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
   if (!url) return null;
 
   const barHeight = 56;
   const topInset = insets.top;
+  const visibleHeight = height - barHeight - topInset - insets.bottom;
+
+  // At full width, how tall would it be? Taller than the screen means scroll.
+  const fullWidthHeight = natural ? (width * natural.height) / natural.width : 0;
+  const scrolls = fullWidthHeight > visibleHeight;
+  const imageStyle = scrolls
+    ? { width, height: fullWidthHeight }
+    : { width, height: visibleHeight };
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -83,17 +127,38 @@ export default function ImageViewerModal({
           screen (as this used to) makes every tap that misses an icon dismiss
           the viewer, so the bar's own padding becomes a trap.
         */}
-        <TouchableWithoutFeedback onPress={onClose} accessible={false}>
-          <View style={styles.imageArea} pointerEvents="box-only">
-            <View pointerEvents="none">
-              <GatedImage
-                uri={url}
-                style={{ width, height: height - barHeight - topInset - insets.bottom }}
-                resizeMode="contain"
-              />
+        <ScrollView
+          style={styles.imageArea}
+          // Centres a short picture; lets a tall one start at the top, where
+          // reading it starts.
+          contentContainerStyle={scrolls ? undefined : styles.centred}
+          // The bar sits over the top of the picture, so the first screenful
+          // would otherwise be hidden behind it.
+          contentInset={{ top: barHeight + topInset }}
+          contentOffset={{ x: 0, y: -(barHeight + topInset) }}
+          scrollEnabled={scrolls}
+          showsVerticalScrollIndicator={scrolls}
+        >
+          {/*
+            Tap-to-dismiss covers the PICTURE only, not the bar. Wrapping the
+            whole screen (as this used to) makes every tap that misses an icon
+            dismiss the viewer, so the bar's own padding becomes a trap.
+          */}
+          <TouchableWithoutFeedback onPress={onClose} accessible={false}>
+            <View pointerEvents="box-only">
+              <View pointerEvents="none">
+                <GatedImage
+                  uri={url}
+                  style={imageStyle}
+                  // `contain` while it still fits the screen, `cover` once it is
+                  // being scrolled — at full width with the true height there is
+                  // nothing to crop, and `contain` would letterbox it instead.
+                  resizeMode={scrolls ? 'cover' : 'contain'}
+                />
+              </View>
             </View>
-          </View>
-        </TouchableWithoutFeedback>
+          </TouchableWithoutFeedback>
+        </ScrollView>
 
         <View style={[styles.bar, { top: 0, paddingTop: topInset, height: barHeight + topInset }]}>
           <TouchableOpacity
@@ -118,7 +183,7 @@ export default function ImageViewerModal({
               testID="image-viewer-save"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Feather name="download" size={22} color="#fff" />
+              <Feather name="share" size={22} color="#fff" />
             </TouchableOpacity>
           ) : (
             // Holds the row's shape so `x` does not drift to the centre when
@@ -138,6 +203,9 @@ const styles = StyleSheet.create({
   },
   imageArea: {
     flex: 1,
+  },
+  centred: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

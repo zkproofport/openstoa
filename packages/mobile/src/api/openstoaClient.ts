@@ -176,6 +176,30 @@ export class OpenStoaRateLimitedError extends Error {
 }
 
 /**
+ * Is this our own edge refusing us, rather than an answer about the thing asked
+ * for?
+ *
+ * The difference decides whether a failure is worth remembering. A site with no
+ * link preview really has none, and asking again just repeats a question
+ * already answered — so that result is cached for an hour. A 429 from our edge
+ * says nothing about the link at all, and caching it turned one refused moment
+ * into a card that never came back, not on scroll, not on reopening the room.
+ *
+ * Named and exported so callers share ONE answer to the question, and so a test
+ * can call the real one. A previous guard in this area reproduced the check it
+ * was guarding, and deleting the real lines left every test green.
+ */
+export function isEdgeRefusal(err: unknown): boolean {
+  return err instanceof OpenStoaRateLimitedError;
+}
+
+/** How many times to ask again after the edge refused, and how long to wait. */
+export const EDGE_REFUSAL_RETRIES = 3;
+export function edgeRefusalRetryDelayMs(attempt: number): number {
+  return Math.min(30_000, 5_000 * 2 ** attempt);
+}
+
+/**
  * The request never reached the server — aeroplane mode, no signal, DNS, a
  * dropped connection mid-flight.
  *

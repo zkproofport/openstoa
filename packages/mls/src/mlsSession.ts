@@ -178,17 +178,35 @@ export class MlsSessionStore {
    */
   async accountId(): Promise<string | null> {
     if (!this.userIdProvider) return null;
+    if (this._accountId !== undefined) return this._accountId;
     try {
-      return (await this.userIdProvider()) || null;
+      this._accountId = (await this.userIdProvider()) || null;
     } catch {
-      return null;
+      return null; // NOT remembered — a failed lookup must be retried
     }
+    return this._accountId;
   }
+
+  /**
+   * The signed-in account, asked for ONCE.
+   *
+   * Reading history and minting this device's leaf both need it, and neither
+   * cached, so opening one room asked the server who we were seven times.
+   * Measured through the load balancer on 2026-08-28, when a room open cost 69
+   * requests against a limit of 100 a minute and the link preview was among the
+   * sixteen refused.
+   *
+   * Safe to hold for the life of this store because the store IS the session:
+   * signing out and recovering both drop it (`_store = null` in
+   * `mobileTransport`), so a different account never sees another's id.
+   * `undefined` means not yet asked; `null` means asked and nobody is signed in.
+   */
+  private _accountId: string | null | undefined = undefined;
 
   private async mintIdentity(): Promise<string> {
     if (!this.userIdProvider) return this.identity;
     try {
-      const userId = await this.userIdProvider();
+      const userId = await this.accountId();
       return userId ? leafIdentity(userId, this.identity) : this.identity;
     } catch {
       return this.identity;

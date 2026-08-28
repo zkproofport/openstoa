@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -9,6 +9,13 @@ import {
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
+import { probeImageSize } from './ChatImage';
+
+/**
+ * The shape the preview frame is drawn at — the aspect `og:image` is authored
+ * for, and what every messenger reserves.
+ */
+const OG_FRAME_ASPECT = 1.91;
 
 export interface OGData {
   title: string | null;
@@ -89,9 +96,7 @@ function makeStyles(colors: ThemeColors) {
     },
     compactImage: {
       width: '100%',
-      // 1.91:1 — the aspect `og:image` is authored for. Present in every state,
-      // so a preview that resolves without an image does not shrink the card
-      // and drag the conversation with it.
+      // 1.91:1 — the aspect `og:image` is authored for.
       aspectRatio: 1.91,
       backgroundColor: colors.background.tertiary,
     },
@@ -136,6 +141,30 @@ export function OGPreviewCard({ data, onPress, compact, host, loading, onLongPre
   const showFavicon = !!data.favicon && !faviconFailed;
   const showImage = !!data.image && !imageFailed;
 
+  /*
+   * Does this picture have to be shown WHOLE rather than filling the frame?
+   *
+   * A wide photo cropped to the frame looks like a photo. A square logo cropped
+   * to the frame looks broken — the Ceph mark lost its top and bottom while the
+   * same link in KakaoTalk showed it complete. Undefined until measured, and
+   * `cover` until then: filling is right for the common case, and a card that
+   * waits for a measurement before drawing anything is a card that flickers.
+   */
+  const [fitsWhole, setFitsWhole] = useState(false);
+  useEffect(() => {
+    if (!showImage || !data.image) return;
+    let alive = true;
+    void probeImageSize(data.image).then((size) => {
+      // Unmounted mid-probe, or a file whose size cannot be read: leave the
+      // default. Never a guess from the URL — plenty of logos end in `.jpg`.
+      if (!alive || !size || size.width <= 0 || size.height <= 0) return;
+      setFitsWhole(size.width / size.height < OG_FRAME_ASPECT);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [showImage, data.image]);
+
   if (compact) {
     return (
       <TouchableOpacity
@@ -145,15 +174,37 @@ export function OGPreviewCard({ data, onPress, compact, host, loading, onLongPre
         delayLongPress={400}
         activeOpacity={0.75}
       >
-        {/* The image block exists only when there IS an image. Reserving it
-            either way left a large empty rectangle on every card for a page
-            with no `og:image`, which reads as a picture that failed to load.
-            KakaoTalk drops it, and so does this. */}
-        {showImage ? (
+        {/*
+          RESERVED WHILE LOADING, then kept or dropped once the answer is in.
+          Three states, and each one is a deliberate trade:
+
+          - loading: the space is held. Most links have a picture, so holding it
+            is the guess that moves the conversation least — and not holding it
+            was a regression. This card used to be one height in every state;
+            when the empty-rectangle fix below landed, the image became
+            conditional and the fixed height went with it, while the comment
+            still described the old rule. What the sender saw was a short grey
+            box that suddenly grew.
+          - resolved WITH a picture: same height as the loading state, so
+            nothing moves at the moment it arrives.
+          - resolved WITHOUT one: dropped. Reserving it forever left a large
+            empty rectangle that reads as a picture which failed to load, on
+            every card for a page with no `og:image`. KakaoTalk drops it too.
+            This is the one state that changes height, and it changes once.
+
+          A LOGO IS NOT A PHOTO. Filling the frame beheaded the Ceph logo — a
+          square image cropped to 1.91:1 loses two thirds of its height — while
+          the same link in KakaoTalk showed it whole. A picture wider than the
+          frame fills it; anything squarer or taller is fitted inside instead.
+          The measurement is the image's own, never a guess from the filename.
+        */}
+        {loading && !showImage ? (
+          <View style={styles.compactImage} />
+        ) : showImage ? (
           <Image
             source={{ uri: data.image! }}
             style={styles.compactImage}
-            resizeMode="cover"
+            resizeMode={fitsWhole ? 'contain' : 'cover'}
             onError={() => setImageFailed(true)}
           />
         ) : null}

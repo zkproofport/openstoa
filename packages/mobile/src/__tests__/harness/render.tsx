@@ -78,8 +78,25 @@ export async function render(element: React.ReactElement): Promise<Rendered> {
    */
   const isPressable = (type: unknown): boolean =>
     typeof type === 'string' && (type as string) !== '' && PRESSABLE_TYPES.has(type as string);
+  /*
+   * A control is found by what it SAYS — its visible text, or, when it shows a
+   * glyph instead of words, its accessibility label.
+   *
+   * Text alone was enough until the failed-send controls became a refresh icon
+   * and a cross (they were being pushed off the left edge of the screen as
+   * words). Six tests went red at once, all of them still describing the right
+   * contract — the harness had simply lost the only handle an icon has. A
+   * screen reader finds these controls by exactly this label, so matching on it
+   * is not a workaround for the icons; it is the same question a person asks.
+   */
   const pressablesWith = (label: string): ReactTestInstance[] =>
-    root.findAll((n) => isPressable(n.type)).filter((n) => collectText(n).includes(label));
+    root
+      .findAll((n) => isPressable(n.type))
+      .filter(
+        (n) =>
+          collectText(n).includes(label) ||
+          String(n.props.accessibilityLabel ?? '').includes(label),
+      );
 
   return {
     root,
