@@ -68,3 +68,34 @@ export function deviceIdOfLeaf(identity: string): string | null {
 export function leafBelongsTo(identity: string, userId: string): boolean {
   return userIdOfLeaf(identity) === userId;
 }
+
+/**
+ * Make a string safe to use as a key in the device's secure store.
+ *
+ * iOS accepts only letters, digits and `.`, `-`, `_` in a key, and REJECTS the
+ * write — it does not sanitise or truncate. A leaf identity is
+ * `<userId>:<deviceId>`, so the colon alone was enough to make every save and
+ * every read throw. Silently, because both sides swallowed the failure: the
+ * save was best-effort and the read fell through to "no saved state".
+ *
+ * The cost of that was not a lost cache. A device that cannot read its own
+ * saved room state joins the room AGAIN, as a new leaf — so every app launch
+ * added a device. Measured on staging on 2026-08-28: one phone, eleven devices
+ * in one room, two of them minutes apart from plain restarts. Every member then
+ * wraps a key bundle for each of them.
+ *
+ * Escaping rather than stripping, because two identities must never collapse
+ * into one key: a stripped `a:b` and `ab` would share a room's state. Every
+ * character outside the safe set becomes `-` and two hex digits, and a literal
+ * `-` is escaped the same way so the mapping stays one-to-one.
+ *
+ * Android has no such restriction, which is why this never showed up there —
+ * and why the fix has to keep reading the old key, see `legacyStoreKey`.
+ */
+export function storeKeySafe(s: string): string {
+  let out = '';
+  for (const ch of s) {
+    out += /[A-Za-z0-9._]/.test(ch) ? ch : `-${ch.charCodeAt(0).toString(16).padStart(2, '0')}`;
+  }
+  return out;
+}

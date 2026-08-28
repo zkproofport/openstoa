@@ -17,7 +17,7 @@
  */
 import * as gc from './groupClient';
 import type { SealedMessage } from './groupClient';
-import { leafIdentity, userIdOfLeaf } from './leafIdentity';
+import { leafIdentity, storeKeySafe, userIdOfLeaf } from './leafIdentity';
 
 export interface CommitLogEntry {
   epoch: number;
@@ -105,6 +105,15 @@ export class MlsSessionStore {
      * one store is no worse off than before.
      */
     private identityStore?: SecureKVStore,
+    /**
+     * Say what happened, for a build whose console nobody can reach.
+     *
+     * Only the three facts that decide whether this device joins as a NEW LEAF:
+     * which identity it resolved, whether the saved room state came back, and
+     * whether it ended up minting a leaf anyway. Optional, so the web and the
+     * SDK carry nothing.
+     */
+    private narrate?: (step: string, detail: Record<string, unknown>) => void,
   ) {}
 
   /**
@@ -139,7 +148,27 @@ export class MlsSessionStore {
     return s;
   }
 
+  /**
+   * Where this device's state for one room is kept.
+   *
+   * The identity is escaped, because it contains a colon and iOS REJECTS a
+   * secure-store key that has one — see `storeKeySafe`. Unescaped, every save
+   * and every read threw, the device never found its own state, and it rejoined
+   * the room as a new leaf on every launch.
+   */
   private stateKey(topicId: string): string {
+    return `mls.state.${storeKeySafe(this.identity)}.${topicId}`;
+  }
+
+  /**
+   * The key this state was written under before the escaping landed.
+   *
+   * Only Android ever succeeded in writing one — iOS threw both ways — so this
+   * exists to stop an Android device losing its room on the upgrade and joining
+   * again, which is the very thing being fixed. Read once, rewritten under the
+   * escaped key, and never written again.
+   */
+  private legacyStateKey(topicId: string): string {
     return `mls.state.${this.identity}.${topicId}`;
   }
 
@@ -247,6 +276,7 @@ export class MlsSessionStore {
 
       if (savedId) {
         this.identity = savedId;
+        this.narrate?.('mls/identity', { topicId, reused: true, id: savedId.slice(0, 24) });
       } else {
         await idStore.set('mls.identity', await this.mintIdentity());
         // Re-read rather than trusting what we just wrote: on the write path the
@@ -254,6 +284,7 @@ export class MlsSessionStore {
         // and two leaves for one device is exactly what persisting it prevents.
         const id = await idStore.get('mls.identity');
         if (id) this.identity = id;
+        this.narrate?.('mls/identity', { topicId, reused: false, id: this.identity.slice(0, 24) });
       }
     }
 
@@ -262,13 +293,48 @@ export class MlsSessionStore {
     // readable. Falls through to a fresh bootstrap on miss or restore failure.
     if (this.store) {
       try {
-        const saved = await this.store.get(this.stateKey(topicId));
-        if (saved) return { state: gc.deserializeState(saved) };
-      } catch {
+        let saved = await this.store.get(this.stateKey(topicId));
+        if (!saved) {
+          /*
+           * Written before the key was escaped. Migrated on read rather than by
+           * enumerating, which the Keychain cannot do — and the old key is only
+           * tried when the new one misses, so the cost is one extra read on the
+           * first launch after the upgrade.
+           */
+          try {
+            const legacy = await this.store.get(this.legacyStateKey(topicId));
+            if (legacy) {
+              saved = legacy;
+              await this.store.set(this.stateKey(topicId), legacy);
+              this.narrate?.('mls/restore', { topicId, found: true, migrated: true });
+            }
+          } catch {
+            /* the old key is unreadable on this platform — that is the bug */
+          }
+        }
+        if (saved !== null && saved !== undefined) {
+          this.narrate?.('mls/restore', { topicId, found: true });
+          return { state: gc.deserializeState(saved) };
+        }
+        this.narrate?.('mls/restore', { topicId, found: false });
+      } catch (e) {
         /* corrupt/unreadable persisted state → fresh bootstrap below */
+        this.narrate?.('mls/restore', {
+          topicId,
+          found: false,
+          threw: e instanceof Error ? e.message : String(e),
+        });
       }
     }
 
+    /*
+     * A NEW LEAF. Every one of these is a new device in the room, and the room
+     * hands a key bundle to each — so a phone that lands here on every launch
+     * quietly turns itself into a crowd. Narrated because that is exactly what
+     * staging showed on 2026-08-28: one phone, eleven devices, two of them from
+     * plain restarts minutes apart.
+     */
+    this.narrate?.('mls/newLeaf', { topicId, identity: this.identity.slice(0, 24) });
     const device = await gc.createDevice(this.identity);
     const groupIdB64 = b64(gc.topicGroupId(topicId));
 

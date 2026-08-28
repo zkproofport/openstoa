@@ -234,6 +234,7 @@ export function getMlsSessionStore(
       msgCache,
       () => sessionUserId(client),
       rawSecure,
+      report,
     );
   }
   return _store;
