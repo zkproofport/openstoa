@@ -242,24 +242,6 @@ export interface RequestOptions extends RequestInit {
    */
   allowGuest?: boolean;
   /**
-   * The person is waiting on this, so the local rate-limit pause does not
-   * apply to it.
-   *
-   * THE DEFECT THIS EXISTS FOR, on a phone 2026-08-28. The pause was added to
-   * stop the app re-arming its own ban, and it was put in the one place every
-   * request passes — which included the Send button. Someone typed a message,
-   * tapped Send, and it never left the phone: the load balancer log for that
-   * minute has no `POST /chat` at all, only the 429s that set the pause a
-   * moment earlier. Their message failed for a reason that was never about
-   * them.
-   *
-   * The pause is worth having for REPEATING work, which is what floods. A
-   * single tap is one request, and the pause length is a GUESS — five minutes
-   * when the edge sends no `Retry-After`, which may be far longer than the
-   * real ban. Refusing a person's action on a guess is the wrong trade.
-   */
-  userInitiated?: boolean;
-  /**
    * Override the request deadline, in milliseconds — or `null` for none.
    *
    * Defaults to `DEFAULT_REQUEST_TIMEOUT_MS`. Raise it for a request whose body
@@ -621,19 +603,22 @@ export class OpenStoaClient {
     // Authorization header. That bug is what made joined topics keep
     // showing after logout.
     /*
-     * Refuse locally while the edge is banning us — BACKGROUND WORK ONLY.
+     * NOTHING is refused here. `rateLimitedUntil()` reports the pause and the
+     * loops that repeat on their own consult it; a request that has reached
+     * this line is sent.
      *
-     * Sending anyway is what kept the ban alive: every request during the pause
-     * counts, so an app with a few independent pollers can hold itself out
-     * indefinitely. Failing here costs nothing and lets the clock run down.
+     * A blanket gate stood here for two days and swallowed a person's chat
+     * message twice. The second time it was subtler: the message send had been
+     * exempted, but sealing it first fetches the room's newest commits, and
+     * THAT was not exempt — so the send died before any request left the
+     * device, with no POST in the edge log to show for it. Exempting one call
+     * per tap cannot work, because a tap is a chain of calls and the list of
+     * links is not knowable from here.
      *
-     * A request the person is waiting on is exempt (see `userInitiated`): it is
-     * one request, and the pause is a guess that may outlast the real ban.
+     * Refusing had one purpose: keep automatic work from feeding a ban it
+     * caused. That belongs in the automatic work, which is one retry ladder
+     * (see `rateLimitedUntil` in the key-backup retry) and already asks.
      */
-    if (!init.userInitiated && Date.now() < _pausedUntilMs) {
-      throw new OpenStoaRateLimitedError(path, _pausedUntilMs);
-    }
-
     let res = await this.send(url, { ...fetchInit, headers, credentials: 'omit' }, path, timeoutMs);
     if (res.status === 401) {
       // Guest (or anyone without a token) → don't auto-trigger login.

@@ -12,7 +12,15 @@
  * screen (which probes the object); this only draws the answer.
  */
 import React from 'react';
-import { Text, TouchableOpacity, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  View,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 export interface MessageFailedControlsProps {
   /**
@@ -22,6 +30,17 @@ export interface MessageFailedControlsProps {
    * permanently broken picture.
    */
   expired?: boolean;
+  /**
+   * The retry is in flight — show a spinner where Retry was.
+   *
+   * Without it, pressing Retry looked like nothing happened. A send that fails
+   * before it reaches the network fails in milliseconds, so the row flickered
+   * and came back reading exactly as before; the only honest reading was that
+   * the button was dead. Discard stays live throughout, because a retry can sit
+   * on the request deadline for half a minute and being unable to give up is
+   * worse than the small chance of discarding one that then succeeds.
+   */
+  retrying?: boolean;
   onRetry: () => void;
   onDiscard: () => void;
   /** `t` from the screen — passed in so this component holds no i18n wiring. */
@@ -38,6 +57,7 @@ export interface MessageFailedControlsProps {
 
 export function MessageFailedControls({
   expired,
+  retrying,
   onRetry,
   onDiscard,
   t,
@@ -48,6 +68,11 @@ export function MessageFailedControls({
       <Text style={styles.sendFailedMark}>!</Text>
       {expired ? (
         <Text style={styles.lockedBody}>{t('openstoa.chat.media.expired')}</Text>
+      ) : retrying ? (
+        <ActivityIndicator
+          size="small"
+          accessibilityLabel={t('openstoa.chat.sendFailedRetrying')}
+        />
       ) : (
         <TouchableOpacity onPress={onRetry} activeOpacity={0.7}>
           <Text style={styles.sendFailedAction}>{t('openstoa.chat.sendFailedRetry')}</Text>

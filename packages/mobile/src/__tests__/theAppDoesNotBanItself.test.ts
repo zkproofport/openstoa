@@ -22,6 +22,7 @@ import {
   OpenStoaRateLimitedError,
   rateLimitedUntil,
 } from '../api/openstoaClient';
+import { backupMayRunNow } from '../crypto/mobileTransport';
 
 function clientWith(fetchImpl: typeof fetch): OpenStoaClient {
   vi.stubGlobal('fetch', fetchImpl);
@@ -158,7 +159,41 @@ describe('the app does not ban itself', () => {
     expect(err.message).not.toMatch(/[A-Za-z]{4,}/);
   });
 
-  it('REPETITION: after one 429, twenty more calls send NOTHING', async () => {
+  it('THE RESTRAINT: the retry ladder stands down while the edge is banning us', async () => {
+    /*
+     * `backupMayRunNow` is the REAL decision both retry paths make, imported
+     * rather than reproduced. It was reproduced for exactly one commit, and
+     * deleting the real three lines left all 1 470 tests green — the app's only
+     * brake on a ban, entirely unguarded. Import it or this proves nothing.
+     *
+     * A blanket refusal in the transport stood alongside it for a day and
+     * swallowed two chat messages before it came out (see
+     * `theClientRefusesNothingOnItsOwn`). The ladder is what floods, so the
+     * ladder is what asks, and now it is the only thing that does.
+     */
+    const client = clientWith(async () => new Response('', { status: 429 }));
+    await client.get('/api/topics').catch(() => {});
+    const until = rateLimitedUntil();
+    expect(until).toBeGreaterThan(Date.now());
+
+    for (let i = 0; i < 20; i += 1) expect(backupMayRunNow()).toBe(false);
+
+    // BOUNDARY: the instant the ban expires, and one millisecond either side.
+    expect(backupMayRunNow(until - 1)).toBe(false);
+    expect(backupMayRunNow(until)).toBe(true);
+    expect(backupMayRunNow(until + 1)).toBe(true);
+
+    clearRateLimitPause();
+    expect(backupMayRunNow()).toBe(true);
+  });
+
+  it('CONTRACT: with no ban recorded at all, the ladder runs', () => {
+    clearRateLimitPause();
+    expect(rateLimitedUntil()).toBe(0);
+    expect(backupMayRunNow()).toBe(true);
+  });
+
+  it('CONTRACT: ordinary requests are NOT held back — only the ladder is', async () => {
     let sent = 0;
     const client = clientWith(async () => {
       sent += 1;
@@ -171,7 +206,7 @@ describe('the app does not ban itself', () => {
     for (let i = 0; i < 20; i += 1) {
       await client.get(`/api/topics?page=${i}`).catch(() => {});
     }
-    expect(sent).toBe(1); // still one — the pause held every one of them back
+    expect(sent).toBe(21); // every one went out; the edge decides, not the app
   });
 
   it('CONTRACT: the pause honours Retry-After when the edge sends one', async () => {

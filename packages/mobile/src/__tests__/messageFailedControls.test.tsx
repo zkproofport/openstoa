@@ -22,6 +22,7 @@ const LABEL: Record<string, string> = {
   'openstoa.chat.sendFailedRetry': 'Retry',
   'openstoa.chat.sendFailedDiscard': 'Delete',
   'openstoa.chat.media.expired': 'This image expired before it could be sent. Send it again.',
+  'openstoa.chat.sendFailedRetrying': 'Resending…',
 };
 const t = (key: string) => LABEL[key] ?? key;
 
@@ -33,6 +34,51 @@ function setup(over: Partial<React.ComponentProps<typeof MessageFailedControls>>
   );
   return { element, onRetry, onDiscard };
 }
+
+describe('a retry that is under way', () => {
+  /*
+   * Pressing Retry used to look like pressing nothing.
+   *
+   * A send that dies before it reaches the network dies in milliseconds — the
+   * local pause that used to refuse it never opened a socket — so the row went
+   * away and came back inside one frame. On the phone that is invisible. The
+   * only reading left was that the button was broken, which is what the sender
+   * reported, twice.
+   */
+  it('shows a spinner where Retry was, so the press is visible', async () => {
+    const { element } = setup({ retrying: true });
+    const r = await render(element);
+
+    expect(r.pressableWith(LABEL['openstoa.chat.sendFailedRetry'])).toBeUndefined();
+    expect(r.text()).not.toContain(LABEL['openstoa.chat.sendFailedRetry']);
+  });
+
+  it('keeps Discard live, because a retry can sit on the deadline for half a minute', async () => {
+    const { element, onDiscard } = setup({ retrying: true });
+    const r = await render(element);
+
+    const discard = r.pressableWith(LABEL['openstoa.chat.sendFailedDiscard']);
+    expect(discard).toBeDefined();
+    await r.press(discard!);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('an attachment whose bytes are gone says so rather than spinning forever', async () => {
+    // Expired outranks retrying: there is nothing left to send, so a spinner
+    // would promise an attempt that will not be made.
+    const { element } = setup({ retrying: true, expired: true });
+    const r = await render(element);
+
+    expect(r.text()).toContain(LABEL['openstoa.chat.media.expired']);
+  });
+
+  it('BOUNDARY: not retrying draws exactly what it always drew', async () => {
+    const { element } = setup({ retrying: false });
+    const r = await render(element);
+
+    expect(r.pressableWith(LABEL['openstoa.chat.sendFailedRetry'])).toBeDefined();
+  });
+});
 
 describe('a message that did not send', () => {
   it('offers a retry and a discard', async () => {

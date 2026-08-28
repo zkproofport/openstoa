@@ -114,6 +114,16 @@ type LocalMessage = ChatMessage & {
   pending?: boolean;
   failed?: boolean;
   /**
+   * Retry was pressed and the attempt is still running.
+   *
+   * The row stays FAILED throughout, so it keeps its place and its Discard;
+   * only Retry is swapped for a spinner. Clearing `failed` for the duration was
+   * the obvious move and the wrong one — a send that dies before it reaches the
+   * network dies in milliseconds, so the controls vanished and reappeared
+   * within a frame and the press read as a dead button.
+   */
+  retrying?: boolean;
+  /**
    * For a failed ATTACHMENT: the object key its envelope names.
    *
    * Retry re-sends this exact object instead of re-reading a photo the user
@@ -1964,8 +1974,6 @@ export function ChatRoomScreen() {
          */
         const media = parseChatMediaBody(text);
         const pushArchive = await buildPushArchive(text);
-        // Someone tapped Send and is watching for it — the local rate-limit
-        // pause must not swallow it. See `userInitiated` on the client.
         const res = await client.post<{ message: ChatMessage }>(
           `/api/topics/${topicId}/chat`,
           {
@@ -1973,7 +1981,6 @@ export function ChatRoomScreen() {
             epoch: sealed.epoch,
             ...(pushArchive ? { pushArchive } : {}),
           },
-          { userInitiated: true },
         );
         if (!res?.message?.id) throw new Error('no message id');
         // Swap the provisional row for the stored one IN PLACE, so the bubble
@@ -1990,7 +1997,24 @@ export function ChatRoomScreen() {
         // Only NOW is the object referenced by a real message, so only now may
         // the unclaimed collector leave it alone.
         if (media) void client.claimChatMedia(topicId, media.key).catch(() => {});
-      } catch {
+      } catch (err) {
+        /*
+         * Say WHY, somewhere a later session can read.
+         *
+         * This catch threw the reason away for as long as it has existed, and
+         * that cost a whole afternoon: a send was dying inside `mls.seal`, the
+         * screen showed the same Resend row it shows for a dropped connection,
+         * and the only way to tell the two apart was to reason backwards from
+         * the edge's access log. One line here would have named it outright.
+         * `report` narrates to the server sink because a release build runs
+         * Hermes, whose console output never reaches the device log.
+         */
+        report('chat.send.failed', {
+          topicId,
+          name: err instanceof Error ? err.name : typeof err,
+          message: err instanceof Error ? err.message : String(err),
+          isAttachment: !!parseChatMediaBody(text),
+        });
         /*
          * Keep the words where the OS cannot take them.
          *
@@ -2022,7 +2046,9 @@ export function ChatRoomScreen() {
         // The text stays in the bubble, never back in the composer — the reader
         // decides whether to resend or drop it.
         setSentMessages((curr) =>
-          curr.map((m) => (m.id === pendingId ? { ...m, pending: false, failed: true } : m)),
+          curr.map((m) =>
+            m.id === pendingId ? { ...m, pending: false, retrying: false, failed: true } : m,
+          ),
         );
       }
     },
@@ -2053,7 +2079,7 @@ export function ChatRoomScreen() {
   const retryFailed = useCallback(
     (msg: LocalMessage) => {
       setSentMessages((curr) =>
-        curr.map((m) => (m.id === msg.id ? { ...m, failed: false, pending: true } : m)),
+        curr.map((m) => (m.id === msg.id ? { ...m, retrying: true } : m)),
       );
       const envelope = parseChatMediaBody(msg.message ?? '');
       if (!envelope) {
@@ -2083,7 +2109,9 @@ export function ChatRoomScreen() {
         } catch {
           setSentMessages((curr) =>
             curr.map((m) =>
-              m.id === msg.id ? { ...m, pending: false, failed: true, mediaExpired: true } : m,
+              m.id === msg.id
+                ? { ...m, pending: false, retrying: false, failed: true, mediaExpired: true }
+                : m,
             ),
           );
           return;
@@ -2176,8 +2204,7 @@ export function ChatRoomScreen() {
             const res = await client.post<{ message: ChatMessage }>(
               `/api/topics/${topicId}/chat`,
               { ciphertext: sealed.ciphertext, epoch: sealed.epoch },
-              { userInitiated: true },
-            );
+                );
             if (!res?.message?.id) return;
             setSentMessages((curr) =>
               curr.some((m) => m.id === res.message.id) ? curr : [...curr, { ...res.message, message: body }],
@@ -3525,6 +3552,7 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
         {item.failed ? (
           <MessageFailedControls
             expired={item.mediaExpired}
+            retrying={item.retrying}
             onRetry={() => onRetry(item)}
             onDiscard={() => onDiscard(item)}
             t={t}

@@ -586,22 +586,36 @@ function takBackupRetry(): BackupRetry {
   return _takBackupRetry;
 }
 
+/**
+ * May the backup retry spend a request right now?
+ *
+ * DO NOT SPEND ONE WHILE THE EDGE IS BANNING US. Every request during the ban
+ * counts towards it, so a retry here is the one thing guaranteed to keep it
+ * alive. Measured 2026-08-27 — the phone banned itself and its own retries held
+ * it there. Callers report `false` rather than throwing, which leaves the
+ * schedule alone: it comes back on its own once the clock has run down, whereas
+ * an exception resets the ladder to its shortest delay, which is the shape that
+ * caused the self-ban.
+ *
+ * This is the ONLY place in the app that holds back on a ban. A blanket refusal
+ * in the transport stood alongside it for a day and swallowed two chat messages
+ * before it came out, so this one carries the whole job — and it is exported so
+ * a test can call the real thing rather than a copy of these three lines. It
+ * was a copy for one commit, and deleting the real check left every one of
+ * 1 470 tests green.
+ */
+export function backupMayRunNow(now: number = Date.now()): boolean {
+  const until = rateLimitedUntil();
+  if (now < until) {
+    report('backup/paused', { untilMs: until });
+    return false;
+  }
+  return true;
+}
+
 function scheduleTakKeychainBackup(client: OpenStoaClient, rootStore: SecureKVStore): void {
   _takBackupUpload = async () => {
-    /*
-     * DO NOT SPEND A REQUEST WHILE THE EDGE IS BANNING US.
-     *
-     * Every request during the pause counts towards it, so a retry here is the
-     * one thing guaranteed to keep the ban alive. Reporting `false` leaves the
-     * schedule alone: it will come back on its own, by which time the clock has
-     * run down. Measured 2026-08-27 — the phone banned itself and its own
-     * retries held it there.
-     */
-    const until = rateLimitedUntil();
-    if (Date.now() < until) {
-      report('backup/paused', { untilMs: until });
-      return false;
-    }
+    if (!backupMayRunNow()) return false;
     return _takStore ? landed(await pushTakKeychain(client, rootStore, _takStore)) : false;
   };
   takBackupRetry().schedule();
@@ -620,8 +634,13 @@ export function retryTakKeychainBackup(
   hostSecureStore: HostSecureStore,
   hostLocalStore?: HostSecureStore,
 ): void {
-  _takBackupUpload = async () =>
-    landed(await uploadTakKeychainNow(client, hostSecureStore, hostLocalStore));
+  // Same ladder, same ban: this path was missing the check its sibling has had
+  // since the self-ban was measured, so an account-level failure retried
+  // straight through a ban that its own retries were renewing.
+  _takBackupUpload = async () => {
+    if (!backupMayRunNow()) return false;
+    return landed(await uploadTakKeychainNow(client, hostSecureStore, hostLocalStore));
+  };
   takBackupRetry().schedule();
 }
 

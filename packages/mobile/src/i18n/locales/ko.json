@@ -508,6 +508,7 @@
       },
       "linkPreviewUnavailable": "미리보기를 가져올 수 없습니다",
       "sendFailedRetry": "재전송",
+      "sendFailedRetrying": "다시 보내는 중…",
       "sendFailedDiscard": "삭제",
       "lockedHistorySyncing": "채팅 히스토리를 가져오는 중입니다… 이 기기가 방 키를 받으면 이전 메시지가 열립니다.",
       "media": {
