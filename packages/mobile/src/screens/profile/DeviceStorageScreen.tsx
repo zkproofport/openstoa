@@ -55,6 +55,7 @@ import {
   getTakSessionStore,
   keyBackupHttp,
   readDeviceIdentity,
+  report as narrate,
   resetChatCryptoState,
 } from '../../crypto/mobileTransport';
 
@@ -185,6 +186,17 @@ export function DeviceStorageScreen() {
 
   const ask = useCallback(
     async (scope: EraseScope) => {
+      /*
+       * NARRATED, and kept.
+       *
+       * A release build runs Hermes, whose console output never reaches the
+       * device log, so a press that does nothing looks identical whether the
+       * handler never ran, threw on its first line, or ran to the end and the
+       * sheet refused to draw. These lines separated those three when it
+       * mattered — the answer was that the press was never arriving — and they
+       * cost one batched request on a path somebody takes once.
+       */
+      narrate('erase/pressed', { scope });
       setReport(null);
       /*
        * The backup facts are fetched at the moment of asking, not held from
@@ -195,15 +207,15 @@ export function DeviceStorageScreen() {
       /*
        * THE SHEET OPENS FIRST, before the answer is asked for.
        *
-       * It used to open only once the backup answer came back, so on the device
-       * a press did nothing visible for as long as that round trip took — and
-       * on a destructive control, nothing visible reads as broken. Pressed
-       * twice, nothing both times, which is exactly what happened here on
-       * 2026-08-28. What follows is a local deletion; there is no reason for a
-       * network read to stand between the press and the sheet.
+       * It used to open only once the backup answer came back, so a press did
+       * nothing visible for as long as that round trip took — and on a
+       * destructive control, nothing visible reads as broken. What follows is a
+       * local deletion; there is no reason for a network read to stand between
+       * the press and the sheet.
        */
       setConfirm(null);
       setStep('checking');
+      narrate('erase/sheetRequested', { scope });
 
       let facts = { hasBackup: false, backupUpdatedAt: null as number | null };
       if (scope === 'device') {
@@ -218,7 +230,9 @@ export function DeviceStorageScreen() {
           console.warn('[DeviceStorage] could not read the backup state', e);
         }
       }
+      narrate('erase/facts', { scope, hasBackup: facts.hasBackup });
       setConfirm(eraseConfirm(scope, facts, Date.now()));
+      narrate('erase/opened', { scope });
       // Only if the sheet is still the one we opened. Someone who cancelled
       // while the answer was in flight must not have it reopened underneath
       // them by a reply they are no longer waiting for.
@@ -351,12 +365,11 @@ export function DeviceStorageScreen() {
       </ScrollView>
 
       {/*
-        OUTSIDE the scrolling area, deliberately.
-        A modal nested inside a `ScrollView` did not appear at all on the device
-        under the new rendering engine — the sheet's markup was in the bundle,
-        the state said open, and the screen never changed. Its own sibling at
-        the root of the screen is where it belongs anyway: it covers the screen,
-        it does not scroll with the content.
+        OUTSIDE the scrolling area.
+        Moved here while chasing a press that appeared to do nothing; that turned
+        out to be the test harness missing the button, not the nesting. It stays
+        because this is where a sheet covering the screen belongs — it does not
+        scroll with the content.
       */}
       <DeviceDataSheet
         step={step}

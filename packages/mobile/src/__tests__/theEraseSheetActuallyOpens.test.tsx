@@ -1,23 +1,31 @@
 /**
- * Pressing a device-data control opens its sheet, at once, and refuses a
- * second press while the first is being handled.
+ * Pressing a device-data control opens its sheet at once, and refuses a second
+ * press while the first is being handled.
  *
- * WHAT HAPPENED, driving the iPhone on 2026-08-28. "Erase from this device"
- * was pressed twice and the screen never changed — no confirmation, no
- * spinner, nothing. The sheet's markup was in the shipped bundle and the
- * screen's state said open. Two separate faults were stacked:
+ * WHAT ACTUALLY HAPPENED, and the correction. Driving the iPhone on 2026-08-28
+ * I pressed "Erase from this device" twice and the screen never changed, and I
+ * concluded the sheet could not render on this phone at all — nested inside the
+ * screen's ScrollView. I wrote that into a commit message, twice, including a
+ * claim that Android rendered the nesting and the iPhone did not.
  *
- *   The sheet was rendered INSIDE the screen's `ScrollView`. Nested there it
- *   did not appear at all on this phone. It is a sibling of the scroll area
- *   now, which is also where a full-screen sheet belongs.
+ * That was wrong. Narration added to the press showed nothing arriving at all,
+ * and pressing the same control by coordinate produced every line: the press,
+ * the sheet, the backup answer, the filled sheet. The automation tool had not
+ * been landing on the button. The app was correct from the start.
  *
- *   Opening waited on a network read — the backup state — before showing
- *   anything. On a slow link that is a destructive control that looks dead.
- *   The sheet opens first and fills the answer in second.
+ * What survives is real, and neither part came from that mistaken diagnosis:
  *
- * NOT a regression: one commit has ever touched these files, so the sheet has
- * been nested since it was written. It passed on Android, which renders that
- * nesting; the iPhone does not.
+ *   Opening waited on a network read — is there a key backup? — before showing
+ *   anything. What follows is a local deletion; there is no reason for a round
+ *   trip to stand between the press and the sheet. It opens first with a
+ *   spinner and fills the answer in second. A cancel during that wait is not
+ *   undone by the reply arriving afterwards.
+ *
+ *   Neither control refused a second press while the first was running. A
+ *   destructive control that looks idle invites exactly that.
+ *
+ * The sheet also sits outside the scroll area now. That was not the fault, but
+ * it is where a sheet covering the screen belongs, so it stays.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
