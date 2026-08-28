@@ -533,7 +533,7 @@ export default function PostDetailClient() {
               gap: 'var(--space-2)',
             }}
           >
-            <span>Sign in to vote, comment, and bookmark.</span>
+            <span>{t('postDetail.signInToInteract')}</span>
             <Link
               href="/"
               style={{
@@ -765,7 +765,7 @@ export default function PostDetailClient() {
                   className="os-button"
                   style={{ cursor: editSaving ? 'not-allowed' : 'pointer' }}
                 >
-                  Cancel
+                  {t('postDetail.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -1131,7 +1131,7 @@ export default function PostDetailClient() {
               }}
             >
               <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', margin: '0 0 var(--space-3)' }}>
-                Sign in to join the conversation.
+                {t('postDetail.signInToComment')}
               </p>
               <Link href="/" className="os-button os-button-primary">
                 Sign in
@@ -1150,7 +1150,7 @@ export default function PostDetailClient() {
                 htmlFor="comment"
                 style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', display: 'block', marginBottom: 'var(--space-2)' }}
               >
-                Write a comment
+                {t('postDetail.writeComment')}
               </label>
               <textarea
                 id="comment"

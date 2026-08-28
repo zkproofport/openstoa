@@ -9,13 +9,18 @@
  * Form hints and tooltips are here for the same reason — a placeholder is the
  * only instruction an empty field has.
  *
- * ── WHAT THIS FILE DOES NOT COVER, said out loud ─────────────────────────
+ * ── BODY TEXT IS NOW COVERED TOO, with one exemption ─────────────────────
  *
- * The web's ordinary body text still holds about thirty English strings
- * (`Copied!`, `New chat`, `SUGGESTED`, the docs page…). They are a separate,
- * larger piece of work and are NOT checked here — a guard that fails on day
- * one gets skipped, and a skipped guard protects nothing. When that work
- * happens, add a body-text place below rather than fixing the strings alone.
+ * The note that used to sit here said the site's ordinary body text held about
+ * thirty English strings and left them for later. Swept on 2026-08-28 with the
+ * three shapes the mini-app's own guard had to learn one at a time, the real
+ * count was 26 — and 16 of those are the DEVELOPER DOCS page, which is written
+ * for people integrating against the API and is English on purpose. The four
+ * that a reader could actually hit (a post's sign-in prompts, its Cancel, its
+ * comment-box label) are fixed; brand names are exempt by name below.
+ *
+ * The docs page is exempt by PATH, not by pattern, so a new English sentence
+ * anywhere else still fails.
  *
  * ── Prose cannot satisfy this ────────────────────────────────────────────
  *
@@ -76,6 +81,60 @@ function notASentence(s: string): boolean {
 }
 
 describe('the web names its controls in Korean', () => {
+  /*
+   * Body text, as three shapes rather than one — each learned from a defect the
+   * previous shape could not see, on the mini-app, on 2026-08-27:
+   *   a whole English sentence between tags;
+   *   a sentence GLUED from expressions and bare words, which no whole-string
+   *     rule can match;
+   *   a call to the translator carrying an English `defaultValue` for a key the
+   *     Korean file never had, where the English is in the one place it is
+   *     supposed to be and the fallback is what a person reads.
+   */
+  it('no screen puts an English sentence in front of a Korean reader', () => {
+    const BRAND = new Set([
+      'ERC-8004', // a standard's number
+      'Masse Labs', // the company
+      'OpenStoa AI', // the product
+      'Ask OpenStoa AI', // the product, as a control
+      'ZKProofport',
+      'OpenStoa',
+    ]);
+    /** English on purpose: written for developers integrating against the API. */
+    const ENGLISH_ON_PURPOSE_PATH = 'app/docs/';
+
+    const WHOLE = /<(?:p|h1|h2|h3|h4|span|button|label|li|td|th)\b[^>]*>\s*([A-Z][A-Za-z0-9 ,.'&()/:?!-]{4,}?)\s*<\//g;
+    const CALL = /\bt\(\s*'([^']+)'\s*,\s*\{[^}]*defaultValue:\s*'([^']*)'/g;
+
+    const hasKoKey = (dotted: string): boolean => {
+      let cur: unknown = ko;
+      for (const part of dotted.split('.')) {
+        if (typeof cur !== 'object' || cur === null) return false;
+        cur = (cur as Record<string, unknown>)[part];
+      }
+      return typeof cur === 'string' && cur.length > 0;
+    };
+
+    const found: string[] = [];
+    for (const file of FILES) {
+      const rel = path.relative(SRC, file);
+      if (rel.startsWith(ENGLISH_ON_PURPOSE_PATH)) continue;
+      const text = fs.readFileSync(file, 'utf8');
+
+      for (const m of text.matchAll(WHOLE)) {
+        const word = m[1].replace(/\s+/g, ' ').trim();
+        if (BRAND.has(word)) continue;
+        found.push(`화면 본문 · ${rel}:${text.slice(0, m.index).split('\n').length}  "${word}"`);
+      }
+      for (const m of text.matchAll(CALL)) {
+        if (hasKoKey(m[1])) continue;
+        found.push(`빠진 번역 · ${rel}:${text.slice(0, m.index).split('\n').length}  ${m[1]} → "${m[2]}"`);
+      }
+    }
+
+    expect(found).toEqual([]);
+  });
+
   it('the sweep is not empty — a broken path looks exactly like a clean site', () => {
     expect(FILES.length).toBeGreaterThan(40);
   });

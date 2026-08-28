@@ -1090,5 +1090,11 @@
     "vimeoVideo": "비메오 영상",
     "copyResponse": "답변 복사",
     "deleteComment": "댓글 삭제"
+  },
+  "postDetail": {
+    "signInToInteract": "로그인하면 추천·댓글·북마크를 할 수 있어요.",
+    "cancel": "취소",
+    "signInToComment": "로그인하면 대화에 참여할 수 있어요.",
+    "writeComment": "댓글 쓰기"
   }
 }

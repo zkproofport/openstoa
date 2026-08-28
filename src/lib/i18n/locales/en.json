@@ -1090,5 +1090,11 @@
     "vimeoVideo": "Vimeo video",
     "copyResponse": "Copy response",
     "deleteComment": "Delete comment"
+  },
+  "postDetail": {
+    "signInToInteract": "Sign in to vote, comment, and bookmark.",
+    "cancel": "Cancel",
+    "signInToComment": "Sign in to join the conversation.",
+    "writeComment": "Write a comment"
   }
 }
