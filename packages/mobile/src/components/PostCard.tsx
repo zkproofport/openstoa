@@ -687,6 +687,13 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
           for (const m of mediaItems) {
             if (m.type === 'image' && m.alt !== undefined) out[m.src] = m.alt;
           }
+          /*
+           * The author's own descriptions for the pictures they ATTACHED, which
+           * live beside the picture list rather than inside the body. Applied
+           * second so a description written in the composer wins over one that
+           * happens to be in an old inline tag for the same picture.
+           */
+          Object.assign(out, post.media?.imageAlts ?? {});
           return out;
         })()}
         images={(() => {

@@ -5,7 +5,7 @@
 
 export interface PostMediaSource {
   content: string;
-  media?: { images?: string[]; videos?: string[] } | null;
+  media?: { images?: string[]; videos?: string[]; imageAlts?: Record<string, string> } | null;
 }
 
 export function collectPostMedia(post: PostMediaSource): {

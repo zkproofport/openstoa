@@ -1583,7 +1583,7 @@ function MessageRow({
           {/* The same rule as the encrypted path, through the same component. */}
           <ChatImage
             src={inlineImage}
-            alt=""
+            alt={t('a11y.photoInMessage')}
             slotWidth={roomy ? CHAT_IMAGE_SLOT_WIDTH_ROOMY : CHAT_IMAGE_SLOT_WIDTH}
             croppedLabel={t('chat.media.cropped')}
             data-testid="chat-inline-image"

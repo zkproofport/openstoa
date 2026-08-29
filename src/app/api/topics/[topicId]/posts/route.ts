@@ -16,6 +16,7 @@ import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts, createPollForPost } from '@/lib/polls';
 import { isSupportedVideoUrl } from '@/lib/videoUrls';
+import { normalisePostMedia } from '@/lib/normalisePostMedia';
 import { hasNulByte } from '@/lib/textGuard';
 
 const ROUTE = '/api/topics/[topicId]/posts';
@@ -580,62 +581,15 @@ export async function POST(
     // Extract base64 images from content and upload to R2
     const processedContent = await extractAndUploadBase64Images(content, session.userId, topicId);
 
-    // Server-side caps mirror the mobile composer so an AI / CLI / direct
-    // API client can't bypass them. Returning 400 with a specific error
-    // message means E2E tests and AI agents can recover gracefully.
-    const MAX_IMAGES = 10;
-    const MAX_VIDEOS = 3;
+    // Caps and shape live in one place so creating and editing a post cannot
+    // drift apart — see src/lib/normalisePostMedia.ts.
     const MAX_TAGS = 5;
-
-    // Normalise media payload: accept { images?: string[], videos?: string[] }
-    // and discard anything else. Null when neither array has any entries so the
-    // column stays NULL (cheaper to query, signals "no attachments" cleanly).
-    let mediaParseError: string | null = null;
-    const media = (() => {
-      if (!mediaIn || typeof mediaIn !== 'object') return null;
-      const images = Array.isArray(mediaIn.images)
-        ? (mediaIn.images as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
-        : [];
-      const videos = Array.isArray(mediaIn.videos)
-        ? (mediaIn.videos as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
-        : [];
-      if (images.length > MAX_IMAGES) {
-        mediaParseError = `Too many images (max ${MAX_IMAGES})`;
-        return null;
-      }
-      if (videos.length > MAX_VIDEOS) {
-        mediaParseError = `Too many videos (max ${MAX_VIDEOS})`;
-        return null;
-      }
-      // Image URLs must look like http(s) OR our own root-relative media
-      // path — guards against `javascript:` / `data:` / arbitrary strings
-      // making it past the composer into the DB. `POST /api/upload` returns
-      // `/api/media/...` now (M-6, docs/design/media-bucket-privatisation.md),
-      // not an absolute R2 URL — this regex was still `^https?://`-only and
-      // rejected every real upload's URL with a 400 until caught by the E2E
-      // suite against a live, flipped environment (never caught by reading
-      // alone: nothing else in this route validates URL shape, so nothing
-      // hinted this check even existed here).
-      const badImage = images.find((u) => !/^(https?:\/\/|\/api\/media\/)/i.test(u));
-      if (badImage) {
-        mediaParseError = `Invalid image URL: ${badImage}`;
-        return null;
-      }
-      // Videos must be YouTube/Vimeo — same regex as the mobile modal.
-      const badVideo = videos.find((u) => !isSupportedVideoUrl(u));
-      if (badVideo) {
-        mediaParseError = `Unsupported video URL (YouTube or Vimeo only): ${badVideo}`;
-        return null;
-      }
-      if (images.length === 0 && videos.length === 0) return null;
-      return {
-        ...(images.length > 0 ? { images } : {}),
-        ...(videos.length > 0 ? { videos } : {}),
-      };
-    })();
-    if (mediaParseError) {
-      return NextResponse.json({ error: mediaParseError }, { status: 400 });
+    const mediaResult = normalisePostMedia(mediaIn, isSupportedVideoUrl);
+    if (!mediaResult.ok) {
+      return NextResponse.json({ error: mediaResult.error }, { status: 400 });
     }
+    const media = mediaResult.media;
+
     if (Array.isArray(tagNames) && tagNames.length > MAX_TAGS) {
       return NextResponse.json(
         { error: `Too many tags (max ${MAX_TAGS})` },

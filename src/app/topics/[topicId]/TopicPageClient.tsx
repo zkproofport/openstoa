@@ -176,6 +176,7 @@ export default function TopicPageClient() {
   const [postContent, setPostContent] = useState('');
   const [postImages, setPostImages] = useState<string[]>([]);
   const [postVideos, setPostVideos] = useState<string[]>([]);
+  const [postImageAlts, setPostImageAlts] = useState<Record<string, string>>({});
   const [postTags, setPostTags] = useState<string[]>([]);
   const [postPoll, setPostPoll] = useState<PollEditorValue | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -499,7 +500,7 @@ export default function TopicPageClient() {
         body: JSON.stringify({
           title: postTitle.trim(),
           content: postContent,
-          media: { images: postImages, videos: postVideos },
+          media: { images: postImages, videos: postVideos, imageAlts: postImageAlts },
           tags: postTags.length > 0 ? postTags : undefined,
           ...(pollPayload ? { poll: pollPayload } : {}),
         }),
@@ -1154,6 +1155,7 @@ export default function TopicPageClient() {
                       setPostContent(state.content);
                       setPostImages(state.images);
                       setPostVideos(state.videos);
+                      setPostImageAlts(state.imageAlts);
                     }}
                     minHeight={180}
                   />
@@ -1277,7 +1279,7 @@ export default function TopicPageClient() {
                           MediaGallery below), then the swipeable
                           gallery. */}
                       <SNSContent html={postContent} stripInlineImages />
-                      <MediaGallery images={postImages} videos={postVideos} mode="detail" />
+                      <MediaGallery images={postImages} imageAlts={postImageAlts} videos={postVideos} mode="detail" />
                     </>
                   ) : (
                     <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: 0, fontFamily: 'var(--font-mono)' }}>

@@ -62,6 +62,14 @@ export interface Topic {
 export interface PostMedia {
   /** R2 public URLs for attached images. */
   images?: string[];
+  /**
+   * What the author says each picture shows, keyed by its URL.
+   *
+   * An entry that is the EMPTY STRING is a decision — this picture is
+   * decorative, announce nothing — which is a different answer from having no
+   * entry at all. Galleries act on the difference, so do not collapse them.
+   */
+  imageAlts?: Record<string, string>;
   /** YouTube / Vimeo URLs attached separately from `content`. The renderer
    *  derives videoId + provider from the URL on display. */
   videos?: string[];

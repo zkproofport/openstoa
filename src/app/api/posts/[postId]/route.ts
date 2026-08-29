@@ -13,6 +13,7 @@ import { requireAiCapability } from '@/lib/aiPermissions';
 import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
 import { attachPollsToPosts } from '@/lib/polls';
 import { isSupportedVideoUrl } from '@/lib/videoUrls';
+import { normalisePostMedia } from '@/lib/normalisePostMedia';
 import { hasNulByte } from '@/lib/textGuard';
 type Badge = { type: string; label: string };
 
@@ -713,54 +714,15 @@ export async function PATCH(
       updateData.content = await extractAndUploadBase64Images(content, session.userId, post.topicId);
     }
 
-    const MAX_IMAGES = 10;
-    const MAX_VIDEOS = 3;
     const MAX_TAGS = 5;
 
     if (mediaIn !== undefined) {
-      // Normalise the same way the POST route does — null when both arrays
-      // empty. Server-side caps mirror the mobile composer so an AI / CLI
-      // client can't bypass them.
-      let mediaErr: string | null = null;
-      const normalisedMedia = (() => {
-        if (!mediaIn || typeof mediaIn !== 'object') return null;
-        const images = Array.isArray(mediaIn.images)
-          ? (mediaIn.images as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
-          : [];
-        const videos = Array.isArray(mediaIn.videos)
-          ? (mediaIn.videos as unknown[]).filter((u): u is string => typeof u === 'string' && u.length > 0)
-          : [];
-        if (images.length > MAX_IMAGES) {
-          mediaErr = `Too many images (max ${MAX_IMAGES})`;
-          return null;
-        }
-        if (videos.length > MAX_VIDEOS) {
-          mediaErr = `Too many videos (max ${MAX_VIDEOS})`;
-          return null;
-        }
-        // M-6 (docs/design/media-bucket-privatisation.md): `POST /api/upload`
-        // returns `/api/media/...` now, not an absolute R2 URL — see the
-        // matching comment in `topics/[topicId]/posts/route.ts`.
-        const badImage = images.find((u) => !/^(https?:\/\/|\/api\/media\/)/i.test(u));
-        if (badImage) {
-          mediaErr = `Invalid image URL: ${badImage}`;
-          return null;
-        }
-        const badVideo = videos.find((u) => !isSupportedVideoUrl(u));
-        if (badVideo) {
-          mediaErr = `Unsupported video URL (YouTube or Vimeo only): ${badVideo}`;
-          return null;
-        }
-        if (images.length === 0 && videos.length === 0) return null;
-        return {
-          ...(images.length > 0 ? { images } : {}),
-          ...(videos.length > 0 ? { videos } : {}),
-        };
-      })();
-      if (mediaErr) {
-        return NextResponse.json({ error: mediaErr }, { status: 400 });
+      // Same rule as creating a post, from the same place.
+      const mediaResult = normalisePostMedia(mediaIn, isSupportedVideoUrl);
+      if (!mediaResult.ok) {
+        return NextResponse.json({ error: mediaResult.error }, { status: 400 });
       }
-      updateData.media = normalisedMedia;
+      updateData.media = mediaResult.media;
     }
     if (Array.isArray(tagNames) && tagNames.length > MAX_TAGS) {
       return NextResponse.json(

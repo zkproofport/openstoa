@@ -34,7 +34,7 @@ interface Post {
   content: string;
   /** Phase A2 unified media. Renderer unions this with whatever can still be
    *  extracted from legacy HTML in `content`. */
-  media?: { images?: string[]; videos?: string[] } | null;
+  media?: { images?: string[]; videos?: string[]; imageAlts?: Record<string, string> } | null;
   authorNickname: string;
   authorProfileImage?: string | null;
   authorId: string;
@@ -161,7 +161,7 @@ export default function PostDetailClient() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
-  const [editorState, setEditorState] = useState<SNSEditorState>({ content: '', images: [], videos: [] });
+  const [editorState, setEditorState] = useState<SNSEditorState>({ content: '', images: [], videos: [], imageAlts: {} });
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editPoll, setEditPoll] = useState<PollEditorValue | null>(null);
   const [editPollHadVotes, setEditPollHadVotes] = useState(false);
@@ -255,7 +255,7 @@ export default function PostDetailClient() {
         return;
       }
       if (res.status === 404) {
-        setError('Post not found');
+        setError(t('postDetailPage.notFound'));
         setLoading(false);
         return;
       }
@@ -305,6 +305,9 @@ export default function PostDetailClient() {
       content: post.content,
       images: post.media?.images ?? [],
       videos: post.media?.videos ?? [],
+      // The descriptions the author wrote last time, so editing a post does
+      // not quietly strip them.
+      imageAlts: post.media?.imageAlts ?? {},
     });
     setEditTags((post.tags ?? []).map((t) => t.name));
     if (post.poll) {
@@ -335,7 +338,7 @@ export default function PostDetailClient() {
     e.preventDefault();
     if (!post || editSaving) return;
     if (!editTitle.trim()) {
-      setEditError('Title is required');
+      setEditError(t('postDetailPage.titleRequired'));
       return;
     }
     setEditSaving(true);
@@ -363,7 +366,7 @@ export default function PostDetailClient() {
       const body: Record<string, unknown> = {
         title: editTitle.trim(),
         content: editorState.content,
-        media: { images: editorState.images, videos: editorState.videos },
+        media: { images: editorState.images, videos: editorState.videos, imageAlts: editorState.imageAlts },
         tags: editTags,
       };
       if (pollPayload !== undefined) body.poll = pollPayload;
@@ -497,7 +500,7 @@ export default function PostDetailClient() {
           fontFamily: 'var(--font-mono)',
           color: 'var(--muted)',
         }}>
-          <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none' }}>Topics</Link>
+          <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none' }}>{t('topicPage.topicsBreadcrumb')}</Link>
           <span style={{ color: 'var(--border)' }}>/</span>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--muted)', textDecoration: 'none' }}>
             {post.topicTitle ?? 'Topic'}
@@ -544,7 +547,7 @@ export default function PostDetailClient() {
                 whiteSpace: 'nowrap',
               }}
             >
-              Sign in
+              {t('header.signIn')}
             </Link>
           </div>
         )}
@@ -659,7 +662,7 @@ export default function PostDetailClient() {
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          Edit
+                          {t('topicPage.edit')}
                         </button>
                         <button
                           type="button"
@@ -751,7 +754,7 @@ export default function PostDetailClient() {
                   className="os-button"
                   style={{ alignSelf: 'flex-start' }}
                 >
-                  Add poll
+                  {t('topicPage.composer.addPoll')}
                 </button>
               )}
               {editError && (
@@ -832,7 +835,7 @@ export default function PostDetailClient() {
                   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
-                  Joined
+                  {t('postCard.joined')}
                 </span>
               )}
             </div>
@@ -943,7 +946,7 @@ export default function PostDetailClient() {
             // Same extraction the feed uses — surfaces legacy YouTube/Vimeo
             // URLs that lived inside HTML body instead of `media.videos`.
             const m = collectPostMedia(post);
-            return <MediaGallery images={m.images} videos={m.videos} mode="detail" />;
+            return <MediaGallery images={m.images} imageAlts={post.media?.imageAlts} videos={m.videos} mode="detail" />;
           })()}
 
           {poll && (
@@ -1134,7 +1137,7 @@ export default function PostDetailClient() {
                 {t('postDetail.signInToComment')}
               </p>
               <Link href="/" className="os-button os-button-primary">
-                Sign in
+                {t('header.signIn')}
               </Link>
             </div>
           ) : (

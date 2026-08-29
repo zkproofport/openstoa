@@ -133,6 +133,10 @@ export default defineConfig({
       // the renderer — read `harness/renderHtmlStub.tsx` for what that does
       // and, more importantly, does not prove.
       'react-native-render-html': path.join(HARNESS, 'renderHtmlStub.tsx'),
+      // Video players: native views with no JS to run. Missing, MediaGallery
+      // cannot even be imported, so nothing it draws could be tested.
+      'react-native-webview': path.join(HARNESS, 'videoStub.tsx'),
+      'react-native-youtube-iframe': path.join(HARNESS, 'videoStub.tsx'),
       'react-native': path.join(HARNESS, 'reactNative.tsx'),
       // Pinned by full specifier because that is exactly how zustand imports
       // them; a prefix alias does not match and the duplicate React returns.

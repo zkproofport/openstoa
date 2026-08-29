@@ -3,6 +3,7 @@
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
+import { MAX_IMAGE_ALT } from '@/lib/normalisePostMedia';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -10,6 +11,15 @@ export interface SNSEditorState {
   content: string;
   images: string[];
   videos: string[];
+  /**
+   * What the author says each picture shows, keyed by its URL.
+   *
+   * Keyed rather than positional so reordering or removing a picture cannot
+   * slide a description onto the wrong one. A picture nobody described has no
+   * entry; a picture described as "" was deliberately marked as carrying
+   * nothing to announce, and the galleries treat those two differently.
+   */
+  imageAlts: Record<string, string>;
 }
 
 interface SNSEditorProps {
@@ -124,6 +134,7 @@ export default function SNSEditor({
 
   const [content, setContent] = useState(initialState?.content ?? '');
   const [images, setImages] = useState<string[]>(initialState?.images ?? []);
+  const [imageAlts, setImageAlts] = useState<Record<string, string>>(initialState?.imageAlts ?? {});
   const [videos, setVideos] = useState<string[]>(initialState?.videos ?? []);
   const [limitError, setLimitError] = useState<string | null>(null);
 
@@ -134,10 +145,33 @@ export default function SNSEditor({
   const [videoUrlDraft, setVideoUrlDraft] = useState('');
   const [videoError, setVideoError] = useState('');
 
-  // Emit unified state whenever any piece changes.
-  const emit = useCallback((next: { content: string; images: string[]; videos: string[] }) => {
-    onChange?.(next);
-  }, [onChange]);
+  /*
+   * Emit unified state whenever any piece changes.
+   *
+   * THE DESCRIPTIONS ARE ATTACHED HERE, not at each call site. There are five
+   * places that emit, and a description dropped by whichever one forgot would
+   * look exactly like a description the author never typed.
+   *
+   * Pruned to the pictures being emitted, so removing a picture takes its words
+   * with it and the preview shows what will actually be stored.
+   */
+  const emit = useCallback((next: Omit<SNSEditorState, 'imageAlts'> & { imageAlts?: Record<string, string> }) => {
+    const source = next.imageAlts ?? imageAlts;
+    const kept: Record<string, string> = {};
+    for (const url of next.images) {
+      if (url in source) kept[url] = source[url];
+    }
+    onChange?.({ ...next, imageAlts: kept });
+  }, [onChange, imageAlts]);
+
+  /** One picture's description, as the author types it. */
+  const updateImageAlt = useCallback((url: string, text: string) => {
+    setImageAlts((prev) => {
+      const next = { ...prev, [url]: text };
+      emit({ content, images, videos, imageAlts: next });
+      return next;
+    });
+  }, [emit, content, images, videos]);
 
   // Auto-grow textarea to fit content.
   const autoGrow = useCallback(() => {
@@ -392,7 +426,7 @@ export default function SNSEditor({
             >
               <img
                 src={url}
-                alt=""
+                alt={t('a11y.photoAttached', { n: i + 1 })}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               />
               <button
@@ -418,6 +452,49 @@ export default function SNSEditor({
               >
                 <IconClose />
               </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/*
+        Where the author says what each picture shows.
+        FULL WIDTH, one row per picture, rather than a box under each
+        thumbnail: a 96px tile cannot hold a sentence, and Korean copy goes
+        unreadable first at small sizes — a field too small to read is not an
+        accessibility feature.
+        Optional on purpose: a required field would be answered with a full
+        stop, and a full stop read aloud is worse than the positional label
+        the galleries fall back to.
+      */}
+      {images.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 18px 12px' }}>
+          {images.map((url, i) => (
+            <div key={`alt-${url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <img
+                src={url}
+                alt=""
+                style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+              />
+              <input
+                type="text"
+                value={imageAlts[url] ?? ''}
+                maxLength={MAX_IMAGE_ALT}
+                onChange={(e) => updateImageAlt(url, e.target.value)}
+                placeholder={t('snsEditor.describeImage')}
+                aria-label={t('snsEditor.describeImageFor', { n: i + 1 })}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: 14,
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--color-border-default)',
+                  background: 'var(--color-bg-primary)',
+                  color: 'var(--color-text-primary)',
+                  fontFamily: 'inherit',
+                }}
+              />
             </div>
           ))}
         </div>

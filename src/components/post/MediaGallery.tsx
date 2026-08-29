@@ -7,6 +7,15 @@ import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface MediaGalleryProps {
   images?: string[];
+  /**
+   * The authors' own words for their pictures, keyed by URL.
+   *
+   * An entry that is the EMPTY STRING is a decision, not a gap: the author
+   * looked and said this picture carries nothing a reader needs. It stays
+   * empty, which is the markup for "skip this". A picture with no entry falls
+   * back to where it sits in the set.
+   */
+  imageAlts?: Record<string, string>;
   /** Embedded video URLs (YouTube / Vimeo). First one renders inline,
    *  the rest contribute to the +N badge. */
   videos?: string[];
@@ -29,11 +38,25 @@ function detectVideoEmbed(url: string): { type: 'youtube' | 'vimeo'; id: string;
 //             opens the lightbox at index 0
 //   detail  → horizontal swipeable carousel, dots, click-to-zoom into
 //             the lightbox at the matching index
-export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGalleryProps) {
+// A user's photo is never decorative, so `alt=""` — which tells a screen
+// reader to skip the element entirely — is the wrong answer even when the
+// author wrote no description. Until authors can describe their photos, the
+// honest label says a picture is here and where it sits in the set.
+function usePhotoLabel(total: number) {
+  const { t } = useTranslation();
+  return (i: number) =>
+    total > 1
+      ? t('a11y.photoInPost', { n: i + 1, total })
+      : t('a11y.photoInPostSingle');
+}
+
+export default function MediaGallery({ images, imageAlts, videos, mode = 'feed' }: MediaGalleryProps) {
   const { t } = useTranslation();
   const imgs = images ?? [];
   const vids = videos ?? [];
   const total = imgs.length + vids.length;
+  const positionLabel = usePhotoLabel(imgs.length);
+  const photoLabel = (i: number) => imageAlts?.[imgs[i]] ?? positionLabel(i);
   const [index, setIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -80,13 +103,13 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
           {firstImg ? (
             <img
               src={withImageVersion(firstImg)}
-              alt=""
+              alt={photoLabel(0)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
           ) : firstVid?.thumbnail ? (
             <img
               src={firstVid.thumbnail}
-              alt=""
+              alt={t('a11y.videoThumbnail')}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
           ) : (
@@ -101,7 +124,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
                 fontSize: 13,
               }}
             >
-              Video
+              {t('a11y.videoPlaceholder')}
             </div>
           )}
 
@@ -147,6 +170,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
 
         {lightboxOpen && imgs.length > 0 && (
           <ImageLightbox
+            imageAlts={imageAlts}
             images={imgs}
             initialIndex={lightboxIndex}
             onClose={() => setLightboxOpen(false)}
@@ -202,7 +226,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
           {current.kind === 'image' ? (
             <img
               src={withImageVersion(current.src)}
-              alt=""
+              alt={photoLabel(Math.max(0, imgs.indexOf(current.src)))}
               onClick={(e) => {
                 // Image is inside PostCard's <Link>; without prevent+stop the
                 // click bubbles up and navigates instead of opening the
@@ -329,6 +353,7 @@ export default function MediaGallery({ images, videos, mode = 'feed' }: MediaGal
 
       {lightboxOpen && imgs.length > 0 && (
         <ImageLightbox
+          imageAlts={imageAlts}
           images={imgs}
           initialIndex={lightboxIndex}
           onClose={() => setLightboxOpen(false)}

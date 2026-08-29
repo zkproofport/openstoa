@@ -174,7 +174,7 @@ export interface PostMetadataRow {
   topicId: string;
   title: string | null;
   content: string | null;
-  media: { images?: string[]; videos?: string[] } | null;
+  media: { images?: string[]; videos?: string[]; imageAlts?: Record<string, string> } | null;
   isDeleted: boolean | null;
   topicTitle: string | null;
   topicVisibility: string | null;

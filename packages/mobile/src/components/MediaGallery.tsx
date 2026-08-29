@@ -58,15 +58,18 @@ export interface MediaGalleryProps {
  *   a description   announce it
  *   `alt=""`        the author marked it decorative — hide it from the reader
  *                   entirely rather than announcing "image"
- *   nothing at all  leave the platform's default alone; inventing a label from
- *                   the filename would announce "IMG underscore 4021 dot jpeg",
- *                   which is noise a reader cannot tell from a real caption
+ *   nothing at all  fall back to where the picture sits in the set. Never the
+ *                   filename — that announces "IMG underscore 4021 dot jpeg",
+ *                   noise a reader cannot tell from a real caption. And never
+ *                   silence: a photo the author attached carries the post, so
+ *                   announcing nothing hides the point of the post from a
+ *                   reader who cannot see it.
  *
  * The middle case is the one that gets collapsed into the last by accident, and
  * it is the only one where the author made an explicit choice.
  */
-function altProps(alt: string | undefined) {
-  if (alt === undefined) return {};
+function altProps(alt: string | undefined, fallback: string) {
+  if (alt === undefined) return { accessible: true, accessibilityRole: 'image' as const, accessibilityLabel: fallback };
   if (alt === '') return { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const };
   return { accessible: true, accessibilityRole: 'image' as const, accessibilityLabel: alt };
 }
@@ -220,6 +223,13 @@ export function MediaGallery({
   // a length or an index — `hasImages`, the page counter, the dots, the
   // lightbox — none of which care what the strings are.
   const images = useMemo(() => imagesProp ?? [], [imagesProp]);
+  const photoLabel = useCallback(
+    (i: number) =>
+      images.length > 1
+        ? t('openstoa.a11y.photoInPost', { n: i + 1, total: images.length })
+        : t('openstoa.a11y.photoInPostSingle'),
+    [images.length, t],
+  );
 
   const itemWidth = Math.max(0, windowWidth - horizontalPadding);
   const imageHeight = Math.round(itemWidth * (10 / 16));
@@ -328,7 +338,7 @@ export function MediaGallery({
                   <Pressable onPress={() => handleImageTap(i)}>
                     <GatedImage
                       uri={uri}
-                      {...altProps(imageAlts?.[uri])}
+                      {...altProps(imageAlts?.[uri], photoLabel(i))}
                       style={[
                         styles.galleryImage,
                         { width: itemWidth, height: imageHeight },
@@ -434,7 +444,7 @@ export function MediaGallery({
                 >
                   <GatedImage
                     uri={uri}
-                    {...altProps(imageAlts?.[uri])}
+                    {...altProps(imageAlts?.[uri], photoLabel(i))}
                     style={{ width: windowWidth, height: windowHeight - 80 }}
                     resizeMode="contain"
                   />

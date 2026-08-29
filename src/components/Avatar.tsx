@@ -45,6 +45,7 @@ export default function Avatar({ src, name, size = 40, style }: AvatarProps) {
 
   return (
     <div
+      aria-hidden="true"
       style={{
         width: size,
         height: size,

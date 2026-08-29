@@ -156,7 +156,23 @@ export const posts = pgTable('posts', {
   authorId: text('author_id').references(() => users.id).notNull(),
   title: text('title').notNull(),
   content: text('content').notNull(),
-  media: jsonb('media').$type<{ images?: string[]; videos?: string[] }>(),
+  /*
+   * `imageAlts` maps a picture's URL to the author's own description of it.
+   *
+   * A SEPARATE MAP RATHER THAN A FIELD ON EACH PICTURE, for one reason worth
+   * writing down: the galleries that draw these already take exactly this shape
+   * (`imageAlts?: Record<string, string>`), and every client already installed
+   * reads `images` as a list of URLs. Turning that list into objects would show
+   * an empty post on every phone running the build people have now.
+   *
+   * A key with no matching entry in `images` is dropped when the post is saved,
+   * so removing a picture cannot leave its description behind.
+   */
+  media: jsonb('media').$type<{
+    images?: string[];
+    videos?: string[];
+    imageAlts?: Record<string, string>;
+  }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   upvoteCount: integer('upvote_count').notNull().default(0),

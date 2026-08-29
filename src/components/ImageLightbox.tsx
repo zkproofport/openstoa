@@ -35,6 +35,9 @@ interface ImageLightboxProps {
   src?: string;
   /** Multi-image lightbox: full URL list + which one to open first. */
   images?: string[];
+  /** The authors' own words, keyed by URL. Empty means decorative; absent
+   *  falls back to where the picture sits in the set. */
+  imageAlts?: Record<string, string>;
   initialIndex?: number;
   onClose: () => void;
 }
@@ -43,7 +46,7 @@ interface ImageLightboxProps {
 // arrow keys / on-screen arrows / touch swipe move between images, the
 // dot indicator shows position, Escape closes. Falls back to single
 // image mode when `src` is passed.
-export default function ImageLightbox({ src, images, initialIndex = 0, onClose }: ImageLightboxProps) {
+export default function ImageLightbox({ src, images, imageAlts, initialIndex = 0, onClose }: ImageLightboxProps) {
   const { t } = useTranslation();
   const list = images && images.length > 0 ? images : src ? [src] : [];
   const [index, setIndex] = useState(() =>
@@ -192,7 +195,12 @@ export default function ImageLightbox({ src, images, initialIndex = 0, onClose }
 
       <img
         src={withImageVersion(current)}
-        alt=""
+        alt={
+          imageAlts?.[current] ??
+          (list.length > 1
+            ? t('a11y.photoInPost', { n: index + 1, total: list.length })
+            : t('a11y.photoInPostSingle'))
+        }
         onClick={(e) => e.stopPropagation()}
         style={{
           maxWidth: '92vw',

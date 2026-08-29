@@ -18,6 +18,17 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Feather from 'react-native-vector-icons/Feather';
 import { KeyboardSafeScroll } from '../../components/KeyboardSafeScroll';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
+
+/*
+ * How long a picture's description may be.
+ *
+ * The SERVER owns this limit — see `normalisePostMedia.ts`, which refuses
+ * anything longer rather than trimming it. This copy exists only so the field
+ * stops accepting characters that would be refused on save. A test fails if the
+ * two numbers stop agreeing; without it, a raised server cap would leave the
+ * field silently stuck at the old one.
+ */
+const MAX_IMAGE_ALT = 300;
 // expo-image-picker is a native module — lazy-load to avoid crashing on
 // stale Metro reloads where the native binary hasn't been rebuilt yet.
 type ImagePickerModule = typeof import('expo-image-picker');
@@ -85,7 +96,7 @@ interface CreatePostBody {
   title: string;
   content: string;
   tags?: string[];
-  media?: { images?: string[]; videos?: string[] };
+  media?: { images?: string[]; videos?: string[]; imageAlts?: Record<string, string> };
   poll?: {
     question?: string;
     options: string[];
@@ -362,6 +373,20 @@ function makeStyles(colors: ThemeColors) {
       lineHeight: 14,
     },
     imageThumbWrap: { position: 'relative' },
+    imageAltList: { gap: 8, marginTop: 8 },
+    imageAltRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    imageAltThumb: { width: 32, height: 32, borderRadius: RADIUS.control },
+    imageAltInput: {
+      flex: 1,
+      fontSize: TYPE_SCALE.bodySmall,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: RADIUS.control,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      backgroundColor: colors.background.secondary,
+      color: colors.text.primary,
+    },
     // Video chips
     videoChipRow: {
       flexDirection: 'column',
@@ -570,6 +595,13 @@ function PostCreateScreenAuthed() {
   const [tagInput, setTagInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  /**
+   * What the author says each picture shows, keyed by its URL.
+   *
+   * Keyed rather than positional so removing a picture cannot slide a
+   * description onto the one that takes its place.
+   */
+  const [imageAlts, setImageAlts] = useState<Record<string, string>>({});
   const [videos, setVideos] = useState<string[]>([]);
   const [poll, setPoll] = useState<PollEditorValue | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -638,6 +670,7 @@ function PostCreateScreenAuthed() {
     // Snapshot the post's saved image set so Reset / cleanup never deletes
     // attachments the user didn't add this session — those still belong to
     // the live post on the server.
+    setImageAlts(p.media?.imageAlts ?? {});
     initialImagesRef.current = p.media?.images ?? [];
     if (p.poll) {
       setPoll({
@@ -821,7 +854,14 @@ function PostCreateScreenAuthed() {
       if (tags.length > 0) body.tags = tags;
       if (images.length > 0 || videos.length > 0) {
         body.media = {};
-        if (images.length > 0) body.media.images = images;
+        if (images.length > 0) {
+          body.media.images = images;
+          // Pruned to the pictures actually being sent, so a description does
+          // not outlive the picture it was written for.
+          const kept: Record<string, string> = {};
+          for (const uri of images) if (uri in imageAlts) kept[uri] = imageAlts[uri];
+          if (Object.keys(kept).length > 0) body.media.imageAlts = kept;
+        }
         if (videos.length > 0) body.media.videos = videos;
       }
       if (poll && poll.options.filter((o) => o.trim().length > 0).length >= 2) {
@@ -1012,6 +1052,35 @@ function PostCreateScreenAuthed() {
                     >
                       <Text style={styles.imageRemoveText}>×</Text>
                     </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/*
+              Where the author says what each picture shows.
+              FULL WIDTH, one row per picture, rather than a box under each
+              thumbnail: a 96-point tile cannot hold a sentence, and Korean
+              copy must not sit below `bodySmall` (see theme/tokens.ts) — a
+              field too small to read is not an accessibility feature.
+              Optional on purpose: a required field gets answered with a full
+              stop, and a full stop read aloud is worse than the positional
+              name the gallery falls back to.
+            */}
+            {images.length > 0 ? (
+              <View style={styles.imageAltList}>
+                {images.map((uri, i) => (
+                  <View key={`alt-${uri}`} style={styles.imageAltRow}>
+                    <GatedImage uri={uri} style={styles.imageAltThumb} />
+                    <TextInput
+                      style={styles.imageAltInput}
+                      value={imageAlts[uri] ?? ''}
+                      onChangeText={(text) => setImageAlts((prev) => ({ ...prev, [uri]: text }))}
+                      placeholder={t('openstoa.postCreate.describeImage')}
+                      placeholderTextColor={colors.text.tertiary}
+                      maxLength={MAX_IMAGE_ALT}
+                      accessibilityLabel={t('openstoa.postCreate.describeImageFor', { n: i + 1 })}
+                    />
                   </View>
                 ))}
               </View>

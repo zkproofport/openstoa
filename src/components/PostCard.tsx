@@ -26,7 +26,7 @@ export interface PostCardPost {
   content: string;
   /** Phase A2 unified media (images + video URLs). Optional so legacy posts
    *  without an attached media payload still render via content extraction. */
-  media?: { images?: string[]; videos?: string[] } | null;
+  media?: { images?: string[]; videos?: string[]; imageAlts?: Record<string, string> } | null;
   upvoteCount?: number;
   commentCount?: number;
   viewCount?: number;
@@ -500,7 +500,7 @@ export default function PostCard({
         {/* I04: always show media (text expansion doesn't hide media). */}
         {(() => {
           const { images, videos } = collectPostMedia(post);
-          return <MediaGallery images={images} videos={videos} mode="feed" />;
+          return <MediaGallery images={images} imageAlts={post.media?.imageAlts} videos={videos} mode="feed" />;
         })()}
       </Link>
 

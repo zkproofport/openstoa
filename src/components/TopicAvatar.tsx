@@ -27,7 +27,7 @@ export default function TopicAvatar({ name, image, size = 40, onClick }: TopicAv
   }
   const colorIndex = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
   return (
-    <div style={{
+    <div aria-hidden="true" style={{
       width: size,
       height: size,
       borderRadius: '50%',

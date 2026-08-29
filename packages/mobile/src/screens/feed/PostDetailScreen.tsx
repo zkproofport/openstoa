@@ -1271,6 +1271,20 @@ export function PostDetailScreen() {
               the feed card only plays the first. ── */}
       <View style={{ paddingHorizontal: 16 }}>
         <MediaGallery
+          /*
+           * The authors' own descriptions, same as the feed card builds. Left
+           * out, the detail page described a picture that the list row had
+           * just announced properly — the same photo, described in one place
+           * and silent in the other.
+           */
+          imageAlts={(() => {
+            const out: Record<string, string> = {};
+            for (const m of extractMediaItems(post.content ?? '')) {
+              if (m.type === 'image' && m.alt !== undefined) out[m.src] = m.alt;
+            }
+            Object.assign(out, post.media?.imageAlts ?? {});
+            return out;
+          })()}
           // Union explicit `post.media.images` with any legacy `<img>` tags
           // still buried inside `content`. The gallery always renders so
           // even legacy posts get a swipeable preview. PostContent renders

@@ -348,6 +348,7 @@ function extractGifs(html: string): { gifUrls: string[]; cleanedHtml: string } {
 // ─── GIF Display ────────────────────────────────────────────────────────────
 
 function GifImages({ urls }: { urls: string[] }) {
+  const { t } = useTranslation();
   if (urls.length === 0) return null;
   return (
     <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -355,7 +356,9 @@ function GifImages({ urls }: { urls: string[] }) {
         <img
           key={i}
           src={url}
-          alt=""
+          alt={urls.length > 1
+            ? t('a11y.photoInPost', { n: i + 1, total: urls.length })
+            : t('a11y.photoInPostSingle')}
           style={{
             width: '100%',
             maxHeight: 320,
@@ -375,6 +378,7 @@ function GifImages({ urls }: { urls: string[] }) {
 // mobile PostDetailScreen feel: full-width tiles stacked vertically, clickable
 // via the same delegated image handler on the parent page.
 function MediaImages({ urls }: { urls: string[] }) {
+  const { t } = useTranslation();
   if (urls.length === 0) return null;
   return (
     <div className="sns-content-body" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -382,7 +386,9 @@ function MediaImages({ urls }: { urls: string[] }) {
         <img
           key={`${url}-${i}`}
           src={url}
-          alt=""
+          alt={urls.length > 1
+            ? t('a11y.photoInPost', { n: i + 1, total: urls.length })
+            : t('a11y.photoInPostSingle')}
           style={{
             width: '100%',
             maxHeight: 480,
