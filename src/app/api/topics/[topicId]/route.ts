@@ -27,6 +27,7 @@ import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteR2Prefix, topicObjectPrefix } from '@/lib/r2';
 import { hasNulByte } from '@/lib/textGuard';
 import { PERSONAL_TOPIC_CLOSED } from '@/lib/personalTopic';
+import { deleteTopicRows, type TopicRowDeleter } from '@/lib/deleteTopicRows';
 
 const ROUTE = '/api/topics/[topicId]';
 
@@ -479,56 +480,17 @@ export async function DELETE(
 
     logger.info(ROUTE, 'Deleting topic', { userId: session.userId, topicId, isGlobalAdmin });
 
-    // Resolve all post IDs once so we can clear post-level rows that don't
-    // cascade (comments, records) before deleting the posts themselves.
-    const topicPosts = await db
-      .select({ id: posts.id })
-      .from(posts)
-      .where(eq(posts.topicId, topicId));
-    const postIds = topicPosts.map((p) => p.id);
-
+    /*
+     * The order lives in `deleteTopicRows`, shared with account deletion.
+     *
+     * It used to live here, and deleting an ACCOUNT — which deletes the
+     * person's own space — then failed with a 500 for exactly the reason the
+     * comment there describes, because nobody carried this list across. One
+     * copy, two callers.
+     */
+    let deletedPostCount = 0;
     await db.transaction(async (tx) => {
-      if (postIds.length > 0) {
-        // comments and records have no FK cascade, clear them first.
-        await tx.delete(comments).where(inArray(comments.postId, postIds));
-        await tx.delete(records).where(inArray(records.postId, postIds));
-        // Deleting posts cascades to polls, postTags, bookmarks, reactions, votes
-        // (and poll_options, poll_votes via polls cascade).
-        await tx.delete(posts).where(eq(posts.topicId, topicId));
-      }
-      await tx.delete(chatMessages).where(eq(chatMessages.topicId, topicId));
-      // The attachment INDEX (M-1) goes with the topic; the objects it points
-      // at are removed by the prefix sweep below, which needs no index at all.
-      await tx.delete(chatMedia).where(eq(chatMedia.topicId, topicId));
-      /*
-       * THE E2EE TABLES, which this transaction did not touch and which made
-       * deleting any topic that had ever been chatted in FAIL WITH A 500.
-       *
-       * `mls_groups`, `mls_commits`, `tak_bundles`, `chat_archive` and
-       * `archive_holders` all reference `topics` with `ON DELETE NO ACTION`, so
-       * the final `delete(topics)` hit a foreign-key violation, the transaction
-       * rolled back, and the caller got an unhandled error. Confirmed against
-       * staging: a room with 13 commits, 13 bundles and 2 archived rows refused
-       * to delete, and the constraint named in the error was real.
-       *
-       * They were added after this handler was written and nothing linked the
-       * two — a schema-level `CASCADE` would have made the omission impossible,
-       * and is the better long-term shape; deleting them explicitly here is the
-       * change that does not need a migration to take effect. `chatDeliveryCursors`,
-       * `chatReads`, `pushTopicMutes`, `mlsDeviceJoins`, `topicArchiveRoots` and
-       * `inviteTokens` DO cascade and are deliberately absent.
-       */
-      await tx.delete(chatArchive).where(eq(chatArchive.topicId, topicId));
-      await tx.delete(archiveHolders).where(eq(archiveHolders.topicId, topicId));
-      await tx.delete(takBundles).where(eq(takBundles.topicId, topicId));
-      // Commits before the group: a commit belongs to the group it advanced.
-      // Asks for keys in a room that no longer exists have nothing to answer.
-      await tx.delete(keyRequests).where(eq(keyRequests.topicId, topicId));
-      await tx.delete(mlsCommits).where(eq(mlsCommits.topicId, topicId));
-      await tx.delete(mlsGroups).where(eq(mlsGroups.topicId, topicId));
-      await tx.delete(joinRequests).where(eq(joinRequests.topicId, topicId));
-      await tx.delete(topicMembers).where(eq(topicMembers.topicId, topicId));
-      // inviteTokens cascade-delete with the topic.
+      deletedPostCount = await deleteTopicRows(tx as unknown as TopicRowDeleter, topicId);
       await tx.delete(topics).where(eq(topics.id, topicId));
     });
 
@@ -557,10 +519,10 @@ export async function DELETE(
     logger.info(ROUTE, 'Topic deleted', {
       userId: session.userId,
       topicId,
-      deletedPostCount: postIds.length,
+      deletedPostCount,
       deletedChatObjects: deletedObjects,
     });
-    return NextResponse.json({ deleted: true, topicId, deletedPostCount: postIds.length });
+    return NextResponse.json({ deleted: true, topicId, deletedPostCount });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'DELETE', error);
   }

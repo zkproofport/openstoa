@@ -137,7 +137,17 @@ export async function markGranted(
   return rows.length > 0;
 }
 
-/** Drop every request for a topic. Used when the topic itself is deleted. */
+/**
+ * Drop every request for a topic.
+ *
+ * NOT the path topic deletion takes. Deleting a topic has to clear twelve
+ * tables in one order, inside one transaction, and that order lives in
+ * `lib/deleteTopicRows.ts` — `keyRequests` is one of the twelve. Calling this
+ * instead would clear one of them and leave the topic undeletable, which is the
+ * shape that broke account deletion in production.
+ *
+ * Kept for the case it names: dropping the asks without touching the room.
+ */
 export async function deleteRequestsForTopic(db: DB, topicId: string): Promise<void> {
   await db.delete(keyRequests).where(eq(keyRequests.topicId, topicId));
 }

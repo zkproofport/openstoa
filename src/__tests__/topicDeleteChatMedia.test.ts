@@ -41,7 +41,15 @@ vi.mock('@/lib/db', () => {
       },
       select: () => ({ from: () => ({ where }) }),
       transaction: async (cb: (tx: unknown) => Promise<void>) => {
-        await cb({ delete: () => ({ where: mocks.txDelete }) });
+        /*
+         * `select` as well as `delete`: the shared clear-up order reads the
+         * topic's post ids INSIDE the transaction, so that the read and the
+         * deletes that depend on it cannot be split by a concurrent write.
+         */
+        await cb({
+          delete: () => ({ where: mocks.txDelete }),
+          select: () => ({ from: () => ({ where: async () => [] }) }),
+        });
       },
     },
   };

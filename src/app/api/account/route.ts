@@ -5,6 +5,8 @@ import { users, topicMembers, topics, bookmarks } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { cookies } from 'next/headers';
+import { deleteTopicRows, type TopicRowDeleter } from '@/lib/deleteTopicRows';
+import { deleteR2Prefix, topicObjectPrefix } from '@/lib/r2';
 
 const ROUTE = '/api/account';
 
@@ -107,27 +109,66 @@ export async function DELETE(request: NextRequest) {
     .select({ id: topics.id })
     .from(topics)
     .where(and(eq(topics.creatorId, userId), eq(topics.personal, true)));
+
+  /*
+   * 4. One transaction, or none of it.
+   *
+   * This used to be five separate statements. In production on 2026-08-29 the
+   * space deletion failed on a foreign key, and because nothing was wrapped,
+   * the membership row deleted a line earlier stayed deleted: the account was
+   * left owning a space it was not a member of, and every retry failed the
+   * same way. Half-dismantling an account is worse than refusing to.
+   */
+  await db.transaction(async (tx) => {
+    if (ownSpace) {
+      /*
+       * The space's own rows — chat, archive, MLS state — have to go before the
+       * space can. That order is `deleteTopicRows`, shared with topic deletion,
+       * because deleting the space by hand here is precisely what was missing.
+       *
+       * Only THIS person's space. Messages they wrote in other people's rooms
+       * are left exactly where they are: the account is anonymised, not erased
+       * from other people's conversations.
+       */
+      await deleteTopicRows(tx as unknown as TopicRowDeleter, ownSpace.id);
+      await tx.delete(topics).where(eq(topics.id, ownSpace.id));
+    }
+
+    // Memberships in everyone else's rooms.
+    await tx.delete(topicMembers).where(eq(topicMembers.userId, userId));
+
+    await tx.delete(bookmarks).where(eq(bookmarks.userId, userId));
+
+    // The user row survives, anonymised, so posts, comments and votes still
+    // resolve to an author and upvote counts stay honest.
+    const randomSuffix = Math.random().toString(36).slice(2, 10);
+    await tx.update(users).set({
+      nickname: `[Withdrawn User]_${randomSuffix}`,
+      deletedAt: new Date(),
+    }).where(eq(users.id, userId));
+  });
+
+  logger.info(ROUTE, 'DELETE account: rows removed and user anonymized', {
+    userId,
+    personalSpaceId: ownSpace?.id ?? null,
+  });
+
+  /*
+   * 5. The space's stored objects. Storage is outside the transaction's reach,
+   * and best-effort by design: the account IS gone, and failing now would tell
+   * the person otherwise.
+   */
   if (ownSpace) {
-    await db.delete(topicMembers).where(eq(topicMembers.topicId, ownSpace.id));
-    await db.delete(topics).where(eq(topics.id, ownSpace.id));
-    logger.info(ROUTE, 'DELETE account: removed the personal space', { userId, topicId: ownSpace.id });
+    try {
+      const swept = await deleteR2Prefix(topicObjectPrefix(ownSpace.id));
+      logger.info(ROUTE, 'DELETE account: swept the personal space objects', { userId, swept });
+    } catch (err) {
+      logger.warn(ROUTE, 'DELETE account: object sweep failed, rows already gone', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
-
-  // 4. Delete topic memberships
-  await db.delete(topicMembers).where(eq(topicMembers.userId, userId));
-  logger.info(ROUTE, 'DELETE account: deleted topic memberships', { userId });
-
-  // 4. Delete user's bookmarks
-  await db.delete(bookmarks).where(eq(bookmarks.userId, userId));
-  logger.info(ROUTE, 'DELETE account: deleted user bookmarks', { userId });
-
-  // 5. Anonymize user record (keep posts/comments/votes intact)
-  const randomSuffix = Math.random().toString(36).slice(2, 10);
-  await db.update(users).set({
-    nickname: `[Withdrawn User]_${randomSuffix}`,
-    deletedAt: new Date(),
-  }).where(eq(users.id, userId));
-  logger.info(ROUTE, 'DELETE account: user record anonymized', { userId });
 
   // 6. Clear session cookie
   const cookieStore = await cookies();

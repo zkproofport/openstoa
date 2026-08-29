@@ -109,7 +109,12 @@ export async function closeDb(): Promise<void> {
   }
 }
 
-async function selectOne<T extends QueryResultRow>(text: string, values: unknown[]): Promise<T | null> {
+/**
+ * One row, or null. Exported because the typed readers below cover the shapes
+ * that existed when this file was written, and a test that needs to check some
+ * other table should not have to open its own connection to do it.
+ */
+export async function selectOne<T extends QueryResultRow>(text: string, values: unknown[]): Promise<T | null> {
   const c = await getClient();
   const res = await c.query<T>(text, values);
   return res.rows[0] ?? null;

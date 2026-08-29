@@ -37,15 +37,31 @@ const HANDLER = readFileSync(
   join(ROOT, 'src/app/api/topics/[topicId]/route.ts'),
   'utf8',
 );
+/*
+ * The order moved out of the handler on 2026-08-29 and into `deleteTopicRows`,
+ * because ACCOUNT deletion deletes the person's own space and needed the same
+ * list — and not having it failed in production the same way this test's own
+ * defect story describes. One copy, two callers; this test now reads the copy.
+ */
+const SHARED = readFileSync(join(ROOT, 'src/lib/deleteTopicRows.ts'), 'utf8');
 
-/** The `delete(...)` calls inside the DELETE handler's transaction, in order. */
+/** The `delete(...)` calls made while removing a topic, in order. */
 function deletedTables(): string[] {
-  const start = HANDLER.indexOf('export async function DELETE');
-  expect(start).toBeGreaterThan(-1);
-  const body = HANDLER.slice(start);
-  const end = body.indexOf('\n}\n');
-  const scope = end === -1 ? body : body.slice(0, end);
-  return [...scope.matchAll(/tx\.delete\((\w+)\)/g)].map((m) => m[1]);
+  const start = SHARED.indexOf('export async function deleteTopicRows');
+  expect(start, 'deleteTopicRows moved or was renamed').toBeGreaterThan(-1);
+  const scope = SHARED.slice(start);
+  const shared = [...scope.matchAll(/tx\.delete\((\w+)\)/g)].map((m) => m[1]);
+
+  /*
+   * The topic row itself is deleted by the CALLER, right after the shared
+   * order runs, so it is appended here — the "parent goes last" check below is
+   * about the real sequence, not about which file each line lives in.
+   */
+  const handlerStart = HANDLER.indexOf('export async function DELETE');
+  expect(handlerStart, 'the DELETE handler moved or was renamed').toBeGreaterThan(-1);
+  const handlerScope = HANDLER.slice(handlerStart);
+  const own = [...handlerScope.matchAll(/tx\.delete\((\w+)\)/g)].map((m) => m[1]);
+  return [...shared, ...own];
 }
 
 /**

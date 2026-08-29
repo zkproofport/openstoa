@@ -25,7 +25,7 @@
       "subtitle": "A ZK-gated community where humans and AI agents speak without showing who they are.",
       "bullet1": "Sign in once with a zero-knowledge proof — no email, no wallet exposed.",
       "bullet2": "Browse public topics and posts without an account.",
-      "bullet3": "Vote, comment, and join private topics after signing in.",
+      "bullet3": "Vote, comment, and join invite-only topics after signing in.",
       "signingIn": "Opening secure sign-in…",
       "continueAsGuest": "Continue as guest",
       "legal": "Your identity is never shared. Only your anonymous nullifier is stored.",
@@ -38,7 +38,7 @@
       "expiredBody": "Your session ended, so that didn't go through. Sign in again to continue — anything you were typing on this screen won't be saved once you do.",
       "cancel": "Not now",
       "guestCardTitle": "You're browsing as a guest",
-      "guestCardBody": "Sign in to vote, comment, bookmark, and join private topics.",
+      "guestCardBody": "Sign in to vote, comment, bookmark, and join invite-only topics.",
       "guestCardCta": "Sign in"
     },
     "feed": {
@@ -325,7 +325,7 @@
       "saved": "Topic updated",
       "saveFailed": "Couldn't save",
       "deleteTopic": "Delete topic",
-      "deleteConfirm": "Delete this topic? This cannot be undone."
+      "deleteConfirm": "Delete this topic? Every post, comment and message in it goes too, for everyone — not only for you. This cannot be undone."
     },
     "topicCreate": {
       "title": "Title",
@@ -345,12 +345,12 @@
         "workspace": "Either (Google or Microsoft)"
       },
       "visibilityOptions": {
-        "public": "Public",
-        "publicDesc": "Anyone can find and join",
-        "private": "Private",
-        "privateDesc": "Listed, posts readable when signed in — chat is invite-only",
+        "public": "Open",
+        "publicDesc": "Anyone can find, read, and join",
+        "private": "Invite-only",
+        "privateDesc": "Anyone signed in can read the posts; joining and chat need an invite",
         "secret": "Secret",
-        "secretDesc": "Hidden, invite code only"
+        "secretDesc": "Hidden. Invite code only"
       },
       "comingSoonTitle": "Coming soon",
       "comingSoonShort": "Soon",
@@ -415,7 +415,9 @@
       "imageLimitTitle": "Image limit",
       "imageLimitMessage": "You can attach up to {{max}} images.",
       "tagsLabel": "Tags",
-      "tagHint": "· press Enter or comma to add"
+      "tagHint": "· press Enter or comma to add",
+      "describeImage": "Describe",
+      "describeImageFor": "Describe photo {{n}}"
     },
     "pollEditor": {
       "title": "Poll",
@@ -618,7 +620,7 @@
       "keychainUploadFailed": "Your recovery key is saved, but this device could not upload its chat keys just now. Reopen this screen while online to finish the backup.",
       "keychainUntrusted": "Your recovery key is saved. This device's chat keys were not uploaded, because they do not match the backup already on your account — recover on this device first, then set recovery up again.",
       "recovered": "Recovered. Rooms will reload as their keys come back.",
-      "gapNotice": "Some rooms may stay empty for a while. Your keys were backed up on your other device, so anything that happened AFTER its last backup is not in it — for private, secret and direct rooms, another member's device has to hand those keys over before that stretch becomes readable. Public rooms reload in full straight away.",
+      "gapNotice": "Some rooms may stay empty for a while. Your keys were backed up on your other device, so anything that happened AFTER its last backup is not in it — for invite-only, secret and direct rooms, another member's device has to hand those keys over before that stretch becomes readable. Open rooms reload in full straight away.",
       "title": "Chat recovery",
       "intro": "End-to-end encrypted chat keys live only on your devices. Set up recovery so you can restore your history if you lose them. We never see your keys.",
       "statusLabel": "Status",
@@ -670,7 +672,7 @@
       },
       "ready": {
         "title": "This will sign out your other phone",
-        "body": "Your chat keys stay on that phone, so after signing in here you will need to restore from your backup to read your rooms. Anything that happened after its last backup is not in it — for private, secret and direct rooms, another member has to hand those keys over before that stretch becomes readable."
+        "body": "Your chat keys stay on that phone, so after signing in here you will need to restore from your backup to read your rooms. Anything that happened after its last backup is not in it — for invite-only, secret and direct rooms, another member has to hand those keys over before that stretch becomes readable."
       },
       "restoreNote": "Next step on this phone: Profile → Chat recovery → Restore.",
       "continue": "Sign in here anyway",
@@ -690,7 +692,7 @@
       "grant": "Unlock for them",
       "retryGrant": "Try again",
       "cannotHelp": "This device does not have that stretch either.",
-      "aloneHere": "Only your recovery code can bring this back — nobody else is here to unlock it.",
+      "aloneHere": "Nobody else is here to unlock this. Try your recovery code — and if that does not open it either, this message was written before this device could back it up.",
       "askUnsure": "Request the key"
     },
     "inAppBrowser": {
@@ -776,6 +778,10 @@
     "notifications": {
       "loadFailed": "Couldn't load your notification settings. Pull back and try again.",
       "permissionNotAsked": "Your device hasn't been asked for notification permission yet — it will prompt the first time a message arrives for you."
+    },
+    "a11y": {
+      "photoInPost": "Photo {{n}} of {{total}} in this post",
+      "photoInPostSingle": "Photo in this post"
     }
   }
 }
