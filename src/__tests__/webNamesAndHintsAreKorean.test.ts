@@ -12,12 +12,21 @@
  * ── BODY TEXT IS NOW COVERED TOO, with one exemption ─────────────────────
  *
  * The note that used to sit here said the site's ordinary body text held about
- * thirty English strings and left them for later. Swept on 2026-08-28 with the
- * three shapes the mini-app's own guard had to learn one at a time, the real
- * count was 26 — and 16 of those are the DEVELOPER DOCS page, which is written
- * for people integrating against the API and is English on purpose. The four
- * that a reader could actually hit (a post's sign-in prompts, its Cancel, its
- * comment-box label) are fixed; brand names are exempt by name below.
+ * thirty English strings and left them for later. It was swept on 2026-08-28 —
+ * and the sweep MISSED, in a way worth writing down, because the guard went
+ * green while `Copied!`, `New chat` and `SUGGESTED` were still on screen.
+ *
+ * The tag list did not include `div`, a fragment `<>…</>` is not a tag at all,
+ * and text a handler sets with `setSomething('...')` is never markup. All three
+ * shapes are matched now, and the fifteen strings they were hiding — the whole
+ * Ask page, the post detail page's breadcrumb, sign-in, Edit, Add poll, Joined,
+ * its two error lines, and the share bar's copied toast — are translated.
+ *
+ * The DEVELOPER DOCS page is English on purpose and exempt by PATH, not by
+ * pattern, so a new English sentence anywhere else still fails. That exemption
+ * is the OWNER'S CALL, confirmed 2026-08-28: that page is for developers
+ * integrating against the API. Do not "fix" its strings — and do not widen the
+ * exemption to anything else on the strength of this line.
  *
  * The docs page is exempt by PATH, not by pattern, so a new English sentence
  * anywhere else still fails. That exemption is the OWNER'S CALL, confirmed
@@ -102,11 +111,39 @@ describe('the web names its controls in Korean', () => {
       'Ask OpenStoa AI', // the product, as a control
       'ZKProofport',
       'OpenStoa',
+      // The product's name split across two spans so the halves take two
+      // colours. Neither half is a word anyone translates.
+      'Open',
+      'Stoa',
+      'Android', // the platform, in a "get the beta" control
+      // A TYPE, not a sentence: `() => Promise<void>` puts `Promise` between a
+      // `>` and a `<` exactly the way markup does.
+      'Promise',
+      // The word a person must TYPE to confirm deleting their account. The page
+      // compares what they typed against exactly this, so translating it would
+      // mean nobody could ever complete the confirmation. Already exempt for
+      // the names-and-hints check below; the body check needs it too, because
+      // the word is also PRINTED in the instruction above the field.
+      'DELETE',
     ]);
     /** English on purpose: written for developers integrating against the API. */
     const ENGLISH_ON_PURPOSE_PATH = 'app/docs/';
 
-    const WHOLE = /<(?:p|h1|h2|h3|h4|span|button|label|li|td|th)\b[^>]*>\s*([A-Z][A-Za-z0-9 ,.'&()/:?!-]{4,}?)\s*<\//g;
+    /*
+     * ANY tag, and a fragment too — not a list of tag names.
+     *
+     * The list used to be p|h1..h4|span|button|label|li|td|th. It had no `div`,
+     * and a fragment `<>…</>` has no name to list, so `SUGGESTED` inside a div
+     * and `Copied!` inside a fragment both read as clean. Matching on the `>`
+     * that ends ANY opening tag has no such hole.
+     */
+    const WHOLE = />\s*([A-Z][A-Za-z0-9 ,.'&()/:?!-]{3,}?)\s*</g;
+    /*
+     * Text a handler puts on screen. `setShareText('Copied!')` is a string in
+     * code, never markup, so no rule that reads JSX can see it — and it is what
+     * a person reads after tapping share.
+     */
+    const SET = /\bset[A-Z]\w*\(\s*'([A-Z][A-Za-z0-9 ,.'!?]{3,})'\s*\)/g;
     const CALL = /\bt\(\s*'([^']+)'\s*,\s*\{[^}]*defaultValue:\s*'([^']*)'/g;
 
     const hasKoKey = (dotted: string): boolean => {
@@ -128,6 +165,13 @@ describe('the web names its controls in Korean', () => {
         const word = m[1].replace(/\s+/g, ' ').trim();
         if (BRAND.has(word)) continue;
         found.push(`화면 본문 · ${rel}:${text.slice(0, m.index).split('\n').length}  "${word}"`);
+      }
+      for (const m of text.matchAll(SET)) {
+        const word = m[1].replace(/\s+/g, ' ').trim();
+        if (BRAND.has(word)) continue;
+        found.push(
+          `코드가 넣는 글자 · ${rel}:${text.slice(0, m.index).split('\n').length}  "${word}"`,
+        );
       }
       for (const m of text.matchAll(CALL)) {
         if (hasKoKey(m[1])) continue;

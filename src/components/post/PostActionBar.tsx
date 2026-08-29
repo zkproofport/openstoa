@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { useEffect, useState } from 'react';
 import { CommentIcon, EyeIcon, ShareIcon, TrashIcon, RecordIcon } from '@/components/icons';
 import VotePill from './VotePill';
@@ -56,6 +57,7 @@ export default function PostActionBar({
   onVoteChange,
   onRecordChange,
 }: PostActionBarProps) {
+  const { t } = useTranslation();
   const [shareText, setShareText] = useState<string | null>(null);
   const [recordState, setRecordState] = useState<RecordState>({
     recorded: !!userRecorded,
@@ -120,7 +122,7 @@ export default function PostActionBar({
       document.execCommand('copy');
       document.body.removeChild(ta);
     }
-    setShareText('Copied!');
+    setShareText(t('postActions.copied'));
     setTimeout(() => setShareText(null), 1500);
   };
 

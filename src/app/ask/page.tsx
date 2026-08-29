@@ -60,7 +60,16 @@ function renderInline(text: string): string {
     );
 }
 
-function renderMarkdown(raw: string): string {
+/**
+ * The copy control on a code block is built as HTML text, not as a component,
+ * so it cannot reach the translator itself. Its two words are handed in.
+ */
+interface CopyWords {
+  copy: string;
+  copied: string;
+}
+
+function renderMarkdown(raw: string, words: CopyWords): string {
   const lines = raw.split('\n');
   const output: string[] = [];
   let inCode = false;
@@ -87,7 +96,7 @@ function renderMarkdown(raw: string): string {
         inCode = false;
         const langLabel = codeLang ? `<span style="color:var(--color-text-tertiary);font-size:11px;font-family:var(--font-mono)">${escapeHtml(codeLang)}</span>` : '';
         const codeId = `code-${Date.now()}-${i}`;
-        const copyBtn = `<button onclick="(function(b){var t=document.getElementById('${codeId}');if(t){navigator.clipboard.writeText(t.textContent||'');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},2000)}})(this)" style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary);background:none;border:1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent);border-radius:4px;padding:2px 8px;cursor:pointer;transition:color 0.15s">Copy</button>`;
+        const copyBtn = `<button onclick="(function(b){var t=document.getElementById('${codeId}');if(t){navigator.clipboard.writeText(t.textContent||'');b.textContent='${escapeHtml(words.copied)}';setTimeout(function(){b.textContent='${escapeHtml(words.copy)}'},2000)}})(this)" style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary);background:none;border:1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent);border-radius:4px;padding:2px 8px;cursor:pointer;transition:color 0.15s">${escapeHtml(words.copy)}</button>`;
         output.push(
           `<div style="background:var(--color-bg-primary);border:1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent);border-radius:8px;margin:10px 0;overflow-x:auto"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 0">${langLabel}${copyBtn}</div><pre id="${codeId}" style="margin:0;font-family:var(--font-mono);font-size:12px;color:var(--color-brand-primary);white-space:pre-wrap;overflow-wrap:break-word;line-height:1.55;padding:8px 12px 12px">${escapeHtml(codeLines.join('\n'))}</pre></div>`,
         );
@@ -178,9 +187,9 @@ function CopyButton({ text }: { text: string }) {
       onMouseLeave={(e) => { if (!copied) (e.currentTarget as HTMLElement).style.color = 'var(--color-border-strong)'; }}
     >
       {copied ? (
-        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Copied!</>
+        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>{t('askPage.copied')}</>
       ) : (
-        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>Copy</>
+        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>{t('askPage.copy')}</>
       )}
     </button>
   );
@@ -223,6 +232,7 @@ const CONTENT_WIDTH = 640;
 
 export default function AskPage() {
   const { t } = useTranslation();
+  const copyWords = { copy: t('askPage.copy'), copied: t('askPage.copied') };
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -342,7 +352,7 @@ export default function AskPage() {
         setFollowUps(pickFollowUps(newMessages.length));
       }
     } catch {
-      setError('Network error. Please try again.');
+      setError(t('askPage.networkError'));
     } finally {
       setLoading(false);
       setStreamingContent('');
@@ -388,7 +398,7 @@ export default function AskPage() {
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
-              Topics
+              {t('topicPage.topicsBreadcrumb')}
             </Link>
             <span style={{ color: 'var(--color-brand-primary-muted)', fontSize: 16 }}>/</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -401,7 +411,7 @@ export default function AskPage() {
               style={{ background: 'none', border: '1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent)', borderRadius: 6, color: 'var(--color-text-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer', padding: '5px 10px', letterSpacing: '0.04em', transition: 'all 0.15s' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-tertiary)'; (e.currentTarget as HTMLElement).style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 15%, transparent)'; }}
-            >New chat</button>
+            >{t('askPage.newChat')}</button>
           )}
         </div>
       </header>
@@ -443,7 +453,7 @@ export default function AskPage() {
                         <AiAvatar />
                         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
                       </div>
-                      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content, copyWords) }} />
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--color-border-default)' }}>
                         <CopyButton text={msg.content} />
                       </div>
@@ -464,7 +474,7 @@ export default function AskPage() {
                       <AiAvatar />
                       <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>OpenStoa AI</span>
                     </div>
-                    <div dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent) }} />
+                    <div dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingContent, copyWords) }} />
                   </AssistantBubble>
                 </div>
               )}
@@ -491,7 +501,7 @@ export default function AskPage() {
               {/* Follow-up suggestions */}
               {!loading && followUps.length > 0 && (
                 <div style={{ marginBottom: 16, paddingLeft: 38 }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', marginBottom: 8 }}>SUGGESTED</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em', marginBottom: 8 }}>{t('askPage.suggested')}</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {followUps.map((q) => (
                       <button key={q} onClick={() => sendMessage(q)}

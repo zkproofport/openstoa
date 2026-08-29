@@ -123,7 +123,12 @@
     "title": "OpenStoa AI",
     "unavailable": "This feature is currently unavailable.",
     "backToHome": "Back to home",
-    "inputPlaceholder": "Ask anything about OpenStoa…"
+    "inputPlaceholder": "Ask anything about OpenStoa…",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "newChat": "New chat",
+    "suggested": "SUGGESTED",
+    "networkError": "Network error. Please try again."
   },
   "explorePage": {
     "loadFailed": "Failed to load topics",
@@ -400,16 +405,16 @@
     "visibilityLabel": "Visibility",
     "visibility": {
       "public": {
-        "label": "Public",
-        "desc": "Anyone can find and join"
+        "label": "Open",
+        "desc": "Anyone can find, read, and join"
       },
       "private": {
-        "label": "Private",
-        "desc": "Listed, and anyone signed in can read posts — chat is invite-only"
+        "label": "Invite-only",
+        "desc": "Anyone signed in can read the posts; joining and chat need an invite"
       },
       "secret": {
         "label": "Secret",
-        "desc": "Hidden, invite code only"
+        "desc": "Hidden. Invite code only"
       }
     },
     "comingSoon": "Coming Soon",
@@ -481,8 +486,8 @@
     "loadTopicFailed": "Failed to load topic",
     "topicsBreadcrumb": "Topics",
     "privateTopic": {
-      "title": "Private Topic",
-      "body": "This is a private topic. Sign in to read its posts; joining the chat needs an invite link."
+      "title": "Invite-only topic",
+      "body": "This is an invite-only topic. Sign in to read its posts; joining the chat needs an invite link."
     },
     "guestBanner": "Sign in to participate in discussions.",
     "blindedByAdmin": "This topic has been hidden by admin.",
@@ -880,7 +885,9 @@
     "dropImageHere": "Drop image here",
     "videoUrlPlaceholder": "YouTube or Vimeo URL",
     "imageGifTitle": "Image / GIF",
-    "videoLinkTitle": "Video link"
+    "videoLinkTitle": "Video link",
+    "describeImage": "Describe this photo",
+    "describeImageFor": "Describe photo {{n}}"
   },
   "aiAgentSettings": {
     "signInRequired": "Please sign in to manage AI agents.",
@@ -971,11 +978,11 @@
     },
     "tiers": {
       "public": {
-        "name": "Public",
+        "name": "Open",
         "summary": "Open to everyone, and the one kind whose chat history we can read."
       },
       "private": {
-        "name": "Private",
+        "name": "Invite-only",
         "summary": "Anyone can see it exists and read its posts; getting into the conversation needs an invite link."
       },
       "secret": {
@@ -1028,8 +1035,8 @@
       "devicesWarning": "But if you lose every device you have used and you did not save a recovery code, that history is gone. Not withheld — gone. Nobody, including us, can bring it back, because nobody else ever had the key. Save your recovery code.",
       "mediaTitle": "Images",
       "mediaBody": "Images you send now are encrypted the same way messages are. Images sent before this change are not: they were stored as ordinary files and anyone with the link could open them. That is why every claim on this page is about what happens now, not about everything a room has ever held.",
-      "postsVsChatTitle": "Private topics: posts are open, the conversation is not",
-      "postsVsChatBody": "A private topic is listed and anyone signed in can read its posts — what is private is the chat. You get into that with an invite link, and the same link is what carries the keys for the slice of history the inviter chose to share. A secret topic goes further: it is hidden from every list, and its posts are members-only too."
+      "postsVsChatTitle": "Invite-only rooms: the posts are open, the conversation is not",
+      "postsVsChatBody": "An invite-only topic is listed and anyone signed in can read its posts — what needs an invite is the chat. You get into that with an invite link, and the same link is what carries the keys for the slice of history the inviter chose to share. A secret topic goes further: it is hidden from every list, and its posts are members-only too."
     }
   },
   "invite": {
@@ -1089,12 +1096,25 @@
     "youtubeVideo": "YouTube video",
     "vimeoVideo": "Vimeo video",
     "copyResponse": "Copy response",
-    "deleteComment": "Delete comment"
+    "deleteComment": "Delete comment",
+    "photoInPost": "Photo {{n}} of {{total}} in this post",
+    "photoInPostSingle": "Photo in this post",
+    "videoThumbnail": "Video thumbnail",
+    "photoAttached": "Attached photo {{n}}",
+    "photoInMessage": "Photo in this message",
+    "videoPlaceholder": "Video"
   },
   "postDetail": {
     "signInToInteract": "Sign in to vote, comment, and bookmark.",
     "cancel": "Cancel",
     "signInToComment": "Sign in to join the conversation.",
     "writeComment": "Write a comment"
+  },
+  "postDetailPage": {
+    "notFound": "Post not found",
+    "titleRequired": "Title is required"
+  },
+  "postActions": {
+    "copied": "Copied!"
   }
 }
