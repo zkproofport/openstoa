@@ -54,10 +54,12 @@ import {
   ensureTakKeychainBackup,
   retryTakKeychainBackup,
   getMlsSessionStore,
+  getTakSessionStore,
   keyBackupHttp,
   toDisplayMessageMls,
   UNREADABLE_BODY,
 } from '../crypto/mobileTransport';
+import { chatTierOf } from '../lib/chatTierPolicy';
 import { recoveryNudgeDismissKey, shouldNudgeRecovery } from '../lib/recoveryNudge';
 import { backupHealth } from '../lib/backupHealth';
 import { refuseUnreadable, type OpenRow } from '../lib/personalRoomNote';
@@ -174,6 +176,13 @@ export function RecoveryRepairProvider({ children }: { children?: React.ReactNod
       const mls = getMlsSessionStore(client, secureStore, localStore);
       const open: OpenRow = async (topicId, row) =>
         (await toDisplayMessageMls(mls, topicId, row as ChatMessage)).message ?? '';
+
+      /* Same reason as the recovery note: a notice that dies with the phone is
+       * not a notice. The personal room is always a secret topic. */
+      const tak = getTakSessionStore(client, secureStore, localStore);
+      const archiveNote = async (topicId: string, messageId: string, plaintext: string) => {
+        await tak.archiveOnSend(topicId, messageId, plaintext, chatTierOf('secret', false));
+      };
 
       void sendBackupNotice(
         client,

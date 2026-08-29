@@ -124,6 +124,14 @@ vi.mock('../hooks/useOpenStoaClient', () => ({ useOpenStoaClient: () => clientSi
  */
 const mlsSingleton = {};
 vi.mock('../crypto/mobileTransport', () => ({
+  /*
+   * The note path re-seals under the archive key so it outlives an erase; a
+   * fake that omits this makes the whole screen fail to mount, which reads as
+   * the screen being broken rather than the fake being short.
+   */
+  getTakSessionStore: () => ({
+    archiveOnSend: async () => {},
+  }),
   getMlsSessionStore: () => mlsSingleton,
   toDisplayMessageMls: async (_m: unknown, _t: string, raw: unknown) => raw,
 }));

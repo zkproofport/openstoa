@@ -74,12 +74,16 @@ describe('the post-recovery message', () => {
   it('INTEGRITY: the notice names which rooms, rather than apologising vaguely', () => {
     /*
      * "Some data may be unavailable" tells a person nothing they can act on.
-     * The one useful fact is that PUBLIC rooms come back whole and the other
-     * tiers wait on another member — so the notice has to say that.
+     * The one useful fact is that OPEN rooms come back whole and the other
+     * kinds wait on another member — so the notice has to say that.
+     *
+     * The words are the ones on screen: the room kinds were renamed to
+     * Open / Invite-only / Secret on 2026-08-29 because "Private" promised
+     * that the posts were hidden, and they are not.
      */
     const enNotice = ((en as unknown as Dict).openstoa.recovery.gapNotice as string).toLowerCase();
-    expect(enNotice).toContain('public');
-    expect(enNotice).toContain('private');
+    expect(enNotice).toContain('open');
+    expect(enNotice).toContain('invite-only');
     expect(enNotice).toContain('another member');
   });
 
@@ -88,7 +92,7 @@ describe('the post-recovery message', () => {
     const koNotice = (ko as unknown as Dict).openstoa.recovery.gapNotice as string;
     expect(koNotice.length).toBeGreaterThan(40);
     expect(koNotice).toContain('공개');
-    expect(koNotice).toContain('비공개');
+    expect(koNotice).toContain('초대제');
   });
 
   it('CONTRACT: both locales carry every recovery key the screen asks for', () => {

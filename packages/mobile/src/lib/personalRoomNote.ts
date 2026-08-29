@@ -47,9 +47,34 @@ export interface PersonalRoomSealer {
    *
    * Declared optional only so an older caller compiles; `fileNoteOnce` reports a
    * send it could not cache rather than pretending it worked.
+   *
+   * A CACHE IS NOT A BACKUP, and mistaking one for the other is how the same
+   * symptom came back a second time. This keeps the note readable ON THIS
+   * DEVICE. Erasing the device takes it, and the recovery code cannot bring it
+   * back — see `archive` below, which is the half that survives.
    */
   cachePlaintext?(topicId: string, msgId: string, plaintext: string): Promise<void>;
 }
+
+/**
+ * Re-seal the note under the room's ARCHIVE key and upload it.
+ *
+ * WHY THIS EXISTS, measured on a phone against production on 2026-08-29:
+ * the recovery-code note had a live ciphertext and NO archive row. Erasing the
+ * device destroyed the room's group state, the new leaf could not open the old
+ * ciphertext, and the recovery code had nothing to restore — so the one message
+ * a person needs after wiping a phone was the one message a wipe destroyed. The
+ * room even said "Only your recovery code can bring this back" while the code
+ * was already entered and working.
+ *
+ * Every ordinary send does this (`ChatRoomScreen` calls `archiveOnSend` on both
+ * the text and the attachment path). This path simply never did.
+ */
+export type ArchiveNote = (
+  topicId: string,
+  messageId: string,
+  plaintext: string,
+) => Promise<void>;
 
 interface TopicRow {
   id: string;
@@ -83,7 +108,11 @@ export async function fileNoteOnce(
   client: PersonalRoomClient,
   sealer: PersonalRoomSealer,
   body: string,
-  opts: { alreadyFiled?: (topicId: string) => Promise<boolean> } = {},
+  opts: {
+    alreadyFiled?: (topicId: string) => Promise<boolean>;
+    /** See `ArchiveNote`. Without it the note cannot survive an erase. */
+    archive?: ArchiveNote;
+  } = {},
 ): Promise<FileNoteResult> {
   let topicId: string;
   try {
@@ -145,6 +174,24 @@ export async function fileNoteOnce(
     const msgId = posted?.message?.id;
     if (!msgId || !sealer.cachePlaintext) {
       return { kind: 'sent-uncached', topicId };
+    }
+    /*
+     * ARCHIVE BEFORE CACHING, because the archive is the copy that outlives this
+     * phone and the cache is not. Both are best-effort against a message that is
+     * already on the server, so neither may turn a successful send into a
+     * failure — but the order says which one matters when only one gets to run.
+     */
+    if (opts.archive) {
+      try {
+        await opts.archive(topicId, msgId, body);
+      } catch {
+        /*
+         * Not fatal and not silent: the room's own key-state tick reports an
+         * unarchived note as a locked row, which is how this was found. Failing
+         * the send here would leave a note on the server that the caller thinks
+         * was never written, and it would write a second one next launch.
+         */
+      }
     }
     try {
       await sealer.cachePlaintext(topicId, msgId, body);

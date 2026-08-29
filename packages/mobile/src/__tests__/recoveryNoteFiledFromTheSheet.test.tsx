@@ -101,6 +101,14 @@ vi.mock('../crypto/mobileTransport', () => ({
     postRecovery: async () => ({}),
   }),
   getDeviceMasterKey: async () => new Uint8Array(32),
+  /*
+   * The note path re-seals under the archive key so it outlives an erase; a
+   * fake that omits this makes the whole screen fail to mount, which reads as
+   * the screen being broken rather than the fake being short.
+   */
+  getTakSessionStore: () => ({
+    archiveOnSend: async () => {},
+  }),
   getMlsSessionStore: () => ({
     seal: async (_topicId: string, plaintext: string) => {
       stub.sealed.push(plaintext);

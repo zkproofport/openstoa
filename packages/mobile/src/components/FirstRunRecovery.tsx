@@ -31,7 +31,13 @@ import type { ChatMessage } from '@openstoa/api-types';
 import { useHost } from '@openstoa/miniapp-bridge';
 import { useOpenStoaClient } from '../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../stores/sessionStore';
-import { getMlsSessionStore, toDisplayMessageMls, UNREADABLE_BODY } from '../crypto/mobileTransport';
+import {
+  getMlsSessionStore,
+  getTakSessionStore,
+  toDisplayMessageMls,
+  UNREADABLE_BODY,
+} from '../crypto/mobileTransport';
+import { chatTierOf } from '../lib/chatTierPolicy';
 import { refuseUnreadable, scanPersonalRoom, type OpenRow } from '../lib/personalRoomNote';
 import { anyIsRecoveryNote, sendRecoveryNote } from '../lib/sendRecoveryNote';
 import { useFirstRunRecovery } from '../hooks/useFirstRunRecovery';
@@ -96,6 +102,18 @@ export function FirstRunRecoveryProvider({ children }: { children?: React.ReactN
     const open: OpenRow = async (topicId, row) =>
       (await toDisplayMessageMls(mls, topicId, row as ChatMessage)).message ?? '';
 
+    /*
+     * The note must outlive this phone, so it is re-sealed under the room's
+     * archive key as well as cached locally. The personal room is always a
+     * SECRET topic with one member, so its tier is fixed — `chatTierOf` is used
+     * rather than the literal so the mapping stays in the one place that owns
+     * it.
+     */
+    const tak = getTakSessionStore(client, secureStore, localStore);
+    const archiveNote = async (topicId: string, messageId: string, plaintext: string) => {
+      await tak.archiveOnSend(topicId, messageId, plaintext, chatTierOf('secret', false));
+    };
+
     void sendRecoveryNote(
       client,
       mls,
@@ -105,6 +123,7 @@ export function FirstRunRecoveryProvider({ children }: { children?: React.ReactN
         warning: t('openstoa.firstRunRecovery.noteWarning'),
       },
       {
+        archive: archiveNote,
         alreadyFiled: async (topicId) => {
           /*
            * Built the same way `sendBackupNotice` builds its own: a row this

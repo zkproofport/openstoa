@@ -28,6 +28,7 @@ import { isRecoveryCodeNote, recoveryCodeNote, type RecoveryNoteStrings } from '
 import {
   fileNoteOnce,
   type FileNoteResult,
+  type ArchiveNote,
   type PersonalRoomClient,
   type PersonalRoomSealer,
 } from './personalRoomNote';
@@ -58,7 +59,11 @@ export async function sendRecoveryNote(
   sealer: RecoveryNoteSealer,
   code: string,
   strings: RecoveryNoteStrings,
-  opts: { alreadyFiled?: (topicId: string) => Promise<boolean> } = {},
+  opts: {
+    alreadyFiled?: (topicId: string) => Promise<boolean>;
+    /** Re-seal under the archive key so the note outlives this phone. */
+    archive?: ArchiveNote;
+  } = {},
 ): Promise<SendRecoveryNoteResult> {
   return fileNoteOnce(client, sealer, recoveryCodeNote(code, strings), opts);
 }

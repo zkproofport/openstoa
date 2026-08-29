@@ -111,6 +111,14 @@ vi.mock('../crypto/mobileTransport', () => ({
    * still EXIST: this mock replaces the module wholesale, so a missing export
    * is a thrown error inside the effect, not a silent no-op.
    */
+  /*
+   * The note path re-seals under the archive key so it outlives an erase; a
+   * fake that omits this makes the whole screen fail to mount, which reads as
+   * the screen being broken rather than the fake being short.
+   */
+  getTakSessionStore: () => ({
+    archiveOnSend: async () => {},
+  }),
   getMlsSessionStore: () => ({ seal: vi.fn(async () => ({ ciphertext: 'x', epoch: 0 })) }),
   toDisplayMessageMls: vi.fn(async (_store: unknown, _topicId: string, row: unknown) => row),
   UNREADABLE_BODY: '[unable to decrypt]',

@@ -36,6 +36,7 @@ import {
   scanPersonalRoom,
   type FileNoteResult,
   type OpenRow,
+  type ArchiveNote,
   type PersonalRoomClient,
   type PersonalRoomSealer,
 } from './personalRoomNote';
@@ -63,11 +64,14 @@ export async function sendBackupNotice(
   open: OpenRow,
   health: BackupHealth,
   copy: BackupNoticeCopy,
+  /** Re-seal under the archive key so the notice outlives this phone. */
+  archive?: ArchiveNote,
 ): Promise<SendBackupNoticeResult> {
   const kind = noticeKindFor(health);
   if (!kind) return { kind: 'not-needed', health: health.kind };
 
   return fileNoteOnce(client, sealer, backupNotice(kind, copy[kind]), {
+    archive,
     alreadyFiled: async (topicId) => {
       const scan = await scanPersonalRoom(client, topicId, open);
       /*
