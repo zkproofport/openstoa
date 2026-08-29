@@ -274,6 +274,13 @@
       "when": 1787966719848,
       "tag": "0038_lethal_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787966720848,
+      "tag": "0039_every_key_follows",
+      "breakpoints": true
     }
   ]
 }

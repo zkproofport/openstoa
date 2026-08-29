@@ -1,0 +1,137 @@
+-- Make the ON UPDATE CASCADE state true regardless of where a database starts.
+--
+-- 0038 dropped each constraint by name WITHOUT `IF EXISTS`. Those names came
+-- from one developer machine, and the boot-time runner only forgives
+-- "already exists" (42P07 / 42710 / 42701) — an undefined_object from dropping
+-- a name that is spelled differently, or missing, would throw and take the boot
+-- with it. On a database where that happened, the withdrawal UPDATE fails on
+-- the first foreign key and leaving stops working again, silently.
+--
+-- Every statement here is safe to run twice and safe to run first: the drop
+-- tolerates absence, and the add always follows a drop, so it can never collide
+-- with a constraint that is already there but missing ON UPDATE CASCADE — which
+-- is exactly the state a bare ADD would refuse to fix.
+
+ALTER TABLE "ai_permissions" DROP CONSTRAINT IF EXISTS "ai_permissions_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "ai_permissions" ADD CONSTRAINT "ai_permissions_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "api_keys" DROP CONSTRAINT IF EXISTS "api_keys_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "archive_holders" DROP CONSTRAINT IF EXISTS "archive_holders_holder_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "archive_holders" ADD CONSTRAINT "archive_holders_holder_user_id_users_id_fk" FOREIGN KEY (holder_user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "bookmarks" DROP CONSTRAINT IF EXISTS "bookmarks_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "bookmarks" ADD CONSTRAINT "bookmarks_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "chat_delivery_cursors" DROP CONSTRAINT IF EXISTS "chat_delivery_cursors_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "chat_delivery_cursors" ADD CONSTRAINT "chat_delivery_cursors_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "chat_media" DROP CONSTRAINT IF EXISTS "chat_media_uploader_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "chat_media" ADD CONSTRAINT "chat_media_uploader_id_users_id_fk" FOREIGN KEY (uploader_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "chat_messages" DROP CONSTRAINT IF EXISTS "chat_messages_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "chat_reads" DROP CONSTRAINT IF EXISTS "chat_reads_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "chat_reads" ADD CONSTRAINT "chat_reads_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "comments" DROP CONSTRAINT IF EXISTS "comments_author_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "comments" ADD CONSTRAINT "comments_author_id_users_id_fk" FOREIGN KEY (author_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "device_key_packages" DROP CONSTRAINT IF EXISTS "device_key_packages_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "device_key_packages" ADD CONSTRAINT "device_key_packages_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "device_signing_keys" DROP CONSTRAINT IF EXISTS "device_signing_keys_user_id_fkey";
+--> statement-breakpoint
+ALTER TABLE "device_signing_keys" ADD CONSTRAINT "device_signing_keys_user_id_fkey" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "invite_tokens" DROP CONSTRAINT IF EXISTS "invite_tokens_created_by_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "invite_tokens" ADD CONSTRAINT "invite_tokens_created_by_users_id_fk" FOREIGN KEY (created_by) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "invite_tokens" DROP CONSTRAINT IF EXISTS "invite_tokens_used_by_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "invite_tokens" ADD CONSTRAINT "invite_tokens_used_by_users_id_fk" FOREIGN KEY (used_by) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "join_requests" DROP CONSTRAINT IF EXISTS "join_requests_reviewed_by_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "join_requests" ADD CONSTRAINT "join_requests_reviewed_by_users_id_fk" FOREIGN KEY (reviewed_by) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "join_requests" DROP CONSTRAINT IF EXISTS "join_requests_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "join_requests" ADD CONSTRAINT "join_requests_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "key_backup_passkeys" DROP CONSTRAINT IF EXISTS "key_backup_passkeys_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "key_backup_passkeys" ADD CONSTRAINT "key_backup_passkeys_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "key_backups" DROP CONSTRAINT IF EXISTS "key_backups_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "key_backups" ADD CONSTRAINT "key_backups_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "poll_votes" DROP CONSTRAINT IF EXISTS "poll_votes_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "poll_votes" ADD CONSTRAINT "poll_votes_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "posts" DROP CONSTRAINT IF EXISTS "posts_author_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "posts" ADD CONSTRAINT "posts_author_id_users_id_fk" FOREIGN KEY (author_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "push_prefs" DROP CONSTRAINT IF EXISTS "push_prefs_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "push_prefs" ADD CONSTRAINT "push_prefs_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "push_tokens" DROP CONSTRAINT IF EXISTS "push_tokens_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "push_tokens" ADD CONSTRAINT "push_tokens_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "push_topic_mutes" DROP CONSTRAINT IF EXISTS "push_topic_mutes_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "push_topic_mutes" ADD CONSTRAINT "push_topic_mutes_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "reactions" DROP CONSTRAINT IF EXISTS "reactions_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "reactions" ADD CONSTRAINT "reactions_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "record_limits" DROP CONSTRAINT IF EXISTS "record_limits_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "record_limits" ADD CONSTRAINT "record_limits_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "records" DROP CONSTRAINT IF EXISTS "records_recorder_nullifier_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "records" ADD CONSTRAINT "records_recorder_nullifier_users_id_fk" FOREIGN KEY (recorder_nullifier) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "tak_key_backups" DROP CONSTRAINT IF EXISTS "tak_key_backups_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "tak_key_backups" ADD CONSTRAINT "tak_key_backups_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "topic_archive_roots" DROP CONSTRAINT IF EXISTS "topic_archive_roots_deposited_by_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "topic_archive_roots" ADD CONSTRAINT "topic_archive_roots_deposited_by_users_id_fk" FOREIGN KEY (deposited_by) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "topic_members" DROP CONSTRAINT IF EXISTS "topic_members_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "topic_members" ADD CONSTRAINT "topic_members_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "topics" DROP CONSTRAINT IF EXISTS "topics_creator_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "topics" ADD CONSTRAINT "topics_creator_id_users_id_fk" FOREIGN KEY (creator_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "user_verifications" DROP CONSTRAINT IF EXISTS "user_verifications_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "user_verifications" ADD CONSTRAINT "user_verifications_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+--> statement-breakpoint
+ALTER TABLE "votes" DROP CONSTRAINT IF EXISTS "votes_user_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "votes" ADD CONSTRAINT "votes_user_id_users_id_fk" FOREIGN KEY (user_id) REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
