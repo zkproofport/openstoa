@@ -82,6 +82,10 @@ const COLOR_SWEPT_FILES = [
   // What the web shows in place of chat. Every colour it draws is a token, so
   // it belongs in the swept list rather than the excluded one.
   'src/components/ChatOnMobileOnly.tsx',
+  // What a wrong address lands on. It paints its own ground rather than
+  // borrowing the shell, so every colour on it is a token by necessity — a raw
+  // hex here would be the one page that ignores light mode.
+  'src/app/not-found.tsx',
   'src/components/icons.tsx',
   'src/app/ask/page.tsx',
   'src/app/chat/page.tsx',

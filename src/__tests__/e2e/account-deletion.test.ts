@@ -202,16 +202,31 @@ describe('DELETE /api/account — a personal space with a message in it', () => 
     ).toBe(0);
   });
 
-  it.skipIf(noDb())('keeps the user row, renamed and stamped', async () => {
+  it.skipIf(noDb())('keeps the user row, renamed, stamped, and answering to nothing', async () => {
+    /*
+     * This looked the row up by its ORIGINAL id, which is the nullifier from
+     * the proof — and that is precisely what withdrawal must stop answering to.
+     * Until 2026-08-29 it did answer: a person who deleted their account and
+     * signed back in with the same proof landed in their own withdrawn row.
+     *
+     * So the row is still expected to survive, anonymised, for the sake of the
+     * posts and comments that point at it — but under a RETIRED id, and the old
+     * one must resolve to nothing.
+     */
     const me = await newAccount('anon');
     const res = await deleteAccount(me.token);
     expect(res.status).toBe(200);
 
-    const row = await selectOne<{ nickname: string; deleted_at: string | null }>(
-      'SELECT nickname, deleted_at FROM users WHERE id = $1',
-      [me.userId],
+    expect(
+      await countRows('SELECT count(*)::text AS n FROM users WHERE id = $1', [me.userId]),
+      'the original id still resolves, so the identity was not released',
+    ).toBe(0);
+
+    const row = await selectOne<{ id: string; nickname: string; deleted_at: string | null }>(
+      "SELECT id, nickname, deleted_at FROM users WHERE id LIKE 'withdrawn:%' AND id LIKE $1",
+      [`%${me.userId}`],
     );
-    expect(row, 'the user row was deleted rather than anonymised').toBeTruthy();
+    expect(row, 'the user row was deleted rather than retired').toBeTruthy();
     expect(row!.nickname).not.toBe(me.nickname);
     expect(row!.nickname).toMatch(/^\[Withdrawn User\]_/);
     expect(row!.deleted_at, 'deletedAt was never stamped').not.toBeNull();
