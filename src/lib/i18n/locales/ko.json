@@ -69,7 +69,11 @@
     },
     "uploadingImage": "이미지 업로드 중...",
     "saving": "저장 중...",
-    "saveChanges": "변경사항 저장"
+    "saveChanges": "변경사항 저장",
+    "deleteTopic": "토픽 삭제",
+    "deleteConfirm": "이 토픽을 삭제할까요? 이 방의 글·댓글·대화가 모두 함께 사라집니다. 나만이 아니라 모든 참여자에게서요. 되돌릴 수 없습니다.",
+    "deleting": "삭제 중...",
+    "deleteFailed": "토픽을 삭제하지 못했습니다."
   },
   "joinPage": {
     "inviteInvalid": "초대 링크가 유효하지 않거나 만료되었습니다",
@@ -1116,5 +1120,10 @@
   },
   "postActions": {
     "copied": "복사했습니다"
+  },
+  "notFound": {
+    "title": "이 페이지는 없습니다",
+    "body": "링크가 오래되었거나, 토픽이 삭제되었을 수 있습니다.",
+    "backHome": "피드로 가기"
   }
 }

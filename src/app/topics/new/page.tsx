@@ -64,7 +64,21 @@ export default function NewTopicPage() {
   useEffect(() => {
     apiFetch('/api/categories')
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.categories) setCategories(data.categories); })
+      .then(data => {
+        if (!data?.categories) return;
+        setCategories(data.categories);
+        /*
+         * Pick the first one, the way the app does.
+         *
+         * A category is required, and with none chosen the Create button sits
+         * greyed out with nothing on screen saying why — the required marker is
+         * a red asterisk further up a long form, off screen by the time you
+         * reach the button. Watched on 2026-08-29: filled in a title, pressed a
+         * dead button, and only found the cause by reading the code. The app
+         * has always arrived with General selected.
+         */
+        setCategoryId((current) => current || data.categories[0]?.id || '');
+      })
       .catch(() => {});
   }, []);
 

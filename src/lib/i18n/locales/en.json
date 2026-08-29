@@ -69,7 +69,11 @@
     },
     "uploadingImage": "Uploading image...",
     "saving": "Saving...",
-    "saveChanges": "Save Changes"
+    "saveChanges": "Save Changes",
+    "deleteTopic": "Delete topic",
+    "deleteConfirm": "Delete this topic? Every post, comment and message in it goes too, for everyone — not only for you. This cannot be undone.",
+    "deleting": "Deleting...",
+    "deleteFailed": "Could not delete the topic."
   },
   "joinPage": {
     "inviteInvalid": "Invite link is invalid or expired",
@@ -1116,5 +1120,10 @@
   },
   "postActions": {
     "copied": "Copied!"
+  },
+  "notFound": {
+    "title": "This page is not here",
+    "body": "The link may be old, or the topic may have been deleted.",
+    "backHome": "Go to the feed"
   }
 }

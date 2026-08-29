@@ -27,7 +27,7 @@ import webKo from '@/lib/i18n/locales/ko.json';
 import miniEn from '../../packages/mobile/src/i18n/locales/en.json';
 import miniKo from '../../packages/mobile/src/i18n/locales/ko.json';
 
-const warnings = {
+const warnings: Record<string, string> = {
   'web, English': (webEn as any).myPage.settings.dangerZone.deleteAccountIntro as string,
   'web, Korean': (webKo as any).myPage.settings.dangerZone.deleteAccountIntro as string,
   'app, English': (miniEn as any).openstoa.editProfile.delete.message as string,

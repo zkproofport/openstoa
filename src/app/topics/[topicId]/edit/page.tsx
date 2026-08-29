@@ -24,6 +24,7 @@ export default function EditTopicPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function loadTopic() {
@@ -146,6 +147,35 @@ export default function EditTopicPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
       setSubmitting(false);
+    }
+  }
+
+  /**
+   * Deleting a topic existed on the server and in the app, and nowhere on the
+   * web. That was not a missing convenience: account deletion refuses while you
+   * still own a topic, and the only way to stop owning one is to hand it to
+   * another member or delete it. A person who made a topic here and never
+   * invited anyone had neither — the web offered no way out of their own
+   * account. Found 2026-08-29 by pressing Delete Account in a browser and
+   * reading what came back.
+   *
+   * Same endpoint and same warning as the app, so the sentence a person reads
+   * before an irreversible thing does not depend on which screen they are on.
+   */
+  async function handleDelete() {
+    if (!window.confirm(t('editTopicPage.deleteConfirm'))) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/topics/${topicId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? t('editTopicPage.deleteFailed'));
+      }
+      router.push('/topics');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('editTopicPage.deleteFailed'));
+      setDeleting(false);
     }
   }
 
@@ -393,6 +423,33 @@ export default function EditTopicPage() {
             </Link>
           </div>
         </form>
+
+        {/*
+          Outside the form, so Enter in the title field can never reach it, and
+          below Cancel so the irreversible thing is the last thing on the page —
+          the same order the app puts it in.
+        */}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting || submitting}
+          style={{
+            width: '100%',
+            marginTop: 'var(--space-6)',
+            background: 'transparent',
+            color: 'var(--color-status-danger)',
+            border: '1px solid var(--color-status-danger)',
+            borderRadius: 'var(--radius-control)',
+            padding: 'var(--space-3) 0',
+            fontSize: 'var(--text-body)',
+            fontWeight: 700,
+            cursor: deleting || submitting ? 'not-allowed' : 'pointer',
+            opacity: deleting || submitting ? 0.5 : 1,
+            minHeight: 'var(--touch-target-min)',
+          }}
+        >
+          {deleting ? t('editTopicPage.deleting') : t('editTopicPage.deleteTopic')}
+        </button>
       </div>
     </CommunityLayout>
   );
