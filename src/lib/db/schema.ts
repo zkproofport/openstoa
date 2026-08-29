@@ -35,7 +35,7 @@ export const topics = pgTable('topics', {
   title: text('title').notNull(),
   description: text('description'),
   image: text('image'),
-  creatorId: text('creator_id').references(() => users.id).notNull(),
+  creatorId: text('creator_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   categoryId: uuid('category_id').references(() => categories.id),
   requiresCountryProof: boolean('requires_country_proof').default(false),
   allowedCountries: text('allowed_countries').array(),
@@ -131,7 +131,7 @@ export const topics = pgTable('topics', {
 
 export const topicMembers = pgTable('topic_members', {
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
-  userId: text('user_id').references(() => users.id).notNull(),
+  userId: text('user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   role: varchar('role', { length: 10 }).notNull().default('member'), // 'owner' | 'admin' | 'member'
   joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -141,10 +141,10 @@ export const topicMembers = pgTable('topic_members', {
 export const joinRequests = pgTable('join_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
-  userId: text('user_id').references(() => users.id).notNull(),
+  userId: text('user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   status: varchar('status', { length: 10 }).notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  reviewedBy: text('reviewed_by').references(() => users.id),
+  reviewedBy: text('reviewed_by').references(() => users.id, { onUpdate: 'cascade' }),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
 }, (table) => ({
   uniqueRequest: uniqueIndex('join_request_topic_user_idx').on(table.topicId, table.userId),
@@ -153,7 +153,7 @@ export const joinRequests = pgTable('join_requests', {
 export const posts = pgTable('posts', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
-  authorId: text('author_id').references(() => users.id).notNull(),
+  authorId: text('author_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   title: text('title').notNull(),
   content: text('content').notNull(),
   /*
@@ -218,7 +218,7 @@ export const pollVotes = pgTable('poll_votes', {
   id: uuid('id').primaryKey().defaultRandom(),
   pollId: uuid('poll_id').references(() => polls.id, { onDelete: 'cascade' }).notNull(),
   optionId: uuid('option_id').references(() => pollOptions.id, { onDelete: 'cascade' }).notNull(),
-  userId: text('user_id').references(() => users.id).notNull(),
+  userId: text('user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   // One row per (poll, option, user) — both single- and multi-choice modes
@@ -230,7 +230,7 @@ export const pollVotes = pgTable('poll_votes', {
 export const comments = pgTable('comments', {
   id: uuid('id').primaryKey().defaultRandom(),
   postId: uuid('post_id').references(() => posts.id).notNull(),
-  authorId: text('author_id').references(() => users.id).notNull(),
+  authorId: text('author_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   content: text('content').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -254,7 +254,7 @@ export const postTags = pgTable('post_tags', {
 }));
 
 export const bookmarks = pgTable('bookmarks', {
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -262,7 +262,7 @@ export const bookmarks = pgTable('bookmarks', {
 }));
 
 export const reactions = pgTable('reactions', {
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }).notNull(),
   emoji: varchar('emoji', { length: 10 }).notNull(), // e.g. '👍', '❤️', '🔥', '😂', '🎉', '😮'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -272,7 +272,7 @@ export const reactions = pgTable('reactions', {
 
 export const votes = pgTable('votes', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }),
   commentId: uuid('comment_id').references(() => comments.id, { onDelete: 'cascade' }),
   value: integer('value').notNull(), // +1 or -1
@@ -285,7 +285,7 @@ export const votes = pgTable('votes', {
 export const records = pgTable('records', {
   id: uuid('id').primaryKey().defaultRandom(),
   postId: uuid('post_id').references(() => posts.id).notNull(),
-  recorderNullifier: text('recorder_nullifier').references(() => users.id).notNull(),
+  recorderNullifier: text('recorder_nullifier').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   contentHash: text('content_hash').notNull(), // keccak256 of post content at time of recording
   txHash: text('tx_hash'), // Base TX hash (null while pending)
   method: varchar('method', { length: 10 }).notNull().default('service'), // 'service' | 'direct'
@@ -297,7 +297,7 @@ export const records = pgTable('records', {
 }));
 
 export const recordLimits = pgTable('record_limits', {
-  userId: text('user_id').references(() => users.id).notNull(),
+  userId: text('user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   date: text('date').notNull(), // YYYY-MM-DD format
   count: integer('count').notNull().default(0),
 }, (table) => ({
@@ -307,7 +307,7 @@ export const recordLimits = pgTable('record_limits', {
 export const chatMessages = pgTable('chat_messages', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id).notNull(),
-  userId: text('user_id').references(() => users.id).notNull(),
+  userId: text('user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   // E2EE migration complete (Phase 2, P2-22): the legacy plaintext `message`
   // column is gone. `system_text` is nullable and reserved for system rows
   // (`type` = 'join' | 'leave') which only carry public nicknames; user
@@ -375,7 +375,7 @@ export const mlsGroups = pgTable('mls_groups', {
  */
 export const deviceSigningKeys = pgTable('device_signing_keys', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').references(() => users.id).notNull(),
+  userId: text('user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   /** Matches the id the client already sends; one key per device per account. */
   deviceId: text('device_id').notNull(),
   /** Ed25519 public key, base64. The suite MLS already uses — no new primitive. */
@@ -395,7 +395,7 @@ export const deviceSigningKeys = pgTable('device_signing_keys', {
 
 export const deviceKeyPackages = pgTable('device_key_packages', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').references(() => users.id).notNull(), // nullifier
+  userId: text('user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(), // nullifier
   deviceId: text('device_id').notNull(),
   keyPackage: bytea('key_package').notNull(), // public KeyPackage bytes
   isAI: boolean('is_ai').notNull().default(false),
@@ -536,13 +536,13 @@ export const takBundles = pgTable('tak_bundles', {
 export const topicArchiveRoots = pgTable('topic_archive_roots', {
   topicId: uuid('topic_id').primaryKey().references(() => topics.id, { onDelete: 'cascade' }),
   rootKey: text('root_key').notNull(), // base64 archive root — PUBLIC topics only
-  depositedBy: text('deposited_by').references(() => users.id).notNull(), // audit only
+  depositedBy: text('deposited_by').references(() => users.id, { onUpdate: 'cascade' }).notNull(), // audit only
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 export const archiveHolders = pgTable('archive_holders', {
   topicId: uuid('topic_id').primaryKey().references(() => topics.id),
-  holderUserId: text('holder_user_id').references(() => users.id).notNull(),
+  holderUserId: text('holder_user_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   holderDeviceId: text('holder_device_id').notNull(),
   epochCovered: bigint('epoch_covered', { mode: 'number' }).notNull(), // highest epoch this holder has forward-rewrapped
   successionRank: integer('succession_rank').notNull().default(0), // owner=0, admin=1, ... (succession order)
@@ -617,7 +617,7 @@ export const mlsDeviceJoins = pgTable('mls_device_joins', {
 export const chatDeliveryCursors = pgTable('chat_delivery_cursors', {
   topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
   deviceId: text('device_id').notNull(), // MLS leaf id — NOT a user id
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   // Newest message this device has fetched. INCLUSIVE: a message at exactly
   // this instant is delivered.
   deliveredThrough: timestamp('delivered_through', { withTimezone: true }).notNull(),
@@ -663,7 +663,7 @@ export const chatDeliveryCursors = pgTable('chat_delivery_cursors', {
  */
 export const chatReads = pgTable('chat_reads', {
   topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   // The newest row the account has seen, by server id. Informational — the
   // ordering key is `last_read_at`.
   lastReadMessageId: uuid('last_read_message_id').notNull(),
@@ -725,7 +725,7 @@ export const chatMedia = pgTable('chat_media', {
   // one object is one row — a second insert for the same key is a bug, not a
   // second attachment.
   objectKey: text('object_key').notNull(),
-  uploaderId: text('uploader_id').references(() => users.id).notNull(),
+  uploaderId: text('uploader_id').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
   // Set once the uploader's message actually went out. NULL means the upload
   // may be stranded, and after a grace window the collector takes it.
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
@@ -751,7 +751,7 @@ export const chatMedia = pgTable('chat_media', {
 // was configured pre-migration; nothing in the app queries it any more. Safe to
 // drop in a future migration once that history is no longer needed.
 export const aiPermissions = pgTable('ai_permissions', {
-  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   cmd: text('cmd').array().notNull().default([]), // ability allowlist (subset of ALLOWED_CMDS); [] = no capabilities
   historyGrant: text('history_grant').notNull().default('none'), // TAK scope: none | Nd | since_epoch:N | full (isValidTakScope)
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -767,7 +767,7 @@ export const aiPermissions = pgTable('ai_permissions', {
 // logged. `key_hash` is UNIQUE so auth is a single indexed lookup, not a scan.
 export const apiKeys = pgTable('api_keys', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   name: text('name').notNull(), // user-chosen label, e.g. "laptop CLI"
   keyHash: text('key_hash').notNull().unique(), // sha256(rawKey) hex digest — NEVER the raw key
   prefix: varchar('prefix', { length: 16 }).notNull(), // first ~12 chars of the raw key, display only
@@ -783,7 +783,7 @@ export const apiKeys = pgTable('api_keys', {
 
 export const userVerifications = pgTable('user_verifications', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   proofType: varchar('proof_type', { length: 30 }).notNull(), // 'kyc' | 'country' | 'google_workspace' | 'microsoft_365'
   domain: text('domain'), // extracted domain for workspace/ms365
   country: text('country'), // extracted country ISO code for country proof
@@ -800,8 +800,8 @@ export const inviteTokens = pgTable('invite_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
   topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
   token: text('token').unique().notNull(), // random 16-char hex
-  createdBy: text('created_by').references(() => users.id).notNull(),
-  usedBy: text('used_by').references(() => users.id), // null until used
+  createdBy: text('created_by').references(() => users.id, { onUpdate: 'cascade' }).notNull(),
+  usedBy: text('used_by').references(() => users.id, { onUpdate: 'cascade' }), // null until used
   usedAt: timestamp('used_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -818,7 +818,7 @@ export const inviteTokens = pgTable('invite_tokens', {
 // = AEAD(HKDF(recovery_code), master_key); recovery_code is client-CSPRNG ≥128-bit
 // (SI-5) and lives only with the user.
 export const keyBackups = pgTable('key_backups', {
-  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   wrappedMaster: bytea('wrapped_master').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -828,7 +828,7 @@ export const keyBackups = pgTable('key_backups', {
 // credential (design §9.5 multi-passkey; dev-plan M3 child-table split so a
 // single prf_wrapped column no longer caps the user at one passkey).
 export const keyBackupPasskeys = pgTable('key_backup_passkeys', {
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(),
   credentialId: text('credential_id').notNull(),
   prfWrapped: bytea('prf_wrapped').notNull(), // AEAD(HKDF(passkey PRF output), master_key)
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -842,7 +842,7 @@ export const keyBackupPasskeys = pgTable('key_backup_passkeys', {
 // (Option 1, design §6.4.1) — history recovery no longer depends on a live member
 // re-granting TAK bundles. Server never unwraps (SI-8). One snapshot row per user.
 export const takKeyBackups = pgTable('tak_key_backups', {
-  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
   ciphertext: bytea('ciphertext').notNull(), // AEAD(deriveTakBackupKey(master_key), TAK-keychain JSON)
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -858,7 +858,7 @@ export const takKeyBackups = pgTable('tak_key_backups', {
 // duplicating. Rows cascade-delete with the user account.
 export const pushTokens = pgTable('push_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(), // nullifier
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(), // nullifier
   routingHandle: text('routing_handle').notNull(), // opaque, client-generated, no rotation (Phase A)
   pushToken: text('push_token').notNull(), // OS/Expo push token (no message content ever stored here)
   platform: varchar('platform', { length: 10 }).notNull(), // 'ios' | 'android'
@@ -877,7 +877,7 @@ export const pushTokens = pgTable('push_tokens', {
 // denied at the OS level (the client reconciles the two and offers to open the
 // system settings). One row per user; cascade-deletes with the account.
 export const pushPrefs = pgTable('push_prefs', {
-  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }), // nullifier
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }), // nullifier
   enabled: boolean('enabled').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -889,7 +889,7 @@ export const pushPrefs = pgTable('push_prefs', {
 // toggles converge instead of erroring or duplicating. Rows cascade-delete with
 // both the user and the topic, so a deleted topic leaves no orphan mute.
 export const pushTopicMutes = pgTable('push_topic_mutes', {
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(), // nullifier
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }).notNull(), // nullifier
   topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

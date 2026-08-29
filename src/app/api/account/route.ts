@@ -139,12 +139,37 @@ export async function DELETE(request: NextRequest) {
 
     await tx.delete(bookmarks).where(eq(bookmarks.userId, userId));
 
-    // The user row survives, anonymised, so posts, comments and votes still
-    // resolve to an author and upvote counts stay honest.
-    const randomSuffix = Math.random().toString(36).slice(2, 10);
+    /*
+     * The row survives, anonymised, so posts, comments and votes still resolve
+     * to an author and upvote counts stay honest — but it MUST STOP ANSWERING
+     * TO THE NULLIFIER, or leaving is not leaving.
+     *
+     * The row's id IS the nullifier from the proof, and sign-in looks the
+     * account up by exactly that. So an anonymised row still matched the next
+     * sign-in with the same proof: the person came back to their own withdrawn
+     * account, carrying the name `[Withdrawn User]_…`, with the personal space
+     * recreated around them. Seen on a real device on 2026-08-29, minutes after
+     * a deletion that had reported success.
+     *
+     * Retiring the id is what releases the identity. The nullifier is still
+     * derivable from the retired id — it has to be, or the same proof could
+     * withdraw twice into colliding ids — but nothing looks the account up that
+     * way, so the next sign-in finds no row and builds a fresh account.
+     *
+     * The 31 columns that point at this row follow the rename themselves: every
+     * foreign key into `users` now carries ON UPDATE CASCADE. Without it this
+     * single UPDATE fails against all of them and the whole deletion rolls
+     * back.
+     *
+     * The name is released too. Nicknames are unique, so keeping the withdrawn
+     * one would quietly deny it to everyone, including the same person coming
+     * back.
+     */
+    const retiredAt = Date.now();
     await tx.update(users).set({
-      nickname: `[Withdrawn User]_${randomSuffix}`,
-      deletedAt: new Date(),
+      id: `withdrawn:${retiredAt}:${userId}`,
+      nickname: `[Withdrawn User]_${retiredAt.toString(36)}`,
+      deletedAt: new Date(retiredAt),
     }).where(eq(users.id, userId));
   });
 

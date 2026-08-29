@@ -338,7 +338,7 @@
       },
       "dangerZone": {
         "title": "Danger Zone",
-        "deleteAccountIntro": "If you delete your account, your nickname will be changed to '[Withdrawn User]' and your posts and comments will remain. Please transfer topic ownership beforehand.",
+        "deleteAccountIntro": "Your own space goes for good — every message, photo and post in it. What you wrote in other people's rooms stays, under \"[Withdrawn User]\". You can sign in again, but it will be a brand-new account: nothing from this one comes back. Hand over any topic you own before you go.",
         "transferOwnershipFirst": "Please transfer topic ownership first",
         "deleteAccount": "Delete Account",
         "typeToConfirmPre": "Type",

@@ -171,7 +171,7 @@
       },
       "delete": {
         "title": "Delete account",
-        "message": "Deleting your account permanently removes all your posts, comments, and badges. Continue?"
+        "message": "Your own space goes for good — every message, photo and post in it. What you wrote in other people's rooms stays, under \"[Withdrawn User]\". You can sign in again, but it will be a brand-new account: nothing from this one comes back. Continue?"
       },
       "language": "Language",
       "help": "Help",
