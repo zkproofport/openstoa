@@ -34,8 +34,26 @@ function randomChallenge(): Uint8Array {
   return c;
 }
 
-/** True if the browser exposes WebAuthn at all (PRF support is probed at use). */
+/**
+ * Passkey recovery is OFF everywhere until it has been verified end to end.
+ *
+ * Nothing about it had ever been run to completion — registering a passkey,
+ * wiping the device, and getting the chat keys back. The domain a passkey binds
+ * to was also wrong on mobile, and Android has no implementation at all, so the
+ * feature could only ever have worked for some people on one platform.
+ *
+ * Offering half a recovery route is worse than offering none: somebody registers
+ * a passkey, believes their keys are safe, and finds out otherwise on the day
+ * they need them. The recovery code path is verified and stays.
+ *
+ * Nobody has registered one — OpenStoa has not launched. Turning this back on
+ * needs no migration, just this constant and a run through the real flow.
+ */
+const PASSKEY_RECOVERY_ENABLED = false;
+
+/** True if passkey recovery is offered AND the browser exposes WebAuthn. */
 export function isPasskeySupported(): boolean {
+  if (!PASSKEY_RECOVERY_ENABLED) return false;
   return typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
 }
 
