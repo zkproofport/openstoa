@@ -1,6 +1,6 @@
 {
   "name": "@masselabs/openstoa",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "OpenStoa SDK — typed REST client + Node-compatible MLS E2EE chat crypto for AI agents and CLIs.",
   "license": "MIT",
   "repository": {
