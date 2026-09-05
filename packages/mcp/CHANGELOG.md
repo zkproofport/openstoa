@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.3](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.1.2...openstoa-mcp-v0.1.3) (2026-09-05)
+
+
+### Features
+
+* **chat:** reclaim delivered ciphertext, encrypt media, and close the key-management hole ([5f204f8](https://github.com/zkproofport/openstoa/commit/5f204f8e6ed15757f836f5d1ccfcef295ade2e21))
+* **web,cli:** chat rail fixes, web i18n, and API-key-scoped AI capability ([c8603db](https://github.com/zkproofport/openstoa/commit/c8603db0162edf000ebb4565dbc2ce552a473544))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @masselabs/openstoa-commands bumped from ^0.1.2 to ^0.1.3
+  * devDependencies
+    * @masselabs/openstoa bumped from ^0.1.2 to ^0.1.3
+
 ## [0.1.2](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.1.1...openstoa-mcp-v0.1.2) (2026-07-28)
 
 
