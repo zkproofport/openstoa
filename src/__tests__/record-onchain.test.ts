@@ -5,8 +5,6 @@ beforeAll(() => {
   process.env.RECORD_BOARD_ADDRESS = '0x92EEe24b737272F81FAE0DFD3c2F6FDd05F099f0';
   process.env.RECORD_SERVICE_PRIVATE_KEY =
     '0x5c8eb0e0dcdcdabdc87f1fae3e992132e8a06b83188dfba625ca95036876bb0a';
-  process.env.BASE_SEPOLIA_RPC_URL =
-    'https://base-sepolia.g.alchemy.com/v2/_5AqsTbLxEFBr5tjslXzt';
 });
 
 /**
@@ -40,6 +38,17 @@ const recorderNullifier = keccak256(toUtf8Bytes('e2e-test-recorder-' + seed));
 
 describe.sequential('record-onchain', { timeout: 60000 }, () => {
   beforeAll(async () => {
+    // The RPC URL is NOT hardcoded here. It used to be, carrying an Alchemy
+    // API key into this public repository — a paid credential, unlike the
+    // throwaway signer above, which is deliberately public and deliberately
+    // near-empty. Pass BASE_SEPOLIA_RPC_URL in; without it these tests skip
+    // rather than quietly falling back to some other endpoint.
+    if (!process.env.BASE_SEPOLIA_RPC_URL) {
+      skipReason =
+        'BASE_SEPOLIA_RPC_URL is not set, so these tests cannot reach the chain. ' +
+        'Set it to any Base Sepolia endpoint to run them.';
+      return;
+    }
     try {
       const provider = new JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
       const address = new Wallet(process.env.RECORD_SERVICE_PRIVATE_KEY!).address;
