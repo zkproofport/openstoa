@@ -95,7 +95,7 @@ database" fear suggests, and less safe than "just flip a route" in one specific 
 **Staging vs production — does the script handle it?** Yes, by design, but it puts the burden
 on the operator, not the script. `R2_PUBLIC_URL`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, and
 `R2_SECRET_ACCESS_KEY` are **all** resolved from separate per-environment GitHub secrets in
-`/Users/nhn/Workspace/proofport-app-dev/.github/workflows/deploy.yml`:
+`<repo>/.github/workflows/deploy.yml`:
 
 ```
 R2_PUBLIC_URL=${{ secrets[format('{0}_R2_PUBLIC_URL{1}', steps.env.outputs.ENV_UPPER, steps.cfg.outputs.SUFFIX)] }}
