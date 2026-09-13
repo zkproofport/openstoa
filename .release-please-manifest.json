@@ -1,8 +1,8 @@
 {
-  ".": "0.1.1",
-  "packages/sdk": "0.1.2",
-  "packages/commands": "0.1.2",
-  "packages/cli": "0.1.2",
-  "packages/mcp": "0.1.2",
-  "packages/channel": "0.1.2"
+  ".": "0.1.2",
+  "packages/sdk": "0.1.3",
+  "packages/commands": "0.1.3",
+  "packages/cli": "0.1.3",
+  "packages/mcp": "0.1.3",
+  "packages/channel": "0.1.3"
 }
