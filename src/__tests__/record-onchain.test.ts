@@ -94,7 +94,8 @@ describe.sequential('record-onchain', { timeout: 60000 }, () => {
     expect(count).toBeGreaterThanOrEqual(1n);
   });
 
-  it('duplicate recording reverts (same postIdHash + recorderNullifier)', async () => {
+  it('duplicate recording reverts (same postIdHash + recorderNullifier)', async (ctx) => {
+    if (skipReason) ctx.skip(skipReason);
     const { recordOnChain } = await import('@/lib/contract');
 
     // Same postIdHash + recorderNullifier → contract checks hasRecorded[keccak256(abi.encode(postIdHash, recorderNullifier))]
@@ -103,7 +104,8 @@ describe.sequential('record-onchain', { timeout: 60000 }, () => {
     ).rejects.toThrow();
   });
 
-  it('getOnChainRecordCount returns 0 for non-existent post', async () => {
+  it('getOnChainRecordCount returns 0 for non-existent post', async (ctx) => {
+    if (skipReason) ctx.skip(skipReason);
     const { getOnChainRecordCount } = await import('@/lib/contract');
 
     const unknownPostIdHash = keccak256(toUtf8Bytes('nonexistent-post-' + seed));
