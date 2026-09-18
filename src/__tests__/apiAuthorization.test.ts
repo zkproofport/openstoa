@@ -19,11 +19,11 @@ const inventory=routeFiles('src/app/api').flatMap(file=>{
  return source.statements.filter((node):node is ts.FunctionDeclaration=>ts.isFunctionDeclaration(node)&&!!node.name&&METHODS.has(node.name.text)&&!!node.modifiers?.some(mod=>mod.kind===ts.SyntaxKind.ExportKeyword)).map(handler=>({file,route,method:handler.name!.text,handler}));
 });
 const publicPairs=new Set([
- 'POST /api/auth/challenge','POST /api/auth/cli-login','POST /api/auth/cli-login/[loginId]',
+ 'GET /api/auth/session','POST /api/auth/challenge','POST /api/auth/cli-login','POST /api/auth/cli-login/[loginId]',
  'POST /api/auth/dev-login','POST /api/auth/proof-request','GET /api/auth/poll/[requestId]','GET /api/auth/token-login','POST /api/auth/verify/ai',
  'POST /api/beta-signup','GET /api/health','GET /api/docs/openapi.json','GET /api/docs/proof-guide/[proofType]','GET /api/og','GET /api/og/image',
 ]);
-const sessionPairs=new Set(['GET /api/auth/session','POST /api/auth/refresh','POST /api/auth/logout']);
+const sessionPairs=new Set(['POST /api/auth/refresh','POST /api/auth/logout']);
 const ownerRoutes=new Set(['/api/account','/api/auth/device/challenge','/api/keys/backup','/api/keys/tak-backup','/api/profile/api-keys','/api/profile/api-keys/[keyId]','/api/profile/ai-permissions','/api/test/clear-verification-cache']);
 const ownerPairs=new Set(['POST /api/categories']);
 function expectedKind(route:string,method:string){const pair=method+' '+route;if(publicPairs.has(pair))return 'public';if(sessionPairs.has(pair))return 'session';if(ownerRoutes.has(route)||ownerPairs.has(pair))return 'owner';return 'capability';}
@@ -142,4 +142,14 @@ describe.each([true,false])('combined post/comment response scopes (isAI=%s)',is
   expect(authorizationForRoute('/api/posts/[postId]','GET')).toEqual({kind:'capability',all:scopes});
   mocks.session.mockResolvedValue({...selected,isAI,deviceKind:'web',apiKeyCmd:scopes});expect(await authorizeApiRequest(request('/api/posts/[postId]','GET'),'/api/posts/[postId]')).toBeNull();
  });
+});
+
+it('session discovery remains public so guests can receive authenticated=false',async()=>{
+ mocks.session.mockResolvedValue(null);
+ expect(authorizationForRoute('/api/auth/session','GET')).toEqual({kind:'public'});
+ expect(await authorizeApiRequest(new NextRequest('http://localhost/api/auth/session'),'/api/auth/session')).toBeNull();
+});
+it.each(['/api/posts/[postId]/reactions','/api/posts/[postId]/records'])('guest read reaches its visibility guard: %s',async route=>{
+ mocks.session.mockResolvedValue(null);
+ expect(await authorizeApiRequest(new NextRequest('http://localhost'+route),route)).toBeNull();
 });

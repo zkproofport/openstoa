@@ -4,7 +4,7 @@
  * never a raw Postgres FK-violation 500 with driver internals in the body.
  *
  * Reproduces the exact staging incident end-to-end, over real HTTP against a
- * real container: `POST /api/auth/dev-login` mints a real 7-day JWT, the
+ * real container: `POST /api/auth/dev-login` mints a real session JWT, the
  * row that JWT names is then hard-deleted directly in Postgres (simulating
  * the staging truncation), and the SAME still-unexpired token is replayed
  * against a route whose insert names the FK that actually violated
@@ -131,9 +131,14 @@ describe.sequential('Deleted-user session (S-2)', () => {
 
       expect(res.status).toBe(401);
       const body = await res.json();
-      // Same flat shape every other unauthenticated hit on this route gets —
-      // a deleted-user session must be indistinguishable from "no session".
-      expect(body).toEqual({ error: 'Not authenticated' });
+      // Authentication failure now includes actionable login discovery. It
+      // must still disclose neither the deleted user nor database internals.
+      expect(body).toMatchObject({
+        code: 'authentication_required',
+        authentication: { status: 'authentication_required', startUrl: '/api/auth/cli-login', docsUrl: '/docs?topic=login#login' },
+      });
+      expect(typeof body.error).toBe('string');
+      expect(JSON.stringify(body)).not.toContain(userId);
       assertNoDriverText(body);
     },
   );
@@ -181,7 +186,7 @@ describe.sequential('Deleted-user session (S-2)', () => {
   );
 
   it.skipIf(envGate('DATABASE_URL'))(
-    'authorization: API-key auth for a deleted user keeps its existing (already-correct) 401-equivalent behavior, unchanged by this fix',
+    'authorization: a deleted user session with its selected permission key still resolves as unauthenticated',
     async () => {
       const { token, userId } = await devLogin('s2apikey');
       const keyRes = await fetch(`${getBaseUrl()}/api/profile/api-keys`, {
@@ -195,7 +200,7 @@ describe.sequential('Deleted-user session (S-2)', () => {
       await hardDeleteUser(userId);
 
       const res = await fetch(`${getBaseUrl()}/api/auth/session`, {
-        headers: { Authorization: `Bearer ${rawKey}` },
+        headers: { Authorization: `Bearer ${token}`, 'X-OpenStoa-API-Key': rawKey },
       });
       expect(res.status).toBe(200);
       const body = await res.json();

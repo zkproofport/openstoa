@@ -1,3 +1,4 @@
+import {canReadPost, NOT_A_MEMBER} from '@/lib/postReadable';
 import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,7 +24,8 @@ const ROUTE = '/api/posts/[postId]/records';
  *       Returns every on-chain record for a post — `[ { recorderId, txHash, contentHash,
  *       blockNumber, recordedAt, contentMatches } ]`. `contentMatches` is `false` if the post
  *       has been edited since this record was anchored (records become historical evidence,
- *       not live state). **Auth is optional** — anonymous callers see the public record list;
+ *       not live state). Guests can read public-topic records; private-topic posts require
+ *       login and secret-topic posts require membership.
  *       authenticated callers additionally see `currentUserHasRecorded` to dim the record
  *       button. Use `POST /api/posts/{postId}/record` to add a record (policy-gated).
  *       Each recorder includes `recorderId` and visible-only `recorderBadges`.
@@ -108,7 +110,7 @@ export async function GET(
 
     // Fetch the post to get current content for hash comparison
     const postResults = await db
-      .select({ id: posts.id, content: posts.content })
+      .select({ id: posts.id, content: posts.content, topicId: posts.topicId })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);
@@ -119,6 +121,9 @@ export async function GET(
     }
 
     const post = postResults[0];
+    if (!await canReadPost(post.topicId, session?.userId)) {
+      return NextResponse.json({ error: session ? NOT_A_MEMBER : 'Login required' }, { status: session ? 403 : 401 });
+    }
 
     // Query records JOIN with users
     const recordResults = await db

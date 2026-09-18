@@ -226,15 +226,17 @@ describe.sequential('Guest mode — public read access + auth-required writes', 
   });
 
   // ── Stale Authorization header is rejected, not silently accepted ────────
-  it('GET /api/feed with a malformed Authorization header still returns 200 (guest fallback)', async () => {
-    // The middleware treats a bad token on a guest-accessible path as
-    // "browse as guest" — not a 401. This mirrors the mobile client's
-    // setMode('guest') behaviour after sign-out.
+  it('GET /api/feed with an explicit malformed Authorization header returns 401 with login guidance', async () => {
+    // An explicit invalid credential must not silently downgrade to guest.
+    // Header-absent guest access is tested separately above.
     const baseUrl = process.env.E2E_BASE_URL || 'https://stg-community.zkproofport.app';
     const res = await fetch(`${baseUrl}/api/feed`, {
       headers: { Authorization: 'Bearer not.a.real.jwt' },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({
+      authentication: { status: 'authentication_required', startUrl: '/api/auth/cli-login', docsUrl: '/docs?topic=login#login' },
+    });
   });
 
   it('POST /api/topics/{id}/posts with a malformed Authorization header returns 401', async () => {

@@ -51,7 +51,7 @@ export const API_AUTHORIZATION_POLICIES: Record<string, Record<string, ApiPolicy
   },
   "/api/auth/session": {
     "GET": {
-      "kind": "session"
+      "kind": "public"
     }
   },
   "/api/auth/token-login": {

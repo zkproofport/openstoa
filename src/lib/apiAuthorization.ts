@@ -6,6 +6,7 @@ export type {ApiPolicy} from './apiAuthorizationPolicies';
 
 const GUEST_READS = new Set([
  '/api/topics','/api/topics/[topicId]','/api/topics/[topicId]/posts','/api/posts/[postId]',
+ '/api/posts/[postId]/reactions','/api/posts/[postId]/records',
  '/api/tags','/api/categories','/api/feed','/api/stats','/api/media/[...key]',
 ]);
 function refused(status:number, code:string, error:string, extra:Record<string,unknown>={}) {

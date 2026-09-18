@@ -26,9 +26,9 @@ import { and, eq } from 'drizzle-orm';
  * ONE implementation rather than a fifth copy of the condition — four routes
  * disagreeing about the same question is how this happened.
  */
-export async function canActOnPost(
+export async function canReadPost(
   topicId: string,
-  userId: string,
+  userId?: string,
 ): Promise<boolean> {
   const topic = await db.query.topics.findFirst({
     where: eq(topics.id, topicId),
@@ -37,7 +37,9 @@ export async function canActOnPost(
   if (!topic) return false;
   // Unrecognised visibility is treated as the STRICTEST case, so a new tier
   // added later is closed until someone decides it should be open.
-  if (topic.visibility === 'public' || topic.visibility === 'private') return true;
+  if (topic.visibility === 'public') return true;
+  if (!userId) return false;
+  if (topic.visibility === 'private') return true;
 
   const membership = await db.query.topicMembers.findFirst({
     where: and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, userId)),
@@ -48,3 +50,8 @@ export async function canActOnPost(
 
 /** The one wording every refusal uses, so they cannot drift apart. */
 export const NOT_A_MEMBER = 'Not a member of this topic';
+
+/** Writes require an authenticated caller; visibility follows the same rule. */
+export async function canActOnPost(topicId: string, userId: string): Promise<boolean> {
+  return canReadPost(topicId, userId);
+}
