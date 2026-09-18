@@ -1,3 +1,4 @@
+import {NextRequest} from 'next/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -55,10 +56,18 @@ vi.mock('@/lib/apiKeys', async (importOriginal) => {
   };
 });
 
-import { POST as keysPOST, GET as keysGET } from '@/app/api/profile/api-keys/route';
-import { PATCH as keysPATCH, DELETE as keysDELETE } from '@/app/api/profile/api-keys/[keyId]/route';
-import { POST as chatPOST } from '@/app/api/topics/[topicId]/chat/route';
+import { POST as keysPOSTRoute, GET as keysGETRoute } from '@/app/api/profile/api-keys/route';
+import { PATCH as keysPATCHRoute, DELETE as keysDELETERoute } from '@/app/api/profile/api-keys/[keyId]/route';
+import { POST as chatPOSTRoute } from '@/app/api/topics/[topicId]/chat/route';
 import { ApiKeyValidationError } from '@/lib/apiKeys';
+
+// Real handlers now inspect HTTP method and Headers before route-local validation.
+const httpRequest=(request:NextRequest,method:string)=>({...request,method,headers:new Headers()} as NextRequest);
+const keysPOST=(request:NextRequest)=>keysPOSTRoute(httpRequest(request,'POST'));
+const keysGET=(request:NextRequest)=>keysGETRoute(httpRequest(request,'GET'));
+const keysPATCH=(request:NextRequest,context:Parameters<typeof keysPATCHRoute>[1])=>keysPATCHRoute(httpRequest(request,'PATCH'),context);
+const keysDELETE=(request:NextRequest,context:Parameters<typeof keysDELETERoute>[1])=>keysDELETERoute(httpRequest(request,'DELETE'),context);
+const chatPOST=(request:NextRequest,context:Parameters<typeof chatPOSTRoute>[1])=>chatPOSTRoute(httpRequest(request,'POST'),context);
 
 const TOPIC = '00000000-0000-0000-0000-000000000001';
 const KEY_ID = '00000000-0000-0000-0000-0000000000cc';
@@ -68,15 +77,15 @@ const req = (body: unknown) =>
 const kParams = () => Promise.resolve({ keyId: KEY_ID });
 const tParams = () => Promise.resolve({ topicId: TOPIC });
 
-const human = { userId: 'human1', nickname: 'h', isAI: false };
+const human = { userId: 'human1', nickname: 'h', isAI: false, deviceKind: 'web' };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.incr.mockResolvedValue(1);
 });
 
-// A session authenticated via `Authorization: Bearer osk_...` — carries
-// `apiKeyId` (set only by `getApiKeySession`, src/lib/session.ts). Key
+// A verified login session with an attached X-OpenStoa-API-Key carries
+// `apiKeyId` (set by getSession after owner validation). Key
 // MANAGEMENT must be unreachable from this shape regardless of the key's own
 // `cmd` — see `requireNonApiKeySession` (src/lib/apiKeys.ts).
 const apiKeyEmptyCmd = { userId: 'human1', nickname: 'h', isAI: true, apiKeyId: 'k-empty', apiKeyCmd: [] };
@@ -328,4 +337,16 @@ describe('PATCH /api/profile/api-keys/{keyId} (edit scope — authz / boundary /
     await keysPATCH(req({ name: 'renamed', isAI: false, cmd: [], historyGrant: 'none' }), { params: kParams() });
     expect(mocks.updateApiKey).toHaveBeenCalledWith(expect.anything(), 'human1', KEY_ID, { cmd: [], historyGrant: 'none' });
   });
+});
+
+describe('key management requires the owner browser session',()=>{
+ it.each([
+  {isAI:true,deviceKind:'agent'},
+  {isAI:true,deviceKind:'web'},
+  {isAI:false,deviceKind:'agent'},
+ ])('agent session %j cannot manage scopes even without an attached key',async(flags)=>{
+  mocks.getSession.mockResolvedValue({...human,...flags});
+  const results=[await keysPOST(req({name:'escalate',cmd:[],historyGrant:'none'})),await keysGET(req(null)),await keysPATCH(req({cmd:[],historyGrant:'none'}),{params:kParams()}),await keysDELETE(req(null),{params:kParams()})];
+  expect(results.map(result=>result.status)).toEqual([403,403,403,403]);expect(mocks.createApiKey).not.toHaveBeenCalled();expect(mocks.listApiKeys).not.toHaveBeenCalled();expect(mocks.updateApiKey).not.toHaveBeenCalled();expect(mocks.revokeApiKey).not.toHaveBeenCalled();
+ });
 });

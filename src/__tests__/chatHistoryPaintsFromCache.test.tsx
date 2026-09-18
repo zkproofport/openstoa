@@ -428,3 +428,6 @@ describe('EMPTY, BOUNDARY and HOSTILE', () => {
     writeHistoryCache.mockResolvedValue(undefined);
   });
 });
+
+// Message authors now use the shared profile card, which navigates inside Next.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));

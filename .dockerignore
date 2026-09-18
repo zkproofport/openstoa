@@ -1,5 +1,8 @@
 node_modules
+**/node_modules
 .next
 .git
 *.md
 !AGENTS.md
+!public/AGENTS.md
+!public/SKILL.md

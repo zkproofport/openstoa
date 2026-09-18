@@ -120,10 +120,23 @@ function runProveCoinbase(args: string, scope: string): Record<string, unknown> 
   }
 }
 
-async function getScope(): Promise<{ challengeId: string; scope: string }> {
+async function getLoginScope(): Promise<{ challengeId: string; scope: string }> {
+  // Login uses the stable community scope and does not inherit a session.
   const res = await fetch(`${BASE}/api/auth/challenge`, { method: 'POST' });
-  if (!res.ok) throw new Error(`Challenge failed: ${res.status}`);
+  if (!res.ok) throw new Error(`Login challenge failed: ${res.status}`);
   return res.json();
+}
+
+async function getTopicScope(token: string): Promise<{ challengeId: string; scope: string }> {
+  // Bind to the account that submits the proof, independently of credential identity.
+  if (!token) throw new Error('Topic proof requires an authenticated account');
+  const res = await fetchAuth('/api/auth/challenge', token, { method: 'POST' });
+  if (!res.ok) throw new Error(`Topic challenge failed: ${res.status}`);
+  const challenge = await res.json();
+  if (typeof challenge.scope !== 'string' || !challenge.scope.startsWith('zkproofport-community:topic:')) {
+    throw new Error('Topic challenge did not return an account-bound scope');
+  }
+  return challenge;
 }
 
 async function loginWithProof(challengeId: string, proofResult: Record<string, unknown>): Promise<{ token: string; userId: string }> {
@@ -149,7 +162,7 @@ async function loginOrCache(cacheFile: string, label: string, accountEmail?: str
     console.log(`[E2E] ${label}: using cached token (userId: ${cached.userId.slice(0, 10)}...)`);
     return cached.token;
   }
-  const { challengeId, scope } = await getScope();
+  const { challengeId, scope } = await getLoginScope();
   console.log(`[E2E] === ${label} LOGIN ===`);
   const proofResult = await runProveOidc('--login-google', scope, accountEmail);
   const { token, userId } = await loginWithProof(challengeId, proofResult);
@@ -217,15 +230,11 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('name: openstoa');
-    // Stale-assertion fix: this used to look for an 'AUTO-GENERATED API
-    // REFERENCE' heading, which `scripts/generate-skill.ts` stopped emitting in
-    // 09f63e9 (2026-06-03) when skill.md became an index over a per-endpoint
-    // SKILL.md tree. The case never went red because the whole file was blocked
-    // by the prover outage. Assert the shape the generator produces TODAY: the
-    // frontmatter pointer to the machine-readable spec, plus at least one
-    // generated sub-skill link.
+    // Static discovery points directly to the authoritative docs subjects.
     expect(text).toContain('openapi: /api/docs/openapi.json');
-    expect(text).toMatch(/\]\(skills\/[^)]+\/SKILL\.md\)/);
+    expect(text).toMatch(/\]\(https:\/\/www\.openstoa\.xyz\/docs\?topic=[^)]+\)/);
+    expect(text).not.toMatch(/\]\([^)]*skills\//);
+
   });
 
   // ── LOGIN-INPUT VALIDATION (fabricated proof data, no prover) ─────
@@ -248,7 +257,7 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
   });
 
   it('edge: invalid proof data with wrong scope → non-2xx', async () => {
-    const { challengeId } = await getScope();
+    const { challengeId } = await getLoginScope();
 
     // Send clearly invalid hex data — will fail at proof verification stage
     const res = await fetch(`${BASE}/api/auth/verify/ai`, {
@@ -268,7 +277,7 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
   });
 
   it('edge: POST /api/auth/verify/ai with empty proof → 400', async () => {
-    const { challengeId } = await getScope();
+    const { challengeId } = await getLoginScope();
     const res = await fetch(`${BASE}/api/auth/verify/ai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -281,7 +290,7 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
   });
 
   it('edge: missing proofType rejected for login → 400', async () => {
-    const { challengeId } = await getScope();
+    const { challengeId } = await getLoginScope();
     const res = await fetch(`${BASE}/api/auth/verify/ai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -318,10 +327,11 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
 // SKIPPED-with-reason, not as a red failure on every run — a wall of
 // unexplained 401s trains readers to ignore the suite.
 //
-// NOT DELETED ON PURPOSE. Every body below is byte-for-byte what it was,
-// including the `ExternalDependencyUnavailable` preflight, so restoring the
-// prover + a new OAuth client makes this file whole again by removing one
-// `.skip`.
+// Kept as external integration coverage, not counted as passing tests.
+// Topic scopes and response expectations follow the current server. Restore
+// the prover, identity-provider accounts, authorized attestation wallet, and
+// working OAuth client before re-enabling. API-key tests cover authorization,
+// not real valid-proof generation or proof-gated lifecycle success.
 //
 // To restore: (a) start the proofport-ai EC2 instance and re-point DNS, then
 // (b) recreate the OAuth 2.0 client of type "TVs and Limited Input devices"
@@ -381,7 +391,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
   });
 
   it('User A: creates KYC-gated topic', async () => {
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userAToken);
     const proofResult = runProveCoinbase('coinbase_kyc', scope);
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
@@ -392,7 +402,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
   }, 180_000);
 
   it('User A: creates country-gated topic (KR)', async () => {
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userAToken);
     const proofResult = runProveCoinbase('coinbase_country --countries KR --included true', scope);
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
@@ -402,20 +412,20 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
     countryTopicId = (await res.json()).topic.id;
   }, 180_000);
 
-  it('User A: workspace topic without proof → 400 (after clearing oidc_domain cache)', async () => {
+  it('User A: workspace topic without proof → 402 (after clearing oidc_domain cache)', async () => {
     // Clear oidc_domain cache so we can verify that oidc_login alone doesn't satisfy workspace
     await fetchAuth('/api/test/clear-verification-cache?type=oidc_domain', userAToken, { method: 'DELETE' });
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
       body: JSON.stringify({ title: `E2E Workspace Fail ${Date.now()}`, description: 'Should fail', categoryId, proofType: 'workspace' }),
     });
-    expect(res.status).toBe(400);
-    console.log('[E2E] 400 — workspace topic correctly rejected (oidc_login ≠ oidc_domain)');
+    expect(res.status).toBe(402);
+    console.log('[E2E] 402 — workspace topic correctly rejected (oidc_login ≠ oidc_domain)');
   });
 
   it.skip('User A: creates workspace-gated topic with Google Workspace proof', async () => {
     // Skip: test account has no Google Workspace. Enable when available.
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userAToken);
     const proofResult = await runProveOidc('--login-google-workspace', scope);
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
@@ -425,7 +435,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
   }, 300_000);
 
   it('User A: creates workspace-gated topic with Microsoft 365 proof', async () => {
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userAToken);
     console.log('[E2E] User A: Microsoft 365 device flow for topic creation');
     const proofResult = await runProveOidc('--login-microsoft-365', scope, process.env.E2E_MS365_USER_A);
     const res = await fetchAuth('/api/topics', userAToken, {
@@ -477,7 +487,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
       return;
     }
     // Generate proof and join
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userBToken);
     const proofResult = runProveCoinbase('coinbase_kyc', scope);
     const res = await fetchAuth(`/api/topics/${kycTopicId}/join`, userBToken, {
       method: 'POST',
@@ -511,7 +521,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
       console.log('[E2E] User B already a member of country topic');
       return;
     }
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userBToken);
     const proofResult = runProveCoinbase('coinbase_country --countries KR --included true', scope);
     const res = await fetchAuth(`/api/topics/${countryTopicId}/join`, userBToken, {
       method: 'POST',
@@ -539,7 +549,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
   it.skip('User B: generates Google Workspace proof and joins', async () => {
     // Skip: test account has no Google Workspace
     expect(workspaceTopicId).toBeTruthy();
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userBToken);
     const proofResult = await runProveOidc('--login-google-workspace', scope);
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
       method: 'POST',
@@ -550,7 +560,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
 
   it('User B: generates Microsoft 365 proof and joins', async () => {
     expect(workspaceTopicId).toBeTruthy();
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userBToken);
     console.log('[E2E] User B: Microsoft 365 device flow for join');
     const proofResult = await runProveOidc('--login-microsoft-365', scope, process.env.E2E_MS365_USER_B);
     const res = await fetchAuth(`/api/topics/${workspaceTopicId}/join`, userBToken, {
@@ -626,7 +636,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
     console.log(`[E2E] Created any-domain workspace topic: ${anyDomainTopicId}`);
 
     // User B: generate MS365 proof (or use cached oidc_domain) and join
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userBToken);
     console.log('[E2E] User B: Microsoft 365 device flow for any-domain workspace join');
     const proofResult = await runProveOidc('--login-microsoft-365', scope, process.env.E2E_MS365_USER_B);
     const joinRes = await fetchAuth(`/api/topics/${anyDomainTopicId}/join`, userBToken, {
@@ -641,20 +651,20 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
   // EDGE CASES
   // ══════════════════════════════════════════════════
 
-  it('rejects non-public visibility (private)', async () => {
+  it('creates private topic for invite-only membership', async () => {
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
       body: JSON.stringify({ title: `E2E Priv ${Date.now()}`, description: 'fail', categoryId, visibility: 'private' }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
   });
 
-  it('rejects non-public visibility (secret)', async () => {
+  it('creates secret topic for invite-only membership', async () => {
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
       body: JSON.stringify({ title: `E2E Sec ${Date.now()}`, description: 'fail', categoryId, visibility: 'secret' }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
   });
 
   // ══════════════════════════════════════════════════
@@ -709,17 +719,17 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
     expect(json.error).toBeTruthy();
   });
 
-  // ── Test 3: Create country topic with mismatched country_list → 403 ────────
+  // ── Test 3: Create country topic with mismatched country_list → 400 ────────
   // After the creation-side fix, the server verifies that the creator's proof
   // country_list matches the topic's allowedCountries at creation time.
-  // A KR wallet cannot create a JP-only topic — the server rejects it with 403.
+  // A KR wallet cannot create a JP-only topic — the server rejects it with 400.
 
-  it('edge: create country topic with mismatched country_list → 403', async () => {
+  it('edge: create country topic with mismatched country_list → 400', async () => {
     // Generate KR proof (wallet is KR)
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userAToken);
     const krProof = runProveCoinbase('coinbase_country --countries KR --included true', scope);
 
-    // Try to create JP-only topic with KR proof → 403 (country list mismatch)
+    // Try to create JP-only topic with KR proof → 400 (country list mismatch)
     const res = await fetchAuth('/api/topics', userAToken, {
       method: 'POST',
       body: JSON.stringify({
@@ -733,10 +743,10 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
         publicInputs: krProof.publicInputs,
       }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBeTruthy();
-    console.log('[E2E] 403 — creator country list mismatch correctly rejected');
+    console.log('[E2E] 400 — creator country list mismatch correctly rejected');
   }, 180_000);
 
   // ── Test 4: Country exclude mode — is_included=0 proof rejected on inclusion-required topic ──
@@ -745,9 +755,9 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
   // A topic that requires KR membership (allowedCountries: ['KR'], countryMode: 'include')
   // must reject this proof because is_included=0 means the wallet proved exclusion, not inclusion.
 
-  it('edge: country exclude mode proof (is_included=0) rejected by inclusion topic → 403', async () => {
+  it('edge: country exclude mode proof (is_included=0) rejected by inclusion topic → 400', async () => {
     // Generate KR proof for creator (to satisfy topic creation requirement)
-    const { scope: creatorScope } = await getScope();
+    const { scope: creatorScope } = await getTopicScope(userAToken);
     const creatorProof = runProveCoinbase('coinbase_country --countries KR --included true', creatorScope);
 
     // Create a KR-only topic with creator's proof
@@ -771,7 +781,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
 
     // Generate an exclude-mode proof: proves wallet is NOT in [JP] list → is_included=0
     // KR wallet + JP list → KR is not JP → is_included=0 (truthful exclusion proof)
-    const { scope } = await getScope();
+    const { scope } = await getTopicScope(userBToken);
     const proofResult = runProveCoinbase('coinbase_country --countries JP --included false', scope);
 
     // User B tries to join the KR-only topic with an is_included=0 proof
@@ -781,10 +791,10 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
     });
 
     console.log(`[E2E] Join KR topic with is_included=0 proof → ${joinRes.status}`);
-    expect(joinRes.status).toBe(403);
+    expect(joinRes.status).toBe(400);
     const json = await joinRes.json();
     expect(json.error).toBeTruthy();
-    console.log('[E2E] 403 — is_included=0 (exclude-mode proof) correctly rejected');
+    console.log('[E2E] 400 — is_included=0 (exclude-mode proof) correctly rejected');
   }, 180_000);
 
   // NOTE: tests 7 and 8 (non-existent challengeId, invalid proof data with a
@@ -820,7 +830,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
   });
 
   it('edge: KYC proof rejected for login (proofType: kyc) → 400', { timeout: 60_000 }, async () => {
-    const { challengeId, scope } = await getScope();
+    const { challengeId, scope } = await getLoginScope();
     console.log('[E2E] Generating KYC proof to test login rejection...');
     const proofResult = runProveCoinbase('coinbase_kyc', scope);
     expect(proofResult.proofType).toBe('kyc');
@@ -832,7 +842,7 @@ describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OA
     });
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toContain('proofType');
+    expect(json.error).toBe('Proof verification failed');
     console.log(`[E2E] ${res.status} — KYC proof correctly rejected for login: ${json.error}`);
   });
 });

@@ -2,10 +2,14 @@
 
 import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
+import UserIdentity from './UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import { RecordIcon } from '@/components/icons';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface RecordRow {
+  recorderId?: string | null;
+  recorderBadges?: PublicBadge[];
   id: string;
   recorderNickname: string | null;
   recorderProfileImage: string | null;
@@ -36,7 +40,7 @@ interface Props {
  * pushes the comments section off the page.
  */
 export function PostRecordsSection({ postId, recordCount }: Props) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [data, setData] = useState<RecordsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -119,20 +123,11 @@ export function PostRecordsSection({ postId, recordCount }: Props) {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 'var(--text-caption)',
-                    fontWeight: 600,
-                    color: 'var(--foreground)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {r.recorderNickname ?? t('postRecords.anonNickname')}
-                </div>
+                <UserIdentity userId={r.recorderId} nickname={r.recorderNickname ?? t('postRecords.anonNickname')}
+                  profileImage={r.recorderProfileImage} badges={r.recorderBadges} avatarSize={26}
+                  nameStyle={{ fontSize: 'var(--text-caption)', color: 'var(--foreground)' }} />
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-                  {new Date(r.createdAt).toLocaleString()}
+                  {new Date(r.createdAt).toLocaleString(locale)}
                   {!r.contentHashMatch && t('postRecords.editedSince')}
                 </div>
               </div>

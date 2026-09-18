@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -45,9 +46,14 @@ vi.mock('@/lib/mls/commits', () => ({
   getCommitsSince: mocks.getCommitsSince,
 }));
 
-import { POST as kpPOST, GET as kpGET } from '@/app/api/topics/[topicId]/mls/key-packages/route';
-import { POST as commitPOST, GET as commitGET } from '@/app/api/topics/[topicId]/mls/commit/route';
-import { GET as groupInfoGET } from '@/app/api/topics/[topicId]/mls/group-info/route';
+import { POST as kpPOSTHttpHandler, GET as kpGETHttpHandler } from '@/app/api/topics/[topicId]/mls/key-packages/route';
+const kpPOST=withHttpRequest(kpPOSTHttpHandler,'POST');
+const kpGET=withHttpRequest(kpGETHttpHandler,'GET');
+import { POST as commitPOSTHttpHandler, GET as commitGETHttpHandler } from '@/app/api/topics/[topicId]/mls/commit/route';
+const commitPOST=withHttpRequest(commitPOSTHttpHandler,'POST');
+const commitGET=withHttpRequest(commitGETHttpHandler,'GET');
+import { GET as groupInfoGETHttpHandler } from '@/app/api/topics/[topicId]/mls/group-info/route';
+const groupInfoGET=withHttpRequest(groupInfoGETHttpHandler,'GET');
 
 // A real ts-mls Commit (mls_private_message, asserts epoch 0) — so the route's
 // crypto-free framing parser runs for real in the commit test.

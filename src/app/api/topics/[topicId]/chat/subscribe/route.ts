@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest } from 'next/server';
 import { isValidUUID } from '@/lib/uuid';
 import { getSession } from '@/lib/session';
@@ -56,6 +58,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat/subscribe');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
 
   const session = await getSession(request);
@@ -205,7 +210,7 @@ export async function GET(
             return { userId };
           }
         });
-        send('presence', { users: presenceUsers, count: presenceUsers.length });
+        send('presence', { users: await withPublicIdentityBadges(presenceUsers, row => row.userId), count: presenceUsers.length });
 
         logger.info(ROUTE, 'User joined chat', { userId: session.userId, topicId });
 

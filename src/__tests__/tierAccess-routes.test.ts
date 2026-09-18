@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 /**
  * Who gets in, and what they can read — at the ROUTE layer, real local Postgres.
  *
@@ -90,10 +91,15 @@ vi.mock('@/lib/chat', async (importOriginal) => {
   return { ...actual, broadcastMembershipSystemEvent: vi.fn().mockResolvedValue(undefined) };
 });
 
-import { POST as joinPOST } from '@/app/api/topics/[topicId]/join/route';
-import { GET as postsGET, POST as postsPOST } from '@/app/api/topics/[topicId]/posts/route';
-import { GET as postDetailGET } from '@/app/api/posts/[postId]/route';
-import { GET as chatGET } from '@/app/api/topics/[topicId]/chat/route';
+import { POST as joinPOSTHttpHandler } from '@/app/api/topics/[topicId]/join/route';
+const joinPOST=withHttpRequest(joinPOSTHttpHandler,'POST');
+import { GET as postsGETHttpHandler, POST as postsPOSTHttpHandler } from '@/app/api/topics/[topicId]/posts/route';
+const postsGET=withHttpRequest(postsGETHttpHandler,'GET');
+const postsPOST=withHttpRequest(postsPOSTHttpHandler,'POST');
+import { GET as postDetailGETHttpHandler } from '@/app/api/posts/[postId]/route';
+const postDetailGET=withHttpRequest(postDetailGETHttpHandler,'GET');
+import { GET as chatGETHttpHandler } from '@/app/api/topics/[topicId]/chat/route';
+const chatGET=withHttpRequest(chatGETHttpHandler,'GET');
 
 const OWNER = 'tier-access-owner';
 const MEMBER = 'tier-access-member';

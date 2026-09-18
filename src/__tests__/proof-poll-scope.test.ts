@@ -1,0 +1,18 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {NextRequest} from 'next/server';
+import {coinbaseIssuerInputs,proofField} from './fixtures/trusted-proof';
+const state=vi.hoisted(()=>({poll:vi.fn(),verify:vi.fn(),session:vi.fn()}));
+vi.mock('@/lib/relay',()=>({pollProofResult:state.poll,RelayRequestNotFoundError:class extends Error{}}));
+vi.mock('@/lib/proof',async()=>{const actual=await vi.importActual<typeof import('@/lib/proof')>('@/lib/proof');return {...actual,verifyProofFromRelay:state.verify};});
+vi.mock('@/lib/db',()=>({db:{}}));
+vi.mock('@/lib/ensureUser',()=>({ensureUser:vi.fn()}));
+vi.mock('@/lib/session',()=>({createSession:state.session,setSessionCookie:vi.fn()}));
+vi.mock('@/lib/deviceTakeoverGate',()=>({checkDeviceTakeover:vi.fn()}));
+import {GET} from '@/app/api/auth/poll/[requestId]/route';
+import {computeScopeHash} from '@/lib/proof';
+const scopeHash=computeScopeHash('zkproofport-community:topic:alice');
+const poll=()=>GET(new NextRequest('http://localhost/api/auth/poll/request?mode=proof&scopeHash=attacker'),{params:Promise.resolve({requestId:'request'})});
+beforeEach(()=>{vi.clearAllMocks();const inputs=coinbaseIssuerInputs();Buffer.from(scopeHash.slice(2),'hex').forEach((value,index)=>inputs[64+index]=proofField(value));state.poll.mockResolvedValue({status:'completed',circuit:'coinbase_attestation',proof:'0xab',publicInputs:inputs,scopeHash:'attacker'});state.verify.mockResolvedValue({valid:true});});
+it('returns the committed scope from verified public inputs, ignoring relay/query claims',async()=>{const response=await poll();expect(response.status).toBe(200);expect((await response.json()).scopeHash).toBe(scopeHash);expect(state.verify).toHaveBeenCalledOnce();expect(state.session).not.toHaveBeenCalled();});
+it('never emits a scope receipt for an invalid proof',async()=>{state.verify.mockResolvedValue({valid:false});const response=await poll();expect(response.status).toBe(400);expect((await response.json()).scopeHash).toBeUndefined();});
+it('pending proofs have no verified scope metadata',async()=>{state.poll.mockResolvedValue({status:'pending'});expect(await (await poll()).json()).toEqual({status:'pending'});expect(state.verify).not.toHaveBeenCalled();});

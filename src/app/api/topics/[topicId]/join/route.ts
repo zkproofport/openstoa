@@ -1,19 +1,10 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topics, topicMembers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import {
-  extractScope,
-  extractIsIncluded,
-  extractCountryList,
-  extractDomain,
-  computeScopeHash,
-  normalizePublicInputs,
-  COMMUNITY_SCOPE,
-} from '@/lib/proof';
-import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
-import { buildProofRequirement } from '@/lib/proof-guides';
+import { requireTopicProof } from '@/lib/topic-proof';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { requireAiCapability } from '@/lib/aiPermissions';
 import { logger } from '@/lib/logger';
@@ -57,8 +48,9 @@ const ROUTE = '/api/topics/[topicId]/join';
  *
  *       Generate the proof with `proofport-cli` against the matching circuit, then send
  *       `{ proof, publicInputs }` in the body. A `402` response with `requiredProofType` is
- *       returned when the proof is missing or invalid. Verifications are cached per
- *       `(userId, circuit, scope)` for 24 hours so repeat joins skip the proof step. The Bearer
+ *       returned when the proof is missing or invalid. Verified predicates are cached per account for 30 days. Topic proofs must commit to the
+ *       authenticated challenge scope; country lists and OIDC provider/domain restrictions
+ *       are checked again on cache reuse. The Bearer
  *       token used here comes from the agent login flow.
  *     operationId: joinTopic
  *     x-related-skills: [topic-proofs, auth-details]
@@ -88,9 +80,11 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                   `proofType`: `coinbase_country_attestation` for country, `coinbase_attestation`
  *                   for kyc, `oidc_domain_attestation` for workspace.
  *               publicInputs:
- *                 type: array
- *                 items:
- *                   type: string
+ *                 oneOf:
+ *                   - type: array
+ *                     items:
+ *                       type: string
+ *                   - type: string
  *                 description: >-
  *                   Public inputs of the proof as an array of 0x-prefixed hex strings (one
  *                   element per field). The shape varies per circuit — see the circuit's
@@ -177,6 +171,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/join');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);
@@ -234,132 +231,6 @@ export async function POST(
       );
     }
 
-    // Determine effective proof type
-    const effectiveProofType = topic.proofType || (topic.requiresCountryProof ? 'country' : 'none');
-
-    if (effectiveProofType !== 'none') {
-      logger.info(ROUTE, 'Topic requires proof', { userId: session.userId, topicId, proofType: effectiveProofType });
-
-      const requiredDomain = topic.requiredDomain ?? undefined;
-
-      // Check Redis verification cache (all OIDC types map to same cache key)
-      const alreadyVerified = await hasValidVerificationCache(
-        session.userId,
-        effectiveProofType,
-        (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
-          ? requiredDomain : undefined,
-      );
-
-      // Try to read proof from request body
-      let body: Record<string, unknown> = {};
-      try {
-        body = await request.json();
-      } catch {
-        // No body provided
-      }
-      const { proof, publicInputs } = body as { proof?: string; publicInputs?: string | string[] };
-
-      // Validate proof data format
-      if (proof !== undefined) {
-        if (typeof proof !== 'string' || proof.trim() === '') {
-          return NextResponse.json({ error: 'Invalid proof: must be a non-empty string' }, { status: 400 });
-        }
-      }
-      if (publicInputs !== undefined) {
-        const isEmptyString = typeof publicInputs === 'string' && publicInputs.trim() === '';
-        const isEmptyArray = Array.isArray(publicInputs) && publicInputs.length === 0;
-        if (isEmptyString || isEmptyArray) {
-          return NextResponse.json({ error: 'Invalid publicInputs: must be non-empty' }, { status: 400 });
-        }
-      }
-
-      // If proof is provided, always verify and refresh cache (ensures domain field is stored)
-      if (proof && publicInputs) {
-        // Normalize publicInputs (SDK may return single hex string instead of array)
-        const normalizedInputs = normalizePublicInputs(publicInputs);
-
-        // Verify scope matches community scope
-        const circuitId = effectiveProofType === 'country' ? 'coinbase_country_attestation'
-          : effectiveProofType === 'kyc' ? 'coinbase_attestation'
-          : 'oidc_domain_attestation'; // workspace, google_workspace, microsoft_365 all use oidc
-        const scope = extractScope(normalizedInputs, circuitId);
-        const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
-        if (scope !== expectedScope) {
-          logger.warn(ROUTE, 'Proof scope mismatch', { userId: session.userId, topicId, scope, expectedScope });
-          return NextResponse.json(
-            { error: 'Proof scope mismatch' },
-            { status: 400 },
-          );
-        }
-
-        // Type-specific verification
-        if (effectiveProofType === 'country') {
-          const isIncluded = extractIsIncluded(normalizedInputs, 'coinbase_country_attestation');
-          if (!isIncluded) {
-            logger.warn(ROUTE, 'Country not in allowed list', { userId: session.userId, topicId });
-            return NextResponse.json({ error: 'Country not allowed for this topic' }, { status: 403 });
-          }
-
-          // Verify the proof's country_list matches the topic's allowedCountries
-          const topicCountries = topic.allowedCountries || [];
-          if (topicCountries.length > 0) {
-            const proofCountryList = extractCountryList(normalizedInputs, 'coinbase_country_attestation');
-            const proofSet = new Set(proofCountryList.map(c => c.toUpperCase()));
-            const topicSet = new Set(topicCountries.map(c => c.toUpperCase()));
-            if (proofSet.size !== topicSet.size || ![...proofSet].every(c => topicSet.has(c))) {
-              logger.warn(ROUTE, 'Country list mismatch', {
-                userId: session.userId, topicId,
-                proofCountries: proofCountryList,
-                topicCountries,
-              });
-              return NextResponse.json(
-                { error: 'Country list mismatch: proof was generated for different countries' },
-                { status: 403 },
-              );
-            }
-          }
-        }
-
-        // google_workspace / microsoft_365 / workspace: verify domain matches (if requiredDomain is set)
-        if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace') {
-          const domain = extractDomain(normalizedInputs, 'oidc_domain_attestation');
-
-          // Only check domain if requiredDomain is set; otherwise any workspace domain is accepted
-          if (requiredDomain && domain !== requiredDomain) {
-            logger.warn(ROUTE, 'Domain mismatch', { userId: session.userId, topicId, domain, requiredDomain });
-            return NextResponse.json(
-              { error: `Domain mismatch: expected ${requiredDomain}, got ${domain}` },
-              { status: 403 },
-            );
-          }
-        }
-
-        // Save verification to Redis cache (always refresh to ensure domain field exists)
-        const cacheType = circuitToCacheType(circuitId);
-        const domainForCache = (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
-          ? extractDomain(normalizedInputs, 'oidc_domain_attestation') ?? undefined
-          : undefined;
-        await saveVerificationCache(session.userId, cacheType, { domain: domainForCache });
-        logger.info(ROUTE, 'Verification cached', { userId: session.userId, cacheType, hasDomain: !!domainForCache });
-      } else if (!alreadyVerified) {
-        // No proof and no cached verification — return 402 with proof requirement
-        logger.info(ROUTE, 'Proof required but not provided, returning 402', { userId: session.userId, topicId, proofType: effectiveProofType });
-        const proofRequirement = buildProofRequirement(effectiveProofType, {
-          domain: topic.requiredDomain,
-          allowedCountries: topic.allowedCountries,
-        });
-        return NextResponse.json(
-          {
-            error: 'Proof required to join this topic',
-            proofRequirement,
-          },
-          { status: 402 },
-        );
-      } else {
-        logger.info(ROUTE, 'User has existing valid verification, skipping proof', { userId: session.userId, topicId, proofType: effectiveProofType });
-      }
-    }
-
     /*
      * Only a PUBLIC topic can be joined through this route. `private` and
      * `secret` are both invite-only: the invite link is the credential, and for
@@ -383,6 +254,9 @@ export async function POST(
         { status: 403 },
       );
     }
+
+    const proofFailure = await requireTopicProof(session.userId, topic, await request.json().catch(() => ({})));
+    if (proofFailure) return proofFailure;
 
     // Public topic — instant join
     await db.insert(topicMembers).values({

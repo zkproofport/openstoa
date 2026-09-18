@@ -22,7 +22,7 @@
  *   - `GET /api/topics/{id}/archive`       — TAK-re-encrypted back-fill
  *   - `GET /api/topics/{id}/tak/bundles`   — the keys that decrypt that back-fill
  *
- * Humans (`isAI` falsy) are NEVER touched by any of this: `resolveEnforcedHistoryGrant`
+ * Human sessions without a selected permission key are not bounded by this: `resolveEnforcedHistoryGrant`
  * returns null for them and every route keeps its pre-existing code path byte
  * for byte.
  */
@@ -70,8 +70,8 @@ export interface HistoryGrantSession {
  * Resolve the grant a request must be BOUNDED BY, or null when the caller is
  * not history-gated at all. Two distinct reasons produce null, and both mean
  * "run the route exactly as before":
- *   - the session is a human (`isAI` falsy) — grants apply to agent credentials,
- *     never to a person's own session;
+ *   - the session is human and has no selected key; selected human keys are
+ *     bounded exactly like agent keys;
  *   - the grant is `full` — bounded by nothing.
  *
  * Everything else returns a bound. FAIL-CLOSED: an `isAI` session whose grant is
@@ -82,7 +82,7 @@ export interface HistoryGrantSession {
  * credential with no declared scope must not inherit one if it ever gets here.
  */
 export function resolveEnforcedHistoryGrant(session: HistoryGrantSession): HistoryGrant | null {
-  if (!session.isAI) return null;
+  if (!session.isAI && session.apiKeyId === undefined && session.apiKeyHistoryGrant === undefined) return null;
   const parsed = parseHistoryGrant(session.apiKeyHistoryGrant);
   if (!parsed) return DENIED_GRANT;
   if (parsed.kind === 'full') return null;

@@ -21,8 +21,13 @@
  * keys are copied verbatim (same keys, same EN/KO values) as a convergence
  * seed even though no web surface consumes them yet.
  */
+import { FAQ_DOCS } from '@/lib/docs/faq';
 import en from './locales/en.json';
 import ko from './locales/ko.json';
+import docsEn from './locales/docs.en.json';
+import docsKo from './locales/docs.ko.json';
+import proofsEn from './locales/proofs.en.json';
+import proofsKo from './locales/proofs.ko.json';
 
 export const SUPPORTED_LOCALES = ['en', 'ko'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -34,7 +39,20 @@ export const LOCALE_COOKIE = 'NEXT_LOCALE';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Dictionary = Record<string, any>;
 
-const DICTIONARIES: Record<Locale, Dictionary> = { en, ko };
+function withDocsFaq(base: Dictionary, docs: Dictionary, proofs: Dictionary): Dictionary {
+  const content = { docs, proofs };
+  const faq = Object.fromEntries(Object.entries(FAQ_DOCS).map(([id, guide]) => [id, {
+    question: base.metadata.faq[id].question,
+    answer: guide.keys.map(key => lookupKey(content, key)).join(' '),
+    url: `https://www.openstoa.xyz/docs?topic=${guide.topic}#${guide.topic}`,
+  }]));
+  return { ...base, docs, proofs, metadata: { ...base.metadata, faq } };
+}
+
+const DICTIONARIES: Record<Locale, Dictionary> = {
+  en: withDocsFaq(en, docsEn, proofsEn),
+  ko: withDocsFaq(ko, docsKo, proofsKo),
+};
 
 export function getDictionary(locale: Locale): Dictionary {
   return DICTIONARIES[locale] ?? DICTIONARIES[DEFAULT_LOCALE];

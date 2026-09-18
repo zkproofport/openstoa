@@ -54,7 +54,8 @@ describe('POST /api/upload', () => {
 
     expect(res.status).toBe(401);
     const json = await res.json();
-    expect(json.error).toBe('Not authenticated');
+    expect(json.code).toBe('authentication_required');
+    expect(json.authentication.startUrl).toBe('/api/auth/cli-login');
   });
 
   it('returns 400 when file field is missing', async () => {

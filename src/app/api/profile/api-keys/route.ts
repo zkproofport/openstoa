@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -21,16 +22,13 @@ const ROUTE = '/api/profile/api-keys';
  *     tags: [Profile]
  *     summary: Issue a new scoped API key
  *     description: |
- *       Creates a durable, revocable API key an agent can use in place of an interactive login —
- *       send `Authorization: Bearer <key>` on any request instead of a JWT. The key itself is the
- *       scoped credential: its `cmd` allowlist and `historyGrant` gate requests directly (never a
- *       fresh profile `ai_permissions` lookup), so a key can be narrower than the account's own AI
- *       permissions. **The raw key is returned in this response ONLY — it is never shown again and
- *       the server stores only its SHA-256 hash.** Save it immediately; there is no recovery path,
- *       only revoke-and-reissue. **Key MANAGEMENT (this endpoint, and list/edit/revoke below) is an
- *       account-owner action — it can only be called from a real session (cookie or a bare JWT),
- *       never from another API key.** A key can never mint, list, re-scope, or revoke a sibling key,
- *       regardless of its own `cmd` — this closes off a leaked narrow key widening itself.
+ *       Creates a revocable permission key for an already logged-in account. Send the key
+ *       as X-OpenStoa-API-Key alongside Authorization: Bearer <session JWT>. The owner can
+ *       create multiple keys and independently edit each cmd allowlist and historyGrant.
+ *       Empty cmd permits no business operations. Raw keys are shown once; only hashes are stored.
+ *       Key management requires a human owner session without a selected key. Agent sessions
+ *       cannot create, list, edit or revoke keys, even when sending only their session JWT.
+ *       See /docs?topic=login#login for the complete workflow.
  *     operationId: createApiKey
  *     x-related-skills: [list-api-keys, revoke-api-key, get-ai-permissions]
  *     requestBody:
@@ -80,6 +78,9 @@ const ROUTE = '/api/profile/api-keys';
  *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/api-keys');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) {
@@ -146,6 +147,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/api-keys');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) {

@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import {NextRequest} from 'next/server';
 import { NextResponse } from 'next/server';
 
 /**
@@ -48,7 +50,10 @@ const BUILD = {
   builtAt: process.env.BUILD_TIME ?? 'unknown',
 } as const;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/health');
+  if (authorizationError) return authorizationError;
+
   return NextResponse.json({
     status: 'ok',
     timestamp: new Date().toISOString(),

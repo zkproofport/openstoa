@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -22,6 +24,7 @@ const ROUTE = '/api/topics/[topicId]/chat/presence';
  *       SSE streams on `GET /api/topics/{topicId}/chat/subscribe`. Use this for "who's online"
  *       UIs without holding a persistent connection — for live updates, the same data arrives
  *       as the first `presence` event on `subscribe`.
+ *       Each presence user includes all enabled public verification badges as `badges`.
  *     operationId: getChatPresence
  *     x-related-skills: [subscribe-chat-sse]
  *     parameters:
@@ -47,6 +50,10 @@ const ROUTE = '/api/topics/[topicId]/chat/presence';
  *                     properties:
  *                       userId:
  *                         type: string
+ *                       badges:
+ *                         type: array
+ *                         items:
+ *                           $ref: '#/components/schemas/PublicBadge'
  *                       nickname:
  *                         type: string
  *                       profileImage:
@@ -67,6 +74,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat/presence');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -104,7 +114,7 @@ export async function GET(
     });
 
     logger.info(ROUTE, 'Presence fetched', { userId: session.userId, topicId, count: presenceUsers.length });
-    return NextResponse.json({ users: presenceUsers, count: presenceUsers.length });
+    return NextResponse.json({ users: await withPublicIdentityBadges(presenceUsers, row => row.userId), count: presenceUsers.length });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }

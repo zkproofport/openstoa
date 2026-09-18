@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { assertPublicUrl, safeFetch, BlockedUrlError } from '@/lib/outboundUrl';
 import { logger } from '@/lib/logger';
@@ -170,6 +171,9 @@ async function fetchYouTubeOEmbed(url: string): Promise<OGData | null> {
 }
 
 export async function GET(req: NextRequest) {
+  const authorizationError = await authorizeApiRequest(req, '/api/og');
+  if (authorizationError) return authorizationError;
+
   const url = req.nextUrl.searchParams.get('url');
   if (!url) {
     return NextResponse.json({ error: 'Missing url param' }, { status: 400 });

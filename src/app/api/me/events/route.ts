@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import Redis from 'ioredis';
@@ -70,6 +71,9 @@ const ROUTE = '/api/me/events';
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/me/events');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

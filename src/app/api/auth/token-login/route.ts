@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { isDefaultNickname } from '@/lib/defaultNickname';
 import { verifySession, setSessionCookie } from '@/lib/session';
@@ -32,6 +33,9 @@ const ROUTE = '/api/auth/token-login';
  *         description: Redirect to /profile (if needs nickname) or /topics
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/token-login');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
 
   const token = request.nextUrl.searchParams.get('token');

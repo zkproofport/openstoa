@@ -1,15 +1,7 @@
-// TEMPORARILY DISABLED — the ZKProofport AI prover (ai.zkproofport.app) is offline
-// (shut down for cost). The device flow needs it for the x402 proof step, so the
-// implementation it exercises (packages/commands/src/deviceLogin.ts + the
-// loginWithGoogle / authenticateGoogle methods on Commands) is commented out.
-//
-// This suite is commented out rather than `describe.skip`-ed because it imports
-// symbols (startDeviceLogin, ProveSpawner, ...) that no longer exist — a skipped
-// suite would still fail at import time.
-//
-// To restore: bring the prover back up, uncomment deviceLogin.ts + the commands-core
-// block + the CLI --google option + the MCP openstoa_authenticate tool, then strip
-// the leading "// " from every line below.
+// Archived tests for the retired loginWithGoogle/authenticateGoogle implementation.
+// The current consent-gated app/AI login flow is exercised by authenticate.test.ts
+// and aiTopicProof.test.ts. Keep this history without importing removed symbols;
+// restoring this old implementation is not the way to enable current login.
 
 // /**
 //  * Google device-flow login unit tests (ported orchestration from the removed
@@ -257,6 +249,6 @@
 // commented-out block above for "deleted".
 import { describe, it } from "vitest";
 
-describe.skip("Google device-flow login (DISABLED — ZKProofport prover ai.zkproofport.app is offline)", () => {
-  it("restored by uncommenting deviceLogin.ts + the commands-core block", () => {});
+describe.skip("Archived device-login implementation (replaced by authenticate and aiTopicProof suites)", () => {
+  it("legacy implementation retained only as historical test reference", () => {});
 });

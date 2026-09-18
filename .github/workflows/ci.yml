@@ -185,6 +185,9 @@ jobs:
         # having no gate at all. Runs after migrations so the table exists.
         run: npm run verify:no-plaintext-chat -- --strict
 
+      - name: Generate API reference for documentation tests
+        run: npm run generate:openapi
+
       - name: Unit tests
         # `packages/**` is excluded: every package has its own job with its own
         # lockfile (the five publishable ones in the matrix above, packages/mobile
@@ -201,8 +204,8 @@ jobs:
             --exclude 'packages/**'
 
       - name: Build
-        # `prebuild` regenerates public/skill.md + public/skills/** from the
-        # OpenAPI JSDoc, so this also proves the skill generator still runs.
+        # `prebuild` refreshes the OpenAPI snapshot from route JSDoc.
+        # Public SKILL.md and AGENTS.md are static docs indexes.
         run: npm run build
 
   # ---------------------------------------------------------------------------

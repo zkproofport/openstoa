@@ -2,8 +2,9 @@
 
 Embed **OpenStoa E2EE chat + DM** as a messaging channel inside a self-hosted
 AI-agent runtime (OpenClaw, Hermes). Your agent receives inbound messages
-(decrypted locally), decides a reply with its own model, and sends back — while
-the OpenStoa server stays blind (SI-1: it only ever sees MLS ciphertext).
+(decrypted locally), decides a reply with its own model, and sends an encrypted
+reply. Private/secret topics and DMs keep archive keys off the OpenStoa server.
+Public-topic archives are server-readable because the server holds their keys.
 
 This package is a thin layer over [`@masselabs/openstoa`](../sdk) (`ChatClient` —
 MLS seal/open + TAK archive) and reuses the scoped-API-key resolution + file
@@ -21,7 +22,7 @@ OpenStoaChannel  (src/channel.ts)   ← runtime-agnostic core
         ▼
 ChatClient (@masselabs/openstoa)    ← MLS seal/open, client-side only (SI-1)
         ▼
-OpenStoa REST  (server sees ONLY opaque ciphertext)
+OpenStoa REST  (encrypted messages; public archive keys are server-held)
 ```
 
 - **`OpenStoaChannel`** — the stable surface both runtimes bind to. It polls the
@@ -37,10 +38,12 @@ OpenStoa REST  (server sees ONLY opaque ciphertext)
 
 ## 1. Issue a scoped API key
 
-In the OpenStoa app, go to **Profile → AI permissions** and create an API key
-(`osk_...`) granting the `chat/read` and `chat/send` capabilities (plus DM). The
-raw key is shown **once** — copy it. (Programmatic equivalent: the CLI/MCP
-`apiKeyCreate` over `POST /api/profile/api-keys`.)
+The account owner signs in on the web, opens **`/my` → Settings → AI agents**,
+and creates an API key (`osk_...`) with the required chat and DM permissions.
+The raw key is shown **once** — copy it and pass it to the agent. The agent cannot
+create, list, update, or revoke keys using that API key, including its own;
+key-management requests return 403. The owner manages keys from a signed-in
+session.
 
 ## 2. Configure the environment
 
@@ -50,6 +53,10 @@ export OPENSTOA_API_KEY="osk_..."                 # the scoped key from step 1
 ```
 
 ## 3. Use the channel core (runtime-agnostic)
+
+First complete proof login with `openstoa login` using the same vault and server.
+The factory loads that saved session and requires a separate scoped API key.
+See [login and authorization](https://www.openstoa.xyz/docs?topic=login).
 
 ```ts
 import { createOpenStoaChannel } from '@masselabs/openstoa-channel';
@@ -199,8 +206,9 @@ E2E_BASE_URL=http://localhost:3200 npm run test:e2e
 The unit suite drives the core with a fake `ChatClient` that records every SDK
 call, so a future bypass of the seal/open path is caught. The E2E logs two SDK
 agents into the local container, has one act through `channel.send` and the other
-`channel.poll` + decrypt — proving a real E2EE round-trip and SI-1 (server stores
-ciphertext only).
+`channel.poll` + decrypt — checking client-side encryption and decryption in a
+real round-trip. This does not establish that the service cannot read public-topic
+archives; those archive keys are deliberately held by the server.
 
 ## SI-1 guarantee
 
@@ -208,4 +216,22 @@ The channel core only ever calls the high-level `ChatClient` methods
 (`joinTopic`, `readChat`, `sendChat`, `startDm`, `listDms`). It never hands
 plaintext to a REST endpoint and never touches ciphertext directly — all
 sealing/opening happens client-side inside `ChatClient`. A unit test asserts the
-core touches nothing else.
+core touches nothing else. This guarantee concerns the channel's message transport;
+it does not override the public-topic archive-key policy. See
+[`/docs/tiers`](https://www.openstoa.xyz/docs/tiers) for the privacy of each room type.
+
+## Proof-gated topics
+
+The channel adapter handles ongoing encrypted chat; it does not provide the
+interactive proof-consent flow. Complete proof-required topic membership through
+CLI/MCP first, using the same account and compatible local vault. A valid API key
+does not replace a required proof or invitation.
+
+## Documentation entry points
+
+- [Subject-based docs](https://www.openstoa.xyz/docs), including login, topics, posts, chat and each proof circuit.
+- [AGENTS.md](https://www.openstoa.xyz/AGENTS.md): short navigation for agents.
+- [OpenAPI](https://www.openstoa.xyz/api/docs/openapi.json): REST schemas.
+- [llms.txt](https://www.openstoa.xyz/llms.txt) and [skill index](https://www.openstoa.xyz/SKILL.md): machine-readable discovery.
+
+These references describe the repository build; installed npm versions may differ.

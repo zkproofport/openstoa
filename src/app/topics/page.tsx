@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
 import PostCard, { PostCardPost } from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ function TopicsPageInner() {
           setHasMore(false);
           return;
         }
-        throw new Error('Failed to load feed');
+        throw new Error(t('webUi.loadFeedFailed'));
       }
 
       const data = await res.json();
@@ -138,12 +139,12 @@ function TopicsPageInner() {
       setHasMore(newPosts.length >= LIMIT);
       setOffset(currentOffset + newPosts.length);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(localizeApiError(err, t, 'webUi.unknownError'));
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [viewMode]);
+  }, [viewMode, t]);
 
   // ── Initial load & filter changes ──
   useEffect(() => {

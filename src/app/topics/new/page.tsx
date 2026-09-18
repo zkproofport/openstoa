@@ -1,5 +1,7 @@
 'use client';
 
+import { categoryLabel } from '@/lib/categoryLabel';
+
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,6 +9,7 @@ import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import ProofGate from '@/components/ProofGate';
 import { resizeImage } from '@/lib/utils';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import {
   ARCHIVE_RETENTION_CHOICES,
@@ -24,7 +27,7 @@ export default function NewTopicPage() {
   // When "Either" is selected, the creator must pick a provider for their own proof
   const [creatorProvider, setCreatorProvider] = useState<'google' | 'microsoft' | null>(null);
   const [countryCodes, setCountryCodes] = useState('');
-  const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
+  const countryMode = 'include' as const;
   const [requiredDomain, setRequiredDomain] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,17 +51,6 @@ export default function NewTopicPage() {
   const [proofDone, setProofDone] = useState(false);
   // Key to force ProofGate remount when proof params change
   const [proofGateKey, setProofGateKey] = useState(0);
-
-  // Reset proof when country settings change
-  useEffect(() => {
-    if (proofType === 'country') {
-      setProofData(null);
-      setProofDone(false);
-      setProofGateKey((k) => k + 1);
-    }
-  // Only reset when the actual filter values change, not on every render
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countryMode]);
 
   // Fetch categories on mount
   useEffect(() => {
@@ -173,7 +165,7 @@ export default function NewTopicPage() {
       const data = await res.json();
       router.push(`/topics/${data.topic.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
+      setError(localizeApiError(err, t, 'editTopicPage.unknownError'));
       setLoading(false);
     }
   }
@@ -264,7 +256,7 @@ export default function NewTopicPage() {
                         <span style={{ fontSize: 20, flexShrink: 0 }}>{cat.icon}</span>
                       )}
                       <div>
-                        <div style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--foreground)' }}>{cat.name}</div>
+                        <div style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--foreground)' }}>{categoryLabel(cat, t)}</div>
                         {cat.description && (
                           <div style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', marginTop: 2 }}>{cat.description}</div>
                         )}
@@ -482,6 +474,7 @@ export default function NewTopicPage() {
                 rather than being discovered afterwards. */}
             <Link
               href="/docs/tiers"
+              target="_blank" rel="noopener noreferrer" className="desktop-docs-link"
               style={{
                 display: 'inline-block',
                 marginTop: 'var(--space-2)',
@@ -611,35 +604,9 @@ export default function NewTopicPage() {
 
             {proofType === 'country' && (
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Include / Exclude toggle */}
-                <div>
-                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)', marginBottom: 'var(--space-2)' }}>
-                    {t('newTopicPage.countryFilterMode')}
-                  </p>
-                  <div className="flex gap-2">
-                    {(['include', 'exclude'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setCountryMode(mode)}
-                        style={{
-                          background: countryMode === mode ? 'var(--accent)' : 'var(--border)',
-                          color: countryMode === mode ? 'var(--color-text-inverted)' : 'var(--muted)',
-                          border: 'none',
-                          borderRadius: 'var(--radius-control)',
-                          padding: '6px var(--space-4)',
-                          fontSize: 'var(--text-body)',
-                          cursor: 'pointer',
-                          fontWeight: countryMode === mode ? 600 : 400,
-                          transition: 'all 0.12s',
-                          minHeight: 'var(--touch-target-min)',
-                        }}
-                      >
-                        {mode === 'include' ? t('newTopicPage.allowOnly') : t('newTopicPage.block')}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--muted)' }}>
+                  {t('newTopicPage.allowOnly')}
+                </p>
 
                 <div>
                   <label
@@ -718,7 +685,6 @@ export default function NewTopicPage() {
                     <ProofGate
                       key={proofGateKey}
                       circuitType="coinbase_country_attestation"
-                      scope="zkproofport-community"
                       countryList={parsedCountries}
                       isIncluded={countryMode === 'include'}
                       mode="proof"
@@ -762,7 +728,6 @@ export default function NewTopicPage() {
                     <ProofGate
                       key={proofGateKey}
                       circuitType="coinbase_attestation"
-                      scope="zkproofport-community"
                       mode="proof"
                       autoStart={false}
                       qrSize={200}
@@ -948,7 +913,6 @@ export default function NewTopicPage() {
                       <ProofGate
                         key={`${proofGateKey}-${creatorProvider}`}
                         circuitType="oidc_domain_attestation"
-                        scope="zkproofport-community"
                         domain={requiredDomain.trim() || undefined}
                         provider={proofType === 'microsoft_365' ? 'microsoft' : proofType === 'workspace' ? (creatorProvider ?? undefined) : 'google'}
                         mode="proof"

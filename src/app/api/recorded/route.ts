@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -15,10 +17,10 @@ const ROUTE = '/api/recorded';
  *     tags: [MyActivity]
  *     summary: Get recorded posts feed
  *     description: |
- *       Cross-topic feed of every post the calling user has **recorded on-chain** via
- *       `POST /api/posts/{postId}/record`. Posts where membership has since been lost are
- *       filtered out — only includes posts from topics the caller is still a member of.
- *       Supports cursor pagination via `cursor` + `limit`.
+ *       Cross-topic feed of posts recorded on-chain by any user, limited to topics
+ *       the caller is currently a member of. Sorted by record count, then date.
+ *       Use `GET /api/my/recorded` for posts the caller personally recorded.
+ *       Supports pagination via `offset` + `limit`.
  *     operationId: getRecordedPosts
  *     x-related-skills: [record-post, list-my-recorded]
  *     parameters:
@@ -54,6 +56,9 @@ const ROUTE = '/api/recorded';
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/recorded');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -110,7 +115,7 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    return NextResponse.json({ posts: recordedPosts });
+    return NextResponse.json({ posts: await withPublicIdentityBadges(recordedPosts, post => post.authorId) });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }

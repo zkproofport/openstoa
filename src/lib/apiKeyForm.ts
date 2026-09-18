@@ -20,9 +20,11 @@ export const MAX_API_KEY_NAME_LEN = 100;
  * they are sent verbatim); only empty/whitespace and over-length are rejected.
  * Returns an error string, or null when the name is acceptable.
  */
-export function validateApiKeyName(name: string): string | null {
-  if (name.trim().length === 0) return 'Name is required';
-  if (name.length > MAX_API_KEY_NAME_LEN) return `Name must be ${MAX_API_KEY_NAME_LEN} characters or fewer`;
+type Translator = (key: string, params?: Record<string, string | number>) => string;
+
+export function validateApiKeyName(name: string, t?: Translator): string | null {
+  if (name.trim().length === 0) return t ? t('webUi.nameRequired') : 'Name is required';
+  if (name.length > MAX_API_KEY_NAME_LEN) return t ? t('webUi.nameTooLong', { max: MAX_API_KEY_NAME_LEN }) : `Name must be ${MAX_API_KEY_NAME_LEN} characters or fewer`;
   return null;
 }
 
@@ -47,6 +49,21 @@ export function orderedCmd(allowedCmd: string[], selected: Set<string> | string[
  * capability still renders.
  */
 export const CMD_LABELS: Record<string, string> = {
+  '/openstoa/topic/read': 'Read topics and members',
+  '/openstoa/topic/create': 'Create topics',
+  '/openstoa/topic/edit': 'Edit topic settings',
+  '/openstoa/topic/delete': 'Delete topics',
+  '/openstoa/topic/manage-members': 'Manage members and invitations',
+  '/openstoa/post/react': 'Vote, react and bookmark',
+  '/openstoa/post/record': 'Record posts on-chain',
+  '/openstoa/comment/delete': 'Delete comments',
+  '/openstoa/upload/write': 'Upload images',
+  '/openstoa/upload/delete': 'Delete uploaded images',
+  '/openstoa/media/read': 'Read uploaded images',
+  '/openstoa/notification/read': 'Read notification settings',
+  '/openstoa/notification/write': 'Change notification settings',
+  '/openstoa/chat/manage-keys': 'Share chat encryption keys',
+
   '/openstoa/topic/join': 'Join topics',
   '/openstoa/topic/leave': 'Leave / remove members',
   '/openstoa/post/read': 'Read posts',
@@ -62,7 +79,40 @@ export const CMD_LABELS: Record<string, string> = {
   '/ai/search': 'Search',
 };
 
-export function cmdLabel(cmd: string): string {
+const CMD_LABEL_KEYS: Record<string, string> = {
+  '/openstoa/topic/read': 'webUi.commands.readTopics',
+  '/openstoa/topic/create': 'webUi.commands.createTopics',
+  '/openstoa/topic/edit': 'webUi.commands.editTopics',
+  '/openstoa/topic/delete': 'webUi.commands.deleteTopics',
+  '/openstoa/topic/manage-members': 'webUi.commands.manageMembers',
+  '/openstoa/post/react': 'webUi.commands.reactPosts',
+  '/openstoa/post/record': 'webUi.commands.recordPosts',
+  '/openstoa/comment/delete': 'webUi.commands.deleteComments',
+  '/openstoa/upload/write': 'webUi.commands.uploadImages',
+  '/openstoa/upload/delete': 'webUi.commands.deleteUploads',
+  '/openstoa/media/read': 'webUi.commands.readMedia',
+  '/openstoa/notification/read': 'webUi.commands.readNotifications',
+  '/openstoa/notification/write': 'webUi.commands.writeNotifications',
+  '/openstoa/chat/manage-keys': 'webUi.commands.manageChatKeys',
+
+  '/openstoa/topic/join': 'webUi.commands.joinTopics',
+  '/openstoa/topic/leave': 'webUi.commands.leaveMembers',
+  '/openstoa/post/read': 'webUi.commands.readPosts',
+  '/openstoa/post/write': 'webUi.commands.writePosts',
+  '/openstoa/post/delete': 'webUi.commands.deletePosts',
+  '/openstoa/comment/read': 'webUi.commands.readComments',
+  '/openstoa/comment/write': 'webUi.commands.writeComments',
+  '/openstoa/chat/read': 'webUi.commands.readChat',
+  '/openstoa/chat/send': 'webUi.commands.sendChat',
+  '/openstoa/profile/read': 'webUi.commands.readProfile',
+  '/openstoa/profile/edit': 'webUi.commands.editProfile',
+  '/ai/summarize': 'webUi.commands.summarize',
+  '/ai/search': 'webUi.commands.search',
+};
+
+export function cmdLabel(cmd: string, t?: Translator): string {
+  const key = CMD_LABEL_KEYS[cmd];
+  if (t && key) return t(key);
   return CMD_LABELS[cmd] ?? cmd;
 }
 

@@ -1,43 +1,16 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProofGate from '@/components/ProofGate';
+import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
-import { splitTemplate } from '@/lib/i18n';
 import { safeReturnTo, withHash } from '@/lib/returnTo';
 
-/**
- * Inline-code substitutions for `landingPage.agent.pathB.desc`. Kept next to
- * the template rather than inside the locale files: these are literal command
- * and env-var names, identical in every language, and putting them in the
- * catalogue would invite someone to "translate" them.
- */
-const CLI_SLOTS: Record<string, string> = {
-  cli: 'openstoa',
-  env: 'OPENSTOA_API_KEY',
-  flag: '--api-key',
-  creds: '~/.openstoa/credentials',
-};
-
-/**
- * Shared code-token slots for the other `landingPage.agent.*` templates
- * (`twoPaths`, `deviceFlowWarning`, `pathA.desc`) — same rationale as
- * `CLI_SLOTS` above: literal identifiers, not language, so they live in code
- * next to the template rather than in the locale catalogue.
- */
-const AGENT_CODE_SLOTS: Record<string, string> = {
-  apiKey: 'osk_…',
-  loginCmd: 'openstoa login',
-  mcpPkg: '@masselabs/openstoa-mcp',
-  tools: 'openstoa_*',
-  mcpEndpoint: '/mcp',
-  apikeyCreate: 'openstoa apikey create',
-};
-
-type Stage = 'idle' | 'choose' | 'proving' | 'agent' | 'completed' | 'error';
+type Stage = 'idle' | 'choose' | 'proving' | 'completed' | 'error';
 
 export default function LandingPage() {
   return (
@@ -217,211 +190,9 @@ function TypingText({ lines, speed = 22 }: { lines: string[]; speed?: number }) 
   );
 }
 
-/* ───────── Copyable Code Block ───────── */
-function CopyableCodeBlock({ children }: { children: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  return (
-    <div style={{ position: 'relative' }}>
-      <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#34d399', background: 'rgba(0,0,0,0.5)', border: '1px solid #1a2a20', borderRadius: 'var(--radius-control)', padding: '10px 12px', overflowX: 'auto', lineHeight: 1.6, margin: 0 }}>
-        {children}
-      </pre>
-      <button
-        onClick={() => { navigator.clipboard.writeText(children); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-        style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', border: '1px solid #1a2a20', borderRadius: 4, padding: '2px 8px', fontSize: 10, color: copied ? '#34d399' : '#666', cursor: 'pointer' }}
-      >
-        {copied ? t('landingPage.copied') : t('landingPage.copy')}
-      </button>
-    </div>
-  );
-}
-
-/* ───────── Agent Login Panel ───────── */
-function AgentLoginPanel({ onBack }: { onBack: () => void }) {
-  const { t } = useTranslation();
-  const [token, setToken] = useState('');
-  const [connecting, setConnecting] = useState(false);
-  const host = typeof window !== 'undefined' ? window.location.origin : '';
-
-  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#34d399', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.05em' };
-  const helpStyle: React.CSSProperties = { fontSize: 12, color: '#7a8f86', margin: '0 0 8px 0', lineHeight: 1.55 };
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-      style={{ maxWidth: 600, width: '100%', padding: '0 24px', position: 'relative', zIndex: 5 }}>
-      <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, margin: '0 0 8px 0', color: '#34d399' }}>
-        {t('landingPage.agent.integrationTitle')}
-      </h2>
-      {/* Slot-templated (see AGENT_CODE_SLOTS doc comment above) so word order
-          is never hard-coded to English. */}
-      <p style={{ fontSize: 14, color: '#666', margin: '0 0 12px 0' }}>
-        {splitTemplate(t('landingPage.agent.twoPaths')).map((part, i) =>
-          part.kind === 'text' ? (
-            part.value
-          ) : (
-            <span key={i} style={{ fontFamily: 'var(--font-mono)', color: '#8fae9f' }}>
-              {AGENT_CODE_SLOTS[part.name] ?? `{{${part.name}}}`}
-            </span>
-          ),
-        )}
-      </p>
-      <p style={{ fontSize: 12, color: '#7a8f86', margin: '0 0 12px 0', lineHeight: 1.55 }}>
-        <strong style={{ color: '#8fae9f' }}>{t('landingPage.agent.firstKeyLabel')}</strong>{' '}
-        {splitTemplate(t('landingPage.agent.firstKeyBody')).map((part, i) => {
-          if (part.kind === 'text') return part.value;
-          if (part.name === 'myLink') return <a key={i} href="/my" style={{ color: '#34d399' }}>/my</a>;
-          return (
-            <span key={i} style={{ fontFamily: 'var(--font-mono)', color: '#8fae9f' }}>
-              {AGENT_CODE_SLOTS[part.name] ?? `{{${part.name}}}`}
-            </span>
-          );
-        })}
-      </p>
-      <p style={{ fontSize: 12, color: '#b98a4a', margin: '0 0 16px 0', lineHeight: 1.55 }}>
-        ⚠️{' '}
-        {splitTemplate(t('landingPage.agent.deviceFlowWarning')).map((part, i) =>
-          part.kind === 'text' ? (
-            part.value
-          ) : (
-            <span key={i} style={{ fontFamily: 'var(--font-mono)' }}>
-              {AGENT_CODE_SLOTS[part.name] ?? `{{${part.name}}}`}
-            </span>
-          ),
-        )}
-      </p>
-      <div style={{
-        background: '#0d0d0d', border: '1px solid var(--border)',
-        borderRadius: 10, padding: 16, marginBottom: 16,
-        display: 'flex', flexDirection: 'column', gap: 18,
-      }}>
-            {/* Path A — MCP (recommended) */}
-            <div>
-              <p style={labelStyle}>{t('landingPage.agent.pathA.label')}</p>
-              <p style={helpStyle}>
-                {splitTemplate(t('landingPage.agent.pathA.desc')).map((part, i) =>
-                  part.kind === 'text' ? (
-                    part.value
-                  ) : (
-                    <span key={i} style={{ fontFamily: 'var(--font-mono)', color: '#8fae9f' }}>
-                      {AGENT_CODE_SLOTS[part.name] ?? `{{${part.name}}}`}
-                    </span>
-                  ),
-                )}
-              </p>
-              <CopyableCodeBlock>{`{
-  "mcpServers": {
-    "openstoa": {
-      "command": "npx",
-      "args": ["-y", "@masselabs/openstoa-mcp"],
-      "env": {
-        "OPENSTOA_BASE_URL": "${host || 'https://openstoa.xyz'}",
-        "OPENSTOA_API_KEY": "osk_..."
-      }
-    }
-  }
-}`}</CopyableCodeBlock>
-            </div>
-
-            {/* Path B — CLI */}
-            <div>
-              <p style={labelStyle}>{t('landingPage.agent.pathB.label')}</p>
-              {/* One template per language, slots filled with inline code.
-                  This used to be five keys interleaved with four <span>s, which
-                  hard-coded English word order — Korean puts the verb last, so
-                  the leading fragment had no Korean text and shipped empty. */}
-              <p style={helpStyle}>
-                {splitTemplate(t('landingPage.agent.pathB.desc')).map((part, i) =>
-                  part.kind === 'text' ? (
-                    part.value
-                  ) : (
-                    <span key={i} style={{ fontFamily: 'var(--font-mono)', color: '#8fae9f' }}>
-                      {CLI_SLOTS[part.name] ?? `{{${part.name}}}`}
-                    </span>
-                  ),
-                )}
-              </p>
-              <CopyableCodeBlock>{`npm i -g @masselabs/openstoa-cli
-export OPENSTOA_BASE_URL=${host || 'https://openstoa.xyz'}
-export OPENSTOA_API_KEY=osk_...   # from /my -> AI agents
-
-# Then use it:
-openstoa whoami
-openstoa apikey create --name "my-agent"
-openstoa topics
-openstoa post <topicId> --title "Hello" --content "..."
-openstoa chat <topicId>`}</CopyableCodeBlock>
-            </div>
-
-            {/* Advanced — No-MCP / raw REST */}
-            <details>
-              <summary style={{ cursor: 'pointer', ...labelStyle, color: '#666', marginBottom: 0 }}>
-                {t('landingPage.agent.advanced.label')}
-              </summary>
-              <p style={{ ...helpStyle, marginTop: 8 }}>
-                {t('landingPage.agent.advanced.desc')}
-              </p>
-              <CopyableCodeBlock>{`export OPENSTOA_API_KEY=osk_...   # from /my -> AI agents
-
-curl -s "${host || 'https://openstoa.xyz'}/api/topics?view=all" \\
-  -H "Authorization: Bearer $OPENSTOA_API_KEY" | jq .`}</CopyableCodeBlock>
-            </details>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
-              <a
-                href="/docs"
-                style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
-              >
-                {t('landingPage.agent.links.fullGuide')} →
-              </a>
-              <a
-                href="/AGENTS.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
-              >
-                {t('landingPage.agent.links.canonicalReference')} →
-              </a>
-              <a
-                href="/skill.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
-              >
-                {t('landingPage.agent.links.skillMd')} →
-              </a>
-              <a
-                href="/api/docs/openapi.json"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}
-              >
-                {t('landingPage.agent.links.openapi')} →
-              </a>
-            </div>
-      </div>
-      <p style={{ fontSize: 12, color: '#666', margin: '0 0 8px 0' }}>
-        {t('landingPage.agent.jwtPastePrompt')}
-      </p>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input type="text" value={token} onChange={e => setToken(e.target.value)} placeholder={t('landingPage.agent.jwtPlaceholder')}
-          style={{ flex: 1, background: 'rgba(5,10,8,0.9)', border: '1px solid #1a2a20', borderRadius: 'var(--radius-control)', padding: '12px 14px', fontSize: 14, fontFamily: 'var(--font-mono)', color: '#e0f0e8', outline: 'none', minHeight: 'var(--touch-target-min)', boxSizing: 'border-box' }} />
-        <button onClick={() => { if (!token.trim()) return; setConnecting(true); window.location.href = `/api/auth/token-login?token=${encodeURIComponent(token.trim())}`; }}
-          disabled={!token.trim() || connecting}
-          style={{ background: token.trim() ? '#34d399' : '#1a2a20', color: '#050a08', border: 'none', borderRadius: 'var(--radius-control)', padding: '12px var(--space-5)', fontSize: 14, fontWeight: 600, cursor: token.trim() ? 'pointer' : 'not-allowed', opacity: connecting ? 0.6 : 1, minHeight: 'var(--touch-target-min)' }}>
-          {connecting ? t('landingPage.agent.connecting') : t('landingPage.agent.connect')}
-        </button>
-      </div>
-      <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
-        <a href="/docs" style={{ color: '#34d399', textDecoration: 'none' }}>{t('landingPage.agent.guideLink')}</a>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#666', fontSize: 13, cursor: 'pointer', padding: 0 }}>{t('landingPage.agent.backButton')}</button>
-      </div>
-    </motion.div>
-  );
-}
-
-/* ───────── Main ───────── */
+/* ───────── Landing page ───────── */
 function LandingPageInner() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   // Sanitised, because `returnTo` is a query parameter and `router.push` will
@@ -468,7 +239,7 @@ function LandingPageInner() {
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || t('landingPage.beta.failed')); }
       setBetaSuccess(true);
     } catch (err) {
-      setBetaError(err instanceof Error ? err.message : t('landingPage.beta.somethingWentWrong'));
+      setBetaError(localizeApiError(err, t, 'landingPage.beta.somethingWentWrong'));
     } finally {
       setBetaSubmitting(false);
     }
@@ -489,7 +260,7 @@ function LandingPageInner() {
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, maxWidth: 440, padding: '40px 32px',
               background: 'rgba(12,12,20,0.95)', border: '1px solid rgba(120,140,255,0.15)', borderRadius: 20, position: 'relative',
             }}>
-            <button onClick={reset} style={{ position: 'absolute', top: 16, right: 20, background: 'none', border: 'none', color: '#666', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            <button onClick={reset} aria-label={t('common.close')} style={{ position: 'absolute', top: 16, right: 20, background: 'none', border: 'none', color: '#666', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
             <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 600, margin: 0, color: '#f0f0f8' }}>{t('landingPage.proving.title')}</h2>
             <p style={{ fontSize: 15, color: '#999', margin: 0 }}>{t('landingPage.proving.subtitle')}</p>
             <ProofGate circuitType="oidc_domain_attestation" mode="login" qrSize={240} label={t('landingPage.proving.scanLabel')}
@@ -525,19 +296,13 @@ function LandingPageInner() {
             </div>
           </motion.div>
         )}
-        {stage === 'agent' && (
-          <motion.div key="agent-wrap" initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            style={{ background: 'rgba(5,10,8,0.95)', border: '1px solid rgba(52,211,153,0.15)', borderRadius: 20, padding: '28px 0', position: 'relative', maxHeight: '90vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as never }}>
-            <AgentLoginPanel onBack={reset} />
-          </motion.div>
-        )}
         {stage === 'completed' && (
           <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '48px 40px',
               background: 'rgba(12,12,20,0.95)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 20,
             }}>
-            <div style={{ width: 64, height: 64, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: '#22c55e' }}>OK</div>
+            <div style={{ width: 64, height: 64, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: '#22c55e' }}>{t('common.ok')}</div>
             <h2 style={{ fontSize: 24, fontWeight: 700, color: '#22c55e', margin: 0 }}>{t('landingPage.completed.verified')}</h2>
             <p style={{ fontSize: 15, color: '#999' }}>{t('landingPage.completed.redirecting')}</p>
           </motion.div>
@@ -550,14 +315,17 @@ function LandingPageInner() {
     <>
       {modalOverlay}
       <style>{`
+        .os-landing-locale { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); z-index: 20; }
         .os-split { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: hidden; }
         .os-human { flex: 1; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 40px 24px 40px 56px; background: #0e0c14; }
         .os-center { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 2; background: linear-gradient(90deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); }
         .os-agent { flex: 1; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 40px 56px 40px 24px; background: #050a08; }
         .os-human-content { position: relative; z-index: 2; max-width: 440px; }
         .os-agent-content { position: relative; z-index: 2; max-width: 440px; margin-left: auto; }
+        .os-human-content h2, .os-agent-content h2, .os-human-content p { word-break: keep-all; overflow-wrap: break-word; }
         @media (max-width: 768px) {
-          .os-split { flex-direction: column; overflow-x: hidden; }
+          .os-landing-locale { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); z-index: 20; }
+        .os-split { flex-direction: column; overflow-x: hidden; }
           .os-human { padding: 80px 20px 40px; min-height: auto; }
           .os-center { width: 100%; height: auto; padding: 32px 16px; flex-direction: column; gap: 12px; background: linear-gradient(180deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); box-sizing: border-box; overflow: hidden; }
           .os-agent { padding: 40px 20px 80px; min-height: auto; }
@@ -569,6 +337,7 @@ function LandingPageInner() {
         }
       `}</style>
       <div className="os-split">
+      <div className="os-landing-locale"><LocaleSwitcher /></div>
       <CenterCanvas targetRef={badgeRef} />
 
       {/* ────── HUMAN SIDE ────── */}
@@ -582,11 +351,11 @@ function LandingPageInner() {
             <p style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500, color: '#b4a0d8', letterSpacing: '0.14em', textTransform: 'uppercase', margin: '0 0 16px 0' }}>
               {t('landingPage.human.eyebrow')}
             </p>
-            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 42, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', margin: '0 0 20px 0', color: '#f0ecf8' }}>
-              {t('landingPage.human.headlineLine1')}<br />{t('landingPage.human.headlineLine2')}<br />{t('landingPage.human.headlineLine3')}
+            <h2 style={{ fontFamily: 'var(--font-sans)', fontSize: 42, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', margin: '0 0 20px 0', color: '#f0ecf8' }}>
+              <span style={{ whiteSpace: 'pre-line' }}>{t('landingPage.human.headline')}</span>
             </h2>
             <p style={{ fontSize: 17, lineHeight: 1.7, color: '#a099b0', margin: '0 0 36px 0' }}>
-              {t('landingPage.human.bodyLine1')}<br />{t('landingPage.human.bodyLine2')}<br />{t('landingPage.human.bodyLine3')}
+              {t('landingPage.human.body')}
             </p>
             <motion.button whileHover={{ scale: 1.03, boxShadow: '0 0 40px rgba(180,160,216,0.3)' }} whileTap={{ scale: 0.97 }} onClick={() => setStage('proving')}
               style={{ background: '#b4a0d8', color: '#0e0c14', border: 'none', borderRadius: 10, padding: '16px 40px', fontSize: 16, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', minHeight: 'var(--touch-target-min)' }}>
@@ -666,6 +435,12 @@ function LandingPageInner() {
         >
           {t('landingPage.center.explorer')}
         </motion.a>
+        <a
+          href="/docs" target="_blank" rel="noopener noreferrer" className="desktop-docs-link"
+          style={{ display: 'inline-flex', alignItems: 'center', minHeight: 'var(--touch-target-min)', marginTop: 8, padding: '8px 20px', color: '#b7c1ff', fontSize: 14, textUnderlineOffset: 4 }}
+        >
+          {t('webUi.docs')}
+        </a>
       </div>
 
       <div className="os-agent">
@@ -679,7 +454,7 @@ function LandingPageInner() {
               {t('landingPage.agent.eyebrow')}
             </p>
             <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 36, fontWeight: 600, lineHeight: 1.2, letterSpacing: '-0.015em', margin: '0 0 20px 0', color: '#d0f0e4', textAlign: 'right' }}>
-              {t('landingPage.agent.headlineLine1')}<br />{t('landingPage.agent.headlineLine2')}<br />{t('landingPage.agent.headlineLine3')}
+              <span style={{ whiteSpace: 'pre-line' }}>{t('landingPage.agent.headline')}</span>
             </h2>
             <div style={{ marginBottom: 32 }}>
               {/* These lines must stay truthful: they are a demo of the path an
@@ -688,25 +463,21 @@ function LandingPageInner() {
                   which the notice further up this same page says is unavailable
                   while the prover service is offline — a success demo of a
                   disabled feature. API-key auth (`osk_` + Bearer) is the path
-                  that works; keep these in step with `openstoa apikey create`
-                  and src/lib/apiKeys.ts if either changes. */}
-              <TypingText lines={[
-                'openstoa apikey create --name my-agent',
-                '{ "key": "osk_9f3c...", "shown": "once" }',
+                  that works. The account owner issues the key in Settings; an
+                  API-key-authenticated agent cannot create another key. */}
+              <TypingText key={locale} lines={[
+                `# ${t('landingPage.agent.ownerIssuedKeyHint')}`,
                 'export OPENSTOA_API_KEY=osk_9f3c...',
                 'curl -H "Authorization: Bearer $OPENSTOA_API_KEY" \\',
-                '     https://openstoa.xyz/api/feed',
-                'Status: AUTHENTICATED. Read, write, prove.',
+                '     https://www.openstoa.xyz/api/feed',
+                t('webUi.authenticatedStatus'),
               ]} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              {/* Labelled after what the panel actually offers — MCP (path A,
-                  recommended) and a CLI (path B), both keyed on an API key.
-                  "Connect via API" undersold that MCP is the primary path. */}
-              <motion.button whileHover={{ scale: 1.03, boxShadow: '0 0 30px rgba(52,211,153,0.25)' }} whileTap={{ scale: 0.97 }} onClick={() => setStage('agent')}
-                style={{ background: 'transparent', color: '#34d399', border: '1px solid #34d399', borderRadius: 8, padding: '16px 40px', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-mono)', minHeight: 'var(--touch-target-min)' }}>
+              <motion.a whileHover={{ scale: 1.03, boxShadow: '0 0 30px rgba(52,211,153,0.25)' }} whileTap={{ scale: 0.97 }} href="/docs?topic=login#login" target="_blank" rel="noopener noreferrer" className="desktop-docs-link"
+                style={{ textDecoration: 'none', background: 'transparent', color: '#34d399', border: '1px solid #34d399', borderRadius: 8, padding: '16px 40px', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-mono)', minHeight: 'var(--touch-target-min)' }}>
                 {t('landingPage.agent.cta')}
-              </motion.button>
+              </motion.a>
             </div>
             <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 24, fontSize: 15, color: '#2a5a44', fontFamily: 'var(--font-mono)' }}>
               <span>ERC-8004</span><span>x402</span><span>TEE</span>
@@ -718,7 +489,7 @@ function LandingPageInner() {
       {/* ── Bottom ── */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5, duration: 1 }}
         style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, padding: '16px 0',
+          position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px 0',
           background: 'linear-gradient(0deg, rgba(8,8,12,0.9) 30%, transparent 100%)',
           display: 'flex', justifyContent: 'center',
           fontFamily: 'var(--font-mono)', fontSize: 12, color: '#444', letterSpacing: '0.06em', zIndex: 10,
@@ -726,6 +497,26 @@ function LandingPageInner() {
         <span>{t('landingPage.poweredByPre')} <span style={{ color: '#788cff' }}>Masse Labs</span></span>
       </motion.div>
     </div>
+
+      <section aria-labelledby="privacy-heading" style={{ position: 'relative', zIndex: 1, background: '#0a0b10', color: '#dfe2ed', padding: '64px 24px', wordBreak: 'keep-all' }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <h2 id="privacy-heading" style={{ margin: '0 0 32px', fontSize: 26, lineHeight: 1.5 }}>
+            {t('landingPage.privacy.title')}
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 32 }}>
+            {(['identity', 'chat', 'agents'] as const).map((item) => (
+              <div key={item}>
+                <h3 style={{ margin: '0 0 12px', fontSize: 17, color: '#b7c1ff' }}>{t(`landingPage.privacy.${item}Title`)}</h3>
+                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.8, color: '#a5acbd' }}>{t(`landingPage.privacy.${item}Body`)}</p>
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: '32px 0 12px', fontSize: 14, lineHeight: 1.7, color: '#a5acbd' }}>{t('landingPage.privacy.publicNote')}</p>
+          <a href="/docs?topic=topics#topics" target="_blank" rel="noopener noreferrer" className="desktop-docs-link" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 'var(--touch-target-min)', color: '#b7c1ff', textUnderlineOffset: 4 }}>
+            {t('landingPage.privacy.details')}
+          </a>
+        </div>
+      </section>
 
       {/* Beta signup modal */}
       {betaOpen && (
@@ -735,7 +526,7 @@ function LandingPageInner() {
             style={{ width: '100%', maxWidth: 400, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-modal)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
               <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{t('landingPage.beta.title')}</h3>
-              <button onClick={closeBetaModal} style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1 }}>×</button>
+              <button onClick={closeBetaModal} aria-label={t('common.close')} style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1 }}>×</button>
             </div>
             <div style={{ padding: '16px 24px 24px' }}>
               <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: '0 0 20px' }}>
@@ -757,7 +548,7 @@ function LandingPageInner() {
                   {['iOS', 'Android', 'Both'].map((plat) => (
                     <button key={plat} onClick={() => setBetaPlatform(plat)}
                       style={{ flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 500, background: betaPlatform === plat ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-primary)', border: `1px solid ${betaPlatform === plat ? 'var(--color-brand-primary)' : 'var(--color-border-default)'}`, borderRadius: 'var(--radius-control)', color: betaPlatform === plat ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)', cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
-                      {plat}
+                      {plat === 'Both' ? t('webUi.both') : plat}
                     </button>
                   ))}
                 </div>

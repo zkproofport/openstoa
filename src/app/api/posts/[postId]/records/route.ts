@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -24,6 +26,7 @@ const ROUTE = '/api/posts/[postId]/records';
  *       not live state). **Auth is optional** — anonymous callers see the public record list;
  *       authenticated callers additionally see `currentUserHasRecorded` to dim the record
  *       button. Use `POST /api/posts/{postId}/record` to add a record (policy-gated).
+ *       Each recorder includes `recorderId` and visible-only `recorderBadges`.
  *     operationId: getPostRecords
  *     x-related-skills: [record-post, get-record-status, list-my-recorded]
  *     parameters:
@@ -50,6 +53,12 @@ const ROUTE = '/api/posts/[postId]/records';
  *                       id:
  *                         type: string
  *                         format: uuid
+ *                       recorderId:
+ *                         type: string
+ *                       recorderBadges:
+ *                         type: array
+ *                         items:
+ *                           $ref: '#/components/schemas/PublicBadge'
  *                       recorderNickname:
  *                         type: string
  *                         nullable: true
@@ -83,6 +92,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]/records');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -126,11 +138,14 @@ export async function GET(
 
     // Compute per-record hash match and postEdited flag
     let postEdited = false;
-    const mappedRecords = recordResults.map((record) => {
+    const recordersWithBadges = await withPublicIdentityBadges(recordResults, record => record.recorderNullifier);
+    const mappedRecords = recordersWithBadges.map((record) => {
       const contentHashMatch = isContentHashMatch(post.content, record.contentHash);
       if (!contentHashMatch) postEdited = true;
       return {
         id: record.id,
+        recorderId: record.recorderNullifier,
+        recorderBadges: record.badges,
         recorderNickname: record.recorderNickname ?? null,
         recorderProfileImage: record.recorderProfileImage ?? null,
         txHash: record.txHash,

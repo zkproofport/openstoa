@@ -147,6 +147,26 @@ describe('interpolate', () => {
 });
 
 describe('translate — integration against the real seeded dictionaries', () => {
+  it('keeps English and Korean keys and semantic placeholders synchronized', () => {
+    const flatten = (value: Record<string, unknown>, prefix = ''): Record<string, string> =>
+      Object.fromEntries(Object.entries(value).flatMap(([key, child]) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        return typeof child === 'string' ? [[path, child]] : Object.entries(flatten(child as Record<string, unknown>, path));
+      }));
+    const english = flatten(getDictionary('en'));
+    const korean = flatten(getDictionary('ko'));
+    expect(Object.keys(korean).sort()).toEqual(Object.keys(english).sort());
+    // English plural endings have no Korean equivalent; semantic values must
+    // still occur in both translations, including newly added docs entries.
+    const pluralKeys = new Set(['snsEditor.imageLimitPartial', 'webUi.commentCount', 'postCard.recordCount', 'poll.voteCount']);
+    const slots = (text: string, key: string) => [...text.matchAll(/\{\{(\w+)\}\}/g)]
+      .map((match) => match[1]).filter((slot) => slot !== 'suffix' || !pluralKeys.has(key)).sort();
+    for (const key of Object.keys(english)) {
+      expect(korean[key].trim(), key).not.toBe('');
+      expect(slots(korean[key], key), key).toEqual(slots(english[key], key));
+    }
+  });
+
   it('resolves an English key', () => {
     expect(translate('en', 'sidebar.categories')).toBe('Categories');
   });

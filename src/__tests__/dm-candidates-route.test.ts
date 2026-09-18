@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DEFAULT_CANDIDATE_LIMIT, MAX_CANDIDATE_LIMIT } from '@/lib/dmCandidates';
 
@@ -42,7 +43,8 @@ vi.mock('@/lib/dmCandidates', async (importOriginal) => ({
   buildDmCandidatesQuery: mocks.buildQuery,
 }));
 
-const { GET } = await import('@/app/api/dm/candidates/route');
+const { GET: getHttpHandler } = await import('@/app/api/dm/candidates/route');
+const GET=withHttpRequest(getHttpHandler,'GET');
 
 function req(query = '') {
   return {
@@ -119,7 +121,7 @@ describe('GET /api/dm/candidates — response shaping', () => {
     });
   });
 
-  it('shows no badge when the only shared topic is open, even if the peer has one', async () => {
+  it('shows public badges when the only shared topic is open', async () => {
     mocks.buildQuery.mockResolvedValue([
       {
         userId: 'bob',
@@ -131,7 +133,7 @@ describe('GET /api/dm/candidates — response shaping', () => {
     ]);
     mocks.getBatchUserBadges.mockResolvedValue(new Map([['bob', [{ type: 'kyc', label: 'KYC' }]]]));
     const body = await (await GET(req())).json();
-    expect(body.candidates[0].badges).toEqual([]);
+    expect(body.candidates[0].badges).toEqual([{ type: 'kyc', label: 'KYC' }]);
   });
 
   it('survives UTF-8 and very long nicknames / titles without truncating', async () => {

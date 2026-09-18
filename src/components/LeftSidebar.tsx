@@ -1,5 +1,6 @@
 'use client';
 
+import { categoryLabel } from '@/lib/categoryLabel';
 import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
@@ -588,13 +589,11 @@ export default function LeftSidebar({
           <span style={navLabelStyle}>{t('sidebar.onChainRecords.title')}</span>
         </Link>
 
-        {/* Docs — REQUIRED here, not a nicety: `Header` hides its three text
-            links below 768px and the bottom tab bar has no Docs tab, so this
-            row is the only way to reach `/docs` on a phone. Public route, so
-            it renders for guests too. */}
+        {/* Documentation opens separately on desktop; shared URLs remain readable on phones. */}
         <Link
           href="/docs"
-          className="os-nav-row"
+          target="_blank" rel="noopener noreferrer"
+          className="os-nav-row desktop-docs-link"
           aria-current={docsActive ? 'page' : undefined}
           onMouseEnter={() => setHoveredItem('docs')}
           onMouseLeave={() => setHoveredItem(null)}
@@ -682,7 +681,7 @@ export default function LeftSidebar({
                 }}
               >
                 <span style={navIconStyle(isActive)}>{cat.icon}</span>
-                <span style={navLabelStyle}>{cat.name}</span>
+                <span style={navLabelStyle}>{categoryLabel(cat, t)}</span>
                 {catTopics.length > 0 && (
                   <button
                     className="os-nav-row"

@@ -1,3 +1,4 @@
+import type { Badge } from './verification-cache';
 /**
  * DM (1:1 direct chat) helpers (P-D).
  *
@@ -28,7 +29,7 @@ export function canonicalDmPair(a: string, b: string): string {
  */
 export interface DmChannel {
   topicId: string;
-  peer: { userId: string; nickname: string; profileImage: string | null };
+  peer: { userId: string; nickname: string; profileImage: string | null; badges?: Badge[] };
   lastActivityAt: string | null;
 }
 

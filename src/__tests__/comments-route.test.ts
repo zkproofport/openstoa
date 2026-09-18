@@ -32,7 +32,6 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/lib/verification-cache', () => ({
   getUserBadges: vi.fn().mockResolvedValue([]),
-  filterBadgesByTopicProofType: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock('@/lib/topicScore', () => ({

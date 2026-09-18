@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -7,16 +8,7 @@ import crypto from 'crypto';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { normaliseSearchQuery } from '@/lib/search';
-import {
-  extractScope,
-  extractIsIncluded,
-  extractDomain,
-  extractCountryList,
-  computeScopeHash,
-  normalizePublicInputs,
-  COMMUNITY_SCOPE,
-} from '@/lib/proof';
-import { hasValidVerificationCache, saveVerificationCache, circuitToCacheType } from '@/lib/verification-cache';
+import { requireTopicProof } from '@/lib/topic-proof';
 import { ARCHIVE_RETENTION_CHOICES, parseArchiveRetentionDays } from '@/lib/archiveRetention';
 import { hasNulByte } from '@/lib/textGuard';
 import { readStatesForTopics, emptyReadState } from '@/lib/chatUnread';
@@ -221,6 +213,9 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *         $ref: '#/components/responses/Forbidden'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -488,6 +483,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);
@@ -581,94 +579,8 @@ export async function POST(request: NextRequest) {
     }
     const effectiveProofType = proofType || (requiresCountryProof ? 'country' : 'none');
 
-    // Creator must satisfy the proof condition they're setting
-    if (effectiveProofType !== 'none') {
-      logger.info(ROUTE, 'Topic requires proof, verifying creator', { userId: session.userId, proofType: effectiveProofType });
-
-      // Check Redis cache first
-      const creatorVerified = await hasValidVerificationCache(
-        session.userId,
-        effectiveProofType,
-        (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace')
-          ? (requiredDomain?.trim() || undefined) : undefined,
-      );
-
-      // If proof is provided, always verify and refresh cache (ensures domain field is stored)
-      if (proof && publicInputs) {
-        // Determine circuit from proofType
-        const circuitId = effectiveProofType === 'country' ? 'coinbase_country_attestation'
-          : effectiveProofType === 'kyc' ? 'coinbase_attestation'
-          : 'oidc_domain_attestation';
-
-        // Normalize publicInputs (SDK may return single hex string instead of array)
-        const normalizedInputs = normalizePublicInputs(publicInputs);
-
-        // Verify scope matches community scope
-        const scope = extractScope(normalizedInputs, circuitId);
-        const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
-        if (scope !== expectedScope) {
-          logger.warn(ROUTE, 'Creator proof scope mismatch', { userId: session.userId, scope, expectedScope });
-          return NextResponse.json(
-            { error: 'Proof scope mismatch' },
-            { status: 400 },
-          );
-        }
-
-        // Type-specific verification
-        if (effectiveProofType === 'country') {
-          const isIncluded = extractIsIncluded(normalizedInputs, 'coinbase_country_attestation');
-          if (!isIncluded) {
-            logger.warn(ROUTE, 'Creator country not in allowed list', { userId: session.userId });
-            return NextResponse.json(
-              { error: 'Your country is not allowed to create this topic' },
-              { status: 403 },
-            );
-          }
-
-          // Verify creator's country_list matches topic's allowedCountries
-          const proofCountryList = extractCountryList(normalizedInputs, 'coinbase_country_attestation');
-          const topicCountries = allowedCountries || [];
-          if (topicCountries.length > 0) {
-            const proofSet = new Set(proofCountryList.map((c: string) => c.toUpperCase()));
-            const topicSet = new Set(topicCountries.map((c: string) => c.toUpperCase()));
-            if (proofSet.size !== topicSet.size || ![...proofSet].every((c: string) => topicSet.has(c))) {
-              logger.warn(ROUTE, 'Creator country list mismatch', {
-                userId: session.userId,
-                proofCountries: proofCountryList,
-                topicCountries,
-              });
-              return NextResponse.json(
-                { error: 'Country list mismatch: your proof does not match the topic countries' },
-                { status: 403 },
-              );
-            }
-          }
-        }
-
-        if (effectiveProofType === 'google_workspace' || effectiveProofType === 'microsoft_365' || effectiveProofType === 'workspace') {
-          const domain = extractDomain(normalizedInputs, 'oidc_domain_attestation');
-          const trimmedRequired = requiredDomain?.trim();
-          if (trimmedRequired && domain !== trimmedRequired) {
-            logger.warn(ROUTE, 'Creator domain mismatch', { userId: session.userId, domain, requiredDomain: trimmedRequired });
-            return NextResponse.json(
-              { error: `Domain mismatch: expected ${trimmedRequired}, got ${domain}` },
-              { status: 403 },
-            );
-          }
-          // Cache with extracted domain (always refresh to ensure domain field exists)
-          await saveVerificationCache(session.userId, circuitToCacheType(circuitId), { domain: domain ?? undefined });
-        } else {
-          // Cache KYC/country verification
-          await saveVerificationCache(session.userId, circuitToCacheType(circuitId));
-        }
-      } else if (!creatorVerified) {
-        logger.warn(ROUTE, 'Missing proof fields for topic creation', { userId: session.userId, proofType: effectiveProofType });
-        return NextResponse.json(
-          { error: `Proof required to create a ${effectiveProofType}-gated topic` },
-          { status: 400 },
-        );
-      }
-    }
+    const proofFailure = await requireTopicProof(session.userId, {proofType:effectiveProofType, requiredDomain, allowedCountries, countryMode:body.countryMode}, {proof, publicInputs});
+    if (proofFailure) return proofFailure;
 
     const inviteCode = crypto.randomBytes(8).toString('hex');
 

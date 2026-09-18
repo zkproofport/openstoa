@@ -1,5 +1,5 @@
+import { hasTrustedProofIssuer } from './proof-issuer';
 import { ethers } from 'ethers';
-import { createSDK } from './relay';
 import {
   extractScopeFromPublicInputs,
   extractNullifierFromPublicInputs,
@@ -109,6 +109,38 @@ async function verifyMdlKrOnChain(
   }
 }
 
+// Pinned deployments, also recorded in proofport-app/src/config/contracts.ts.
+// Never select a verifier from proof/relay-controlled addresses or chain IDs.
+const MAINNET_TOPIC_VERIFIERS: Record<string, string> = {
+  coinbase_attestation: '0xF7dED73E7a7fc8fb030c35c5A88D40ABe6865382',
+  coinbase_country_attestation: '0xF3D5A09d2C85B28C52EF2905c1BE3a852b609D0C',
+  oidc_domain_attestation: '0x9677ba46ad226ce8b3c4517d9c0143e4d458beae',
+};
+const TESTNET_TOPIC_VERIFIERS: Record<string, string> = {
+  coinbase_attestation: '0x0036B61dBFaB8f3CfEEF77dD5D45F7EFBFE2035c',
+  coinbase_country_attestation: '0xdEe363585926c3c28327Efd1eDd01cf4559738cf',
+  oidc_domain_attestation: '0x27afdea349f247cf698f97fdfab59e1bf8bd0550',
+};
+const TOPIC_NETWORKS: Record<string, {rpc: string; verifiers: Record<string,string>}> = {
+  production: {rpc:'https://mainnet.base.org',verifiers:MAINNET_TOPIC_VERIFIERS},
+  staging: {rpc:'https://sepolia.base.org',verifiers:TESTNET_TOPIC_VERIFIERS},
+  development: {rpc:'https://sepolia.base.org',verifiers:TESTNET_TOPIC_VERIFIERS},
+  local: {rpc:'https://sepolia.base.org',verifiers:TESTNET_TOPIC_VERIFIERS},
+};
+export async function verifyTrustedTopicProof(circuit: string, proof: string, publicInputs: string[]): Promise<{valid: boolean; error?: string}> {
+  const environment = process.env.APP_ENV;
+  const network = environment && Object.hasOwn(TOPIC_NETWORKS, environment) ? TOPIC_NETWORKS[environment] : undefined;
+  if (!network) return {valid:false, error:`Unknown proof environment: ${environment}`};
+  const address = Object.hasOwn(network.verifiers, circuit) ? network.verifiers[circuit] : undefined;
+  if (!address) return {valid:false, error:`Unsupported verifier circuit: ${circuit}`};
+  try {
+    const counts: Record<string, number> = {coinbase_attestation:128, coinbase_country_attestation:150, oidc_domain_attestation:148};
+    if (publicInputs.length !== counts[circuit] || !publicInputs.every(value => /^0x[0-9a-fA-F]{64}$/.test(value)) || !await hasTrustedProofIssuer(circuit, publicInputs)) return {valid:false, error:'Untrusted proof issuer or input layout'};
+    const verifier = new ethers.Contract(address, MDL_KR_VERIFIER_ABI, new ethers.JsonRpcProvider(network.rpc));
+    return {valid: await verifier.verify(proof, publicInputs) === true};
+  } catch { return {valid:false, error:'Proof verification failed'}; }
+}
+
 export async function verifyProofFromRelay(
   result: RelayProofResult,
 ): Promise<{ valid: boolean; error?: string }> {
@@ -127,8 +159,8 @@ export async function verifyProofFromRelay(
     const variant = (result.circuit as MdlKrVariant | undefined) ?? (detected as MdlKrVariant);
     return verifyMdlKrOnChain(variant, result);
   }
-  const sdk = createSDK();
-  return sdk.verifyResponseOnChain(result as any);
+  if (!result.circuit || !result.proof) return {valid:false, error:'Incomplete proof result'};
+  return verifyTrustedTopicProof(result.circuit, result.proof, inputs);
 }
 
 

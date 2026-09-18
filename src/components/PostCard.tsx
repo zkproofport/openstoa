@@ -4,11 +4,10 @@ import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import SNSContent from '@/components/SNSContent';
-import Avatar from '@/components/Avatar';
-import UserCard from '@/components/UserCard';
+import UserIdentity from '@/components/UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import { relativeTime } from '@/lib/utils';
 import { PinIcon, RecordIcon } from '@/components/icons';
-import Badge from '@/components/Badge';
 import PollRenderer from '@/components/PollRenderer';
 import PostActionBar from '@/components/post/PostActionBar';
 import ReactionRow from '@/components/post/ReactionRow';
@@ -43,7 +42,7 @@ export interface PostCardPost {
   /** Topic breadcrumb — shown when rendering in a cross-topic feed */
   topicTitle?: string;
   topicId?: string;
-  badges?: Array<{ type: string; label: string; country?: string; domain?: string }>;
+  badges?: PublicBadge[];
   isAI?: boolean;
   /** Phase B poll block (optional). Hydrated by `attachPollsToPosts`. */
   poll?: Poll | null;
@@ -192,7 +191,7 @@ export default function PostCard({
         });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
-          throw new Error(d.error ?? 'Vote failed');
+          throw new Error(d.error ?? t('poll.voteFailed'));
         }
         const data = await res.json();
         if (data.poll) setPoll(data.poll);
@@ -200,7 +199,7 @@ export default function PostCard({
         setPollLoading(false);
       }
     },
-    [post.id],
+    [post.id, t],
   );
 
   const clearPollVote = useCallback(async () => {
@@ -209,14 +208,14 @@ export default function PostCard({
       const res = await apiFetch(`/api/posts/${post.id}/poll/vote`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Unvote failed');
+        throw new Error(d.error ?? t('poll.unvoteFailed'));
       }
       const data = await res.json();
       if (data.poll) setPoll(data.poll);
     } finally {
       setPollLoading(false);
     }
-  }, [post.id]);
+  }, [post.id, t]);
 
   const handlePin = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -380,45 +379,13 @@ export default function PostCard({
         style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
       >
         {showAuthor && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
-            {resolvedAuthorId ? (
-              <UserCard
-                userId={resolvedAuthorId}
-                nickname={post.authorNickname ?? ''}
-                profileImage={post.authorProfileImage}
-                badges={post.badges}
-              >
-                <Avatar
-                  src={post.authorProfileImage}
-                  name={post.authorNickname ?? ''}
-                  size={24}
-                  style={{ marginTop: 1 }}
-                />
-              </UserCard>
-            ) : (
-              <Avatar
-                src={post.authorProfileImage}
-                name={post.authorNickname ?? ''}
-                size={24}
-                style={{ marginTop: 1 }}
-              />
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>{post.authorNickname}</span>
-                {post.isAI && <Badge type="ai" />}
-                {post.badges &&
-                  post.badges.length > 0 &&
-                  post.badges.map((b, i) => (
-                    <Badge key={i} type={b.type} label={b.label} country={b.country} domain={b.domain} />
-                  ))}
-                <span style={{ color: 'var(--color-text-tertiary)' }}>·</span>
-                <span style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                  {relativeTime(post.createdAt)}
-                </span>
-              </div>
-            </div>
-          </div>
+          <UserIdentity userId={resolvedAuthorId} nickname={post.authorNickname ?? ''}
+            profileImage={post.authorProfileImage} badges={post.badges} isAI={post.isAI}
+            avatarSize={24} avatarStyle={{ marginTop: 1 }}
+            style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 8 }}
+            nameStyle={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{relativeTime(post.createdAt)}</span>
+          </UserIdentity>
         )}
 
         <h3

@@ -1,7 +1,8 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
-import { useSession } from '@/lib/useSession';
+import UserIdentity from './UserIdentity';
+import { useSession, type Session } from '@/lib/useSession';
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import HeaderSearchBar from '@/components/HeaderSearchBar';
@@ -9,10 +10,7 @@ import LocaleSwitcher from '@/components/LocaleSwitcher';
 import ThemeToggle from '@/components/ThemeToggle';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
-interface UserSession {
-  nickname?: string;
-  userId?: string;
-}
+type UserSession = Session;
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -38,7 +36,7 @@ interface HeaderProps {
  */
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="os-header-link header-nav-link os-label">
+    <Link href={href} target={href === "/docs" ? "_blank" : undefined} rel={href === "/docs" ? "noopener noreferrer" : undefined} className={`os-header-link header-nav-link os-label${href === "/docs" ? " desktop-docs-link" : ""}`}>
       {children}
     </Link>
   );
@@ -253,18 +251,14 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
                 fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-label)',
                 textDecoration: 'none',
-                maxWidth: 180,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                display: 'block',
-                lineHeight: 'var(--touch-target-min)',
+                maxWidth: 340,
+                display: 'flex',
+                alignItems: 'center',
+                lineHeight: 'var(--leading-base)',
               }}
             >
-              {user.nickname ??
-                (user.userId
-                  ? `${user.userId.slice(0, 6)}…${user.userId.slice(-4)}`
-                  : t('header.anonFallback'))}
+              <UserIdentity userId={user.userId} nickname={user.nickname ?? (user.userId ? `${user.userId.slice(0, 6)}…${user.userId.slice(-4)}` : t('header.anonFallback'))}
+                profileImage={user.profileImage} badges={user.badges} isAI={user.isAI} interactive={false} avatarSize={24} />
             </Link>
           ) : (
             // The only brand-filled control in the header: signing in is the

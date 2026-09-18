@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { getServerLocale } from '@/lib/i18n/getServerLocale';
 import { buildPostMetadata } from '@/lib/pageMetadata';
 import { resolveRequestOrigin } from '@/lib/requestOrigin';
 import PostDetailClient from './PostDetailClient';
@@ -15,7 +16,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { topicId, postId } = await params;
   const origin = await resolveRequestOrigin();
-  return buildPostMetadata(topicId, postId, origin);
+  return buildPostMetadata(topicId, postId, origin, await getServerLocale());
 }
 
 export default function PostPage() {

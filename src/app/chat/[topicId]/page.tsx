@@ -12,6 +12,7 @@ import ChatPanel from '@/components/ChatPanel';
 import Spinner from '@/components/Spinner';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import TopicMembersList, { type TopicMember } from '@/components/TopicMembersList';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 const MembersIcon = (
@@ -126,7 +127,7 @@ export default function TopicChatPage() {
           isMember: topicData.isMember ?? data.isMember,
         });
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : t('chatPage.loadError'));
+        if (alive) setError(localizeApiError(err, t, 'chatPage.loadError'));
       } finally {
         if (alive) setLoading(false);
       }

@@ -7,8 +7,9 @@
 import { Command, Option } from 'commander';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
-import { createCommands, isEntrypoint, type Commands, type CommandConfig } from '@masselabs/openstoa-commands';
+import { OpenStoaApiError, createCommands, isEntrypoint, REST_OPERATIONS, isProofWorkflowResult, type ProofWorkflowResult, type OperationParameter, type Commands, type CommandConfig, type CreateTopicInput, type TopicProofOptions } from '@masselabs/openstoa-commands';
 import * as fmt from './format';
+import { defaultProofTerminal, formatProofWorkflow, interactWithProof, waitForProof, type ProofTerminal } from './proofInteraction';
 
 /** Map a file extension to an image MIME type for `upload` (server accepts image/* only). */
 const IMAGE_MIME: Record<string, string> = {
@@ -21,25 +22,43 @@ const IMAGE_MIME: Record<string, string> = {
   '.heif': 'image/heif',
 };
 
+function strictInteger(value: string): number {
+  if (!/^-?\d+$/.test(value) || !Number.isSafeInteger(Number(value))) throw new Error(`Expected a whole number, received ${value}`);
+  return Number(value);
+}
+
+function jsonObject(value: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(value);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Expected a JSON object');
+  return parsed as Record<string, unknown>;
+}
+
+function jsonObjectOrNull(value: string): Record<string, unknown> | 'null' {
+  // Commander replaces a parser's null result with an empty string. Decode at dispatch.
+  return value === 'null' ? 'null' : jsonObject(value);
+}
+
+function parseOperationValue(parameter: OperationParameter, value: string): unknown {
+  if (parameter.type === 'number') return strictInteger(value);
+  if (parameter.type === 'boolean') {
+    if (value !== 'true' && value !== 'false') throw new Error(`${parameter.name} must be true or false`);
+    return value === 'true';
+  }
+  if (parameter.type === 'strings') return value.split(',').map((item) => item.trim());
+  return value;
+}
+
 export type CommandsFactory = (config: CommandConfig) => Promise<Commands>;
 const defaultFactory: CommandsFactory = (config) => createCommands(config);
 
-/**
- * Error surfaced for `openstoa login` / `login --google`. The interactive Google
- * device flow is disabled because it depends on the ZKProofport AI prover
- * (ai.zkproofport.app), which is offline. Exported so the tests assert the exact
- * user-facing guidance rather than a substring of a duplicated literal.
- */
-export const DEVICE_LOGIN_DISABLED =
-  'Interactive Google login is temporarily unavailable (the ZKProofport prover service is offline). ' +
-  'Use a scoped API key instead: set OPENSTOA_API_KEY (or --api-key <key>, or ~/.openstoa/credentials), ' +
-  'or adopt an existing Bearer with `openstoa login --token <jwt>`.\n' +
-  'A key is minted by the account owner, in a browser: sign in to the OpenStoa web site with the ' +
-  'ZKProofport mobile app, then open /my → AI agents → create an API key — that is the normal way to ' +
-  'get one, not a workaround. `openstoa apikey create --name <label>` (and the rest of `apikey`) is for ' +
-  'that same account-owner session to run — it always fails with 403 when the CLI is authenticated via ' +
-  'OPENSTOA_API_KEY, including to manage that very key. An agent running only with OPENSTOA_API_KEY should ' +
-  'ask its account owner to mint or rotate a key, not attempt `apikey` itself.';
+type TopicActionOptions = TopicProofOptions & { wait?: boolean };
+function topicProofOptions(options: TopicActionOptions): TopicProofOptions {
+  return {
+    ...(options.method !== undefined ? { method: options.method } : {}),
+    ...(options.approved !== undefined ? { approved: options.approved } : {}),
+    ...(options.provider !== undefined ? { provider: options.provider } : {}),
+  };
+}
 
 interface GlobalOpts {
   baseUrl?: string;
@@ -53,6 +72,7 @@ interface GlobalOpts {
 export function buildProgram(
   factory: CommandsFactory = defaultFactory,
   write: (s: string) => void = (s) => process.stdout.write(s + '\n'),
+  terminal: ProofTerminal = defaultProofTerminal,
 ): Command {
   const program = new Command();
   program
@@ -62,7 +82,7 @@ export function buildProgram(
     .option('--vault-root <dir>', 'the .openstoa home dir for keys + session (default ~/.openstoa)')
     .option('--keystore <backend>', 'keystore backend: vault (default) | keychain')
     .option('--device-id <id>', 'stable MLS device identity override')
-    .option('--api-key <key>', 'scoped API key — skips interactive login (else OPENSTOA_API_KEY, else ~/.openstoa/credentials)')
+    .option('--api-key <key>', 'permission key used alongside a login session (else OPENSTOA_API_KEY, else ~/.openstoa/credentials)')
     .option('--json', 'machine-readable JSON output')
     .enablePositionalOptions();
 
@@ -72,43 +92,105 @@ export function buildProgram(
     return { baseUrl: g.baseUrl, vaultRoot: g.vaultRoot, backend: g.keystore, deviceId: g.deviceId, apiKey: g.apiKey };
   };
 
-  async function run<T>(fn: (c: Commands) => Promise<T>, human: (r: T) => string): Promise<void> {
+  async function run<T>(fn: (c: Commands) => Promise<T | ProofWorkflowResult>, human: (r: T) => string, options: TopicActionOptions & { proofControl?: boolean } = {}): Promise<void> {
+    const interactive = !globals().json && terminal.isTTY();
+    if (options.method === 'ai' && options.approved === true && !options.wait && !interactive) {
+      throw new Error('AI proof generation requires --wait so the prover remains in this process.');
+    }
     const cmds = await factory(config());
-    const result = await fn(cmds);
-    write(globals().json ? JSON.stringify(result, null, 2) : human(result));
+    let result:T|ProofWorkflowResult;
+    try {result=await fn(cmds);} catch(error) {
+      if(error instanceof OpenStoaApiError && error.status===401){write(JSON.stringify({status:'authentication_required',methods:['app','ai'],message:'Login is required before API-key authorization. Complete proof login, then retry this operation.',next:{cli:'openstoa login',mcp:'openstoa_authenticate'}}));return;}
+      throw error;
+    }
+    if (isProofWorkflowResult(result)) {
+      let state = result;
+      if (interactive && !options.proofControl && options.approved !== true && state.status === 'proof_required') {
+        state = await interactWithProof(cmds, state, terminal, options);
+      } else if (options.wait || (interactive && !options.proofControl && state.status === 'pending')) {
+        state = await waitForProof(cmds, state, terminal, { openBrowser: !globals().json });
+      }
+      if (globals().json || !terminal.isTTY()) write(JSON.stringify(state, null, 2));
+      else if (state.status === 'completed' && !options.proofControl) write(human(state.result as T));
+      else write(formatProofWorkflow(state));
+      return;
+    }
+    write(globals().json ? JSON.stringify(result, null, 2) : human(result as T));
   }
 
-  // ── auth ──────────────────────────────────────────────────────────────
-  // A scoped API key (--api-key / OPENSTOA_API_KEY / ~/.openstoa/credentials) is
-  // THE auth path: it short-circuits login entirely. `--token` adopts a Bearer
-  // minted elsewhere. `--dev` is a hidden dev-only escape hatch (the server
-  // returns 404 in production).
-  //
-  // TEMPORARILY DISABLED — the interactive Google device flow. It calls the
-  // ZKProofport AI prover (ai.zkproofport.app), which is offline (shut down for
-  // cost), so it can only fail. `--google` stays registered so `login --help`
-  // explains the situation instead of silently dropping the option. To restore:
-  // bring the prover back up, then uncomment `deviceLogin.ts` + the commands-core
-  // block + this action's device path + the MCP openstoa_authenticate tool.
-  program
-    .command('login')
-    .description('adopt an existing Bearer with --token; API keys (OPENSTOA_API_KEY / --api-key) need no login')
-    .option('--google', 'TEMPORARILY UNAVAILABLE: interactive Google device-flow login (prover service offline)')
-    .option('--token <jwt>', 'adopt an externally-obtained Bearer (e.g. an AI verify token)')
-    .addOption(new Option('--dev', 'DEV ONLY: dev-login (dev/staging; server returns 404 in production)').hideHelp())
-    .addOption(new Option('--nickname <name>', 'nickname for a fresh --dev dev-login user').hideHelp())
-    .action((opts: { google?: boolean; token?: string; dev?: boolean; nickname?: string }) => {
-      if (opts.token) {
-        return run((c) => c.login({ token: opts.token }), fmt.fmtLogin);
+  const proof = program.command('proof').description('continue a proof-required topic action with explicit consent');
+  proof.command('continue <operationId>')
+    .description('approve and start a proof; AI proving must stay in this process with --wait')
+    .requiredOption('--approved', 'explicitly consent to generating the proof and resuming the saved action')
+    .addOption(new Option('--method <method>').choices(['app', 'ai']).makeOptionMandatory())
+    .addOption(new Option('--provider <provider>').choices(['google', 'microsoft']))
+    .option('--wait', 'wait for proof completion and resume the saved action once')
+    .action((operationId: string, opts: { approved: boolean; method: 'app' | 'ai'; provider?: 'google' | 'microsoft'; wait?: boolean }) => {
+      if (opts.method === 'ai' && !opts.wait) throw new Error('AI proof generation requires --wait so the prover remains in this process.');
+      return run(c => c.proofContinue({ operationId, method: opts.method, approved: true, ...(opts.provider ? { provider: opts.provider } : {}) }), formatProofWorkflow, { proofControl: true, wait: opts.wait });
+    });
+  proof.command('status <operationId>').description('read proof status without retrying the original action')
+    .action((operationId: string) => run(c => c.proofStatus(operationId), formatProofWorkflow, { proofControl: true }));
+  proof.command('resume <operationId>').description('resume the saved action after its proof is ready')
+    .option('--wait', 'wait if proof generation is still pending')
+    .action((operationId: string, opts: { wait?: boolean }) => run(c => c.proofResume(operationId), formatProofWorkflow, { proofControl: true, wait: opts.wait }));
+  proof.command('cancel <operationId>').description('cancel a saved proof operation without retrying it')
+    .action((operationId: string) => run(c => c.proofCancel(operationId), formatProofWorkflow, { proofControl: true }));
+
+  // Explicit login supports mobile approval and the local AI Google device flow.
+  program.command('login').description('sign in with a proof, resume a login, or adopt a session token')
+    .option('--method <method>', 'proof method: app (default) or ai')
+    .option('--google', 'use the AI Google device flow (same as --method ai)')
+    .option('--approved', 'confirm consent to sign this client into your account')
+    .option('--operation-id <id>', 'resume a saved login in this vault')
+    .option('--cancel', 'cancel the saved login')
+    .option('--wait', 'wait for approval and save the verified session')
+    .option('--redirect-url <path>', 'same-origin page after browser login (app mode)')
+    .option('--token <jwt>', 'adopt an externally obtained session')
+    .addOption(new Option('--dev', 'DEV ONLY: local test login').hideHelp())
+    .addOption(new Option('--nickname <name>', 'nickname for --dev').hideHelp())
+    .action(async opts=>{
+      if(opts.token)return run(c=>c.login({token:opts.token}),fmt.fmtLogin);
+      if(opts.dev)return run(c=>c.login({nickname:opts.nickname}),fmt.fmtLogin);
+      const interactive=!globals().json&&terminal.isTTY();
+      let method=opts.google?'ai':opts.method;
+      if(method!==undefined&&!['app','ai'].includes(method))throw new Error('method must be app or ai');
+      if(method==='ai'&&opts.approved&&!opts.wait&&!interactive)throw new Error('AI login requires --wait to keep its local process running.');
+      const commands=await factory(config());
+      let state=await commands.authenticate({method,approved:opts.approved,operationId:opts.operationId,cancel:opts.cancel,redirectUrl:opts.redirectUrl});
+      if(state.status==='consent_required'&&interactive){
+        terminal.write(state.message);
+        const consent=(await terminal.ask('Sign this CLI into your account? [y/N] ')).toLowerCase();
+        if(!['y','yes'].includes(consent)){write(JSON.stringify({status:'cancelled'}));return;}
+        method=method??(await terminal.ask('Proof method (app/ai): ')).toLowerCase();
+        if(!['app','ai'].includes(method))throw new Error('method must be app or ai');
+        state=await commands.authenticate({method,approved:true,redirectUrl:opts.redirectUrl});
       }
-      if (opts.dev) {
-        // Hidden dev-login path — still usable locally/staging for tests; the
-        // server returns 404 in production, surfaced as a clear error.
-        return run((c) => c.login({ nickname: opts.nickname }), fmt.fmtLogin);
-      }
-      // Bare `login` and `--google` both land here: fail fast with the API-key
-      // guidance instead of attempting a device flow that cannot succeed.
-      throw new Error(DEVICE_LOGIN_DISABLED);
+      let interrupted=false;
+      let cancelPromise: ReturnType<typeof commands.authenticate> | undefined;
+      const onInterrupt=()=>{
+        interrupted=true;
+        if(state.status==='pending'&&!cancelPromise) {
+          cancelPromise=commands.authenticate({operationId:state.operationId,cancel:true});
+          void cancelPromise.catch(()=>{});
+        }
+      };
+      const opened=new Set<string>();
+      process.on('SIGINT',onInterrupt);
+      try{
+        while(state.status==='pending'&&(opts.wait||interactive)){
+          terminal.write(JSON.stringify(state));
+          const url=state.browserUrl??state.verificationUrl;
+          if(url&&interactive&&!opened.has(url)){opened.add(url);try{await terminal.openBrowser(url);}catch{terminal.write('Open the login URL above to continue.');}}
+          if(interrupted){state=await (cancelPromise??commands.authenticate({operationId:state.operationId,cancel:true}));break;}
+          await terminal.sleep(state.pollAfterMs);
+          if(interrupted){state=await cancelPromise!;break;}
+          try { state=await commands.authenticate({operationId:state.operationId}); }
+          catch(error){if(!interrupted)throw error;}
+          if(interrupted){state=await cancelPromise!;break;}
+        }
+      }finally{process.off('SIGINT',onInterrupt);}
+      write(JSON.stringify(state,null,globals().json?undefined:2));
     });
 
   program
@@ -123,20 +205,29 @@ export function buildProgram(
 
   // ── topics ────────────────────────────────────────────────────────────
   const topics = program.command('topics').description('topic operations');
-  topics.command('list').description('topics you are a member of').action(() => run((c) => c.topicsList(), fmt.fmtTopics));
+  topics.command('list').description('read or search topics (default: joined topics)')
+    .option('--view <view>', 'all for discovery; omit for joined topics')
+    .addOption(new Option('--sort <sort>').choices(['hot', 'new', 'top', 'active']))
+    .option('--category <slug>').option('--q <query>')
+    .action((opts) => run((c) => c.topicsList(opts), fmt.fmtTopics));
   topics.command('get <topicId>').description('topic details').action((topicId: string) => run((c) => c.topicGet(topicId), fmt.fmtTopic));
   topics
     .command('join <topicId>')
-    .description('join (REST) + MLS self-join; pass a proof for gated topics')
+    .description('join topic membership; missing proof starts a consent-based continuation; use chat join to initialize encryption')
+    .addOption(new Option('--method <method>', 'generate a required proof with app QR or AI').choices(['app', 'ai']))
+    .option('--approved', 'consent to proof generation and completion of this topic action')
+    .addOption(new Option('--provider <provider>', 'account provider for a workspace proof').choices(['google', 'microsoft']))
+    .option('--wait', 'wait for the app QR or AI proof, then finish this topic action')
     .option('--proof <hex>', 'ZK proof bytes for a proof-gated topic (KYC / country / workspace)')
     .option('--public-inputs <hex>', 'ZK proof public inputs (required alongside --proof)')
-    .action((topicId: string, opts: { proof?: string; publicInputs?: string }) =>
+    .action((topicId: string, opts: { proof?: string; publicInputs?: string } & TopicActionOptions) =>
       run(
-        (c) => c.topicJoin(topicId, { proof: opts.proof, publicInputs: opts.publicInputs }),
+        (c) => c.topicJoin(topicId, { proof: opts.proof, publicInputs: opts.publicInputs, ...topicProofOptions(opts) }),
         (r) => (r.pending ? `Join request pending approval for ${r.topicId}` : `Joined ${r.topicId}`),
+        opts,
       ),
     );
-  topics.command('leave <topicId>').description('remove yourself (server enforces its self-removal policy)').action((topicId: string) => run((c) => c.topicLeave(topicId), (r) => `Left ${r.topicId}`));
+  topics.command('leave <topicId>').description('leave a topic; owners must transfer ownership first').action((topicId: string) => run((c) => c.topicLeave(topicId), (r) => `Left ${r.topicId}`));
   topics
     .command('members <topicId>')
     .description('list a topic’s members')
@@ -145,38 +236,35 @@ export function buildProgram(
     );
   topics
     .command('update <topicId>')
-    .description('edit a topic you own')
+    .description('edit a topic you own: title, description or image')
     .option('--title <title>')
     .option('--description <desc>')
-    .option('--visibility <v>', 'public | private | secret')
-    .option('--category-id <id>')
-    .option('--proof-type <type>')
-    .action((topicId: string, opts: { title?: string; description?: string; visibility?: string; categoryId?: string; proofType?: string }) =>
-      run(
-        (c) =>
-          c.topicUpdate(topicId, {
-            title: opts.title,
-            description: opts.description,
-            visibility: opts.visibility as 'public' | 'private' | 'secret' | undefined,
-            categoryId: opts.categoryId,
-            proofType: opts.proofType,
-          }),
-        fmt.fmtTopic,
-      ),
+    .option('--image <url>', 'uploaded image URL; empty string removes it')
+    .action((topicId: string, opts: { title?: string; description?: string; image?: string }) =>
+      run((c) => c.topicUpdate(topicId, opts), fmt.fmtTopic),
     );
   topics
     .command('create')
-    .description('create a topic')
+    .description('create a topic; missing proof starts a consent-based continuation')
     .requiredOption('--title <title>')
     .option('--description <desc>')
-    .option('--visibility <v>', 'public | private | secret', 'public')
+    .addOption(new Option('--visibility <v>').choices(['public', 'private', 'secret']).default('public'))
     .option('--category-id <id>')
-    .option('--proof-type <type>')
+    .addOption(new Option('--proof-type <type>').choices(['none', 'kyc', 'country', 'google_workspace', 'microsoft_365', 'workspace']))
+    .option('--allowed-countries <codes>', 'comma-separated country codes')
+    .option('--required-domain <domain>', 'workspace domain requirement')
+    .addOption(new Option('--method <method>', 'generate a required proof with app QR or AI').choices(['app', 'ai']))
+    .option('--approved', 'consent to proof generation and completion of this topic action')
+    .addOption(new Option('--provider <provider>', 'account provider for a workspace proof').choices(['google', 'microsoft']))
+    .option('--wait', 'wait for the app QR or AI proof, then finish this topic action')
+    .option('--proof <hex>', 'creation proof when required')
+    .option('--public-inputs <hex>', 'public inputs for the creation proof')
+    .option('--image <url>', 'uploaded topic image URL')
     .option(
       '--chat-archive-retention-days <days>',
       'how long chat history is kept: 0 (forever, default) | 365 | 90 | 30. Set once, at creation',
     )
-    .action((opts: { title: string; description?: string; visibility?: string; categoryId?: string; proofType?: string; chatArchiveRetentionDays?: string }) =>
+    .action((opts: { title: string; description?: string; visibility?: string; categoryId?: string; proofType?: CreateTopicInput['proofType']; chatArchiveRetentionDays?: string; allowedCountries?: string; requiredDomain?: string; proof?: string; publicInputs?: string; image?: string } & TopicActionOptions) =>
       run(
         (c) =>
           c.topicCreate({
@@ -185,14 +273,21 @@ export function buildProgram(
             visibility: opts.visibility as 'public' | 'private' | 'secret' | undefined,
             categoryId: opts.categoryId,
             proofType: opts.proofType,
+            allowedCountries: opts.allowedCountries?.split(',').map((value) => value.trim()),
+            requiredDomain: opts.requiredDomain,
+            proof: opts.proof,
+            publicInputs: opts.publicInputs,
+            image: opts.image,
+            ...topicProofOptions(opts),
             // Commander hands over a string; the route accepts only a number and
             // refuses "30", so parse here rather than letting the server 400 on
             // a flag the user typed correctly.
             ...(opts.chatArchiveRetentionDays !== undefined && {
-              chatArchiveRetentionDays: Number(opts.chatArchiveRetentionDays) as 0 | 365 | 90 | 30,
+              chatArchiveRetentionDays: strictInteger(opts.chatArchiveRetentionDays) as 0 | 365 | 90 | 30,
             }),
           }),
         fmt.fmtTopic,
+        opts,
       ),
     );
 
@@ -209,7 +304,11 @@ export function buildProgram(
 
   // ── posts ─────────────────────────────────────────────────────────────
   const post = program.command('post').description('post operations');
-  post.command('list <topicId>').description('posts in a topic').action((topicId: string) => run((c) => c.postList(topicId), fmt.fmtPosts));
+  post.command('list <topicId>').description('read or search posts in a topic')
+    .option('--limit <n>', 'max results 1–100', strictInteger).option('--offset <n>', 'pagination offset', strictInteger)
+    .addOption(new Option('--sort <sort>').choices(['hot', 'new', 'top', 'active', 'recorded']))
+    .option('--tag <slug>').option('--q <query>')
+    .action((topicId: string, opts) => run((c) => c.postList(topicId, opts), fmt.fmtPosts));
   post.command('get <postId>').description('post + comments').action((postId: string) => run((c) => c.postGet(postId), fmt.fmtPostDetail));
   post
     .command('create <topicId>')
@@ -217,13 +316,17 @@ export function buildProgram(
     .requiredOption('--title <title>')
     .requiredOption('--content <content>')
     .option('--tags <tags>', 'comma-separated tags')
-    .action((topicId: string, opts: { title: string; content: string; tags?: string }) =>
+    .option('--media <json>', 'media object: images, videos, imageAlts', jsonObject)
+    .option('--poll <json>', 'poll object: question, options, multipleChoice, closesAt; null removes a poll on update', jsonObjectOrNull)
+    .action((topicId: string, opts: { title: string; content: string; tags?: string; media?: Record<string, unknown>; poll?: Record<string, unknown> | 'null' }) =>
       run(
         (c) =>
           c.postCreate(topicId, {
             title: opts.title,
             content: opts.content,
-            tags: opts.tags ? opts.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+            tags: opts.tags !== undefined ? opts.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+            media: opts.media,
+            poll: opts.poll === 'null' ? null : opts.poll,
           }),
         fmt.fmtPost,
       ),
@@ -235,13 +338,17 @@ export function buildProgram(
     .option('--title <title>')
     .option('--content <content>')
     .option('--tags <tags>', 'comma-separated tags')
-    .action((postId: string, opts: { title?: string; content?: string; tags?: string }) =>
+    .option('--media <json>', 'media object: images, videos, imageAlts', jsonObject)
+    .option('--poll <json>', 'poll object: question, options, multipleChoice, closesAt; null removes a poll on update', jsonObjectOrNull)
+    .action((postId: string, opts: { title?: string; content?: string; tags?: string; media?: Record<string, unknown>; poll?: Record<string, unknown> | 'null' }) =>
       run(
         (c) =>
           c.postUpdate(postId, {
             title: opts.title,
             content: opts.content,
-            tags: opts.tags ? opts.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+            tags: opts.tags !== undefined ? opts.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+            media: opts.media,
+            poll: opts.poll === 'null' ? null : opts.poll,
           }),
         fmt.fmtPost,
       ),
@@ -265,8 +372,9 @@ export function buildProgram(
     .command('upload <file>')
     .description('upload an image file to the CDN; prints the public URL to embed')
     .option('--purpose <p>', 'post | topic | avatar', 'post')
+    .option('--topic-id <id>', 'existing topic for post/cover images; required so post readers can access the image')
     .option('--content-type <mime>', 'override the MIME type (else inferred from the file extension)')
-    .action((file: string, opts: { purpose?: string; contentType?: string }) =>
+    .action((file: string, opts: { purpose?: string; contentType?: string; topicId?: string }) =>
       run(
         (c) => {
           const data = new Uint8Array(readFileSync(file));
@@ -277,6 +385,7 @@ export function buildProgram(
             filename: basename(file),
             contentType,
             purpose: opts.purpose as 'post' | 'topic' | 'avatar' | undefined,
+            topicId: opts.topicId,
           });
         },
         (r) => r.publicUrl,
@@ -296,14 +405,7 @@ export function buildProgram(
           // MCP, where there is no filesystem to read from.
           const { readFileSync } = await import('node:fs');
           const bytes = readFileSync(file);
-          const ext = file.toLowerCase().split('.').pop() ?? '';
-          const inferred =
-            ext === 'png' ? 'image/png'
-            : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
-            : ext === 'gif' ? 'image/gif'
-            : ext === 'webp' ? 'image/webp'
-            : '';
-          const mime = opts.mime ?? inferred;
+          const mime = opts.mime ?? IMAGE_MIME[extname(file).toLowerCase()];
           if (!mime) throw new Error(`cannot infer image type from "${file}" — pass --mime`);
           return c.chatSendMedia(topicId, { base64: bytes.toString('base64'), mime });
         },
@@ -318,9 +420,9 @@ export function buildProgram(
   chat
     .command('read <topicId>')
     .description('read + MLS-decrypt history')
-    .option('--limit <n>', 'max messages', (v) => parseInt(v, 10))
+    .option('--limit <n>', 'max messages', strictInteger)
     .option('--since <iso>', 'only messages after this ISO timestamp')
-    .option('--before <iso>', 'only messages before this ISO timestamp')
+    .option('--before <messageId>', 'only messages before this server message ID')
     .action((topicId: string, opts: { limit?: number; since?: string; before?: string }) =>
       run((c) => c.chatRead(topicId, { limit: opts.limit, since: opts.since, before: opts.before }), fmt.fmtChat),
     );
@@ -339,9 +441,9 @@ export function buildProgram(
   dm
     .command('read <topicId>')
     .description('read + MLS-decrypt DM history')
-    .option('--limit <n>', 'max messages', (v) => parseInt(v, 10))
+    .option('--limit <n>', 'max messages', strictInteger)
     .option('--since <iso>', 'only messages after this ISO timestamp')
-    .option('--before <iso>', 'only messages before this ISO timestamp')
+    .option('--before <messageId>', 'only messages before this server message ID')
     .action((topicId: string, opts: { limit?: number; since?: string; before?: string }) =>
       run((c) => c.dmRead(topicId, { limit: opts.limit, since: opts.since, before: opts.before }), fmt.fmtChat),
     );
@@ -354,7 +456,7 @@ export function buildProgram(
     .description('set / replace your nickname')
     .action((nickname: string) => run((c) => c.profileSetNickname(nickname), (r) => `Nickname set to ${r.nickname}`));
 
-  // ── API keys (scoped credential — skip interactive login) ────────────────
+  // ── API keys (per-key authorization — login remains required) ────────────────
   // Account-owner-only: every subcommand below 403s when this CLI invocation
   // is itself authenticated via OPENSTOA_API_KEY. Requires a real session
   // (`openstoa login --token <jwt>`) — see requireNonApiKeySession server-side.
@@ -400,6 +502,45 @@ export function buildProgram(
     .command('revoke <id>')
     .description('revoke an API key — takes effect immediately')
     .action((id: string) => run((c) => c.apiKeyRevoke(id), (r) => `Revoked ${r.id}`));
+
+  chat.command('history <topicId>').description('decrypt the archived history available to this device and key')
+    .action((topicId: string) => run((c) => c.chatHistory(topicId), (rows) => JSON.stringify(rows, null, 2)));
+  dm.command('history <topicId>').description('decrypt archived DM history available to this device and key')
+    .action((topicId: string) => run((c) => c.chatHistory(topicId), (rows) => JSON.stringify(rows, null, 2)));
+  chat.command('share-keys <topicId>').description('share locally held history keys with existing member devices')
+    .action((topicId: string) => run((c) => c.chatShareKeys(topicId), (result) => `Shared ${result.shared} key bundles`));
+
+  // One catalogue owns the missing public REST surfaces and their exact flags.
+  // Unknown fields/enums are rejected in the shared SDK before network access.
+  for (const operation of REST_OPERATIONS) {
+    let parent = program;
+    for (const segment of operation.cli.slice(0, -1)) {
+      parent = parent.commands.find((command) => command.name() === segment)
+        ?? parent.command(segment).description(`${segment} operations`);
+    }
+    const positions = operation.parameters.filter((parameter) => parameter.location === 'path');
+    const command = parent.command([operation.cli[operation.cli.length - 1], ...positions.map((parameter) => `<${parameter.name}>`)].join(' '))
+      .description(`${operation.description} ${operation.access}`);
+    for (const parameter of operation.parameters.filter((entry) => entry.location !== 'path')) {
+      const flag = '--' + parameter.name.replace(/[A-Z]/g, (letter) => '-' + letter.toLowerCase());
+      const option = new Option(`${flag} <value>`, parameter.description).argParser((value) => parseOperationValue(parameter, value));
+      if (parameter.required) option.makeOptionMandatory();
+      command.addOption(option);
+    }
+    if (operation.id === 'topic_join_invite') {
+      command.addOption(new Option('--method <method>', 'generate a required proof with app QR or AI').choices(['app', 'ai']))
+        .option('--approved', 'consent to proof generation and completion of this invitation join')
+        .addOption(new Option('--provider <provider>').choices(['google', 'microsoft']))
+        .option('--wait', 'wait for the proof and finish joining through this invitation');
+    }
+    command.action((...args: unknown[]) => {
+      const options = args[positions.length] as Record<string, unknown>;
+      const input = { ...options };
+      if (operation.id === 'topic_join_invite') delete input.wait;
+      positions.forEach((parameter, index) => { input[parameter.name] = args[index]; });
+      return run((c) => c.executeOperation(operation.id, input), (result) => JSON.stringify(result, null, 2), operation.id === 'topic_join_invite' ? options as TopicActionOptions : {});
+    });
+  }
 
   return program;
 }

@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -144,6 +146,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -284,11 +289,13 @@ export async function GET(
     // Shape rows for the wire: user messages expose only the sealed body
     // (base64) — never plaintext. System rows ('join' | 'leave') expose
     // their plaintext system text (public nicknames only).
-    const messages = rows.map((r) => ({
+    const rowsWithBadges = await withPublicIdentityBadges(rows, row => row.userId);
+    const messages = rowsWithBadges.map((r) => ({
       id: r.id,
       topicId: r.topicId,
       userId: r.userId,
       nickname: r.nickname,
+      badges: r.badges,
       profileImage: r.profileImage,
       type: r.type,
       isAI: r.isAI,
@@ -414,6 +421,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);
@@ -556,11 +566,13 @@ export async function POST(
       })
       .returning();
 
+    const [identity] = await withPublicIdentityBadges([{userId: inserted.userId}], row => row.userId);
     const payload = {
       id: inserted.id,
       topicId: inserted.topicId,
       userId: inserted.userId,
       nickname: user?.nickname ?? session.nickname,
+      badges: identity.badges,
       profileImage: user?.profileImage ?? null,
       message: null,
       sealed: {

@@ -96,7 +96,7 @@ describe.sequential('Privacy — PII Absence Verification', () => {
     expect(commentId).toBeTruthy();
   });
 
-  // ── 1. /api/profile/badges — no email, domain, country plaintext ─────────
+  // ── 1. /api/profile/badges — no email or country plaintext; owner workspace domain allowed ─────────
 
   it('1. GET /api/profile/badges — response has no PII fields', async () => {
     const res = await authGet('/api/profile/badges');
@@ -110,7 +110,7 @@ describe.sequential('Privacy — PII Absence Verification', () => {
     ).toEqual([]);
   });
 
-  it('1b. GET /api/profile/badges — badge objects only have type, verifiedAt, expiresAt', async () => {
+  it('1b. GET /api/profile/badges — badge objects expose only owner control fields', async () => {
     const res = await authGet('/api/profile/badges');
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -119,7 +119,7 @@ describe.sequential('Privacy — PII Absence Verification', () => {
 
     for (const badge of json.badges) {
       const keys = Object.keys(badge);
-      const allowed = new Set(['type', 'verifiedAt', 'expiresAt']);
+      const allowed = new Set(['type', 'verifiedAt', 'expiresAt', 'visible', 'domain']);
       const forbidden = keys.filter(k => !allowed.has(k));
       expect(
         forbidden,
@@ -134,13 +134,18 @@ describe.sequential('Privacy — PII Absence Verification', () => {
     }
   });
 
-  it('1c. GET /api/profile/badges — no raw domain or country values in response', async () => {
+  it('1c. GET /api/profile/badges — only owner workspace domain, no country values in response', async () => {
     const res = await authGet('/api/profile/badges');
     expect(res.status).toBe(200);
     const body = await res.text();
 
-    // 'domain' and 'country' keys must not appear at all in /api/profile/badges
-    expect(body).not.toMatch(/"domain"/);
+    for (const badge of JSON.parse(body).badges) {
+      expect(typeof badge.visible).toBe('boolean');
+      if (badge.domain !== undefined) {
+        expect(badge.type).toBe('oidc_domain');
+        expect(typeof badge.domain).toBe('string');
+      }
+    }
     expect(body).not.toMatch(COUNTRY_PLAINTEXT_PATTERN);
   });
 
@@ -418,7 +423,7 @@ describe.sequential('Privacy — PII Absence Verification', () => {
     }
   });
 
-  it('5c. Comment badges — domain only appears if user has opted in (badge type = workspace/oidc_domain)', async () => {
+  it('5c. Comment badges — domain only appears on visible workspace badges', async () => {
     const res = await authGet(`/api/posts/${postId}`);
     expect(res.status).toBe(200);
     const json = await res.json();

@@ -142,7 +142,7 @@ describe('LeftSidebar — Korean', () => {
   it('the search input placeholder is in Korean', async () => {
     await renderSidebar('ko');
     const input = container.querySelector('input[type="text"]') as HTMLInputElement;
-    expect(input.placeholder).toBe('토픽 검색...');
+    expect(input.placeholder).toBe('토픽 검색…');
   });
 
   it('expand/collapse aria-label follows the active locale (exercised once a category has topics)', async () => {

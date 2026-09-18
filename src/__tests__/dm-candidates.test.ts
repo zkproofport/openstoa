@@ -5,7 +5,6 @@ import * as schema from '@/lib/db/schema';
 import {
   DEFAULT_CANDIDATE_LIMIT,
   MAX_CANDIDATE_LIMIT,
-  badgesForSharedTopics,
   buildDmCandidatesQuery,
   clampCandidateLimit,
 } from '@/lib/dmCandidates';
@@ -138,35 +137,6 @@ describe('clampCandidateLimit', () => {
     expect(clampCandidateLimit(String(MAX_CANDIDATE_LIMIT))).toBe(MAX_CANDIDATE_LIMIT);
     expect(clampCandidateLimit('1000000')).toBe(MAX_CANDIDATE_LIMIT);
     expect(clampCandidateLimit('12.9')).toBe(12);
-  });
-});
-
-describe('badgesForSharedTopics — union of what each shared topic would show', () => {
-  const kyc = { type: 'kyc', label: 'KYC' };
-  const country = { type: 'country', label: 'Country' };
-  const workspace = { type: 'workspace', label: 'acme.com', domain: 'acme.com' };
-  const all = [kyc, country, workspace];
-
-  it('shows nothing when the only shared topic is open', () => {
-    expect(badgesForSharedTopics(all, ['none'])).toEqual([]);
-  });
-
-  it('shows only the badge each shared topic gates on', () => {
-    expect(badgesForSharedTopics(all, ['kyc'])).toEqual([kyc]);
-    expect(badgesForSharedTopics(all, ['country'])).toEqual([country]);
-    expect(badgesForSharedTopics(all, ['google_workspace'])).toEqual([workspace]);
-  });
-
-  it('unions across several shared topics without duplicating', () => {
-    const out = badgesForSharedTopics(all, ['kyc', 'country', 'kyc', 'none']);
-    expect(out).toEqual([kyc, country]);
-  });
-
-  it('tolerates null / unknown proof types and an empty badge set', () => {
-    expect(badgesForSharedTopics(all, [null])).toEqual([]);
-    expect(badgesForSharedTopics(all, ['made_up'])).toEqual([]);
-    expect(badgesForSharedTopics([], ['kyc'])).toEqual([]);
-    expect(badgesForSharedTopics(all, [])).toEqual([]);
   });
 });
 

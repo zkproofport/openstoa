@@ -8,9 +8,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  *   2. DB-backed CRUD (createApiKey/listApiKeys/revokeApiKey/verifyApiKey)
  *      against a mocked `@/lib/db` — authz (owner-only revoke), race (double
  *      revoke), integrity (never returns keyHash/raw key).
- *   3. `getSession()`'s API-key resolution path (real `@/lib/session` against
- *      the same mocked db) — valid/revoked/unknown key → session or null;
- *      isAI + capabilities come FROM THE KEY row.
+ *   3. `getSession()`'s login boundary: a key alone is never a session.
+ *      Dual-credential authorization is exercised in apiKeyRequiresLogin.test.ts.
  *
  * Route-level HTTP-contract tests (POST/GET/DELETE handlers + the
  * requireAiCapability apiKeyCmd short-circuit on a guarded route) live in
@@ -337,7 +336,7 @@ describe('getSession — API-key path (authz / hostile / integrity)', () => {
     expect(session).toBeNull();
   });
 
-  it('a valid key resolves userId/nickname/isAI/apiKeyCmd/apiKeyHistoryGrant FROM THE KEY row', async () => {
+  it('a valid key still cannot replace a logged-in session', async () => {
     mocks.apiKeysFindFirst.mockResolvedValue({
       id: 'k1', userId: 'bot-owner-1', cmd: ['/openstoa/chat/read', '/openstoa/post/write'],
       historyGrant: '7d', isAI: true, revokedAt: null,
@@ -345,14 +344,8 @@ describe('getSession — API-key path (authz / hostile / integrity)', () => {
     mocks.usersFindFirst.mockResolvedValue({ id: 'bot-owner-1', nickname: 'agentowner' });
     const { getSession } = await import('@/lib/session');
     const session = await getSession(fakeRequest('osk_validkey'));
-    expect(session).toMatchObject({
-      userId: 'bot-owner-1',
-      nickname: 'agentowner',
-      isAI: true,
-      apiKeyId: 'k1',
-      apiKeyCmd: ['/openstoa/chat/read', '/openstoa/post/write'],
-      apiKeyHistoryGrant: '7d',
-    });
+    expect(session).toBeNull();
+    expect(mocks.apiKeysFindFirst).not.toHaveBeenCalled();
   });
 
   it('key resolves to a user that no longer exists → null (integrity, no orphaned session)', async () => {

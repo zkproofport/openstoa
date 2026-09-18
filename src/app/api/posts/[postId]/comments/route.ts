@@ -1,9 +1,10 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, comments, topicMembers, users } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import { getUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { getUserBadges } from '@/lib/verification-cache';
 import { topics } from '@/lib/db/schema';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
@@ -21,9 +22,10 @@ const ROUTE = '/api/posts/[postId]/comments';
  *     tags: [Comments]
  *     summary: Create comment on post
  *     description: |
- *       Creates a comment on a post. **Membership required** for posts in private/secret topics;
- *       public-topic comments need only a non-`anon_` nickname. The post's `commentCount` is
- *       bumped atomically and the new comment is returned in the response. Use
+ *       Creates a comment on a post. Topic membership is required for every topic visibility.
+ *       A custom nickname is optional. Agent requests require a login session and a same-owner
+ *       API key with comment/write permission. The post's `commentCount` is bumped atomically
+ *       and the new comment is returned in the response. Use
  *       `DELETE /api/comments/{commentId}` to soft-delete.
  *     operationId: createComment
  *     x-related-skills: [get-post, delete-comment, set-nickname]
@@ -65,6 +67,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]/comments');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);
@@ -165,14 +170,8 @@ export async function POST(
       columns: { nickname: true, profileImage: true },
     });
 
-    // Get topic proofType for badge filtering
-    const topicForBadge = await db.query.topics.findFirst({
-      where: eq(topics.id, post.topicId),
-      columns: { proofType: true },
-    });
-
     const allBadges = await getUserBadges(session.userId);
-    const badges = filterBadgesByTopicProofType(allBadges, topicForBadge?.proofType ?? null);
+    const badges = allBadges;
 
     logger.info(ROUTE, 'Comment created', { userId: session.userId, postId, commentId: comment.id });
     return NextResponse.json({

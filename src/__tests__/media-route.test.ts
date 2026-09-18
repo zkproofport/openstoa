@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 /**
  * `GET /api/media/[...key]` (M-5) — the gated read path that lets the R2
  * bucket eventually go private. DB and R2 are mocked (same pattern as
@@ -73,7 +74,8 @@ vi.mock('@/lib/mediaRateLimit', async () => {
   };
 });
 
-import { GET } from '@/app/api/media/[...key]/route';
+import { GET as GETHttpHandler } from '@/app/api/media/[...key]/route';
+const GET=withHttpRequest(GETHttpHandler,'GET');
 import { uploadObjectKey } from '@/lib/r2';
 
 const req = () => ({} as never);

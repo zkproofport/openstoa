@@ -126,7 +126,7 @@ export default function SNSEditor({
   initialState,
   topicId,
 }: SNSEditorProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const effectivePlaceholder = placeholder ?? t('snsEditor.placeholder');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -713,7 +713,7 @@ export default function SNSEditor({
           fontVariantNumeric: 'tabular-nums',
           fontFamily: 'var(--font-mono)',
         }}>
-          {charCount.toLocaleString()}
+          {charCount.toLocaleString(locale)}
         </span>
       </div>
 

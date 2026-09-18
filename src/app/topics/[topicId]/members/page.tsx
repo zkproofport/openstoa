@@ -7,13 +7,13 @@ import { useParams, useRouter } from 'next/navigation';
 import { getMlsSessionStore } from '@/lib/mls/webTransport';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
-import Avatar from '@/components/Avatar';
-import Badge from '@/components/Badge';
+import UserIdentity from '@/components/UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import Spinner from '@/components/Spinner';
-import UserCard from '@/components/UserCard';
 import { useChatRail } from '@/lib/chatRailContext';
 import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { invalidateDmCandidates } from '@/lib/dmCandidatesCache';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import InviteDialog from '@/components/InviteDialog';
 
@@ -26,6 +26,7 @@ interface Member {
 }
 
 interface JoinRequest {
+  badges?: PublicBadge[];
   id: string;
   userId: string;
   nickname: string;
@@ -143,7 +144,7 @@ export default function MembersPage() {
       const data = await res.json();
       setTopic(data.topic);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('membersPage.loadTopicFailed'));
+      setError(localizeApiError(err, t, 'membersPage.loadTopicFailed'));
     }
   }
 
@@ -163,7 +164,7 @@ export default function MembersPage() {
       }
       return loaded;
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('membersPage.loadMembersFailed'));
+      setError(localizeApiError(err, t, 'membersPage.loadMembersFailed'));
       return [];
     } finally {
       setLoading(false);
@@ -194,7 +195,7 @@ export default function MembersPage() {
       const data = await res.json();
       setRequests(data.requests ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('membersPage.loadRequestsFailed'));
+      setError(localizeApiError(err, t, 'membersPage.loadRequestsFailed'));
     } finally {
       setRequestsLoading(false);
     }
@@ -217,7 +218,7 @@ export default function MembersPage() {
         await loadMembers();
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
+      alert(localizeApiError(err, t, 'membersPage.genericFailed'));
     } finally {
       setRequestActionLoading(null);
     }
@@ -263,7 +264,7 @@ export default function MembersPage() {
         router.push(`/dm/${d.topicId}`);
       }
     } catch (err) {
-      setDmError(err instanceof Error ? err.message : t('membersPage.openConversationFailed'));
+      setDmError(localizeApiError(err, t, 'membersPage.openConversationFailed'));
     } finally {
       dmInFlightRef.current = false;
       setDmLoading(null);
@@ -284,7 +285,7 @@ export default function MembersPage() {
       }
       await loadMembers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
+      alert(localizeApiError(err, t, 'membersPage.genericFailed'));
     } finally {
       setActionLoading(null);
     }
@@ -342,7 +343,7 @@ export default function MembersPage() {
           });
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
+      alert(localizeApiError(err, t, 'membersPage.genericFailed'));
     } finally {
       setActionLoading(null);
     }
@@ -367,7 +368,7 @@ export default function MembersPage() {
       }
       await loadMembers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('membersPage.genericFailed'));
+      alert(localizeApiError(err, t, 'membersPage.genericFailed'));
     } finally {
       setTransferLoading(false);
     }
@@ -604,15 +605,13 @@ export default function MembersPage() {
                   borderRadius: 'var(--radius-card)',
                 }}
               >
-                <Avatar src={req.profileImage} name={req.nickname} size={40} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                    {req.nickname}
+                <UserIdentity userId={req.userId} nickname={req.nickname} profileImage={req.profileImage}
+                  badges={req.badges} avatarSize={40} viewerUserId={sessionUserId} style={{ flex: 1 }}
+                  nameStyle={{ fontSize: 'var(--text-body)', color: 'var(--color-text-primary)' }}>
+                  <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                    {new Date(req.createdAt).toLocaleDateString(locale, { month: 'short', day: 'numeric' })}
                   </span>
-                  <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
-                    {new Date(req.createdAt).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
-                  </p>
-                </div>
+                </UserIdentity>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button
                     onClick={() => handleRequestAction(req.id, 'approve')}
@@ -676,26 +675,9 @@ export default function MembersPage() {
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-primary)'; }}
             >
-              <UserCard
-                userId={member.userId}
-                nickname={member.nickname}
-                profileImage={member.profileImage}
-                badges={member.badges}
-                viewerUserId={sessionUserId}
-              >
-                <Avatar src={member.profileImage} name={member.nickname} size={40} />
-              </UserCard>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                    {member.nickname}
-                  </span>
-                  {member.badges && member.badges.length > 0 && member.badges.map((b, i) => (
-                    <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
-                  ))}
-                </div>
-              </div>
+              <UserIdentity userId={member.userId} nickname={member.nickname} profileImage={member.profileImage}
+                badges={member.badges} viewerUserId={sessionUserId} avatarSize={40} style={{ flex: 1 }}
+                nameStyle={{ fontSize: 'var(--text-body)', color: 'var(--color-text-primary)' }} />
 
               {/* DM — starts (or reopens) a 1:1 conversation with this member.
                   Rendered only once the session is known and never on your own

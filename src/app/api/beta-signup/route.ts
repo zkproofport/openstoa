@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { unhandledRouteError } from '@/lib/apiError';
@@ -46,6 +47,9 @@ const ROUTE = '/api/beta-signup';
  *         $ref: '#/components/responses/BadRequest'
  */
 export async function POST(req: NextRequest) {
+  const authorizationError = await authorizeApiRequest(req, '/api/beta-signup');
+  if (authorizationError) return authorizationError;
+
   if (!RESEND_API_KEY) {
     return NextResponse.json({ error: 'RESEND_API_KEY environment variable is required' }, { status: 500 });
   }

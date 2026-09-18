@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
@@ -76,47 +77,27 @@ async function askOpenAI(messages: ChatMessage[], systemPrompt: string): Promise
  * /api/ask:
  *   post:
  *     tags: [AI]
- *     summary: Ask a question about OpenStoa
- *     description: AI-powered Q&A about OpenStoa features, usage, and community guidelines. Supports multi-turn conversation. Uses Gemini (primary) with OpenAI fallback.
+ *     summary: Disabled AI help endpoint
+ *     description: This endpoint is disabled and always returns 503. Use /docs or /AGENTS.md for current integration instructions. No LLM provider is called.
  *     operationId: askQuestion
+ *     deprecated: true
  *     security: []
- *     x-related-skills: [cli-auth-flow, ask-api]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               question:
- *                 type: string
- *                 description: Single question about OpenStoa (backward compat)
- *               messages:
- *                 type: array
- *                 description: Multi-turn conversation history
- *                 items:
- *                   type: object
- *                   properties:
- *                     role:
- *                       type: string
- *                       enum: [user, assistant]
- *                     content:
- *                       type: string
  *     responses:
- *       200:
- *         description: AI-generated answer
+ *       503:
+ *         description: AI service has been disabled
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 answer:
+ *                 error:
  *                   type: string
- *                 provider:
- *                   type: string
- *                   enum: [gemini, openai]
+ *                   example: AI service has been disabled.
  */
 export async function POST(_request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(_request, '/api/ask');
+  if (authorizationError) return authorizationError;
+
   // DISABLED 2026-05-25: LLM API providers (OpenAI/Gemini/Anthropic) deprecated.
   // Re-enable by replacing the body with `return _disabledOriginalPost(_request);`.
   // See docs/migration/third-party-services.md §4-6.

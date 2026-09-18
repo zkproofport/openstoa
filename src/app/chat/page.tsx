@@ -41,6 +41,7 @@ import ChatRoomList, { type ListTab, type RailTopic, type RailDm } from '@/compo
 import Spinner from '@/components/Spinner';
 import { sortDmChannels } from '@/lib/dm';
 import { useConversationList } from '@/lib/useConversationList';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export default function ChatListPage() {
@@ -91,9 +92,8 @@ export default function ChatListPage() {
   }, [unauthenticated, router]);
 
   // `null` means nothing failed; an EMPTY string means it failed with no cause
-  // worth showing, so the localised label stands in. A real cause is shown as
-  // itself — a reader who sees "network down" knows what to do about it.
-  const error = loadError === null ? null : loadError || t('chatListPage.loadError');
+  // worth showing. Only known public causes receive specific localized guidance.
+  const error = loadError === null ? null : localizeApiError(loadError, t, 'chatListPage.loadError');
 
   const openTopic = useCallback((topic: RailTopic) => router.push(`/chat/${topic.id}`), [router]);
   const openDm = useCallback((dm: RailDm) => router.push(`/dm/${dm.topicId}`), [router]);

@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { assertPublicUrl, safeFetch, BlockedUrlError } from '@/lib/outboundUrl';
 
@@ -51,6 +52,9 @@ const FETCH_TIMEOUT_MS = 8_000;
  *         description: Upstream fetch failed
  */
 export async function GET(req: NextRequest) {
+  const authorizationError = await authorizeApiRequest(req, '/api/og/image');
+  if (authorizationError) return authorizationError;
+
   const src = req.nextUrl.searchParams.get('src');
   if (!src) {
     return NextResponse.json({ error: 'Missing src param' }, { status: 400 });

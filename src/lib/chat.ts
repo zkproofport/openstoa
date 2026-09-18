@@ -1,3 +1,5 @@
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
+import type { Badge } from '@/lib/verification-cache';
 import Redis from 'ioredis';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
@@ -16,6 +18,7 @@ export interface SealedMessage {
 }
 
 export interface ChatMessagePayload {
+  badges?: Badge[];
   id: string;
   topicId: string;
   userId: string;
@@ -113,11 +116,13 @@ export async function broadcastMembershipSystemEvent(
       .values({ topicId, userId, systemText: message, type })
       .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
 
+    const [identity] = await withPublicIdentityBadges([{ userId }], row => row.userId);
     const payload: ChatMessagePayload = {
       id: row?.id ?? `${type}-${Date.now()}-${userId}`,
       topicId,
       userId,
       nickname,
+      badges: identity.badges,
       profileImage,
       message,
       type,

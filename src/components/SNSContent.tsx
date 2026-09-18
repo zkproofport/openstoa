@@ -407,6 +407,7 @@ function MediaImages({ urls }: { urls: string[] }) {
 // ─── Video Embeds ───────────────────────────────────────────────────────────
 
 function VideoEmbeds({ embeds }: { embeds: VideoEmbed[] }) {
+  const { t } = useTranslation();
   if (embeds.length === 0) return null;
 
   return (
@@ -431,7 +432,7 @@ function VideoEmbeds({ embeds }: { embeds: VideoEmbed[] }) {
           >
             <iframe
               src={src}
-              title={`${embed.type} video`}
+              title={t('a11y.videoEmbed', { provider: embed.type === 'youtube' ? 'YouTube' : 'Vimeo' })}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
               style={{

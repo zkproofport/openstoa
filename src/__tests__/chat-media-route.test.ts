@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 /**
  * R-3 — the attachment route: authz, caps, key confinement, and the promise
  * that the server never looks at what it stores.
@@ -71,7 +72,11 @@ vi.mock('@/lib/r2', () => ({
   deleteR2Object: mocks.deleteR2Object,
 }));
 
-import { POST, GET, DELETE, PATCH } from '@/app/api/topics/[topicId]/chat/media/route';
+import { POST as POSTHttpHandler, GET as GETHttpHandler, DELETE as DELETEHttpHandler, PATCH as PATCHHttpHandler } from '@/app/api/topics/[topicId]/chat/media/route';
+const POST=withHttpRequest(POSTHttpHandler,'POST');
+const GET=withHttpRequest(GETHttpHandler,'GET');
+const DELETE=withHttpRequest(DELETEHttpHandler,'DELETE');
+const PATCH=withHttpRequest(PATCHHttpHandler,'PATCH');
 import {
   CHAT_MEDIA_CONTENT_TYPE,
   MAX_CHAT_MEDIA_BYTES,

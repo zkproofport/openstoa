@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Poll } from '@/lib/polls';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -15,17 +16,17 @@ interface PollRendererProps {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function relativeFuture(iso: string): string {
+function relativeFuture(iso: string, t: (key: string, params?: Record<string, string | number>) => string): string {
   const diff = new Date(iso).getTime() - Date.now();
-  if (diff <= 0) return 'closed';
+  if (diff <= 0) return t('poll.closed');
   const sec = Math.floor(diff / 1000);
-  if (sec < 60) return `${sec}s`;
+  if (sec < 60) return t('webUi.seconds', { count: sec });
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m`;
+  if (min < 60) return t('webUi.minutes', { count: min });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h`;
+  if (hr < 24) return t('webUi.hours', { count: hr });
   const day = Math.floor(hr / 24);
-  return `${day}d`;
+  return t('webUi.days', { count: day });
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       await onVote(ids);
       setSelected([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('poll.voteFailed'));
+      setError(localizeApiError(err, t, 'poll.voteFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -79,7 +80,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
       await onUnvote();
       setSelected([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('poll.unvoteFailed'));
+      setError(localizeApiError(err, t, 'poll.unvoteFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -281,7 +282,7 @@ export default function PollRenderer({ poll, onVote, onUnvote, loading }: PollRe
             {isClosed
               ? t('poll.closed')
               : poll.closesAt
-                ? t('poll.closesIn', { time: relativeFuture(poll.closesAt) })
+                ? t('poll.closesIn', { time: relativeFuture(poll.closesAt, t) })
                 : t('poll.open')}
           </span>
         </div>

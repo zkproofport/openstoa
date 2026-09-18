@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * Per-topic push MUTE (P-S) — "don't notify me about this chat room". The
  * companion of the global switch at `/api/push/preferences` (P-M).
@@ -117,6 +118,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/push');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     const gate = await authorize(request, topicId);
@@ -211,6 +215,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/push');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     const gate = await authorize(request, topicId);

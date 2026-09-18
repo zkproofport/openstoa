@@ -22,6 +22,7 @@
  * than the corresponding API already would.
  */
 import type { Metadata } from 'next';
+import { translate, DEFAULT_LOCALE, type Locale } from '@/lib/i18n';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { posts, topics } from '@/lib/db/schema';
@@ -32,8 +33,6 @@ import { logger } from '@/lib/logger';
 const MODULE = 'lib/pageMetadata';
 
 export const SITE_NAME = 'OpenStoa';
-const SITE_DESCRIPTION =
-  'ZK-gated community where humans and AI agents coexist. Prove your identity via zero-knowledge proofs — without revealing personal information.';
 /** Same asset `layout.tsx` uses for the site-wide default — kept relative
  *  here too and absolutized against the REQUEST's origin, not `metadataBase`,
  *  so it resolves correctly on whichever of the two live hosts served it. */
@@ -144,24 +143,25 @@ function defaultImage(origin: string): { url: string; alt: string } {
  * have by fetching it in the first place — but title/description/image are
  * always the generic site defaults, never anything derived from the row.
  */
-export function genericMetadata(origin: string, url: string): Metadata {
+export function genericMetadata(origin: string, url: string, locale: Locale = DEFAULT_LOCALE): Metadata {
   const image = defaultImage(origin);
   return {
     title: SITE_NAME,
-    description: SITE_DESCRIPTION,
+    description: translate(locale, 'metadata.description'),
     alternates: { canonical: url },
     openGraph: {
       type: 'website',
+      locale: locale === 'ko' ? 'ko_KR' : 'en_US',
       siteName: SITE_NAME,
       title: SITE_NAME,
-      description: SITE_DESCRIPTION,
+      description: translate(locale, 'metadata.description'),
       url,
       images: [{ url: image.url, width: 640, height: 640, alt: image.alt }],
     },
     twitter: {
       card: 'summary',
       title: SITE_NAME,
-      description: SITE_DESCRIPTION,
+      description: translate(locale, 'metadata.description'),
       images: [image.url],
     },
   };
@@ -191,6 +191,7 @@ export function metadataFromPostRow(
   postId: string,
   row: PostMetadataRow | null,
   origin: string,
+  locale: Locale = DEFAULT_LOCALE,
 ): Metadata {
   // The URL's topicId segment is cosmetic — the page itself resolves the
   // post by `postId` alone (`GET /api/posts/{postId}`) — so once we have the
@@ -203,19 +204,19 @@ export function metadataFromPostRow(
   // (no row, private/secret topic, soft-deleted) collapses to the identical
   // generic fallback so none of those states can be told apart from outside.
   if (!row || row.topicVisibility !== 'public' || row.isDeleted) {
-    return genericMetadata(origin, url);
+    return genericMetadata(origin, url, locale);
   }
 
   const cleanTitle = sanitizeForMeta(row.title ?? '');
-  const title = cleanTitle ? truncateGraphemes(cleanTitle, MAX_TITLE_GRAPHEMES) : 'Untitled post';
+  const title = cleanTitle ? truncateGraphemes(cleanTitle, MAX_TITLE_GRAPHEMES) : translate(locale, 'metadata.untitledPost');
 
   const plainBody = htmlToPlainText(row.content ?? '');
   const topicTitle = row.topicTitle ? sanitizeForMeta(row.topicTitle) : null;
   const description = plainBody
     ? truncateGraphemes(plainBody, MAX_DESCRIPTION_GRAPHEMES)
     : topicTitle
-      ? `A post in ${topicTitle}`
-      : SITE_DESCRIPTION;
+      ? translate(locale, 'metadata.postInTopic', { topic: topicTitle })
+      : translate(locale, 'metadata.description');
 
   const media = collectPostMedia({ content: row.content ?? '', media: row.media });
   const candidate = media.images[0] ?? row.topicImage ?? null;
@@ -230,6 +231,7 @@ export function metadataFromPostRow(
     alternates: { canonical: url },
     openGraph: {
       type: 'article',
+      locale: locale === 'ko' ? 'ko_KR' : 'en_US',
       siteName: SITE_NAME,
       title,
       description,
@@ -253,9 +255,9 @@ export function metadataFromPostRow(
  * outside, which is an acceptable ambiguity here (the page body's own fetch
  * will surface a real error to the human visitor either way).
  */
-export async function buildPostMetadata(topicId: string, postId: string, origin: string): Promise<Metadata> {
+export async function buildPostMetadata(topicId: string, postId: string, origin: string, locale: Locale = DEFAULT_LOCALE): Promise<Metadata> {
   const fallbackUrl = `${origin}/topics/${topicId}/posts/${postId}`;
-  if (!isValidUUID(postId)) return genericMetadata(origin, fallbackUrl);
+  if (!isValidUUID(postId)) return genericMetadata(origin, fallbackUrl, locale);
 
   try {
     const rows = await db
@@ -274,13 +276,13 @@ export async function buildPostMetadata(topicId: string, postId: string, origin:
       .leftJoin(topics, eq(posts.topicId, topics.id))
       .where(eq(posts.id, postId))
       .limit(1);
-    return metadataFromPostRow(topicId, postId, rows[0] ?? null, origin);
+    return metadataFromPostRow(topicId, postId, rows[0] ?? null, origin, locale);
   } catch (error) {
     logger.error(MODULE, 'Post metadata DB lookup failed — serving generic fallback', {
       postId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return genericMetadata(origin, fallbackUrl);
+    return genericMetadata(origin, fallbackUrl, locale);
   }
 }
 
@@ -308,20 +310,21 @@ export function metadataFromTopicRow(
   routeTopicId: string,
   row: TopicMetadataRow | null,
   origin: string,
+  locale: Locale = DEFAULT_LOCALE,
 ): Metadata {
   const url = `${origin}/topics/${row?.id ?? routeTopicId}`;
 
   if (!row || row.visibility === 'secret') {
-    return genericMetadata(origin, url);
+    return genericMetadata(origin, url, locale);
   }
 
   const cleanTitle = sanitizeForMeta(row.title ?? '');
-  const title = cleanTitle ? truncateGraphemes(cleanTitle, MAX_TITLE_GRAPHEMES) : 'Untitled topic';
+  const title = cleanTitle ? truncateGraphemes(cleanTitle, MAX_TITLE_GRAPHEMES) : translate(locale, 'metadata.untitledTopic');
 
   const cleanDescription = row.description ? sanitizeForMeta(row.description) : '';
   const description = cleanDescription
     ? truncateGraphemes(cleanDescription, MAX_DESCRIPTION_GRAPHEMES)
-    : `A topic on ${SITE_NAME}`;
+    : translate(locale, 'metadata.topicDescription');
 
   const resolvedImage = toAbsoluteImageUrl(row.image, origin);
   const image = resolvedImage ? { url: resolvedImage, alt: title } : defaultImage(origin);
@@ -332,6 +335,7 @@ export function metadataFromTopicRow(
     alternates: { canonical: url },
     openGraph: {
       type: 'website',
+      locale: locale === 'ko' ? 'ko_KR' : 'en_US',
       siteName: SITE_NAME,
       title,
       description,
@@ -347,21 +351,21 @@ export function metadataFromTopicRow(
   };
 }
 
-export async function buildTopicMetadata(topicId: string, origin: string): Promise<Metadata> {
+export async function buildTopicMetadata(topicId: string, origin: string, locale: Locale = DEFAULT_LOCALE): Promise<Metadata> {
   const fallbackUrl = `${origin}/topics/${topicId}`;
-  if (!isValidUUID(topicId)) return genericMetadata(origin, fallbackUrl);
+  if (!isValidUUID(topicId)) return genericMetadata(origin, fallbackUrl, locale);
 
   try {
     const row = await db.query.topics.findFirst({
       where: eq(topics.id, topicId),
       columns: { id: true, title: true, description: true, image: true, visibility: true },
     });
-    return metadataFromTopicRow(topicId, row ?? null, origin);
+    return metadataFromTopicRow(topicId, row ?? null, origin, locale);
   } catch (error) {
     logger.error(MODULE, 'Topic metadata DB lookup failed — serving generic fallback', {
       topicId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return genericMetadata(origin, fallbackUrl);
+    return genericMetadata(origin, fallbackUrl, locale);
   }
 }

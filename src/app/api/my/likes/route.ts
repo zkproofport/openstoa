@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -54,6 +56,9 @@ const ROUTE = '/api/my/likes';
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/my/likes');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -95,6 +100,8 @@ export async function GET(request: NextRequest) {
       .select({
         id: posts.id,
         topicId: posts.topicId,
+        authorId: posts.authorId,
+        authorProfileImage: users.profileImage,
         title: posts.title,
         content: posts.content,
         media: posts.media,
@@ -113,7 +120,7 @@ export async function GET(request: NextRequest) {
       .offset(offset);
 
     logger.info(ROUTE, 'Liked posts fetched', { userId: session.userId, count: likedPosts.length });
-    return NextResponse.json({ posts: likedPosts });
+    return NextResponse.json({ posts: await withPublicIdentityBadges(likedPosts, post => post.authorId) });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }

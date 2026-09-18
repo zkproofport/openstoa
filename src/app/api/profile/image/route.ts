@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -98,6 +99,9 @@ const ROUTE = '/api/profile/image';
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/image');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) {
@@ -118,6 +122,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/image');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'PUT request received');
   try {
     const session = await getSession(request);
@@ -152,6 +159,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/image');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'DELETE request received');
   try {
     const session = await getSession(request);

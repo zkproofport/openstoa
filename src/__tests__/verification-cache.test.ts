@@ -19,7 +19,6 @@ import {
   hasValidVerificationCache,
   saveVerificationCache,
   getVerificationCache,
-  filterBadgesByTopicProofType,
 } from '@/lib/verification-cache';
 
 function hashValue(value: string): string {
@@ -175,7 +174,7 @@ describe('hasValidVerificationCache', () => {
 
     await hasValidVerificationCache('user1', 'workspace');
 
-    expect(mockRedis.get).toHaveBeenCalledWith('community:verification:user1:oidc_domain');
+    expect(mockRedis.get).toHaveBeenCalledWith('community:verification:v2:user1:oidc_domain');
   });
 
   it('domain hash match is case-insensitive and trims whitespace', async () => {
@@ -202,7 +201,7 @@ describe('saveVerificationCache', () => {
     await saveVerificationCache('user1', 'kyc');
 
     const [key] = mockRedis.set.mock.calls[0];
-    expect(key).toBe('community:verification:user1:kyc');
+    expect(key).toBe('community:verification:v2:user1:kyc');
   });
 
   it('saves record with 30-day TTL', async () => {
@@ -313,7 +312,7 @@ describe('getVerificationCache', () => {
 
     await getVerificationCache('user1', 'google_workspace');
 
-    expect(mockRedis.get).toHaveBeenCalledWith('community:verification:user1:oidc_domain');
+    expect(mockRedis.get).toHaveBeenCalledWith('community:verification:v2:user1:oidc_domain');
   });
 
   it('returns record with domainHash when present', async () => {
@@ -330,63 +329,5 @@ describe('getVerificationCache', () => {
 
     expect(result!.domainHash).toBe(hashValue('company.com'));
     expect(result!.domain).toBe('company.com');
-  });
-});
-
-describe('filterBadgesByTopicProofType', () => {
-  const allBadges = [
-    { type: 'kyc', label: 'KYC' },
-    { type: 'country', label: 'Country' },
-    { type: 'workspace', label: 'company.com', domain: 'company.com' },
-    { type: 'workspace', label: 'Org' },
-    { type: 'oidc', label: 'OIDC' },
-  ];
-
-  it('returns empty array for null proofType', () => {
-    expect(filterBadgesByTopicProofType(allBadges, null)).toEqual([]);
-  });
-
-  it('returns empty array for "none" proofType', () => {
-    expect(filterBadgesByTopicProofType(allBadges, 'none')).toEqual([]);
-  });
-
-  it('returns only kyc badges for kyc proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'kyc');
-    expect(result).toEqual([{ type: 'kyc', label: 'KYC' }]);
-  });
-
-  it('returns only country badges for country proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'country');
-    expect(result).toEqual([{ type: 'country', label: 'Country' }]);
-  });
-
-  it('returns only workspace badges with domain for workspace proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'workspace');
-    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
-    expect(result.every(b => b.domain)).toBe(true);
-  });
-
-  it('excludes generic Org badge (no domain) for workspace proofType', () => {
-    const genericOnly = [{ type: 'workspace', label: 'Org' }];
-    const result = filterBadgesByTopicProofType(genericOnly, 'workspace');
-    expect(result).toEqual([]);
-  });
-
-  it('returns only workspace badges with domain for google_workspace proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'google_workspace');
-    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
-  });
-
-  it('returns only workspace badges with domain for microsoft_365 proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'microsoft_365');
-    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
-  });
-
-  it('returns empty array for unknown proofType', () => {
-    expect(filterBadgesByTopicProofType(allBadges, 'unknown_type')).toEqual([]);
-  });
-
-  it('returns empty array when badge list is empty', () => {
-    expect(filterBadgesByTopicProofType([], 'kyc')).toEqual([]);
   });
 });

@@ -1,472 +1,137 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-const mockRedis = vi.hoisted(() => ({
-  set: vi.fn().mockResolvedValue('OK'),
-  get: vi.fn(),
-  del: vi.fn().mockResolvedValue(1),
-  mget: vi.fn().mockResolvedValue([]),
-  ttl: vi.fn().mockResolvedValue(2500000),
-}));
-
-vi.mock('@/lib/redis', () => ({
-  redis: mockRedis,
-}));
-
-import {
-  setDomainShown,
-  clearShownDomains,
-  getShownDomains,
-  getAvailableDomain,
-  getUserBadges,
-  getBatchUserBadges,
-  saveVerificationCache,
-  filterBadgesByTopicProofType,
+import crypto from 'crypto';
+const { values, mockRedis } = vi.hoisted(() => {
+  const values = new Map<string, string>();
+  return { values, mockRedis: {
+    get: vi.fn(async (key: string) => values.get(key) ?? null),
+    mget: vi.fn(async (...keys: string[]) => keys.map(k => values.get(k) ?? null)),
+    set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
+      if (args.includes('NX') && values.has(key)) return null;
+      values.set(key, value); return 'OK';
+    }),
+  } };
+});
+vi.mock('@/lib/redis', () => ({ redis: mockRedis }));
+import { saveVerificationCache, setBadgeVisibility, getProfileBadges, setDomainShown,
+  clearShownDomains, getShownDomains, getAvailableDomain, getUserBadges,
+  getBatchUserBadges, hasValidVerificationCache,
 } from '@/lib/verification-cache';
-
-describe('Domain Badge — merged into oidc_domain record', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedis.ttl.mockResolvedValue(2500000);
-  });
-
-  describe('setDomainShown', () => {
-    it('should add domain to shownDomains in oidc_domain record', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domainHash: 'abc',
-        domain: 'company.com',
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      await setDomainShown('user1', 'company.com', true);
-
-      expect(mockRedis.set).toHaveBeenCalledTimes(1);
-      const [key, json, ex, ttl] = mockRedis.set.mock.calls[0];
-      expect(key).toBe('community:verification:user1:oidc_domain');
-      expect(ex).toBe('EX');
-      expect(ttl).toBe(2500000);
-      const updated = JSON.parse(json);
-      expect(updated.shownDomains).toEqual(['company.com']);
-    });
-
-    it('should not duplicate domain if already shown', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domain: 'company.com',
-        shownDomains: ['company.com'],
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      await setDomainShown('user1', 'company.com', true);
-
-      // Should not write back since it's a no-op
-      expect(mockRedis.set).not.toHaveBeenCalled();
-    });
-
-    it('should remove specific domain when shown=false', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domain: 'company.com',
-        shownDomains: ['company-a.com', 'company-b.com'],
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      await setDomainShown('user1', 'company-a.com', false);
-
-      const [, json] = mockRedis.set.mock.calls[0];
-      const updated = JSON.parse(json);
-      expect(updated.shownDomains).toEqual(['company-b.com']);
-    });
-
-    it('should lowercase and trim domain', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domain: 'company.com',
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      await setDomainShown('user1', '  Company.COM  ', true);
-
-      const [, json] = mockRedis.set.mock.calls[0];
-      const updated = JSON.parse(json);
-      expect(updated.shownDomains).toEqual(['company.com']);
-    });
-
-    it('should no-op when no oidc_domain record exists', async () => {
-      mockRedis.get.mockResolvedValueOnce(null);
-
-      await setDomainShown('user1', 'company.com', true);
-
-      expect(mockRedis.set).not.toHaveBeenCalled();
-    });
-
-    it('should no-op when record is expired', async () => {
-      const record = {
-        verifiedAt: Date.now() - 86400000,
-        expiresAt: Date.now() - 1000,
-        domain: 'company.com',
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      await setDomainShown('user1', 'company.com', true);
-
-      expect(mockRedis.set).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('clearShownDomains', () => {
-    it('should set shownDomains to empty array', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domain: 'company.com',
-        shownDomains: ['company-a.com', 'company-b.com'],
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      await clearShownDomains('user1');
-
-      const [, json] = mockRedis.set.mock.calls[0];
-      const updated = JSON.parse(json);
-      expect(updated.shownDomains).toEqual([]);
-    });
-  });
-
-  describe('getShownDomains', () => {
-    it('should return shownDomains from record', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domain: 'company.com',
-        shownDomains: ['a.com', 'b.com'],
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      const result = await getShownDomains('user1');
-      expect(result).toEqual(['a.com', 'b.com']);
-    });
-
-    it('should return empty array when no shownDomains', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domain: 'company.com',
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      const result = await getShownDomains('user1');
-      expect(result).toEqual([]);
-    });
-
-    it('should return empty array when no record', async () => {
-      mockRedis.get.mockResolvedValueOnce(null);
-
-      const result = await getShownDomains('user1');
-      expect(result).toEqual([]);
-    });
-
-    it('should return empty array when record expired', async () => {
-      const record = {
-        verifiedAt: Date.now() - 86400000,
-        expiresAt: Date.now() - 1000,
-        shownDomains: ['a.com'],
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      const result = await getShownDomains('user1');
-      expect(result).toEqual([]);
-    });
-  });
-
-  describe('getAvailableDomain', () => {
-    it('should return domain from verification record', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domainHash: 'abc',
-        domain: 'company.com',
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      const result = await getAvailableDomain('user1');
-      expect(result).toBe('company.com');
-    });
-
-    it('should return null for expired record', async () => {
-      const record = {
-        verifiedAt: Date.now() - 86400000,
-        expiresAt: Date.now() - 1000,
-        domain: 'company.com',
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      const result = await getAvailableDomain('user1');
-      expect(result).toBeNull();
-    });
-
-    it('should return null when no record exists', async () => {
-      mockRedis.get.mockResolvedValueOnce(null);
-
-      const result = await getAvailableDomain('user1');
-      expect(result).toBeNull();
-    });
-
-    it('should return null when record has no domain', async () => {
-      const record = {
-        verifiedAt: Date.now(),
-        expiresAt: Date.now() + 86400000,
-        domainHash: 'abc',
-      };
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(record));
-
-      const result = await getAvailableDomain('user1');
-      expect(result).toBeNull();
-    });
-  });
-});
-
-describe('Domain Badge — Badge display integration', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  describe('getUserBadges', () => {
-    it('should return workspace badge with domain when opted in (shownDomains in record)', async () => {
-      const now = Date.now();
-      const oidcRecord = JSON.stringify({
-        verifiedAt: now,
-        expiresAt: now + 86400000,
-        domainHash: 'abc',
-        domain: 'company.com',
-        shownDomains: ['company.com'],
-      });
-
-      // getActiveVerificationsCache reads 4 keys via mget
-      mockRedis.mget.mockResolvedValueOnce([null, null, oidcRecord, null]);
-
-      const badges = await getUserBadges('user1');
-
-      expect(badges).toEqual([
-        { type: 'workspace', label: 'company.com', domain: 'company.com' },
-      ]);
-    });
-
-    it('should return generic workspace badge when not opted in (no shownDomains)', async () => {
-      const now = Date.now();
-      const oidcRecord = JSON.stringify({
-        verifiedAt: now,
-        expiresAt: now + 86400000,
-        domainHash: 'abc',
-        domain: 'company.com',
-      });
-
-      mockRedis.mget.mockResolvedValueOnce([null, null, oidcRecord, null]);
-
-      const badges = await getUserBadges('user1');
-
-      expect(badges).toEqual([
-        { type: 'workspace', label: 'Org' },
-      ]);
-    });
-
-    it('should return multiple domain badges when multiple in shownDomains', async () => {
-      const now = Date.now();
-      const oidcRecord = JSON.stringify({
-        verifiedAt: now,
-        expiresAt: now + 86400000,
-        domainHash: 'abc',
-        domain: 'company.com',
-        shownDomains: ['company-a.com', 'company-b.com'],
-      });
-
-      mockRedis.mget.mockResolvedValueOnce([null, null, oidcRecord, null]);
-
-      const badges = await getUserBadges('user1');
-
-      expect(badges).toEqual([
-        { type: 'workspace', label: 'company-a.com', domain: 'company-a.com' },
-        { type: 'workspace', label: 'company-b.com', domain: 'company-b.com' },
-      ]);
-    });
-
-    it('should combine KYC and domain badges', async () => {
-      const now = Date.now();
-      const kycRecord = JSON.stringify({
-        verifiedAt: now,
-        expiresAt: now + 86400000,
-      });
-      const oidcRecord = JSON.stringify({
-        verifiedAt: now,
-        expiresAt: now + 86400000,
-        domainHash: 'abc',
-        domain: 'company.com',
-        shownDomains: ['company.com'],
-      });
-
-      mockRedis.mget.mockResolvedValueOnce([kycRecord, null, oidcRecord, null]);
-
-      const badges = await getUserBadges('user1');
-
-      expect(badges).toHaveLength(2);
-      expect(badges[0]).toEqual({ type: 'kyc', label: 'KYC' });
-      expect(badges[1]).toEqual({ type: 'workspace', label: 'company.com', domain: 'company.com' });
-    });
-  });
-
-  describe('getBatchUserBadges', () => {
-    it('should return empty map for empty input', async () => {
-      const result = await getBatchUserBadges([]);
-      expect(result.size).toBe(0);
-    });
-
-    it('should batch fetch badges for multiple users from single MGET', async () => {
-      const now = Date.now();
-      const kycRecord = JSON.stringify({ verifiedAt: now, expiresAt: now + 86400000 });
-      const oidcRecord = JSON.stringify({
-        verifiedAt: now,
-        expiresAt: now + 86400000,
-        domain: 'org.com',
-        shownDomains: ['org.com'],
-      });
-
-      // user1: kyc only, user2: oidc_domain with shownDomains
-      mockRedis.mget.mockResolvedValueOnce([
-        kycRecord, null, null, null,  // user1
-        null, null, oidcRecord, null, // user2
-      ]);
-
-      const result = await getBatchUserBadges(['user1', 'user2']);
-
-      expect(result.get('user1')).toEqual([{ type: 'kyc', label: 'KYC' }]);
-      expect(result.get('user2')).toEqual([{ type: 'workspace', label: 'org.com', domain: 'org.com' }]);
-    });
-
-    it('should deduplicate user IDs', async () => {
-      mockRedis.mget.mockResolvedValueOnce([null, null, null, null]);
-
-      await getBatchUserBadges(['user1', 'user1', 'user1']);
-
-      // Should only query once for user1 (4 cache types)
-      expect(mockRedis.mget).toHaveBeenCalledTimes(1);
-      const mgetArgs = mockRedis.mget.mock.calls[0];
-      expect(mgetArgs).toHaveLength(4); // 1 unique user × 4 cache types
-    });
-
-    it('should show generic badge when oidc_domain has no shownDomains', async () => {
-      const now = Date.now();
-      const oidcRecord = JSON.stringify({
-        verifiedAt: now,
-        expiresAt: now + 86400000,
-        domain: 'org.com',
-        // no shownDomains
-      });
-
-      mockRedis.mget.mockResolvedValueOnce([null, null, oidcRecord, null]);
-
-      const result = await getBatchUserBadges(['user1']);
-      expect(result.get('user1')).toEqual([{ type: 'workspace', label: 'Org' }]);
-    });
-  });
-});
-
-describe('saveVerificationCache — domain plaintext storage', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should store plaintext domain alongside hash', async () => {
-    await saveVerificationCache('user1', 'oidc_domain', { domain: 'company.com' });
-
-    expect(mockRedis.set).toHaveBeenCalledTimes(1);
-    const [, recordJson] = mockRedis.set.mock.calls[0];
-    const record = JSON.parse(recordJson);
-
-    expect(record.domainHash).toBeTruthy();
-    expect(record.domain).toBe('company.com');
-  });
-
-  it('should not store domain when not provided', async () => {
-    await saveVerificationCache('user1', 'kyc');
-
-    const [, recordJson] = mockRedis.set.mock.calls[0];
-    const record = JSON.parse(recordJson);
-
-    expect(record.domainHash).toBeUndefined();
-    expect(record.domain).toBeUndefined();
-  });
-});
-
-describe('filterBadgesByTopicProofType', () => {
-  const allBadges = [
-    { type: 'kyc', label: 'KYC' },
-    { type: 'country', label: 'Country' },
-    { type: 'workspace', label: 'company.com', domain: 'company.com' },
-    { type: 'workspace', label: 'Org' }, // generic, no domain
-    { type: 'oidc', label: 'OIDC' },
-  ];
-
-  it('returns empty array for null proofType (open topic)', () => {
-    expect(filterBadgesByTopicProofType(allBadges, null)).toEqual([]);
-  });
-
-  it('returns empty array for "none" proofType (open topic)', () => {
-    expect(filterBadgesByTopicProofType(allBadges, 'none')).toEqual([]);
-  });
-
-  it('returns only KYC badges for kyc proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'kyc');
-    expect(result).toEqual([{ type: 'kyc', label: 'KYC' }]);
-  });
-
-  it('returns only Country badges for country proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'country');
-    expect(result).toEqual([{ type: 'country', label: 'Country' }]);
-  });
-
-  it('returns only opt-in domain badges for google_workspace proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'google_workspace');
-    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
-    // Generic "Org" badge without domain must be excluded
-    expect(result.find(b => !b.domain)).toBeUndefined();
-  });
-
-  it('returns only opt-in domain badges for microsoft_365 proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'microsoft_365');
-    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
-  });
-
-  it('returns only opt-in domain badges for workspace proofType', () => {
-    const result = filterBadgesByTopicProofType(allBadges, 'workspace');
-    expect(result).toEqual([{ type: 'workspace', label: 'company.com', domain: 'company.com' }]);
-  });
-
-  it('returns empty array for unknown proofType', () => {
-    expect(filterBadgesByTopicProofType(allBadges, 'unknown_type')).toEqual([]);
-  });
-
-  it('returns empty array when badges is empty', () => {
-    expect(filterBadgesByTopicProofType([], 'kyc')).toEqual([]);
-  });
-
-  it('returns empty when user has no matching badge for topic proofType', () => {
-    const kycOnly = [{ type: 'kyc', label: 'KYC' }];
-    expect(filterBadgesByTopicProofType(kycOnly, 'country')).toEqual([]);
-  });
-
-  it('handles multiple domain badges (user opted in to multiple domains)', () => {
-    const multiBadges = [
-      { type: 'workspace', label: 'foo.com', domain: 'foo.com' },
-      { type: 'workspace', label: 'bar.org', domain: 'bar.org' },
-      { type: 'kyc', label: 'KYC' },
-    ];
-    const result = filterBadgesByTopicProofType(multiBadges, 'workspace');
-    expect(result).toEqual([
-      { type: 'workspace', label: 'foo.com', domain: 'foo.com' },
-      { type: 'workspace', label: 'bar.org', domain: 'bar.org' },
+const recordKey = (type: string) => `community:verification:v2:user1:${type}`;
+const types = ['kyc', 'country', 'oidc_domain', 'oidc_login'] as const;
+function legacy(extra = {}) {
+  values.set(recordKey('oidc_domain'), JSON.stringify({ verifiedAt: Date.now(),
+    expiresAt: Date.now() + 86400000, domain: 'company.com',
+    domainHash: crypto.createHash('sha256').update('company.com').digest('hex'), ...extra }));
+}
+beforeEach(() => { values.clear(); vi.clearAllMocks(); });
+describe('Badge visibility preferences', () => {
+  it('shows all newly verified badge types and the workspace domain by default', async () => {
+    for (const type of types) await saveVerificationCache('user1', type, { domain: 'company.com' });
+    expect(await getUserBadges('user1')).toEqual([
+      {type:'kyc',label:'KYC'}, {type:'country',label:'Country'},
+      {type:'workspace',label:'company.com',domain:'company.com'}, {type:'oidc',label:'OIDC'},
     ]);
+    expect(await getShownDomains('user1')).toEqual(['company.com']);
+    expect((await getProfileBadges('user1')).every(b => b.visible)).toBe(true);
   });
+  it.each(types)('persists %s OFF through refresh, expiry and new verification without affecting eligibility', async type => {
+    await saveVerificationCache('user1', type, {domain:'company.com'});
+    expect(await setBadgeVisibility('user1', type, false)).toBe(true);
+    expect(await hasValidVerificationCache('user1', type)).toBe(true);
+    await saveVerificationCache('user1', type, {domain:'company.com'});
+    expect(await getUserBadges('user1')).toEqual([]);
+    values.delete(recordKey(type)); // Redis verification TTL elapsed
+    expect(await getUserBadges('user1')).toEqual([]);
+    await saveVerificationCache('user1', type, {domain:'new.com'});
+    expect(await getUserBadges('user1')).toEqual([]);
+    expect((await getProfileBadges('user1'))[0].visible).toBe(false);
+    expect(await setBadgeVisibility('user1', type, true)).toBe(true);
+    expect(await getUserBadges('user1')).toHaveLength(1);
+    const preferences = mockRedis.set.mock.calls.filter(([key]) => !key.startsWith('community:verification:v2:'));
+    expect(preferences.length).toBeGreaterThan(0);
+    expect(preferences.every(call => !call.includes('EX'))).toBe(true);
+  });
+  it('keeps legacy explicit empty shownDomains hidden, including after refresh and expiry', async () => {
+    legacy({shownDomains:[]});
+    expect(await getShownDomains('user1')).toEqual([]);
+    await saveVerificationCache('user1', 'oidc_domain', {domain:'company.com'});
+    expect(await getUserBadges('user1')).toEqual([]);
+    values.delete(recordKey('oidc_domain'));
+    await saveVerificationCache('user1', 'oidc_domain', {domain:'company.com'});
+    expect(await getUserBadges('user1')).toEqual([]);
+  });
+  it('migrates legacy OFF before re-verification even without an earlier display read', async () => {
+    legacy({shownDomains:[]});
+    await saveVerificationCache('user1','oidc_domain',{domain:'new.com'});
+    expect(await getShownDomains('user1')).toEqual([]);
+  });
+  it('never displays domains from an unverified legacy shownDomains list', async () => {
+    legacy({shownDomains:['company.com','unverified.com']});
+    expect(await getShownDomains('user1')).toEqual(['company.com']);
+    expect(await getUserBadges('user1')).toEqual([{type:'workspace',label:'company.com',domain:'company.com'}]);
+    await setDomainShown('user1','unverified.com',true);
+    expect(await getShownDomains('user1')).toEqual(['company.com']);
+  });
+  it('does not expose plaintext domains that disagree with the verified hash', async () => {
+    legacy({domain:'unverified.com'});
+    expect(await getAvailableDomain('user1')).toBeNull();
+    expect(await getShownDomains('user1')).toEqual([]);
+    expect((await getProfileBadges('user1'))[0].domain).toBeUndefined();
+  });
+  it('honors an explicit ON over a legacy OFF record without changing verification expiry', async () => {
+    legacy({shownDomains:[]});
+    const original = values.get(recordKey('oidc_domain'));
+    await setBadgeVisibility('user1','oidc_domain',true);
+    expect(await getShownDomains('user1')).toEqual(['company.com']);
+    expect(values.get(recordKey('oidc_domain'))).toBe(original);
+    await saveVerificationCache('user1','oidc_domain',{domain:'new.com'});
+    expect(await getShownDomains('user1')).toEqual(['new.com']);
+  });
+  it('keeps old records without domain plaintext generic and does not reconstruct domain from shownDomains', async () => {
+    legacy({domain:undefined,shownDomains:['unverified.com']});
+    expect(await getAvailableDomain('user1')).toBeNull();
+    expect(await getShownDomains('user1')).toEqual([]);
+    expect(await getUserBadges('user1')).toEqual([{type:'workspace',label:'Org'}]);
+  });
+  it('never exposes an expired verification even with a visibility preference', async () => {
+    legacy(); await setBadgeVisibility('user1','oidc_domain',true);
+    legacy({expiresAt:Date.now()-1});
+    expect(await getUserBadges('user1')).toEqual([]);
+    expect(await getProfileBadges('user1')).toEqual([]);
+    expect(await getShownDomains('user1')).toEqual([]);
+    expect(await getAvailableDomain('user1')).toBeNull();
+    expect(await setBadgeVisibility('user1','oidc_domain',true)).toBe(false);
+  });
+  it('keeps domain helpers and general preferences synchronized', async () => {
+    legacy(); await clearShownDomains('user1');
+    expect(await getUserBadges('user1')).toEqual([]);
+    await setDomainShown('user1',' COMPANY.COM ',true);
+    expect(await getShownDomains('user1')).toEqual(['company.com']);
+    await setBadgeVisibility('user1','oidc_domain',false);
+    expect(await getShownDomains('user1')).toEqual([]);
+  });
+  it('has single/batch parity with hidden, legacy, active and expired badges and deduplicates users', async () => {
+    legacy({shownDomains:[]});
+    await saveVerificationCache('user1','kyc');
+    await saveVerificationCache('user2','country');
+    await setBadgeVisibility('user2','country',false);
+    await saveVerificationCache('user3','oidc_login');
+    values.set('community:verification:v2:expired:kyc', JSON.stringify({verifiedAt:1,expiresAt:2}));
+    const ids=['user1','user2','user3','expired','missing'];
+    const single = await Promise.all(ids.map(getUserBadges));
+    mockRedis.mget.mockClear();
+    const batch=await getBatchUserBadges([...ids,'user1']);
+    expect([...batch.values()]).toEqual(single);
+    expect(mockRedis.mget).toHaveBeenCalledTimes(1);
+    expect(await getBatchUserBadges([])).toEqual(new Map());
+  });
+});
+
+it('preserves only legacy v1 OFF preference when creating a freshly verified v2 record',async()=>{
+  values.set('community:verification:user1:oidc_domain',JSON.stringify({verifiedAt:1,expiresAt:Date.now()+10000,domain:'old.com',shownDomains:[]}));
+  expect(await getUserBadges('user1')).toEqual([]);
+  expect(await hasValidVerificationCache('user1','workspace')).toBe(false);
+  await saveVerificationCache('user1','oidc_domain',{domain:'new.com'});
+  expect(await getShownDomains('user1')).toEqual([]);
+  expect(await getAvailableDomain('user1')).toBe('new.com');
 });

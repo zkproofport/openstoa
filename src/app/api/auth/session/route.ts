@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
@@ -21,6 +23,7 @@ const ROUTE = '/api/auth/session';
  *       right after `POST /api/auth/verify/ai` to confirm the token resolves and to check
  *       whether `nickname` still starts with `anon_` (in which case call
  *       `PUT /api/profile/nickname` before posting).
+ *       Returns `profileImage` and all enabled public verification `badges` (empty on badge lookup failure).
  *     operationId: getSession
  *     x-related-skills: [auth-details]
  *     responses:
@@ -38,6 +41,9 @@ const ROUTE = '/api/auth/session';
  *                       example: false
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/session');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -58,17 +64,21 @@ export async function GET(request: NextRequest) {
      * This row was already being fetched for `totalRecorded` and `role`, so the
      * nickname rides along on a query that was happening anyway.
      */
-    const user = await db.select({ nickname: users.nickname, totalRecorded: users.totalRecorded, role: users.role }).from(users).where(eq(users.id, session.userId)).limit(1);
+    const user = await db.select({ nickname: users.nickname, profileImage: users.profileImage, totalRecorded: users.totalRecorded, role: users.role }).from(users).where(eq(users.id, session.userId)).limit(1);
     const totalRecorded = user[0]?.totalRecorded ?? 0;
     const role = user[0]?.role ?? 'user';
     // Falls back to the claim only when the row is gone, which is a deleted
     // account mid-request — rare, and the claim is the last thing known to be true.
     const nickname = user[0]?.nickname ?? session.nickname;
 
+    const [identity] = await withPublicIdentityBadges([{ userId: session.userId }], row => row.userId);
+
     logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname, totalRecorded, role, isAI: session.isAI });
     return NextResponse.json({
       userId: session.userId,
       nickname,
+      profileImage: user[0]?.profileImage ?? null,
+      badges: identity.badges,
       verifiedAt: session.verifiedAt,
       totalRecorded,
       ...(role === 'admin' ? { role } : {}),

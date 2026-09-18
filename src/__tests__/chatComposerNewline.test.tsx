@@ -448,3 +448,6 @@ describe('ChatPanel — a newline survives rendering', () => {
     expect(bubble!.style.whiteSpace).toBe('pre-wrap');
   });
 });
+
+// Message authors now use the shared profile card, which navigates inside Next.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));

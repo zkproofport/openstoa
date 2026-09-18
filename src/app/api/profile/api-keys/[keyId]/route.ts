@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -62,6 +63,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ keyId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/api-keys/[keyId]');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) {
@@ -136,6 +140,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ keyId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/api-keys/[keyId]');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) {

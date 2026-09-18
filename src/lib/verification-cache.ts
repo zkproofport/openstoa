@@ -3,12 +3,13 @@
  *
  * Privacy-first design: NO personal information (domain, country, email) is stored in the database.
  * Verification status is cached in Redis with a 30-day TTL.
- * Only hashed values are stored for matching — originals cannot be recovered.
+ * Country values are hashed; the verified workspace domain remains in Redis for badge display.
+ * Visibility preferences contain only booleans and persist independently of verification TTL.
  *
  * Cache keys use CIRCUIT names (not topic proofType) because:
  * - google_workspace, microsoft_365, workspace all use the same circuit (oidc_domain_attestation)
- * - The proof itself doesn't distinguish between Google and Microsoft providers
- * - Domain matching is what actually matters for gated topics
+ * - Topic authorization additionally checks the verified provider and domain
+ * - Login records never carry topic-bound provenance
  *
  * When the cache expires, the user must re-verify to join new gated topics.
  * Existing topic memberships (topicMembers table) are NOT affected by cache expiry.
@@ -19,7 +20,17 @@ import { redis } from './redis';
 
 const VERIFICATION_TTL = 30 * 24 * 60 * 60; // 30 days in seconds
 
-const KEY_PREFIX = 'community:verification';
+const KEY_PREFIX = 'community:verification:v2';
+export const BADGE_TYPES = ['kyc', 'country', 'oidc_domain', 'oidc_login'] as const;
+export type BadgeType = typeof BADGE_TYPES[number];
+
+function visibilityKey(userId: string, type: string): string {
+  return `community:badge-visibility:${userId}:${type}`;
+}
+
+export function isBadgeType(type: unknown): type is BadgeType {
+  return typeof type === 'string' && (BADGE_TYPES as readonly string[]).includes(type);
+}
 
 function hashValue(value: string): string {
   return crypto.createHash('sha256').update(value.toLowerCase().trim()).digest('hex');
@@ -83,23 +94,36 @@ export function circuitToCacheTypeForLogin(circuit: string): string {
 export interface VerificationRecord {
   verifiedAt: number; // Unix timestamp ms
   expiresAt: number;  // Unix timestamp ms
+  topicScope?: string;
+  countryPredicate?: string;
+  provider?: number;
   domainHash?: string;
   countryHash?: string;
-  domain?: string; // plaintext domain — stored in Redis only (30-day TTL), used for domain badge opt-in
-  shownDomains?: string[]; // domains opted-in for public badge display — lives inside oidc_domain record
+  domain?: string; // plaintext domain — stored in Redis only (30-day TTL), used for domain badge display
+  shownDomains?: string[]; // legacy visibility setting; an explicit empty array means OFF
 }
 
 /**
  * Save verification result to Redis cache.
- * Only hashed domain/country are stored — no PII.
+ * Verification expires after 30 days; boolean badge preferences do not expire.
  */
 export async function saveVerificationCache(
   userId: string,
   cacheType: string,
-  options?: { domain?: string; country?: string },
+  options?: { domain?: string; country?: string; topicScope?: string; countryPredicate?: string; provider?: number },
 ): Promise<void> {
+  // Move a legacy OFF choice before replacing its expiring record. NX protects a
+  // newer explicit preference from concurrent verification/display requests.
+  if (cacheType === 'oidc_domain') {
+    const previous = await redis.get(cacheKey(userId, cacheType))
+      ?? await redis.get(`community:verification:${userId}:${cacheType}`);
+    if (previous) await preserveLegacyVisibility(userId, JSON.parse(previous));
+  }
   const now = Date.now();
   const record: VerificationRecord = {
+    topicScope: options?.topicScope,
+    countryPredicate: options?.countryPredicate,
+    provider: options?.provider,
     verifiedAt: now,
     expiresAt: now + VERIFICATION_TTL * 1000,
   };
@@ -191,12 +215,12 @@ export async function getActiveVerificationsCache(
 export interface Badge {
   type: string;
   label: string;
-  domain?: string; // plaintext domain — only present when user opted in to domain badge
+  domain?: string; // verified domain — only present for visible workspace badges
 }
 
 /**
- * Convert cache type + opted-in domains to badge(s).
- * For oidc_domain with multiple domains, returns one badge per domain.
+ * Convert cache type + verified domains to badge(s).
+ * Public reads supply only the currently verified workspace domain.
  */
 function cacheTypeToBadges(cacheType: string, domains?: string[]): Badge[] {
   switch (cacheType) {
@@ -212,172 +236,104 @@ function cacheTypeToBadges(cacheType: string, domains?: string[]): Badge[] {
   }
 }
 
-// --- Domain badge opt-in/out (merged into oidc_domain record) ---
-
-/**
- * Toggle domain visibility in the user's oidc_domain verification record.
- * Reads the record, adds/removes the domain from shownDomains, writes back with remaining TTL.
- */
-export async function setDomainShown(userId: string, domain: string, shown: boolean): Promise<void> {
-  const key = cacheKey(userId, 'oidc_domain');
-  const data = await redis.get(key);
-  if (!data) return;
-
-  const record: VerificationRecord = JSON.parse(data);
-  if (record.expiresAt <= Date.now()) return;
-
-  const normalized = domain.toLowerCase().trim();
-  const current = record.shownDomains ?? [];
-
-  if (shown) {
-    if (!current.includes(normalized)) {
-      record.shownDomains = [...current, normalized];
-    } else {
-      return; // already shown, no-op
-    }
-  } else {
-    if (domain) {
-      record.shownDomains = current.filter(d => d !== normalized);
-    } else {
-      record.shownDomains = [];
-    }
-  }
-
-  // Preserve remaining TTL
-  const remainingTtl = await redis.ttl(key);
-  if (remainingTtl <= 0) return;
-
-  await redis.set(key, JSON.stringify(record), 'EX', remainingTtl);
-}
-
-/**
- * Clear all shown domains from the oidc_domain record.
- */
-export async function clearShownDomains(userId: string): Promise<void> {
-  const key = cacheKey(userId, 'oidc_domain');
-  const data = await redis.get(key);
-  if (!data) return;
-
-  const record: VerificationRecord = JSON.parse(data);
-  if (record.expiresAt <= Date.now()) return;
-
-  record.shownDomains = [];
-
-  const remainingTtl = await redis.ttl(key);
-  if (remainingTtl <= 0) return;
-
-  await redis.set(key, JSON.stringify(record), 'EX', remainingTtl);
-}
-
-/**
- * Get all opted-in (shown) domains for a user from the oidc_domain record.
- */
-export async function getShownDomains(userId: string): Promise<string[]> {
-  const data = await redis.get(cacheKey(userId, 'oidc_domain'));
-  if (!data) return [];
-  const record: VerificationRecord = JSON.parse(data);
-  if (record.expiresAt <= Date.now()) return [];
-  return record.shownDomains ?? [];
-}
-
-/**
- * Get the plaintext domain from the oidc_domain verification record (for opt-in flow).
- * Returns null if no valid verification or domain not stored.
- */
-export async function getAvailableDomain(userId: string): Promise<string | null> {
-  const data = await redis.get(cacheKey(userId, 'oidc_domain'));
-  if (!data) return null;
-  const record: VerificationRecord = JSON.parse(data);
-  if (record.expiresAt <= Date.now()) return null;
-  return record.domain ?? null;
-}
-
-/**
- * Get badges for a single user from Redis cache.
- * shownDomains is read from the oidc_domain record directly — no extra Redis query.
- */
-export async function getUserBadges(userId: string): Promise<Badge[]> {
-  const verifications = await getActiveVerificationsCache(userId);
-  return verifications.flatMap(v => {
-    if (v.proofType === 'oidc_domain') {
-      const shown = v.record.shownDomains ?? [];
-      return cacheTypeToBadges(v.proofType, shown.length > 0 ? shown : undefined);
-    }
-    return cacheTypeToBadges(v.proofType);
-  });
-}
-
-/**
- * Filter badges by the topic's proofType.
- * - 'none' (open topic) → no badges
- * - 'kyc' → only KYC badges
- * - 'country' → only Country badges
- * - 'google_workspace'/'microsoft_365'/'workspace' → only opt-in domain badges (with domain field)
- *   Generic "Org Verified" is excluded — only domain badges where user opted in are shown.
- */
-export function filterBadgesByTopicProofType(badges: Badge[], topicProofType: string | null): Badge[] {
-  if (!topicProofType || topicProofType === 'none') return [];
-
-  switch (topicProofType) {
-    case 'kyc':
-      return badges.filter(b => b.type === 'kyc');
-    case 'country':
-      return badges.filter(b => b.type === 'country');
-    case 'google_workspace':
-    case 'microsoft_365':
-    case 'workspace':
-      // Only opt-in domain badges (with actual domain value), not generic "Org Verified"
-      return badges.filter(b => (b.type === 'workspace' || b.type === 'oidc_domain') && b.domain);
-    default:
-      return [];
+/** Preserve legacy explicit OFF without retaining domain data beyond its TTL. */
+async function preserveLegacyVisibility(userId: string, record: VerificationRecord): Promise<void> {
+  if (Array.isArray(record.shownDomains) && record.shownDomains.length === 0) {
+    await redis.set(visibilityKey(userId, 'oidc_domain'), 'false', 'NX');
   }
 }
 
-/**
- * Batch get badges for multiple users (for post/comment badge display).
- * Uses a single Redis MGET call — shownDomains is read from the oidc_domain record directly.
- * No extra Redis queries needed (no separate domain badge key).
- */
-export async function getBatchUserBadges(
-  userIds: string[],
-): Promise<Map<string, Badge[]>> {
-  const result = new Map<string, Badge[]>();
-  if (userIds.length === 0) return result;
+function verifiedDomain(record: VerificationRecord): string | undefined {
+  const domain = record.domain?.toLowerCase().trim();
+  if (!domain || (record.domainHash && hashValue(domain) !== record.domainHash)) return undefined;
+  return domain;
+}
 
-  const unique = [...new Set(userIds)];
-  const cacheTypes = ['kyc', 'country', 'oidc_domain', 'oidc_login'];
+export interface ProfileBadge {
+  type: BadgeType;
+  verifiedAt: number;
+  expiresAt: number;
+  visible: boolean;
+  domain?: string;
+}
 
-  // Build all keys: userId × cacheType
-  const verificationKeys: string[] = [];
-  for (const uid of unique) {
-    for (const ct of cacheTypes) {
-      verificationKeys.push(cacheKey(uid, ct));
-    }
-  }
-
-  // Single MGET call — no separate domain badge query needed
-  const verificationValues = await redis.mget(...verificationKeys);
+/** One shared read path for owner controls and single/batch public display. */
+async function loadProfileBadges(userIds: string[]): Promise<Map<string, ProfileBadge[]>> {
+  const result = new Map<string, ProfileBadge[]>();
+  const unique = [...new Set(userIds)].filter(uid => uid && !uid.startsWith('withdrawn:'));
+  if (unique.length === 0) return result;
+  const keys = unique.flatMap(uid => [
+    ...BADGE_TYPES.map(type => cacheKey(uid, type)),
+    ...BADGE_TYPES.map(type => visibilityKey(uid, type)),
+  ]);
+  const values = await redis.mget(...keys);
   const now = Date.now();
-
-  for (let i = 0; i < unique.length; i++) {
-    const uid = unique[i];
-    const badges: Badge[] = [];
-    for (let j = 0; j < cacheTypes.length; j++) {
-      const val = verificationValues[i * cacheTypes.length + j];
-      if (val) {
-        const record: VerificationRecord = JSON.parse(val);
-        if (record.expiresAt > now) {
-          if (cacheTypes[j] === 'oidc_domain') {
-            const shown = record.shownDomains ?? [];
-            badges.push(...cacheTypeToBadges(cacheTypes[j], shown.length > 0 ? shown : undefined));
-          } else {
-            badges.push(...cacheTypeToBadges(cacheTypes[j]));
-          }
-        }
-      }
-    }
+  const migrations: Promise<void>[] = [];
+  unique.forEach((uid, i) => {
+    const badges: ProfileBadge[] = [];
+    BADGE_TYPES.forEach((type, j) => {
+      const data = values[i * 8 + j];
+      if (!data) return;
+      const record: VerificationRecord = JSON.parse(data);
+      const preference = values[i * 8 + 4 + j];
+      const legacyHidden = type === 'oidc_domain' && Array.isArray(record.shownDomains) && record.shownDomains.length === 0;
+      if (legacyHidden && preference == null) migrations.push(preserveLegacyVisibility(uid, record));
+      if (record.expiresAt <= now) return;
+      const domain = type === 'oidc_domain' ? verifiedDomain(record) : undefined;
+      badges.push({ type, verifiedAt: record.verifiedAt, expiresAt: record.expiresAt,
+        visible: preference == null ? !legacyHidden : preference === 'true',
+        ...(domain ? {domain} : {}),
+      });
+    });
     result.set(uid, badges);
-  }
-
+  });
+  await Promise.all(migrations);
   return result;
+}
+
+export async function getProfileBadges(userId: string): Promise<ProfileBadge[]> {
+  return (await loadProfileBadges([userId])).get(userId) ?? [];
+}
+
+/** Return false when no active verification exists; visibility never grants proof eligibility. */
+export async function setBadgeVisibility(userId: string, type: BadgeType, visible: boolean): Promise<boolean> {
+  if (!isBadgeType(type) || typeof visible !== 'boolean') return false;
+  if (!await getVerificationCache(userId, type)) return false;
+  await redis.set(visibilityKey(userId, type), JSON.stringify(visible));
+  return true;
+}
+
+/** Compatibility wrapper: only the currently verified domain can be shown/hidden. */
+export async function setDomainShown(userId: string, domain: string, shown: boolean): Promise<void> {
+  const available = await getAvailableDomain(userId);
+  if (!available || available !== domain.toLowerCase().trim()) return;
+  await setBadgeVisibility(userId, 'oidc_domain', shown);
+}
+
+export async function clearShownDomains(userId: string): Promise<void> {
+  await setBadgeVisibility(userId, 'oidc_domain', false);
+}
+
+export async function getShownDomains(userId: string): Promise<string[]> {
+  const badge = (await getProfileBadges(userId)).find(b => b.type === 'oidc_domain');
+  return badge?.visible && badge.domain ? [badge.domain] : [];
+}
+
+export async function getAvailableDomain(userId: string): Promise<string | null> {
+  const record = await getVerificationCache(userId, 'oidc_domain');
+  return record ? verifiedDomain(record) ?? null : null;
+}
+
+function publicBadges(badges: ProfileBadge[]): Badge[] {
+  return badges.filter(b => b.visible).flatMap(b => cacheTypeToBadges(b.type, b.domain ? [b.domain] : undefined));
+}
+
+export async function getUserBadges(userId: string): Promise<Badge[]> {
+  return publicBadges(await getProfileBadges(userId));
+}
+
+/** Batch public badges with the same visibility and expiry rules as single-user reads. */
+export async function getBatchUserBadges(userIds: string[]): Promise<Map<string, Badge[]>> {
+  const profiles = await loadProfileBadges(userIds);
+  return new Map([...profiles].map(([uid, badges]) => [uid, publicBadges(badges)]));
 }

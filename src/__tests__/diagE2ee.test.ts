@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,7 +22,8 @@ vi.mock('@/lib/logger', () => ({
 }));
 vi.mock('@/lib/mls/http', () => ({ checkRateLimit: mocks.checkRateLimit }));
 
-import { POST } from '@/app/api/diag/e2ee/route';
+import { POST as POSTHttpHandler } from '@/app/api/diag/e2ee/route';
+const POST=withHttpRequest(POSTHttpHandler,'POST');
 
 const req = (body?: unknown) => ({ json: async () => body }) as never;
 

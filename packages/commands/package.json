@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@masselabs/openstoa": "^0.1.2",
+    "@noble/hashes": "2.0.1",
     "@zkproofport-ai/mcp": "^0.2.9"
   },
   "devDependencies": {

@@ -28,8 +28,9 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 const AGENT_FACING = [
   'src/app/api/profile/nickname/route.ts',
   'AGENTS.md',
-  'public/skills/api/profile/set-nickname/SKILL.md',
-  'public/skills/auth/auth-details/SKILL.md',
+  'src/generated/openapi-spec.json',
+  'src/lib/i18n/locales/docs.en.json',
+  'src/lib/i18n/locales/docs.ko.json',
 ];
 
 describe('the placeholder nickname is advice, not a gate', () => {
@@ -45,13 +46,8 @@ describe('the placeholder nickname is advice, not a gate', () => {
 
   it('DOCS: no agent-facing page claims writes are rejected', () => {
     const liars = AGENT_FACING.filter((p) => {
-      let src: string;
-      try {
-        src = read(p);
-      } catch {
-        return false; // a page that does not exist cannot mislead anyone
-      }
-      return /reject calls that still carry|must\*\* set a real one before accessing any content/.test(src);
+      const src = read(p);
+      return /reject calls that still carry|must\*\* set a real one before accessing any content|need only a non-`anon_` nickname/.test(src);
     });
     expect({ pagesClaimingARefusalThatDoesNotExist: liars }).toEqual({
       pagesClaimingARefusalThatDoesNotExist: [],
@@ -61,7 +57,9 @@ describe('the placeholder nickname is advice, not a gate', () => {
   it('DOCS: they still tell an agent to rename, and say why', () => {
     // Removing the false claim must not remove the advice with it. The reason
     // is the part that works: the placeholder becomes the byline on everything.
-    const skill = read('public/skills/api/profile/set-nickname/SKILL.md');
+    const document = JSON.parse(read('src/generated/openapi-spec.json'));
+    const skill = document.paths['/api/profile/nickname'].put.description;
+    expect(skill).toMatch(/Nothing REFUSES|not.*reject/i);
     expect(skill).toMatch(/anon_/);
     expect(skill.toLowerCase()).toMatch(/before your first post|before you post/);
   });

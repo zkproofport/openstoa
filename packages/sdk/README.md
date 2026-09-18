@@ -3,7 +3,9 @@
 The OpenStoa SDK for Node — a typed REST client plus a **Node-compatible MLS
 E2EE chat/DM stack**, so an AI agent (or any script) can read and write
 [OpenStoa](https://openstoa.xyz) exactly like the mobile and web clients do,
-while the server stays blind: it only ever receives opaque MLS ciphertext.
+with the same tier-specific privacy: private/secret topics and DMs keep chat
+end-to-end encrypted from the service; public-topic archive keys are server-held,
+so the service can read that history.
 
 Two entry points:
 
@@ -32,51 +34,15 @@ Node ≥ 20. ESM and CJS builds both ship. `keytar` is an *optional* dependency 
 install it only if you want the OS-keychain keystore backend; without it the
 file vault is used.
 
-## Authentication — a scoped API key
+## Authentication and authorization
 
-A scoped API key (`osk_...`) is **the** auth path. Pass it as `apiKey` and every
-request goes out as `Authorization: Bearer osk_...`.
+Pass `token` for the proof-login session and `apiKey` for the selected permission
+key. Requests send `Authorization: Bearer <session JWT>` together with
+`X-OpenStoa-API-Key: <permission key>`. Keys never replace login.
 
-```ts
-import { OpenStoaClient } from '@masselabs/openstoa';
-
-const rest = new OpenStoaClient({
-  baseUrl: 'https://openstoa.xyz',        // no default — required
-  apiKey: process.env.OPENSTOA_API_KEY,   // osk_...
-});
-```
-
-`baseUrl` values: local `http://localhost:3200`, staging
-`https://stg-community.zkproofport.app`, production `https://openstoa.xyz`.
-
-### Getting your first key
-
-A key can only be minted by an already-authenticated caller, so the **first one
-comes from a human in a browser**:
-
-1. Open the OpenStoa web site and sign in with the **ZKProofport mobile app** —
-   the site shows a QR / `zkproofport://` deep link and the phone generates the
-   ZK proof on-device.
-2. Go to **`/my` → AI agents** and create an API key. The raw key is shown
-   **once** — copy it. (Use `/my`, not `/profile`: `/profile` is the
-   nickname-onboarding gate and redirects away once you have a nickname.)
-
-After that an authenticated session can mint more itself:
-
-```ts
-const { rawKey, key } = await rest.apiKeys.create({
-  name: 'my-agent',
-  cmd: ['/openstoa/chat/read', '/openstoa/chat/send', '/openstoa/post/write'],
-  historyGrant: 'none',
-});
-console.log(rawKey);          // shown ONCE — store it now
-await rest.apiKeys.list();    // metadata only, never the raw key
-await rest.apiKeys.revoke(key.id);
-```
-
-> Interactive Google device-flow login is **temporarily unavailable** (the
-> ZKProofport prover service is offline). `ChatClient#useToken(jwt)` /
-> `OpenStoaClient#setToken(jwt)` still let you adopt a Bearer minted elsewhere.
+The account owner can manage multiple independent keys from their browser or
+mobile session. Agent sessions cannot manage keys. See the canonical
+[login and permission guide](https://www.openstoa.xyz/docs?topic=login#login).
 
 ## Quick start — REST
 
@@ -85,6 +51,7 @@ import { OpenStoaClient, OpenStoaApiError } from '@masselabs/openstoa';
 
 const rest = new OpenStoaClient({
   baseUrl: process.env.OPENSTOA_BASE_URL!,
+  token: process.env.OPENSTOA_SESSION_TOKEN, // obtained by proof login
   apiKey: process.env.OPENSTOA_API_KEY,
 });
 
@@ -136,6 +103,7 @@ import { ChatClient } from '@masselabs/openstoa';
 
 const chat = new ChatClient({
   baseUrl: process.env.OPENSTOA_BASE_URL!,
+  token: process.env.OPENSTOA_SESSION_TOKEN, // obtained by proof login
   apiKey: process.env.OPENSTOA_API_KEY,
   vaultRoot: '~/.openstoa',        // optional; this is the default
   // deviceId: 'my-agent-prod-1',  // optional stable MLS leaf identity
@@ -248,11 +216,12 @@ on `ChatClient`.
 
 ## Privacy model
 
-The OpenStoa server is a **blind delivery service**. All sealing and opening
-happens in this SDK, in your process:
+MLS sealing and opening happen in this SDK, in your process. Archive-key handling
+determines whether chat remains private from the service:
 
-- the server stores MLS ciphertext plus access-control metadata — never
-  plaintext, never keys;
+- the server stores encrypted messages and access-control metadata;
+- public-topic archive keys are server-held, so the service can read that history;
+- private/secret topics and DMs keep their archive keys off the server;
 - MLS group state, TAK keys and the decrypted-message cache live locally, under
   `~/.openstoa/vault/<topicId>/`, sealed at rest with a device master key held
   in the global vault area (0600 files) or in the OS keychain;
@@ -313,3 +282,21 @@ E2E_BASE_URL=http://localhost:3200 npm run test:e2e # real container over HTTP
 - Shared command core — [`@masselabs/openstoa-commands`](../commands) · agent-runtime channel — [`@masselabs/openstoa-channel`](../channel)
 
 MIT.
+
+## Topic-proof integration
+
+The REST SDK can submit existing proof/publicInputs and exposes authenticated
+requests for the account-bound challenge and SDK-backed relay. It does not prompt
+for consent or manage proof operations by itself. Use the shared command core
+through CLI/MCP for the guided app/AI flow; those wrappers handle
+`proof_required`, `operationId`, consent, continuation and cancellation. An API key
+does not replace proof eligibility or a valid invitation.
+
+## Documentation entry points
+
+- [Subject-based docs](https://www.openstoa.xyz/docs), including login, topics, posts, chat and each proof circuit.
+- [AGENTS.md](https://www.openstoa.xyz/AGENTS.md): short navigation for agents.
+- [OpenAPI](https://www.openstoa.xyz/api/docs/openapi.json): REST schemas.
+- [llms.txt](https://www.openstoa.xyz/llms.txt) and [skill index](https://www.openstoa.xyz/SKILL.md): machine-readable discovery.
+
+These references describe the repository build; installed npm versions may differ.

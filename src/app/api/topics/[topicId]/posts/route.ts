@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -11,7 +13,7 @@ import { updateTopicScore } from '@/lib/topicScore';
 import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { requireAiCapability } from '@/lib/aiPermissions';
 
-import { getBatchUserBadges, filterBadgesByTopicProofType, type Badge } from '@/lib/verification-cache';
+import { getBatchUserBadges } from '@/lib/verification-cache';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts, createPollForPost } from '@/lib/polls';
@@ -199,6 +201,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/posts');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -302,7 +307,7 @@ export async function GET(
       const guestBadgeMap = await getBatchUserBadges(guestAuthorIds);
       const guestPostsWithBadges = topicPosts.map((p) => ({
         ...p,
-        badges: filterBadgesByTopicProofType(guestBadgeMap.get(p.authorId) ?? [], topic.proofType),
+        badges: guestBadgeMap.get(p.authorId) ?? [],
       }));
 
       const guestPostsWithReactions = await attachReactionsToPosts(guestPostsWithBadges, null);
@@ -428,12 +433,6 @@ export async function GET(
       .limit(limit)
       .offset(offset);
 
-    // Get topic proofType for badge filtering
-    const topicForBadge = await db.query.topics.findFirst({
-      where: eq(topics.id, topicId),
-      columns: { proofType: true },
-    });
-
     const authorIds = [...new Set(topicPosts.map((p) => p.authorId).filter(Boolean))] as string[];
     const badgeMap = await getBatchUserBadges(authorIds);
     // Membership is uniform across a single topic, so the badge applies
@@ -442,7 +441,7 @@ export async function GET(
     const isJoinedTopic = !!membership;
     const postsWithBadges = topicPosts.map((p) => ({
       ...p,
-      badges: filterBadgesByTopicProofType(badgeMap.get(p.authorId) ?? [], topicForBadge?.proofType ?? null),
+      badges: badgeMap.get(p.authorId) ?? [],
       isJoinedTopic,
     }));
 
@@ -508,6 +507,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/posts');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);
@@ -667,7 +669,8 @@ export async function POST(
     // immediately without a follow-up fetch.
     const responsePost = { ...post } as typeof post & { poll?: import('@/lib/polls').Poll | null };
     await attachPollsToPosts([responsePost], session.userId);
-    return NextResponse.json({ post: responsePost }, { status: 201 });
+    const [postWithBadges] = await withPublicIdentityBadges([responsePost], row => row.authorId);
+    return NextResponse.json({ post: postWithBadges }, { status: 201 });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'POST', error);
   }

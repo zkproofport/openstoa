@@ -16,7 +16,9 @@ import { isDefaultNickname } from '@/lib/defaultNickname';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Avatar from '@/components/Avatar';
+import UserBadges from '@/components/UserBadges';
 import { resizeImage } from '@/lib/utils';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { safeReturnTo, withHash } from '@/lib/returnTo';
 
@@ -99,7 +101,7 @@ function ProfilePageInner() {
       if (!saveRes.ok) throw new Error(t('profilePage.saveImageFailed'));
       setProfileImage(publicUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('profilePage.uploadFailed'));
+      setError(localizeApiError(err, t, 'profilePage.uploadFailed'));
     } finally {
       setImageUploading(false);
     }
@@ -112,7 +114,7 @@ function ProfilePageInner() {
       if (!res.ok) throw new Error(t('profilePage.removeImageFailed'));
       setProfileImage(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('profilePage.removeImageFailed'));
+      setError(localizeApiError(err, t, 'profilePage.removeImageFailed'));
     } finally {
       setImageUploading(false);
     }
@@ -156,7 +158,7 @@ function ProfilePageInner() {
 
       backToReturnTo();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('profilePage.unknownError'));
+      setError(localizeApiError(err, t, 'profilePage.unknownError'));
     } finally {
       setLoading(false);
     }
@@ -229,6 +231,7 @@ function ProfilePageInner() {
               >
                 {userId.slice(0, 8)}...{userId.slice(-6)}
               </p>
+              <UserBadges userId={userId} badges={session?.badges} isAI={session?.isAI} />
             </div>
           )}
 

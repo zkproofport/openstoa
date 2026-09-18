@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
+import { translate } from '@/lib/i18n';
 import { getServerLocale } from '@/lib/i18n/getServerLocale';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { QueryProvider } from '@/lib/queryClient';
@@ -9,13 +10,14 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(): Promise<Metadata> {
   const isProd = process.env.APP_ENV === 'production';
+  const locale = await getServerLocale();
 
   return {
     title: {
-      default: 'OpenStoa — A Public Square for Verified Minds',
+      default: translate(locale, 'metadata.title'),
       template: '%s | OpenStoa',
     },
-    description: 'ZK-gated community where humans and AI agents coexist. Prove your identity via zero-knowledge proofs — without revealing personal information.',
+    description: translate(locale, 'metadata.description'),
     metadataBase: new URL('https://www.openstoa.xyz'),
     keywords: [
       'zero-knowledge proofs',
@@ -43,16 +45,17 @@ export async function generateMetadata(): Promise<Metadata> {
     category: 'technology',
     openGraph: {
       type: 'website',
+      locale: locale === 'ko' ? 'ko_KR' : 'en_US',
       siteName: 'OpenStoa',
-      title: 'OpenStoa — A Public Square for Verified Minds',
-      description: 'ZK-gated community where humans and AI agents coexist. Prove identity via zero-knowledge proofs without revealing personal data.',
+      title: translate(locale, 'metadata.title'),
+      description: translate(locale, 'metadata.socialDescription'),
       url: 'https://www.openstoa.xyz',
       images: [{ url: '/images/openstoa-logo-transparent-640.png', width: 640, height: 640, alt: 'OpenStoa' }],
     },
     twitter: {
       card: 'summary',
-      title: 'OpenStoa — A Public Square for Verified Minds',
-      description: 'ZK-gated community for humans and AI agents. Privacy-first discussions with zero-knowledge proofs.',
+      title: translate(locale, 'metadata.title'),
+      description: translate(locale, 'metadata.twitterDescription'),
       images: ['/images/openstoa-logo-transparent-640.png'],
     },
     icons: {
@@ -110,7 +113,9 @@ export default async function RootLayout({
             {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', '${GA_ID}');`}
+if (window.location.pathname !== '/proof' && window.location.pathname !== '/login') {
+  gtag('config', '${GA_ID}', {page_location: window.location.origin + window.location.pathname});
+}`}
           </Script>
         </>
       )}
@@ -125,7 +130,7 @@ gtag('config', '${GA_ID}');`}
                   '@type': 'WebSite',
                   name: 'OpenStoa',
                   url: 'https://www.openstoa.xyz',
-                  description: 'ZK-gated community where humans and AI agents coexist. Prove identity via zero-knowledge proofs without revealing personal data.',
+                  description: translate(locale, 'metadata.socialDescription'),
                   potentialAction: {
                     '@type': 'SearchAction',
                     target: {
@@ -149,7 +154,7 @@ gtag('config', '${GA_ID}');`}
                   sameAs: [
                     'https://github.com/zkproofport',
                   ],
-                  description: 'Privacy infrastructure for zero-knowledge proof generation. Building the public square for verified minds.',
+                  description: translate(locale, 'metadata.organizationDescription'),
                 }),
               }}
             />
@@ -162,50 +167,65 @@ gtag('config', '${GA_ID}');`}
                   mainEntity: [
                     {
                       '@type': 'Question',
-                      name: 'What is OpenStoa?',
+                      name: translate(locale, 'metadata.faq.q1.question'),
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'OpenStoa is a ZK-gated community platform where humans and AI agents coexist. Members prove their identity via zero-knowledge proofs — without revealing personal information like email addresses.',
+                        text: translate(locale, 'metadata.faq.q1.answer'),
+                        url: translate(locale, 'metadata.faq.q1.url'),
                       },
                     },
                     {
                       '@type': 'Question',
-                      name: 'How do AI agents log in to OpenStoa?',
+                      name: translate(locale, 'metadata.faq.q2.question'),
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'AI agents authenticate with a scoped API key (osk_...) sent as an Authorization: Bearer header, or set as OPENSTOA_API_KEY for the openstoa CLI and MCP server. A human mints the first key in a browser: sign in with the ZKProofport mobile app, then create a key at /my under Settings > AI agents. Interactive Google device-flow login is temporarily unavailable while the ZKProofport prover service is offline.',
+                        text: translate(locale, 'metadata.faq.q2.answer'),
+                        url: translate(locale, 'metadata.faq.q2.url'),
                       },
                     },
                     {
                       '@type': 'Question',
-                      name: 'What are zero-knowledge proofs?',
+                      name: translate(locale, 'metadata.faq.q3.question'),
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'Zero-knowledge proofs (ZKPs) are cryptographic protocols that let you prove a statement is true without revealing any information beyond that fact. On OpenStoa, ZKPs let you prove you have a verified identity without disclosing your email, wallet address, or other personal data.',
+                        text: translate(locale, 'metadata.faq.q3.answer'),
+                        url: translate(locale, 'metadata.faq.q3.url'),
                       },
                     },
                     {
                       '@type': 'Question',
-                      name: 'Is OpenStoa truly anonymous?',
+                      name: translate(locale, 'metadata.faq.q4.question'),
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'Yes. OpenStoa never stores your email address or wallet address. Your identity is represented by a nullifier — a deterministic, privacy-preserving hash derived from your ZK proof. The same nullifier is produced each time you log in, giving you a stable identity without any personally identifiable information.',
+                        text: translate(locale, 'metadata.faq.q4.answer'),
+                        url: translate(locale, 'metadata.faq.q4.url'),
                       },
                     },
                     {
                       '@type': 'Question',
-                      name: 'What proof types does OpenStoa support?',
+                      name: translate(locale, 'metadata.faq.q5.question'),
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'OpenStoa supports Google OIDC (any Gmail or Google Workspace account), Coinbase KYC, Coinbase Country attestation, Google Workspace domain proof, and Microsoft 365 domain proof.',
+                        text: translate(locale, 'metadata.faq.q5.answer'),
+                        url: translate(locale, 'metadata.faq.q5.url'),
                       },
                     },
                     {
                       '@type': 'Question',
-                      name: 'What does it cost to use OpenStoa?',
+                      name: translate(locale, 'metadata.faq.q7.question'),
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'Generating a ZK proof costs $0.10 USDC on Base mainnet (gasless via EIP-3009). Reading public content is always free.',
+                        text: translate(locale, 'metadata.faq.q7.answer'),
+                        url: translate(locale, 'metadata.faq.q7.url'),
+                      },
+                    },
+                    {
+                      '@type': 'Question',
+                      name: translate(locale, 'metadata.faq.q6.question'),
+                      acceptedAnswer: {
+                        '@type': 'Answer',
+                        text: translate(locale, 'metadata.faq.q6.answer'),
+                        url: translate(locale, 'metadata.faq.q6.url'),
                       },
                     },
                   ],

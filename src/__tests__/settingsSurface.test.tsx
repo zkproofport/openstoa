@@ -182,7 +182,7 @@ function json(body: unknown, ok = true, status = 200) {
 type Overrides = {
   session?: Record<string, unknown>;
   push?: Response;
-  domainBadge?: Response;
+  badges?: Response;
 };
 
 let fetchSpy: ReturnType<typeof vi.fn>;
@@ -196,7 +196,7 @@ function routeFetch(o: Overrides = {}) {
     if (url === '/api/topics') return Promise.resolve(json({ topics: [] }));
     if (url.startsWith('/api/bookmarks')) return Promise.resolve(json({ posts: [] }));
     if (url === '/api/push/preferences') return Promise.resolve(o.push ?? json({ enabled: true, mutedTopicIds: [] }));
-    if (url === '/api/profile/domain-badge') return Promise.resolve(o.domainBadge ?? json({ domains: [], availableDomain: null }));
+    if (url === '/api/profile/badges') return Promise.resolve(o.badges ?? json({ badges: [], userId: o.session?.userId ?? 'me', publicBadges: [] }));
     return Promise.reject(new Error(`unexpected fetch: ${url}`));
   });
   vi.stubGlobal('fetch', fetchSpy);
@@ -331,7 +331,7 @@ describe('MyPage — settings reads as one list', () => {
     await act(async () => settingsTab.click());
     await flush();
     expect(container.querySelectorAll('h3.os-label').length).toBe(5);
-    expect(container.textContent).toContain('환경설정');
+    expect(container.textContent).toContain('앱 설정');
   });
 
   it('the preferences list carries language, theme and push in one list', async () => {
@@ -356,19 +356,19 @@ describe('MyPage — settings reads as one list', () => {
   it('EMPTY: no verified domain renders the "none found" row, with no chips', async () => {
     await render(<MyPage />);
     await openSettings();
-    expect(container.textContent).toContain(en.myPage.settings.domainBadges.noneFound);
-    expect(buttonByText(en.myPage.settings.domainBadges.show)).toBeUndefined();
-    expect(buttonByText(en.myPage.settings.domainBadges.hide)).toBeUndefined();
+    expect(container.textContent).toContain(en.badgeVisibility.empty);
+    expect(buttonByText(en.badgeVisibility.off)).toBeUndefined();
+    expect(buttonByText(en.badgeVisibility.on)).toBeUndefined();
   });
 
-  it('POPULATED: an active badge gets Hide, an available one gets Show', async () => {
-    routeFetch({ domainBadge: json({ domains: ['masselabs.com'], availableDomain: 'other.com' }) });
+  it('POPULATED: verified badges render independent public visibility states', async () => {
+    routeFetch({ badges: json({ badges: [{ type: 'oidc_domain', domain: 'masselabs.com', visible: true }, { type: 'kyc', visible: false }], userId: 'me', publicBadges: [{ type: 'workspace', label: 'Org', domain: 'masselabs.com' }] }) });
     await render(<MyPage />);
     await openSettings();
     expect(container.textContent).toContain('masselabs.com');
-    expect(container.textContent).toContain('other.com');
-    expect(buttonByText(en.myPage.settings.domainBadges.hide)).toBeDefined();
-    expect(buttonByText(en.myPage.settings.domainBadges.show)).toBeDefined();
+    expect(container.textContent).toContain(en.badge.kyc);
+    expect(buttonByText(en.badgeVisibility.on)).toBeDefined();
+    expect(buttonByText(en.badgeVisibility.off)).toBeDefined();
   });
 
   it('CONTRACT: the Recovery row still links out to /recovery (FIX8 stays intact)', async () => {

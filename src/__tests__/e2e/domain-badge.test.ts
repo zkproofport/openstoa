@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { authGet, authPost, authDelete, publicGet } from './helpers';
 
 /**
- * Domain Badge Opt-in/Opt-out E2E Tests (Multi-domain)
+ * Domain Badge Visibility E2E Tests (Current verified domain)
  *
  * Prerequisites:
  * - User A must be logged in (E2E_AUTH_TOKEN set)
@@ -11,13 +11,22 @@ import { authGet, authPost, authDelete, publicGet } from './helpers';
  * If no workspace verification exists, opt-in will return 400 and those tests
  * are handled gracefully (skipped with a warning).
  */
-describe('Domain Badge (Multi-domain)', () => {
+describe.sequential('Domain Badge (Current verified domain)', () => {
+  let ownUserId: string;
+  beforeAll(async () => {
+    const response = await authGet('/api/auth/session');
+    expect(response.status).toBe(200);
+    const session = await response.json();
+    expect(typeof session.userId).toBe('string');
+    expect(session.userId.length).toBeGreaterThan(0);
+    ownUserId = session.userId;
+  });
   let hasWorkspaceVerification = false;
   let optedInDomain: string | null = null;
 
   // ── GET status ──────────────────────────────────────────────────────
 
-  it('GET /api/profile/domain-badge — returns multi-domain status', async () => {
+  it('GET /api/profile/domain-badge — returns current domain visibility', async () => {
     const res = await authGet('/api/profile/domain-badge');
     expect(res.status).toBe(200);
 
@@ -94,8 +103,8 @@ describe('Domain Badge (Multi-domain)', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
 
-    const myPosts = data.posts?.filter((p: { badges?: Array<{ type: string; domain?: string }> }) =>
-      p.badges?.some((b: { type: string; domain?: string }) => b.type === 'workspace' && b.domain),
+    const myPosts = data.posts?.filter((p: { authorId: string; badges?: Array<{ type: string; domain?: string }> }) =>
+      p.authorId === ownUserId && p.badges?.some((b: { type: string; domain?: string }) => b.type === 'workspace' && b.domain),
     );
 
     if (myPosts && myPosts.length > 0) {
@@ -135,23 +144,24 @@ describe('Domain Badge (Multi-domain)', () => {
     }
   });
 
-  it('Feed posts show generic badge after opt-out', async () => {
+  it('Feed posts omit hidden workspace badges after opt-out', async (context) => {
     if (!hasWorkspaceVerification) return;
 
     const res = await authGet('/api/feed?limit=10');
     expect(res.status).toBe(200);
     const data = await res.json();
 
-    const workspaceBadges = data.posts?.flatMap((p: { badges?: Array<{ type: string; domain?: string }> }) =>
-      (p.badges ?? []).filter((b: { type: string }) => b.type === 'workspace'),
-    ) ?? [];
-
-    for (const badge of workspaceBadges) {
-      if (badge.domain === optedInDomain) {
-        throw new Error(`Domain ${optedInDomain} still visible in badge after opt-out`);
-      }
+    const ownPosts = (data.posts ?? []).filter((post: { authorId: string }) => post.authorId === ownUserId);
+    if (ownPosts.length === 0) {
+      context.skip('No posts by the authenticated user in this feed fixture');
+      return;
     }
-    console.log('[E2E] Workspace badges no longer show domain after opt-out');
+    for (const post of ownPosts) {
+      const workspaceBadges = (post.badges ?? []).filter((badge: { type: string }) =>
+        badge.type === 'workspace' || badge.type === 'oidc_domain');
+      expect(workspaceBadges, `Hidden workspace badge leaked on own post ${post.id}`).toEqual([]);
+    }
+
   });
 
   // ── DELETE all domains ──────────────────────────────────────────────

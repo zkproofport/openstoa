@@ -1,5 +1,8 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
+import { db } from '@/lib/db';
+import { requireAiCapability } from '@/lib/aiPermissions';
 import { getAvailableDomain, getShownDomains, setDomainShown, clearShownDomains } from '@/lib/verification-cache';
 import { logger } from '@/lib/logger';
 
@@ -12,10 +15,10 @@ const ROUTE = '/api/profile/domain-badge';
  *     tags: [Profile]
  *     summary: Get domain badge status
  *     description: >-
- *       Returns the user's domain badge opt-in status. A user can have multiple
- *       opted-in domains (e.g., Google Workspace + Microsoft 365 from different orgs).
+ *       Returns the user's current workspace domain visibility. Verified workspace
+ *       domains are public by default unless the user has explicitly hidden the badge.
  *       `domains` contains all publicly visible domains. `availableDomain` is the
- *       most recently verified domain available for opt-in.
+ *       currently verified domain, including when its badge is hidden.
  *     operationId: getDomainBadge
  *     x-related-skills: [opt-in-domain-badge, opt-out-domain-badge, topic-proofs]
  *     responses:
@@ -30,19 +33,26 @@ const ROUTE = '/api/profile/domain-badge';
  *                   type: array
  *                   items:
  *                     type: string
- *                   description: All publicly visible domains (empty if none opted in)
+ *                   description: Currently visible verified domain (empty when hidden or expired)
  *                 availableDomain:
  *                   type: string
  *                   nullable: true
- *                   description: Most recently verified domain available for opt-in (null if no valid verification)
+ *                   description: Currently verified domain (null if no valid verification)
+ *       403:
+ *         description: AI caller lacks /openstoa/profile/read capability
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/domain-badge');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+  const readGate = await requireAiCapability(db, session, '/openstoa/profile/read');
+  if (readGate) return readGate;
 
   const [currentDomains, availableDomain] = await Promise.all([
     getShownDomains(session.userId),
@@ -62,10 +72,9 @@ export async function GET(request: NextRequest) {
  *     tags: [Profile]
  *     summary: Opt in to domain badge
  *     description: >-
- *       Adds the most recently verified workspace domain to your public badge set.
- *       A user can have multiple domains opted in (e.g., verify company-a.com, opt in,
- *       then verify company-b.com, opt in again — both are shown). Requires a valid
- *       workspace (oidc_domain) verification.
+ *       Shows the currently verified workspace domain. Uses the same persistent
+ *       oidc_domain visibility preference as PATCH /api/profile/badges. Requires
+ *       an active workspace verification; previously verified domains are not disclosed.
  *     operationId: optInDomainBadge
  *     x-related-skills: [get-domain-badge, opt-out-domain-badge, topic-proofs]
  *     responses:
@@ -89,14 +98,21 @@ export async function GET(request: NextRequest) {
  *                   description: All currently visible domains
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: AI caller lacks /openstoa/profile/edit capability
  *       400:
  *         description: No valid workspace verification found
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/domain-badge');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+  const editGate = await requireAiCapability(db, session, '/openstoa/profile/edit');
+  if (editGate) return editGate;
 
   const domain = await getAvailableDomain(session.userId);
   if (!domain) {
@@ -123,7 +139,8 @@ export async function POST(request: NextRequest) {
  *     description: >-
  *       Removes a domain from the public badge set. Send `{ "domain": "company.com" }`
  *       to remove a specific domain. Send no body to remove all domains.
- *       Workspace verifications remain valid — you can opt back in at any time.
+ *       Workspace verification remains valid. The hidden preference persists through
+ *       re-verification and expiry, until explicitly enabled again.
  *     operationId: optOutDomainBadge
  *     x-related-skills: [get-domain-badge, opt-in-domain-badge]
  *     requestBody:
@@ -152,18 +169,28 @@ export async function POST(request: NextRequest) {
  *                   items:
  *                     type: string
  *                   description: Remaining visible domains after removal
+ *       403:
+ *         description: AI caller lacks /openstoa/profile/edit capability
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function DELETE(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/domain-badge');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+  const editGate = await requireAiCapability(db, session, '/openstoa/profile/edit');
+  if (editGate) return editGate;
 
   let domainToRemove: string | undefined;
   try {
     const body = await request.json();
+    if (body?.domain !== undefined && typeof body.domain !== 'string') {
+      return NextResponse.json({ error: 'domain must be a string' }, { status: 400 });
+    }
     domainToRemove = body?.domain;
   } catch {
     // No body — remove all

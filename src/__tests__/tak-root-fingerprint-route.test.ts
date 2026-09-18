@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -43,12 +44,14 @@ vi.mock('@/lib/mls/archive', () => ({
   getHolder: vi.fn().mockResolvedValue(null),
 }));
 
-import { GET, PUT } from '@/app/api/topics/[topicId]/tak/root-fingerprint/route';
-import {
-  GET as holderGET,
-  POST as holderPOST,
-  PATCH as holderPATCH,
-} from '@/app/api/topics/[topicId]/tak/holder/route';
+import { GET as GETHttpHandler, PUT as PUTHttpHandler } from '@/app/api/topics/[topicId]/tak/root-fingerprint/route';
+const GET=withHttpRequest(GETHttpHandler,'GET');
+const PUT=withHttpRequest(PUTHttpHandler,'PUT');
+import { GET as holderGETHttpHandler, POST as holderPOSTHttpHandler, PATCH as holderPATCHHttpHandler,
+ } from '@/app/api/topics/[topicId]/tak/holder/route';
+const holderGET=withHttpRequest(holderGETHttpHandler,'GET');
+const holderPOST=withHttpRequest(holderPOSTHttpHandler,'POST');
+const holderPATCH=withHttpRequest(holderPATCHHttpHandler,'PATCH');
 
 const TOPIC = '00000000-0000-0000-0000-000000000001';
 const params = () => Promise.resolve({ topicId: TOPIC });

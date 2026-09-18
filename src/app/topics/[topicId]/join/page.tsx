@@ -7,6 +7,7 @@ import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import Spinner from '@/components/Spinner';
 import ProofGate from '@/components/ProofGate';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface TopicInfo {
@@ -73,7 +74,7 @@ export default function JoinPage() {
       const pt = info.proofType || (info.requiresCountryProof ? 'country' : 'none');
       setEffectiveProofType(pt);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('joinPage.loadFailed'));
+      setError(localizeApiError(err, t, 'joinPage.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -102,7 +103,7 @@ export default function JoinPage() {
       }
       router.push(`/topics/${topicInfo.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
+      setError(localizeApiError(err, t, 'editTopicPage.unknownError'));
       setJoining(false);
     }
   }
@@ -282,7 +283,6 @@ export default function JoinPage() {
                     effectiveProofType === 'country' ? 'coinbase_country_attestation' :
                     'oidc_domain_attestation'
                   }
-                  scope="zkproofport-community"
                   countryList={effectiveProofType === 'country' ? (topicInfo.allowedCountries ?? []) : undefined}
                   isIncluded={effectiveProofType === 'country' ? true : undefined}
                   domain={

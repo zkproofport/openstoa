@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -20,6 +21,9 @@ const ROUTE = '/api/test/clear-verification-cache';
  * Clearing oidc_domain automatically clears shown domains.
  */
 export async function DELETE(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/test/clear-verification-cache');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -37,7 +41,7 @@ export async function DELETE(request: NextRequest) {
   const url = new URL(request.url);
   const type = url.searchParams.get('type');
 
-  const prefix = 'community:verification';
+  const prefix = 'community:verification:v2';
   const cacheTypes = ['kyc', 'country', 'oidc_domain', 'oidc_login'];
 
   if (type) {

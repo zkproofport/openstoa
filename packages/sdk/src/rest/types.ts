@@ -22,6 +22,7 @@ export interface SessionPayload {
 }
 
 export type TopicVisibility = 'public' | 'private' | 'secret';
+export type TopicProofType = 'none' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace';
 
 export interface Topic {
   id: string;
@@ -57,7 +58,7 @@ export interface CreateTopicInput {
   description?: string;
   visibility?: TopicVisibility;
   categoryId?: string;
-  proofType?: string;
+  proofType?: TopicProofType;
   allowedCountries?: string[];
   /**
    * How long the topic keeps its encrypted chat archive, in days: 0 (the
@@ -159,11 +160,9 @@ export interface ConsumedKeyPackageWire {
 }
 
 /**
- * Durable, revocable API key (design §7 follow-up). An agent authenticates
- * with `Authorization: Bearer <rawKey>` instead of an interactive login — the
- * key IS the scoped credential; its `cmd`/`historyGrant` gate requests
- * directly. Metadata only — a key's raw value/hash is never returned except
- * once, in `ApiKeyCreateResult.rawKey`, at issuance.
+ * Durable permission key. Sent as X-OpenStoa-API-Key alongside a login session.
+ * Each key independently limits cmd/historyGrant. Metadata never exposes the
+ * raw key/hash; ApiKeyCreateResult.rawKey is returned once at issuance.
  */
 export interface ApiKeyMeta {
   id: string;

@@ -21,12 +21,15 @@
  */
 import Link from 'next/link';
 import Avatar from './Avatar';
+import UserIdentity from './UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import Spinner from './Spinner';
 import { relativeTime } from '@/lib/utils';
 // `export { x } from '…'` re-exports WITHOUT binding the name locally, and this
 // module calls it below — so it is imported and re-exported separately.
 import { formatUnreadBadge } from '@/lib/chatUnreadBadge';
 import type { DmChannel } from '@/lib/dm';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export interface RailTopic {
@@ -206,6 +209,8 @@ export { formatUnreadBadge };
  * the field) still renders no badge rather than a zero pill.
  */
 function RoomRow({
+  userId,
+  badges,
   name,
   profileImage,
   title,
@@ -215,6 +220,8 @@ function RoomRow({
   onClick,
   testId,
 }: {
+  userId?: string;
+  badges?: PublicBadge[];
   name: string;
   profileImage?: string | null;
   title: string;
@@ -229,7 +236,7 @@ function RoomRow({
   const badge = formatUnreadBadge(unreadCount);
   return (
     <button type="button" style={rowStyle} onClick={onClick} data-testid={testId}>
-      <Avatar src={profileImage ?? undefined} name={name} size={36} />
+      {!userId && <Avatar src={profileImage ?? undefined} name={name} size={36} />}
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
           <span
@@ -244,7 +251,8 @@ function RoomRow({
               whiteSpace: 'nowrap',
             }}
           >
-            {title}
+            {userId ? <UserIdentity userId={userId} nickname={title} profileImage={profileImage}
+              badges={badges} avatarSize={36} interactive={false} /> : title}
           </span>
           {badge && (
             <span
@@ -337,7 +345,7 @@ function TopicList({
   if (loadError != null) {
     return (
       <ListNotice
-        body={loadError || t('chatRail.loadFailed')}
+        body={localizeApiError(loadError, t, 'chatRail.loadFailed')}
         action={
           onRetry && (
             <button
@@ -426,7 +434,7 @@ function DmList({
     );
   }
   if (loadError != null) {
-    return <ListNotice body={loadError || t('chatRail.loadFailed')} />;
+    return <ListNotice body={localizeApiError(loadError, t, 'chatRail.loadFailed')} />;
   }
   if (dms === null) {
     return (
@@ -447,6 +455,8 @@ function DmList({
       {dms.map((d) => (
         <RoomRow
           key={d.topicId}
+          userId={d.peer.userId}
+          badges={d.peer.badges}
           name={d.peer.nickname}
           profileImage={d.peer.profileImage}
           title={d.peer.nickname}

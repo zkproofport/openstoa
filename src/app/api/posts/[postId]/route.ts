@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -10,12 +11,11 @@ import { extractAndUploadBase64Images } from '@/lib/base64-upload';
 import { deleteOrphanedR2Urls } from '@/lib/r2';
 import { requireAiCapability } from '@/lib/aiPermissions';
 
-import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { getBatchUserBadges } from '@/lib/verification-cache';
 import { attachPollsToPosts } from '@/lib/polls';
 import { isSupportedVideoUrl } from '@/lib/videoUrls';
 import { normalisePostMedia } from '@/lib/normalisePostMedia';
 import { hasNulByte } from '@/lib/textGuard';
-type Badge = { type: string; label: string };
 
 const ROUTE = '/api/posts/[postId]';
 
@@ -186,6 +186,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -304,7 +307,7 @@ export async function GET(
           ...c,
           isDeleted: false,
           deletedBy: null,
-          badges: filterBadgesByTopicProofType(guestBadgeMap.get(c.authorId) ?? [], topicPT),
+          badges: guestBadgeMap.get(c.authorId) ?? [],
         };
       });
 
@@ -312,7 +315,7 @@ export async function GET(
       const guestPost = {
         ...postWithoutVisibility,
         tags: postTagResults,
-        badges: filterBadgesByTopicProofType(guestBadgeMap.get(post.authorId) ?? [], topicPT),
+        badges: guestBadgeMap.get(post.authorId) ?? [],
       };
       await attachPollsToPosts([guestPost], null);
       return NextResponse.json({ post: guestPost, comments: guestCommentsWithBadges });
@@ -461,7 +464,7 @@ export async function GET(
         ...c,
         isDeleted: false,
         deletedBy: null,
-        badges: filterBadgesByTopicProofType(badgeMap.get(c.authorId) ?? [], authTopicPT),
+        badges: badgeMap.get(c.authorId) ?? [],
       };
     });
 
@@ -469,7 +472,7 @@ export async function GET(
     const authPost = {
       ...postWithoutProofType,
       tags: postTagResults,
-      badges: filterBadgesByTopicProofType(badgeMap.get(post.authorId) ?? [], authTopicPT),
+      badges: badgeMap.get(post.authorId) ?? [],
       // Used by the mobile post detail to render a "Joined" badge next
       // to the topic title (parity with the topic list card).
       isJoinedTopic: !!membership,
@@ -485,6 +488,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'DELETE request received');
   try {
     const session = await getSession(request);
@@ -592,6 +598,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'PATCH request received');
   try {
     const session = await getSession(request);

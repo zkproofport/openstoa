@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import {NextRequest} from 'next/server';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { users, topics } from '@/lib/db/schema';
@@ -20,7 +22,10 @@ import { and, count, eq } from 'drizzle-orm';
  *       200:
  *         description: Community statistics
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/stats');
+  if (authorizationError) return authorizationError;
+
   const db = getDb();
 
   /*

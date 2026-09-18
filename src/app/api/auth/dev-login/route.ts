@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { createSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -27,6 +28,9 @@ const NICKNAME_MAX = 64;
  * ONLY available when APP_ENV !== 'production'.
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/dev-login');
+  if (authorizationError) return authorizationError;
+
   if (process.env.APP_ENV === 'production') {
     return NextResponse.json({ error: 'Not available in production' }, { status: 404 });
   }

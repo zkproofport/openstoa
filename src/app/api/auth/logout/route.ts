@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { clearSessionCookie, getSession } from '@/lib/session';
 import { revokeSession } from '@/lib/sessionStore';
@@ -24,6 +25,9 @@ const ROUTE = '/api/auth/logout';
  *         description: Logged out successfully
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/logout');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received, ending session');
 
   /*

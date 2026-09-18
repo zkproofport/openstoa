@@ -1,9 +1,10 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { topicMembers, users } from '@/lib/db/schema';
 import { eq, and, ilike, sql } from 'drizzle-orm';
-import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { getBatchUserBadges } from '@/lib/verification-cache';
 import { topics } from '@/lib/db/schema';
 import { broadcastMembershipSystemEvent } from '@/lib/chat';
 import { requireAiCapability } from '@/lib/aiPermissions';
@@ -163,6 +164,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/members');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -182,13 +186,6 @@ export async function GET(
   if (!membership) {
     return NextResponse.json({ error: 'Not a member' }, { status: 403 });
   }
-
-  // Get topic proofType for badge filtering
-  const topicForBadge = await db.query.topics.findFirst({
-    where: eq(topics.id, topicId),
-    columns: { proofType: true },
-  });
-  const topicProofType = topicForBadge?.proofType ?? null;
 
   logger.info(ROUTE, 'Fetching members', { topicId, q });
 
@@ -210,7 +207,7 @@ export async function GET(
     const badgeMap = await getBatchUserBadges(mentionUserIds);
     const membersWithBadges = members.map(m => ({
       ...m,
-      badges: filterBadgesByTopicProofType(badgeMap.get(m.userId) ?? [], topicProofType),
+      badges: badgeMap.get(m.userId) ?? [],
     }));
     return NextResponse.json({ members: membersWithBadges, currentUserRole: membership.role });
   }
@@ -234,7 +231,7 @@ export async function GET(
   const badgeMap = await getBatchUserBadges(memberUserIds);
   const membersWithBadges = members.map(m => ({
     ...m,
-    badges: filterBadgesByTopicProofType(badgeMap.get(m.userId) ?? [], topicProofType),
+    badges: badgeMap.get(m.userId) ?? [],
   }));
 
   return NextResponse.json({ members: membersWithBadges });
@@ -244,6 +241,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/members');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'PATCH request received');
   try {
     const session = await getSession(request);
@@ -328,6 +328,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/members');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'DELETE request received');
   try {
     const session = await getSession(request);
@@ -342,7 +345,7 @@ export async function DELETE(
 
     // Profile-level AI capability (design §7): membership removal is gated by
     // the topic/leave capability for isAI callers. Humans unaffected.
-    const leaveGate = await requireAiCapability(db, session, '/openstoa/topic/leave');
+    const leaveGate = await requireAiCapability(db, session, '/openstoa/topic/manage-members');
     if (leaveGate) {
       logger.warn(ROUTE, 'AI caller lacks topic/leave capability', { userId: session.userId, topicId });
       return leaveGate;

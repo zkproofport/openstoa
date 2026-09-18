@@ -64,7 +64,8 @@ describe('GET /api/posts/[postId]/bookmark', () => {
 
     expect(res.status).toBe(401);
     const json = await res.json();
-    expect(json.error).toBe('Not authenticated');
+    expect(json.code).toBe('authentication_required');
+    expect(json.authentication.startUrl).toBe('/api/auth/cli-login');
   });
 
   it('returns bookmarked: false when bookmark does not exist', async () => {
@@ -125,7 +126,8 @@ describe('POST /api/posts/[postId]/bookmark', () => {
 
     expect(res.status).toBe(401);
     const json = await res.json();
-    expect(json.error).toBe('Not authenticated');
+    expect(json.code).toBe('authentication_required');
+    expect(json.authentication.startUrl).toBe('/api/auth/cli-login');
   });
 
   it('returns bookmarked: true when bookmark did not exist (adds bookmark)', async () => {

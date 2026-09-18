@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest } from 'next/server';
 import { logger } from '@/lib/logger';
 import { getAskSystemPrompt } from '@/lib/askSystemPrompt';
@@ -126,41 +127,27 @@ async function* streamOpenAI(messages: ChatMessage[], systemPrompt: string): Asy
  * /api/ask/stream:
  *   post:
  *     tags: [AI]
- *     summary: Ask a question about OpenStoa (SSE streaming)
- *     description: Same as /api/ask but returns tokens as Server-Sent Events for real-time display. Uses Gemini streaming (primary) with OpenAI streaming fallback. Each SSE event contains a partial text chunk. The stream ends with a `[DONE]` event.
+ *     summary: Disabled AI help endpoint
+ *     description: This endpoint is disabled and always returns 503. Use /docs or /AGENTS.md for current integration instructions. No LLM provider is called.
  *     operationId: askQuestionStream
+ *     deprecated: true
  *     security: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               question:
- *                 type: string
- *                 description: Single question about OpenStoa (backward compat)
- *               messages:
- *                 type: array
- *                 description: Multi-turn conversation history
- *                 items:
- *                   type: object
- *                   properties:
- *                     role:
- *                       type: string
- *                       enum: [user, assistant]
- *                     content:
- *                       type: string
  *     responses:
- *       200:
- *         description: SSE stream of text chunks
+ *       503:
+ *         description: AI service has been disabled
  *         content:
- *           text/event-stream:
+ *           application/json:
  *             schema:
- *               type: string
- *               example: "data: {\"text\":\"Hello\"}\n\ndata: [DONE]\n\n"
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: AI service has been disabled.
  */
 export async function POST(_request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(_request, '/api/ask/stream');
+  if (authorizationError) return authorizationError;
+
   // DISABLED 2026-05-25: LLM API providers (OpenAI/Gemini/Anthropic) deprecated.
   // Re-enable by replacing the body with `return _disabledOriginalPost(_request);`.
   // See docs/migration/third-party-services.md §4-6.

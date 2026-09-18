@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -124,7 +125,9 @@ describe('requireAiCapability — the real gate (authz / hostile / fail-closed)'
 // ───────────────────────────────────────────────────────────────────────────
 // 2. Retired /api/profile/ai-permissions — always 410 (401 first if unauthed)
 // ───────────────────────────────────────────────────────────────────────────
-import { GET as aiPermsGET, PUT as aiPermsPUT } from '@/app/api/profile/ai-permissions/route';
+import { GET as aiPermsGETHttpHandler, PUT as aiPermsPUTHttpHandler } from '@/app/api/profile/ai-permissions/route';
+const aiPermsGET=withHttpRequest(aiPermsGETHttpHandler,'GET');
+const aiPermsPUT=withHttpRequest(aiPermsPUTHttpHandler,'PUT');
 
 const req = (body: unknown, query = '') =>
   ({ json: async () => body, url: `http://x/api/x${query}`, cookies: { get: () => undefined }, headers: { get: () => null } }) as never;
@@ -178,15 +181,26 @@ vi.mock('@/lib/aiPermissions', async (importOriginal) => {
 });
 
 import { NextResponse } from 'next/server';
-import { POST as chatPOST, GET as chatGET } from '@/app/api/topics/[topicId]/chat/route';
-import { GET as archiveGET } from '@/app/api/topics/[topicId]/archive/route';
-import { GET as takGET } from '@/app/api/topics/[topicId]/tak/bundles/route';
-import { POST as joinPOST } from '@/app/api/topics/[topicId]/join/route';
-import { DELETE as membersDELETE } from '@/app/api/topics/[topicId]/members/route';
-import { POST as postsPOST } from '@/app/api/topics/[topicId]/posts/route';
-import { PATCH as postPATCH, DELETE as postDELETE } from '@/app/api/posts/[postId]/route';
-import { POST as commentsPOST } from '@/app/api/posts/[postId]/comments/route';
-import { PUT as nicknamePUT } from '@/app/api/profile/nickname/route';
+import { POST as chatPOSTHttpHandler, GET as chatGETHttpHandler } from '@/app/api/topics/[topicId]/chat/route';
+const chatPOST=withHttpRequest(chatPOSTHttpHandler,'POST');
+const chatGET=withHttpRequest(chatGETHttpHandler,'GET');
+import { GET as archiveGETHttpHandler } from '@/app/api/topics/[topicId]/archive/route';
+const archiveGET=withHttpRequest(archiveGETHttpHandler,'GET');
+import { GET as takGETHttpHandler } from '@/app/api/topics/[topicId]/tak/bundles/route';
+const takGET=withHttpRequest(takGETHttpHandler,'GET');
+import { POST as joinPOSTHttpHandler } from '@/app/api/topics/[topicId]/join/route';
+const joinPOST=withHttpRequest(joinPOSTHttpHandler,'POST');
+import { DELETE as membersDELETEHttpHandler } from '@/app/api/topics/[topicId]/members/route';
+const membersDELETE=withHttpRequest(membersDELETEHttpHandler,'DELETE');
+import { POST as postsPOSTHttpHandler } from '@/app/api/topics/[topicId]/posts/route';
+const postsPOST=withHttpRequest(postsPOSTHttpHandler,'POST');
+import { PATCH as postPATCHHttpHandler, DELETE as postDELETEHttpHandler } from '@/app/api/posts/[postId]/route';
+const postPATCH=withHttpRequest(postPATCHHttpHandler,'PATCH');
+const postDELETE=withHttpRequest(postDELETEHttpHandler,'DELETE');
+import { POST as commentsPOSTHttpHandler } from '@/app/api/posts/[postId]/comments/route';
+const commentsPOST=withHttpRequest(commentsPOSTHttpHandler,'POST');
+import { PUT as nicknamePUTHttpHandler } from '@/app/api/profile/nickname/route';
+const nicknamePUT=withHttpRequest(nicknamePUTHttpHandler,'PUT');
 
 const TOPIC = '00000000-0000-0000-0000-000000000001';
 const POST = '00000000-0000-0000-0000-0000000000bb';
@@ -222,7 +236,7 @@ describe('isAI capability gate is wired on every guarded route (contract)', () =
     ['archive GET → chat/read', () => archiveGET(req(null), { params: tParams() }), '/openstoa/chat/read'],
     ['tak GET → chat/read', () => takGET(req(null, '?deviceId=d1'), { params: tParams() }), '/openstoa/chat/read'],
     ['join POST → topic/join', () => joinPOST(req({}), { params: tParams() }), '/openstoa/topic/join'],
-    ['members DELETE → topic/leave', () => membersDELETE(req({ userId: 'other' }), { params: tParams() }), '/openstoa/topic/leave'],
+    ['members DELETE → topic/manage-members', () => membersDELETE(req({ userId: 'other' }), { params: tParams() }), '/openstoa/topic/manage-members'],
     ['posts POST → post/write', () => postsPOST(req({ title: 't', content: 'c' }), { params: tParams() }), '/openstoa/post/write'],
     ['post PATCH → post/write', () => postPATCH(req({ title: 't' }), { params: pParams() }), '/openstoa/post/write'],
     ['post DELETE → post/delete', () => postDELETE(req(null), { params: pParams() }), '/openstoa/post/delete'],
@@ -232,11 +246,13 @@ describe('isAI capability gate is wired on every guarded route (contract)', () =
 
   for (const [label, call, cmd] of cases) {
     it(`403 when the gate blocks the AI caller — ${label}`, async () => {
+      const caller={...ai,apiKeyCmd:[cmd]};
+      mocks.getSession.mockResolvedValue(caller);
       mocks.requireAiCapability.mockResolvedValue(FORBIDDEN());
       const res = await call();
       expect(res.status).toBe(403);
       // Contract: the route asked the gate for exactly this cmd.
-      expect(mocks.requireAiCapability).toHaveBeenCalledWith(expect.anything(), ai, cmd);
+      expect(mocks.requireAiCapability).toHaveBeenCalledWith(expect.anything(), caller, cmd);
     });
   }
 

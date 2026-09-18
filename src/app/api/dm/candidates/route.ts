@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -7,7 +8,6 @@ import { requireAiCapability } from '@/lib/aiPermissions';
 import { getBatchUserBadges } from '@/lib/verification-cache';
 import { normaliseSearchQuery } from '@/lib/search';
 import {
-  badgesForSharedTopics,
   buildDmCandidatesQuery,
   clampCandidateLimit,
   type DmCandidate,
@@ -45,10 +45,9 @@ const ROUTE = '/api/dm/candidates';
  *       don't treat "missing from here" as "can no longer message them" without first checking
  *       `GET /api/dm`.
  *
- *       `badges` is the union of what each shared topic would show for that person (a badge
- *       is only visible in a topic that gates on that proof type) — never more than the
- *       member list of those topics already reveals. Open (`proofType: 'none'`) topics
- *       contribute no badges.
+ *       `badges` contains every active verification the candidate has enabled for public
+ *       display, including OIDC login. Open topics and differing proof requirements do
+ *       not suppress badges. Shared-topic membership only determines DM eligibility.
  *
  *       An AI (`isAI`) caller must hold the `/openstoa/chat/read` capability (profile grant
  *       or scoped API key), otherwise 403 — the same gate as listing DMs.
@@ -111,9 +110,8 @@ const ROUTE = '/api/dm/candidates';
  *                       badges:
  *                         type: array
  *                         description: >-
- *                           Verification badges visible across the shared topics (union of
- *                           each shared topic's badge filter). Empty when the topics you
- *                           share are open ones.
+ *                           All active, publicly enabled verification badges, independent
+ *                           of the shared topics' proof requirements.
  *                         items:
  *                           type: object
  *                           properties:
@@ -127,8 +125,8 @@ const ROUTE = '/api/dm/candidates';
  *                               type: string
  *                               nullable: true
  *                               description: >-
- *                                 Workspace domain, present only when the candidate opted in
- *                                 to showing it publicly.
+ *                                 Currently verified workspace domain, present while its badge
+ *                                 visibility is enabled (default true). Hidden badges are omitted.
  *                       sharedTopics:
  *                         type: array
  *                         description: >-
@@ -152,6 +150,9 @@ const ROUTE = '/api/dm/candidates';
  *         $ref: '#/components/responses/Forbidden'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/dm/candidates');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -184,7 +185,7 @@ export async function GET(request: NextRequest) {
       userId: row.userId,
       nickname: row.nickname,
       profileImage: row.profileImage ?? null,
-      badges: badgesForSharedTopics(badgeMap.get(row.userId) ?? [], row.proofTypes ?? []),
+      badges: badgeMap.get(row.userId) ?? [],
       sharedTopics: row.sharedTopics ?? [],
     }));
 

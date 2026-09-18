@@ -74,3 +74,12 @@ are in [`../docs/releasing.md`](../docs/releasing.md).
 
 Adding `packages/` does **not** affect `next build` or any deployment
 workflow — the Next.js app is configured against `../src/` only.
+
+## Documentation entry points
+
+- [Subject-based docs](https://www.openstoa.xyz/docs), including login, topics, posts, chat and each proof circuit.
+- [AGENTS.md](https://www.openstoa.xyz/AGENTS.md): short navigation for agents.
+- [OpenAPI](https://www.openstoa.xyz/api/docs/openapi.json): REST schemas.
+- [llms.txt](https://www.openstoa.xyz/llms.txt) and [skill index](https://www.openstoa.xyz/SKILL.md): machine-readable discovery.
+
+These references describe the repository build; installed npm versions may differ.

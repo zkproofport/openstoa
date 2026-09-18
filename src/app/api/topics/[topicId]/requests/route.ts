@@ -1,3 +1,6 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { requireTopicProof } from '@/lib/topic-proof';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -104,6 +107,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/requests');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -150,7 +156,7 @@ export async function GET(
       .where(whereClause);
 
     logger.info(ROUTE, 'Join requests fetched', { topicId, count: requests.length });
-    return NextResponse.json({ requests });
+    return NextResponse.json({ requests: await withPublicIdentityBadges(requests, row => row.userId) });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }
@@ -160,6 +166,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/requests');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'PATCH request received');
   try {
     const session = await getSession(request);
@@ -193,9 +202,10 @@ export async function PATCH(
      */
     const topic = await db.query.topics.findFirst({
       where: eq(topics.id, topicId),
-      columns: { personal: true },
+      columns: { personal: true, proofType: true, requiresCountryProof: true, requiredDomain: true, allowedCountries: true },
     });
-    if (topic?.personal) {
+    if (!topic) return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    if (topic.personal) {
       return NextResponse.json({ error: PERSONAL_TOPIC_CLOSED }, { status: 403 });
     }
 
@@ -220,6 +230,13 @@ export async function PATCH(
 
     if (joinRequest.status !== 'pending') {
       return NextResponse.json({ error: 'Request already processed' }, { status: 409 });
+    }
+
+    if (action === 'approve') {
+      // The approver cannot supply a proof on another account's behalf. Only
+      // the requester's already verified, account-bound predicate qualifies.
+      const proofFailure = await requireTopicProof(joinRequest.userId, topic, {});
+      if (proofFailure) return proofFailure;
     }
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';

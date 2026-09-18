@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
 import { resizeImage } from '@/lib/utils';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 export default function EditTopicPage() {
@@ -58,7 +59,7 @@ export default function EditTopicPage() {
           setImagePreview(topic.image);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : t('editTopicPage.loadFailed'));
+        setError(localizeApiError(err, t, 'editTopicPage.loadFailed'));
       } finally {
         setLoading(false);
       }
@@ -145,7 +146,7 @@ export default function EditTopicPage() {
 
       router.push(`/topics/${topicId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
+      setError(localizeApiError(err, t, 'editTopicPage.unknownError'));
       setSubmitting(false);
     }
   }
@@ -174,7 +175,7 @@ export default function EditTopicPage() {
       }
       router.push('/topics');
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('editTopicPage.deleteFailed'));
+      setError(localizeApiError(err, t, 'editTopicPage.deleteFailed'));
       setDeleting(false);
     }
   }

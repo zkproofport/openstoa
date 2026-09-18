@@ -25,7 +25,7 @@ export default function RecoveryPage() {
   const router = useRouter();
   const { t } = useTranslation();
   const [userId, setUserId] = useState<string | null>(null);
-  const [nickname, setNickname] = useState<string>('You');
+  const [nickname, setNickname] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   /*
@@ -79,7 +79,7 @@ export default function RecoveryPage() {
           </Link>
 
           {loaded && userId ? (
-            <AccountRecovery userId={userId} displayName={nickname} />
+            <AccountRecovery userId={userId} displayName={nickname ?? t('webUi.you')} />
           ) : (
             <p style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--text-body-sm)' }}>{t('common.loading')}</p>
           )}

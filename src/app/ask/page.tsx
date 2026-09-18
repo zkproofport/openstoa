@@ -3,6 +3,7 @@
 import { apiFetch } from '@/lib/apiFetch';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface Message {
@@ -11,16 +12,16 @@ interface Message {
 }
 
 const SUGGESTED_QUESTIONS = [
-  'What proof types can topics require?',
-  'How do I login as an AI agent?',
-  'What is a nullifier?',
-  'How does on-chain recording work?',
+  'askPage.questions.q1',
+  'askPage.questions.q2',
+  'askPage.questions.q3',
+  'askPage.questions.q4',
 ];
 
 const FOLLOW_UP_QUESTIONS = [
-  ['How do I create a topic with KYC gating?', 'What is the difference between KYC and Country proof?', 'How do I generate a single-use invite link?', 'Can AI agents post in any topic?'],
-  ['How do verification badges work?', 'What is the scope in ZK proofs?', 'How does nullifier-based identity prevent tracking?', 'What blockchains are supported?'],
-  ['How do I set up the MCP server?', 'What USDC amount is needed for proof generation?', 'How do I use the OpenAPI spec?', 'What is on-chain recording?'],
+  ['askPage.questions.q5', 'askPage.questions.q6', 'askPage.questions.q7', 'askPage.questions.q8'],
+  ['askPage.questions.q9', 'askPage.questions.q10', 'askPage.questions.q11', 'askPage.questions.q12'],
+  ['askPage.questions.q13', 'askPage.questions.q14', 'askPage.questions.q15', 'askPage.questions.q16'],
 ];
 
 import { isSafeUrl } from '@/lib/sanitizePostHtml';
@@ -284,8 +285,8 @@ export default function AskPage() {
 
   const pickFollowUps = useCallback((turnIndex: number) => {
     const pool = FOLLOW_UP_QUESTIONS[turnIndex % FOLLOW_UP_QUESTIONS.length];
-    return [...pool].sort(() => Math.random() - 0.5).slice(0, 3);
-  }, []);
+    return [...pool].sort(() => Math.random() - 0.5).slice(0, 3).map((key) => t(key));
+  }, [t]);
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
@@ -319,7 +320,7 @@ export default function AskPage() {
 
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({ error: 'Something went wrong' }));
-        setError(data.error || 'Something went wrong');
+        setError(localizeApiError(data.error, t));
         setLoading(false);
         return;
       }
@@ -341,7 +342,7 @@ export default function AskPage() {
           if (!jsonStr || jsonStr === '[DONE]') continue;
           try {
             const chunk = JSON.parse(jsonStr);
-            if (chunk.error) setError(chunk.error);
+            if (chunk.error) setError(localizeApiError(chunk.error, t));
             else if (chunk.text) { accumulated += chunk.text; setStreamingContent(accumulated); }
           } catch {}
         }
@@ -426,12 +427,12 @@ export default function AskPage() {
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--color-brand-primary-muted)', border: '1px solid var(--color-brand-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
               </div>
-              <h1 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 22, color: 'var(--color-text-primary)', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Ask OpenStoa AI</h1>
+              <h1 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 22, color: 'var(--color-text-primary)', margin: '0 0 8px', letterSpacing: '-0.02em' }}>{t('askPage.askTitle')}</h1>
               <p style={{ color: 'var(--color-text-tertiary)', fontSize: 14, fontFamily: 'var(--font-sans)', margin: '0 0 40px', textAlign: 'center', lineHeight: 1.6 }}>
-                Ask anything about OpenStoa — proofs, authentication, topics, and more.
+                {t('askPage.askDescription')}
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%', maxWidth: 520 }} className="suggested-grid">
-                {SUGGESTED_QUESTIONS.map((q) => (
+                {SUGGESTED_QUESTIONS.map((key) => t(key)).map((q) => (
                   <button key={q} onClick={() => sendMessage(q)}
                     style={{ background: 'var(--color-bg-secondary)', border: '1px solid color-mix(in srgb, var(--color-brand-primary) 12%, transparent)', borderRadius: 10, padding: '14px 16px', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-sans)', textAlign: 'left', cursor: 'pointer', lineHeight: 1.5, transition: 'all 0.15s' }}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--color-brand-primary) 7%, transparent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-primary)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
@@ -548,7 +549,7 @@ export default function AskPage() {
             </button>
           </div>
           <p style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)', margin: '4px 0 0', letterSpacing: '0.02em' }}>
-            Enter to send · Shift+Enter for new line
+            {t('askPage.sendHint')}
           </p>
         </div>
       </div>

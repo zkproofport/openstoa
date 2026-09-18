@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { canonicalDmPair } from '@/lib/dm';
 
@@ -69,7 +70,9 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-import { POST, GET } from '@/app/api/dm/route';
+import { POST as POSTHttpHandler, GET as GETHttpHandler } from '@/app/api/dm/route';
+const POST=withHttpRequest(POSTHttpHandler,'POST');
+const GET=withHttpRequest(GETHttpHandler,'GET');
 
 function post(body: unknown) {
   return { json: async () => body, url: 'http://x/api/dm', cookies: { get: () => undefined }, headers: { get: () => null } } as never;
@@ -188,7 +191,7 @@ describe('GET /api/dm — capability gate + SI-1', () => {
     expect(body.dms).toHaveLength(1);
     expect(body.dms[0]).toEqual({
       topicId: 't1',
-      peer: { userId: 'bob', nickname: 'bob', profileImage: null },
+      peer: { userId: 'bob', nickname: 'bob', profileImage: null, badges: [] },
       lastActivityAt: '2026-01-01T00:00:00.000Z',
       // Read state, never read content: an id, an instant and a count. All
       // three are metadata the server already held.

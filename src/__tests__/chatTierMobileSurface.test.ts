@@ -105,9 +105,17 @@ describe('the mini-app says what the web says', () => {
     }
   });
 
-  it('UTF-8: identical Korean copy in both catalogues', () => {
-    for (const key of CLAIMS) {
-      expect(koMobile.openstoa.chat.tierClaim[key], key).toBe(koWeb.chat.tierClaim[key]);
+  it('UTF-8: each Korean client distinguishes E2EE from a server-readable public topic', () => {
+    for (const claim of [koWeb.chat.tierClaim, koMobile.openstoa.chat.tierClaim]) {
+      expect(claim.e2ee).toMatch(/새 메시지와 이미지/);
+      expect(claim.e2ee).toMatch(/종단\s*간 암호화/);
+      expect(claim.e2ee).toMatch(/읽을 수 없/);
+      expect(claim.serverReadable).toContain('공개 토픽');
+      expect(claim.serverReadable).toContain('키');
+      expect(claim.serverReadable).toContain('읽을 수 있습니다');
+      expect(claim.serverReadable).not.toMatch(/종단\s*간 암호화/);
+      expect(claim.learnMore).toMatch(/[가-힣]/);
+      expect(claim.learnMore.trim().length).toBeGreaterThan(3);
     }
   });
 

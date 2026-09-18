@@ -1,10 +1,15 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import { translate } from '@/lib/i18n';
+import { getServerLocale } from '@/lib/i18n/getServerLocale';
 
-export const metadata: Metadata = {
-  title: 'API Reference',
-  description: 'Interactive REST API reference for the OpenStoa community service.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getServerLocale();
+  return {
+    title: translate(locale, 'metadata.apiReferenceTitle'),
+    description: translate(locale, 'metadata.apiReferenceDescription'),
+  };
+}
 
 /**
  * Interactive API reference rendered with Scalar's CDN bundle.
@@ -18,7 +23,8 @@ export const metadata: Metadata = {
  * this page is the machine-readable explorer (try-it-out, schemas, etc.)
  * for AI agents and integrators who want to poke individual endpoints.
  */
-export default function ApiReferencePage() {
+export default async function ApiReferencePage() {
+  const locale = await getServerLocale();
   const configuration = JSON.stringify({
     theme: 'purple',
     layout: 'modern',
@@ -26,7 +32,7 @@ export default function ApiReferencePage() {
     metaData: {
       title: 'OpenStoa API',
       description:
-        'REST endpoints for posts, topics, comments, bookmarks, polls, media uploads, and AI-agent authentication.',
+        translate(locale, 'metadata.apiReferenceEndpoints'),
     },
   });
 

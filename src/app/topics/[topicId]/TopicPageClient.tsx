@@ -19,6 +19,7 @@ import PollEditor, { type PollEditorValue } from '@/components/PollEditor';
 import PollRenderer from '@/components/PollRenderer';
 import MediaGallery from '@/components/post/MediaGallery';
 import ArchiveRetentionNotice from '@/components/ArchiveRetentionNotice';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import InviteDialog from '@/components/InviteDialog';
 
@@ -287,7 +288,7 @@ export default function TopicPageClient() {
       setTopic(data.topic);
       if (data.currentUserRole) setCurrentUserRole(data.currentUserRole);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('topicPage.loadTopicFailed'));
+      setError(localizeApiError(err, t, 'topicPage.loadTopicFailed'));
     } finally {
       setLoading(false);
     }
@@ -412,7 +413,7 @@ export default function TopicPageClient() {
       }
       router.push('/topics/explore');
     } catch (err) {
-      setLeaveError(err instanceof Error ? err.message : t('membersPage.leaveFailed'));
+      setLeaveError(localizeApiError(err, t, 'membersPage.leaveFailed'));
       setConfirmLeave(false);
     } finally {
       setLeaving(false);
@@ -519,7 +520,7 @@ export default function TopicPageClient() {
       setComposing(false);
       loadPosts(0, true, activeTag, sortBy);
     } catch (err) {
-      setPostError(err instanceof Error ? err.message : t('editTopicPage.unknownError'));
+      setPostError(localizeApiError(err, t, 'editTopicPage.unknownError'));
     } finally {
       setSubmitting(false);
     }

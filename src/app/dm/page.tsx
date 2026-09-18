@@ -8,11 +8,12 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
-import Avatar from '@/components/Avatar';
+import UserIdentity from '@/components/UserIdentity';
 import Spinner from '@/components/Spinner';
 import { rowStyle, emptyStateStyle } from '@/components/ChatRoomList';
 import { relativeTime } from '@/lib/utils';
 import { sortDmChannels, type DmChannel } from '@/lib/dm';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 /**
@@ -85,7 +86,7 @@ export default function DmListPage() {
       const data = await res.json();
       setDms(sortDmChannels(data.dms ?? []));
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('dmPage.loadError'));
+      setError(localizeApiError(err, t, 'dmPage.loadError'));
     } finally {
       setLoading(false);
     }
@@ -198,25 +199,10 @@ export default function DmListPage() {
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-secondary)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
-                <Avatar src={dm.peer.profileImage} name={dm.peer.nickname} size={36} />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span
-                    data-testid="dm-row-title"
-                    style={{
-                      display: 'block',
-                      fontSize: 'var(--text-body-sm)',
-                      fontWeight: 600,
-                      color: 'var(--color-text-primary)',
-                      // Layout-only truncation: a very long nickname must not
-                      // push the timestamp out of the row. The value is intact
-                      // in the DOM.
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {dm.peer.nickname}
-                  </span>
+                  <UserIdentity userId={dm.peer.userId} nickname={dm.peer.nickname} profileImage={dm.peer.profileImage}
+                    badges={dm.peer.badges} avatarSize={36} interactive={false} nameTestId="dm-row-title"
+                    nameStyle={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)' }} />
                   {/* SI-1 — never a preview. "Encrypted message" where the
                       channel has seen activity, "No messages yet" where it
                       provably has not; same two sentences the rail uses. */}
