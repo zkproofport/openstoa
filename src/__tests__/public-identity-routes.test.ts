@@ -15,6 +15,7 @@ vi.mock('@/lib/userPostFlags',()=>({attachUserFlagsToPosts:async(rows:unknown[])
 vi.mock('@/lib/polls',()=>({attachPollsToPosts:async()=>{}}));
 vi.mock('@/lib/postTags',()=>({attachTagsToPosts:async()=>{}}));
 vi.mock('@/lib/visibleTopics',()=>({resolveVisibleTopicIds:async()=>['topic']}));
+vi.mock('@/lib/postReadable',()=>({canReadPost:vi.fn().mockResolvedValue(true)}));
 vi.mock('@/lib/explorer',()=>({txExplorerUrl:()=>null}));
 vi.mock('@/lib/record',()=>({isContentHashMatch:()=>true}));
 vi.mock('@/lib/chatUnread',()=>({readStatesForTopics:async()=>({}),emptyReadState:()=>({})}));

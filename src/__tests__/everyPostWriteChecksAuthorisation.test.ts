@@ -68,7 +68,7 @@ describe('post-write routes and authorisation', () => {
      * calling a `canActOnPost` that had been quietly loosened to return true.
      */
     const rule = readFileSync(join(process.cwd(), 'src/lib/postReadable.ts'), 'utf8');
-    expect(rule).toMatch(/visibility === 'public' \|\| .*visibility === 'private'/);
+    expect(rule).toContain('return canReadPost(topicId, userId)');
     expect(rule).toMatch(/topicMembers/);
   });
 });

@@ -2,15 +2,10 @@
  * Durable API keys — END-TO-END against a REAL running container over HTTP
  * (design §7 follow-up, no mocks).
  *
- * Proves the full scoped-credential flow requested for this phase:
- *   1. issue an API key scoped to a NARROW capability set (topic/join + chat/read)
- *      — deliberately excluding post/write;
- *   2. an agent authenticating with ONLY that raw key (no JWT, no dev-login
- *      token at all) can perform the ALLOWED ops (join, chat/read) and gets
- *      403 on the OUT-OF-SCOPE op (post/write) — the key IS the credential,
- *      its own cmd list is authoritative;
- *   3. revoking the key takes effect immediately: the next request with the
- *      same raw key gets 401, even though nothing else about the account changed.
+ * A login session authenticates the account; its owner-issued key independently
+ * limits each business request. Key-only calls remain unauthenticated (401),
+ * while scope denial, owner mismatch, or revocation with a valid session is403.
+ * Tests cover allowed and refused operations without replacing the login.
  *
  * Also covers the CRUD contract (create/list/revoke) and boundary/hostile rows
  * (unknown cmd, invalid scope, guest, foreign-key revoke) over real HTTP.
@@ -34,8 +29,12 @@ async function devLogin(prefix: string): Promise<{ token: string; userId: string
   return { token: data.token, userId: data.userId };
 }
 
+// A fixture key selects permissions alongside its issuer's existing login.
+// Unknown keys stay literal Bearer inputs for the explicit authentication-negative tests.
+const keySessions = new Map<string, string>();
 function bearer(token: string) {
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  const session = keySessions.get(token);
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session ?? token}`, ...(session ? { 'X-OpenStoa-API-Key': token } : {}) };
 }
 const b64 = (s: string) => Buffer.from(s).toString('base64');
 
@@ -46,7 +45,9 @@ async function createKey(ownerToken: string, cmd: string[], historyGrant = 'none
     body: JSON.stringify({ name, cmd, historyGrant }),
   });
   if (res.status !== 201) throw new Error(`create key failed: ${res.status} ${await res.text()}`);
-  return res.json() as Promise<{ rawKey: string; key: { id: string; prefix: string; cmd: string[] } }>;
+  const created = await res.json() as { rawKey: string; key: { id: string; prefix: string; cmd: string[] } };
+  keySessions.set(created.rawKey, ownerToken);
+  return created;
 }
 
 describe.sequential('API keys (E2E, real container)', () => {
@@ -130,8 +131,19 @@ describe.sequential('API keys (E2E, real container)', () => {
     expect(notFound.status).toBe(404);
   });
 
+  it('requires a login and an owner-matching selected key; a key alone never authenticates', async () => {
+    const created = await createKey(owner.token, ['/openstoa/chat/read'], 'full');
+    const other = await devLogin('key_wrong_owner');
+    const url = `${BASE}/api/topics/${topicId}/chat`;
+    expect((await fetch(url, {headers: {'X-OpenStoa-API-Key': created.rawKey}})).status).toBe(401);
+    expect((await fetch(url, {headers: {Authorization: `Bearer ${created.rawKey}`}})).status).toBe(401);
+    const mismatch = await fetch(url, {headers: {...bearer(other.token), 'X-OpenStoa-API-Key': created.rawKey}});
+    expect(mismatch.status).toBe(403);
+    expect((await fetch(url, {headers: bearer(created.rawKey)})).status).toBe(200);
+  });
+
   // ── the requested scenario: scoped key, allowed vs out-of-scope, then revoke ──
-  it('an agent using ONLY a scoped key can do allowed ops but is 403\'d on an out-of-scope op; revoke → 401', async () => {
+  it('a logged-in agent using a scoped key can do allowed ops but is 403\'d on an out-of-scope op; revoke → 403', async () => {
     // Scoped to topic/join + chat/read — deliberately NOT post/write.
     // historyGrant 'full': this case is about the CMD allowlist, and a bounded
     // grant would 403 the chat read below for an unrelated reason (grant
@@ -140,13 +152,13 @@ describe.sequential('API keys (E2E, real container)', () => {
     const created = await createKey(owner.token, ['/openstoa/topic/join', '/openstoa/chat/read'], 'full', 'scoped-agent-key');
     const agentAuth = bearer(created.rawKey);
 
-    // Allowed: join a topic owner is NOT already a member of, using ONLY the
-    // raw key (no JWT anywhere in this call) — proves a REAL join, not just a
+    // Allowed: join a topic owner is NOT already a member of, using the
+    // saved login plus selected permission key — proves a REAL join, not just a
     // gate pass-through masked by a pre-existing membership.
     const join = await fetch(`${BASE}/api/topics/${joinTopicId}/join`, { method: 'POST', headers: agentAuth });
     expect([200, 201]).toContain(join.status);
 
-    // Allowed: read chat history using ONLY the raw key (topicId — owner is
+    // Allowed: read chat history using the login plus selected key (topicId — owner is
     // already a member there via topic creation, so this isolates the
     // chat/read capability check from membership/join mechanics).
     const read = await fetch(`${BASE}/api/topics/${topicId}/chat`, { headers: agentAuth });
@@ -169,9 +181,9 @@ describe.sequential('API keys (E2E, real container)', () => {
     const revoke = await fetch(`${BASE}/api/profile/api-keys/${created.key.id}`, { method: 'DELETE', headers: bearer(owner.token) });
     expect(revoke.status).toBe(200);
 
-    // Same raw key, same allowed op, now 401 (not 403 — the credential itself is gone).
+    // Same login remains valid; the revoked permission key now refuses the operation (403).
     const readAfterRevoke = await fetch(`${BASE}/api/topics/${topicId}/chat`, { headers: agentAuth });
-    expect(readAfterRevoke.status).toBe(401);
+    expect(readAfterRevoke.status).toBe(403);
 
     // Double-revoke is idempotent-safe: second DELETE finds nothing to flip.
     const revokeAgain = await fetch(`${BASE}/api/profile/api-keys/${created.key.id}`, { method: 'DELETE', headers: bearer(owner.token) });

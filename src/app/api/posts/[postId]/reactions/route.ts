@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { isValidUUID } from '@/lib/uuid';
 import { updateTopicScore } from '@/lib/topicScore';
-import { canActOnPost, NOT_A_MEMBER } from '@/lib/postReadable';
+import { canActOnPost, canReadPost, NOT_A_MEMBER } from '@/lib/postReadable';
 
 const ROUTE = '/api/posts/[postId]/reactions';
 
@@ -23,7 +23,7 @@ const ALLOWED_EMOJIS = ['👍', '❤️', '🔥', '😂', '🎉', '😮'];
  *     description: >-
  *       Returns all emoji reactions on a post, grouped by emoji with counts and whether the
  *       current user has reacted. Guests (unauthenticated) get userReacted: false for all.
- *       Authentication is optional.
+ *       Guests can read public-topic posts. Private-topic posts require login; secret-topic posts require membership.
  *     operationId: getReactions
  *     x-related-skills: [toggle-reaction, get-post]
  *     parameters:
@@ -107,6 +107,15 @@ export async function GET(
     const { postId } = await params;
     if (!isValidUUID(postId)) {
       return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
+    }
+
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, postId), columns: { topicId: true },
+    });
+    // Keep the established empty response for a nonexistent post.
+    if (!post) return NextResponse.json({ reactions: [] });
+    if (!await canReadPost(post.topicId, session?.userId)) {
+      return NextResponse.json({ error: session ? NOT_A_MEMBER : 'Login required' }, { status: session ? 403 : 401 });
     }
 
     // Get reaction counts grouped by emoji, and whether current user reacted.

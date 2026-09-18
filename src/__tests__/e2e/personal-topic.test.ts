@@ -218,7 +218,7 @@ describe('the space that comes with the account (E2E, real container)', () => {
      * is not the same claim as "it is checked" — and a personal space is the
      * one topic where a wrong answer is somebody's private room.
      *
-     * The key is minted with post read/write only, deliberately narrower than
+     * The key is minted with topic/post/chat reads and post writes, narrower than
      * the account: what is being tested is the TOPIC boundary, not the command
      * allowlist.
      */
@@ -228,12 +228,12 @@ describe('the space that comes with the account (E2E, real container)', () => {
         headers: bearer(owner.token),
         body: JSON.stringify({
           name: `e2e-space-probe-${Date.now().toString(36)}`,
-          cmd: ['/openstoa/post/read', '/openstoa/post/write', '/openstoa/chat/read'],
+          cmd: ['/openstoa/topic/read', '/openstoa/post/read', '/openstoa/post/write', '/openstoa/chat/read'],
           historyGrant: 'none',
         }),
       })
     ).json();
-    const agent = { 'Content-Type': 'application/json', Authorization: `Bearer ${key.rawKey}` };
+    const agent = { 'Content-Type': 'application/json', Authorization: `Bearer ${owner.token}`, 'X-OpenStoa-API-Key': key.rawKey };
 
     // Its own space is there — otherwise the refusals below prove nothing.
     const mine = await (await fetch(`${BASE}/api/topics`, { headers: agent })).json();

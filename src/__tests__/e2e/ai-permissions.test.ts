@@ -7,21 +7,20 @@ import { E2E_DEVICE_HEADERS } from './helpers';
  * Proves the final model: there is no account-wide AI permission any more.
  * `GET/PUT /api/profile/ai-permissions` are retired (410). The ONLY scope an
  * `isAI` session can carry is the one bound to the API key it authenticated
- * with (`Authorization: Bearer osk_...`); a bare isAI JWT with no key (e.g.
+ * with (`Authorization: Bearer <session>` plus `X-OpenStoa-API-Key`); a bare isAI JWT with no key (e.g.
  * dev-login `{ isAI: true }`) is denied on every gated route — fail-closed,
  * not an implicit account-wide allow.
  *
  * Coverage (edge-case matrix rows the server owns over HTTP):
  *   retired   — GET/PUT ai-permissions always 410 (401 first if unauthed).
  *   fail-closed — isAI session with NO key → 403 on every gated route.
- *   authz     — guest 401 on api-keys; a key only ever edits/revokes ITS OWN
- *               owner's other keys, never someone else's (404, not 403).
+ *   authz     — guest 401 on api-keys; only a human owner session manages keys; foreign key IDs remain404.
  *   boundary  — cmd []/subset; historyGrant none/full/since_epoch:N/Nd ok.
  *   hostile   — unknown cmd → 400; garbage historyGrant → 400.
  *   gate      — a scoped key is gated across topic/join, post/write,
  *               chat/send, profile/edit; each cmd independently unlocks its
  *               route; PATCH re-scoping takes effect on the VERY NEXT request.
- *   revoke    — a revoked key gets 401 on its next use, even mid-scope.
+ *   revoke    — a revoked selected key gets 403 while its login remains valid, even mid-scope.
  *   humans    — a human with no key at all performs all the same actions freely.
  *   integrity — the raw key never reappears in any response after creation.
  *
@@ -48,8 +47,12 @@ async function devLogin(prefix: string, isAI = false): Promise<{ token: string; 
   return { token: data.token, userId: data.userId };
 }
 
+// A fixture key selects permissions alongside its issuer's existing login.
+// Unknown keys stay literal Bearer inputs for the explicit authentication-negative tests.
+const keySessions = new Map<string, string>();
 function bearer(token: string) {
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  const session = keySessions.get(token);
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session ?? token}`, ...(session ? { 'X-OpenStoa-API-Key': token } : {}) };
 }
 const b64 = (s: string) => Buffer.from(s).toString('base64');
 
@@ -60,7 +63,9 @@ async function createKey(ownerToken: string, name: string, cmd: string[], histor
     body: JSON.stringify({ name, cmd, historyGrant }),
   });
   expect(res.status).toBe(201);
-  return (await res.json()) as { rawKey: string; key: { id: string; cmd: string[]; historyGrant: string } };
+  const created = (await res.json()) as { rawKey: string; key: { id: string; cmd: string[]; historyGrant: string } };
+  keySessions.set(created.rawKey, ownerToken);
+  return created;
 }
 async function joinTopic(token: string, topicId: string) {
   return fetch(`${BASE}/api/topics/${topicId}/join`, { method: 'POST', headers: bearer(token) });
@@ -247,7 +252,7 @@ describe.sequential('AI capability = API-key scope only (E2E, real container)', 
   });
 
   // ── revoke — stops working on the very next request ─────────────────────
-  it('DELETE /api/profile/api-keys/{keyId}: a revoked key gets 401 on its next use', async () => {
+  it('DELETE /api/profile/api-keys/{keyId}: a revoked selected key gets 403 while its login remains valid', async () => {
     const key = await createKey(owner.token, `k_revoke_${Date.now()}`, ['/openstoa/profile/edit']);
     expect((await editNickname(key.rawKey)).status).toBe(200);
 
@@ -255,6 +260,6 @@ describe.sequential('AI capability = API-key scope only (E2E, real container)', 
     expect(revoke.status).toBe(200);
 
     const afterRevoke = await editNickname(key.rawKey);
-    expect(afterRevoke.status).toBe(401);
+    expect(afterRevoke.status).toBe(403);
   });
 });

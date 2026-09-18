@@ -14,6 +14,7 @@ describe.sequential('Guest access', () => {
   let secretTopicId: string;
   let publicPostId: string;
   let privatePostId: string;
+  let secretPostId: string;
   let categoryId: string;
 
   // ── Setup: create resources needed for tests ──────────────────────────
@@ -80,6 +81,25 @@ describe.sequential('Guest access', () => {
     expect(res.status).toBe(201);
     const json = await res.json();
     privatePostId = json.post.id;
+  });
+
+  it('setup: create post in secret topic', async () => {
+    const res = await authPost(`/api/topics/${secretTopicId}/posts`, {title:'Secret metadata',content:'Must not appear in guest metadata'});
+    expect(res.status).toBe(201);secretPostId=(await res.json()).post.id;
+  });
+
+  it.each(['records','reactions'])('%s never exposes private or secret post metadata to guests', async endpoint => {
+    for (const id of [privatePostId,secretPostId]) {
+      const res=await publicGet(`/api/posts/${id}/${endpoint}`);
+      expect(res.status).toBe(401);
+      const body=await res.json();
+      expect(body).not.toHaveProperty(endpoint);
+      expect(body).not.toHaveProperty('recordCount');
+    }
+  });
+
+  it.each(['records','reactions'])('%s remains readable by the secret topic owner', async endpoint => {
+    expect((await authGet(`/api/posts/${secretPostId}/${endpoint}`)).status).toBe(200);
   });
 
   // ── Section 1: Guest-allowed endpoints ────────────────────────────────

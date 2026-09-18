@@ -5,14 +5,10 @@ import { E2E_DEVICE_HEADERS } from './helpers';
  *
  * WHY THIS FILE EXISTS
  * --------------------
- * Agent auth used to run through a ZK proof-of-identity login (Google OIDC
- * device flow → `POST /api/auth/verify/ai`). That path is dead for now — the
- * prover is intentionally offline and its Google OAuth client was deleted — so
- * `proof-gated-topics.test.ts` is skipped with that reason. The credential an
- * agent actually uses today is a durable, revocable API key
- * (`Authorization: Bearer osk_...`, `src/lib/apiKeys.ts`) whose OWN `cmd`
- * allowlist gates every request (`requireAiCapability`,
- * `src/lib/aiPermissions.ts`). This file is that replacement coverage.
+ * A proof-login session supplies identity; an owner-matching API key supplies
+ * a per-request capability allowlist in X-OpenStoa-API-Key. Tests provision
+ * disposable dev sessions without external proving, then exercise real HTTP
+ * scope checks, key-owner management, history grants, and revocation.
  *
  * Companion files, and what is deliberately NOT re-tested here:
  *   - `api-keys.test.ts`      — CRUD happy path + the first scoped-agent scenario.
@@ -47,7 +43,7 @@ import { E2E_DEVICE_HEADERS } from './helpers';
  *                         'historyGrant is ENFORCED…' (the SECOND scope axis: a key
  *                         can hold chat/read and still be refused the past),
  *                         'the grant gates HISTORY only…' (it must not leak into
- *                         send/write or ungated reads),
+ *                         send/write or independently permitted non-chat reads),
  *                         'hostile: a leaked key cannot mint / enumerate / widen /
  *                         revoke…' (key MANAGEMENT is reachable only from a real
  *                         session, never a delegated key — see below),
@@ -95,8 +91,12 @@ const CMD_MAX = 32;
 const b64 = (s: string) => Buffer.from(s).toString('base64');
 const rnd = () => Math.random().toString(36).slice(2, 8);
 
+// A fixture key selects permissions alongside its issuer's existing login.
+// Unknown keys stay literal Bearer inputs for the explicit authentication-negative tests.
+const keySessions = new Map<string, string>();
 function bearer(token: string): Record<string, string> {
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  const session = keySessions.get(token);
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session ?? token}`, ...(session ? { 'X-OpenStoa-API-Key': token } : {}) };
 }
 
 /**
@@ -182,7 +182,9 @@ async function createKey(
 ): Promise<{ rawKey: string; key: KeyMeta }> {
   const res = await postKey(token, { name, cmd, historyGrant });
   if (res.status !== 201) throw new Error(`create key failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  const created = await res.json();
+  keySessions.set(created.rawKey, token);
+  return created;
 }
 
 function patchKey(token: string, keyId: string, body: unknown): Promise<Response> {
@@ -255,16 +257,17 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
   //
   // `probe` calls each isAI-gated endpoint exactly once with the given
   // credential. Each entry is chosen so that the gate-PASS status is a
-  // distinct, meaningful code rather than a generic success — e.g. `leave`
-  // kicks the caller itself, which the route answers with 400 "Cannot kick
-  // yourself" AFTER the gate, so pass (400) and block (403) can never be
+  // distinct, meaningful code rather than a generic success — e.g. member
+  // management refuses self-kicking (400) AFTER the gate, and leave requires
+  // owner transfer (409), so passing the gate and blocking (403) can never be
   // confused. That is what makes the negative direction below load-bearing.
   // ─────────────────────────────────────────────────────────────────────────
-  type ProbeName = 'join' | 'leave' | 'postWrite' | 'postDelete' | 'commentWrite' | 'chatRead' | 'chatSend' | 'profileEdit';
+  type ProbeName = 'join' | 'leave' | 'manageMembers' | 'postWrite' | 'postDelete' | 'commentWrite' | 'chatRead' | 'chatSend' | 'profileEdit';
 
   const PASS_STATUS: Record<ProbeName, number[]> = {
     join: [201],
-    leave: [400], // gate passed → route's own "Cannot kick yourself"
+    leave: [409], // gate passed → owners must transfer ownership before leaving
+    manageMembers: [400], // gate passed → cannot kick yourself
     postWrite: [201],
     postDelete: [200],
     commentWrite: [201],
@@ -276,6 +279,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
   const CMD_FOR: Record<ProbeName, string> = {
     join: '/openstoa/topic/join',
     leave: '/openstoa/topic/leave',
+    manageMembers: '/openstoa/topic/manage-members',
     postWrite: '/openstoa/post/write',
     postDelete: '/openstoa/post/delete',
     commentWrite: '/openstoa/comment/write',
@@ -301,6 +305,8 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
       case 'join':
         return (await resilientFetch(`${BASE}/api/topics/${joinTargetId}/join`, { method: 'POST', headers: h, body: '{}' })).status;
       case 'leave':
+        return (await resilientFetch(`${BASE}/api/topics/${memberTopicId}/leave`, { method: 'POST', headers: h, body: '{}' })).status;
+      case 'manageMembers':
         return (await resilientFetch(`${BASE}/api/topics/${memberTopicId}/members`, { method: 'DELETE', headers: h, body: JSON.stringify({ userId: owner.userId }) })).status;
       case 'postWrite':
         return (await resilientFetch(`${BASE}/api/topics/${memberTopicId}/posts`, { method: 'POST', headers: h, body: JSON.stringify({ title: `p_${rnd()}`, content: 'c' }) })).status;
@@ -339,7 +345,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
       method: 'POST', headers: bearer(rawKey), body: JSON.stringify({ title: 't', content: 'c' }),
     });
     expect(denied.status).toBe(403);
-    expect((await denied.json()).error).toContain('/openstoa/post/write');
+    expect(await denied.json()).toMatchObject({code:'api_scope_denied', required:{all:['/openstoa/post/write']}});
   });
 
   it('the mirror: a key holding every OTHER cmd passes all those routes and is 403 only on the one it lacks', async () => {
@@ -361,10 +367,14 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
       const status = await probe(name, rawKey);
       expect(status, `${name} must be 403 for an empty-cmd key`).toBe(403);
     }
-    // …while an UNGATED read still works: the key is a valid credential, it
-    // just carries no abilities. This separates "fail-closed" from "broken".
+    // Business reads are scoped too, while identity discovery still proves the
+    // login is valid. An empty key cannot silently inherit human privileges.
     const read = await resilientFetch(`${BASE}/api/posts/${postId}`, { headers: bearer(rawKey) });
-    expect(read.status).toBe(200);
+    expect(read.status).toBe(403);
+    expect(await read.json()).toMatchObject({code:'api_scope_denied', required:{all:['/openstoa/post/read','/openstoa/comment/read']}});
+    const identity = await resilientFetch(`${BASE}/api/auth/session`, {headers:bearer(rawKey)});
+    expect(identity.status).toBe(200);
+    expect((await identity.json()).userId).toBe(owner.userId);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -451,18 +461,17 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
   // Revocation
   // ─────────────────────────────────────────────────────────────────────────
 
-  it('a revoked key is 401 IMMEDIATELY — not 403, and not merely scope-less', async () => {
+  it('a revoked selected key is 403 immediately while the account login remains valid', async () => {
     const { rawKey, key } = await createKey(owner.token, ['/openstoa/chat/read']);
     expect(await probe('chatRead', rawKey)).toBe(200);
 
     expect((await revokeKey(owner.token, key.id)).status).toBe(200);
 
-    // 401, not 403: the credential itself is gone, so the request never even
-    // reaches the capability gate.
-    expect(await probe('chatRead', rawKey)).toBe(401);
+    // Authorization refuses the revoked selected key; the login itself remains valid.
+    expect(await probe('chatRead', rawKey)).toBe(403);
     // …and it cannot be used to reach any other authenticated surface either.
-    expect((await resilientFetch(`${BASE}/api/profile/api-keys`, { headers: bearer(rawKey) })).status).toBe(401);
-    expect((await postKey(rawKey, { name: 'after-revoke', cmd: [], historyGrant: 'none' })).status).toBe(401);
+    expect((await resilientFetch(`${BASE}/api/profile/api-keys`, { headers: bearer(rawKey) })).status).toBe(403);
+    expect((await postKey(rawKey, { name: 'after-revoke', cmd: [], historyGrant: 'none' })).status).toBe(403);
   });
 
   it('a revoked key cannot be resurrected by PATCH, and stays listed as revoked', async () => {
@@ -472,7 +481,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     // updateApiKey's WHERE requires revokedAt IS NULL — a revoked key is not
     // re-scopable, so "revoke" cannot be undone into a working credential.
     expect((await patchKey(owner.token, key.id, { cmd: ['/openstoa/chat/read'], historyGrant: 'full' })).status).toBe(404);
-    expect(await probe('chatRead', rawKey)).toBe(401);
+    expect(await probe('chatRead', rawKey)).toBe(403);
 
     // The row survives for auditability, with revokedAt set.
     const row = (await listKeys(owner.token)).apiKeys.find((k) => k.id === key.id);
@@ -498,7 +507,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     for (const p of paths) {
       const res = await resilientFetch(`${BASE}${p}`, { headers: bearer(noRead) });
       expect(res.status, `${p} must be 403 without chat/read`).toBe(403);
-      expect((await res.json()).error).toContain('/openstoa/chat/read');
+      expect(await res.json()).toMatchObject({code:'api_scope_denied', required:{all:['/openstoa/chat/read']}});
     }
 
     // Grant `full` so the ONLY difference between the two keys is the cmd — the
@@ -595,12 +604,12 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
   it('the grant gates HISTORY only — a `none` key holding chat/send can still send, and non-chat reads are untouched', async () => {
     // A send-only agent is the whole reason `none` exists: it must be able to
     // participate without being handed the past.
-    const { rawKey } = await createKey(owner.token, ['/openstoa/chat/send', '/openstoa/post/write'], 'none');
+    const { rawKey } = await createKey(owner.token, ['/openstoa/chat/send', '/openstoa/post/write', '/openstoa/post/read', '/openstoa/comment/read'], 'none');
     expect(await probe('chatSend', rawKey), 'sending is not a history read').toBe(201);
     expect(await probe('postWrite', rawKey), 'posting is not a history read').toBe(201);
     expect(
       (await resilientFetch(`${BASE}/api/posts/${postId}`, { headers: bearer(rawKey) })).status,
-      'an ungated read is unaffected by the grant',
+      'a permitted post/comment read is unaffected by the chat history grant',
     ).toBe(200);
   });
 
@@ -769,7 +778,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     expect(mixed.status).toBe(400);
   });
 
-  it('malformed osk_ bearer tokens are 401, never 500 and never a silent pass', async () => {
+  it('malformed keys are401 as Bearer and403 when selected alongside a valid session', async () => {
     const { rawKey } = await createKey(owner.token, ['/openstoa/chat/read']);
     const tampered = rawKey.slice(0, -1) + (rawKey.endsWith('a') ? 'b' : 'a');
 
@@ -787,7 +796,11 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     ];
     for (const token of tokens) {
       const res = await resilientFetch(`${BASE}/api/topics/${memberTopicId}/chat`, { headers: bearer(token) });
-      expect(res.status, `token=${JSON.stringify(token.slice(0, 24))} must be 401`).toBe(401);
+      expect(res.status, 'a malformed key used as a Bearer never authenticates').toBe(401);
+      const selected = await resilientFetch(`${BASE}/api/topics/${memberTopicId}/chat`, {
+        headers: {...bearer(owner.token), 'X-OpenStoa-API-Key': token},
+      });
+      expect(selected.status, 'a malformed selected key cannot authorize a valid session').toBe(403);
     }
     // Control: the untampered key still works, so the 401s above are the
     // tampering and not a broken fixture.
@@ -866,7 +879,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     const { rawKey: narrow } = await createKey(owner.token, []);
     const mintAttempt = await postKey(narrow, { name: `escalate_${rnd()}`, cmd: ['/openstoa/post/write'], historyGrant: 'full' });
     expect(mintAttempt.status).toBe(403);
-    expect((await mintAttempt.json()).error).toMatch(/API keys cannot manage API keys/i);
+    expect(await mintAttempt.json()).toMatchObject({code:'owner_session_required'});
 
     // Boundary: a key holding EVERY cmd is denied identically — cmd content
     // never grants key-management, there is no cmd that would let it through.
@@ -978,7 +991,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     const results = await Promise.all([revokeKey(owner.token, key.id), revokeKey(owner.token, key.id)]);
     const statuses = results.map((r) => r.status).sort();
     expect(statuses).toEqual([200, 404]);
-    expect(await probe('chatRead', rawKey)).toBe(401);
+    expect(await probe('chatRead', rawKey)).toBe(403);
   });
 
   it('concurrent re-scope: both edits succeed, the key survives with one of the two scopes, never a mix', async () => {
@@ -1008,7 +1021,7 @@ describe.sequential('API-key-gated agent access (E2E, real container)', () => {
     const drop = await createKey(owner.token, ['/openstoa/chat/read'], 'full', `drop_${rnd()}`);
 
     expect((await revokeKey(owner.token, drop.key.id)).status).toBe(200);
-    expect(await probe('chatRead', drop.rawKey)).toBe(401);
+    expect(await probe('chatRead', drop.rawKey)).toBe(403);
     expect(await probe('chatRead', keep.rawKey)).toBe(200);
   });
 });

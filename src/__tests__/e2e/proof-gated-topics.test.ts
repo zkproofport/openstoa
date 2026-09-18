@@ -222,7 +222,9 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('OpenStoa');
-    expect(text).toContain('Privacy');
+    expect(text).toMatch(/\]\(https:\/\/www\.openstoa\.xyz\/docs(?:[?#][^)]*)?\)/);
+    expect(text).not.toMatch(/\]\([^)]*skills\//);
+    expect(text.split('\n').length).toBeLessThan(120);
   });
 
   it('GET /skill.md returns skill file', async () => {
@@ -319,13 +321,11 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
 //      {"error":"deleted_client","error_description":"The OAuth client was
 //      deleted."}, so no login proof can be produced at all.
 //
-// Both are accepted, indefinite outages, not regressions in this repo:
-// agent authentication moved to API keys (`Authorization: Bearer osk_...`,
-// src/lib/apiKeys.ts). The replacement coverage lives in
-// src/__tests__/e2e/apikey-gated-topics.test.ts (plus api-keys.test.ts and
-// ai-permissions.test.ts). A permanent, known, accepted outage must read as
-// SKIPPED-with-reason, not as a red failure on every run — a wall of
-// unexplained 401s trains readers to ignore the suite.
+// These are the recorded reasons this external integration suite is skipped;
+// this run does not probe or certify the current external service state.
+// Agent operations require a login session plus a selected permission key.
+// The API-key suites cover authorization only and do not replace real proof
+// generation. Keep the missing external proof coverage explicit in reports.
 //
 // Kept as external integration coverage, not counted as passing tests.
 // Topic scopes and response expectations follow the current server. Restore
@@ -338,7 +338,7 @@ describe.sequential('Proof-gated topics — docs + proof-input validation (no pr
 // in the Google Cloud project and publish a zkproofport-prove release
 // carrying the new client id. Then drop the `.skip` here.
 // ═════════════════════════════════════════════════════════════════════
-describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OAuth client deleted (device flow answers deleted_client) + ZKProofport prover intentionally offline — no proof can be generated; agent auth is API-key based now, see apikey-gated-topics.test.ts]', () => {
+describe.sequential.skip('Proof-gated topics — MCP CLI E2E [SKIPPED: Google OAuth client deleted (device flow answers deleted_client) + ZKProofport prover intentionally offline — no proof can be generated; requires external proof infrastructure; session+selected-key authorization is tested separately]', () => {
 
   // ══════════════════════════════════════════════════
   // SETUP + LOGIN

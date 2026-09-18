@@ -142,7 +142,15 @@ describe('DM — start / idempotency', () => {
       'topicId',
       'unreadCount',
     ]);
-    expect(Object.keys(row.peer).sort()).toEqual(['nickname', 'profileImage', 'userId']);
+    // Public badges are visibility-controlled identity metadata, filtered for visibility and
+    // expiry by withPublicIdentityBadges/getBatchUserBadges. Workspace domain
+    // may be deliberately public; raw email, country, hashes and proof inputs
+    // are never part of this contract.
+    expect(Object.keys(row.peer).sort()).toEqual(['badges', 'nickname', 'profileImage', 'userId']);
+    expect(Array.isArray(row.peer.badges)).toBe(true);
+    // This fresh dev-login peer has no verified predicates to disclose.
+    expect(row.peer.badges).toEqual([]);
+    expect(JSON.stringify(row.peer)).not.toMatch(/email|countryCode|countryHash|domainHash|publicInputs|proofBytes/i);
     expect(JSON.stringify(body)).not.toMatch(/ciphertext|sealed|preview|plaintext/i);
   });
 
