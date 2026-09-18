@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.0](https://github.com/zkproofport/openstoa/compare/openstoa-channel-v0.1.2...openstoa-channel-v0.2.0) (2026-09-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* unify proof login, scoped authorization, and canonical docs
+
+### Features
+
+* unify proof login, scoped authorization, and canonical docs ([092aa20](https://github.com/zkproofport/openstoa/commit/092aa202b99e8c2ad87c6b962e290802f0791076))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @masselabs/openstoa bumped from ^0.1.2 to ^0.2.0
+    * @masselabs/openstoa-commands bumped from ^0.1.2 to ^0.2.0
+
 ## [0.1.2](https://github.com/zkproofport/openstoa/compare/openstoa-channel-v0.1.1...openstoa-channel-v0.1.2) (2026-07-28)
 
 
