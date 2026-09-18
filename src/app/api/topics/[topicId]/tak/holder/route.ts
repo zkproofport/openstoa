@@ -176,7 +176,7 @@ export async function GET(
  *                     leaseExpiresAt: { type: string, format: date-time, nullable: true }
  *       400: { description: Missing deviceId/rootFingerprint or topic not public }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { description: Not a member, or rootFingerprint does not match the topic archive root }
+ *       403: { description: "Not a member, or rootFingerprint does not match the topic archive root" }
  *       409: { description: Another device holds a valid lease (held-by-other) }
  */
 export async function POST(
@@ -359,7 +359,7 @@ export async function DELETE(
  *               properties:
  *                 epochCovered: { type: integer }
  *                 currentEpoch: { type: integer }
- *       400: { description: Missing/invalid fields, topic not public, or epochCovered above the current epoch }
+ *       400: { description: "Missing/invalid fields, topic not public, or epochCovered above the current epoch" }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { description: Caller is not the current holder }
  *       404: { description: No MLS group for this topic }

@@ -18,11 +18,10 @@ const ROUTE = '/api/auth/session';
  *     summary: Get current session info
  *     description: |
  *       Returns the current caller's session info — `userId`, `nickname`, and the
- *       proof types they have verified. Works with both cookie and Bearer token auth and
+ *       enabled public verification badges, not hidden verification predicates. Works with both cookie and Bearer token auth and
  *       NEVER returns 401: unauthenticated callers get `{ authenticated: false }`. Useful
  *       right after `POST /api/auth/verify/ai` to confirm the token resolves and to check
- *       whether `nickname` still starts with `anon_` (in which case call
- *       `PUT /api/profile/nickname` before posting).
+ *       the current nickname. A default nickname is ready to use; changing it is optional.
  *       Returns `profileImage` and all enabled public verification `badges` (empty on badge lookup failure).
  *     operationId: getSession
  *     x-related-skills: [auth-details]

@@ -20,7 +20,7 @@ it.each(['en','ko'] as const)('acknowledges member key sharing beyond invitation
 it('qualifies secret-room listing privacy for non-members',()=>{
  const copy=translate('en','tiersPage.sections.postsVsChatBody');
  expect(copy).not.toContain('hidden from every list');
- expect(copy).toMatch(/non.members|members.only|only members/i);
+ expect(copy).toMatch(/non.members|members.only|only (?:to )?members/i);
 });
 it.each(['en','ko'] as const)('scopes every documented post-image upload to its topic (%s)',locale=>{
  const host=document.createElement('div');

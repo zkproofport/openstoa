@@ -38,7 +38,7 @@ function retired(method: 'GET' | 'PUT'): NextResponse {
  *     summary: 'RETIRED — use API keys instead'
  *     deprecated: true
  *     description: |
- *       **Retired.** Always returns 410. AI capability used to be a single account-wide grant
+ *       **Retired.** After session/permission checks, returns 410. Unauthorized callers receive 401/403. AI capability used to be a single account-wide grant
  *       applying to every `isAI` session; it is now scoped to individual API keys instead
  *       (GitHub-PAT style — the key's own `cmd`/`historyGrant` gate its requests, nothing wider).
  *       Use `POST /api/profile/api-keys` to create a scoped key, `GET /api/profile/api-keys` to
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  *     summary: 'RETIRED — use API keys instead'
  *     deprecated: true
  *     description: |
- *       **Retired.** Always returns 410 — writes are rejected outright rather than silently
+ *       **Retired.** After session/permission checks, returns 410 — writes are rejected outright rather than silently
  *       accepted, because an account-wide grant no longer has any effect (see GET for the
  *       replacement). Accepting writes to an inert setting would be misleading: a caller could
  *       believe they narrowed their AI's access when nothing enforces it any more.

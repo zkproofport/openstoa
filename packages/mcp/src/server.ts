@@ -1,25 +1,12 @@
-/**
- * `openstoa-mcp` — a standalone stdio MCP server exposing the OpenStoa REST +
- * E2EE chat operations as tools, over the shared @masselabs/openstoa-commands
- * core (the exact same code path as the `openstoa` CLI).
- *
- * Why standalone (not the existing in-Next.js /mcp route): E2EE chat needs local,
- * per-agent MLS key custody in a vault (~/.openstoa). The existing HTTP MCP is a
- * multi-tenant, crypto-blind server (SI-1) that must never hold one agent's
- * private keys. Running here — in the agent's own process — mirrors the CLI, so
- * both share one core and cannot diverge. The existing HTTP `authenticate` flow
- * is untouched and keeps working.
- *
- * Config via env: OPENSTOA_BASE_URL (required if no saved session),
- * OPENSTOA_VAULT_ROOT, OPENSTOA_KEYSTORE, OPENSTOA_DEVICE_ID, OPENSTOA_API_KEY
- * (a scoped key from `openstoa apikey create` — when set, no interactive
- * `openstoa login` is needed at all; createCommands also reads this env var
- * itself, so passing it here is redundant-but-explicit, mirroring OPENSTOA_BASE_URL).
+/** Local stdio MCP server. CLI and MCP share command workflows and local MLS
+ * key custody. Proof login establishes identity; a separate owner-issued key
+ * authorizes business requests. There is no hosted /mcp endpoint.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createCommands, isEntrypoint, type KeystoreBackend } from '@masselabs/openstoa-commands';
 import { registerTools, type ToolHost } from './tools';
+import { version } from '../package.json';
 
 export async function startServer(): Promise<void> {
   const commands = await createCommands({
@@ -31,7 +18,7 @@ export async function startServer(): Promise<void> {
   });
 
   const server = new McpServer(
-    { name: 'openstoa-mcp', version: '0.1.0' },
+    { name: 'openstoa-mcp', version },
     { capabilities: { tools: {} } },
   );
   registerTools(server as unknown as ToolHost, commands);

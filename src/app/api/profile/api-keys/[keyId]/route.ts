@@ -20,7 +20,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *       revoke-and-reissue. Only `cmd` and `historyGrant` are editable; `name` and `isAI` are fixed
  *       at issuance and this endpoint never touches the key's secret or its hash (the raw key
  *       keeps working unchanged, only what it is ALLOWED to do changes). Takes effect immediately —
- *       the very next request authenticated with this key is gated by the new scope. Scoped by
+ *       the very next request authorized with this key is gated by the new scope. Scoped by
  *       session user id, same as revoke: a foreign or revoked `keyId` returns 404, not a
  *       distinguishing 403 (no ownership oracle). Callable only from a real session — never from
  *       another API key, regardless of that key's own `cmd` (see the 403 below).
@@ -45,7 +45,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *                 description: 'Replaces the key''s ability allowlist entirely — a (possibly empty) subset of the allowed commands. Unknown commands are rejected with 400.'
  *               historyGrant:
  *                 type: string
- *                 description: 'Replaces the chat archive scope this key may back-fill: none | Nd | since_epoch:N | full. Invalid scope → 400.'
+ *                 description: 'Replaces the chat archive scope this key may back-fill: none | Nd | since_epoch:N | full | N (newest N messages). Invalid scope → 400.'
  *     responses:
  *       200:
  *         description: Updated key metadata (never the raw key or its hash)
@@ -53,11 +53,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *           application/json:
  *             schema:
  *               type: object
- *               properties: { key: { type: object, description: Metadata for the updated key (id, name, prefix, cmd, historyGrant, isAI, timestamps). } }
+ *               properties: { key: { type: object, description: "Metadata for the updated key (id, name, prefix, cmd, historyGrant, isAI, timestamps)." } }
  *       400: { description: Invalid cmd (unknown/too many) or historyGrant scope }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
- *       404: { description: Key not found, not owned by the caller, or already revoked }
+ *       403: { description: 'Requires a human owner session without a selected permission key. Agent sessions are denied even without an API key; ask the owner to manage keys in their browser' }
+ *       404: { description: "Key not found, not owned by the caller, or already revoked" }
  */
 export async function PATCH(
   request: NextRequest,
@@ -115,7 +115,7 @@ export async function PATCH(
  *       Revokes one of the caller's OWN API keys — a caller can never revoke another user's key
  *       (scoped by session user id, so a foreign or unknown `keyId` returns 404 either way, not a
  *       distinguishing 403). Revocation takes effect immediately: the next request made with this
- *       key gets 401. Idempotent — revoking an already-revoked key also returns 404. Callable only
+ *       key with a valid session gets 403 api_key_invalid; a missing/invalid session gets 401. Revoking an already-revoked key returns 404. Callable only
  *       from a real session — never from another API key, regardless of that key's own `cmd` (see
  *       the 403 below): a delegated credential can never revoke a sibling key, including itself.
  *     operationId: revokeApiKey
@@ -133,8 +133,8 @@ export async function PATCH(
  *             schema: { type: object, properties: { revoked: { type: boolean }, id: { type: string, format: uuid } } }
  *       400: { description: Invalid keyId }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
- *       404: { description: Key not found, not owned by the caller, or already revoked }
+ *       403: { description: 'Requires a human owner session without a selected permission key. Agent sessions are denied even without an API key; ask the owner to manage keys in their browser' }
+ *       404: { description: "Key not found, not owned by the caller, or already revoked" }
  */
 export async function DELETE(
   request: NextRequest,

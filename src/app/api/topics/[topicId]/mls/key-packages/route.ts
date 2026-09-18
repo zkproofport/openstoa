@@ -71,7 +71,7 @@ async function requireMember(request: NextRequest, topicId: string) {
  *                 description: If true, the package is reusable (not consumed). Reserved for always-on AI members.
  *     responses:
  *       201: { description: KeyPackage published }
- *       400: { description: Missing/invalid base64 keyPackage or deviceId, or payload too large }
+ *       400: { description: "Missing/invalid base64 keyPackage or deviceId, or payload too large" }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       429: { description: Per-member rate limit exceeded (SI-4) }

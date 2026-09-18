@@ -5,8 +5,8 @@
 > Current login proves control of a Google account; it does not establish one
 > person per account. Coinbase KYC is an optional topic participation condition.
 > A ban tied to an account nullifier does not guarantee that the same person
-> cannot create another Google account. For current behavior, see `README.md`,
-> `AGENTS.md`, and `/docs/tiers`.
+> cannot create another Google account. For current behavior, see
+> [OpenStoa docs](https://www.openstoa.xyz/docs).
 
 ## 배경: 왜 이렇게 설계했는가
 

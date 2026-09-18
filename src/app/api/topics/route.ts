@@ -109,7 +109,7 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *
  *       Topic `visibility` controls who can find / join the topic:
  *         - `public`: listed everywhere, anyone can join immediately.
- *         - `private`: listed but join requests need owner / admin approval.
+ *         - `private`: listed; joining requires an invitation. Signed-in users may read posts.
  *         - `secret`: hidden from listings; joinable only via invite code.
  *
  *       Topics can optionally gate membership on a ZK proof. The creator picks the gate by
@@ -122,9 +122,10 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *         - `workspace` / `google_workspace` / `microsoft_365` — `oidc_domain_attestation` with the
  *           allowed domain configured separately on the topic.
  *
- *       The creator must themselves satisfy the gate at creation time, so pass
- *       `{ proof, publicInputs }` produced by `proofport-cli` for the matching circuit when
- *       `proofType` is anything other than `none`. Topic thumbnail `image` should be uploaded
+ *       The creator must satisfy the gate through matching valid account-bound cached verification
+ *       or `{ proof, publicInputs }` for the required circuit. Without either, HTTP 402 includes
+ *       `proofRequirement` and `proofScope` to start the app/AI proof workflow. Invalid submitted
+ *       proofs return 400; predicate/permission failures may return 403. Topic thumbnail `image` should be uploaded
  *       through `POST /api/upload` first; pass the returned `publicUrl` here.
  *     operationId: createTopic
  *     x-related-skills: [topic-proofs, auth-details, upload-image]
@@ -198,6 +199,15 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *                   window destroys other members' history. It does not affect live message delivery
  *                   (`GET /api/topics/{topicId}/chat`), only the archive back-fill.
  *     responses:
+ *       402:
+ *         description: Proof required; includes proofRequirement generation guidance and the account-bound proofScope.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 proofRequirement: { type: object }
+ *                 proofScope: { type: string }
  *       201:
  *         description: Topic created
  *         content:

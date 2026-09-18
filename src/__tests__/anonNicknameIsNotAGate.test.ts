@@ -54,13 +54,13 @@ describe('the placeholder nickname is advice, not a gate', () => {
     });
   });
 
-  it('DOCS: they still tell an agent to rename, and say why', () => {
-    // Removing the false claim must not remove the advice with it. The reason
-    // is the part that works: the placeholder becomes the byline on everything.
+  it('DOCS: a usable default nickname does not require a rename before posting', () => {
+    // Current accounts already receive a usable name; optional customization
+    // must not become an invented prerequisite in the generated API guide.
     const document = JSON.parse(read('src/generated/openapi-spec.json'));
     const skill = document.paths['/api/profile/nickname'].put.description;
-    expect(skill).toMatch(/Nothing REFUSES|not.*reject/i);
-    expect(skill).toMatch(/anon_/);
-    expect(skill.toLowerCase()).toMatch(/before your first post|before you post/);
+    expect(skill).toMatch(/default nickname/i);
+    expect(skill).toMatch(/optional/i);
+    expect(skill).not.toMatch(/must.*(?:rename|nickname).*before/i);
   });
 });

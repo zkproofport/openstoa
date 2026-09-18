@@ -15,8 +15,7 @@ const ROUTE = '/api/auth/logout';
  *     description: |
  *       Ends the session on the server and clears the cookie. The token is revoked, so a Bearer
  *       caller that keeps its copy gains nothing by presenting it afterwards — the session record
- *       is gone and every route that verifies a session will answer 401. Safe to call without an
- *       active session.
+ *       is gone. This endpoint requires an active login session; unauthenticated callers receive 401.
  *     operationId: logout
  *     security: []
  *     x-related-skills: [auth-details]

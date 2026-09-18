@@ -48,7 +48,9 @@ $ anvil
 ### Deploy
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+export SERVICE_WALLET_ADDRESS="<service-wallet-address>"
+forge script script/Deploy.s.sol:DeployOpenStoaRecordBoard --rpc-url <your_rpc_url> --account <keystore-account>
+# This simulates deployment; add --broadcast only when intentionally deploying.
 ```
 
 ### Cast

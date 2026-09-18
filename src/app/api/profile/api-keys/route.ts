@@ -58,7 +58,7 @@ const ROUTE = '/api/profile/api-keys';
  *                   messages, e.g. `100`). Invalid scope → 400.
  *               isAI:
  *                 type: boolean
- *                 description: Whether requests authenticated with this key set session.isAI=true. Defaults to true (the whole point of an API key is scripted/agent access).
+ *                 description: Legacy key metadata, default true. Does not change session.isAI, login identity, or owner privileges.
  *     responses:
  *       201:
  *         description: Key created — `rawKey` is shown exactly once
@@ -73,9 +73,9 @@ const ROUTE = '/api/profile/api-keys';
  *                 key:
  *                   type: object
  *                   description: Metadata for the created key (id, name, prefix, cmd, historyGrant, isAI, createdAt). Never includes the raw key or its hash.
- *       400: { description: Invalid name, cmd (unknown/too many), or historyGrant scope }
+ *       400: { description: "Invalid name, cmd (unknown/too many), or historyGrant scope" }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
+ *       403: { description: 'Requires a human owner session without a selected permission key. Agent sessions are denied even without an API key; ask the owner to manage keys in their browser' }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const authorizationError = await authorizeApiRequest(request, '/api/profile/api-keys');
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  *                   type: array
  *                   items: { type: object }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { description: 'The caller authenticated with an API key. Key management belongs to the account owner: ask them to create, edit, or revoke keys from a signed-in session' }
+ *       403: { description: 'Requires a human owner session without a selected permission key. Agent sessions are denied even without an API key; ask the owner to manage keys in their browser' }
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authorizationError = await authorizeApiRequest(request, '/api/profile/api-keys');

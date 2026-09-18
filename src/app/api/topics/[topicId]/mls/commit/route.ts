@@ -87,7 +87,7 @@ async function requireMember(request: NextRequest, topicId: string) {
  *             schema:
  *               type: object
  *               properties: { epoch: { type: integer, description: the new current epoch } }
- *       400: { description: Invalid/oversized commit, unparseable framing, or invalid genesis (asserted epoch != 0) }
+ *       400: { description: "Invalid/oversized commit, unparseable framing, or invalid genesis (asserted epoch != 0)" }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       409: { description: epoch-CAS conflict (another Commit won this epoch) or group_id mismatch — rebase and retry }

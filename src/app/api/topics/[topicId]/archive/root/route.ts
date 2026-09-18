@@ -159,9 +159,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  *                 type: string
  *                 description: The archive root, base64. Same value the client seals archive rows with.
  *     responses:
- *       200: { description: Stored, or already stored with this same key. }
+ *       200: { description: "Stored, or already stored with this same key." }
  *       400: { description: Missing or malformed rootKey. }
- *       403: { description: Not a member, or the topic is not public. }
+ *       403: { description: "Not a member, or the topic is not public." }
  *       409: { description: A DIFFERENT root is already stored for this topic. }
  */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {

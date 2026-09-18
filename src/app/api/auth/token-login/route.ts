@@ -14,7 +14,7 @@ const ROUTE = '/api/auth/token-login';
  *     summary: Convert Bearer token to browser session
  *     description: |
  *       Converts a Bearer token from `POST /api/auth/verify/ai` into a browser session cookie and
- *       302-redirects. Used by `proofport-ai` and CLI agents to hand control off to a browser
+ *       307-redirects. Used by `proofport-ai` and CLI agents to hand control off to a browser
  *       while keeping the authenticated identity — e.g. opening `/topics/<id>` after authenticating
  *       headlessly. The redirect lands on `/profile` if the user has no real nickname yet, otherwise
  *       on `/topics`.
@@ -29,7 +29,7 @@ const ROUTE = '/api/auth/token-login';
  *         schema:
  *           type: string
  *     responses:
- *       302:
+ *       307:
  *         description: Redirect to /profile (if needs nickname) or /topics
  */
 export async function GET(request: NextRequest) {

@@ -1039,7 +1039,7 @@
     "posts": {
       "anyone": "Anyone, signed in or not",
       "members": "Members only",
-      "none": "There are no posts",
+      "none": "DM interface is chat-only",
       "signedIn": "Anyone signed in, member or not"
     },
     "chatAccess": "Members only, in every kind of room",
@@ -1067,7 +1067,7 @@
       "mediaTitle": "Images",
       "mediaBody": "Images you send now are encrypted the same way messages are. Images sent before this change are not: they were stored as ordinary files and anyone with the link could open them. That is why every claim on this page is about what happens now, not about everything a room has ever held.",
       "postsVsChatTitle": "Invite-only rooms: the posts are open, the conversation is not",
-      "postsVsChatBody": "An invite-only topic is listed and anyone signed in can read its posts — what needs an invite is the chat. You get into that with an invite link, and the same link is what carries the keys for the slice of history the inviter chose to share. A secret topic goes further: it is hidden from non-members’ lists, and its posts are members-only too."
+      "postsVsChatBody": "An invite-only topic is listed and anyone signed in can read its posts. Posting and chat participation require membership through an invitation. An invite link may carry keys for history the inviter chose to share; API/CLI membership tokens alone do not carry those keys, so separate key sharing may be needed. Secret topics and their posts are visible only to members."
     }
   },
   "invite": {

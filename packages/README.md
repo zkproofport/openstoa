@@ -3,8 +3,8 @@
 This directory hosts auxiliary packages that sit alongside the Next.js web
 app in `../src/`. They share the OpenStoa repo so PRs can change web,
 mobile, and shared types together, but they do **not** form a pnpm/yarn
-workspace — consumers pull each package via plain `file:` paths from their
-own `package.json`.
+workspace. Mobile/host consumers use local `file:` paths; published agent
+packages use registry semver dependencies as described below.
 
 ## Layout
 
@@ -41,10 +41,9 @@ is idempotent. **Commit the resulting `package-lock.json`** — that is what
 keeps the next clone seamless.
 
 Note that `overrides` cannot be used for this: npm rejects an override that
-redirects a *direct* dependency of the same package (`EOVERRIDE`). npm
-workspaces are also out — `Dockerfile.prod` copies only the root
-`package.json` before `npm install`, and `packages/mobile` is consumed by the
-parent `proofport-app` repo via `file:` and must keep its standalone layout.
+redirects a *direct* dependency of the same package (`EOVERRIDE`). `Dockerfile.prod` installs the root `package.json` and `package-lock.json` with
+`npm ci`. The mobile package remains consumed by the parent `proofport-app`
+via `file:` and keeps its standalone layout.
 
 ### Releasing
 
@@ -68,12 +67,15 @@ are in [`../docs/releasing.md`](../docs/releasing.md).
 
 - `proofport-app/` (ZKProofport host) — `file:../openstoa/packages/{mobile,miniapp-bridge,api-types}`.
 - `mobile/examples/standalone/` (simulator-only shell) — same packages, via local relative paths.
-- `../src/` (Next.js web) — currently independent. Web may opt-in to `@openstoa/api-types` later if response typings drift.
+- `../src/` (Next.js web/server) — imports the SDK source authorization-policy
+  registry and REST operation catalogue for enforcement and docs. It does not
+  run the published CLI or MCP package.
 
 ## Build impact on the Next.js app
 
-Adding `packages/` does **not** affect `next build` or any deployment
-workflow — the Next.js app is configured against `../src/` only.
+Shared policy/operation source changes in `packages/sdk` affect `next build`
+and the served docs. Test and build the server when those sources change.
+Publishing a CLI/MCP package does not by itself deploy the server.
 
 ## Documentation entry points
 

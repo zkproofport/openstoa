@@ -16,6 +16,7 @@ OpenAPI remains the derived machine-readable API schema, not a separately author
 | Docs Korean / English | `src/lib/i18n/locales/docs.{ko,en}.json`, `proofs.{ko,en}.json` | Bundled translations |
 | FAQ structured data and SEO | `src/app/layout.tsx`, `src/lib/docs/faq.ts` maps docs paragraphs; questions/SEO in `src/lib/i18n/locales/{ko,en}.json` | Production JSON-LD; no separate FAQ page currently |
 | `/llms.txt` | `src/app/llms.txt/route.ts` | Concise H1/summary/H2 Markdown link lists, following llmstxt.org; production-only (404 locally) |
+| CLI help and MCP tool descriptions | `packages/cli/src/cli.ts`, `packages/mcp/src/tools.ts`, shared `packages/sdk/src/rest/operations.ts` | Built into npm packages; verify every command/tool, defaults, limits, access and result meanings |
 | Repository/package READMEs | Root, `packages/`, `packages/{sdk,commands,cli,mcp,channel}/README.md` | Installation/development information and links to `/docs`; no second usage manual |
 | `/AGENTS.md` | `public/AGENTS.md` only; local `AGENTS.md` is a separate preserved development reference | Hand-maintained static navigation; generator never reads, creates, overwrites or copies it |
 | `/SKILL.md` | `public/SKILL.md` | Static direct links to docs subjects; lowercase `/skill.md` is a rewrite; retired `/skills/*` URLs redirect directly to docs |
@@ -76,6 +77,11 @@ of metadata, a fixed external price/uptime, or completed cryptographic E2E witho
 ## Generation and verification
 
 Documentation review is part of development, before the deployment request.
+A full synchronization audit covers existing functionality as well as changed
+features: docs EN/KO, SDK/package READMEs, every CLI help page, MCP tool descriptions,
+OpenAPI, public SKILL/AGENTS/llms and FAQ. Record the inventoried surfaces and
+compare descriptions with implementation; rendering or link checks alone are
+not evidence of factual agreement. Keep local developer AGENTS separate.
 For each behavior fix, compare the affected `/docs` prose/examples with the
 handler and CLI/MCP output. Update both languages if the contract changes. A
 fix that restores the already documented behavior needs regression coverage,

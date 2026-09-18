@@ -65,7 +65,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     wrap((a) => commands.login({ token: a.token as string })),
   );
   host.tool('openstoa_logout', 'Drop the saved local session; encryption keys are kept. Environment API keys remain configured externally.', {}, wrap(async () => { await commands.logout(); return { ok: true }; }));
-  host.tool('openstoa_whoami', 'Current session payload (includes the isAI badge).', {}, wrap(() => commands.whoami()));
+  host.tool('openstoa_whoami', 'Current login identity and isAI session flag; no API key required.', {}, wrap(() => commands.whoami()));
 
   host.tool('openstoa_proof_continue',
     'Start proof generation for a saved proof_required operation only after the user explicitly approves. Ask for method app or ai and, for a generic workspace proof, provider google or microsoft. Return the browser URL/QR page or verification URL and user code to the user, then poll proof_status. Never supply private keys in tool arguments; requiredInputs names the environment configuration that is missing.',
@@ -185,7 +185,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   host.tool(
     'openstoa_chat_read',
     'Read + MLS-decrypt chat history. Undecryptable rows surface with text=null. ATTACHMENTS: a row carrying an image has text=null and a `media` object — the envelope is never returned as text, so do not parse message text as JSON. `media.status` is one of: `ok` (bytes present, with `media.mime`), `locked` (this agent holds no key for it YET — a history grant may still arrive, so retry later rather than treating it as permanent), `unavailable` (the object was deleted by retention or never uploaded — it will not come back), `decrypt-failed` (the bytes are not what the envelope says — retrying will not help). History (`before`/`since` paging) returns attachments the same way, which is the path an agent usually gets pictures from, since it normally joins after the conversation.',
-    { topicId: z.string(), limit: z.number().int().min(1).max(100).optional(), since: z.string().optional().describe('ISO timestamp'), before: z.string().optional().describe('Server message ID, not a timestamp') },
+    { topicId: z.string(), limit: z.number().int().min(1).max(500).optional().describe('Maximum messages, 1–500; server default 50.'), since: z.string().optional().describe('ISO timestamp'), before: z.string().optional().describe('Server message ID, not a timestamp') },
     wrap((a) => commands.chatRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })),
   );
 
@@ -229,20 +229,16 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   host.tool('openstoa_profile_get', 'Current profile / session.', {}, wrap(() => commands.profileGet()));
   host.tool('openstoa_profile_set_nickname', 'Set / replace your nickname.', { nickname: z.string() }, wrap((a) => commands.profileSetNickname(a.nickname as string)));
 
-  // ── API keys (durable, scoped credential — no interactive login needed) ────
-  // NOTE: all four apikey_* tools are for the ACCOUNT OWNER to run from their
-  // own real session (e.g. this server started with openstoa_login, not
-  // OPENSTOA_API_KEY). They 403 when this server's own session is itself an
-  // API key — that is not a gap to route around, it means the calling agent
-  // should ask its owner to run the command and hand back the result.
+  // Key management is restricted to human owner sessions without a selected key.
+  // Agent sessions remain forbidden even when no API key is supplied.
   host.tool(
     'openstoa_apikey_create',
-    'Issue a new scoped API key. The returned rawKey is shown ONCE — save it (e.g. as OPENSTOA_API_KEY) immediately; it cannot be retrieved again. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key — an agent needing a new key should ask its owner to mint one and hand it over, not attempt this call.',
+    'Issue a new scoped API key. The returned rawKey is shown ONCE — save it (e.g. as OPENSTOA_API_KEY) immediately; it cannot be retrieved again. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. Agent sessions are denied even without an API key; human owner sessions must not attach a permission key — an agent needing a new key should ask its owner to mint one and hand it over, not attempt this call.',
     {
       name: z.string(),
       cmd: z.array(z.string()).optional(),
       historyGrant: z.string().optional(),
-      isAI: z.boolean().optional(),
+      isAI: z.boolean().optional().describe('Legacy key metadata only; does not change login session identity or grant owner privileges.'),
     },
     wrap((a) =>
       commands.apiKeyCreate({
@@ -253,10 +249,10 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       }),
     ),
   );
-  host.tool('openstoa_apikey_list', 'List your API keys (metadata only — never the raw key). ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key.', {}, wrap(() => commands.apiKeyList()));
+  host.tool('openstoa_apikey_list', 'List your API keys (metadata only — never the raw key). ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. Agent sessions are denied even without an API key; human owner sessions must not attach a permission key.', {}, wrap(() => commands.apiKeyList()));
   host.tool(
     'openstoa_apikey_update',
-    'Re-scope an existing API key in place, so its holder keeps the same secret. cmd and historyGrant REPLACE the stored scope — send the full intended scope, not a delta. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key, even to re-scope itself — ask the owner to widen or narrow it instead.',
+    'Re-scope an existing API key in place, so its holder keeps the same secret. cmd and historyGrant REPLACE the stored scope — send the full intended scope, not a delta. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. Agent sessions are denied even without an API key; human owner sessions must not attach a permission key, even to re-scope itself — ask the owner to widen or narrow it instead.',
     { id: z.string(), cmd: z.array(z.string()), historyGrant: z.string() },
     wrap((a) =>
       commands.apiKeyUpdate(a.id as string, {
@@ -265,9 +261,9 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       }),
     ),
   );
-  host.tool('openstoa_apikey_revoke', 'Revoke an API key — takes effect immediately. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key, even to revoke itself — ask the owner to revoke it if it leaked.', { id: z.string() }, wrap((a) => commands.apiKeyRevoke(a.id as string)));
+  host.tool('openstoa_apikey_revoke', 'Revoke an API key — takes effect immediately. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. Agent sessions are denied even without an API key; human owner sessions must not attach a permission key, even to revoke itself — ask the owner to revoke it if it leaked.', { id: z.string() }, wrap((a) => commands.apiKeyRevoke(a.id as string)));
   host.tool('openstoa_dm_send', 'Seal and send an E2EE direct message.', { topicId: z.string(), text: z.string() }, wrap((a) => commands.dmSend(a.topicId as string, a.text as string)));
-  host.tool('openstoa_dm_read', 'Read and decrypt direct messages.', { topicId: z.string(), limit: z.number().int().min(1).max(100).optional(), since: z.string().optional().describe('ISO timestamp'), before: z.string().optional().describe('Server message ID') }, wrap((a) => commands.dmRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })));
+  host.tool('openstoa_dm_read', 'Read and decrypt direct messages.', { topicId: z.string(), limit: z.number().int().min(1).max(500).optional().describe('Maximum messages, 1–500; server default 50.'), since: z.string().optional().describe('ISO timestamp'), before: z.string().optional().describe('Server message ID') }, wrap((a) => commands.dmRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })));
   host.tool('openstoa_chat_history', 'Decrypt archived history available to this device and API key historyGrant.', { topicId: z.string() }, wrap((a) => commands.chatHistory(a.topicId as string)));
   host.tool('openstoa_dm_history', 'Decrypt archived DM history available to this device and API key historyGrant.', { topicId: z.string() }, wrap((a) => commands.chatHistory(a.topicId as string)));
   host.tool('openstoa_chat_share_keys', 'Share locally held history keys with existing member devices.', { topicId: z.string() }, wrap((a) => commands.chatShareKeys(a.topicId as string)));

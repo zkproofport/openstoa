@@ -89,9 +89,9 @@ async function requireMember(request: NextRequest, topicId: string) {
  *             schema:
  *               type: object
  *               properties: { id: { type: string, format: uuid, description: the stored bundle id } }
- *       400: { description: Invalid/oversized bundle, invalid scope, or missing recipient fields }
+ *       400: { description: "Invalid/oversized bundle, invalid scope, or missing recipient fields" }
  *       401: { $ref: '#/components/responses/Unauthorized' }
- *       403: { description: Caller is not a member, or the recipient is not a member }
+ *       403: { description: "Caller is not a member, or the recipient is not a member" }
  *       429: { description: Per-member rate limit exceeded (SI-4) }
  */
 export async function POST(

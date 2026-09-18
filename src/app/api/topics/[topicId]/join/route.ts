@@ -46,9 +46,11 @@ const ROUTE = '/api/topics/[topicId]/join';
  *           `oidc_domain_attestation`. Proves the caller's verified Google or Microsoft account
  *           belongs to the topic's allowed domain.
  *
- *       Generate the proof with `proofport-cli` against the matching circuit, then send
- *       `{ proof, publicInputs }` in the body. A `402` response with `requiredProofType` is
- *       returned when the proof is missing or invalid. Verified predicates are cached per account for 30 days. Topic proofs must commit to the
+ *       Generate the proof through the app/AI workflow for the matching circuit, then send
+ *       `{ proof, publicInputs }`, or use matching valid cached verification. Missing proof/cache
+ *       returns 402 with `proofRequirement` and `proofScope`; invalid submitted proofs return 400,
+ *       while predicate/permission failures may return 403. Verified predicates are cached per
+ *       account for 30 days. Topic proofs must commit to the
  *       authenticated challenge scope; country lists and OIDC provider/domain restrictions
  *       are checked again on cache reuse. The Bearer
  *       token used here comes from the agent login flow.
@@ -116,6 +118,9 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                 error:
  *                   type: string
  *                   example: Proof required to join this topic
+ *                 proofScope:
+ *                   type: string
+ *                   description: Account-bound scope required by the topic proof
  *                 proofRequirement:
  *                   type: object
  *                   description: >-

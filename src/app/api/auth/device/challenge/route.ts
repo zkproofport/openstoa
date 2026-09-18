@@ -24,7 +24,8 @@ const ROUTE = '/api/auth/device/challenge';
  *       Returns a one-time random value for the caller to sign with its device key. Send it back to
  *       `POST /api/auth/device/challenge` together with the signature and the device's public key.
  *
- *       **Agents do not need this.** An API key already identifies the caller; this exists because a
+ *       **Owner device sessions only.** The login session identifies the caller. Agent sessions and
+ *       selected API keys are rejected. This device-key challenge exists because a
  *       phone's device id is a string the phone chose, which the server has no way to check. Signing
  *       proves possession of a key instead of asserting a name.
  *

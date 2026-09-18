@@ -331,7 +331,7 @@ export class OpenStoaClient {
   // profile
   // -------------------------------------------------------------------------
   readonly profile = {
-    /** PUT /api/profile/nickname — set/replace the nickname. Returns a fresh token. */
+    /** PUT /api/profile/nickname — set/replace the nickname. Current servers return only nickname; legacy token responses remain accepted. */
     setNickname: async (nickname: string): Promise<{ nickname: string; token?: string }> => {
       const r = await this.request<{ nickname: string; token?: string }>('/api/profile/nickname', {
         method: 'PUT',

@@ -80,7 +80,7 @@ export function buildProgram(
     .description('OpenStoa CLI — REST + E2EE chat over @masselabs/openstoa (same core as the MCP server)')
     .option('--base-url <url>', 'OpenStoa origin (else OPENSTOA_BASE_URL, else the saved session)')
     .option('--vault-root <dir>', 'the .openstoa home dir for keys + session (default ~/.openstoa)')
-    .option('--keystore <backend>', 'keystore backend: vault (default) | keychain')
+    .option('--keystore <backend>', 'keystore backend: vault (default); keychain is not supported for chat')
     .option('--device-id <id>', 'stable MLS device identity override')
     .option('--api-key <key>', 'permission key used alongside a login session (else OPENSTOA_API_KEY, else ~/.openstoa/credentials)')
     .option('--json', 'machine-readable JSON output')
@@ -200,7 +200,7 @@ export function buildProgram(
 
   program
     .command('whoami')
-    .description('show the current session (includes the isAI badge)')
+    .description('show the current login identity and isAI session flag; no API key required')
     .action(() => run((c) => c.whoami(), fmt.fmtSession));
 
   // ── topics ────────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ export function buildProgram(
     .requiredOption('--title <title>')
     .option('--description <desc>')
     .addOption(new Option('--visibility <v>').choices(['public', 'private', 'secret']).default('public'))
-    .option('--category-id <id>')
+    .option('--category-id <id>', 'required by the server; get an ID with openstoa categories')
     .addOption(new Option('--proof-type <type>').choices(['none', 'kyc', 'country', 'google_workspace', 'microsoft_365', 'workspace']))
     .option('--allowed-countries <codes>', 'comma-separated country codes')
     .option('--required-domain <domain>', 'workspace domain requirement')
@@ -370,7 +370,7 @@ export function buildProgram(
   // ── upload (image → CDN public URL) ─────────────────────────────────────
   program
     .command('upload <file>')
-    .description('upload an image file to the CDN; prints the public URL to embed')
+    .description('upload an image (max 10MB); prints a media URL whose access follows its purpose and topic visibility')
     .option('--purpose <p>', 'post | topic | avatar', 'post')
     .option('--topic-id <id>', 'existing topic for post/cover images; required so post readers can access the image')
     .option('--content-type <mime>', 'override the MIME type (else inferred from the file extension)')
@@ -420,7 +420,7 @@ export function buildProgram(
   chat
     .command('read <topicId>')
     .description('read + MLS-decrypt history')
-    .option('--limit <n>', 'max messages', strictInteger)
+    .option('--limit <n>', 'max messages, 1–500; server default 50', strictInteger)
     .option('--since <iso>', 'only messages after this ISO timestamp')
     .option('--before <messageId>', 'only messages before this server message ID')
     .action((topicId: string, opts: { limit?: number; since?: string; before?: string }) =>
@@ -441,7 +441,7 @@ export function buildProgram(
   dm
     .command('read <topicId>')
     .description('read + MLS-decrypt DM history')
-    .option('--limit <n>', 'max messages', strictInteger)
+    .option('--limit <n>', 'max messages, 1–500; server default 50', strictInteger)
     .option('--since <iso>', 'only messages after this ISO timestamp')
     .option('--before <messageId>', 'only messages before this server message ID')
     .action((topicId: string, opts: { limit?: number; since?: string; before?: string }) =>
@@ -456,18 +456,16 @@ export function buildProgram(
     .description('set / replace your nickname')
     .action((nickname: string) => run((c) => c.profileSetNickname(nickname), (r) => `Nickname set to ${r.nickname}`));
 
-  // ── API keys (per-key authorization — login remains required) ────────────────
-  // Account-owner-only: every subcommand below 403s when this CLI invocation
-  // is itself authenticated via OPENSTOA_API_KEY. Requires a real session
-  // (`openstoa login --token <jwt>`) — see requireNonApiKeySession server-side.
-  const apikey = program.command('apikey').description('durable API key management — for the account owner to run from their own real session; an agent running on OPENSTOA_API_KEY gets 403 and should ask its owner instead');
+  // Key management requires a human owner session with no selected permission key.
+  // Agent sessions are denied even when no API key is attached.
+  const apikey = program.command('apikey').description('manage permission keys from a human owner session without a selected API key; agent sessions are denied even without a key');
   apikey
     .command('create')
     .description('issue a new scoped key — the raw key is shown ONCE, save it now')
     .requiredOption('--name <name>', 'label to identify this key later')
     .option('--cmd <list>', 'comma-separated capability allowlist, e.g. /openstoa/chat/read,/openstoa/post/write', '')
     .option('--history-grant <scope>', 'chat archive scope this key may back-fill: none | Nd | since_epoch:N | full', 'none')
-    .option('--no-ai', 'do not mark sessions authenticated with this key as isAI (default: isAI=true)')
+    .option('--no-ai', 'set legacy key metadata isAI=false; does not change the login session identity or grant owner access')
     .action((opts: { name: string; cmd?: string; historyGrant?: string; ai?: boolean }) =>
       run(
         (c) =>
@@ -542,6 +540,10 @@ export function buildProgram(
     });
   }
 
+  const topicHelp = '\nProof workflow: obtain consent before --approved. AI proof generation requires --wait in non-interactive/JSON mode; keep this process running. With app --wait, open the returned browser URL and scan its QR; no second terminal is needed. Existing --proof and --public-inputs must be supplied together and cannot be combined with --method, --approved or --provider. Private/secret topics require an invitation.\nDocs: https://www.openstoa.xyz/docs?topic=topics#topics';
+  for (const name of ['create', 'join', 'join-invite']) topics.commands.find(c => c.name() === name)!.addHelpText('after', topicHelp);
+  program.commands.find(c => c.name() === 'login')!.addHelpText('after', '\nLogin establishes identity; an API key only grants permissions for business operations. App mode opens a browser approval/QR page. AI login requires --wait in non-interactive/JSON mode. User consent is required before --approved. Resume/cancel using --operation-id in the same vault and server.\nDocs: https://www.openstoa.xyz/docs?topic=login#login');
+  program.addHelpText('after', '\nStart with openstoa login. Business requests use the saved proof-login session plus a same-account permission key; public guest reads remain available. For command options use openstoa <command> --help.\nDocs: https://www.openstoa.xyz/docs?topic=commands#commands');
   return program;
 }
 

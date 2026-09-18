@@ -28,7 +28,7 @@ import {unhandledRouteError} from '@/lib/apiError';
  *               approvalToken: { type: string }
  *               cancel: { type: boolean }
  *     responses:
- *       200: { description: Completed or cancelled; browser receives cookie and redirectUrl, CLI receives token and identity }
+ *       200: { description: "Completed or cancelled; browser receives cookie and redirectUrl, CLI receives token and identity" }
  *       202: { description: Awaiting approval or proof; pollAfterMs and browser-only deepLink }
  *       400: { description: Invalid or rejected Google login proof }
  *       403: { description: Invalid login credential }

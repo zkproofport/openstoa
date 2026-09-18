@@ -275,7 +275,7 @@ jobs:
             ' "$pkg")"
             [ -z "$specs" ] && return 0
 
-            local attempts=20 delay=15
+            local attempts=60 delay=10
             while IFS= read -r spec; do
               [ -z "$spec" ] && continue
               local i=1 resolved=""

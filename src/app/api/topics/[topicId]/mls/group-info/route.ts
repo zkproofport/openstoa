@@ -128,7 +128,7 @@ export async function GET(
  *     responses:
  *       201: { description: Genesis group registered }
  *       200: { description: Group already existed (no-op) }
- *       400: { description: Invalid base64 groupInfo / groupId, or payload too large }
+ *       400: { description: "Invalid base64 groupInfo / groupId, or payload too large" }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  */

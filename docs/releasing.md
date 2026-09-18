@@ -92,7 +92,7 @@ version to already exist on npm.
 
 `npm-publish.yml` enforces this. Before a real (non-dry-run) publish it resolves
 every `@masselabs/*` entry in the target's `dependencies` against the registry
-and waits up to 5 minutes for it to appear, then fails with an explicit message
+and waits up to 10 minutes for it to appear, then fails with an explicit message
 naming the missing spec. Merging one release PR fires several Release events in
 parallel, so a short wait while a sibling run finishes is normal.
 

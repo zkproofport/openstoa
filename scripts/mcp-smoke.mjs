@@ -13,7 +13,7 @@
  *   2. writes a newline-delimited JSON-RPC `initialize` request on stdin
  *      (the MCP stdio transport framing),
  *   3. asserts a well-formed JSON-RPC result comes back on stdout with a
- *      `protocolVersion` and the `openstoa-mcp` server name,
+ *      `protocolVersion`, the exact `openstoa-mcp` name and its package version,
  *   4. sends `notifications/initialized` + a `tools/list` request and asserts a
  *      non-empty tool array,
  *   5. exits non-zero (with the child's stderr) on any hang, crash, or mismatch.
@@ -25,7 +25,7 @@
  * Usage:  node scripts/mcp-smoke.mjs [--server <path to server.js>]
  */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +43,21 @@ const serverPath =
 if (!existsSync(serverPath)) {
   console.error(`mcp-smoke: built server not found at ${serverPath}`);
   console.error('mcp-smoke: build it first — (cd packages/mcp && npm run build)');
+  process.exit(1);
+}
+
+// Resolve beside the selected binary, including --server tarball/install checks.
+// Reading the repository package instead would falsely approve an older install.
+const packagePath = path.resolve(path.dirname(serverPath), '..', 'package.json');
+let expectedVersion;
+try {
+  const metadata = JSON.parse(readFileSync(packagePath, 'utf8'));
+  if (metadata.name !== '@masselabs/openstoa-mcp' || typeof metadata.version !== 'string' || !metadata.version) {
+    throw new Error('expected @masselabs/openstoa-mcp package metadata with a version');
+  }
+  expectedVersion = metadata.version;
+} catch (error) {
+  console.error(`mcp-smoke: invalid package metadata at ${packagePath}: ${error.message}`);
   process.exit(1);
 }
 
@@ -144,6 +159,9 @@ try {
   if (!initialize.result.protocolVersion) fail('initialize result is missing protocolVersion');
   if (initialize.result.serverInfo?.name !== 'openstoa-mcp') {
     fail(`unexpected serverInfo.name: ${JSON.stringify(initialize.result.serverInfo)}`);
+  }
+  if (initialize.result.serverInfo?.version !== expectedVersion) {
+    fail(`serverInfo.version ${JSON.stringify(initialize.result.serverInfo?.version)} does not match package version ${JSON.stringify(expectedVersion)} from ${packagePath}`);
   }
   console.log(
     `mcp-smoke: initialize OK — server=${initialize.result.serverInfo.name}@${initialize.result.serverInfo.version} protocol=${initialize.result.protocolVersion}`,
