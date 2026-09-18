@@ -64,3 +64,17 @@ it.each(['evil.invalid/path','user@evil.invalid','good.invalid,evil.invalid'])('
  const req=new NextRequest('http://0.0.0.0:3200/api/auth/cli-login',{method:'POST',headers:{host,'content-type':'application/json'},body:JSON.stringify({codeChallenge:'c'.repeat(43)})});
  expect((await start(req)).status).toBe(400);expect(mocks.start).not.toHaveBeenCalled();
 });
+it.each([
+ ['stg-community.zkproofport.app','https','https://stg-community.zkproofport.app'],
+ ['www.openstoa.xyz','https','https://www.openstoa.xyz'],
+ ['localhost:8443','https','https://localhost:8443'],
+ ['[::1]:3200','http','http://[::1]:3200'],
+ ['localhost:80','https','https://localhost:80'],
+])('constructs the public origin without inheriting the internal port: %s',async(host,proto,expected)=>{
+ const req=new NextRequest('http://0.0.0.0:3200/api/auth/cli-login',{method:'POST',headers:{host,'x-forwarded-proto':proto,'content-type':'application/json'},body:JSON.stringify({codeChallenge:'c'.repeat(43)})});
+ expect((await start(req)).status).toBe(202);expect(mocks.start.mock.calls[0][0]).toBe(expected);
+});
+it('rejects an out-of-range Host port instead of using the internal bind address',async()=>{
+ const req=new NextRequest('http://0.0.0.0:3200/api/auth/cli-login',{method:'POST',headers:{host:'example.com:65536','content-type':'application/json'},body:JSON.stringify({codeChallenge:'c'.repeat(43)})});
+ expect((await start(req)).status).toBe(400);expect(mocks.start).not.toHaveBeenCalled();
+});

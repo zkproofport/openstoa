@@ -43,15 +43,19 @@ export async function POST(request:NextRequest){
     let body;try{body=await request.json();}catch{return NextResponse.json({error:'Invalid JSON'},{status:400});}
     if(!body||typeof body!=='object'||Array.isArray(body))return NextResponse.json({error:'Invalid request'},{status:400});
     const incoming = new URL(request.url);
+    let origin = incoming.origin;
     // Standalone Next.js may expose 0.0.0.0 internally. Host identifies the
     // actual caller-facing endpoint; never redirect via arbitrary forwarded-host.
     const host = request.headers.get('host');
     if(host){
       if(!/^(?:[a-zA-Z0-9.-]+|\[[a-fA-F0-9:]+\])(?::[0-9]{1,5})?$/.test(host))return NextResponse.json({error:'Invalid request host'},{status:400});
-      incoming.host=host;
       const proto=request.headers.get('x-forwarded-proto');
-      if(proto==='http'||proto==='https')incoming.protocol=proto+':';
+      const protocol=proto==='http'||proto==='https'?proto+':':incoming.protocol;
+      // Parse a new authority: URL.host assignment retains an internal port
+      // when the public Host omits it (Cloud Run binds to :3200).
+      try { origin=new URL(`${protocol}//${host}`).origin; }
+      catch { return NextResponse.json({error:'Invalid request host'},{status:400}); }
     }
-    return NextResponse.json(await startCliLogin(incoming.origin,body),{status:202,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+    return NextResponse.json(await startCliLogin(origin,body),{status:202,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   }catch(error){if(error instanceof CliLoginError)return NextResponse.json({error:error.message},{status:error.status});return unhandledRouteError('/api/auth/cli-login','POST',error);}
 }
