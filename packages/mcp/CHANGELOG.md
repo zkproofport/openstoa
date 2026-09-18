@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.1](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.2.0...openstoa-mcp-v0.2.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* correct CLI and MCP installation and authentication readmes ([e4ad5e7](https://github.com/zkproofport/openstoa/commit/e4ad5e755c2d1593159bed9747baf76d9c63877c))
+* synchronize all public guides and client help with current contracts ([a9f67e5](https://github.com/zkproofport/openstoa/commit/a9f67e5e8ffda4c641a9ae6bb1ba86d400096265))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @masselabs/openstoa-commands bumped from ^0.2.0 to ^0.2.1
+  * devDependencies
+    * @masselabs/openstoa bumped from ^0.2.0 to ^0.2.1
+
 ## [0.2.0](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.1.2...openstoa-mcp-v0.2.0) (2026-09-18)
 
 
