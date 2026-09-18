@@ -1,9 +1,10 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { posts, users, votes, topics, topicMembers, tags, postTags, categories } from '@/lib/db/schema';
 import { eq, and, desc, sql, inArray, isNull, ilike, or } from 'drizzle-orm';
-import { getBatchUserBadges, filterBadgesByTopicProofType } from '@/lib/verification-cache';
+import { getBatchUserBadges } from '@/lib/verification-cache';
 import { attachReactionsToPosts } from '@/lib/reactions';
 import { attachUserFlagsToPosts } from '@/lib/userPostFlags';
 import { attachPollsToPosts } from '@/lib/polls';
@@ -95,6 +96,9 @@ const ROUTE = '/api/feed';
 const VALID_SORTS = ['hot', 'new', 'top', 'active'] as const;
 type FeedSort = typeof VALID_SORTS[number];
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/feed');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -226,7 +230,7 @@ export async function GET(request: NextRequest) {
         const { topicProofType, ...postData } = p;
         return {
           ...postData,
-          badges: p.authorId ? filterBadgesByTopicProofType(guestBadgeMap.get(p.authorId) ?? [], topicProofType) : [],
+          badges: p.authorId ? guestBadgeMap.get(p.authorId) ?? [] : [],
         };
       });
 
@@ -306,7 +310,7 @@ export async function GET(request: NextRequest) {
       const { topicProofType, ...postData } = p;
       return {
         ...postData,
-        badges: p.authorId ? filterBadgesByTopicProofType(authBadgeMap.get(p.authorId) ?? [], topicProofType) : [],
+        badges: p.authorId ? authBadgeMap.get(p.authorId) ?? [] : [],
         // W03: tell PostCard which posts live in topics the viewer has
         // already joined so the feed surfaces the same Joined badge that
         // PostDetail shows. Guests never reach this branch — they're

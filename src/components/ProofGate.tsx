@@ -3,6 +3,7 @@
 import { apiFetch } from '@/lib/apiFetch';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Spinner from '@/components/Spinner';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 interface ProofGateProps {
@@ -91,8 +92,8 @@ export default function ProofGate({
     doneRef.current = false;
 
     try {
-      const body: Record<string, unknown> = { circuitType };
-      if (scope) body.scope = scope;
+      const body: Record<string, unknown> = { circuitType, mode };
+      if (mode === 'login' && scope) body.scope = scope;
       if (countryList) body.countryList = countryList;
       if (isIncluded !== undefined) body.isIncluded = isIncluded;
       if (domain) body.domain = domain;
@@ -186,10 +187,10 @@ export default function ProofGate({
         }
       }, 2000);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : t('proofGate.unknownError'));
+      setErrorMsg(localizeApiError(err, t, 'proofGate.unknownError'));
       setState('error');
     }
-  }, [circuitType, scope, countryList, isIncluded, mode, qrSize, onLogin, onProofData, cleanup]);
+  }, [circuitType, scope, countryList, isIncluded, domain, provider, mode, qrSize, onLogin, onProofData, cleanup, t]);
 
   // Auto-start on mount if autoStart is true
   const startedRef = useRef(false);

@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -64,6 +65,9 @@ const ROUTE = '/api/tags';
  *                     $ref: '#/components/schemas/Tag'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/tags');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);

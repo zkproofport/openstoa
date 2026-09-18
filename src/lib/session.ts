@@ -186,46 +186,28 @@ export async function getSessionFromCookies(): Promise<SessionPayload | null> {
   return verifySession(token);
 }
 
-export async function getSession(request: NextRequest): Promise<SessionPayload | null> {
-  // 1. Try cookie
-  const cookieToken = request.cookies.get(COOKIE_NAME)?.value;
-  if (cookieToken) return verifySession(cookieToken);
-
-  // 2. Try Bearer token
-  const authHeader = request.headers.get('authorization');
-  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
-  if (!bearerToken) return null;
-
-  // 2a. API key (`osk_...`) — resolve via DB; capabilities come FROM THE KEY,
-  // not a fresh ai_permissions lookup (the key IS the scoped credential).
-  if (isApiKeyToken(bearerToken)) {
-    return getApiKeySession(bearerToken);
-  }
-
-  // 2b. JWT (cookie-equivalent Bearer, e.g. dev-login / verify/ai tokens).
-  return verifySession(bearerToken);
+/** Validate identity independently of the selected authorization key. */
+export async function getAuthenticatedSession(request: NextRequest): Promise<SessionPayload | null> {
+  const cookieToken=request.cookies.get(COOKIE_NAME)?.value;
+  const authHeader=request.headers.get('authorization');
+  const bearer=authHeader?.startsWith('Bearer ')?authHeader.slice(7):undefined;
+  const token=cookieToken??bearer;
+  if(!token||isApiKeyToken(token))return null;
+  return verifySession(token);
 }
 
-/** Resolve an API-key Bearer token to a SessionPayload, or null if invalid/revoked. */
-async function getApiKeySession(rawKey: string): Promise<SessionPayload | null> {
-  const keyRow = await verifyApiKey(db, rawKey);
-  if (!keyRow) return null;
-
-  const user = await db.query.users.findFirst({ where: eq(users.id, keyRow.userId) });
-  if (!user) return null;
-
-  // Best-effort — must never block or fail the auth path on a write hiccup.
-  void touchApiKeyLastUsed(db, keyRow.id).catch(() => {});
-
-  return {
-    userId: keyRow.userId,
-    nickname: user.nickname,
-    verifiedAt: Date.now(),
-    isAI: keyRow.isAI,
-    apiKeyId: keyRow.id,
-    apiKeyCmd: keyRow.cmd,
-    apiKeyHistoryGrant: keyRow.historyGrant,
-  };
+/** Authentication comes only from a live login session. A key narrows authorization. */
+export async function getSession(request: NextRequest): Promise<SessionPayload | null> {
+  const session=await getAuthenticatedSession(request);
+  if(!session)return null;
+  const rawKey=request.headers.get('x-openstoa-api-key');
+  if(rawKey===null)return session;
+  if(!isApiKeyToken(rawKey))return null;
+  const keyRow=await verifyApiKey(db,rawKey);
+  if(!keyRow||keyRow.userId!==session.userId)return null;
+  void touchApiKeyLastUsed(db,keyRow.id).catch(()=>{});
+  return {...session,isAI:session.isAI===true||keyRow.isAI,apiKeyId:keyRow.id,
+    apiKeyCmd:keyRow.cmd,apiKeyHistoryGrant:keyRow.historyGrant};
 }
 
 export function setSessionCookie(response: NextResponse, token: string): void {

@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -82,6 +83,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/leave');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) {

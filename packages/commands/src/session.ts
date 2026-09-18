@@ -6,7 +6,13 @@ import * as path from 'node:path';
  * key — it lives in a 0600 `session.json` next to the vault (SI-1: still never
  * logged, still owner-only on disk). MLS/TAK keys stay in the SDK's vault.
  */
+export interface PendingLogin {
+  operationId:string; baseUrl:string; method:'app'|'ai'; expiresAt:number;
+  credentialFingerprint?:string;
+  codeVerifier?:string; browserUrl?:string; challengeId?:string;
+}
 export interface SessionData {
+  pendingLogin?: PendingLogin;
   baseUrl: string;
   token?: string;
   userId?: string;

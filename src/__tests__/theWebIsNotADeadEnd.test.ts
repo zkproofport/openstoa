@@ -45,10 +45,10 @@ describe('the web is not a dead end', () => {
     );
   });
 
-  it('the web asks before deleting in the same words the app uses', () => {
+  it('each client explains the irreversible shared loss before deleting', () => {
     /*
-     * The sentence read before an irreversible thing must not depend on which
-     * screen a person happens to be on.
+     * Both clients must disclose the same irreversible loss, even when their
+     * independently released translations use different wording.
      */
     const web = JSON.parse(src('lib/i18n/locales/en.json'));
     const app = JSON.parse(
@@ -66,7 +66,11 @@ describe('the web is not a dead end', () => {
         'utf8',
       ),
     );
-    expect(webKo.editTopicPage.deleteConfirm).toBe(appKo.openstoa.topicEdit.deleteConfirm);
+    for (const warning of [webKo.editTopicPage.deleteConfirm, appKo.openstoa.topicEdit.deleteConfirm]) {
+      for (const fact of [/토픽/, /삭제/, /글|게시물/, /댓글/, /대화|채팅/, /모든 (멤버|참여자)/, /복구할 수 없|되돌릴 수 없/]) {
+        expect(warning).toMatch(fact);
+      }
+    }
   });
 
   it('the new-topic form arrives with a category already chosen', () => {

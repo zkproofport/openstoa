@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { isReservedNickname } from '@/lib/defaultNickname';
 import { getSession } from '@/lib/session';
@@ -81,6 +82,9 @@ const NICKNAME_REGEX = /^[a-zA-Z0-9_]{2,20}$/;
  *               $ref: '#/components/schemas/Error409'
  */
 export async function PUT(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/nickname');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'PUT request received');
   try {
     const session = await getSession(request);

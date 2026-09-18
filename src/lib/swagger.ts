@@ -1,3 +1,4 @@
+import {API_AUTHORIZATION_POLICIES} from './apiAuthorizationPolicies';
 import swaggerJsdoc from 'swagger-jsdoc';
 
 const options: swaggerJsdoc.Options = {
@@ -66,11 +67,12 @@ const options: swaggerJsdoc.Options = {
       {
         name: 'AI',
         description:
-          'AI-member capability delegation (UCAN-shaped). A topic owner grants a scoped, revocable capability (cmd allowlist + history scope + depth) to an AI member; the server enforces it on chat send / history read.',
+          'Proof login establishes identity. Each owner-issued API key independently limits business API capabilities and history access. See /docs?topic=login#login.',
       },
     ],
     components: {
       securitySchemes: {
+        permissionKey: {type:'apiKey',in:'header',name:'X-OpenStoa-API-Key',description:'Permission key owned by the logged-in account. Required alongside the Bearer session for agent business requests.'},
         cookieAuth: {
           type: 'apiKey',
           in: 'cookie',
@@ -82,9 +84,21 @@ const options: swaggerJsdoc.Options = {
         },
       },
       schemas: {
+        PublicBadge: {
+          type: 'object',
+          required: ['type', 'label'],
+          description: 'An active verification with public display enabled. Independent of topic proof requirements; hidden/expired badges are omitted.',
+          properties: {
+            type: { type: 'string', enum: ['kyc', 'country', 'workspace', 'oidc'] },
+            label: { type: 'string' },
+            domain: { type: 'string', description: 'Currently verified workspace domain, when available' },
+          },
+        },
         Session: {
           type: 'object',
           properties: {
+            profileImage: { type: 'string', nullable: true },
+            badges: { type: 'array', items: { $ref: '#/components/schemas/PublicBadge' } },
             userId: {
               type: 'string',
               description: 'Unique user identifier derived from ZK proof nullifier',
@@ -102,7 +116,7 @@ const options: swaggerJsdoc.Options = {
         SealedMessage: {
           type: 'object',
           description:
-            'End-to-end encrypted chat body. The server stores and routes these bytes verbatim and never decrypts them. Decryption happens only on member clients via the topic GroupCipher. See /skills/auth/topic-proofs/SKILL.md for the topic membership that gates key access.',
+            'Encrypted chat body. Private/secret topics and DMs keep decryption keys on member clients. Public-topic archive keys are server-held, so the service can read that history. See /docs?topic=chat#chat for the privacy boundaries.',
           properties: {
             ciphertext: {
               type: 'string',
@@ -113,13 +127,13 @@ const options: swaggerJsdoc.Options = {
             epoch: {
               type: 'integer',
               description:
-                'Group epoch the message was sealed under. Placeholder 0 during the Phase 1 routing rollout; carries the real MLS epoch once live MLS ships.',
+                'MLS group epoch under which the message was encrypted.',
             },
             takVersion: {
               type: 'integer',
               nullable: true,
               description:
-                'Topic Archive Key version used to seal the body, once archive back-fill exists. Null before archiving.',
+                'Topic Archive Key version used to encrypt the archived body; null when no archive envelope exists.',
             },
           },
           required: ['ciphertext', 'epoch'],
@@ -129,6 +143,7 @@ const options: swaggerJsdoc.Options = {
           description:
             'A chat row. User messages (type=message) carry an encrypted `sealed` body and a null `message`. System rows (type=join/leave) carry plaintext `message` (public nicknames only) and a null `sealed`.',
           properties: {
+            badges: { type: 'array', items: { $ref: '#/components/schemas/PublicBadge' } },
             id: { type: 'string', format: 'uuid', description: 'Message id' },
             topicId: { type: 'string', format: 'uuid', description: 'Topic id' },
             userId: { type: 'string', description: 'Author user id (nullifier)' },
@@ -316,6 +331,7 @@ const options: swaggerJsdoc.Options = {
         Post: {
           type: 'object',
           properties: {
+            badges: { type: 'array', items: { $ref: '#/components/schemas/PublicBadge' } },
             id: { type: 'string', format: 'uuid', description: 'Unique post identifier' },
             topicId: { type: 'string', format: 'uuid', description: 'Parent topic ID' },
             authorId: { type: 'string', description: "Author's user ID" },
@@ -361,6 +377,7 @@ const options: swaggerJsdoc.Options = {
         Comment: {
           type: 'object',
           properties: {
+            badges: { type: 'array', items: { $ref: '#/components/schemas/PublicBadge' } },
             id: { type: 'string', format: 'uuid', description: 'Unique comment identifier' },
             postId: { type: 'string', format: 'uuid', description: 'Parent post ID' },
             authorId: { type: 'string', description: "Commenter's user ID" },
@@ -387,6 +404,7 @@ const options: swaggerJsdoc.Options = {
         Member: {
           type: 'object',
           properties: {
+            badges: { type: 'array', items: { $ref: '#/components/schemas/PublicBadge' } },
             userId: { type: 'string', description: "Member's user ID" },
             nickname: { type: 'string', description: 'Display name' },
             role: {
@@ -405,6 +423,7 @@ const options: swaggerJsdoc.Options = {
         JoinRequest: {
           type: 'object',
           properties: {
+            badges: { type: 'array', items: { $ref: '#/components/schemas/PublicBadge' } },
             id: { type: 'string', format: 'uuid', description: 'Unique request identifier' },
             userId: { type: 'string', description: "Requesting user's ID" },
             nickname: { type: 'string', description: "Requesting user's display name" },
@@ -502,7 +521,7 @@ const options: swaggerJsdoc.Options = {
           },
         },
         Forbidden: {
-          description: 'Authenticated but not authorized (e.g. no nickname set, not a member, insufficient role)',
+          description: 'Authenticated but not authorized: missing/invalid key, missing capability, or insufficient membership/role.',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/Error403' },
@@ -527,9 +546,23 @@ const options: swaggerJsdoc.Options = {
         },
       },
     },
-    security: [{ cookieAuth: [] }, { bearerAuth: [] }],
+    security: [{ cookieAuth: [] }, { bearerAuth: [], permissionKey: [] }],
   },
   apis: ['./src/app/api/**/route.ts'],
 };
 
 export const spec = swaggerJsdoc(options);
+
+// Authorization metadata is derived from the enforced registry, never a second policy.
+const paths = (spec as {paths:Record<string,Record<string,Record<string,unknown>>>}).paths;
+for (const [route, methods] of Object.entries(API_AUTHORIZATION_POLICIES)) {
+ const apiPath=route.replace(/\[(?:\.\.\.)?([^\]]+)\]/g,'{$1}');
+ for(const [method,policy] of Object.entries(methods)) {
+  const operation=paths[apiPath]?.[method.toLowerCase()];
+  if(!operation)continue;
+  operation['x-openstoa-authorization']=policy;
+  if(policy.kind==='public')operation.security=[];
+  else if(policy.kind==='session'||policy.kind==='owner')operation.security=[{cookieAuth:[]},{bearerAuth:[]}];
+  else operation.security=[{cookieAuth:[]},{bearerAuth:[],permissionKey:[]},...(operation['x-auth-optional']?[{}]:[])];
+ }
+}

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { getServerLocale } from '@/lib/i18n/getServerLocale';
 import { buildTopicMetadata } from '@/lib/pageMetadata';
 import { resolveRequestOrigin } from '@/lib/requestOrigin';
 import TopicPageClient from './TopicPageClient';
@@ -14,7 +15,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { topicId } = await params;
   const origin = await resolveRequestOrigin();
-  return buildTopicMetadata(topicId, origin);
+  return buildTopicMetadata(topicId, origin, await getServerLocale());
 }
 
 export default function TopicPage() {

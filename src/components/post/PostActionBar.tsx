@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/apiFetch';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { useEffect, useState } from 'react';
 import { CommentIcon, EyeIcon, ShareIcon, TrashIcon, RecordIcon } from '@/components/icons';
@@ -130,10 +131,7 @@ export default function PostActionBar({
     e.preventDefault();
     e.stopPropagation();
     if (recording || recordState.recorded) return;
-    const ok = window.confirm(
-      'Record this post on-chain?\n\n' +
-        "This writes a permanent on-chain attestation on Base via OpenStoa's service wallet (no fee charged to you). It can take 5–15 seconds to confirm and cannot be undone.",
-    );
+    const ok = window.confirm(t('webUi.recordConfirm'));
     if (!ok) return;
     setRecording(true);
     setRecordError(null);
@@ -143,7 +141,13 @@ export default function PostActionBar({
         setRecordState(res.next);
         onRecordChange?.(res.next);
       } else {
-        setRecordError(res.error ?? 'Failed to record');
+        if (res.error === 'Network error') {
+          setRecordError(t('common.networkError'));
+        } else if (!res.error || res.error === 'Failed to record') {
+          setRecordError(t('webUi.recordFailed'));
+        } else {
+          setRecordError(localizeApiError(res.error, t, 'webUi.recordFailed'));
+        }
       }
     } finally {
       setRecording(false);
@@ -220,9 +224,9 @@ export default function PostActionBar({
           icon={<RecordIcon size={compact ? 14 : 16} />}
           label={
             recording
-              ? 'Recording...'
+              ? t('webUi.recording')
               : recordState.recorded
-              ? 'Recorded'
+              ? t('webUi.recorded')
               : recordError ??
                 (recordState.recordCount > 0 ? String(recordState.recordCount) : undefined)
           }
@@ -248,7 +252,7 @@ export default function PostActionBar({
       {isAuthor && !isGuest && (
         <ActionGlyph
           icon={<TrashIcon size={compact ? 14 : 18} />}
-          label={showDeleteConfirm ? (deleting ? 'Deleting...' : 'Delete?') : undefined}
+          label={showDeleteConfirm ? (deleting ? t('webUi.deleting') : t('webUi.deleteQuestion')) : undefined}
           active={showDeleteConfirm}
           color="var(--color-status-danger)"
           onClick={handleDelete}

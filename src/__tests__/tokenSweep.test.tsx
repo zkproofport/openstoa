@@ -79,6 +79,18 @@ const COLOR_SWEPT_FILES = [
   'src/app/layout.tsx',
   'src/components/Header.tsx',
   'src/components/ThemeToggle.tsx',
+  'src/components/docs/DocsPage.tsx',
+  'src/components/docs/LoginGuide.tsx',
+  'src/components/docs/ApiPolicyGuide.tsx',
+  'src/components/docs/CliGuide.tsx',
+  'src/components/docs/LegacyGuide.tsx',
+  'src/components/docs/ProofGuide.tsx',
+  'src/components/docs/ProofWorkflowGuide.tsx',
+  'src/app/proof/page.tsx',
+  'src/components/HumanProofPage.tsx',
+  'src/components/CliLoginPage.tsx',
+  'src/app/login/page.tsx',
+  'src/components/docs/TiersGuide.tsx',
   // What the web shows in place of chat. Every colour it draws is a token, so
   // it belongs in the swept list rather than the excluded one.
   'src/components/ChatOnMobileOnly.tsx',
@@ -115,6 +127,9 @@ const COLOR_SWEPT_FILES = [
   'src/app/topics/page.tsx',
   'src/components/AccountRecovery.tsx',
   'src/components/AiAgentSettings.tsx',
+  'src/components/BadgeVisibilitySettings.tsx',
+  'src/components/UserIdentity.tsx',
+  'src/components/UserBadges.tsx',
   'src/components/ArchiveRetentionNotice.tsx',
   'src/components/Avatar.tsx',
   'src/components/BareChatShell.tsx',
@@ -182,6 +197,8 @@ const ALLOWLIST: Array<{ file: string; value: string; reason: string }> = [
   { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.1)', reason: 'Same disabled AI-Ask block.' },
   { file: 'src/components/Header.tsx', value: 'rgba(120,140,255,0.5)', reason: 'Same disabled AI-Ask block.' },
   // ── 3. Renderer arguments, not CSS ──
+  { file: 'src/components/HumanProofPage.tsx', value: '#000000', reason: 'QR canvas renderer requires hex module colors, not CSS tokens; dark-on-light contrast is required in both themes.' },
+  { file: 'src/components/HumanProofPage.tsx', value: '#ffffff', reason: 'QR canvas quiet zone must remain white for reliable mobile scanning in both themes.' },
   { file: 'src/components/ProofGate.tsx', value: '#000000', reason: 'QR module colour. Passed to the qrcode canvas renderer, NOT to CSS — a var(--…) here throws "Invalid hex color" and the login QR fails to render (it did). Fixed black-on-white in both themes because scanners only guarantee dark-on-light polarity.' },
   { file: 'src/components/ProofGate.tsx', value: '#ffffff', reason: 'QR quiet-zone colour — same renderer-argument contract as above.' },
   { file: 'src/components/ImageLightbox.tsx', value: 'rgba(0,0,0,0.9)', reason: 'Full-screen lightbox scrim — black over the photo in both themes.' },
@@ -504,7 +521,7 @@ describe('Badge — collapsed to three tones, every type intact', () => {
 
   it('renders Korean labels intact (UTF-8, no uppercase mangling)', async () => {
     await renderBadge(<Badge type="kyc" />, 'ko');
-    expect(badgeEl().textContent).toContain('KYC 인증됨');
+    expect(badgeEl().textContent).toContain('신원 인증');
   });
 
   it('every tone uses only token colors — no literal color survives on the element', async () => {

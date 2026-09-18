@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -105,6 +106,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat/delivered');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);

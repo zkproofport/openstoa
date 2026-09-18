@@ -1,5 +1,6 @@
 'use client';
 
+import { categoryLabel } from '@/lib/categoryLabel';
 import { apiFetch } from '@/lib/apiFetch';
 import { useSession } from '@/lib/useSession';
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
@@ -8,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
 import Spinner from '@/components/Spinner';
 import TopicAvatar from '@/components/TopicAvatar';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -164,19 +166,12 @@ function ExplorePageInner() {
           prev.map((t) => (t.id === topicId ? { ...t, isMember: true, memberCount: t.memberCount + 1 } : t)),
         );
       } else {
-        /*
-         * A refusal has to reach the person.
-         *
-         * This branch did not exist: a 403 left the button snapping back to
-         * "Join" with nothing said, which reads as a broken button rather than
-         * as a locked door. The server writes its refusals for people ("This
-         * topic requires an invite code"), so that sentence is the one shown.
-         */
+        // Preserve known refusal guidance without exposing raw server diagnostics.
         const reason = await res
           .json()
           .then((b: { error?: unknown }) => (typeof b.error === 'string' ? b.error : null))
           .catch(() => null);
-        setJoinError(reason ?? t('explorePage.joinFailed'));
+        setJoinError(localizeApiError(reason, t, 'explorePage.joinFailed'));
       }
     } catch {
       // The request never left: the same treatment, in the reader's terms.
@@ -293,7 +288,7 @@ function ExplorePageInner() {
             <option value="">{t('explorePage.allCategories')}</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.slug}>
-                {cat.icon} {cat.name}
+                {cat.icon} {categoryLabel(cat, t)}
               </option>
             ))}
           </select>
@@ -512,7 +507,7 @@ function ExplorePageInner() {
                           color: 'var(--color-text-tertiary)',
                         }}
                       >
-                        {topic.category.icon} {topic.category.name}
+                        {topic.category.icon} {categoryLabel(topic.category, t)}
                       </span>
                     )}
                   </div>

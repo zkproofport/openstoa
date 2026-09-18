@@ -84,26 +84,30 @@ describe('creation copy — the choice and its cost', () => {
   it('CONTRACT: the cost of a short window is stated, not implied', () => {
     // The requirement this whole setting hangs on: the admin choosing 30 days
     // has to be told, in the same breath, that a later joiner sees less.
-    expect(enWeb.newTopicPage.archiveRetention.cost).toMatch(/joins later sees less/i);
-    expect(enMobile.openstoa.topicCreate.archiveRetention.cost).toMatch(/joins later sees less/i);
-    expect(koWeb.newTopicPage.archiveRetention.cost).toContain('나중에 들어온 멤버');
-    expect(koMobile.openstoa.topicCreate.archiveRetention.cost).toContain('나중에 들어온 멤버');
+    for (const [name, dict] of CATALOGUES) {
+      const facts = name.endsWith('/en')
+        ? [/shorter/i, /deleted/i, /new members|joins later/i, /less/i]
+        : [/기간/, /삭제/, /새 멤버|나중에 들어온 멤버/, /줄어|적/];
+      for (const fact of facts) expect(dict.cost, `${name} must explain ${fact}`).toMatch(fact);
+    }
   });
 
-  it('CONTRACT: both clients describe the same window the same way', () => {
-    // Two catalogues drifting is how one client ends up promising a deletion
-    // schedule the other does not.
-    for (const days of ARCHIVE_RETENTION_CHOICES) {
-      const key = archiveRetentionKey(days);
-      const web = (enWeb.newTopicPage.archiveRetention.options as Record<string, { label: string }>)[key];
-      const mobile = (enMobile.openstoa.topicCreate.archiveRetention.options as Record<string, { label: string }>)[key];
-      expect(mobile.label, key).toBe(web.label);
+  it('CONTRACT: each client labels every window with its correct duration', () => {
+    for (const [name, dict] of CATALOGUES) {
+      const duration = name.endsWith('/en')
+        ? [/forever|unlimited/i, /1 year/i, /90 days/i, /30 days/i]
+        : [/계속|무제한/, /1년/, /90일/, /30일/];
+      for (const [index, days] of [0, 365, 90, 30].entries()) {
+        const key = archiveRetentionKey(days);
+        const entry = (dict.options as Record<string, { label: string }>)[key];
+        expect(entry.label, `${name}.${key}`).toMatch(duration[index]);
+      }
     }
   });
 
   it('CONTRACT: the unlimited option does not promise deletion, and 30 days does', () => {
     const opts = enWeb.newTopicPage.archiveRetention.options;
-    expect(opts.unlimited.desc).toMatch(/nothing is deleted/i);
+    expect(opts.unlimited.desc).toMatch(/without a time limit/i);
     expect(opts.days30.desc).toMatch(/deleted/i);
   });
 });

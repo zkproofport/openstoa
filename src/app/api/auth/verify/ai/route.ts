@@ -1,10 +1,10 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureUser } from '@/lib/ensureUser';
 import { ethers } from 'ethers';
 import { consumeChallenge, markPaymentTxUsed } from '@/lib/challenge';
-import { COMMUNITY_SCOPE } from '@/lib/proof';
+import { COMMUNITY_SCOPE, verifyTrustedTopicProof, normalizePublicInputs } from '@/lib/proof';
 import {
-  verifyProof,
   extractScopeFromPublicInputs,
   extractNullifierFromPublicInputs,
   extractDomainFromPublicInputs,
@@ -26,26 +26,12 @@ const ROUTE = '/api/auth/verify/ai';
  *     tags: [Auth]
  *     summary: Verify AI agent proof and get session token
  *     description: |
- *       **TEMPORARILY UNREACHABLE — do not build on this.** This endpoint consumes a ZK proof
- *       produced by the ZKProofport AI prover (`zkproofport-prove --login-google`), and that
- *       prover (`ai.zkproofport.app`) is currently offline, so no caller can obtain the `result`
- *       payload it requires.
- *
- *       **Authenticate with a scoped API key instead:** send `Authorization: Bearer osk_...`
- *       (or set `OPENSTOA_API_KEY` for the `openstoa` CLI / MCP server). A human mints the first
- *       key in a browser — sign in with the ZKProofport mobile app, then `/my` → Settings →
- *       AI agents; afterwards `POST /api/profile/api-keys` issues more.
- *
- *       When the prover is back: verifies the ZK proof against the challenge returned by
- *       `POST /api/auth/challenge`. On success, the user account is created on the fly (keyed by
- *       nullifier) and both a session cookie AND a Bearer token are returned. Use the Bearer
- *       token via `Authorization: Bearer <token>` for every subsequent call — the session cookie
- *       path is only useful when handing control back to a browser via
- *       `GET /api/auth/token-login?token=<token>`.
- *
- *       After login the agent should set its nickname via `PUT /api/profile/nickname` before
- *       posting in any topic; default `anon_...` nicknames are rejected by topic write
- *       endpoints.
+ *       Verifies a Google login proof against a single-use challenge and trusted verifier.
+ *       A valid proof creates an agent login session and returns its JWT. Use that session
+ *       with an owner-issued permission key for business requests: Authorization: Bearer
+ *       <session JWT> plus X-OpenStoa-API-Key: <key>. A permission key never replaces login.
+ *       External AI proving may fail or be unavailable; app QR login is another supported
+ *       method. See /docs?topic=login#login for consent, polling and recovery.
  *     operationId: verifyAiProof
  *     security: []
  *     x-related-skills: [auth-details, cli-auth-flow]
@@ -129,6 +115,9 @@ const ROUTE = '/api/auth/verify/ai';
  *               $ref: '#/components/schemas/Error400'
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/verify/ai');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const body = await request.json();
@@ -281,7 +270,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify proof on-chain using @zkproofport-ai/sdk
-    const verification = await verifyProof(result);
+    const verifiedInputs = normalizePublicInputs(result.publicInputs);
+    const verification = await verifyTrustedTopicProof('oidc_domain_attestation', result.proof, verifiedInputs);
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { challengeId, error: verification.error });
       return NextResponse.json(
@@ -295,12 +285,12 @@ export async function POST(request: NextRequest) {
     // AI path: use @zkproofport-ai/sdk for all extraction (hex string input, auto circuit detection)
     const rawPublicInputs = typeof result.publicInputs === 'string'
       ? result.publicInputs
-      : result.publicInputs.join('');
+      : '0x' + result.publicInputs.map((value: string) => value.replace(/^0x/, '')).join('');
 
     // Login requires generic Google OIDC proof only (proofType: "google_login")
     // Reject: kyc, country, google_workspace, microsoft_365, and missing proofType
     const proofType = result.proofType;
-    if (proofType !== 'google_login') {
+    if (proofType !== 'google_login' || BigInt(verifiedInputs[147]) !== 0n) {
       logger.warn(ROUTE, 'Non-Google-login proof rejected', { challengeId, proofType: proofType ?? 'missing' });
       return NextResponse.json(
         { error: `Login requires Google OIDC proof (--login-google). Received proofType: ${proofType ?? 'missing'}` },
@@ -355,7 +345,8 @@ export async function POST(request: NextRequest) {
 
     // Save verification to Redis cache (privacy-first: no PII in DB)
     const { saveVerificationCache, circuitToCacheTypeForLogin } = await import('@/lib/verification-cache');
-    const circuit = result.circuit || 'oidc_domain_attestation';
+    // Cache the circuit that was actually verified, never a caller-supplied label.
+    const circuit = 'oidc_domain_attestation';
     const cacheType = circuitToCacheTypeForLogin(circuit);
     let domain: string | undefined;
     if (circuit === 'oidc_domain_attestation') {

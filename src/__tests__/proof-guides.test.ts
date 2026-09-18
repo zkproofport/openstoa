@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { buildProofRequirement as BuildProofRequirement, PROOF_GUIDES as ProofGuidesType } from '@/lib/proof-guides';
 
@@ -16,6 +17,64 @@ describe('PROOF_GUIDES', () => {
     for (const key of REQUIRED_KEYS) {
       expect(PROOF_GUIDES).toHaveProperty(key);
     }
+  });
+
+  it('uses the Coinbase circuit CLI arguments instead of Google login', () => {
+    expect(PROOF_GUIDES.kyc.proofEndpoint.agent.proveCommand).toContain('coinbase_kyc');
+    expect(PROOF_GUIDES.country.proofEndpoint.agent.proveCommand).toContain('coinbase_country --countries "$COUNTRIES" --included true');
+    for (const key of ['kyc', 'country']) {
+      const guide = PROOF_GUIDES[key];
+      expect(JSON.stringify(guide)).not.toContain('--login-google');
+      expect(guide.steps.agent.some(step => step.description.includes('ATTESTATION_KEY'))).toBe(true);
+    }
+  });
+
+  it.each(REQUIRED_KEYS)('guide "%s" points to the current submission tool without promising an unavailable flow', key => {
+    const guide = PROOF_GUIDES[key];
+    expect(guide.mcp.preferredTool).toBe('openstoa_topic_join');
+    expect(guide.mcp.exampleToolCall).toMatchObject({ name: 'openstoa_topic_join', arguments: { topicId: '<topic-uuid>' } });
+    expect(typeof guide.mcp.exampleToolCall!.arguments.publicInputs).toBe('string');
+    expect(guide.mcp).toMatchObject({workflow: {
+      methods: ['app', 'ai'], requiresConsent: true,
+      continueTool: 'openstoa_proof_continue', statusTool: 'openstoa_proof_status',
+      resumeTool: 'openstoa_proof_resume', cancelTool: 'openstoa_proof_cancel',
+      exampleContinueToolCall: {name: 'openstoa_proof_continue', arguments: {approved: true}},
+    }});
+    const workflow = Reflect.get(guide.mcp, 'workflow');
+    expect(workflow.exampleContinueToolCall.arguments.operationId).toEqual(expect.any(String));
+    expect(workflow.exampleContinueToolCall.arguments.method).toMatch(/^(app|ai)$/);
+    const commands = workflow.cli.join('\n');
+    for (const control of ['continue', 'status', 'resume', 'cancel']) expect(commands).toContain(`proof ${control}`);
+    expect(commands).toContain('--approved');
+    expect(commands).toContain('--wait');
+    expect(guide.mcp.explanation).toMatch(/consent|approv/i);
+    expect(guide.notes.join(' ')).toMatch(/availability|unavailable|not.*verified/i);
+    expect(guide.notes.join(' ')).not.toMatch(/currently offline/i);
+    expect(JSON.stringify(guide)).not.toMatch(/post_topics_topicId_join|join_topic_with_|verifies it on-chain/);
+  });
+
+  it.each(REQUIRED_KEYS)('guide "%s" supplies syntactically valid shell examples', key => {
+    for (const step of PROOF_GUIDES[key].steps.agent) {
+      if (!step.code) continue;
+      // Parse only: do not execute a prover, request, wallet operation or network call.
+      const parsed = spawnSync('bash', ['-n'], { input: step.code, encoding: 'utf8' });
+      expect(parsed.stderr).toBe('');
+      expect(parsed.status).toBe(0);
+    }
+    const submit = PROOF_GUIDES[key].steps.agent.find(step => step.title === 'Submit Proof to Join Topic')!;
+    expect(submit.code).toContain("jq '{proof, publicInputs}'");
+    expect(submit.code).toContain('Bearer $OPENSTOA_SESSION_TOKEN');
+    expect(submit.code).toContain('X-OpenStoa-API-Key: $OPENSTOA_API_KEY');
+  });
+
+  it.each(REQUIRED_KEYS)('guide "%s" obtains account-bound scope with authentication', key => {
+    const guide = PROOF_GUIDES[key];
+    expect(guide.proofEndpoint.mobile.body).toMatchObject({ mode: 'proof' });
+    expect(guide.proofEndpoint.mobile.body).not.toHaveProperty('scope');
+    expect(guide.proofEndpoint.agent.challengeEndpoint.exampleResponse.scope).toBe('zkproofport-community:topic:<userId>');
+    const challenge = guide.steps.agent.find(step => step.title === 'Get Challenge')!;
+    expect(challenge.code).toContain('Bearer $OPENSTOA_SESSION_TOKEN');
+    expect(challenge.code).toContain('X-OpenStoa-API-Key: $OPENSTOA_API_KEY');
   });
 
   it.each(REQUIRED_KEYS)('guide "%s" has all required fields', (key) => {
@@ -75,15 +134,8 @@ describe('buildProofRequirement', () => {
     });
   });
 
-  it('sets isIncluded=false when countryMode is "exclude"', () => {
-    const result = buildProofRequirement('country', {
-      allowedCountries: ['CN'],
-      countryMode: 'exclude',
-    });
-    expect(result!.proofEndpoint.mobile.body).toMatchObject({
-      countryList: ['CN'],
-      isIncluded: false,
-    });
+  it('refuses to describe unsupported country exclusion as an enforceable gate', () => {
+    expect(buildProofRequirement('country', { allowedCountries: ['CN'], countryMode: 'exclude' })).toBeNull();
   });
 
   it('does not add country params when allowedCountries is not provided', () => {

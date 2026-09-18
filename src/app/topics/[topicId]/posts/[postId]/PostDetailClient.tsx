@@ -6,8 +6,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CommunityLayout from '@/components/CommunityLayout';
-import Avatar from '@/components/Avatar';
-import Badge from '@/components/Badge';
+import UserIdentity from '@/components/UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import SNSContent from '@/components/SNSContent';
 import Spinner from '@/components/Spinner';
 import ImageLightbox from '@/components/ImageLightbox';
@@ -24,6 +24,7 @@ import { collectPostMedia, stripVideoUrls } from '@/lib/postMedia';
 import type { ReactionSummary } from '@/hooks/usePostMutations';
 import type { Poll } from '@/lib/polls';
 import { formatDate, truncateId } from '@/lib/utils';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ interface Post {
   authorNickname: string;
   authorProfileImage?: string | null;
   authorId: string;
+  badges?: PublicBadge[];
   createdAt: string;
   topicId: string;
   topicTitle?: string;
@@ -117,7 +119,7 @@ export default function PostDetailClient() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Vote failed');
+        throw new Error(d.error ?? t('poll.voteFailed'));
       }
       const data = await res.json();
       if (data.poll) setPoll(data.poll);
@@ -133,7 +135,7 @@ export default function PostDetailClient() {
       const res = await apiFetch(`/api/posts/${postId}/poll/vote`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Unvote failed');
+        throw new Error(d.error ?? t('poll.unvoteFailed'));
       }
       const data = await res.json();
       if (data.poll) setPoll(data.poll);
@@ -214,7 +216,7 @@ export default function PostDetailClient() {
       .then((data) => { if (data?.currentUserRole) setTopicRole(data.currentUserRole); })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId]);
+  }, [postId, t]);
 
   // Attach click handler via event delegation on content area
   useEffect(() => {
@@ -259,7 +261,7 @@ export default function PostDetailClient() {
         setLoading(false);
         return;
       }
-      if (!res.ok) throw new Error('Post not found');
+      if (!res.ok) throw new Error(t('postDetailPage.notFound'));
       const data = await res.json();
       setPost(data.post);
       setComments(data.comments ?? []);
@@ -267,7 +269,7 @@ export default function PostDetailClient() {
       setUserVote(data.post.userVoted ?? null);
       setPoll(data.post.poll ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load post');
+      setError(localizeApiError(err, t, 'webUi.loadPostFailed'));
     } finally {
       setLoading(false);
     }
@@ -286,13 +288,13 @@ export default function PostDetailClient() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to post comment');
+        throw new Error(d.error ?? t('webUi.commentFailed'));
       }
       const data = await res.json();
       setComments((prev) => [...prev, data.comment]);
       setCommentContent('');
     } catch (err) {
-      setCommentError(err instanceof Error ? err.message : 'Unknown error');
+      setCommentError(localizeApiError(err, t, 'webUi.unknownError'));
     } finally {
       setSubmitting(false);
     }
@@ -353,7 +355,7 @@ export default function PostDetailClient() {
       } else if (editPoll) {
         const opts = editPoll.options.map((o) => o.trim()).filter((o) => o.length > 0 && o.length <= 80);
         if (!editPollHadVotes && (opts.length < 2 || opts.length > 4)) {
-          throw new Error('Poll needs 2 to 4 non-empty options (≤80 chars each)');
+          throw new Error(t('webUi.pollOptionsInvalid'));
         }
         pollPayload = {
           ...(editPoll.question?.trim() ? { question: editPoll.question.trim() } : { question: '' }),
@@ -378,16 +380,16 @@ export default function PostDetailClient() {
       });
       if (res.status === 409) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Locked after on-chain record');
+        throw new Error(d.error ?? t('webUi.lockedAfterRecord'));
       }
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to save');
+        throw new Error(d.error ?? t('webUi.saveFailed'));
       }
       setEditing(false);
       await loadPost();
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Failed to save');
+      setEditError(localizeApiError(err, t, 'webUi.saveFailed'));
     } finally {
       setEditSaving(false);
     }
@@ -400,13 +402,13 @@ export default function PostDetailClient() {
       const res = await apiFetch(`/api/posts/${postId}/pin`, { method: 'POST' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to toggle pin');
+        throw new Error(d.error ?? t('webUi.pinFailed'));
       }
       const data = await res.json();
       setPost((prev) => (prev ? { ...prev, isPinned: !!data.isPinned } : prev));
       setMenuOpen(false);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to toggle pin');
+      window.alert(localizeApiError(err, t, 'webUi.pinFailed'));
     } finally {
       setPinning(false);
     }
@@ -414,18 +416,18 @@ export default function PostDetailClient() {
 
   async function handleDeletePost() {
     if (!post || postDeleting) return;
-    const ok = window.confirm('정말 이 글을 삭제하시겠어요?');
+    const ok = window.confirm(t('webUi.deleteConfirm'));
     if (!ok) return;
     setPostDeleting(true);
     try {
       const res = await apiFetch(`/api/posts/${postId}`, { method: 'DELETE' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? 'Failed to delete');
+        throw new Error(d.error ?? t('webUi.deleteFailed'));
       }
       router.replace(`/topics/${topicId}`);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to delete');
+      window.alert(localizeApiError(err, t, 'webUi.deleteFailed'));
     } finally {
       setPostDeleting(false);
       setMenuOpen(false);
@@ -469,10 +471,10 @@ export default function PostDetailClient() {
       <CommunityLayout isGuest={isGuest} sessionChecked={sessionChecked}>
         <div style={{ padding: 'var(--space-7) 0', textAlign: 'center' }}>
           <p style={{ color: 'var(--color-status-danger)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-body-sm)', margin: '0 0 var(--space-4)' }}>
-            {error ?? 'Post not found'}
+            {error ?? t('postDetailPage.notFound')}
           </p>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--accent)', fontSize: 'var(--text-body-sm)' }}>
-            ← Back to topic
+            {t('webUi.backToTopic')}
           </Link>
         </div>
       </CommunityLayout>
@@ -503,7 +505,7 @@ export default function PostDetailClient() {
           <Link href="/topics" style={{ color: 'var(--muted)', textDecoration: 'none' }}>{t('topicPage.topicsBreadcrumb')}</Link>
           <span style={{ color: 'var(--border)' }}>/</span>
           <Link href={`/topics/${topicId}`} style={{ color: 'var(--muted)', textDecoration: 'none' }}>
-            {post.topicTitle ?? 'Topic'}
+            {post.topicTitle ?? t('webUi.topic')}
           </Link>
           <span style={{ color: 'var(--border)' }}>/</span>
           {/* The only place on this page a title is allowed to be clipped:
@@ -637,7 +639,7 @@ export default function PostDetailClient() {
                           fontFamily: 'var(--font-mono)',
                         }}
                       >
-                        {pinning ? '…' : (post.isPinned ? 'Unpin post' : 'Pin post')}
+                        {pinning ? '…' : (post.isPinned ? t('webUi.unpinPost') : t('webUi.pinPost'))}
                       </button>
                     )}
                     {(isAuthor || isAdmin) && (
@@ -646,7 +648,7 @@ export default function PostDetailClient() {
                           type="button"
                           disabled={recorded}
                           onClick={() => !recorded && openEdit()}
-                          title={recorded ? 'Cannot edit after on-chain recording' : undefined}
+                          title={recorded ? t('webUi.cannotEditRecorded') : undefined}
                           style={{
                             display: 'block',
                             width: '100%',
@@ -683,7 +685,7 @@ export default function PostDetailClient() {
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          {postDeleting ? 'Deleting…' : 'Delete'}
+                          {postDeleting ? t('webUi.deleting') : t('common.delete')}
                         </button>
                       </>
                     )}
@@ -742,7 +744,7 @@ export default function PostDetailClient() {
                   />
                   {editPollHadVotes && (
                     <p style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', fontFamily: 'var(--font-mono)', margin: 0 }}>
-                      Poll options are frozen — votes already exist. Question and closing time can still be updated.
+                      {t('webUi.pollOptionsFrozen')}
                     </p>
                   )}
                 </>
@@ -779,7 +781,7 @@ export default function PostDetailClient() {
                     opacity: editSaving ? 0.7 : 1,
                   }}
                 >
-                  {editSaving ? 'Saving…' : 'Save'}
+                  {editSaving ? t('webUi.saving') : t('common.save')}
                 </button>
               </div>
             </form>
@@ -852,24 +854,14 @@ export default function PostDetailClient() {
               marginBottom: 'var(--space-3)',
             }}
           >
-            <span
-              onClick={() => post.authorProfileImage && handleImageClick(post.authorProfileImage)}
-              style={{ cursor: post.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
-            >
-              <Avatar src={post.authorProfileImage} name={post.authorNickname || 'U'} size={32} />
-            </span>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, margin: 0, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-                {post.authorNickname}
-                {post.isAI && <Badge type="ai" />}
-              </p>
-              {/* Meta, so it sits BELOW the name in the scale — it was 15px
-                  against the name's 14px, which read as the id being the
-                  more important of the two. */}
-              <p className="os-break-all" style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
+            <UserIdentity userId={post.authorId} nickname={post.authorNickname || 'U'}
+              profileImage={post.authorProfileImage} badges={post.badges} isAI={post.isAI}
+              avatarSize={32} onAvatarClick={post.authorProfileImage ? () => handleImageClick(post.authorProfileImage!) : undefined}
+              nameStyle={{ fontSize: 'var(--text-body-sm)', fontFamily: 'var(--font-mono)' }}>
+              <span className="os-break-all" style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
                 {truncateId(post.authorId, 6, 4)} · {formatDate(post.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
+              </span>
+            </UserIdentity>
           </div>
 
           <h1
@@ -1021,8 +1013,8 @@ export default function PostDetailClient() {
             }}
           >
             {comments.length > 0
-              ? `${comments.length} Comment${comments.length !== 1 ? 's' : ''}`
-              : 'Comments'}
+              ? t('webUi.commentCount', { count: comments.length, suffix: comments.length !== 1 ? 's' : '' })
+              : t('webUi.comments')}
           </h2>
 
           {/* A comment is a row on the page ground closed by a rule, not a
@@ -1046,7 +1038,7 @@ export default function PostDetailClient() {
                       fontStyle: 'italic',
                       fontSize: 'var(--text-body-sm)',
                     }}>
-                      {comment.deletedBy === 'admin' ? 'Deleted by admin' : 'Deleted comment'}
+                      {comment.deletedBy === 'admin' ? t('webUi.deletedByAdmin') : t('webUi.deletedComment')}
                     </p>
                   ) : (
                     <>
@@ -1059,26 +1051,14 @@ export default function PostDetailClient() {
                           flexWrap: 'wrap',
                         }}
                       >
-                        <span
-                          onClick={() => comment.authorProfileImage && handleImageClick(comment.authorProfileImage)}
-                          style={{ cursor: comment.authorProfileImage ? 'pointer' : undefined, display: 'inline-flex' }}
-                        >
-                          <Avatar src={comment.authorProfileImage} name={comment.authorNickname || 'U'} size={26} />
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                              {comment.authorNickname}
-                            </span>
-                            {comment.isAI && <Badge type="ai" />}
-                            {comment.badges && comment.badges.length > 0 && comment.badges.map((b, i) => (
-                              <Badge key={i} type={b.type} label={b.label} domain={b.domain} country={b.country} />
-                            ))}
-                          </span>
-                          <span className="os-break-all" style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', marginLeft: 'var(--space-2)', fontFamily: 'var(--font-mono)' }}>
+                        <UserIdentity userId={comment.authorId} nickname={comment.authorNickname || 'U'}
+                          profileImage={comment.authorProfileImage} badges={comment.badges} isAI={comment.isAI}
+                          avatarSize={26} onAvatarClick={comment.authorProfileImage ? () => handleImageClick(comment.authorProfileImage!) : undefined}
+                          style={{ flex: 1 }} nameStyle={{ fontSize: 'var(--text-body-sm)', fontFamily: 'var(--font-mono)' }}>
+                          <span className="os-break-all" style={{ fontSize: 'var(--text-caption)', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
                             {truncateId(comment.authorId ?? '', 6, 4)} · {formatDate(comment.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </span>
-                        </div>
+                        </UserIdentity>
                         {!isGuest && currentUserId && comment.authorId === currentUserId && (
                           <button
                             type="button"
@@ -1191,7 +1171,7 @@ export default function PostDetailClient() {
                   className={commentContent.trim() ? 'os-button os-button-primary' : 'os-button'}
                   style={{ cursor: commentContent.trim() ? 'pointer' : 'not-allowed' }}
                 >
-                  {submitting ? 'Posting...' : 'Post Comment'}
+                  {submitting ? t('webUi.posting') : t('webUi.postComment')}
                 </button>
               </div>
             </form>

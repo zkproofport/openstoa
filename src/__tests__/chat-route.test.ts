@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -12,11 +13,13 @@ const session = { userId: 'u1', nickname: 'alice', isAI: false };
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  getBatchUserBadges: vi.fn().mockResolvedValue(new Map()),
   publish: vi.fn().mockResolvedValue(1),
   topicMembersFindFirst: vi.fn(),
   usersFindFirst: vi.fn(),
 }));
 
+vi.mock('@/lib/verification-cache', () => ({ getBatchUserBadges: mocks.getBatchUserBadges }));
 vi.mock('@/lib/session', () => ({ getSession: mocks.getSession }));
 vi.mock('@/lib/redis', () => ({ getRedis: () => ({ publish: mocks.publish }) }));
 vi.mock('@/lib/logger', () => ({
@@ -51,7 +54,8 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-import { POST } from '@/app/api/topics/[topicId]/chat/route';
+import { POST as POSTHttpHandler } from '@/app/api/topics/[topicId]/chat/route';
+const POST=withHttpRequest(POSTHttpHandler,'POST');
 
 const TOPIC = '00000000-0000-0000-0000-000000000001';
 
@@ -199,6 +203,15 @@ describe('POST chat — happy path, contract, integrity', () => {
     expect(parsed.data.message).toBeNull();
   });
 
+  it('publishes the same current public author badges in POST and SSE without a topic filter', async () => {
+    const badges = [{type:'oidc',label:'OIDC'},{type:'kyc',label:'KYC'}];
+    mocks.getBatchUserBadges.mockResolvedValueOnce(new Map([['u1',badges]]));
+    const response = await POST(req({ciphertext:b64('sealed'),epoch:0}),{params:params()});
+    expect(response.status).toBe(201);
+    expect((await response.json()).message.badges).toEqual(badges);
+    expect(JSON.parse(mocks.publish.mock.calls[0][1]).data.badges).toEqual(badges);
+    expect(mocks.getBatchUserBadges).toHaveBeenCalledWith(['u1']);
+  });
   it('integrity: ciphertext of UTF-8 bytes round-trips verbatim', async () => {
     const ct = b64(Buffer.from('안녕하세요 🌟\t\n', 'utf8'));
     const res = await POST(req({ ciphertext: ct, epoch: 2 }), { params: params() });

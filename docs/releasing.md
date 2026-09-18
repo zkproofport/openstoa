@@ -156,7 +156,7 @@ public package**.
 | job | what it does |
 |---|---|
 | `packages` | matrix over `sdk`/`commands`/`cli`/`mcp`/`channel`: builds the local dependency chain first (their dist/ is gitignored but resolved through lockfile link nodes), then `npm ci` -> `tsc --noEmit` -> `npm test` -> `npm run build`. |
-| `server` | root `npm ci` -> `npm run db:migrate:apply` against `redis:7` + `postgres:16-alpine` service containers (several suites open a real `pg` Pool; `npm run db:migrate` / drizzle-kit cannot be used, it aborts on a fresh DB) -> vitest unit suite -> `npm run build` (which also re-runs `scripts/generate-skill.ts` via `prebuild`). |
+| `server` | root `npm ci` -> `npm run db:migrate:apply` against `redis:7` + `postgres:16-alpine` service containers (several suites open a real `pg` Pool; `npm run db:migrate` / drizzle-kit cannot be used, it aborts on a fresh DB) -> vitest unit suite -> `npm run build` (which also re-runs `scripts/generate-openapi.ts` via `prebuild`). |
 | `mcp-smoke` | builds `sdk` -> `commands` -> `mcp`, then runs `scripts/mcp-smoke.mjs`, which spawns the real `openstoa-mcp` stdio binary, completes an MCP `initialize` + `tools/list` handshake over stdin/stdout, and fails on any hang or crash. This is the guard for the entrypoint-guard class of bug that once shipped a CLI bin that exited 0 without doing anything. |
 
 The e2e suites (`src/__tests__/e2e/**`, `packages/*/src/__tests__/e2e/**`) are

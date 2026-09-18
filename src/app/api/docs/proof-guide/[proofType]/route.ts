@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { PROOF_GUIDES } from '@/lib/proof-guides';
 
@@ -24,11 +25,16 @@ const VALID_PROOF_TYPES = ['kyc', 'country', 'google_workspace', 'microsoft_365'
  *       - `workspace` — Either Google or Microsoft (oidc_domain_attestation circuit, either flag accepted)
  *
  *
- *       **Agent workflow summary:**
- *       1. `npm install -g @zkproofport-ai/mcp@latest`
- *       2. `POST /api/auth/challenge` → get challengeId + scope
- *       3. `zkproofport-prove --login-google-workspace --scope $SCOPE --silent`
- *       4. `POST /api/topics/{topicId}/join` with proof + publicInputs
+ *       **Recommended CLI/MCP workflow:**
+ *       Start topic create, join or invite join using an owner-issued API key. A missing or invalid
+ *       proof returns proof_required and operationId. Ask the user for explicit consent, then
+ *       call openstoa_proof_continue with method app or ai and approved=true. App mode returns
+ *       a QR/deep-link browser page; AI domain mode returns provider device authorization guidance.
+ *       Use openstoa_proof_status, then openstoa_proof_resume when ready, or openstoa_proof_cancel.
+ *       CLI exposes the same proof continue/status/resume/cancel controls; AI mode needs --wait.
+ *       Coinbase proofs need an existing attested wallet; never pass private keys in tool arguments.
+ *       Raw authenticated challenge/prove/submit examples remain for direct integrations.
+ *       External availability and payment terms must be checked; topic proofs do not replace API keys.
  *     operationId: getProofGuide
  *     security: []
  *     x-related-skills: [topic-proofs, create-challenge, verify-ai-proof, join-topic]
@@ -57,6 +63,9 @@ const VALID_PROOF_TYPES = ['kyc', 'country', 'google_workspace', 'microsoft_365'
  *                 circuit:
  *                   type: string
  *                   description: ZK circuit name (coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation)
+ *                 mcp:
+ *                   type: object
+ *                   description: Entry tool, consent-based app/AI workflow controls, and optional raw-proof submission example
  *                 steps:
  *                   type: object
  *                   description: Step-by-step instructions for mobile and agent workflows with CLI commands
@@ -94,6 +103,9 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ proofType: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(_request, '/api/docs/proof-guide/[proofType]');
+  if (authorizationError) return authorizationError;
+
   const { proofType } = await params;
 
   if (!VALID_PROOF_TYPES.includes(proofType)) {

@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 /**
  * R-3 — deleting a topic deletes its encrypted attachments.
  *
@@ -66,7 +67,8 @@ vi.mock('@/lib/r2', async (importOriginal) => {
   };
 });
 
-import { DELETE } from '@/app/api/topics/[topicId]/route';
+import { DELETE as DELETEHttpHandler } from '@/app/api/topics/[topicId]/route';
+const DELETE=withHttpRequest(DELETEHttpHandler,'DELETE');
 import { chatMediaObjectKey } from '@/lib/chatMedia';
 import { topicObjectPrefix } from '@/lib/r2';
 

@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -66,6 +68,9 @@ const ROUTE = '/api/bookmarks';
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/bookmarks');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -119,6 +124,7 @@ export async function GET(request: NextRequest) {
         createdAt: posts.createdAt,
         updatedAt: posts.updatedAt,
         authorNickname: users.nickname,
+        authorProfileImage: users.profileImage,
         bookmarkedAt: bookmarks.createdAt,
         userVoted: sql<number | null>`${votes.value}`,
         topicTitle: topics.title,
@@ -146,7 +152,7 @@ export async function GET(request: NextRequest) {
     await attachTagsToPosts(withReactions);
 
     logger.info(ROUTE, 'Bookmarked posts fetched', { userId: session.userId, count: result.length });
-    return NextResponse.json({ posts: withReactions });
+    return NextResponse.json({ posts: await withPublicIdentityBadges(withReactions, post => post.authorId) });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }

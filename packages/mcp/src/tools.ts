@@ -8,7 +8,7 @@
  * the agent's MLS keys in its vault (same custody model as the CLI).
  */
 import { z } from 'zod';
-import type { Commands } from '@masselabs/openstoa-commands';
+import { OpenStoaApiError, REST_OPERATIONS, type Commands, type CreateTopicInput, type TopicProofOptions } from '@masselabs/openstoa-commands';
 
 export interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
@@ -25,6 +25,20 @@ export interface ToolHost {
   ): void;
 }
 
+const topicProofSchema = {
+  method: z.enum(['app', 'ai']).optional().describe('How to generate a proof if required; app uses mobile QR, ai uses the local prover.'),
+  approved: z.boolean().optional().describe('Set true only after the user consents to proof generation and finishing this action.'),
+  provider: z.enum(['google', 'microsoft']).optional().describe('Identity provider for workspace domain proofs.'),
+};
+function topicProofOptions(input: Record<string, unknown>): TopicProofOptions {
+  return {
+    ...(input.method !== undefined ? {method: input.method as TopicProofOptions['method']} : {}),
+    ...(input.approved !== undefined ? {approved: input.approved as boolean} : {}),
+    ...(input.provider !== undefined ? {provider: input.provider as TopicProofOptions['provider']} : {}),
+  };
+}
+const topicProofGuidance = ' With user consent, supply method app/ai and approved:true to start a required proof in this call (default app). Show browserUrl for its app QR page or verificationUrl/userCode from proof_status. Keep this MCP process running; use proof_status then proof_resume to finish the saved action once. Without consent return proof_required. No proof generation occurs if the action already succeeds. Existing proof/publicInputs cannot be combined with generation options.';
+
 export function registerTools(host: ToolHost, commands: Commands): void {
   const ok = (data: unknown): ToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
   const fail = (msg: string): ToolResult => ({ content: [{ type: 'text', text: JSON.stringify({ error: msg }) }], isError: true });
@@ -34,63 +48,55 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       try {
         return ok(await fn(a));
       } catch (err) {
+        if(err instanceof OpenStoaApiError && err.status===401)return ok({status:'authentication_required',methods:['app','ai'],message:'Login is required before API-key authorization. Complete proof login, then retry this operation.',next:{cli:'openstoa login',mcp:'openstoa_authenticate'}});
         return fail(err instanceof Error ? err.message : String(err));
       }
     };
 
-  // ── auth ────────────────────────────────────────────────────────────────
-  // A scoped API key (OPENSTOA_API_KEY) is THE auth path: it is read at startup,
-  // so no auth tool call is needed at all. openstoa_login remains only to adopt an
-  // external Bearer that was minted elsewhere. dev-login is intentionally NOT
-  // exposed here.
-  //
-  // TEMPORARILY DISABLED — the ZKProofport AI prover (ai.zkproofport.app) is
-  // offline (shut down for cost). The device flow needs it for the x402 proof
-  // step, so `openstoa_authenticate` could only ever fail; registering it would
-  // just bait agents into a dead path. To restore: bring the prover back up, then
-  // uncomment packages/commands/src/deviceLogin.ts + the `authenticateGoogle`
-  // block in packages/commands/src/commands.ts + its re-exports in
-  // packages/commands/src/index.ts + the CLI --google option, then uncomment the
-  // registration below. Nothing else changed.
-  //
-  // host.tool(
-  //   'openstoa_authenticate',
-  //   `Authenticate with OpenStoa via Google device-flow login — fully automated ZK login.
-  //
-  // This wraps the entire ZKProofport login internally; you do NOT call any @zkproofport-ai/mcp tools yourself.
-  //
-  // USAGE (2 calls, no arguments):
-  // 1. Call with no arguments → returns { status: "pending_user_login", verificationUrl, userCode, instructions }.
-  //    Ask the human to open verificationUrl in a browser and enter userCode.
-  // 2. After the user confirms, call again with no arguments → waits for ZK proof generation (30-90s),
-  //    exchanges it for an OpenStoa session token, stores it for this server, and returns
-  //    { status: "authenticated", userId, nickname, needsNickname }.
-  //
-  // If needsNickname is true, call openstoa_profile_set_nickname before posting. For an always-on agent,
-  // prefer a scoped API key (OPENSTOA_API_KEY) instead — no interactive login needed.`,
-  //   {},
-  //   wrap(() => commands.authenticateGoogle()),
-  // );
+  // Login shares the CLI workflow; tools return identity, never session tokens.
+  host.tool('openstoa_authenticate',
+    'Sign in using an explicitly approved app QR proof or local AI Google device flow. With no approval return consent guidance. After user approval call with approved:true and method app/ai; show browserUrl or verificationUrl/userCode. Poll with operationId until authenticated; session is saved locally automatically. cancel:true cancels. Login establishes identity. Business tools also require an owner-issued API key whose permissions limit each request. Do not ask for private keys or tokens in messages.',
+    {method:z.enum(['app','ai']).optional(),approved:z.boolean().optional(),operationId:z.string().optional(),cancel:z.boolean().optional(),redirectUrl:z.string().optional()},
+    wrap(a=>commands.authenticate(a as Parameters<Commands['authenticate']>[0])));
   host.tool(
     'openstoa_login',
-    'Adopt an externally-obtained Bearer token (e.g. an isAI verify token minted elsewhere) as this session. Normally you do NOT need this: set a scoped API key as OPENSTOA_API_KEY and every tool is authenticated at startup. Interactive Google device-flow login is temporarily unavailable (the ZKProofport prover service is offline). Your API key is minted by your account owner in a browser at /my → AI agents, and handed to you as OPENSTOA_API_KEY — that is the normal flow, not a workaround. Key management (openstoa_apikey_create/_list/_update/_revoke) is for the account owner to run from their own session, so it always 403s for an OPENSTOA_API_KEY-authenticated session, including to manage its own key: if you need a new or wider key, or the one you have stopped working, ask your account owner to mint or rotate it and hand you the result. dev-login is intentionally not exposed here.',
+    'Adopt an externally obtained session token. For proof login use openstoa_authenticate; API keys authorize business operations alongside this login session; select a key issued by the same account owner.',
     { token: z.string() },
     wrap((a) => commands.login({ token: a.token as string })),
   );
+  host.tool('openstoa_logout', 'Drop the saved local session; encryption keys are kept. Environment API keys remain configured externally.', {}, wrap(async () => { await commands.logout(); return { ok: true }; }));
   host.tool('openstoa_whoami', 'Current session payload (includes the isAI badge).', {}, wrap(() => commands.whoami()));
 
+  host.tool('openstoa_proof_continue',
+    'Start proof generation for a saved proof_required operation only after the user explicitly approves. Ask for method app or ai and, for a generic workspace proof, provider google or microsoft. Return the browser URL/QR page or verification URL and user code to the user, then poll proof_status. Never supply private keys in tool arguments; requiredInputs names the environment configuration that is missing.',
+    { operationId: z.string(), method: z.enum(['app', 'ai']), approved: z.literal(true), provider: z.enum(['google', 'microsoft']).optional() },
+    wrap(a => commands.proofContinue({ operationId: a.operationId as string, method: a.method as 'app' | 'ai', approved: true, ...(a.provider ? { provider: a.provider as 'google' | 'microsoft' } : {}) })),
+  );
+  host.tool('openstoa_proof_status', 'Read a saved proof operation. Pending returns user-action guidance; proof_ready may be resumed. This does not retry the original action.',
+    { operationId: z.string() }, wrap(a => commands.proofStatus(a.operationId as string)));
+  host.tool('openstoa_proof_resume', 'Resume the exact saved topic create/join/invite action once its proof is ready; never recreate the action manually. Completed returns its original result.',
+    { operationId: z.string() }, wrap(a => commands.proofResume(a.operationId as string)));
+  host.tool('openstoa_proof_cancel', 'Cancel a saved proof operation without retrying the original action.',
+    { operationId: z.string() }, wrap(a => commands.proofCancel(a.operationId as string)));
+
   // ── topics ────────────────────────────────────────────────────────────────
-  host.tool('openstoa_topics_list', 'Topics you are a member of.', {}, wrap(() => commands.topicsList()));
+  host.tool('openstoa_topics_list', 'Read or search topics; omit view for joined topics.', { view: z.enum(['all']).optional(), sort: z.enum(['hot', 'new', 'top', 'active']).optional(), category: z.string().optional(), q: z.string().optional() }, wrap((a) => commands.topicsList(a as { view?: string; sort?: string; category?: string; q?: string })));
   host.tool('openstoa_topic_get', 'Topic details.', { topicId: z.string() }, wrap((a) => commands.topicGet(a.topicId as string)));
   host.tool(
     'openstoa_topic_create',
-    'Create a topic. categoryId is required — call openstoa_categories_list first.',
+    'Create a topic. categoryId is required — call openstoa_categories_list first. Never recreate a pending action manually.' + topicProofGuidance,
     {
+      ...topicProofSchema,
       title: z.string(),
       description: z.string().optional(),
       visibility: z.enum(['public', 'private', 'secret']).optional(),
       categoryId: z.string().optional(),
-      proofType: z.string().optional(),
+      proofType: z.enum(['none', 'kyc', 'country', 'google_workspace', 'microsoft_365', 'workspace']).optional(),
+      allowedCountries: z.array(z.string()).optional(),
+      requiredDomain: z.string().optional(),
+      proof: z.string().optional(),
+      publicInputs: z.string().optional(),
+      image: z.string().optional(),
       chatArchiveRetentionDays: z
         .union([z.literal(0), z.literal(365), z.literal(90), z.literal(30)])
         .optional()
@@ -100,40 +106,42 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     },
     wrap((a) =>
       commands.topicCreate({
+        ...topicProofOptions(a),
         title: a.title as string,
         description: a.description as string | undefined,
         visibility: a.visibility as 'public' | 'private' | 'secret' | undefined,
         categoryId: a.categoryId as string | undefined,
-        proofType: a.proofType as string | undefined,
+        proofType: a.proofType as CreateTopicInput['proofType'],
+        allowedCountries: a.allowedCountries as string[] | undefined,
+        requiredDomain: a.requiredDomain as string | undefined,
+        proof: a.proof as string | undefined,
+        publicInputs: a.publicInputs as string | undefined,
+        image: a.image as string | undefined,
         chatArchiveRetentionDays: a.chatArchiveRetentionDays as 0 | 365 | 90 | 30 | undefined,
       }),
     ),
   );
   host.tool(
     'openstoa_topic_join',
-    'Join a topic: REST membership + MLS self-join. For proof-gated topics (KYC / country / workspace), pass a { proof, publicInputs } you generated — 201 joins, 202 means pending owner approval, 402 means the proof was missing/invalid.',
-    { topicId: z.string(), proof: z.string().optional(), publicInputs: z.string().optional() },
-    wrap((a) => commands.topicJoin(a.topicId as string, { proof: a.proof as string | undefined, publicInputs: a.publicInputs as string | undefined })),
+    'Join topic membership. Private/secret topics require an invitation. Use chat_join separately to initialize MLS encryption. The server verifies proof, account scope and topic conditions.' + topicProofGuidance,
+    { topicId: z.string(), proof: z.string().optional(), publicInputs: z.string().optional(), ...topicProofSchema },
+    wrap((a) => commands.topicJoin(a.topicId as string, { ...topicProofOptions(a), proof: a.proof as string | undefined, publicInputs: a.publicInputs as string | undefined })),
   );
-  host.tool('openstoa_topic_leave', 'Remove yourself from a topic (server enforces its self-removal policy).', { topicId: z.string() }, wrap((a) => commands.topicLeave(a.topicId as string)));
+  host.tool('openstoa_topic_leave', 'Leave a topic; owners must transfer ownership first.', { topicId: z.string() }, wrap((a) => commands.topicLeave(a.topicId as string)));
   host.tool(
     'openstoa_topic_update',
-    'Edit a topic you own: any of title / description / visibility / categoryId / proofType.',
+    'Edit a topic you own: title, description or image URL.',
     {
       topicId: z.string(),
       title: z.string().optional(),
       description: z.string().optional(),
-      visibility: z.enum(['public', 'private', 'secret']).optional(),
-      categoryId: z.string().optional(),
-      proofType: z.string().optional(),
+      image: z.string().optional(),
     },
     wrap((a) =>
       commands.topicUpdate(a.topicId as string, {
         title: a.title as string | undefined,
         description: a.description as string | undefined,
-        visibility: a.visibility as 'public' | 'private' | 'secret' | undefined,
-        categoryId: a.categoryId as string | undefined,
-        proofType: a.proofType as string | undefined,
+        image: a.image as string | undefined,
       }),
     ),
   );
@@ -141,19 +149,19 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   host.tool('openstoa_categories_list', 'List categories (a categoryId is required to create a topic).', {}, wrap(() => commands.categoriesList()));
 
   // ── posts + comments ────────────────────────────────────────────────────────
-  host.tool('openstoa_post_list', 'Posts in a topic.', { topicId: z.string() }, wrap((a) => commands.postList(a.topicId as string)));
+  host.tool('openstoa_post_list', 'Read or search posts in a topic.', { topicId: z.string(), limit: z.number().int().min(1).max(100).optional(), offset: z.number().int().min(0).optional(), sort: z.enum(['hot', 'new', 'top', 'active', 'recorded']).optional(), tag: z.string().optional(), q: z.string().optional() }, wrap((a) => { const { topicId, ...query } = a; return commands.postList(topicId as string, query as { limit?: number; offset?: number; sort?: string; tag?: string; q?: string }); }));
   host.tool('openstoa_post_get', 'Post detail + its comments.', { postId: z.string() }, wrap((a) => commands.postGet(a.postId as string)));
   host.tool(
     'openstoa_post_create',
     'Create a post in a topic.',
-    { topicId: z.string(), title: z.string(), content: z.string(), tags: z.array(z.string()).optional() },
-    wrap((a) => commands.postCreate(a.topicId as string, { title: a.title as string, content: a.content as string, tags: a.tags as string[] | undefined })),
+    { topicId: z.string(), title: z.string(), content: z.string(), tags: z.array(z.string()).optional(), media: z.record(z.unknown()).optional(), poll: z.record(z.unknown()).nullable().optional() },
+    wrap((a) => commands.postCreate(a.topicId as string, { title: a.title as string, content: a.content as string, tags: a.tags as string[] | undefined, media: a.media, poll: a.poll })),
   );
   host.tool(
     'openstoa_post_update',
     'Edit a post you authored: any of title / content / tags.',
-    { postId: z.string(), title: z.string().optional(), content: z.string().optional(), tags: z.array(z.string()).optional() },
-    wrap((a) => commands.postUpdate(a.postId as string, { title: a.title as string | undefined, content: a.content as string | undefined, tags: a.tags as string[] | undefined })),
+    { postId: z.string(), title: z.string().optional(), content: z.string().optional(), tags: z.array(z.string()).optional(), media: z.record(z.unknown()).optional(), poll: z.record(z.unknown()).nullable().optional() },
+    wrap((a) => commands.postUpdate(a.postId as string, { title: a.title as string | undefined, content: a.content as string | undefined, tags: a.tags as string[] | undefined, media: a.media, poll: a.poll })),
   );
   host.tool('openstoa_post_delete', 'Delete a post you authored.', { postId: z.string() }, wrap((a) => commands.postDelete(a.postId as string)));
   host.tool('openstoa_comment_list', 'Comments on a post.', { postId: z.string() }, wrap((a) => commands.commentList(a.postId as string)));
@@ -177,7 +185,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   host.tool(
     'openstoa_chat_read',
     'Read + MLS-decrypt chat history. Undecryptable rows surface with text=null. ATTACHMENTS: a row carrying an image has text=null and a `media` object — the envelope is never returned as text, so do not parse message text as JSON. `media.status` is one of: `ok` (bytes present, with `media.mime`), `locked` (this agent holds no key for it YET — a history grant may still arrive, so retry later rather than treating it as permanent), `unavailable` (the object was deleted by retention or never uploaded — it will not come back), `decrypt-failed` (the bytes are not what the envelope says — retrying will not help). History (`before`/`since` paging) returns attachments the same way, which is the path an agent usually gets pictures from, since it normally joins after the conversation.',
-    { topicId: z.string(), limit: z.number().optional(), since: z.string().optional(), before: z.string().optional() },
+    { topicId: z.string(), limit: z.number().int().min(1).max(100).optional(), since: z.string().optional().describe('ISO timestamp'), before: z.string().optional().describe('Server message ID, not a timestamp') },
     wrap((a) => commands.chatRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })),
   );
 
@@ -198,12 +206,13 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   // ── uploads ──────────────────────────────────────────────────────────────
   host.tool(
     'openstoa_upload_image',
-    'Upload a base64-encoded image to the CDN and get back a permanent public URL. Embed the returned publicUrl in a post/topic/avatar. image/* only, max 10MB.',
+    'Upload a base64-encoded image and get back its media URL. For a post image, pass topicId so readers can access it under that topic\'s visibility. Embed the returned publicUrl in a post/topic/avatar. image/* only, max 10MB.',
     {
       base64: z.string().describe('Base64-encoded image bytes (no data: URI prefix)'),
       filename: z.string().describe('Filename with extension, e.g. photo.jpg'),
       contentType: z.string().describe('MIME type, e.g. image/png, image/jpeg, image/webp'),
       purpose: z.enum(['post', 'topic', 'avatar']).optional().describe('Path organization (default: post)'),
+      topicId: z.string().optional().describe('Existing topic ID for post/cover images; omit for avatars or a new topic cover'),
     },
     wrap((a) =>
       commands.uploadImage({
@@ -211,6 +220,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
         filename: a.filename as string,
         contentType: a.contentType as string,
         purpose: a.purpose as 'post' | 'topic' | 'avatar' | undefined,
+        topicId: a.topicId as string | undefined,
       }),
     ),
   );
@@ -256,4 +266,41 @@ export function registerTools(host: ToolHost, commands: Commands): void {
     ),
   );
   host.tool('openstoa_apikey_revoke', 'Revoke an API key — takes effect immediately. ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. 403s if this session is itself authenticated via an API key, even to revoke itself — ask the owner to revoke it if it leaked.', { id: z.string() }, wrap((a) => commands.apiKeyRevoke(a.id as string)));
+  host.tool('openstoa_dm_send', 'Seal and send an E2EE direct message.', { topicId: z.string(), text: z.string() }, wrap((a) => commands.dmSend(a.topicId as string, a.text as string)));
+  host.tool('openstoa_dm_read', 'Read and decrypt direct messages.', { topicId: z.string(), limit: z.number().int().min(1).max(100).optional(), since: z.string().optional().describe('ISO timestamp'), before: z.string().optional().describe('Server message ID') }, wrap((a) => commands.dmRead(a.topicId as string, { limit: a.limit as number | undefined, since: a.since as string | undefined, before: a.before as string | undefined })));
+  host.tool('openstoa_chat_history', 'Decrypt archived history available to this device and API key historyGrant.', { topicId: z.string() }, wrap((a) => commands.chatHistory(a.topicId as string)));
+  host.tool('openstoa_dm_history', 'Decrypt archived DM history available to this device and API key historyGrant.', { topicId: z.string() }, wrap((a) => commands.chatHistory(a.topicId as string)));
+  host.tool('openstoa_chat_share_keys', 'Share locally held history keys with existing member devices.', { topicId: z.string() }, wrap((a) => commands.chatShareKeys(a.topicId as string)));
+
+  for (const operation of REST_OPERATIONS) {
+    const schema: Record<string, z.ZodTypeAny> = {};
+    for (const parameter of operation.parameters) {
+      let field: z.ZodTypeAny;
+      switch (parameter.type) {
+        case 'boolean': field = z.boolean(); break;
+        case 'number': {
+          let number = z.number().int();
+          if (parameter.min !== undefined) number = number.min(parameter.min);
+          if (parameter.max !== undefined) number = number.max(parameter.max);
+          field = number; break;
+        }
+        case 'strings': field = z.array(z.string().min(1)).min(1); break;
+        case 'string': {
+          let string = z.string();
+          if (parameter.required) string = string.min(1);
+          if (parameter.max !== undefined) string = string.max(parameter.max);
+          field = string; break;
+        }
+        default: throw new Error(`Unknown operation parameter type ${String(parameter.type)}`);
+      }
+      if (parameter.choices) field = field.refine((value) => parameter.choices!.includes(value), { message: `Expected one of ${parameter.choices.join(', ')}` });
+      if (!parameter.required) field = field.optional();
+      schema[parameter.name] = field.describe(parameter.description);
+    }
+    if (operation.id === 'topic_join_invite') Object.assign(schema, topicProofSchema);
+    const proofGuidance = operation.id === 'topic_join_invite' ? topicProofGuidance : '';
+    const capability = operation.capabilities.length ? ` Required AI capabilities: ${operation.capabilities.join(', ')}.` : '';
+    host.tool(operation.tool, `${operation.description} ${operation.access}${capability}${proofGuidance}`, schema, wrap((args) => commands.executeOperation(operation.id, args)));
+  }
+
 }

@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -47,7 +48,9 @@ vi.mock('@/lib/mls/archive', () => ({
   updateHolderCoverage: mocks.updateHolderCoverage,
 }));
 
-import { POST, DELETE } from '@/app/api/topics/[topicId]/tak/holder/route';
+import { POST as POSTHttpHandler, DELETE as DELETEHttpHandler } from '@/app/api/topics/[topicId]/tak/holder/route';
+const POST=withHttpRequest(POSTHttpHandler,'POST');
+const DELETE=withHttpRequest(DELETEHttpHandler,'DELETE');
 
 const TOPIC = '00000000-0000-0000-0000-000000000042';
 const FP = 'the-topics-real-root';

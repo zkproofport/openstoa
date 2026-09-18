@@ -5,7 +5,7 @@
  * with**. That restriction is deliberate: identities here are anonymous
  * nullifiers, and shared-topic membership is the only thing standing between
  * DM and an open spam/harassment channel. This module owns the one query that
- * answers "who may I DM?" plus the badge rule that goes with it.
+ * answers "who may I DM?" for public identity display.
  *
  * Three invariants the query itself must carry (NOT a JS post-pass):
  *
@@ -38,7 +38,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from './db/schema';
 import { topicMembers, topics, users } from './db/schema';
-import { filterBadgesByTopicProofType, type Badge } from './verification-cache';
+import { type Badge } from './verification-cache';
 
 /** Default page size for the candidate list. */
 export const DEFAULT_CANDIDATE_LIMIT = 200;
@@ -57,7 +57,7 @@ export interface DmCandidateRow {
   nickname: string;
   profileImage: string | null;
   sharedTopics: SharedTopic[];
-  /** proofTypes of the shared topics — drives badge filtering, never returned. */
+  /** Legacy query metadata; never controls public badge visibility. */
   proofTypes: (string | null)[];
 }
 
@@ -82,37 +82,6 @@ export function clampCandidateLimit(raw: string | null | undefined): number {
   const int = Math.floor(n);
   if (int < 1) return DEFAULT_CANDIDATE_LIMIT;
   return Math.min(int, MAX_CANDIDATE_LIMIT);
-}
-
-/**
- * Badges to show next to a candidate.
- *
- * A candidate's raw badge set is whatever their verification cache holds, but
- * a badge is only *visible* in the context of a topic that gates on it (see
- * `filterBadgesByTopicProofType`). Since a candidate can be reached through
- * several topics with different `proofType`s, the visible set is the UNION of
- * what each shared topic would show — never more. An open (`none`) topic
- * contributes nothing, so someone you only share an open topic with shows no
- * badges at all, exactly as in that topic's member list.
- */
-export function badgesForSharedTopics(
-  badges: Badge[],
-  proofTypes: (string | null)[],
-): Badge[] {
-  const seen = new Set<string>();
-  const out: Badge[] = [];
-  for (const proofType of proofTypes) {
-    for (const badge of filterBadgesByTopicProofType(badges, proofType ?? null)) {
-      // JSON, not a joined string: a delimiter that cannot appear in a label is the
-      // only way to keep ('a|b', 'c') from colliding with ('a', 'b|c'), and an actual
-      // NUL byte here would make git treat this whole source file as binary.
-      const key = JSON.stringify([badge.type, badge.label, badge.domain ?? '']);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(badge);
-    }
-  }
-  return out;
 }
 
 /**

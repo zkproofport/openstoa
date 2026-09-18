@@ -4,12 +4,13 @@
  * (resolveApiKey / resolveHome from @masselabs/openstoa-commands), so keys stay
  * self-custodied in `~/.openstoa/vault/<topicId>/` and nothing is reinvented.
  *
- * Auth is a scoped API key (`osk_...`) with the `chat/read` + `chat/send` (and
- * DM) capabilities — issued from Profile → AI permissions. A missing/blank key
- * fails fast with a clear error rather than silently starting unauthenticated.
+ * A saved proof-login session authenticates the account. A separately selected
+ * scoped API key limits its chat/DM permissions. Both are required, and the
+ * saved session must belong to the configured server.
  */
+import * as path from 'node:path';
 import { ChatClient } from '@masselabs/openstoa';
-import { resolveApiKey, resolveHome, type CommandConfig } from '@masselabs/openstoa-commands';
+import { FileSessionStore, resolveApiKey, resolveHome, type CommandConfig } from '@masselabs/openstoa-commands';
 import { OpenStoaChannel } from './channel';
 
 export interface ChannelConfig extends CommandConfig {
@@ -23,17 +24,24 @@ export async function createOpenStoaChannel(config: ChannelConfig = {}): Promise
       `keystore backend '${config.backend}' is not supported yet — the channel only wires the file 'vault' backend for E2EE chat today`,
     );
   }
-  const baseUrl = config.baseUrl ?? process.env.OPENSTOA_BASE_URL;
+  const home = resolveHome(config.vaultRoot);
+  const saved = await new FileSessionStore(path.join(home, 'session.json')).read();
+  const baseUrl = config.baseUrl ?? process.env.OPENSTOA_BASE_URL ?? saved?.baseUrl;
   if (!baseUrl) {
     throw new Error('OpenStoa channel: no base URL — pass baseUrl or set OPENSTOA_BASE_URL.');
   }
-  const home = resolveHome(config.vaultRoot);
   const apiKey = await resolveApiKey(config, home);
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error(
-      'OpenStoa channel: a scoped API key (osk_...) is required — set OPENSTOA_API_KEY, pass { apiKey }, or save one to <home>/credentials. Issue one from Profile → AI permissions with chat/read + chat/send.',
+      'OpenStoa channel: a scoped API key (osk_...) is required — set OPENSTOA_API_KEY, pass { apiKey }, or save one to <home>/credentials. Issue one from My page → Settings → AI agents with chat/read + chat/send.',
     );
   }
-  const chat = new ChatClient({ baseUrl, vaultRoot: config.vaultRoot, deviceId: config.deviceId, apiKey });
+  if (typeof saved?.token !== 'string' || saved.token.trim().length === 0) {
+    throw new Error('OpenStoa channel: a proof-login session is required — run openstoa login with the same vault before starting the channel.');
+  }
+  if (typeof saved.baseUrl !== 'string' || saved.baseUrl.replace(/\/+$/, '') !== baseUrl.replace(/\/+$/, '')) {
+    throw new Error('OpenStoa channel: the saved session does not match the configured base URL — log in to that server before starting the channel.');
+  }
+  const chat = new ChatClient({ baseUrl, vaultRoot: config.vaultRoot, deviceId: config.deviceId, apiKey, token: saved.token });
   return new OpenStoaChannel({ chat, pollIntervalMs: config.pollIntervalMs });
 }

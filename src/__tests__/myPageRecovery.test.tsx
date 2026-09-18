@@ -63,7 +63,7 @@ function routeFetch() {
       if (url === '/api/topics') return Promise.resolve(json({ topics: [] }));
       if (url.startsWith('/api/bookmarks')) return Promise.resolve(json({ posts: [] }));
       if (url === '/api/push/preferences') return Promise.resolve(json({ enabled: true, mutedTopicIds: [] }));
-      if (url === '/api/profile/domain-badge') return Promise.resolve(json({ domains: [], availableDomain: null }));
+      if (url === '/api/profile/badges') return Promise.resolve(json({ badges: [] }));
       return Promise.reject(new Error(`unexpected fetch: ${url}`));
     }),
   );

@@ -7,6 +7,7 @@
  * SI-1: this client only ever moves opaque ciphertext + access-control metadata
  * for the chat/MLS/TAK surfaces. It never sends or receives chat plaintext.
  */
+import { prepareRestOperation } from './operations';
 import { CHAT_MEDIA_CONTENT_TYPE } from '../chatMedia';
 import type {
   AuthResult,
@@ -37,10 +38,9 @@ export interface OpenStoaClientOptions {
   /** Bearer token (from dev-login / verify). Optional at construction; set later. */
   token?: string;
   /**
-   * A scoped API key (`osk_...`, from `POST /api/profile/api-keys`) — an
-   * alternative to `token` that lets an agent skip interactive login
-   * entirely. Sent identically as `Authorization: Bearer <apiKey>`; the
-   * server tells the two apart by prefix. If both are given, `token` wins.
+   * Owner-issued permission key sent in X-OpenStoa-API-Key alongside the
+   * session JWT in Authorization. Both are required for agent business APIs.
+   * A key never replaces login; it limits the selected session's permissions.
    */
   apiKey?: string;
   /** Injectable fetch (tests). Defaults to the global fetch. */
@@ -82,12 +82,14 @@ interface RequestOpts {
 export class OpenStoaClient {
   private baseUrl: string;
   private token: string | null;
+  private apiKey: string | null;
   private readonly _fetch: typeof fetch;
 
   constructor(opts: OpenStoaClientOptions) {
     if (!opts.baseUrl) throw new Error('OpenStoaClient: baseUrl is required');
     this.baseUrl = opts.baseUrl.replace(/\/$/, '');
-    this.token = opts.token ?? opts.apiKey ?? null;
+    this.token = opts.token ?? null;
+    this.apiKey = opts.apiKey ?? null;
     this._fetch = opts.fetch ?? globalThis.fetch;
     if (!this._fetch) throw new Error('OpenStoaClient: no fetch available; pass opts.fetch');
   }
@@ -95,9 +97,11 @@ export class OpenStoaClient {
   getBaseUrl(): string {
     return this.baseUrl;
   }
-  setToken(token: string): void {
+  setToken(token: string | null): void {
     this.token = token;
   }
+  setApiKey(apiKey: string | null): void { this.apiKey=apiKey; }
+  getApiKey(): string | null { return this.apiKey; }
   getToken(): string | null {
     return this.token;
   }
@@ -117,6 +121,7 @@ export class OpenStoaClient {
     const method = opts.method ?? 'GET';
     const headers: Record<string, string> = {};
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    if (this.apiKey) headers['X-OpenStoa-API-Key'] = this.apiKey;
     let body: string | Uint8Array | undefined;
     if (opts.rawBody !== undefined) {
       headers['Content-Type'] = CHAT_MEDIA_CONTENT_TYPE;
@@ -145,10 +150,26 @@ export class OpenStoaClient {
     return parsed as T;
   }
 
+  /** Execute a catalogued public business operation, returning its exact JSON response. */
+  async operation<T = unknown>(id: string, input: Record<string, unknown> = {}): Promise<T> {
+    const prepared = prepareRestOperation(id, input);
+    return this.request<T>(prepared.path, prepared.options);
+  }
+
   // -------------------------------------------------------------------------
   // auth
   // -------------------------------------------------------------------------
   readonly auth = {
+    /** Validate a replacement credential without changing this client's current identity.
+     * The session route returns HTTP 200 for guests, so userId must be checked. */
+    validateToken: async (token: string): Promise<SessionPayload> => {
+      const candidate = new OpenStoaClient({ baseUrl: this.baseUrl, token, fetch: this._fetch });
+      const session = await candidate.auth.session();
+      if (typeof session?.userId !== 'string' || !session.userId.trim() || session.authenticated === false) {
+        throw new Error('Invalid or expired credential: the server did not authenticate this token.');
+      }
+      return session;
+    },
     /** POST /api/auth/dev-login — dev/staging only. Mints a Bearer for a fresh user. */
     devLogin: async (nickname?: string): Promise<AuthResult> => {
       const r = await this.request<AuthResult>('/api/auth/dev-login', {
@@ -159,7 +180,7 @@ export class OpenStoaClient {
       return r;
     },
     /** POST /api/auth/verify/ai — submit a ZK proof, get an (isAI) session token. */
-    verifyAi: async (input: { challengeId: string; proof: string; publicInputs: string }): Promise<AuthResult & { needsNickname?: boolean }> => {
+    verifyAi: async (input: { challengeId: string; result: { proof: string; publicInputs: string; verification: unknown; [key: string]: unknown } }): Promise<AuthResult & { needsNickname?: boolean }> => {
       const r = await this.request<AuthResult & { needsNickname?: boolean }>('/api/auth/verify/ai', {
         method: 'POST',
         body: input,
@@ -191,8 +212,8 @@ export class OpenStoaClient {
   // topics
   // -------------------------------------------------------------------------
   readonly topics = {
-    /** GET /api/topics — topics the current user is a member of. */
-    list: async (): Promise<Topic[]> => (await this.request<{ topics: Topic[] }>('/api/topics')).topics,
+    /** GET /api/topics — own topics by default; view=all enables discovery. */
+    list: async (query: { view?: string; sort?: string; category?: string; q?: string } = {}): Promise<Topic[]> => (await this.request<{ topics: Topic[] }>('/api/topics', { query })).topics,
     /** GET /api/topics/{id}. */
     get: async (topicId: string): Promise<Topic> => (await this.request<{ topic: Topic }>(`/api/topics/${topicId}`)).topic,
     /** POST /api/topics — create a topic. */
@@ -205,11 +226,13 @@ export class OpenStoaClient {
     join: (topicId: string): Promise<unknown> => this.request(`/api/topics/${topicId}/join`, { method: 'POST', body: {} }),
     /**
      * DELETE /api/topics/{id}/members — remove (kick) a member by userId
-     * (owner/admin only; the server rejects self-removal). There is no
-     * self-"leave" endpoint on the server, so this is the only member-removal path.
+     * (owner/admin only; the server rejects self-removal). Use leave for yourself.
      */
     removeMember: (topicId: string, userId: string): Promise<unknown> =>
       this.request(`/api/topics/${topicId}/members`, { method: 'DELETE', body: { userId } }),
+    /** POST /api/topics/{id}/leave — owners must transfer ownership first. */
+    leave: (topicId: string): Promise<{ success: boolean; left: boolean }> =>
+      this.request(`/api/topics/${topicId}/leave`, { method: 'POST' }),
     /** PATCH /api/topics/{id}/members — change a member's role (owner only). */
     setMemberRole: (topicId: string, userId: string, role: 'owner' | 'admin' | 'member'): Promise<unknown> =>
       this.request(`/api/topics/${topicId}/members`, { method: 'PATCH', body: { userId, role } }),
@@ -220,8 +243,8 @@ export class OpenStoaClient {
     lookupByInvite: async (inviteCode: string): Promise<Topic> =>
       (await this.request<{ topic: Topic }>(`/api/topics/join/${encodeURIComponent(inviteCode)}`)).topic,
     /** GET /api/topics/{id}/posts. */
-    posts: async (topicId: string): Promise<Post[]> =>
-      (await this.request<{ posts: Post[] }>(`/api/topics/${topicId}/posts`)).posts,
+    posts: async (topicId: string, query: { limit?: number; offset?: number; sort?: string; tag?: string; q?: string } = {}): Promise<Post[]> =>
+      (await this.request<{ posts: Post[] }>(`/api/topics/${topicId}/posts`, { query })).posts,
     /** POST /api/topics/{id}/posts — create a post in a topic. */
     createPost: async (topicId: string, input: CreatePostInput): Promise<Post> =>
       (await this.request<{ post: Post }>(`/api/topics/${topicId}/posts`, { method: 'POST', body: input })).post,
@@ -276,6 +299,8 @@ export class OpenStoaClient {
       filename: string;
       contentType: string;
       purpose?: 'post' | 'topic' | 'avatar';
+      /** Existing topic for post/cover images; its visibility governs reads. */
+      topicId?: string;
     }): Promise<{ publicUrl: string }> => {
       const form = new FormData();
       // Cast: DOM's BlobPart types a Uint8Array's backing buffer as ArrayBuffer,
@@ -283,8 +308,10 @@ export class OpenStoaClient {
       // bytes are a plain image buffer; the cast is safe.
       form.append('file', new Blob([input.data as BlobPart], { type: input.contentType }), input.filename);
       if (input.purpose) form.append('purpose', input.purpose);
+      if (input.topicId !== undefined) form.append('topicId', input.topicId);
       const headers: Record<string, string> = {};
       if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    if (this.apiKey) headers['X-OpenStoa-API-Key'] = this.apiKey;
       const res = await this._fetch(this.url('/api/upload'), { method: 'POST', headers, body: form });
       const text = await res.text();
       let parsed: unknown = text;

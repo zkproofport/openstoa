@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -55,6 +56,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ commentId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/comments/[commentId]');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'DELETE request received');
   try {
     const session = await getSession(request);

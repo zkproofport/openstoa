@@ -1,3 +1,6 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { getSession } from '@/lib/session';
+import { topicProofScope } from '@/lib/topic-proof';
 import { NextRequest, NextResponse } from 'next/server';
 import { createRelayProofRequest, type ExtendedCircuitType } from '@/lib/relay';
 import { COMMUNITY_SCOPE } from '@/lib/proof';
@@ -25,6 +28,10 @@ const ROUTE = '/api/auth/proof-request';
  *           schema:
  *             type: object
  *             properties:
+ *               mode:
+ *                 type: string
+ *                 enum: [login, proof]
+ *                 description: Proof mode requires authentication and uses the account-bound topic scope.
  *               circuitType:
  *                 type: string
  *                 enum: [coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation]
@@ -63,6 +70,9 @@ const ROUTE = '/api/auth/proof-request';
  *                   description: Circuit type requested
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/proof-request');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     let circuitType: ExtendedCircuitType = 'coinbase_attestation';
@@ -71,9 +81,11 @@ export async function POST(request: NextRequest) {
     let isIncluded: boolean | undefined;
     let domain: string | undefined;
     let provider: 'google' | 'microsoft' | undefined;
+    let proofMode = false;
 
     try {
       const body = await request.json();
+      proofMode = body.mode === 'proof';
       if (body.circuitType) circuitType = body.circuitType;
       if (body.scope) scope = body.scope;
       if (Array.isArray(body.countryList)) countryList = body.countryList;
@@ -82,6 +94,12 @@ export async function POST(request: NextRequest) {
       if (body.provider === 'google' || body.provider === 'microsoft') provider = body.provider;
     } catch {
       // No body or invalid JSON — use defaults (login flow sends no body)
+    }
+
+    if (proofMode) {
+      const session = await getSession(request);
+      if (!session) return NextResponse.json({error:'Not authenticated'},{status:401});
+      scope = topicProofScope(session.userId);
     }
 
     logger.info(ROUTE, 'Creating relay proof request', { circuitType, scope, countryList, isIncluded, domain, provider });

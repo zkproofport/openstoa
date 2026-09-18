@@ -1,5 +1,7 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import {decodeJwt} from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, createSession, setSessionCookie } from '@/lib/session';
+import { getAuthenticatedSession, createSession, setSessionCookie } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -47,9 +49,12 @@ const ROUTE = '/api/auth/refresh';
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/refresh');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
 
-  const session = await getSession(request);
+  const session = await getAuthenticatedSession(request);
   if (!session) {
     logger.warn(ROUTE, 'No valid session — refresh refused');
     return NextResponse.json(
@@ -129,12 +134,12 @@ export async function POST(request: NextRequest) {
     // The kind is carried over, not re-declared: a refresh is the same client
     // it was at sign-in, and reading the header again would let a session
     // change kind mid-life — a browser refreshing its way into chat.
-    deviceKind: session.isAI === true ? 'agent' : session.deviceKind,
+    deviceKind: session.deviceKind ?? (session.isAI === true ? 'agent' : undefined),
     deviceId: device.id,
   });
 
-  // 7 days in ms — must mirror session.ts setExpirationTime('7d')
-  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  // Report the actual token expiry; Redis inactivity and cookie expiry are separate.
+  const expiresAt = decodeJwt(newToken).exp! * 1000;
 
   const response = NextResponse.json({
     token: newToken,

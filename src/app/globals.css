@@ -775,3 +775,8 @@ html:lang(ko) {
   border: 1px solid var(--border);
 }
 
+
+/* Documentation entry points are desktop-only; direct docs URLs stay responsive. */
+@media (max-width: 767px) {
+  .desktop-docs-link { display: none !important; }
+}

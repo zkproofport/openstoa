@@ -14,6 +14,7 @@
 export { OpenStoaClient, OpenStoaApiError } from './rest/openStoaClient';
 export type { OpenStoaClientOptions } from './rest/openStoaClient';
 export * from './rest/types';
+export * from './rest/operations';
 export { mlsTransport, takTransport, aiMemberDirectory } from './rest/transports';
 
 export { ChatClient } from './chatClient';

@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 /**
  * The two routes that decide where an object lands and when it is removed —
  * real local Postgres, R2 itself stubbed.
@@ -77,8 +78,10 @@ vi.mock('@/lib/r2', async (importOriginal) => {
   };
 });
 
-import { POST as uploadPOST } from '@/app/api/upload/route';
-import { DELETE as topicDELETE } from '@/app/api/topics/[topicId]/route';
+import { POST as uploadPOSTHttpHandler } from '@/app/api/upload/route';
+const uploadPOST=withHttpRequest(uploadPOSTHttpHandler,'POST');
+import { DELETE as topicDELETEHttpHandler } from '@/app/api/topics/[topicId]/route';
+const topicDELETE=withHttpRequest(topicDELETEHttpHandler,'DELETE');
 import { topicObjectPrefix, uploadObjectKey } from '@/lib/r2';
 import { TINY_JPEG } from './fixtures/images';
 

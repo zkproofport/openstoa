@@ -29,18 +29,14 @@ import { useSession } from '@/lib/useSession';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from './Avatar';
-import Badge from './Badge';
+import UserBadges from './UserBadges';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import { isDmCandidate, invalidateDmCandidates } from '@/lib/dmCandidatesCache';
 import { useChatRail } from '@/lib/chatRailContext';
 import { CHAT_ON_WEB } from '@/lib/chatOnWeb';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
-export interface UserCardBadge {
-  type: string;
-  label: string;
-  domain?: string | null;
-  country?: string | null;
-}
+export type UserCardBadge = PublicBadge;
 
 const noteStyle: React.CSSProperties = {
   margin: '0 0 10px',
@@ -95,6 +91,7 @@ export default function UserCard({
   children,
 }: UserCardProps) {
   const { t } = useTranslation();
+  const publicBadges = badges ?? [];
   const [open, setOpen] = useState(false);
   const [canDm, setCanDm] = useState(false);
   // Distinguishes "still checking DM eligibility" from "checked, not
@@ -193,7 +190,7 @@ export default function UserCard({
             // the rail, with focus — not a full-page navigation away from
             // wherever they were (feed, member list). See `ChatRail.tsx`'s
             // `openRequest` doc for the focus-on-apply behavior.
-            chatRail.openRail({ kind: 'dm', topicId: data.topicId, title: nickname, profileImage: profileImage ?? null });
+            chatRail.openRail({ kind: 'dm', topicId: data.topicId, title: nickname, profileImage: profileImage ?? null, peerId: userId, badges: publicBadges });
           } else {
             // No rail reachable from this tree (card rendered outside
             // `CommunityLayout`) — fall back to a full navigation so the DM
@@ -207,7 +204,7 @@ export default function UserCard({
         setStarting(false);
       }
     },
-    [starting, userId, router, chatRail, nickname, profileImage],
+    [starting, userId, router, chatRail, nickname, profileImage, publicBadges],
   );
 
   return (
@@ -262,11 +259,9 @@ export default function UserCard({
               {nickname}
             </span>
           </div>
-          {badges != null && badges.length > 0 ? (
+          {publicBadges.length > 0 ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 'var(--space-3)' }}>
-              {badges.map((b, i) => (
-                <Badge key={i} type={b.type} label={b.label} domain={b.domain ?? undefined} country={b.country ?? undefined} />
-              ))}
+              <UserBadges userId={userId} badges={publicBadges} />
             </div>
           ) : (
             <p data-testid="user-card-no-badges" style={noteStyle}>{t('userCard.noBadges')}</p>

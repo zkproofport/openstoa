@@ -48,13 +48,19 @@ const TONE_STYLE: Record<BadgeTone, React.CSSProperties> = {
 export default function Badge({ type, label: labelProp, domain, country }: BadgeProps) {
   const { t } = useTranslation();
   const tone = BADGE_TONE[type] ?? 'neutral';
-  const label = labelProp
-    ?? (type === 'kyc' ? t('badge.kyc')
-    : type === 'country' ? (country || t('badge.country'))
-    : type === 'workspace' ? (domain || t('badge.workspace'))
-    : type === 'oidc' ? t('badge.oidc')
-    : type === 'ai' ? t('badge.ai')
-    : type);
+  // Replace the server's canonical labels in the viewer's language, while
+  // retaining intentionally customized labels supplied by the caller.
+  const apiLabels: Record<string, string> = { kyc: 'KYC', country: 'Country', workspace: 'Org', oidc: 'OIDC' };
+  const customLabel = labelProp && labelProp !== apiLabels[type] ? labelProp : undefined;
+  const labels: Record<string, string> = {
+    kyc: t('badge.kyc'),
+    country: country || t('badge.country'),
+    workspace: domain || t('badge.workspace'),
+    oidc: t('badge.oidc'),
+    ai: t('badge.ai'),
+    onchain: type,
+  };
+  const label = customLabel ?? labels[type] ?? labelProp ?? type;
 
   return (
     <span

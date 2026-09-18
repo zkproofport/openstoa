@@ -83,7 +83,7 @@ export default function VotePill({
         setState(prev);
         onChange?.(prev);
         if (res.error === 'not_member') {
-          window.alert('Join this topic to vote on its posts.');
+          window.alert(t('webUi.joinToVote'));
         }
       }
     } finally {

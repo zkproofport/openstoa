@@ -1,3 +1,7 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { requireTopicProof } from '@/lib/topic-proof';
+import { requireAiCapability } from '@/lib/aiPermissions';
+import { PERSONAL_TOPIC_CLOSED } from '@/lib/personalTopic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -139,6 +143,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ inviteCode: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/join/[inviteCode]');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -147,6 +154,8 @@ export async function GET(
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
+    const joinGate = await requireAiCapability(db, session, '/openstoa/topic/join');
+    if (joinGate) return joinGate;
     const { inviteCode } = await params;
 
     logger.info(ROUTE, 'Looking up invite code', { userId: session.userId, inviteCode });
@@ -216,6 +225,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ inviteCode: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/join/[inviteCode]');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received (invite code join)');
   try {
     const session = await getSession(request);
@@ -224,6 +236,8 @@ export async function POST(
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
+    const joinGate = await requireAiCapability(db, session, '/openstoa/topic/join');
+    if (joinGate) return joinGate;
     const { inviteCode } = await params;
 
     // Check fixed inviteCode first, then single-use tokens
@@ -287,6 +301,10 @@ export async function POST(
       // secret topic exists behind this link is itself the leak.
       return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 });
     }
+
+    if (topic.personal) return NextResponse.json({error:PERSONAL_TOPIC_CLOSED},{status:403});
+    const proofFailure = await requireTopicProof(session.userId, topic, await request.json().catch(() => ({})));
+    if (proofFailure) return proofFailure;
 
     await db.insert(topicMembers).values({
       topicId: topic.id,

@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { Commands, CommandConfig } from '@masselabs/openstoa-commands';
-import { buildProgram, DEVICE_LOGIN_DISABLED } from '../cli';
+import { buildProgram } from '../cli';
 
 function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => unknown>> = {}) {
   const calls: Array<{ method: string; args: unknown[] }> = [];
@@ -17,9 +17,8 @@ function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => 
   };
   const cmds = {
     login: make('login'),
-    // TEMPORARILY DISABLED — the device flow is commented out in the commands core
-    // (ZKProofport prover offline). Kept here so the "never dispatched" assertions
-    // below would catch a regression that silently re-wires the CLI to it.
+    authenticate: make('authenticate'),
+    // Keep a legacy-method sentinel: login must use the shared workflow.
     loginWithGoogle: make('loginWithGoogle'),
     logout: make('logout'),
     whoami: make('whoami'),
@@ -142,33 +141,13 @@ describe('CLI dispatch', () => {
     expect(h.out.join('\n')).toContain('[AI]');
   });
 
-  // ── device flow disabled (ZKProofport prover ai.zkproofport.app is offline) ──
-  // The device-flow success-path tests moved to
-  // packages/commands/src/__tests__/deviceLogin.test.ts, which is commented out
-  // alongside the implementation. What is asserted HERE is the replacement
-  // behavior: bare login / --google fail fast with the API-key guidance and never
-  // touch the network.
-
-  it('bare login fails fast with the API-key guidance and never starts a device flow', async () => {
-    const h = harness();
-    await expect(h.parse(['login'])).rejects.toThrow(DEVICE_LOGIN_DISABLED);
-    expect(h.calls).toHaveLength(0); // no Commands instance touched at all
-    expect(h.out).toHaveLength(0);
-  });
-
-  it('login --google fails the same way (option kept only to explain itself)', async () => {
-    const h = harness();
-    await expect(h.parse(['login', '--google'])).rejects.toThrow(DEVICE_LOGIN_DISABLED);
-    expect(h.calls.some((c) => c.method === 'loginWithGoogle')).toBe(false);
-    expect(h.calls.some((c) => c.method === 'login')).toBe(false);
-  });
-
-  it('the disabled-login error names every working alternative', () => {
-    expect(DEVICE_LOGIN_DISABLED).toContain('OPENSTOA_API_KEY');
-    expect(DEVICE_LOGIN_DISABLED).toContain('--api-key');
-    expect(DEVICE_LOGIN_DISABLED).toContain('--token');
-    expect(DEVICE_LOGIN_DISABLED).toContain('/my');
-    expect(DEVICE_LOGIN_DISABLED).toContain('openstoa apikey create');
+  it('bare login returns consent guidance through the shared command core', async () => {
+    const h = harness({ authenticate: () => ({ status: 'consent_required', methods: ['app', 'ai'] }) });
+    await h.parse(['--json', 'login']);
+    expect(h.calls.filter(c => c.method === 'authenticate')).toHaveLength(1);
+    expect(h.calls.find(c => c.method === 'authenticate')?.args[0]).not.toMatchObject({ approved: true });
+    expect(JSON.parse(h.out.join(''))).toMatchObject({ status: 'consent_required' });
+    expect(h.calls.some(c => c.method === 'login')).toBe(false);
   });
 
   it('login --dev dispatches the (hidden) dev-login with --nickname', async () => {
@@ -186,22 +165,22 @@ describe('CLI dispatch', () => {
     expect(h.calls.find((c) => c.method === 'login')?.args[0]).toEqual({ nickname: undefined });
   });
 
-  it('--dev and --nickname stay HIDDEN from `login --help`; --google is visible and marked unavailable', async () => {
+  it('--dev and --nickname stay HIDDEN while guided login flags are discoverable', async () => {
     const program = buildProgram(() => Promise.resolve({} as unknown as Commands), () => {});
     const login = program.commands.find((c) => c.name() === 'login')!;
     const help = login.helpInformation();
     expect(help).not.toContain('--dev');
     expect(help).not.toContain('--nickname');
-    // --google is kept registered so `--help` explains why it no longer works.
-    expect(help).toContain('--google');
-    expect(help).toContain('TEMPORARILY UNAVAILABLE');
+    for (const option of ['--method', '--approved', '--operation-id', '--cancel', '--wait']) expect(help).toContain(option);
+    expect(help).not.toContain('TEMPORARILY UNAVAILABLE');
     expect(help).toContain('--token');
   });
 
-  it('`--api-key` is documented on the root program as the login-free path', () => {
+  it('`--api-key` documents permission selection without claiming login can be skipped', () => {
     const program = buildProgram(() => Promise.resolve({} as unknown as Commands), () => {});
     expect(program.helpInformation()).toContain('--api-key');
     expect(program.helpInformation()).toContain('OPENSTOA_API_KEY');
+    expect(program.helpInformation()).not.toMatch(/skips? interactive login|no login|login-free/i);
   });
 
   it('comment add joins the text words', async () => {

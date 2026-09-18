@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureUser } from '@/lib/ensureUser';
 import { pollProofResult, RelayRequestNotFoundError } from '@/lib/relay';
@@ -7,6 +8,7 @@ import {
   extractScope,
   computeScopeHash,
   detectCircuit,
+  normalizePublicInputs,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
 import { createSession, setSessionCookie } from '@/lib/session';
@@ -95,6 +97,9 @@ const ROUTE = '/api/auth/poll/[requestId]';
  *                       items:
  *                         type: string
  *                       description: Array of 0x-prefixed public input hex strings
+ *                     scopeHash:
+ *                       type: string
+ *                       description: Scope hash extracted from the cryptographically verified public inputs.
  *                     circuit:
  *                       type: string
  *                       description: Circuit type that was proven
@@ -103,6 +108,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/poll/[requestId]');
+  if (authorizationError) return authorizationError;
+
   try {
     const { requestId } = await params;
 
@@ -144,11 +152,15 @@ export async function GET(
     // Proof-only mode: return raw proof data without creating session
     if (mode === 'proof') {
       logger.info(ROUTE, 'Returning proof data (proof mode)', { requestId });
+      const publicInputs = normalizePublicInputs(result.publicInputs);
+      const circuit = result.circuit || detectCircuit(publicInputs, result.verifierAddress);
       return NextResponse.json({
         status: 'completed',
         proof: result.proof,
-        publicInputs: result.publicInputs,
-        circuit: result.circuit,
+        publicInputs,
+        circuit,
+        // Derived only after cryptographic verification; never relay metadata.
+        scopeHash: extractScope(publicInputs, circuit),
       });
     }
 

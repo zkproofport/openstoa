@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -60,6 +61,9 @@ const ROUTE = '/api/account';
  *                         description: Topic title
  */
 export async function DELETE(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/account');
+  if (authorizationError) return authorizationError;
+
   // 1. Auth check
   const session = await getSession(request);
   if (!session) {

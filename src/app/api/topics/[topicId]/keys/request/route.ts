@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * "Please unlock the history for me" — the ask, and the list of asks to answer.
  *
@@ -61,6 +62,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/keys/request');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {
@@ -111,6 +115,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/keys/request');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {

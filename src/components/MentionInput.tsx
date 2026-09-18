@@ -1,9 +1,13 @@
 'use client';
 
+import UserIdentity from './UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import { apiFetch } from '@/lib/apiFetch';
 import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
 
 interface MentionSuggestion {
+  badges?: PublicBadge[];
+  profileImage?: string | null;
   userId: string;
   nickname: string;
 }
@@ -217,7 +221,7 @@ export default function MentionInput({
               }}
             >
               <span style={{ color: 'var(--color-brand-primary)', fontWeight: 600 }}>@</span>
-              {s.nickname}
+              <UserIdentity userId={s.userId} nickname={s.nickname} profileImage={s.profileImage} badges={s.badges} avatarSize={22} interactive={false} />
             </li>
           ))}
         </ul>

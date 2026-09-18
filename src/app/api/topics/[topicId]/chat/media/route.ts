@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * Encrypted chat attachments (R-3): store, serve and delete OPAQUE bytes.
  *
@@ -145,6 +146,9 @@ async function requireMember(request: NextRequest, topicId: string) {
  * defect class this route has already had once.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat/media');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {
@@ -311,6 +315,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
  * for why the one that existed was removed rather than kept.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat/media');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {
@@ -419,6 +426,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  * one's own upload.
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat/media');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {
@@ -465,6 +475,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
  * attachment would be destroying a message body they cannot even read.
  */
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/chat/media');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {

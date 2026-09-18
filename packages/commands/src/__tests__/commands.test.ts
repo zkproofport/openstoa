@@ -34,13 +34,15 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
     startDm: rec('startDm'),
     listDms: rec('listDms'),
     getDeviceId: rec('getDeviceId'),
+    backfill: rec('backfill'),
+    shareRoomKeys: rec('shareRoomKeys'),
     rest: {
       getToken: () => token,
       setToken: (t: string) => {
         token = t;
       },
       request: rec('request'),
-      auth: { session: rec('auth.session') },
+      auth: { session: rec('auth.session'), validateToken: rec('auth.validateToken') },
       categories: { list: rec('categories.list') },
       topics: {
         list: rec('topics.list'),
@@ -51,6 +53,7 @@ function makeChat(overrides: Record<string, (...a: unknown[]) => unknown> = {}) 
         posts: rec('topics.posts'),
         createPost: rec('topics.createPost'),
         removeMember: rec('topics.removeMember'),
+        leave: rec('topics.leave'),
       },
       posts: {
         getWithComments: rec('posts.getWithComments'),
@@ -90,44 +93,55 @@ describe('Commands dispatch → SDK', () => {
   });
 
   it('login --token adopts token and reads the session', async () => {
-    const { cmds, calls, store } = build({ 'auth.session': () => ({ userId: 'ua', nickname: 'na', isAI: true }) });
+    const { cmds, calls, store } = build({ 'auth.validateToken': () => ({ userId: 'ua', nickname: 'na', isAI: true }) });
     const r = await cmds.login({ token: 'AITOKEN' });
     expect(calls.find((c) => c.method === 'useToken')?.args).toEqual(['AITOKEN']);
     expect(r).toEqual({ userId: 'ua', nickname: 'na', isAI: true });
     expect((await store.read())?.token).toBe('AITOKEN');
   });
 
+  it('invalid replacement login preserves the active credential and saved session', async () => {
+    const { cmds, calls, store } = build({ 'auth.validateToken': () => { throw new Error('Invalid or expired credential'); } });
+    const previous = await store.read();
+    await expect(cmds.login({ token: 'invalid' })).rejects.toThrow('Invalid or expired credential');
+    expect(calls.some(call => call.method === 'useToken')).toBe(false);
+    expect(await store.read()).toEqual(previous);
+  });
+
   it('topics: list/get/create/join dispatch with the right args', async () => {
     const { cmds, calls } = build({
       'topics.get': (id: unknown) => ({ id }),
       'topics.create': (input: unknown) => ({ id: 't1', ...(input as object) }),
+      request: () => ({ status: 201, json: async () => ({ success: true }) }),
     });
     await cmds.topicsList();
     await cmds.topicGet('t7');
     await cmds.topicCreate({ title: 'Hi', visibility: 'public' });
     await cmds.topicJoin('t7');
     expect(calls.map((c) => c.method)).toEqual(
-      expect.arrayContaining(['topics.list', 'topics.get', 'topics.create', 'joinTopic']),
+      expect.arrayContaining(['topics.list', 'topics.get', 'topics.create', 'request']),
     );
     expect(calls.find((c) => c.method === 'topics.get')?.args).toEqual(['t7']);
-    expect(calls.find((c) => c.method === 'joinTopic')?.args).toEqual(['t7']);
+    expect(calls.find((c) => c.method === 'request')?.args).toEqual(['/api/topics/t7/join', { method: 'POST', raw: true, body: {} }]);
+    expect(calls.some((c) => c.method === 'joinTopic')).toBe(false);
   });
 
-  it('leave removes the current user (server enforces the self-removal policy)', async () => {
-    const { cmds, calls } = build();
+  it('leave uses the self-service endpoint and preserves server state', async () => {
+    const { cmds, calls } = build({ 'topics.leave': () => ({ success: true, left: true }) });
     await cmds.topicLeave('t7');
-    expect(calls.find((c) => c.method === 'topics.removeMember')?.args).toEqual(['t7', 'u1']);
+    expect(calls.find((c) => c.method === 'topics.leave')?.args).toEqual(['t7']);
+    expect(calls.some((c) => c.method === 'topics.removeMember')).toBe(false);
   });
 
   it('topic update / members dispatch with the right args', async () => {
     const { cmds, calls } = build({ 'topics.update': (id: unknown, patch: unknown) => ({ id, ...(patch as object) }), 'topics.members': () => [{ userId: 'u1' }] });
-    await cmds.topicUpdate('t7', { title: 'New', visibility: 'private' });
+    await cmds.topicUpdate('t7', { title: 'New', image: '/api/media/topic.png' });
     await cmds.topicMembers('t7');
-    expect(calls.find((c) => c.method === 'topics.update')?.args).toEqual(['t7', { title: 'New', visibility: 'private' }]);
+    expect(calls.find((c) => c.method === 'topics.update')?.args).toEqual(['t7', { title: 'New', image: '/api/media/topic.png' }]);
     expect(calls.find((c) => c.method === 'topics.members')?.args).toEqual(['t7']);
   });
 
-  it('topicJoin with proof submits proof to the join route, then MLS self-joins on 201', async () => {
+  it('topicJoin with proof completes membership on 201 without requesting MLS permissions', async () => {
     const { cmds, calls } = build({
       request: () => ({ status: 201, json: async () => ({ success: true }) }),
     });
@@ -135,8 +149,8 @@ describe('Commands dispatch → SDK', () => {
     const req = calls.find((c) => c.method === 'request');
     expect(req?.args[0]).toBe('/api/topics/t7/join');
     expect(req?.args[1]).toMatchObject({ method: 'POST', raw: true, body: { proof: '0xproof', publicInputs: '0xpub' } });
-    // 201 → MLS self-join runs.
-    expect(calls.some((c) => c.method === 'joinTopic')).toBe(true);
+    // Topic membership is complete; encrypted chat enrollment is an explicit chat operation.
+    expect(calls.some((c) => c.method === 'joinTopic')).toBe(false);
     expect(r).toEqual({ topicId: 't7', joined: true });
   });
 
@@ -182,8 +196,8 @@ describe('Commands dispatch → SDK', () => {
   it('uploadImage forwards bytes to uploads.image and returns the publicUrl', async () => {
     const { cmds, calls } = build({ 'uploads.image': (i: unknown) => ({ publicUrl: 'https://cdn/x.png', echo: i }) });
     const data = new Uint8Array([1, 2, 3]);
-    const r = await cmds.uploadImage({ data, filename: 'x.png', contentType: 'image/png', purpose: 'post' });
-    expect(calls.find((c) => c.method === 'uploads.image')?.args[0]).toMatchObject({ filename: 'x.png', contentType: 'image/png', purpose: 'post' });
+    const r = await cmds.uploadImage({ data, filename: 'x.png', contentType: 'image/png', purpose: 'post', topicId: 't1' });
+    expect(calls.find((c) => c.method === 'uploads.image')?.args[0]).toMatchObject({ filename: 'x.png', contentType: 'image/png', purpose: 'post', topicId: 't1' });
     expect(r.publicUrl).toBe('https://cdn/x.png');
   });
 
@@ -203,7 +217,7 @@ describe('Commands dispatch → SDK', () => {
     await cmds.postCreate('t1', { title: 'T', content: 'C' });
     await cmds.commentList('p1');
     await cmds.commentAdd('p1', 'hey');
-    expect(calls.find((c) => c.method === 'topics.posts')?.args).toEqual(['t1']);
+    expect(calls.find((c) => c.method === 'topics.posts')?.args).toEqual(['t1', {}]);
     expect(calls.find((c) => c.method === 'posts.getWithComments')?.args).toEqual(['p1']);
     expect(calls.find((c) => c.method === 'topics.createPost')?.args).toEqual(['t1', { title: 'T', content: 'C' }]);
     expect(calls.find((c) => c.method === 'posts.addComment')?.args).toEqual(['p1', 'hey']);
@@ -301,11 +315,13 @@ describe('Commands dispatch → SDK', () => {
     await expect(cmds.profileSetNickname('')).rejects.toThrow(/nickname is required/);
   });
 
-  it('all authed ops throw a clear error when no token is set', async () => {
-    const { cmds, setToken } = build({}, null);
-    setToken(null);
-    await expect(cmds.topicsList()).rejects.toThrow(/Not logged in/);
-    await expect(cmds.chatRead('t1')).rejects.toThrow(/Not logged in/);
+  it.each([
+    ['topicsList', []], ['topicGet', ['t1']], ['postList', ['t1']],
+    ['postGet', ['p1']], ['commentList', ['p1']], ['categoriesList', []], ['chatRead', ['t1']],
+  ] as const)('%s requires CLI/MCP login before any REST call', async (method, args) => {
+    const { cmds, calls, setToken } = build({}, null); setToken(null);
+    await expect((cmds[method] as (...a: any[]) => Promise<unknown>)(...args)).rejects.toMatchObject({ status: 401, body: { status: 'authentication_required' } });
+    expect(calls).toHaveLength(0);
   });
 
   it('UTF-8 (Korean + emoji) text passes through untouched to sendChat', async () => {
@@ -314,6 +330,19 @@ describe('Commands dispatch → SDK', () => {
     const probe = '안녕 🔐 test';
     await cmds.chatSend('t1', probe);
     expect(calls.find((c) => c.method === 'sendChat')?.args).toEqual(['t1', probe]);
+  });
+
+  it('archive history and key sharing sync membership before their SDK workflows', async () => {
+    const { cmds, calls } = build({ backfill: () => [{ messageId: 'm1', plaintext: '한글' }], shareRoomKeys: () => 2 });
+    expect(await cmds.chatHistory('t1')).toEqual([{ messageId: 'm1', plaintext: '한글' }]);
+    expect(await cmds.chatShareKeys('t1')).toEqual({ shared: 2 });
+    expect(calls.map(call => call.method)).toEqual(['joinTopic', 'backfill', 'joinTopic', 'shareRoomKeys']);
+  });
+
+  it('refuses unsupported topic updates instead of silently ignoring a field', async () => {
+    const { cmds, calls } = build();
+    await expect(cmds.topicUpdate('t1', { visibility: 'secret' })).rejects.toThrow('unsupported field visibility');
+    expect(calls).toEqual([]);
   });
 
   // ── API keys (design §7 follow-up) ───────────────────────────────────────
@@ -372,11 +401,11 @@ describe('Commands dispatch → SDK', () => {
     await expect(cmds.apiKeyRevoke('')).rejects.toThrow(/id is required/);
     expect(calls.some((c) => c.method === 'apiKeys.revoke')).toBe(false);
   });
-  it('apiKey ops throw "Not logged in" when no token is set (same guard as every other op)', async () => {
+  it('apiKey ops throw "Not authenticated" when no token is set (same guard as every other op)', async () => {
     const { cmds, setToken } = build({}, null);
     setToken(null);
-    await expect(cmds.apiKeyList()).rejects.toThrow(/Not logged in/);
-    await expect(cmds.apiKeyCreate({ name: 'k', cmd: [], historyGrant: 'none' })).rejects.toThrow(/Not logged in/);
-    await expect(cmds.apiKeyUpdate('k1', { cmd: [], historyGrant: 'none' })).rejects.toThrow(/Not logged in/);
+    await expect(cmds.apiKeyList()).rejects.toMatchObject({ status: 401, body: { status: 'authentication_required' } });
+    await expect(cmds.apiKeyCreate({ name: 'k', cmd: [], historyGrant: 'none' })).rejects.toMatchObject({ status: 401, body: { status: 'authentication_required' } });
+    await expect(cmds.apiKeyUpdate('k1', { cmd: [], historyGrant: 'none' })).rejects.toMatchObject({ status: 401, body: { status: 'authentication_required' } });
   });
 });

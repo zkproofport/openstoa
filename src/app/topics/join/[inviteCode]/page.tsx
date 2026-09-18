@@ -29,6 +29,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import CommunityLayout from '@/components/CommunityLayout';
 import Spinner from '@/components/Spinner';
+import ProofGate from '@/components/ProofGate';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { readInviteHistory } from '@/lib/inviteLink';
 import { getTakSessionStore } from '@/lib/mls/webTransport';
@@ -38,6 +40,13 @@ interface TopicPreview {
   title: string;
   description?: string | null;
   visibility?: string | null;
+}
+
+interface InviteProofRequirement {
+  type: string;
+  circuit: 'coinbase_attestation' | 'coinbase_country_attestation' | 'oidc_domain_attestation';
+  domain?: string | null;
+  allowedCountries?: string[] | null;
 }
 
 /** What became of the keys that rode in with the link. */
@@ -60,6 +69,8 @@ export default function InviteJoinPage() {
   const [history, setHistory] = useState<HistoryOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [proofRequirement, setProofRequirement] = useState<InviteProofRequirement | null>(null);
+  const [provider, setProvider] = useState<'google' | 'microsoft' | ''>('');
   // A second synchronous click must not mint a second membership attempt —
   // state lags, a ref does not.
   const joiningRef = useRef(false);
@@ -130,7 +141,7 @@ export default function InviteJoinPage() {
     };
   }, [inviteCode, absorbHistory]);
 
-  async function handleJoin() {
+  async function handleJoin(proofData?: {proof: string; publicInputs: string[]}) {
     if (joiningRef.current || !topic) return;
     joiningRef.current = true;
     setJoining(true);
@@ -140,9 +151,18 @@ export default function InviteJoinPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        // No body. The keys are in the fragment and must never be sent.
-        body: JSON.stringify({}),
+        // Only proof data is sent. Chat-history keys remain in the fragment.
+        body: JSON.stringify(proofData ?? {}),
       });
+      if (res.status === 402) {
+        const data = await res.json();
+        const requirement = data.proofRequirement;
+        if (!requirement || !['coinbase_attestation', 'coinbase_country_attestation', 'oidc_domain_attestation'].includes(requirement.circuit)) {
+          throw new Error(t('inviteJoin.joinFailed'));
+        }
+        setProofRequirement(requirement);
+        return;
+      }
       if (res.status === 409) {
         // Somebody (or another tab) already joined with this account.
         setStage('member');
@@ -158,9 +178,10 @@ export default function InviteJoinPage() {
         throw new Error(data.error ?? t('inviteJoin.joinFailed'));
       }
       await absorbHistory(topic.id);
+      setProofRequirement(null);
       setStage('joined');
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('inviteJoin.joinFailed'));
+      setError(localizeApiError(err, t, 'inviteJoin.joinFailed'));
     } finally {
       joiningRef.current = false;
       setJoining(false);
@@ -304,13 +325,37 @@ export default function InviteJoinPage() {
             </p>
           )}
 
+          {stage === 'preview' && proofRequirement && (
+            <div style={card}>
+              <p>{t('apiErrors.proofRequired')}</p>
+              {proofRequirement.type === 'workspace' && (
+                <select className="os-locale-select" aria-label={t('joinPage.selectProviderHint')} value={provider}
+                  onChange={event => { const value = event.target.value; if (value === 'google' || value === 'microsoft') setProvider(value); }}>
+                  <option value="" disabled>{t('joinPage.selectProviderHint')}</option>
+                  <option value="google">{t('joinPage.providerGoogle')}</option>
+                  <option value="microsoft">{t('joinPage.providerMicrosoft')}</option>
+                </select>
+              )}
+              {(proofRequirement.type !== 'workspace' || provider) && <ProofGate
+                key={`${proofRequirement.type}:${provider}`}
+                mode="proof" circuitType={proofRequirement.circuit}
+                domain={proofRequirement.domain ?? undefined}
+                countryList={proofRequirement.allowedCountries ?? undefined}
+                isIncluded={proofRequirement.type === 'country' ? true : undefined}
+                provider={proofRequirement.type === 'google_workspace' ? 'google' : proofRequirement.type === 'microsoft_365' ? 'microsoft' : provider || undefined}
+                onProofData={({proof, publicInputs}) => { void handleJoin({proof, publicInputs}); }}
+                onCancel={() => setProofRequirement(null)}
+              />}
+            </div>
+          )}
+
           {stage === 'preview' && (
             <button
               type="button"
               className="os-button os-button-primary"
               style={{ width: '100%' }}
-              onClick={handleJoin}
-              disabled={joining}
+              onClick={() => { void handleJoin(); }}
+              disabled={joining || !!proofRequirement}
             >
               {joining ? t('inviteJoin.joining') : t('inviteJoin.join')}
             </button>

@@ -51,7 +51,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Avatar from './Avatar';
-import Badge from './Badge';
+import UserIdentity from './UserIdentity';
 import ChatPanel from './ChatPanel';
 import TopicMuteToggle from './TopicMuteToggle';
 import Spinner from './Spinner';
@@ -275,7 +275,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
           // isDmCandidate() reflect that immediately instead of the cached
           // pre-DM state for up to 60s.
           invalidateDmCandidates();
-          openRoom({ kind: 'dm', topicId: data.topicId, title: candidate.nickname, profileImage: candidate.profileImage });
+          openRoom({ kind: 'dm', topicId: data.topicId, title: candidate.nickname, profileImage: candidate.profileImage, peerId: candidate.userId, badges: candidate.badges });
           loadDms();
         }
       } catch {
@@ -336,21 +336,12 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
             <button type="button" onClick={backToList} aria-label={t('chatRail.backAriaLabel')} style={iconBtnStyle}>
               {BackIcon}
             </button>
-            <Avatar src={room.profileImage} name={room.title} size={26} />
-            <span
-              style={{
-                flex: 1,
-                minWidth: 0,
-                fontSize: 'var(--text-caption)',
-                fontWeight: 700,
-                color: 'var(--foreground)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {room.title}
-            </span>
+            {room.kind === 'dm' ? (
+              <UserIdentity userId={room.peerId} nickname={room.title} profileImage={room.profileImage}
+                badges={room.badges} avatarSize={26} style={{ flex: 1 }}
+                nameStyle={{ fontSize: 'var(--text-caption)', color: 'var(--foreground)' }} />
+            ) : <><Avatar src={room.profileImage} name={room.title} size={26} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--text-caption)', fontWeight: 700, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{room.title}</span></>}
             <TopicMuteToggle topicId={room.topicId} enabled style={{ flexShrink: 0 }} />
             {room.kind === 'topic' && (
               <button
@@ -480,7 +471,7 @@ export default function ChatRail({ onClose, openRequest }: ChatRailProps) {
           loadError={listError}
           onRetry={loadDms}
           onOpenTopic={(topic) => openRoom({ kind: 'topic', topicId: topic.id, title: topic.title })}
-          onOpenDm={(d) => openRoom({ kind: 'dm', topicId: d.topicId, title: d.peer.nickname, profileImage: d.peer.profileImage })}
+          onOpenDm={(d) => openRoom({ kind: 'dm', topicId: d.topicId, title: d.peer.nickname, profileImage: d.peer.profileImage, peerId: d.peer.userId, badges: d.peer.badges })}
         />
       )}
     </div>
@@ -583,34 +574,13 @@ function NewConversationPicker({
         ) : (
           candidates.map((c) => (
             <button key={c.userId} type="button" style={rowStyle} onClick={() => onPick(c)} disabled={startingUserId != null} data-testid="dm-candidate-row">
-              <Avatar src={c.profileImage} name={c.nickname} size={32} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span
-                  style={{
-                    display: 'block',
-                    fontSize: 'var(--text-caption)',
-                    fontWeight: 600,
-                    color: 'var(--foreground)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {c.nickname}
-                </span>
-                {c.sharedTopics.length > 0 && (
-                  <span style={{ display: 'block', fontSize: 'var(--text-label)', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {t('dm.sharedTopicsVia', { topics: c.sharedTopics.map((s) => s.title).join(', ') })}
-                  </span>
-                )}
-              </span>
-              {c.badges.length > 0 && (
-                <span style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                  {c.badges.slice(0, 2).map((b, i) => (
-                    <Badge key={i} type={b.type} label={b.label} domain={b.domain ?? undefined} />
-                  ))}
-                </span>
-              )}
+              <UserIdentity userId={c.userId} nickname={c.nickname} profileImage={c.profileImage}
+                badges={c.badges} avatarSize={32} interactive={false} style={{ flex: 1 }}
+                nameStyle={{ fontSize: 'var(--text-caption)', color: 'var(--foreground)' }}>
+                {c.sharedTopics.length > 0 && <span style={{ fontSize: 'var(--text-label)', color: 'var(--muted)' }}>
+                  {t('dm.sharedTopicsVia', { topics: c.sharedTopics.map((s) => s.title).join(', ') })}
+                </span>}
+              </UserIdentity>
               {startingUserId === c.userId && <span style={{ fontSize: 'var(--text-label)', color: 'var(--muted)', flexShrink: 0 }}>…</span>}
             </button>
           ))

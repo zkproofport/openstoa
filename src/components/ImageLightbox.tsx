@@ -237,7 +237,7 @@ export default function ImageLightbox({ src, images, imageAlts, initialIndex = 0
                 e.stopPropagation();
                 setIndex(i);
               }}
-              aria-label={`Image ${i + 1}`}
+              aria-label={t('a11y.imageNumber', { number: i + 1 })}
               style={{
                 width: 8,
                 height: 8,

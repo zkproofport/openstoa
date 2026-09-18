@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * Phase 4 TAK-keychain backup (design §6.4.1, SI-8). Stores the caller's TAK
  * keychain — every topic's archive root + epoch keys the user holds — as a
@@ -22,6 +23,9 @@ const RATE: RateLimit = { max: 120, windowSec: 60 };
 
 /** GET — return the caller's own encrypted TAK-keychain blob (null if none yet). */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/keys/tak-backup');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -39,6 +43,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * changes. Envelope-only validation (base64 + size cap SI-4); never decrypted.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/keys/tak-backup');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

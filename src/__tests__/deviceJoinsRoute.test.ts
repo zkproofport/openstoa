@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -61,7 +62,8 @@ vi.mock('@/lib/mls/deviceJoins', () => ({
   scheduleDeviceJoinRecord: mocks.scheduleDeviceJoinRecord,
 }));
 
-import { POST as commitPOST } from '@/app/api/topics/[topicId]/mls/commit/route';
+import { POST as commitPOSTHttpHandler } from '@/app/api/topics/[topicId]/mls/commit/route';
+const commitPOST=withHttpRequest(commitPOSTHttpHandler,'POST');
 
 // A real ts-mls Commit asserting epoch 0, so the route's crypto-free framing
 // parser runs for real rather than against a shape we invented.

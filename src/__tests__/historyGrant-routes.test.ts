@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 /**
  * `history_grant` ENFORCEMENT at the ROUTE layer — real local Postgres.
  *
@@ -61,9 +62,12 @@ vi.mock('@/lib/push', () => ({
   getPushMode: () => 'content-free',
 }));
 
-import { GET as chatGET } from '@/app/api/topics/[topicId]/chat/route';
-import { GET as archiveGET } from '@/app/api/topics/[topicId]/archive/route';
-import { GET as takGET } from '@/app/api/topics/[topicId]/tak/bundles/route';
+import { GET as chatGETHttpHandler } from '@/app/api/topics/[topicId]/chat/route';
+const chatGET=withHttpRequest(chatGETHttpHandler,'GET');
+import { GET as archiveGETHttpHandler } from '@/app/api/topics/[topicId]/archive/route';
+const archiveGET=withHttpRequest(archiveGETHttpHandler,'GET');
+import { GET as takGETHttpHandler } from '@/app/api/topics/[topicId]/tak/bundles/route';
+const takGET=withHttpRequest(takGETHttpHandler,'GET');
 import { storeArchiveRow, storeTakBundle } from '@/lib/mls/archive';
 
 const USER = 'hg-route-user';
@@ -219,6 +223,19 @@ describe('unbounded callers', () => {
     expect(tak.bundles.length).toBe(1);
   });
 
+  it('a selected human key cannot read history with a none grant',async()=>{
+    await seedArchived(ago(1),0);
+    mocks.getSession.mockResolvedValue({...keySession(READ,'none'),isAI:false});
+    for(const [name,call] of SURFACES){const response=await call();expect(response.status,name).toBe(403);expect((await response.json()).error).toContain('historyGrant');}
+  });
+
+  it('a selected human key sees only its bounded chat and archive window',async()=>{
+    await seedArchived(ago(400),0);await seedArchived(ago(1),0);
+    mocks.getSession.mockResolvedValue({...keySession(READ,'7d'),isAI:false});
+    const chat=await (await chatGET(req(),{params:tParams()}) as Response).json();expect(chat.messages).toHaveLength(1);expect(chat.total).toBe(1);
+    const archive=await (await archiveGET(req(),{params:tParams()})).json();expect(archive.archive).toHaveLength(1);
+  });
+
   it('a key with grant `full` sees exactly what the human sees', async () => {
     await seedArchived(ago(400), 0);
     await seedArchived(ago(1), 0);
@@ -265,7 +282,8 @@ describe('gate order', () => {
     for (const [name, call] of SURFACES) {
       const res = await call();
       expect(res.status, name).toBe(403);
-      expect((await res.json()).error, name).toContain('/openstoa/chat/read');
+      const body=await res.json();expect(body.code,name).toBe('api_scope_denied');
+      expect(body.required.all,name).toContain('/openstoa/chat/read');
     }
   });
 

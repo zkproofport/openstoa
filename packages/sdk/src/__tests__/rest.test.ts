@@ -151,17 +151,49 @@ describe('OpenStoaClient', () => {
     expect(() => new OpenStoaClient({ baseUrl: '' })).toThrow(/baseUrl/);
   });
 
-  // ── API keys (design §7 follow-up: scoped Bearer credential, no interactive login) ──
-  it('constructing with apiKey (no token) sends it as the Bearer on every request', async () => {
-    const { fn, calls } = mockFetch(() => ({ json: { topics: [] } }));
+  // A verified session establishes identity; the independent API key limits authorization.
+  it('an API key alone is never exposed or sent as a login session Bearer', async () => {
+    const { fn, calls } = mockFetch(() => ({ status: 401, json: { error: 'Login required' } }));
     const c = new OpenStoaClient({ baseUrl: 'http://h', apiKey: 'osk_scopedkey123', fetch: fn });
-    expect(c.getToken()).toBe('osk_scopedkey123');
-    await c.topics.list();
-    expect(calls[0].headers['authorization']).toBe('Bearer osk_scopedkey123');
+    expect(c.getToken()).toBeNull();
+    await expect(c.topics.list()).rejects.toMatchObject({ status: 401 });
+    expect(calls[0].headers.authorization).toBeUndefined();
+    expect(calls[0].headers['x-openstoa-api-key']).toBe('osk_scopedkey123');
   });
-  it('an explicit token takes precedence over apiKey when both are given', async () => {
-    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'JWT_TOKEN', apiKey: 'osk_scopedkey123' });
+  it('keeps both the login Bearer and permission key when both are configured', async () => {
+    const { fn, calls } = mockFetch(() => ({ json: { topics: [] } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'JWT_TOKEN', apiKey: 'osk_scopedkey123', fetch: fn });
     expect(c.getToken()).toBe('JWT_TOKEN');
+    await c.topics.list();
+    expect(calls[0].headers.authorization).toBe('Bearer JWT_TOKEN');
+    expect(calls[0].headers['x-openstoa-api-key']).toBe('osk_scopedkey123');
+    expect(new URL(calls[0].url).search).not.toContain('osk_');
+  });
+  it('refreshing or replacing a session never removes the independently configured permission key', async () => {
+    const { fn, calls } = mockFetch(() => ({ json: { token: 'REFRESHED_SESSION', topics: [] } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'OLD_SESSION', apiKey: 'osk_scope', fetch: fn });
+    await c.auth.refresh(); await c.topics.list();
+    expect(c.getToken()).toBe('REFRESHED_SESSION');
+    expect(calls[1].headers).toMatchObject({ authorization: 'Bearer REFRESHED_SESSION', 'x-openstoa-api-key': 'osk_scope' });
+    c.setToken('REPLACEMENT_SESSION'); await c.topics.list();
+    expect(calls[2].headers).toMatchObject({ authorization: 'Bearer REPLACEMENT_SESSION', 'x-openstoa-api-key': 'osk_scope' });
+  });
+  it('switches between per-scope permission keys without changing login identity', async () => {
+    const { fn, calls } = mockFetch(() => ({ json: { topics: [] } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'LOGIN_SESSION', apiKey: 'osk_read', fetch: fn });
+    c.setApiKey('osk_write'); await c.topics.list();
+    expect(c.getToken()).toBe('LOGIN_SESSION');
+    expect(calls[0].headers).toMatchObject({ authorization: 'Bearer LOGIN_SESSION', 'x-openstoa-api-key': 'osk_write' });
+    c.setApiKey(null); await c.topics.list();
+    expect(c.getToken()).toBe('LOGIN_SESSION');
+    expect(calls[1].headers['x-openstoa-api-key']).toBeUndefined();
+  });
+  it('an absent permission key adds no authorization header of its own', async () => {
+    const { fn, calls } = mockFetch(() => ({ json: { topics: [] } }));
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'SESSION', fetch: fn });
+    await c.topics.list();
+    expect(calls[0].headers.authorization).toBe('Bearer SESSION');
+    expect(calls[0].headers['x-openstoa-api-key']).toBeUndefined();
   });
   it('apiKeys.create posts the input and returns { rawKey, key } — never re-sends the raw key elsewhere', async () => {
     const { fn, calls } = mockFetch(() => ({
@@ -209,19 +241,21 @@ describe('OpenStoaClient', () => {
     return { fn, calls };
   }
 
-  it('uploads.image POSTs multipart form-data (file + purpose), sets Bearer, and never a manual Content-Type', async () => {
+  it('uploads.image preserves separate session/key headers and lets fetch set the multipart boundary', async () => {
     const { fn, calls } = uploadMockFetch(200, { publicUrl: 'https://cdn.example.com/posts/x/photo.jpg' });
-    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
-    const r = await c.uploads.image({ data: new Uint8Array([1, 2, 3]), filename: 'photo.jpg', contentType: 'image/jpeg', purpose: 'post' });
+    const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', apiKey: 'osk_upload_scope', fetch: fn });
+    const r = await c.uploads.image({ data: new Uint8Array([1, 2, 3]), filename: 'photo.jpg', contentType: 'image/jpeg', purpose: 'post', topicId: '11111111-1111-4111-8111-111111111111' });
     expect(r.publicUrl).toBe('https://cdn.example.com/posts/x/photo.jpg');
     expect(calls[0].method).toBe('POST');
     expect(calls[0].url).toBe('http://h/api/upload');
     expect(calls[0].headers['authorization']).toBe('Bearer T');
+    expect(calls[0].headers['x-openstoa-api-key']).toBe('osk_upload_scope');
     // fetch derives the multipart boundary itself — we must not pin Content-Type.
     expect(calls[0].headers['content-type']).toBeUndefined();
     expect(calls[0].body).toBeInstanceOf(FormData);
     const form = calls[0].body as FormData;
     expect(form.get('purpose')).toBe('post');
+    expect(form.get('topicId')).toBe('11111111-1111-4111-8111-111111111111');
     expect(form.get('file')).toBeInstanceOf(Blob);
   });
 
@@ -229,5 +263,32 @@ describe('OpenStoaClient', () => {
     const { fn } = uploadMockFetch(413, { error: 'File size must not exceed 10MB' });
     const c = new OpenStoaClient({ baseUrl: 'http://h', token: 'T', fetch: fn });
     await expect(c.uploads.image({ data: new Uint8Array([1]), filename: 'x.png', contentType: 'image/png' })).rejects.toMatchObject({ status: 413, name: 'OpenStoaApiError' });
+  });
+});
+
+
+describe('replacement credential validation', () => {
+  it.each([{ authenticated: false }, {}, { userId: '' }, { userId: ' ', authenticated: true }])('rejects HTTP-200 guest shape without changing the current token: %j', async response => {
+    const { fn, calls } = mockFetch(() => ({ json: response }));
+    const client = new OpenStoaClient({ baseUrl: 'http://h', token: 'current', fetch: fn });
+    await expect(client.auth.validateToken('invalid')).rejects.toThrow('Invalid or expired credential');
+    expect(client.getToken()).toBe('current');
+    expect(calls[0].headers.authorization).toBe('Bearer invalid');
+  });
+  it('validates a candidate session independently of the current permission key', async () => {
+    const { fn, calls } = mockFetch(() => ({ json: { userId: 'u1', nickname: 'name' } }));
+    const client = new OpenStoaClient({ baseUrl: 'http://h', token: 'current', apiKey: 'osk_current_scope', fetch: fn });
+    await client.auth.validateToken('candidate');
+    expect(calls[0].headers.authorization).toBe('Bearer candidate');
+    expect(calls[0].headers['x-openstoa-api-key']).toBeUndefined();
+    expect(client.getToken()).toBe('current');
+    await client.auth.session();
+    expect(calls[1].headers).toMatchObject({ authorization: 'Bearer current', 'x-openstoa-api-key': 'osk_current_scope' });
+  });
+  it('returns a validated identity while adoption remains explicit', async () => {
+    const { fn } = mockFetch(() => ({ json: { userId: 'u1', nickname: 'name' } }));
+    const client = new OpenStoaClient({ baseUrl: 'http://h', token: 'current', fetch: fn });
+    expect(await client.auth.validateToken('candidate')).toEqual({ userId: 'u1', nickname: 'name' });
+    expect(client.getToken()).toBe('current');
   });
 });

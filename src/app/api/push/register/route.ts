@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * Phase 6 push notifications — device token registration (design §13, D13
  * near-blind gateway). The server maps an opaque, client-generated
@@ -36,6 +37,9 @@ const RATE: RateLimit = { max: 60, windowSec: 60 };
  * allowlist); the server never inspects message content (there is none here).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/push/register');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -87,6 +91,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * its own token. Unknown handles are a no-op (removed: 0).
  */
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/push/register');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

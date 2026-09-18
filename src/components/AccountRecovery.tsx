@@ -17,6 +17,7 @@ import { getDeviceMasterKey, keyBackupHttp, recoverDevice, uploadTakKeychainNow 
 import * as km from '@/lib/mls/keyManager';
 import * as kb from '@/lib/mls/keyBackup';
 import { isPasskeySupported, registerPasskeyPrf, getPasskeyPrf } from '@/lib/passkeyPrf';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // ─── Settings surface contract ───────────────────────────────────────────────
@@ -90,7 +91,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
     try {
       setState(await http.getBackup());
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(localizeApiError(e, t, 'apiErrors.recoveryLoadFailed'));
     }
   }
   useEffect(() => {
@@ -108,7 +109,7 @@ export function AccountRecovery({ userId, displayName }: { userId: string; displ
     try {
       await fn();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(localizeApiError(e, t, 'apiErrors.recoveryFailed'));
     } finally {
       setBusy(false);
     }

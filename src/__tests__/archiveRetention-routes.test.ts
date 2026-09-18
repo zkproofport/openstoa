@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 /**
  * Chat-archive retention at the ROUTE layer — real local Postgres.
  *
@@ -68,9 +69,13 @@ vi.mock('@/lib/archiveRetentionSweep', async (importOriginal) => {
   return { ...actual, scheduleArchiveSweep: mocks.scheduleArchiveSweep };
 });
 
-import { POST as topicsPOST } from '@/app/api/topics/route';
-import { PATCH as topicPATCH } from '@/app/api/topics/[topicId]/route';
-import { POST as archivePOST, GET as archiveGET } from '@/app/api/topics/[topicId]/archive/route';
+import { POST as topicsPOSTHttpHandler } from '@/app/api/topics/route';
+const topicsPOST=withHttpRequest(topicsPOSTHttpHandler,'POST');
+import { PATCH as topicPATCHHttpHandler } from '@/app/api/topics/[topicId]/route';
+const topicPATCH=withHttpRequest(topicPATCHHttpHandler,'PATCH');
+import { POST as archivePOSTHttpHandler, GET as archiveGETHttpHandler } from '@/app/api/topics/[topicId]/archive/route';
+const archivePOST=withHttpRequest(archivePOSTHttpHandler,'POST');
+const archiveGET=withHttpRequest(archiveGETHttpHandler,'GET');
 import { ARCHIVE_RETENTION_CHOICES } from '@/lib/archiveRetention';
 import { resetArchiveSweepThrottle } from '@/lib/archiveRetentionSweep';
 

@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -56,6 +58,9 @@ const ROUTE = '/api/my/recorded-on-mine';
  *         $ref: '#/components/responses/Unauthorized'
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/my/recorded-on-mine');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -132,7 +137,7 @@ export async function GET(request: NextRequest) {
       userId: session.userId,
       count: rows.length,
     });
-    return NextResponse.json({ posts: postsWithReactions });
+    return NextResponse.json({ posts: await withPublicIdentityBadges(postsWithReactions, post => post.authorId) });
   } catch (error) {
     return unhandledRouteError(ROUTE, 'GET', error);
   }

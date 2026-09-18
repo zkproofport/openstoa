@@ -9,7 +9,8 @@ import { cacheChatMedia, readCachedChatMedia } from '@/lib/chatMediaDiskCache';
 import { rememberSentChatMedia, readSentChatMedia } from '@/lib/chatMediaPlaintextCache';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { relativeTime } from '@/lib/utils';
-import Badge from '@/components/Badge';
+import UserIdentity from '@/components/UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import Spinner from '@/components/Spinner';
 import LinkPreview from '@/components/LinkPreview';
 import { isSyncingHistory, nextPendingId, isProvisionalId } from '@/lib/chatStatus';
@@ -233,6 +234,7 @@ interface PresenceUser {
 }
 
 interface ChatMessage {
+  badges?: PublicBadge[];
   id: string;
   topicId: string;
   userId: string;
@@ -608,6 +610,7 @@ function E2eeBanner({ connected, tier }: { connected?: boolean; tier: ChatTier }
       {open && (
         <Link
           href="/docs/tiers"
+          target="_blank" rel="noopener noreferrer" className="desktop-docs-link"
           /*
            * Not prefetched. Next fetches a Link's route as soon as it enters the
            * viewport, and this one appears while the room is opening — measured
@@ -1496,19 +1499,9 @@ function MessageRow({
           caption step (13px) in both densities rather than dipping to the
           12px label floor (reserved for uppercase Latin). */}
       {!own && !grouped && (
-        <span style={{
-          fontSize: 'var(--text-caption)',
-          fontWeight: 700,
-          color: 'var(--accent)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          marginBottom: 2,
-          paddingLeft: 2,
-        }}>
-          {displayNickname(msg.nickname ?? '')}
-          {msg.isAI && <Badge type="ai" />}
-        </span>
+        <UserIdentity userId={msg.userId} nickname={displayNickname(msg.nickname ?? '')}
+          profileImage={msg.profileImage} badges={msg.badges} isAI={msg.isAI} avatarSize={24}
+          style={{ marginBottom: 2, paddingLeft: 2 }} nameStyle={{ fontSize: 'var(--text-caption)', color: 'var(--accent)' }} />
       )}
 
       <div style={{

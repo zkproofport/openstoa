@@ -1,0 +1,57 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import {NextRequest,NextResponse} from 'next/server';
+import {CliLoginError,startCliLogin} from '@/lib/cliLogin';
+import {unhandledRouteError} from '@/lib/apiError';
+/**
+ * @openapi
+ * /api/auth/cli-login:
+ *   post:
+ *     tags: [Auth]
+ *     operationId: startCliLogin
+ *     summary: Start an explicitly approved app proof login for CLI/MCP
+ *     description: Creates a ten-minute login bound to a SHA256 code verifier. Display browserUrl to the user; poll the login endpoint with the locally retained verifier. Never send tokens in redirect URLs.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [codeChallenge]
+ *             properties:
+ *               codeChallenge: { type: string, description: 'Base64url SHA256 of a locally generated 43–128-character code verifier' }
+ *               redirect_url: { type: string, description: 'Same-origin OpenStoa page to open after browser login; default /my' }
+ *     responses:
+ *       202:
+ *         description: Login pending user approval
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 loginId: { type: string }
+ *                 browserUrl: { type: string }
+ *                 expiresAt: { type: integer }
+ *                 pollAfterMs: { type: integer }
+ *       400: { description: Invalid challenge or redirect }
+ */
+export async function POST(request:NextRequest){
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/cli-login');
+  if (authorizationError) return authorizationError;
+
+  try{
+    let body;try{body=await request.json();}catch{return NextResponse.json({error:'Invalid JSON'},{status:400});}
+    if(!body||typeof body!=='object'||Array.isArray(body))return NextResponse.json({error:'Invalid request'},{status:400});
+    const incoming = new URL(request.url);
+    // Standalone Next.js may expose 0.0.0.0 internally. Host identifies the
+    // actual caller-facing endpoint; never redirect via arbitrary forwarded-host.
+    const host = request.headers.get('host');
+    if(host){
+      if(!/^(?:[a-zA-Z0-9.-]+|\[[a-fA-F0-9:]+\])(?::[0-9]{1,5})?$/.test(host))return NextResponse.json({error:'Invalid request host'},{status:400});
+      incoming.host=host;
+      const proto=request.headers.get('x-forwarded-proto');
+      if(proto==='http'||proto==='https')incoming.protocol=proto+':';
+    }
+    return NextResponse.json(await startCliLogin(incoming.origin,body),{status:202,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  }catch(error){if(error instanceof CliLoginError)return NextResponse.json({error:error.message},{status:error.status});return unhandledRouteError('/api/auth/cli-login','POST',error);}
+}

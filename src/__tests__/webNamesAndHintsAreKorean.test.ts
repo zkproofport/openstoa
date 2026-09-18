@@ -113,6 +113,9 @@ describe('the web names its controls in Korean', () => {
       'OpenStoa',
       // The product's name split across two spans so the halves take two
       // colours. Neither half is a word anyone translates.
+      'AGENTS.md', // Literal documentation filename.
+      'GET /chat', // Literal REST endpoints must remain executable/searchable.
+      'PATCH /api/profile/badges',
       'Open',
       'Stoa',
       'Android', // the platform, in a "get the beta" control

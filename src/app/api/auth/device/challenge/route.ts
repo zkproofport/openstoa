@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
@@ -49,6 +50,9 @@ const ROUTE = '/api/auth/device/challenge';
  *         description: No session
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/device/challenge');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -107,6 +111,9 @@ export async function GET(request: NextRequest) {
  *         description: A different key is already registered for this device id
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/device/challenge');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

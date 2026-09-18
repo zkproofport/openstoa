@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * Push notification preferences — the GLOBAL switch (P-M) plus a read-only view
  * of every per-topic mute (P-S, written via `PATCH /api/topics/{topicId}/push`).
@@ -63,6 +64,9 @@ const RATE: RateLimit = { max: 60, windowSec: 60 };
  *       429: { description: Rate limit exceeded — max 60 preference calls per minute per user }
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/push/preferences');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -130,6 +134,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  *       429: { description: Rate limit exceeded — max 60 preference calls per minute per user }
  */
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/push/preferences');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

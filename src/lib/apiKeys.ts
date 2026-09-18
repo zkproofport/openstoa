@@ -1,12 +1,9 @@
 /**
  * Durable, revocable API keys for CLI/MCP agents (design §7 follow-up).
  *
- * An agent authenticates with `Authorization: Bearer <rawKey>` in place of an
- * interactive login. Unlike a profile-level `isAI` JWT session (whose
- * capabilities are looked up fresh from `ai_permissions` on every request), an
- * API key IS the scoped credential: its OWN `cmd` allowlist + `historyGrant`
- * travel with it and gate requests directly (see `src/lib/session.ts` →
- * `getSession` and `src/lib/aiPermissions.ts` → `requireAiCapability`).
+ * Login establishes identity. Send the selected key in X-OpenStoa-API-Key
+ * alongside the session JWT. Each key has an independent cmd/historyGrant;
+ * ownership, revocation and scope are checked for every request.
  *
  * SI-1/SI-4: only the SHA-256 hash of the raw key is ever stored. A DB dump
  * never yields a usable key. The raw key is generated here and returned to the
@@ -238,10 +235,10 @@ function generateRawKey(): { raw: string; prefix: string } {
  * response knows to stop retrying and tell its owner, not guess at a
  * workaround.
  */
-export function requireNonApiKeySession(session: { apiKeyId?: string }): NextResponse | null {
-  if (session.apiKeyId) {
+export function requireNonApiKeySession(session: { apiKeyId?: string; isAI?: boolean; deviceKind?: string }): NextResponse | null {
+  if (session.apiKeyId || session.isAI || session.deviceKind==='agent') {
     return NextResponse.json(
-      { error: 'API keys cannot manage API keys — ask your account owner to create, edit, or revoke keys from a signed-in session' },
+      { error: 'Agent sessions and API keys cannot manage API keys — ask the account owner to manage keys from their signed-in browser session' },
       { status: 403 },
     );
   }

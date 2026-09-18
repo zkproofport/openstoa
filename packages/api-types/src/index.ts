@@ -100,7 +100,14 @@ export interface Poll {
   isClosed: boolean;
 }
 
+export interface PublicBadge {
+  type: string;
+  label: string;
+  domain?: string | null;
+}
+
 export interface Post {
+  badges?: PublicBadge[];
   id: UuidString;
   topicId: UuidString;
   authorId: NullifierId;
@@ -135,6 +142,8 @@ export interface Post {
 }
 
 export interface Comment {
+  badges?: PublicBadge[];
+  authorProfileImage?: string | null;
   id: UuidString;
   postId: UuidString;
   authorId: NullifierId | null;
@@ -194,6 +203,7 @@ export interface GroupCipher {
 }
 
 export interface ChatMessage {
+  badges?: PublicBadge[];
   id: UuidString;
   topicId: UuidString;
   userId: NullifierId;
@@ -258,10 +268,20 @@ export interface RefreshResponse {
 }
 
 export interface SessionInfo {
+  badges?: PublicBadge[];
   userId: NullifierId;
   nickname: string;
   verifiedAt: number;
   isAI?: boolean;
+}
+
+/** Active verification returned to its owner by GET /api/profile/badges. */
+export interface VerificationBadge {
+  type: 'kyc' | 'country' | 'oidc_domain' | 'oidc_login';
+  verifiedAt: number;
+  expiresAt: number;
+  visible: boolean;
+  domain?: string;
 }
 
 export interface Badge {
@@ -279,13 +299,13 @@ export interface Badge {
  * whether SOME domain is currently shown.
  */
 export interface DomainBadgeStatus {
-  /** All currently opted-in (publicly visible) workspace domains. */
+  /** All workspace domains currently enabled for public badge display. */
   domains?: string[];
-  /** Most recently verified domain available for opt-in (null if none). */
+  /** Most recently verified domain available for display (null if none). */
   availableDomain?: string | null;
-  /** True when at least one domain is opted in. */
+  /** True when at least one domain has badge display enabled. */
   enabled?: boolean;
-  /** Convenience shortcut for the first opted-in domain. */
+  /** Convenience shortcut for the first display-enabled domain. */
   domain?: string;
 }
 

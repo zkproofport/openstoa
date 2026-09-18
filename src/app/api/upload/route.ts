@@ -1,3 +1,5 @@
+import {requireAiCapability} from '@/lib/aiPermissions';
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { uploadToR2, deleteFromR2ByUrl, isMissingR2ConfigError, type UploadPurpose } from '@/lib/r2';
@@ -133,6 +135,9 @@ function loadHeicConvert(): HeicConvertFn | null {
  *         description: The caller is not a member of the topic named in `topicId`
  */
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/upload');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);
@@ -174,6 +179,13 @@ export async function POST(request: NextRequest) {
       typeof purposeField === 'string' && VALID_PURPOSES.includes(purposeField as UploadPurpose)
         ? (purposeField as UploadPurpose)
         : 'post';
+    // Upload permission alone cannot bypass the destination's write policy.
+    const purposeCapability = resolvedPurpose === 'avatar' ? '/openstoa/profile/edit'
+      : resolvedPurpose === 'post' ? '/openstoa/post/write'
+      : formData.get('topicId') ? '/openstoa/topic/edit' : '/openstoa/topic/create';
+    const purposeGate = await requireAiCapability(db, session, purposeCapability);
+    if (purposeGate) return purposeGate;
+
 
     /*
      * WHICH TOPIC this object belongs to, so it lands under `topics/{id}/` and
@@ -397,6 +409,9 @@ export async function POST(request: NextRequest) {
  *       401: { $ref: '#/components/responses/Unauthorized' }
  */
 export async function DELETE(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/upload');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'DELETE request received');
   try {
     const session = await getSession(request);

@@ -1,4 +1,7 @@
-import { NextResponse } from 'next/server';
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { getSession } from '@/lib/session';
+import { topicProofScope } from '@/lib/topic-proof';
+import { NextRequest, NextResponse } from 'next/server';
 import { createChallenge } from '@/lib/challenge';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
@@ -14,18 +17,10 @@ const ROUTE = '/api/auth/challenge';
  *     description: |
  *       Issues a one-time `challengeId` and the `scope` string a ZK proof must embed.
  *
- *       **DO NOT use this to authenticate.** Agents authenticate with a scoped API key
- *       (`osk_...`) sent as `Authorization: Bearer <key>` — no challenge, no proof, no token
- *       exchange. A human mints the first key in a browser (sign in with the ZKProofport
- *       mobile app, then `/my` → Settings → AI agents); after that `POST /api/profile/api-keys`
- *       issues more.
- *
- *       The login flow this endpoint starts (`zkproofport-prove --login-google` →
- *       `POST /api/auth/verify/ai`) is **TEMPORARILY UNAVAILABLE**: its proof step runs on the
- *       ZKProofport AI prover at `ai.zkproofport.app`, which is currently offline.
- *
- *       The endpoint is still used to obtain a `scope` for **topic** proofs (KYC / country /
- *       workspace) when joining a proof-gated topic — see the topic-proofs skill.
+ *       Login and topic proofs use different scopes. CLI/MCP proof login obtains
+ *       a challenge, generates a Google login proof, then submits it to /api/auth/verify/ai.
+ *       Authenticated topic-proof requests receive the account-bound topic scope.
+ *       See /docs?topic=login#login and the corresponding proof subject.
  *
  *       Challenges are single-use and expire after ~5 minutes (`expiresIn`).
  *     operationId: createChallenge
@@ -49,10 +44,21 @@ const ROUTE = '/api/auth/challenge';
  *                   type: number
  *                   description: Seconds until the challenge expires
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/auth/challenge');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
+    let input: unknown = {};
+    const text = await request.text();
+    if (text) { try { input = JSON.parse(text); } catch { return NextResponse.json({error:'Invalid JSON'}, {status:400}); } }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return NextResponse.json({error:'Invalid challenge request'}, {status:400});
+    const purpose = (input as {purpose?:unknown}).purpose;
+    if (purpose !== undefined && purpose !== 'login' && purpose !== 'topic') return NextResponse.json({error:'purpose must be login or topic'}, {status:400});
     const challenge = await createChallenge();
+    const session = await getSession(request);
+    if (session && purpose !== 'login') challenge.scope = topicProofScope(session.userId);
     logger.info(ROUTE, 'Challenge created', { challengeId: challenge.challengeId });
     return NextResponse.json(challenge);
   } catch (error) {

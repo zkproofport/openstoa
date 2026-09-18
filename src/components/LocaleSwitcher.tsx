@@ -6,7 +6,7 @@
  * Korean catalogue was unreachable. Two locales only (`en` / `ko`, see
  * `SUPPORTED_LOCALES` in `src/lib/i18n/index.ts`).
  *
- * Rendered in three places, all wired to the SAME `useTranslation()` state
+ * Rendered on the landing page and in three app locations, all wired to the SAME `useTranslation()` state
  * (no separate switcher state to keep in sync): `Header.tsx`, the drawer's
  * Preferences group (`LeftSidebar.tsx`) and `/my`'s Settings tab — language
  * is not an auth-gated preference, so it is reachable signed in or not.
@@ -46,7 +46,7 @@ export default function LocaleSwitcher({
   return (
     <select
       className={`os-locale-select${className ? ` ${className}` : ''}`}
-      // No visible <label> exists in any of the three mount points (the header
+      // No visible <label> exists in its mount points (the header
       // row and the drawer row are icon-dense control strips; `/my`'s heading
       // is a section heading, not a label element), so the accessible name has
       // to come from here. `common.language` IS translated — unlike the option

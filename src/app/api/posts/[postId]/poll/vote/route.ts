@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -63,6 +64,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]/poll/vote');
+  if (authorizationError) return authorizationError;
+
   const { postId } = await params;
   if (!isValidUUID(postId)) {
     return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });
@@ -155,6 +159,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]/poll/vote');
+  if (authorizationError) return authorizationError;
+
   const { postId } = await params;
   if (!isValidUUID(postId)) {
     return NextResponse.json({ error: 'Invalid postId' }, { status: 400 });

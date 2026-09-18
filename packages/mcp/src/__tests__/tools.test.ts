@@ -28,9 +28,8 @@ function mockCommands(overrides: Record<string, (...a: unknown[]) => unknown> = 
   };
   const cmds = {
     login: make('login'),
-    // TEMPORARILY DISABLED — the device flow is commented out in the commands core
-    // (ZKProofport prover offline). Kept on the mock so the "no tool dispatches to
-    // it" assertion below would catch a silent re-wiring.
+    authenticate: make('authenticate'),
+    // Keep a legacy-method sentinel: new authentication must use the shared workflow.
     authenticateGoogle: make('authenticateGoogle'),
     whoami: make('whoami'),
     topicsList: make('topicsList'),
@@ -72,7 +71,7 @@ describe('MCP tools → command core', () => {
     const { cmds } = mockCommands();
     registerTools(host, cmds);
     for (const name of [
-      // 'openstoa_authenticate' — TEMPORARILY DISABLED (prover offline); see below.
+      'openstoa_authenticate',
       'openstoa_login',
       'openstoa_whoami',
       'openstoa_topics_list',
@@ -109,50 +108,25 @@ describe('MCP tools → command core', () => {
     }
   });
 
-  // TEMPORARILY DISABLED — the ZKProofport AI prover (ai.zkproofport.app) is
-  // offline (shut down for cost), so the device flow — and with it the
-  // `openstoa_authenticate` tool — is commented out in packages/mcp/src/tools.ts.
-  // The original 2-call handshake test is preserved below; restore it together
-  // with the tool registration.
-  //
-  // it('openstoa_authenticate: 2-call pending → authenticated handshake (device-flow login)', async () => {
-  //   const { host, handlers } = fakeHost();
-  //   let call = 0;
-  //   const { cmds, calls } = mockCommands({
-  //     authenticateGoogle: () => {
-  //       call += 1;
-  //       return call === 1
-  //         ? { status: 'pending_user_login', verificationUrl: 'https://google.com/device', userCode: 'ABCD-1234', instructions: 'open it' }
-  //         : { status: 'authenticated', userId: '0xnull', nickname: 'anon_null', needsNickname: true, message: 'ok' };
-  //     },
-  //   });
-  //   registerTools(host, cmds);
-  //   const first = await handlers.get('openstoa_authenticate')!({});
-  //   expect(JSON.parse(first.content[0].text)).toMatchObject({ status: 'pending_user_login', verificationUrl: 'https://google.com/device', userCode: 'ABCD-1234' });
-  //   const second = await handlers.get('openstoa_authenticate')!({});
-  //   expect(JSON.parse(second.content[0].text)).toMatchObject({ status: 'authenticated', userId: '0xnull', needsNickname: true });
-  //   expect(calls.filter((c) => c.method === 'authenticateGoogle')).toHaveLength(2);
-  // });
-
-  it('openstoa_authenticate is NOT registered while the prover is offline, and nothing dispatches to authenticateGoogle', async () => {
+  it('openstoa_authenticate asks for consent through the shared core', async () => {
     const { host, handlers } = fakeHost();
-    const { cmds, calls } = mockCommands();
+    const { cmds, calls } = mockCommands({ authenticate: () => ({ status: 'consent_required', methods: ['app', 'ai'] }) });
     registerTools(host, cmds);
-    expect(handlers.has('openstoa_authenticate')).toBe(false);
-    // Every remaining tool, invoked with empty args, must never reach the device flow.
-    for (const handler of handlers.values()) await handler({});
-    expect(calls.some((c) => c.method === 'authenticateGoogle')).toBe(false);
+    expect(handlers.has('openstoa_authenticate')).toBe(true);
+    const response = await handlers.get('openstoa_authenticate')!({});
+    expect(JSON.parse(response.content[0].text)).toMatchObject({ status: 'consent_required' });
+    expect(calls.find(c => c.method === 'authenticate')?.args[0]).not.toMatchObject({ approved: true });
+    expect(calls.some(c => c.method === 'authenticateGoogle')).toBe(false);
   });
 
-  it('openstoa_login points at API keys and states the device flow is unavailable', () => {
+  it('token adoption still explains owner-issued API keys without claiming all login is disabled', () => {
     const descriptions = new Map<string, string>();
     const host: ToolHost = { tool: (name, desc) => void descriptions.set(name, desc) };
-    const { cmds } = mockCommands();
-    registerTools(host, cmds);
-    const desc = descriptions.get('openstoa_login')!;
-    expect(desc).toContain('OPENSTOA_API_KEY');
-    expect(desc).toContain('temporarily unavailable');
-    expect(desc).toContain('/my');
+    const { cmds } = mockCommands(); registerTools(host, cmds);
+    expect(descriptions.get('openstoa_login')).toMatch(/(?:API|permission) keys?/i);
+    expect(descriptions.get('openstoa_login')).toContain('openstoa_authenticate');
+    expect(descriptions.get('openstoa_login')).not.toContain('temporarily unavailable');
+    expect(descriptions.get('openstoa_login')).not.toMatch(/keys.*(?:need no|skip).*login/i);
     expect(descriptions.get('openstoa_apikey_create')).toContain('rawKey');
   });
 

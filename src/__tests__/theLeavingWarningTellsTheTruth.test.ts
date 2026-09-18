@@ -38,8 +38,8 @@ const warnings: Record<string, string> = {
 const mustSay: Record<string, RegExp[]> = {
   'web, English': [/own space/i, /other people's rooms/i, /brand-new account/i],
   'app, English': [/own space/i, /other people's rooms/i, /brand-new account/i],
-  'web, Korean': [/내 공간/, /다른 방/, /새 계정/],
-  'app, Korean': [/내 공간/, /다른 방/, /새 계정/],
+  'web, Korean': [/나만의 공간/, /다른 토픽/, /새 계정/],
+  'app, Korean': [/내 공간|나만의 공간/, /다른 방|다른 토픽/, /새 계정/],
 };
 
 describe('the leaving warning tells the truth', () => {

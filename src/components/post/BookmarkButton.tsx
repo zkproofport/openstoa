@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { apiFetch } from '@/lib/apiFetch';
 import { useEffect, useState } from 'react';
 import { BookmarkIcon } from '@/components/icons';
@@ -27,6 +28,7 @@ export default function BookmarkButton({
   onChange,
   size = 'md',
 }: BookmarkButtonProps) {
+  const { t } = useTranslation();
   const [state, setState] = useState<boolean>(!!bookmarked);
   const [pending, setPending] = useState(false);
   const { toggleBookmark } = usePostMutations(postId);
@@ -81,7 +83,7 @@ export default function BookmarkButton({
     <button
       type="button"
       onClick={onClick}
-      aria-label={state ? 'Remove bookmark' : 'Bookmark'}
+      aria-label={state ? t('webUi.removeBookmark') : t('webUi.bookmark')}
       style={{
         background: 'none',
         border: 'none',

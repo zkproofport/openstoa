@@ -377,3 +377,6 @@ describe('a purged ATTACHMENT — the picture has to come back too', () => {
     expect(bodyText()).not.toContain('openstoa:media:');
   });
 });
+
+// Message authors now use the shared profile card, which navigates inside Next.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));

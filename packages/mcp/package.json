@@ -29,7 +29,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:e2e": "vitest run src/__tests__/e2e"
   },
   "dependencies": {
     "@masselabs/openstoa-commands": "^0.1.2",

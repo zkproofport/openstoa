@@ -9,8 +9,7 @@
  * swapping the panel out would drop the SSE stream and re-run the initial
  * history fetch on every peek at the member list.
  */
-import UserCard from './UserCard';
-import Avatar from './Avatar';
+import UserIdentity from './UserIdentity';
 import Spinner from './Spinner';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
@@ -93,23 +92,9 @@ export default function TopicMembersList({
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
       {members.map((m) => (
         <div key={m.userId} style={memberRowStyle} data-testid="rail-member-row">
-          <UserCard userId={m.userId} nickname={m.nickname} profileImage={m.profileImage} badges={m.badges} viewerUserId={viewerUserId}>
-            <Avatar src={m.profileImage} name={m.nickname} size={32} />
-          </UserCard>
-          <span
-            style={{
-              flex: 1,
-              minWidth: 0,
-              fontSize: 'var(--text-caption)',
-              fontWeight: 600,
-              color: 'var(--foreground)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {m.nickname}
-          </span>
+          <UserIdentity userId={m.userId} nickname={m.nickname} profileImage={m.profileImage}
+            badges={m.badges} viewerUserId={viewerUserId} avatarSize={32} style={{ flex: 1 }}
+            nameStyle={{ fontSize: 'var(--text-caption)', color: 'var(--foreground)' }} />
           {m.role !== 'member' && (
             <span
               style={{

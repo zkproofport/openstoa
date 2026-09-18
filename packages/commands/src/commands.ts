@@ -8,7 +8,7 @@
  * layer only moves plaintext into `sendChat` / out of `readChat` in-process; it
  * never logs message bodies or keys, and never touches ciphertext directly.
  */
-import { ChatClient } from '@masselabs/openstoa';
+import { ChatClient, getRestOperation, OpenStoaApiError } from '@masselabs/openstoa';
 import type {
   ChatMessage,
   Topic,
@@ -25,22 +25,32 @@ import type {
   ApiKeyUpdateInput,
   ApiKeyCreateResult,
 } from '@masselabs/openstoa';
-import { FileSessionStore, type SessionData, type SessionStore } from './session';
+import { FileSessionStore, MemorySessionStore, type SessionData, type SessionStore } from './session';
 import { readCredentials } from './credentials';
 import { resolveHome, type CommandConfig } from './config';
-// TEMPORARILY DISABLED — the ZKProofport AI prover (ai.zkproofport.app) is offline
-// (shut down for cost). The device flow needs it for the x402 proof step.
-// To restore: bring the prover back up, then uncomment this file + the CLI --google
-// option + the MCP openstoa_authenticate tool. Nothing else changed.
-// import {
-//   defaultSpawnProve,
-//   startDeviceLogin,
-//   awaitProof,
-//   type ProveSpawner,
-//   type PendingDeviceLogin,
-//   type DeviceCodeInfo,
-// } from './deviceLogin';
 import * as path from 'node:path';
+import {LoginWorkflow,type AuthenticateInput} from './loginWorkflow';
+import type {startAiTopicProof} from './aiTopicProof';
+import {TopicProofWorkflow,FileProofOperationStore,MemoryProofOperationStore,type ProofOperationStore,type ProofWorkflowResult,type ProofContinueInput,type ProofAction} from './topicProofWorkflow';
+
+/** Client-side generation controls; never sent as topic API request fields. */
+export interface TopicProofOptions {
+  method?: 'app' | 'ai';
+  approved?: boolean;
+  provider?: 'google' | 'microsoft';
+}
+function splitTopicProofOptions<T extends object>(input: T) {
+  const { method, approved, provider, ...body } = input as T & TopicProofOptions;
+  if (method !== undefined && method !== 'app' && method !== 'ai') throw new Error('Unknown proof method');
+  if (approved !== undefined && typeof approved !== 'boolean') throw new Error('Proof approval must be a boolean');
+  if (provider !== undefined && provider !== 'google' && provider !== 'microsoft') throw new Error('Unknown proof provider');
+  const raw = input as { proof?: unknown; publicInputs?: unknown };
+  if ((raw.proof !== undefined || raw.publicInputs !== undefined)
+    && (method !== undefined || approved !== undefined || provider !== undefined)) {
+    throw new Error('Cannot combine existing proof/publicInputs with proof generation options');
+  }
+  return { body: body as T, options: { method, approved, provider } };
+}
 
 export interface LoginResult {
   userId: string;
@@ -48,50 +58,45 @@ export interface LoginResult {
   isAI?: boolean;
 }
 
-// TEMPORARILY DISABLED — see the restore note above (device-flow result types).
-// /** Result of a completed Google device-flow login (adds the first-login flag). */
-// export interface GoogleLoginResult extends LoginResult {
-//   /** True when the user still has a temp `anon_` nickname and must set a real one. */
-//   needsNickname?: boolean;
-// }
-//
-// /** Discriminated result of the MCP 2-call `authenticate` handshake. */
-// export type GoogleAuthResult =
-//   | ({
-//       status: 'pending_user_login';
-//       verificationUrl: string;
-//       userCode: string;
-//       instructions: string;
-//     })
-//   | ({ status: 'authenticated'; message: string } & GoogleLoginResult);
-
 export interface CommandsDeps {
+  loginStore?: SessionStore;
+  loginProver?: typeof startAiTopicProof;
+  proofStore?: ProofOperationStore;
   chat: ChatClient;
   sessionStore: SessionStore;
   baseUrl: string;
   session: SessionData | null;
-  // TEMPORARILY DISABLED — see the restore note above.
-  // /** Injectable prove.js spawner for the Google device flow (default: real spawn). */
-  // proveSpawner?: ProveSpawner;
+
 }
 
 export class Commands {
+  private readonly loginFlow: LoginWorkflow;
+  private readonly proofs: TopicProofWorkflow;
   private readonly chat: ChatClient;
   private readonly store: SessionStore;
   private readonly baseUrl: string;
   private session: SessionData | null;
-  // TEMPORARILY DISABLED — see the restore note at the top of this file.
-  // private readonly proveSpawner: ProveSpawner;
-  // /** In-flight device login held between the two MCP `authenticate` calls. */
-  // private pendingGoogleLogin: PendingDeviceLogin | null = null;
 
   constructor(deps: CommandsDeps) {
     this.chat = deps.chat;
     this.store = deps.sessionStore;
     this.baseUrl = deps.baseUrl;
     this.session = deps.session;
-    // this.proveSpawner = deps.proveSpawner ?? defaultSpawnProve;
+    this.loginFlow = new LoginWorkflow({rest:this.chat.rest,baseUrl:this.baseUrl,store:deps.loginStore??new MemorySessionStore(),prover:deps.loginProver,adopt:async(token,guard)=>{
+      const identity=await this.chat.rest.auth.validateToken(token);
+      await guard();
+      await this.persist({baseUrl:this.baseUrl,token,userId:identity.userId,nickname:identity.nickname});
+      this.chat.useToken(token);return {userId:identity.userId,nickname:identity.nickname,isAI:identity.isAI};
+    }});
+    this.proofs = new TopicProofWorkflow({rest: this.chat.rest,baseUrl: this.baseUrl,store: deps.proofStore ?? new MemoryProofOperationStore(),submit: async (action,proof) => {
+      if(action.kind==='create')return this.chat.rest.topics.create({...action.input,...proof} as unknown as CreateTopicInput);
+      if(action.kind==='join')return this.topicJoinRaw(action.topicId,proof);
+      if(action.kind==='invite')return this.chat.rest.operation('topic_join_invite',{...action.input,...proof});
+      throw new Error('Unknown proof action');
+    }});
   }
+
+  authenticate(input:AuthenticateInput={}) { return this.loginFlow.run(input); }
 
   // ── auth ────────────────────────────────────────────────────────────────
 
@@ -101,8 +106,8 @@ export class Commands {
    */
   async login(opts: { nickname?: string; token?: string } = {}): Promise<LoginResult> {
     if (opts.token) {
+      const s = await this.chat.rest.auth.validateToken(opts.token);
       this.chat.useToken(opts.token);
-      const s = await this.chat.rest.auth.session();
       await this.persist({ baseUrl: this.baseUrl, token: opts.token, userId: s.userId, nickname: s.nickname });
       return { userId: s.userId, nickname: s.nickname, isAI: s.isAI };
     }
@@ -112,119 +117,25 @@ export class Commands {
   }
 
 
-  // TEMPORARILY DISABLED — the ZKProofport AI prover (ai.zkproofport.app) is offline
-  // (shut down for cost). The device flow needs it for the x402 proof step.
-  // To restore: bring the prover back up, then uncomment this block + ./deviceLogin.ts
-  // + the CLI --google option + the MCP openstoa_authenticate tool. Nothing else changed.
-  // /**
-  //  * Google device-flow login — the human / first-key-bootstrap path (the
-  //  * API-key path stays the primary agent credential). Blocking/interactive
-  //  * variant for the CLI: it starts the device flow, surfaces the
-  //  * `verificationUrl` + `userCode` via `onDeviceCode`, then blocks until the
-  //  * user approves at google.com/device, exchanges the proof for an OpenStoa
-  //  * session, persists it, and returns the identity.
-  //  *
-  //  * Ported from the removed hosted `src/lib/mcp/auth.ts` device-flow.
-  //  */
-  // async loginWithGoogle(
-  //   opts: { onDeviceCode?: (info: DeviceCodeInfo) => void; timeoutMs?: number } = {},
-  // ): Promise<GoogleLoginResult> {
-  //   const pending = await this.startGoogleDeviceFlow(opts.timeoutMs);
-  //   opts.onDeviceCode?.({ verificationUrl: pending.verificationUrl, userCode: pending.userCode });
-  //   return this.finishGoogleLogin(pending);
-  // }
-  //
-  // /**
-  //  * MCP-facing Google login: a single method that implements the ORIGINAL 2-call
-  //  * pending/confirm handshake (an MCP tool can't block interactively). First
-  //  * call → start the challenge + spawn prove.js, return
-  //  * `{ status: 'pending_user_login', verificationUrl, userCode, instructions }`.
-  //  * Second call (no args) → await the proof, verify, persist, and return the
-  //  * authenticated session. A second call while a login is pending completes it,
-  //  * matching the original tool's behavior.
-  //  */
-  // async authenticateGoogle(opts: { timeoutMs?: number } = {}): Promise<GoogleAuthResult> {
-  //   // Phase 2: a login is already pending → finish it.
-  //   if (this.pendingGoogleLogin) {
-  //     const pending = this.pendingGoogleLogin;
-  //     this.pendingGoogleLogin = null;
-  //     const r = await this.finishGoogleLogin(pending);
-  //     return {
-  //       status: 'authenticated',
-  //       message:
-  //         'Authenticated successfully. Token stored for this session.' +
-  //         (r.needsNickname ? ' Call openstoa_profile_set_nickname to set a display name before posting.' : ''),
-  //       ...r,
-  //     };
-  //   }
-  //   // Phase 1: start a new device flow.
-  //   const pending = await this.startGoogleDeviceFlow(opts.timeoutMs);
-  //   this.pendingGoogleLogin = pending;
-  //   return {
-  //     status: 'pending_user_login',
-  //     verificationUrl: pending.verificationUrl,
-  //     userCode: pending.userCode,
-  //     instructions:
-  //       `Tell the human user to open ${pending.verificationUrl} in a browser and enter code ${pending.userCode}. ` +
-  //       `Once they confirm login is complete, call openstoa_authenticate again with no arguments. Proof generation takes 30-90 seconds.`,
-  //   };
-  // }
-  //
-  // /** Start the challenge, then spawn prove.js and wait for the device code. */
-  // private async startGoogleDeviceFlow(timeoutMs?: number): Promise<PendingDeviceLogin> {
-  //   const challenge = await this.chat.rest.request<{ challengeId?: string; scope?: string }>(
-  //     '/api/auth/challenge',
-  //     { method: 'POST', body: {} },
-  //   );
-  //   if (!challenge?.challengeId || !challenge?.scope) {
-  //     throw new Error('auth challenge failed: server did not return a challengeId + scope');
-  //   }
-  //   return startDeviceLogin(this.proveSpawner, challenge.scope, challenge.challengeId, timeoutMs);
-  // }
-  //
-  // /** Await the proof, verify it at /api/auth/verify/ai, adopt the token, persist. */
-  // private async finishGoogleLogin(pending: PendingDeviceLogin): Promise<GoogleLoginResult> {
-  //   const proofResult = await awaitProof(pending);
-  //   // rest.request throws OpenStoaApiError (status + server body) on a non-2xx,
-  //   // so a failed verify surfaces the server error verbatim.
-  //   const verify = await this.chat.rest.request<{
-  //     token?: string;
-  //     userId?: string;
-  //     needsNickname?: boolean;
-  //     error?: string;
-  //   }>('/api/auth/verify/ai', {
-  //     method: 'POST',
-  //     body: { challengeId: pending.challengeId, result: proofResult },
-  //   });
-  //   if (!verify?.token) throw new Error(verify?.error ?? 'auth verify/ai did not return a token');
-  //   this.chat.useToken(verify.token);
-  //   // verify/ai returns no nickname; read it from the session (same as login --token).
-  //   const s = await this.chat.rest.auth.session();
-  //   await this.persist({ baseUrl: this.baseUrl, token: verify.token, userId: s.userId, nickname: s.nickname });
-  //   return { userId: s.userId, nickname: s.nickname, isAI: s.isAI, needsNickname: verify.needsNickname };
-  // }
-  //
-
-  /** Drop the persisted session (token + identity). Vault MLS keys are untouched. */
   async logout(): Promise<void> {
-    // TEMPORARILY DISABLED — device-flow teardown; restore with the block above.
-    // this.pendingGoogleLogin?.child.kill();
-    // this.pendingGoogleLogin = null;
     await this.store.clear();
     this.session = null;
+    this.chat.rest.setToken(null);
   }
 
   /** Current session payload from the server (includes the isAI badge). */
   async whoami(): Promise<SessionPayload> {
     this.requireAuth();
-    return this.chat.rest.auth.session();
+    const identity = await this.chat.rest.auth.session();
+    if (!identity.userId) throw new OpenStoaApiError(401, "GET", "/api/auth/session", { code: "no-credential", error: "Login required" });
+    return identity;
   }
 
   // ── topics ──────────────────────────────────────────────────────────────
 
-  async topicsList(): Promise<Topic[]> {
+  async topicsList(query: { view?: string; sort?: string; category?: string; q?: string } = {}): Promise<Topic[]> {
     this.requireAuth();
-    return this.chat.rest.topics.list();
+    return this.chat.rest.topics.list(query);
   }
 
   async topicGet(topicId: string): Promise<Topic> {
@@ -232,77 +143,88 @@ export class Commands {
     return this.chat.rest.topics.get(topicId);
   }
 
-  async topicCreate(input: CreateTopicInput): Promise<Topic> {
+  async topicCreate(input: CreateTopicInput & TopicProofOptions): Promise<Topic | ProofWorkflowResult> {
     this.requireAuth();
-    return this.chat.rest.topics.create(input);
+    const { body, options } = splitTopicProofOptions(input);
+    try { return await this.chat.rest.topics.create(body); }
+    catch (error) { return this.startRequiredTopicProof({kind:'create',input:{...body}}, error, options); }
   }
 
-  /**
-   * Join a topic: REST membership + MLS self-join (persists the leaf in the vault).
-   *
-   * For proof-gated topics (Coinbase KYC / country / workspace), pass a
-   * `{ proof, publicInputs }` the agent generated itself — this is the local
-   * replacement for the old hosted `join_topic_with_*` device-flow tools. The
-   * proof is submitted to `POST /api/topics/{id}/join`:
-   *   - 201 → joined; we then run the MLS self-join and return `{ joined: true }`.
-   *   - 202 → private topic, request pending owner approval; no MLS join yet.
-   *   - 402 → proof required but missing/invalid (throws with the requirement).
-   * A public/open topic needs no proof: call with just the topicId.
+  proofContinue(input:ProofContinueInput){this.requireAuth();return this.proofs.continue(input);}
+  proofStatus(operationId:string){this.requireAuth();return this.proofs.status(operationId);}
+  proofResume(operationId:string){this.requireAuth();return this.proofs.resume(operationId);}
+  proofCancel(operationId:string){this.requireAuth();return this.proofs.cancel(operationId);}
+
+  /** Join REST membership only. Chat initialization is explicit through chatJoin.
+   * A key granting only topic/join must not mutate membership and then fail on
+   * an unrelated metadata or MLS permission. 202 remains a pending membership.
    */
-  async topicJoin(
+  async topicJoin(topicId:string,opts:({proof?:string;publicInputs?:string} & TopicProofOptions)={}):Promise<{topicId:string;joined:boolean;pending?:boolean;message?:string}|ProofWorkflowResult>{
+    this.requireAuth();
+    const { body, options } = splitTopicProofOptions(opts);
+    try { return await this.topicJoinRaw(topicId, body); }
+    catch (error) { return this.startRequiredTopicProof({kind:'join',topicId}, error, options); }
+  }
+
+  private async topicJoinRaw(
     topicId: string,
     opts: { proof?: string; publicInputs?: string } = {},
   ): Promise<{ topicId: string; joined: boolean; pending?: boolean; message?: string }> {
     this.requireAuth();
     if (opts.proof || opts.publicInputs) {
-      if (!opts.proof || opts.proof.trim().length === 0) throw new Error('topic join: proof is required when publicInputs is set');
-      if (!opts.publicInputs || opts.publicInputs.trim().length === 0) throw new Error('topic join: publicInputs is required when proof is set');
-      const res = (await this.chat.rest.request(`/api/topics/${topicId}/join`, {
-        method: 'POST',
-        body: { proof: opts.proof, publicInputs: opts.publicInputs },
-        raw: true,
-      })) as unknown as Response;
-      const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      if (res.status === 202) {
-        return { topicId, joined: false, pending: true, message: (parsed.message as string | undefined) ?? 'Join request submitted; awaiting owner approval.' };
-      }
-      if (res.status !== 201 && res.status !== 200) {
-        throw new Error((parsed.error as string | undefined) ?? `join failed with status ${res.status}`);
-      }
+      if (!opts.proof || !opts.proof.trim()) throw new Error('topic join: proof is required when publicInputs is set');
+      if (!opts.publicInputs || !opts.publicInputs.trim()) throw new Error('topic join: publicInputs is required when proof is set');
     }
-    await this.chat.joinTopic(topicId);
-    return { topicId, joined: true };
+    const response = await this.chat.rest.request<Response>(`/api/topics/${topicId}/join`, {
+      method:'POST', body:opts.proof?{proof:opts.proof,publicInputs:opts.publicInputs}:{}, raw:true,
+    });
+    const result = await response.json().catch(()=>({})) as Record<string,unknown>;
+    if(response.status===202)return {topicId,joined:false,pending:true,message:typeof result.message==='string'?result.message:'Join request submitted; awaiting owner approval.'};
+    if(response.status!==200&&response.status!==201)throw new OpenStoaApiError(response.status,'POST',`/api/topics/${topicId}/join`,result);
+    return {topicId,joined:true};
   }
 
-  /** Edit a topic (owner only): title / description / visibility / category / proofType. */
+  /** Edit the fields supported by the topic route: title, description and image. */
   async topicUpdate(topicId: string, patch: Partial<CreateTopicInput>): Promise<Topic> {
     this.requireAuth();
+    const allowed = new Set(['title', 'description', 'image']);
+    const fields = Object.keys(patch).filter((key) => patch[key] !== undefined);
+    if (!fields.length) throw new Error('topic update: provide title, description or image');
+    for (const key of fields) if (!allowed.has(key)) throw new Error(`topic update: unsupported field ${key}`);
     return this.chat.rest.topics.update(topicId, patch);
   }
 
   /** List a topic's members. */
   async topicMembers(topicId: string): Promise<TopicMember[]> {
     this.requireAuth();
+    this.requireAuth();
     return this.chat.rest.topics.members(topicId);
   }
 
-  /**
-   * Leave a topic. The server exposes no self-"leave" route — only a member
-   * removal (`DELETE /members`) which it rejects for self-removal. We surface
-   * that honestly rather than pretending to leave.
-   */
+  /** Leave through the dedicated self-service endpoint, preserving idempotent state. */
   async topicLeave(topicId: string): Promise<{ topicId: string; left: boolean }> {
     this.requireAuth();
-    const userId = await this.currentUserId();
-    await this.chat.rest.topics.removeMember(topicId, userId);
-    return { topicId, left: true };
+    const result = await this.chat.rest.topics.leave(topicId);
+    return { topicId, left: result.left };
+  }
+
+  /** Public operation registry is shared by CLI, MCP, SDK and reference docs. */
+  async executeOperation(id: string, input: Record<string, unknown> = {}): Promise<unknown> {
+    getRestOperation(id);
+    this.requireAuth();
+    if (id === 'topic_join_invite') {
+      const { body, options } = splitTopicProofOptions(input);
+      try { return await this.chat.rest.operation(id, body); }
+      catch (error) { return this.startRequiredTopicProof({kind:'invite',input:body}, error, options); }
+    }
+    return this.chat.rest.operation(id, input);
   }
 
   // ── posts + comments ──────────────────────────────────────────────────────
 
-  async postList(topicId: string): Promise<Post[]> {
+  async postList(topicId: string, query: { limit?: number; offset?: number; sort?: string; tag?: string; q?: string } = {}): Promise<Post[]> {
     this.requireAuth();
-    return this.chat.rest.topics.posts(topicId);
+    return this.chat.rest.topics.posts(topicId, query);
   }
 
   async postGet(postId: string): Promise<{ post: Post; comments: Comment[] }> {
@@ -359,6 +281,7 @@ export class Commands {
     filename: string;
     contentType: string;
     purpose?: 'post' | 'topic' | 'avatar';
+    topicId?: string;
   }): Promise<{ publicUrl: string }> {
     this.requireAuth();
     if (!input.contentType || !input.contentType.startsWith('image/')) {
@@ -433,6 +356,20 @@ export class Commands {
     return this.chat.readChat(topicId, opts);
   }
 
+  /** Explicit archive read; keys remain in the local encrypted vault. */
+  async chatHistory(topicId: string) {
+    this.requireAuth();
+    await this.chat.joinTopic(topicId);
+    return this.chat.backfill(topicId);
+  }
+
+  /** Share locally held room history keys with existing member devices. */
+  async chatShareKeys(topicId: string): Promise<{ shared: number }> {
+    this.requireAuth();
+    await this.chat.joinTopic(topicId);
+    return { shared: await this.chat.shareRoomKeys(topicId) };
+  }
+
   // ── dm (1:1 direct chat — a hidden 2-member topic reusing the chat stack) ──
 
   /**
@@ -467,7 +404,9 @@ export class Commands {
 
   async profileGet(): Promise<SessionPayload> {
     this.requireAuth();
-    return this.chat.rest.auth.session();
+    const identity = await this.chat.rest.auth.session();
+    if (!identity.userId) throw new OpenStoaApiError(401, "GET", "/api/auth/session", { code: "no-credential", error: "Login required" });
+    return identity;
   }
 
   async profileSetNickname(nickname: string): Promise<{ nickname: string }> {
@@ -525,9 +464,15 @@ export class Commands {
 
   // ── internals ────────────────────────────────────────────────────────────────
 
+  private async startRequiredTopicProof(action: ProofAction, error: unknown, options: TopicProofOptions): Promise<ProofWorkflowResult> {
+    const required = await this.proofs.required(action, error);
+    if (options.approved !== true) return required;
+    return this.proofs.continue({operationId: required.operationId, method: options.method ?? 'app', approved: true, ...(options.provider ? {provider: options.provider} : {})});
+  }
+
   private requireAuth(): void {
     if (!this.chat.rest.getToken()) {
-      throw new Error('Not logged in — run `openstoa login` (or `login --token <jwt>`) first.');
+      throw new OpenStoaApiError(401,'LOCAL','authentication',{status:'authentication_required',message:'Run openstoa login or openstoa_authenticate, complete the proof, then retry with an owner-issued API key.'});
     }
   }
 
@@ -575,17 +520,15 @@ export async function createCommands(config: CommandConfig = {}): Promise<Comman
       'No OpenStoa base URL. Pass --base-url, set OPENSTOA_BASE_URL, or run `openstoa login --base-url <url>` first.',
     );
   }
-  // API-key auth (design §7 follow-up): an agent skips interactive login
-  // entirely when a scoped key is available. See resolveApiKey for priority;
-  // falling back to the saved session token preserves the pre-existing
-  // `openstoa login` flow when no key is configured anywhere.
+  // Load identity and authorization independently. A selected key never
+  // replaces the saved proof-login session.
   const apiKey = await resolveApiKey(config, home);
   const chat = new ChatClient({
     baseUrl,
     vaultRoot: config.vaultRoot,
     deviceId: config.deviceId,
     apiKey,
-    token: apiKey ? undefined : saved?.token,
+    token: saved?.token,
   });
-  return new Commands({ chat, sessionStore, baseUrl, session: saved });
+  return new Commands({ chat, sessionStore, baseUrl, session: saved, proofStore:new FileProofOperationStore(path.join(home,'proof-operations')),loginStore:new FileSessionStore(path.join(home,'login-operation.json')) });
 }

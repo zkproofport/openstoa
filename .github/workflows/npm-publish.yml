@@ -234,11 +234,11 @@ jobs:
           # sibling's dist/ must exist before typecheck/test/build.
           local_deps() {
             case "$1" in
-              sdk)      echo "" ;;
-              commands) echo "sdk" ;;
-              cli)      echo "sdk commands" ;;
-              mcp)      echo "sdk commands" ;;
-              channel)  echo "sdk commands" ;;
+              sdk)      echo "mls" ;;
+              commands) echo "mls sdk" ;;
+              cli)      echo "mls sdk commands" ;;
+              mcp)      echo "mls sdk commands" ;;
+              channel)  echo "mls sdk commands" ;;
               *) echo "::error::Unknown package '$1'" >&2; exit 1 ;;
             esac
           }
@@ -248,7 +248,12 @@ jobs:
             local pkg="$1"
             case " $prepared " in *" $pkg "*) return 0 ;; esac
             echo "::group::prepare packages/$pkg"
-            ( cd "packages/$pkg" && npm ci --no-audit --no-fund && npm run build )
+            (
+              cd "packages/$pkg"
+              npm ci --no-audit --no-fund
+              # MLS is consumed as source and has no build script.
+              if [ "$pkg" != "mls" ]; then npm run build; fi
+            )
             echo "::endgroup::"
             prepared="$prepared $pkg"
           }

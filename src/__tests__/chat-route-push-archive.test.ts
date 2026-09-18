@@ -1,3 +1,4 @@
+import {withHttpRequest} from './fixtures/http-route';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -74,7 +75,8 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-import { POST } from '@/app/api/topics/[topicId]/chat/route';
+import { POST as POSTHttpHandler } from '@/app/api/topics/[topicId]/chat/route';
+const POST=withHttpRequest(POSTHttpHandler,'POST');
 
 const TOPIC = '00000000-0000-0000-0000-000000000001';
 const MAX_CIPHERTEXT_BYTES = 4096;

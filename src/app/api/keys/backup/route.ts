@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * Phase 4 master_key backup (design §6.4, SI-5/SI-8). Crypto-FREE: the server
  * stores only the wrapped ciphertext (recovery-code-wrapped + N passkey-PRF-
@@ -39,6 +40,9 @@ const RATE: RateLimit = { max: 60, windowSec: 60 };
  * authenticated owner is safe (SI-8).
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/keys/backup');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -88,6 +92,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * cap); it never inspects or decrypts the ciphertext.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/keys/backup');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -153,6 +160,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * is a POST with a fresh wrappedMaster.
  */
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/keys/backup');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

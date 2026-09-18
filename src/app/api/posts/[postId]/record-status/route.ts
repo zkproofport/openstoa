@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { checkRecordPolicy } from '@/lib/record';
@@ -49,6 +50,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ postId: string }> },
 ) {
+  const authorizationError = await authorizeApiRequest(request, '/api/posts/[postId]/record-status');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) {

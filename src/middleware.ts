@@ -25,7 +25,12 @@ const PUBLIC_PATHS = [
   '/api/og/image',
   '/ask',
   '/docs',
+  '/proof',
+  '/login',
+  '/api/auth/cli-login',
   '/icon.png',
+  '/icon.svg',
+  '/openstoa-icon-180.png',
   '/SKILL.md',
   '/AGENTS.md',
   '/robots.txt',
@@ -38,11 +43,10 @@ const PUBLIC_PREFIXES = [
   '/favicon.ico',
   '/images/',
   '/api/auth/poll/',
+  '/api/auth/cli-login/',
   '/api/docs/',
   '/docs',
   '/.well-known/',
-  // Auto-generated skills tree (/skills/getting-started/*, /skills/api/*, etc.)
-  '/skills/',
 ];
 
 // Paths accessible without authentication (guests can browse).
@@ -90,25 +94,22 @@ function isApiKeyToken(token: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Normalize public .md paths to their canonical case so a link shared
-  // with mixed casing serves the same static file:
-  //   - `/skill.md` and the `/skill/...` tree are emitted in all-lowercase
-  //     by `scripts/generate-skill.ts`, so any case variant lowercases.
-  //   - `/AGENTS.md` is the one capitalized file we serve; map `/agents.md`
-  //     and other cases onto it explicitly.
+  // Retired public sub-skills go directly to the canonical docs, without an index hop.
+  const lowerPath = pathname.toLowerCase();
+  if (lowerPath === '/skills' || lowerPath.startsWith('/skills/')) {
+    const url = new URL('/docs', request.url);
+    const topic = lowerPath.startsWith('/skills/api/') ? 'rest' : 'intro';
+    url.searchParams.set('topic', topic);
+    url.hash = topic;
+    return NextResponse.redirect(url, 308);
+  }
+
+  // Both case variants serve the same hand-maintained static index.
   if (pathname.toLowerCase().endsWith('.md')) {
     const lower = pathname.toLowerCase();
     let canonical: string | null = null;
     if (lower === '/agents.md') canonical = '/AGENTS.md';
     else if (lower === '/skill.md') canonical = '/SKILL.md';
-    else if (lower.startsWith('/skills/')) {
-      // Directories under /skills/ are lowercase on disk; the leaf
-      // filename is uppercase SKILL.md. Build the canonical path from
-      // the lowered request path and re-uppercase a `/skill.md` suffix.
-      canonical = lower.endsWith('/skill.md')
-        ? lower.slice(0, -'/skill.md'.length) + '/SKILL.md'
-        : lower;
-    }
     if (canonical && canonical !== pathname) {
       const url = request.nextUrl.clone();
       url.pathname = canonical;
@@ -130,7 +131,7 @@ export async function middleware(request: NextRequest) {
 
   if (!token) {
     // Guest-accessible paths are allowed through without auth
-    if (guestAccessible) {
+    if (guestAccessible && !request.headers.has('x-openstoa-api-key') && (request.method === 'GET' || request.method === 'HEAD')) {
       return NextResponse.next();
     }
     if (isApiRoute(pathname)) {
@@ -152,7 +153,7 @@ export async function middleware(request: NextRequest) {
        * would be a lie about something that never existed.
        */
       return NextResponse.json(
-        { error: 'Not authenticated', code: 'no-credential' },
+        { error: 'Not authenticated', code: 'no-credential', authentication: {status:'authentication_required',startUrl:'/api/auth/cli-login',method:'POST',cli:'openstoa login',mcp:'openstoa_authenticate',docsUrl:'/docs?topic=login#login'} },
         { status: 401 },
       );
     }
@@ -161,16 +162,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // API-key Bearer tokens can't be JWT-verified here (Edge runtime has no DB
-  // access to hash-lookup the key). Defer to the route handler's getSession()
-  // (Node runtime, real DB validation) — every route already 401s on a null
-  // session, so an invalid/unknown/revoked key is still rejected, just one
-  // layer later. This also means the nickname-required gate below is skipped
-  // for API-key requests; that's an accepted trade-off (nickname is a UX
-  // guard, not a security boundary, and a key can only be minted from an
-  // already-authenticated profile session).
-  if (!cookieToken && bearerToken && isApiKeyToken(bearerToken)) {
-    return NextResponse.next();
+  // A key authorizes a logged-in account; it never establishes an identity.
+  if (!cookieToken && bearerToken?.startsWith(API_KEY_PREFIX)) {
+    return NextResponse.json({error:'Login required; send the API key in X-OpenStoa-API-Key alongside a session Bearer.',code:'no-credential',authentication:{status:'authentication_required',startUrl:'/api/auth/cli-login',cli:'openstoa login',mcp:'openstoa_authenticate'}},{status:401});
   }
 
   const COMMUNITY_JWT_SECRET = process.env.COMMUNITY_JWT_SECRET;
@@ -182,6 +176,10 @@ export async function middleware(request: NextRequest) {
 
   try {
     const { payload } = await jwtVerify(token, secret);
+    if (isApiRoute(pathname) && !pathname.startsWith('/api/auth/') &&
+        (payload.isAI===true || payload.deviceKind==='agent') && !request.headers.get('x-openstoa-api-key')) {
+      return NextResponse.json({error:'Select an API key issued by the account owner to authorize this operation.',code:'api_key_required',authorization:{header:'X-OpenStoa-API-Key',settingsUrl:'/my',docsUrl:'/docs?topic=login#login'}},{status:403});
+    }
 
     /*
      * CHAT IS NOT AVAILABLE TO A BROWSER SESSION.
@@ -239,7 +237,7 @@ export async function middleware(request: NextRequest) {
     };
 
     // Guest-accessible paths: allow through as guest (clear stale cookie)
-    if (guestAccessible) {
+    if (guestAccessible && !request.headers.has('x-openstoa-api-key') && (request.method === 'GET' || request.method === 'HEAD')) {
       return clearCookie(NextResponse.next());
     }
     if (isApiRoute(pathname)) {
@@ -253,7 +251,7 @@ export async function middleware(request: NextRequest) {
        * to drop what it has.
        */
       return clearCookie(
-        NextResponse.json({ error: 'Invalid session', code: 'credential-dead' }, { status: 401 }),
+        NextResponse.json({ error: 'Invalid session', code: 'credential-dead', authentication: {status:'authentication_required',startUrl:'/api/auth/cli-login',method:'POST',cli:'openstoa login',mcp:'openstoa_authenticate',docsUrl:'/docs?topic=login#login'} }, { status: 401 }),
       );
     }
     const loginUrl = new URL('/', request.url);

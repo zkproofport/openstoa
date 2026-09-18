@@ -334,7 +334,7 @@ export default function MediaGallery({ images, imageAlts, videos, mode = 'feed' 
                     e.stopPropagation();
                     setIndex(i);
                   }}
-                  aria-label={`Slide ${i + 1}`}
+                  aria-label={t('a11y.slideNumber', { number: i + 1 })}
                   style={{
                     width: 7,
                     height: 7,

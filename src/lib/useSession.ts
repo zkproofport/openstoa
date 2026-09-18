@@ -31,9 +31,12 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sessionKeys } from '@/lib/queryKeys';
+import { resetPublicBadgeMutation, publicBadgeRevision, publicBadgeSnapshot, type PublicBadge } from '@/lib/publicBadgeState';
 import { apiFetch } from '@/lib/apiFetch';
 
 export interface Session {
+  badges?: PublicBadge[];
+  isAI?: boolean;
   userId?: string;
   nickname?: string;
   profileImage?: string | null;
@@ -56,7 +59,7 @@ export function readStoredSession(): Session | null {
   }
 }
 
-function writeStoredSession(session: Session | null): void {
+export function writeStoredSession(session: Session | null): void {
   try {
     if (session) localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
     else localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -66,9 +69,19 @@ function writeStoredSession(session: Session | null): void {
 }
 
 export async function fetchSession(): Promise<Session | null> {
+  const revision = publicBadgeRevision();
   const r = await apiFetch('/api/auth/session');
   const data = r.ok ? ((await r.json()) as Session | null) : null;
-  const session = data?.userId ? data : null;
+  let session = data?.userId ? data : null;
+  if (revision !== publicBadgeRevision()) {
+    // A visibility mutation or account reset won while this read was in flight.
+    // Never write its stale public badges back into storage or the query cache.
+    const current = session?.userId ? publicBadgeSnapshot(session.userId) : undefined;
+    if (session && current !== undefined) session = { ...session, badges: current };
+    else return readStoredSession();
+  } else {
+    resetPublicBadgeMutation();
+  }
   writeStoredSession(session);
   return session;
 }
@@ -121,6 +134,7 @@ export function useClearSession() {
   const queryClient = useQueryClient();
   return () => {
     writeStoredSession(null);
+    resetPublicBadgeMutation();
     queryClient.setQueryData(sessionKeys.current(), null);
     queryClient.removeQueries({ queryKey: sessionKeys.current() });
   };

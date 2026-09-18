@@ -115,9 +115,12 @@ describe('the two clients say the same thing', () => {
     expect(enMobile.openstoa.topics.invite.historySummary).toBe(enWeb.invite.historySummary);
   });
 
-  it('UTF-8: the Korean copy is Korean in both catalogues, and identical', () => {
-    expect(koMobile.openstoa.topics.invite.keysWarning).toBe(koWeb.invite.keysWarning);
-    expect(koMobile.openstoa.topics.invite.keysWarning).toMatch(/[가-힣]/);
+  it('UTF-8: both Korean clients warn that cancelling an invite cannot revoke shared keys', () => {
+    for (const warning of [koWeb.invite.keysWarning, koMobile.openstoa.topics.invite.keysWarning]) {
+      for (const fact of [/링크/, /사람/, /읽을 수 있/, /초대/, /취소/, /키/, /키는 취소할 수 없|회수할 수는 없/]) {
+        expect(warning).toMatch(fact);
+      }
+    }
   });
 
   it('both catalogues carry every string the share dialog asks for', () => {

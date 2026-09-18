@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -90,6 +91,9 @@ async function loadPublicTopic(topicId: string) {
  *         description: Topic not found.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/archive/root');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -161,6 +165,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  *       409: { description: A DIFFERENT root is already stored for this topic. }
  */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ topicId: string }> }) {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/archive/root');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

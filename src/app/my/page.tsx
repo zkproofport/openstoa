@@ -1,7 +1,9 @@
 'use client';
 
 import { apiFetch, UPLOAD_REQUEST_TIMEOUT_MS } from '@/lib/apiFetch';
-import { useSession, useClearSession } from '@/lib/useSession';
+import { useSession, useClearSession, writeStoredSession } from '@/lib/useSession';
+import { useQueryClient } from '@tanstack/react-query';
+import { sessionKeys } from '@/lib/queryKeys';
 import { useState, useEffect, useCallback, useRef, Children } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,17 +11,23 @@ import CommunityLayout from '@/components/CommunityLayout';
 import PostCard from '@/components/PostCard';
 import Spinner from '@/components/Spinner';
 import Avatar from '@/components/Avatar';
+import UserIdentity from '@/components/UserIdentity';
+import type { PublicBadge } from '@/lib/publicBadgeState';
 import ImageLightbox from '@/components/ImageLightbox';
 import AiAgentSettings from '@/components/AiAgentSettings';
+import BadgeVisibilitySettings from '@/components/BadgeVisibilitySettings';
 import LocaleSwitcher from '@/components/LocaleSwitcher';
 import ThemeToggle from '@/components/ThemeToggle';
 import { truncateId, resizeImage } from '@/lib/utils';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { wipeLocalKeys } from '@/lib/mls/wipeLocalKeys';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface UserSession {
+  badges?: PublicBadge[];
+  isAI?: boolean;
   userId: string;
   nickname?: string;
   profileImage?: string | null;
@@ -28,6 +36,8 @@ interface UserSession {
 }
 
 interface Post {
+  authorId?: string;
+  badges?: PublicBadge[];
   id: string;
   topicId: string;
   title: string;
@@ -228,6 +238,7 @@ function ChainIcon({ size = 14 }: { size?: number }) {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function MyPage() {
+  const queryClient = useQueryClient();
   const router = useRouter();
   const { t } = useTranslation();
   const [session, setSession] = useState<UserSession | null>(null);
@@ -260,12 +271,6 @@ export default function MyPage() {
   const [nicknameInput, setNicknameInput] = useState('');
   const [nicknameSaving, setNicknameSaving] = useState(false);
   const [nicknameFeedback, setNicknameFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  // Domain badge state (multi-domain)
-  const [domainBadgeDomains, setDomainBadgeDomains] = useState<string[]>([]);
-  const [domainBadgeAvailable, setDomainBadgeAvailable] = useState<string | null>(null);
-  const [domainBadgeLoading, setDomainBadgeLoading] = useState(false);
-  const [domainBadgeToggling, setDomainBadgeToggling] = useState(false);
 
   // Push notification state (P-M global switch). `null` = not loaded yet;
   // the server's permissive default (enabled, nothing muted) only lands once
@@ -358,6 +363,14 @@ export default function MyPage() {
     }
   }
 
+  function syncProfile(patch: Pick<Partial<UserSession>, 'nickname' | 'profileImage'>) {
+    if (!session) return;
+    const next = { ...session, ...patch };
+    setSession(next);
+    queryClient.setQueryData(sessionKeys.current(), next);
+    writeStoredSession(next);
+  }
+
   async function handleSaveNickname() {
     const trimmed = nicknameInput.trim();
     if (!trimmed) return;
@@ -375,12 +388,12 @@ export default function MyPage() {
         body: JSON.stringify({ nickname: trimmed }),
       });
       if (res.ok) {
-        setSession((prev) => prev ? { ...prev, nickname: trimmed } : prev);
+        syncProfile({ nickname: trimmed });
         setNicknameFeedback({ ok: true, msg: t('myPage.settings.nickname.updated') });
         setNicknameInput('');
       } else {
         const data = await res.json().catch(() => ({}));
-        setNicknameFeedback({ ok: false, msg: data?.error ?? t('myPage.settings.nickname.updateFailed') });
+        setNicknameFeedback({ ok: false, msg: localizeApiError(data?.error, t, 'myPage.settings.nickname.updateFailed') });
       }
     } catch {
       setNicknameFeedback({ ok: false, msg: t('common.networkError') });
@@ -423,52 +436,10 @@ export default function MyPage() {
       setPushEnabled(data.enabled);
       setPushMutedCount(data.mutedTopicIds?.length ?? 0);
     } catch (err) {
-      setPushFeedback({ ok: false, msg: err instanceof Error ? err.message : t('common.networkError') });
+      setPushFeedback({ ok: false, msg: localizeApiError(err, t, 'common.networkError') });
     } finally {
       setPushSaving(false);
     }
-  }
-
-  // Load domain badge status when settings tab is opened
-  useEffect(() => {
-    if (activeTab !== 'settings') return;
-    setDomainBadgeLoading(true);
-    apiFetch('/api/profile/domain-badge')
-      .then((r) => r.json())
-      .then((data) => {
-        setDomainBadgeDomains(data.domains ?? []);
-        setDomainBadgeAvailable(data.availableDomain ?? null);
-      })
-      .catch(() => {})
-      .finally(() => setDomainBadgeLoading(false));
-  }, [activeTab]);
-
-  async function handleDomainBadgeAdd() {
-    setDomainBadgeToggling(true);
-    try {
-      const res = await apiFetch('/api/profile/domain-badge', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        setDomainBadgeDomains(data.domains ?? []);
-      }
-    } catch {}
-    setDomainBadgeToggling(false);
-  }
-
-  async function handleDomainBadgeRemove(domain: string) {
-    setDomainBadgeToggling(true);
-    try {
-      const res = await apiFetch('/api/profile/domain-badge', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDomainBadgeDomains(data.domains ?? []);
-      }
-    } catch {}
-    setDomainBadgeToggling(false);
   }
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -505,9 +476,10 @@ export default function MyPage() {
       });
       if (!saveRes.ok) throw new Error(t('profilePage.saveImageFailed'));
       setProfileImage(publicUrl);
+      syncProfile({ profileImage: publicUrl });
       setImageFeedback(null);
     } catch (err) {
-      setImageFeedback(err instanceof Error ? err.message : t('profilePage.uploadFailed'));
+      setImageFeedback(localizeApiError(err, t, 'profilePage.uploadFailed'));
     } finally {
       setImageUploading(false);
       e.target.value = '';
@@ -644,40 +616,12 @@ export default function MyPage() {
           padding: 'var(--space-6) 0 var(--space-5)',
         }}
       >
-        <span
-          onClick={() => profileImage && handleImageClick(profileImage)}
-          style={{ cursor: profileImage ? 'pointer' : undefined, display: 'inline-flex' }}
-        >
-          <Avatar src={profileImage} name={displayName} size={72} />
-        </span>
-
-        <div style={{ maxWidth: '100%', minWidth: 0 }}>
-          <h1
-            style={{
-              fontSize: 'var(--text-heading-sm)',
-              fontWeight: 700,
-              letterSpacing: '-0.02em',
-              color: 'var(--color-text-primary)',
-              margin: 0,
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {displayName}
-          </h1>
-          {/* The nullifier, not a wallet — mono + break-all because it is data,
-              and a 66-char hash must be allowed to break anywhere. */}
-          <div
-            className="os-break-all"
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-caption)',
-              color: 'var(--color-text-tertiary)',
-              marginTop: 'var(--space-1)',
-            }}
-          >
-            {truncateId(session.userId)}
-          </div>
-        </div>
+        <UserIdentity userId={session.userId} nickname={displayName} profileImage={profileImage}
+          badges={session.badges} isAI={session.isAI} avatarSize={72} layout="column" nameAs="h1" interactive={false}
+          onAvatarClick={profileImage ? () => handleImageClick(profileImage) : undefined}
+          nameStyle={{ fontSize: 'var(--text-heading-sm)', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>
+          <span className="os-break-all" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)' }}>{truncateId(session.userId)}</span>
+        </UserIdentity>
 
         {(session.role === 'admin' || recordedCount > 0) && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', justifyContent: 'center' }}>
@@ -828,13 +772,11 @@ export default function MyPage() {
               activePosts.map((post) => (
                 <PostCard
                   key={post.id}
-                  post={post}
+                  post={post.authorId === session.userId ? { ...post, badges: session.badges ?? [] } : post}
                   href={`/topics/${post.topicId}/posts/${post.id}`}
                   sessionUserId={session?.userId ?? null}
-                  // Bookmarks tab shows other authors' posts — render the
-                  // header so it's clear who wrote each one. My Posts
-                  // hides it (the user is always the author).
-                  showAuthor={activeTab === 'bookmarks'}
+                  // Public identity is consistent on own posts and bookmarks.
+                  showAuthor
                   showTopic
                 />
               ))
@@ -1096,64 +1038,9 @@ export default function MyPage() {
               />
 
               <SettingsRow
-                label={t('myPage.settings.domainBadges.title')}
-                hint={
-                  domainBadgeLoading
-                    ? t('common.loading')
-                    : domainBadgeDomains.length === 0 && !domainBadgeAvailable
-                      ? t('myPage.settings.domainBadges.noneFound')
-                      : t('myPage.settings.domainBadges.helpText')
-                }
-                stack={domainBadgeDomains.length > 0 || !!domainBadgeAvailable}
-                control={
-                  domainBadgeLoading || (domainBadgeDomains.length === 0 && !domainBadgeAvailable) ? undefined : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                      {domainBadgeDomains.map((d) => (
-                        <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-                          <span style={identityChip('accent')}>{d}</span>
-                          <span style={{ flex: '1 1 auto', fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)' }}>
-                            {t('myPage.settings.domainBadges.visibleToOthers')}
-                          </span>
-                          <button
-                            className="os-chip"
-                            onClick={() => handleDomainBadgeRemove(d)}
-                            disabled={domainBadgeToggling}
-                            style={{
-                              color: 'var(--color-status-danger)',
-                              cursor: domainBadgeToggling ? 'not-allowed' : 'pointer',
-                              opacity: domainBadgeToggling ? 0.5 : 1,
-                            }}
-                          >
-                            {t('myPage.settings.domainBadges.hide')}
-                          </button>
-                        </div>
-                      ))}
-
-                      {domainBadgeAvailable && !domainBadgeDomains.includes(domainBadgeAvailable) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 'var(--text-body-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                            {domainBadgeAvailable}
-                          </span>
-                          <span style={{ flex: '1 1 auto', fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)' }}>
-                            {t('myPage.settings.domainBadges.verifiedPrompt')}
-                          </span>
-                          <button
-                            className="os-chip"
-                            onClick={handleDomainBadgeAdd}
-                            disabled={domainBadgeToggling}
-                            style={{
-                              color: 'var(--color-brand-primary)',
-                              cursor: domainBadgeToggling ? 'not-allowed' : 'pointer',
-                              opacity: domainBadgeToggling ? 0.5 : 1,
-                            }}
-                          >
-                            {t('myPage.settings.domainBadges.show')}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                }
+                label={t('badgeVisibility.title')}
+                stack
+                control={<BadgeVisibilitySettings />}
               />
             </SettingsList>
           </SettingsSection>

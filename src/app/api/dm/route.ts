@@ -1,3 +1,5 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
+import { withPublicIdentityBadges } from '@/lib/identity-badges';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -36,6 +38,7 @@ const ROUTE = '/api/dm';
  *
  *       An AI (`isAI`) caller must hold the `/openstoa/chat/read` capability (profile grant or the
  *       scoped API key), otherwise 403 — the same gate as reading chat.
+ *       Peer objects include all enabled public verification badges as `peer.badges`.
  *     operationId: listDms
  *     x-related-skills: [start-dm, get-chat-history, send-chat-message]
  *     responses:
@@ -62,6 +65,10 @@ const ROUTE = '/api/dm';
  *                           userId:
  *                             type: string
  *                             description: The peer's nullifier user id.
+ *                           badges:
+ *                             type: array
+ *                             items:
+ *                               $ref: '#/components/schemas/PublicBadge'
  *                           nickname:
  *                             type: string
  *                           profileImage:
@@ -157,6 +164,9 @@ const ROUTE = '/api/dm';
  *         description: Target user not found.
  */
 export async function GET(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/dm');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'GET request received');
   try {
     const session = await getSession(request);
@@ -205,10 +215,11 @@ export async function GET(request: NextRequest) {
     // the Direct tab would be the one list still unable to badge.
     const readStates = await readStatesForTopics(db, session.userId, topicIds);
 
-    const dms = peers
+    const peersWithBadges = await withPublicIdentityBadges(peers, peer => peer.peerId);
+    const dms = peersWithBadges
       .map((p) => ({
         topicId: p.topicId,
-        peer: { userId: p.peerId, nickname: p.nickname, profileImage: p.profileImage },
+        peer: { userId: p.peerId, nickname: p.nickname, profileImage: p.profileImage, badges: p.badges },
         lastActivityAt: lastActivityByTopic[p.topicId] ?? null,
         ...(readStates[p.topicId] ?? emptyReadState()),
       }))
@@ -226,6 +237,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authorizationError = await authorizeApiRequest(request, '/api/dm');
+  if (authorizationError) return authorizationError;
+
   logger.info(ROUTE, 'POST request received');
   try {
     const session = await getSession(request);

@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
@@ -118,6 +119,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/tak/root-fingerprint');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {
@@ -198,6 +202,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> },
 ): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/topics/[topicId]/tak/root-fingerprint');
+  if (authorizationError) return authorizationError;
+
   try {
     const { topicId } = await params;
     if (!isValidUUID(topicId)) {

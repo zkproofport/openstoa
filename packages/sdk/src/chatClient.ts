@@ -314,13 +314,18 @@ export class ChatClient {
    * call just catches the local leaf up to the latest epoch.
    */
   async joinTopic(topicId: string): Promise<void> {
-    try {
-      await this.rest.topics.join(topicId);
-    } catch (err) {
-      // Already a member (or creator) → membership is fine; keep going to MLS.
-      // Re-throw anything that isn't an idempotent-join conflict.
-      const status = (err as { status?: number }).status;
-      if (status !== 200 && status !== 201 && status !== 409 && status !== 400) throw err;
+    const topic = await this.rest.topics.get(topicId);
+    // Existing members need topic/read and the requested chat capability. Repeating the
+    // membership POST would incorrectly demand topic/join for read-only keys.
+    if (topic.isMember !== true) {
+      try {
+        await this.rest.topics.join(topicId);
+      } catch (err) {
+        const failure = err as { status?: number; body?: { error?: string } };
+        // Only the exact already-member race is idempotent; bad input and
+        // unrelated conflicts must not continue into encryption initialization.
+        if (failure.status !== 409 || failure.body?.error !== 'Already a member of this topic') throw err;
+      }
     }
     const { mls } = await this.session(topicId);
     // sync() forces bootstrap (genesis if first, else External-Commit join) and

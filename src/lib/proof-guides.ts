@@ -3,7 +3,7 @@
  * Used in 402 responses and /api/docs/proof-guide/{proofType} endpoint.
  *
  * These guides must be detailed enough for an AI agent to generate a proof
- * using only CLI commands — no prior context assumed.
+ * using the published CLI interfaces. Remote proving availability is stated explicitly.
  */
 
 export interface ProofGuideStep {
@@ -38,11 +38,21 @@ export interface ProofEndpoint {
 }
 
 export interface ProofMcpGuidance {
-  /** MCP tool an agent should call instead of the shell CLI flow, or null if none. */
+  /** Entry tool for a join; missing proof returns the saved workflow below. */
   preferredTool: string | null;
+  workflow: {
+    methods: readonly string[];
+    requiresConsent: boolean;
+    continueTool: string;
+    statusTool: string;
+    resumeTool: string;
+    cancelTool: string;
+    exampleContinueToolCall: { name: string; arguments: Record<string, unknown> };
+    cli: readonly string[];
+  };
   /**
    * Short explanation of how the MCP tool works, or (when preferredTool is null)
-   * why MCP cannot wrap this proof type and the agent must use the CLI.
+   * which proof-generation prerequisites remain outside OpenStoa.
    */
   explanation: string;
   /** Concrete example JSON-RPC tool call the agent should issue. */
@@ -76,7 +86,7 @@ function getBaseUrl(): string {
 }
 
 const BASE_URL = getBaseUrl();
-const COMMUNITY_SCOPE = 'zkproofport-community';
+const TOPIC_SCOPE_EXAMPLE = 'zkproofport-community:topic:<userId>';
 
 function makeProofEndpoint(
   circuitType: string,
@@ -89,19 +99,19 @@ function makeProofEndpoint(
       url: '/api/auth/proof-request',
       body: {
         circuitType,
-        scope: COMMUNITY_SCOPE,
+        mode: 'proof',
         ...extraBody,
       },
-      description: 'Create a relay proof request, then scan the QR code with ZKProofport mobile app.',
+      description: 'Create an authenticated proof-only relay request. The server binds the scope to your account. Scan the QR code with ZKProofport mobile app.',
     },
     agent: {
       challengeEndpoint: {
         method: 'POST',
         url: `${BASE_URL}/api/auth/challenge`,
-        description: 'Request a challenge to get a challengeId and scope. The scope is used during proof generation.',
+        description: 'Authenticate with your existing OpenStoa API key to obtain the account-bound topic scope. Topic join submits proof and publicInputs, not challengeId; this request does not log you in.',
         exampleResponse: {
           challengeId: 'abc123-uuid',
-          scope: COMMUNITY_SCOPE,
+          scope: TOPIC_SCOPE_EXAMPLE,
           expiresIn: 300,
         },
       },
@@ -119,16 +129,39 @@ function makeProofEndpoint(
   };
 }
 
+const PROVER_AVAILABILITY = 'AI proof generation depends on external prover and identity-provider availability and current payment terms. Ask for consent before starting; app mode provides a human-approved QR/deep-link alternative. An API key does not replace a topic proof. These instructions describe the repository build; check installed CLI/MCP versions. Successful cryptographic E2E for every provider has not been established by local workflow tests.';
+
+function proofSubmissionGuidance(prerequisites: string): ProofMcpGuidance {
+  return {
+    preferredTool: 'openstoa_topic_join',
+    workflow: {
+      methods: ['app', 'ai'], requiresConsent: true,
+      continueTool: 'openstoa_proof_continue', statusTool: 'openstoa_proof_status',
+      resumeTool: 'openstoa_proof_resume', cancelTool: 'openstoa_proof_cancel',
+      exampleContinueToolCall: { name: 'openstoa_proof_continue', arguments: { operationId: '<operationId>', method: 'app', approved: true } },
+      cli: [
+        'openstoa topics join <topicId>',
+        'openstoa proof continue <operationId> --approved --method app',
+        'openstoa proof continue <operationId> --approved --method ai --wait',
+        'openstoa proof status <operationId>',
+        'openstoa proof resume <operationId> --wait',
+        'openstoa proof cancel <operationId>',
+      ],
+    },
+    explanation: `${prerequisites} Start the original create/join/invite action using your login session and owner-issued permission key. A missing or invalid proof returns proof_required and operationId. Obtain explicit user consent, then use openstoa_proof_continue with app or ai; use provider google/microsoft for domain proofs, not Coinbase proofs. App mode returns browserUrl for QR/deep-link approval; AI domain proving provides a device verification URL/code. Poll openstoa_proof_status, then call openstoa_proof_resume when proof_ready. Cancel with openstoa_proof_cancel. Keep the same credential/server/vault; operation expiry is 15 minutes. Never resubmit an uncertain action automatically. The raw-proof example below remains available: use concatenated hex publicInputs for MCP; REST also accepts field arrays. Private/secret topics still require an invite. Topic proving does not issue a login session or API key.`,
+    exampleToolCall: {
+      name: 'openstoa_topic_join',
+      arguments: { topicId: '<topic-uuid>', proof: '<proof-hex>', publicInputs: '<concatenated-public-inputs-hex>' },
+    },
+  };
+}
+
 export const PROOF_GUIDES: Record<string, ProofGuide> = {
   kyc: {
     title: 'Coinbase KYC Verification',
-    description: 'Prove that you have completed identity verification (KYC) on Coinbase without revealing any personal information. Requires a Coinbase account with completed KYC and an EAS attestation on Base.',
+    description: 'Prove that a wallet holds a Coinbase identity-verification attestation without sending identity documents to OpenStoa. Requires a Coinbase account with completed KYC and an EAS attestation on Base.',
     circuit: 'coinbase_attestation',
-    mcp: {
-      preferredTool: null,
-      explanation:
-        'KYC proofs sign a signal with the private key of the wallet that holds the Coinbase EAS attestation on Base. That private key must never leave the user — OpenStoa cannot hold it server-side, so MCP cannot wrap this flow. The caller MUST generate the proof locally (CLI steps below) and then submit it via the auto-generated `post_topics_topicId_join` MCP tool with `{ topicId, proof, publicInputs }` arguments. The server accepts the proof, verifies it on-chain, and performs the join.',
-    },
+    mcp: proofSubmissionGuidance('Coinbase KYC needs an EAS-attested wallet. AI mode needs ATTESTATION_KEY in the local prover environment; app mode uses the wallet in the phone app and does not require sharing its key. Never send a private key to OpenStoa.'),
     steps: {
       mobile: [
         {
@@ -157,49 +190,43 @@ export const PROOF_GUIDES: Record<string, ProofGuide> = {
         {
           step: 1,
           title: 'Get Challenge',
-          description: 'Request a challenge from the OpenStoa API. This returns a challengeId and scope needed for proof generation.',
+          description: 'Use your login session and API key on the challenge request and use its account-bound scope exactly. Do not use the login scope or topic ID. Topic join does not submit challengeId.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
-  -H "Content-Type: application/json")
-CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" -H "Content-Type: application/json")
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
           step: 2,
           title: 'Generate Proof',
-          description: 'Generate a KYC proof using the CLI. This opens a browser for Coinbase attestation verification, then generates a ZK proof. The --silent flag outputs only JSON.',
-          code: `PROOF_RESULT=$(zkproofport-prove --login-google --scope $SCOPE --silent)`,
+          description: 'Configure ATTESTATION_KEY locally for the wallet that holds the Coinbase EAS attestation, then select coinbase_kyc. This is not a browser-login command. The --silent flag outputs only JSON. External prover availability and payment terms must be checked before use; app mode is also supported.',
+          code: `PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope "$SCOPE" --silent)`,
         },
         {
           step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint.',
-          code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
-PUBLIC_INPUTS=$(echo $PROOF_RESULT | jq -c '.publicInputs')
-
-curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
+          code: `printf '%s' "$PROOF_RESULT" | jq '{proof, publicInputs}' | \\
+curl --fail-with-body -sS -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -d "{\\"proof\\": \\"$PROOF\\", \\"publicInputs\\": $PUBLIC_INPUTS}"`,
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" \\
+  --data-binary @-`,
         },
       ],
     },
-    proofEndpoint: makeProofEndpoint('coinbase_attestation', '--login-google'),
+    proofEndpoint: makeProofEndpoint('coinbase_attestation', 'coinbase_kyc'),
     notes: [
+      PROVER_AVAILABILITY,
       'Requires a Coinbase account with completed KYC verification.',
       'The proof only reveals that KYC is complete — no personal data is exposed.',
-      'Proofs are verified on-chain via the ZKProofport verifier contract on Base.',
+      'The mobile relay polling path checks proofs on-chain before returning them; generating or submitting proof bytes does not itself establish verification.',
     ],
   },
 
   country: {
     title: 'Coinbase Country Attestation',
-    description: 'Prove your country of residence via Coinbase EAS attestation without revealing your identity. The topic owner may restrict which countries are allowed or blocked.',
+    description: 'Prove your country of residence via Coinbase EAS attestation without revealing your identity. The topic owner may restrict the allowed countries.',
     circuit: 'coinbase_country_attestation',
-    mcp: {
-      preferredTool: null,
-      explanation:
-        'Country attestation proofs also sign with the Coinbase EAS-attested wallet private key, so MCP cannot generate them server-side (same reason as kyc). Generate the proof with the CLI and submit via `post_topics_topicId_join` with `{ topicId, proof, publicInputs }`. The server enforces the topic\'s allowedCountries list against the public inputs.',
-    },
+    mcp: proofSubmissionGuidance('Country proving requires an EAS-attested wallet and the exact topic country list. AI mode uses ATTESTATION_KEY in the local prover environment; app mode uses the phone wallet without sharing its key.'),
     steps: {
       mobile: [
         {
@@ -210,7 +237,7 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 2,
           title: 'Scan QR Code',
-          description: 'Scan the QR code on the topic join page. The app receives the required country list and mode (allow/block).',
+          description: 'Scan the QR code on the topic join page. The app receives the allowed country list and generates an inclusion proof.',
         },
         {
           step: 3,
@@ -228,50 +255,43 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 1,
           title: 'Get Challenge',
-          description: 'Request a challenge from the OpenStoa API.',
+          description: 'Use your login session and API key on the challenge request to get the account-bound topic scope. This does not log you in; topic join does not submit challengeId.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
-  -H "Content-Type: application/json")
-CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" -H "Content-Type: application/json")
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
           step: 2,
           title: 'Generate Country Proof',
-          description: 'Generate a country attestation proof. The --login-google flag triggers Coinbase attestation verification. The country list and mode are embedded in the proof by the topic requirements.',
-          code: `PROOF_RESULT=$(zkproofport-prove --login-google --scope $SCOPE --silent)`,
+          description: 'Configure ATTESTATION_KEY locally for the EAS-attested wallet. Set COUNTRIES to the exact comma-separated allowedCountries returned by the topic, such as KR,US. The join API uses inclusion proofs (--included true). External prover availability and payment terms must be checked before use; app mode is also supported.',
+          code: `PROOF_RESULT=$(zkproofport-prove coinbase_country --countries "$COUNTRIES" --included true --scope "$SCOPE" --silent)`,
         },
         {
           step: 3,
           title: 'Submit Proof to Join Topic',
-          description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. The server validates that your country is in the allowed list.',
-          code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
-PUBLIC_INPUTS=$(echo $PROOF_RESULT | jq -c '.publicInputs')
-
-curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
+          description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. The request must contain the exact country list required by the topic.',
+          code: `printf '%s' "$PROOF_RESULT" | jq '{proof, publicInputs}' | \\
+curl --fail-with-body -sS -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -d "{\\"proof\\": \\"$PROOF\\", \\"publicInputs\\": $PUBLIC_INPUTS}"`,
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" \\
+  --data-binary @-`,
         },
       ],
     },
-    proofEndpoint: makeProofEndpoint('coinbase_country_attestation', '--login-google'),
+    proofEndpoint: makeProofEndpoint('coinbase_country_attestation', 'coinbase_country --countries "$COUNTRIES" --included true'),
     notes: [
+      PROVER_AVAILABILITY,
       'Requires a Coinbase account with country attestation on Base (EAS).',
       'The proof reveals only whether your country is in/not in the allowed list — not which country you are in.',
-      'The topic owner defines the allowed/blocked country list (ISO 3166-1 alpha-2 codes).',
+      'The topic owner defines the allowed country list (ISO 3166-1 alpha-2 codes); direct topic join requires an inclusion proof.',
     ],
   },
 
   google_workspace: {
     title: 'Google Workspace Domain Verification',
-    description: 'Prove your organization membership by verifying your Google Workspace email domain without revealing your email address. Uses OIDC domain attestation circuit.',
+    description: 'Prove the email domain associated with your Google account without revealing the full email address. The circuit does not prove employment, directory membership, or a Workspace subscription.',
     circuit: 'oidc_domain_attestation',
-    mcp: {
-      preferredTool: 'join_topic_with_google_workspace',
-      explanation:
-        'MCP agents should call `join_topic_with_google_workspace` with `{ topicId }` twice (same pattern as the authenticate tool). The server drives the Google Workspace device flow, generates the proof inside AWS Nitro Enclave, and submits it to the join endpoint — no CLI install, no shell, no proof bytes. If the server already has a cached verification, the first call joins immediately without a second round-trip.',
-      exampleToolCall: { name: 'join_topic_with_google_workspace', arguments: { topicId: '<topic-uuid>' } },
-    },
+    mcp: proofSubmissionGuidance('Generate an OIDC domain proof for a Google Workspace account before submission.'),
     steps: {
       mobile: [
         {
@@ -300,10 +320,9 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 1,
           title: 'Get Challenge',
-          description: 'Request a challenge from the OpenStoa API.',
+          description: 'Use your login session and API key on the challenge request to get the account-bound topic scope. This does not log you in; topic join does not submit challengeId.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
-  -H "Content-Type: application/json")
-CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" -H "Content-Type: application/json")
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
@@ -316,18 +335,17 @@ SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
           step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. If the topic has a required domain (e.g., company.com), the domain extracted from your proof must match.',
-          code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
-PUBLIC_INPUTS=$(echo $PROOF_RESULT | jq -c '.publicInputs')
-
-curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
+          code: `printf '%s' "$PROOF_RESULT" | jq '{proof, publicInputs}' | \\
+curl --fail-with-body -sS -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -d "{\\"proof\\": \\"$PROOF\\", \\"publicInputs\\": $PUBLIC_INPUTS}"`,
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" \\
+  --data-binary @-`,
         },
       ],
     },
     proofEndpoint: makeProofEndpoint('oidc_domain_attestation', '--login-google-workspace', { provider: 'google' }),
     notes: [
+      PROVER_AVAILABILITY,
       'Requires a Google Workspace account (e.g., you@company.com). Regular @gmail.com accounts will not work for domain-restricted topics.',
       'The proof reveals only your email domain (e.g., company.com) — not your full email address.',
       'If the topic specifies a required domain, your workspace domain must match exactly.',
@@ -337,14 +355,9 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
 
   microsoft_365: {
     title: 'Microsoft 365 Domain Verification',
-    description: 'Prove your organization membership by verifying your Microsoft 365 email domain without revealing your email address. Uses OIDC domain attestation circuit.',
+    description: 'Prove the email domain associated with your Microsoft account without revealing the full email address. The circuit does not prove employment, directory membership, or a Microsoft 365 subscription.',
     circuit: 'oidc_domain_attestation',
-    mcp: {
-      preferredTool: 'join_topic_with_microsoft_365',
-      explanation:
-        'MCP agents should call `join_topic_with_microsoft_365` with `{ topicId }` twice. The server drives the Microsoft 365 device flow, generates the proof inside AWS Nitro Enclave, and submits it to the join endpoint. If a cached verification exists, the first call joins immediately.',
-      exampleToolCall: { name: 'join_topic_with_microsoft_365', arguments: { topicId: '<topic-uuid>' } },
-    },
+    mcp: proofSubmissionGuidance('Generate an OIDC domain proof for a Microsoft 365 organizational account before submission.'),
     steps: {
       mobile: [
         {
@@ -373,10 +386,9 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 1,
           title: 'Get Challenge',
-          description: 'Request a challenge from the OpenStoa API.',
+          description: 'Use your login session and API key on the challenge request to get the account-bound topic scope. This does not log you in; topic join does not submit challengeId.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
-  -H "Content-Type: application/json")
-CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" -H "Content-Type: application/json")
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
@@ -389,18 +401,17 @@ SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
           step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. If the topic has a required domain, your domain must match.',
-          code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
-PUBLIC_INPUTS=$(echo $PROOF_RESULT | jq -c '.publicInputs')
-
-curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
+          code: `printf '%s' "$PROOF_RESULT" | jq '{proof, publicInputs}' | \\
+curl --fail-with-body -sS -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -d "{\\"proof\\": \\"$PROOF\\", \\"publicInputs\\": $PUBLIC_INPUTS}"`,
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" \\
+  --data-binary @-`,
         },
       ],
     },
     proofEndpoint: makeProofEndpoint('oidc_domain_attestation', '--login-microsoft-365', { provider: 'microsoft' }),
     notes: [
+      PROVER_AVAILABILITY,
       'Requires a Microsoft 365 organizational account (e.g., you@company.com). Personal @outlook.com accounts will not work for domain-restricted topics.',
       'The proof reveals only your email domain (e.g., company.com) — not your full email address.',
       'If the topic specifies a required domain, your Microsoft 365 domain must match exactly.',
@@ -410,14 +421,9 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
 
   workspace: {
     title: 'Organization Membership Verification',
-    description: 'Prove your organization membership via either Google Workspace or Microsoft 365 without revealing your email address. You can use either provider — the topic accepts both.',
+    description: 'Prove an email domain through either Google or Microsoft without revealing the full email address. Both providers are accepted; the circuit does not prove employment, directory membership, or a provider subscription.',
     circuit: 'oidc_domain_attestation',
-    mcp: {
-      preferredTool: 'join_topic_with_google_workspace',
-      explanation:
-        'This topic accepts either Google Workspace or Microsoft 365. MCP agents should call `join_topic_with_google_workspace` or `join_topic_with_microsoft_365` with `{ topicId }` twice — pick whichever provider the human user has. Both tools follow the same two-call pattern as authenticate.',
-      exampleToolCall: { name: 'join_topic_with_google_workspace', arguments: { topicId: '<topic-uuid>' } },
-    },
+    mcp: proofSubmissionGuidance('Generate an OIDC domain proof using either the Google Workspace or Microsoft 365 prover flow before submission.'),
     steps: {
       mobile: [
         {
@@ -446,10 +452,9 @@ curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 1,
           title: 'Get Challenge',
-          description: 'Request a challenge from the OpenStoa API.',
+          description: 'Use your login session and API key on the challenge request to get the account-bound topic scope. This does not log you in; topic join does not submit challengeId.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
-  -H "Content-Type: application/json")
-CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" -H "Content-Type: application/json")
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
         },
         {
@@ -466,18 +471,17 @@ PROOF_RESULT=$(zkproofport-prove --login-google-workspace --scope $SCOPE --silen
           step: 3,
           title: 'Submit Proof to Join Topic',
           description: 'Extract proof and publicInputs from the CLI output and submit to the topic join endpoint. Either provider is accepted by this topic.',
-          code: `PROOF=$(echo $PROOF_RESULT | jq -r '.proof')
-PUBLIC_INPUTS=$(echo $PROOF_RESULT | jq -c '.publicInputs')
-
-curl -s -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
+          code: `printf '%s' "$PROOF_RESULT" | jq '{proof, publicInputs}' | \\
+curl --fail-with-body -sS -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -d "{\\"proof\\": \\"$PROOF\\", \\"publicInputs\\": $PUBLIC_INPUTS}"`,
+  -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" \\
+  --data-binary @-`,
         },
       ],
     },
-    proofEndpoint: makeProofEndpoint('oidc_domain_attestation', '--login-google-workspace OR --login-microsoft-365'),
+    proofEndpoint: makeProofEndpoint('oidc_domain_attestation', '--login-google-workspace'),
     notes: [
+      PROVER_AVAILABILITY,
       'This topic accepts EITHER Google Workspace or Microsoft 365 accounts.',
       'Use --login-google-workspace for Google, --login-microsoft-365 for Microsoft.',
       'The proof reveals only your email domain (e.g., company.com) — not your full email address.',
@@ -499,7 +503,7 @@ export function buildProofRequirement(
   },
 ) {
   const guide = PROOF_GUIDES[proofType];
-  if (!guide) return null;
+  if (!guide || (proofType === 'country' && options?.countryMode === 'exclude')) return null;
 
   const proofEndpoint = { ...guide.proofEndpoint };
 
@@ -510,7 +514,7 @@ export function buildProofRequirement(
       body: {
         ...proofEndpoint.mobile.body,
         countryList: options.allowedCountries,
-        isIncluded: options.countryMode !== 'exclude',
+        isIncluded: true,
       },
     };
   }

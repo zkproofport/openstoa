@@ -296,9 +296,10 @@ describe('GET /api/dm/candidates — payload shape', () => {
     expect(Object.keys(row.sharedTopics[0]).sort()).toEqual(['id', 'title']);
   });
 
-  it('shows no badges for peers reached only through open topics', async () => {
+  it('shows the same public badges as the peer session even through open topics', async () => {
     const [bobRow] = (await candidatesFor(alice)).filter((c) => c.userId === bob.userId);
-    expect(bobRow.badges).toEqual([]);
+    const session = await (await asUser(bob).get('/api/auth/session')).json();
+    expect(bobRow.badges).toEqual(session.badges);
   });
 
   it('carries the real topic titles so the picker can explain the connection', async () => {

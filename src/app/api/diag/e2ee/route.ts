@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * E2EE key-path diagnostics sink.
  *
@@ -35,6 +36,9 @@ const MAX_DETAIL_BYTES = 2048;
 const MAX_LINES = 100;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/diag/e2ee');
+  if (authorizationError) return authorizationError;
+
   try {
     const session = await getSession(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

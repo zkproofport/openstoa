@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
@@ -49,6 +50,9 @@ function retired(method: 'GET' | 'PUT'): NextResponse {
  *         description: Retired — see `migrateTo` in the response body for the replacement endpoints.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/ai-permissions');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -76,6 +80,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  *         description: Retired — see `migrateTo` in the response body for the replacement endpoints.
  */
 export async function PUT(request: NextRequest): Promise<NextResponse> {
+  const authorizationError = await authorizeApiRequest(request, '/api/profile/ai-permissions');
+  if (authorizationError) return authorizationError;
+
   const session = await getSession(request);
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

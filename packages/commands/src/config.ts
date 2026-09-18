@@ -14,10 +14,9 @@ export interface CommandConfig {
   /** Stable MLS device identity override (else auto-persisted in the vault). */
   deviceId?: string;
   /**
-   * A scoped API key (`osk_...`), an alternative to interactive `login` that
-   * lets an agent authenticate with zero login round-trip (design §7
-   * follow-up). Priority in `createCommands`: this field > `OPENSTOA_API_KEY`
-   * env > `<home>/credentials` file > the saved session token.
+   * Selects the permission key used alongside the saved login session.
+   * Resolution: explicit option, OPENSTOA_API_KEY, then credentials file.
+   * A key never authenticates a caller or replaces proof login.
    */
   apiKey?: string;
 }

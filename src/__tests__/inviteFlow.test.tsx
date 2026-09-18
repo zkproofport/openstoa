@@ -68,6 +68,12 @@ vi.mock('@/components/CommunityLayout', () => ({
   default: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
 }));
 
+const proofGate = vi.hoisted(() => ({ props: null as any }));
+vi.mock('@/components/ProofGate', () => ({ default: (props: any) => {
+  proofGate.props = props;
+  return React.createElement('button', { onClick: () => props.onProofData({ proof: '0x1234', publicInputs: ['0x01'], circuit: props.circuitType }) }, 'mock-proof');
+} }));
+
 const { default: InviteDialog } = await import('@/components/InviteDialog');
 const { default: InviteJoinPage } = await import('@/app/topics/join/[inviteCode]/page');
 const { TestProviders } = await import('./harness/providers');
@@ -370,6 +376,28 @@ describe('the invite landing page', () => {
     expect(container.querySelector('[data-testid="invite-history-line"]')?.textContent).toContain('2 sessions');
     expectNoKeysOnTheWire([KEY(1), KEY(2)]);
     for (const req of requests) expect(req.url).not.toContain('h1=');
+  });
+
+  it('requires proof before consuming an invite and imports history only after verified join', async () => {
+    setHash(goodFragment);
+    stubFetch({ '/api/topics/join/tok123': { status: 200, body: { topic: { id: TOPIC, title: 'Gated room' }, isMember: false } } });
+    render(<InviteJoinPage />);
+    await flush();
+    stubFetch({ '/api/topics/join/tok123': { status: 402, body: { error: 'Proof required to join this topic', proofRequirement: {type:'kyc',circuit:'coinbase_attestation'} } } });
+    click(byText(enLocale.inviteJoin.join));
+    await flush();
+    expect(byText('mock-proof')).not.toBeNull();
+    expect(proofGate.props.mode).toBe('proof');
+    expect(proofGate.props.circuitType).toBe('coinbase_attestation');
+    expect(takMock.importInviteHistory).not.toHaveBeenCalled();
+    expect(window.location.hash).toContain('h1=');
+    stubFetch({ '/api/topics/join/tok123': { status: 201, body: { success:true,topicId:TOPIC } } });
+    click(byText('mock-proof'));
+    await flush();
+    expect(JSON.parse(requests.at(-1)!.body)).toEqual({proof:'0x1234',publicInputs:['0x01']});
+    expect(takMock.importInviteHistory).toHaveBeenCalled();
+    expectNoKeysOnTheWire([KEY(1),KEY(2)]);
+    expect(window.location.hash).toBe('');
   });
 
   it('INTEGRITY: the hash is cleared from the address bar after import', async () => {

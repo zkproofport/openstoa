@@ -1,3 +1,4 @@
+import {authorizeApiRequest} from '@/lib/apiAuthorization';
 /**
  * M-5 — the gated read path for plaintext post/topic/profile images, and the
  * reason the R2 bucket can eventually stop being public.
@@ -216,6 +217,9 @@ async function gateUserUpload(
  *                   example: Too many requests
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
+  const authorizationError = await authorizeApiRequest(request, '/api/media/[...key]');
+  if (authorizationError) return authorizationError;
+
   try {
     const { key: segments } = await params;
     const parsed = parseMediaObjectKey(segments ?? []);

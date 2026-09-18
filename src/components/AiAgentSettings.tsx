@@ -9,6 +9,7 @@ import {
   orderedCmd,
   validateApiKeyName,
 } from '@/lib/apiKeyForm';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 // Shape returned by GET /api/profile/api-keys.
@@ -97,14 +98,14 @@ function disabledStyle(enabled: boolean): React.CSSProperties {
   return { cursor: enabled ? 'pointer' : 'not-allowed', opacity: enabled ? 1 : 0.5 };
 }
 
-function scopeLabel(scope: string): string {
-  return HISTORY_SCOPES.find((s) => s.key === scope)?.label ?? scope;
+function scopeLabel(scope: string, t: (key: string) => string): string {
+  return HISTORY_SCOPES.some((s) => s.key === scope) ? t(`webUi.history.${scope}`) : scope;
 }
 
-function fmtDate(iso: string | null): string {
+function fmtDate(iso: string | null, locale: string): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(locale);
 }
 
 /** Reusable checkbox grid for capability selection (shared by create + edit). */
@@ -119,6 +120,7 @@ function CapabilityGrid({
   onToggle: (cmd: string) => void;
   idPrefix: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {allowedCmd.map((cmd) => {
@@ -146,7 +148,7 @@ function CapabilityGrid({
               style={{ width: 16, height: 16, accentColor: 'var(--color-brand-primary)', flexShrink: 0 }}
             />
             <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)', display: 'block' }}>{cmdLabel(cmd)}</span>
+              <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-text-primary)', display: 'block' }}>{cmdLabel(cmd, t)}</span>
               <span className="os-break-all" style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{cmd}</span>
             </span>
           </label>
@@ -181,6 +183,7 @@ export function ApiKeyMetaSummary({ k }: { k: ApiKeyMeta }) {
 
 /** History-grant chip selector (shared). */
 function HistoryScopeChips({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation();
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
       {HISTORY_SCOPES.map((s) => (
@@ -194,7 +197,7 @@ function HistoryScopeChips({ value, onChange }: { value: string; onChange: (v: s
           aria-pressed={value === s.key}
           onClick={() => onChange(s.key)}
         >
-          {s.label}
+          {scopeLabel(s.key, t)}
         </button>
       ))}
     </div>
@@ -202,7 +205,7 @@ function HistoryScopeChips({ value, onChange }: { value: string; onChange: (v: s
 }
 
 export default function AiAgentSettings() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [allowedCmd, setAllowedCmd] = useState<string[]>([]);
@@ -241,7 +244,7 @@ export default function AiAgentSettings() {
       setAllowedCmd(keyList.allowedCmd ?? []);
       setKeys(keyList.apiKeys ?? []);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : t('aiAgentSettings.loadFailed'));
+      setLoadError(localizeApiError(e, t, 'aiAgentSettings.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -269,11 +272,11 @@ export default function AiAgentSettings() {
     });
   }, []);
 
-  const nameError = newName ? validateApiKeyName(newName) : null;
-  const canCreate = !creating && validateApiKeyName(newName) === null;
+  const nameError = newName ? validateApiKeyName(newName, t) : null;
+  const canCreate = !creating && validateApiKeyName(newName, t) === null;
 
   async function createKey() {
-    const err = validateApiKeyName(newName);
+    const err = validateApiKeyName(newName, t);
     if (err) {
       setCreateError(err);
       return;
@@ -303,7 +306,7 @@ export default function AiAgentSettings() {
       setNewCmd(new Set());
       setNewHistory('none');
     } catch (e) {
-      setCreateError(e instanceof Error ? e.message : t('common.networkError'));
+      setCreateError(localizeApiError(e, t, 'common.networkError'));
     } finally {
       setCreating(false);
     }
@@ -338,7 +341,7 @@ export default function AiAgentSettings() {
       setKeys((prev) => prev.map((k) => (k.id === keyId ? data.key : k)));
       setEditingId(null);
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : t('common.networkError'));
+      setEditError(localizeApiError(e, t, 'common.networkError'));
     } finally {
       setSavingEdit(false);
     }
@@ -358,7 +361,7 @@ export default function AiAgentSettings() {
       setConfirmingRevoke(null);
       if (editingId === id) setEditingId(null);
     } catch (e) {
-      setRevokeError(e instanceof Error ? e.message : t('common.networkError'));
+      setRevokeError(localizeApiError(e, t, 'common.networkError'));
     } finally {
       setRevokingId(null);
     }
@@ -559,10 +562,10 @@ export default function AiAgentSettings() {
                   </div>
                 ) : (
                   <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-text-tertiary)', marginTop: 'var(--space-2)', display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-                    <span>{t('aiAgentSettings.scopeLabel', { value: k.cmd.length === 0 ? t('aiAgentSettings.scopeNone') : k.cmd.map(cmdLabel).join(', ') })}</span>
-                    <span>{t('aiAgentSettings.historyLabel', { value: scopeLabel(k.historyGrant) })}</span>
-                    <span>{t('aiAgentSettings.createdLabel', { value: fmtDate(k.createdAt) })}</span>
-                    <span>{t('aiAgentSettings.lastUsedLabel', { value: fmtDate(k.lastUsedAt) })}</span>
+                    <span>{t('aiAgentSettings.scopeLabel', { value: k.cmd.length === 0 ? t('aiAgentSettings.scopeNone') : k.cmd.map((cmd) => cmdLabel(cmd, t)).join(', ') })}</span>
+                    <span>{t('aiAgentSettings.historyLabel', { value: scopeLabel(k.historyGrant, t) })}</span>
+                    <span>{t('aiAgentSettings.createdLabel', { value: fmtDate(k.createdAt, locale) })}</span>
+                    <span>{t('aiAgentSettings.lastUsedLabel', { value: fmtDate(k.lastUsedAt, locale) })}</span>
                   </div>
                 )}
               </div>

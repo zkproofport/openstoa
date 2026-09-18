@@ -14,6 +14,8 @@
 /** Whether the rail is open. Absent = closed (first run / private mode). */
 export const CHAT_RAIL_OPEN_KEY = 'openstoa:chat-rail-open';
 
+import type { PublicBadge } from './publicBadgeState';
+
 export type RailKind = 'topic' | 'dm';
 
 /** The room currently shown in the rail's room view. `null` = list view. */
@@ -24,6 +26,8 @@ export interface RailRoom {
   topicId: string;
   title: string;
   profileImage?: string | null;
+  peerId?: string;
+  badges?: PublicBadge[];
 }
 
 /**

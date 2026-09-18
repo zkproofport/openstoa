@@ -8,10 +8,11 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import BareChatShell from '@/components/BareChatShell';
 import ChatPanel from '@/components/ChatPanel';
-import Avatar from '@/components/Avatar';
+import UserIdentity from '@/components/UserIdentity';
 import Spinner from '@/components/Spinner';
 import TopicMuteToggle from '@/components/TopicMuteToggle';
 import type { DmChannel } from '@/lib/dm';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 
 /**
@@ -73,7 +74,7 @@ export default function DmConversationPage() {
         const found = (data.dms ?? []).find((d: DmChannel) => d.topicId === topicId) ?? null;
         setChannel(found);
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : t('dmConversationPage.loadError'));
+        if (alive) setError(localizeApiError(err, t, 'dmConversationPage.loadError'));
       } finally {
         if (alive) setLoading(false);
       }
@@ -204,28 +205,17 @@ export default function DmConversationPage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <Avatar src={channel.peer.profileImage} name={channel.peer.nickname} size={36} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{
-            fontSize: 'var(--text-body-lg)',
-            fontWeight: 700,
-            color: 'var(--color-text-primary)',
-            letterSpacing: '-0.01em',
-            lineHeight: 'var(--leading-tight)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {channel.peer.nickname}
-          </div>
+        <UserIdentity userId={channel.peer.userId} nickname={channel.peer.nickname} profileImage={channel.peer.profileImage}
+          badges={channel.peer.badges} avatarSize={36} style={{ flex: 1 }}
+          nameStyle={{ fontSize: 'var(--text-body-lg)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
           {/* Says WHAT this conversation is, not that it is encrypted — the
               E2EE strip `ChatPanel` renders directly below already says that,
               in full, and saying it twice one line apart makes both read as
               decoration rather than as a claim. */}
-          <div className="os-label" style={{ color: 'var(--color-text-secondary)', marginTop: 1 }}>
+          <span className="os-label" style={{ color: 'var(--color-text-secondary)', marginTop: 1 }}>
             {t('dmConversationPage.subtitle')}
-          </div>
-        </div>
+          </span>
+        </UserIdentity>
         {/* The panel below hides its own header, so the per-topic mute (P-S)
             is hosted here — exactly what the mobile chat sheet does. */}
         <TopicMuteToggle topicId={topicId} enabled style={{ lineHeight: 1, flexShrink: 0 }} />

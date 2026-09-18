@@ -23,6 +23,7 @@
 
 import { apiFetch } from '@/lib/apiFetch';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { localizeApiError } from '@/lib/i18n/errorMessages';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import {
   chatTierOf,
@@ -159,7 +160,7 @@ export default function InviteDialog({ topicId, visibility, open, onClose }: Inv
       setExpiresAt(typeof data.expiresAt === 'string' ? data.expiresAt : null);
       setCopied(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('invite.mintFailed'));
+      setError(localizeApiError(err, t, 'invite.mintFailed'));
     } finally {
       mintingRef.current = false;
       setMinting(false);

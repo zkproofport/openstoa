@@ -116,13 +116,18 @@ describe('parseHistoryGrant', () => {
 });
 
 describe('resolveEnforcedHistoryGrant', () => {
-  it('a human session is never history-gated, whatever grant string is attached', () => {
-    // The isAI flag is the only switch. A human carrying a stray grant field
-    // (or none at all) must take the byte-identical pre-gate code path.
+  it('an owner session without a selected key is not history-gated', () => {
     expect(resolveEnforcedHistoryGrant({ userId: 'h', isAI: false })).toBeNull();
     expect(resolveEnforcedHistoryGrant({ userId: 'h' })).toBeNull();
-    expect(resolveEnforcedHistoryGrant({ userId: 'h', isAI: false, apiKeyHistoryGrant: 'none' })).toBeNull();
-    expect(resolveEnforcedHistoryGrant({ userId: 'h', isAI: false, apiKeyHistoryGrant: 'garbage' })).toBeNull();
+
+  });
+
+  it.each([false,undefined])('selected human key is history-bounded regardless of isAI=%s',isAI=>{
+    expect(resolveEnforcedHistoryGrant({userId:'h',isAI,apiKeyId:'selected',apiKeyHistoryGrant:'7d'})).toEqual(days(7));
+    expect(resolveEnforcedHistoryGrant({userId:'h',isAI,apiKeyId:'selected',apiKeyHistoryGrant:'none'})).toEqual({kind:'none'});
+    expect(resolveEnforcedHistoryGrant({userId:'h',isAI,apiKeyId:'selected'})).toEqual({kind:'none'});
+    expect(resolveEnforcedHistoryGrant({userId:'h',isAI,apiKeyHistoryGrant:'garbage'})).toEqual({kind:'none'});
+    expect(resolveEnforcedHistoryGrant({userId:'h',isAI,apiKeyId:'selected',apiKeyHistoryGrant:'full'})).toBeNull();
   });
 
   it('a full grant resolves to null — unrestricted takes the same path as a human', () => {
