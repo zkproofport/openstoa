@@ -17,6 +17,10 @@ Config lives in [`release-please-config.json`](../release-please-config.json) an
 
 ## The happy path
 
+Before merging the release PR, complete the verification below. A deployment
+request must not be the first time the changed workflows run against real HTTP
+handlers or the production Dockerfile.
+
 1. **Commit with [conventional commits]** on a branch, e.g.
    `feat(cli): add openstoa chat tail`, `fix(sdk): ...`, `feat!: ...`.
    Release-please attributes each commit to a component by the *paths it
@@ -43,6 +47,34 @@ Config lives in [`release-please-config.json`](../release-please-config.json) an
 Because `0.x` versions are configured with `bump-minor-pre-major` +
 `bump-patch-for-minor-pre-major`, a `feat:` produces a **patch** bump and a
 breaking change produces a **minor** bump until a package reaches 1.0.0.
+
+## Server and client release verification
+
+The server deploys independently of the npm CLI/MCP packages. For coordinated
+API/client changes, use this order:
+
+1. During development, run affected unit/contract tests and real local HTTP,
+   CLI and MCP workflows. Build `Dockerfile.prod` with the committed lockfile
+   (`npm ci`); a successful host build alone does not verify that image.
+2. Update the affected EN/KO `/docs` subjects in the same change, following
+   [documentation-maintenance.md](documentation-maintenance.md). Check served
+   examples and status codes, not just whether the pages return HTTP 200.
+3. Deploy the candidate server to staging. Pack the proposed release versions,
+   install the tarballs in a clean consumer outside the monorepo, and exercise
+   them against staging. Include login handoff, public reads, paired session/key
+   requests, per-key denial and the changed workflows. Behind a reverse proxy,
+   check that browser/redirect URLs use the public origin without internal ports.
+4. After staging verification, merge the release PR and confirm every required
+   package/version is available from npm. Check installation from the registry.
+5. Deploy the same tested server source to production using the pinned parent
+   repository commit. Version/changelog-only package changes do not require
+   changing the server source. Check health, served docs and authentication
+   discovery without creating production test accounts or business content.
+
+Record tested commits, package versions, environments and skipped checks. A
+pending app QR request or a staging development session is not a completed
+Google/KYC cryptographic login. If a release check discovers a regression, add
+the targeted regression test and rerun the affected checks before proceeding.
 
 ## Dependency / publish order
 
@@ -159,9 +191,11 @@ public package**.
 | `server` | root `npm ci` -> `npm run db:migrate:apply` against `redis:7` + `postgres:16-alpine` service containers (several suites open a real `pg` Pool; `npm run db:migrate` / drizzle-kit cannot be used, it aborts on a fresh DB) -> vitest unit suite -> `npm run build` (which also re-runs `scripts/generate-openapi.ts` via `prebuild`). |
 | `mcp-smoke` | builds `sdk` -> `commands` -> `mcp`, then runs `scripts/mcp-smoke.mjs`, which spawns the real `openstoa-mcp` stdio binary, completes an MCP `initialize` + `tools/list` handshake over stdin/stdout, and fails on any hang or crash. This is the guard for the entrypoint-guard class of bug that once shipped a CLI bin that exited 0 without doing anything. |
 
-The e2e suites (`src/__tests__/e2e/**`, `packages/*/src/__tests__/e2e/**`) are
-**not** run in CI — they need a live container plus R2/OAuth/wallet secrets. Run
-them locally or against staging with `npm run test:e2e:*`.
+This repository's CI does not run the live E2E suites. The parent
+`proofport-app-dev` CI does run the server's `test:e2e:local` against real
+containers and builds `Dockerfile.prod`. Package CLI/MCP live workflows and
+external R2/OAuth/wallet scenarios still need explicit local/staging validation;
+record skipped or unavailable external checks separately.
 
 [release-please]: https://github.com/googleapis/release-please
 [conventional commits]: https://www.conventionalcommits.org/

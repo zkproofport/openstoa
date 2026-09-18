@@ -75,6 +75,15 @@ of metadata, a fixed external price/uptime, or completed cryptographic E2E witho
 
 ## Generation and verification
 
+Documentation review is part of development, before the deployment request.
+For each behavior fix, compare the affected `/docs` prose/examples with the
+handler and CLI/MCP output. Update both languages if the contract changes. A
+fix that restores the already documented behavior needs regression coverage,
+not a second usage manual. Internal image/build/proxy fixes belong in
+[the release verification guide](releasing.md#server-and-client-release-verification).
+Check the actual public login origin and guest/private visibility in live
+verification; successful page rendering alone does not prove factual accuracy.
+
 Run from the OpenStoa repository with Node 22:
 
 ```bash
