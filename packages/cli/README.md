@@ -29,6 +29,8 @@ in the terminal after consent and waits for verification in the same process.
 Help works without a server URL,
 login session or API key: `openstoa --help`, `openstoa login --help`, and
 `openstoa topics join --help` show the relevant commands and options.
+Output is human-readable by default, including when piped. Use `--json` for
+structured machine-readable output across commands, including login results and errors.
 
 ## Usage documentation
 

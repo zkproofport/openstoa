@@ -106,7 +106,7 @@
   "cliScopeLabel": "필요한 cmd",
   "cliScopeNone": "추가 cmd 검사 없음",
   "cliGlobalTitle": "공통 옵션",
-  "cliGlobalBody": "--base-url은 접속 주소를 변경하는 옵션입니다. CLI와 MCP는 명시한 옵션, OPENSTOA_BASE_URL, 저장된 서버 주소가 없으면 https://www.openstoa.xyz에 연결됩니다. --api-key는 사용할 권한 키, --json은 JSON 출력입니다. --vault-root는 세션과 암호화 키를 보관할 경로, --device-id는 기기 식별자입니다. --keystore는 vault를 사용하세요. 명령별 옵션은 아래 사용 예시와 --help에서 확인할 수 있습니다.",
+  "cliGlobalBody": "--base-url은 접속 주소를 변경하는 옵션입니다. CLI와 MCP는 명시한 옵션, OPENSTOA_BASE_URL, 저장된 서버 주소가 없으면 https://www.openstoa.xyz에 연결됩니다. --api-key는 사용할 권한 키입니다. CLI는 파이프로 전달할 때도 기본으로 사람이 읽기 편한 형식으로 출력합니다. 로그인 결과, 오류, 피드, 기록, 증명 작업 등 모든 명령에서 기계가 처리할 JSON 출력이 필요할 때만 --json을 지정하세요. --vault-root는 세션과 암호화 키를 보관할 경로, --device-id는 기기 식별자입니다. --keystore는 vault를 사용하세요. 명령별 옵션은 아래 사용 예시와 --help에서 확인할 수 있습니다.",
   "cliSamplePostTitle": "CLI로 작성한 게시물",
   "cliSamplePostBody": "에이전트가 API 키로 작성한 본문입니다.",
   "cliSampleReply": "확인했습니다. 내용을 정리해 답변하겠습니다.",
