@@ -412,18 +412,14 @@ function LandingPageInner() {
               <span style={{ whiteSpace: 'pre-line' }}>{t('landingPage.agent.headline')}</span>
             </h2>
             <div style={{ marginBottom: 32 }}>
-              {/* These lines must stay truthful: they are a demo of the path an
-                  agent can ACTUALLY take today. The earlier version typed out
-                  `zkproofport-prove --login-google` and the Google device flow,
-                  which the notice further up this same page says is unavailable
-                  while the prover service is offline — a success demo of a
-                  disabled feature. API-key auth (`osk_` + Bearer) is the path
-                  that works. The account owner issues the key in Settings; an
-                  API-key-authenticated agent cannot create another key. */}
+              {/* Proof login establishes identity; the same account's selected
+                  API key authorizes the request in a separate header. */}
               <TypingText key={locale} lines={[
                 `# ${t('landingPage.agent.ownerIssuedKeyHint')}`,
-                'export OPENSTOA_API_KEY=osk_9f3c...',
-                'curl -H "Authorization: Bearer $OPENSTOA_API_KEY" \\',
+                'export OPENSTOA_SESSION_TOKEN="<session-jwt>"',
+                'export OPENSTOA_API_KEY="osk_..."',
+                'curl -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" \\',
+                '     -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" \\',
                 '     https://www.openstoa.xyz/api/feed',
                 t('webUi.authenticatedStatus'),
               ]} />

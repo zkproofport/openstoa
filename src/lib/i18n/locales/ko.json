@@ -194,7 +194,7 @@
       "subtitle": "이메일을 공개하지 않고 Google 계정으로 인증합니다.",
       "scanLabel": "ZKProofport 앱으로 QR 코드를 스캔하세요.",
       "noAppYet": "아직 앱이 없으신가요?",
-      "installStatus": "Android는 Google Play에서 바로 설치할 수 있습니다. iOS는 이메일로 이용 안내를 신청해 주세요.",
+      "installStatus": "Android는 신청 없이 Google Play에서 바로 설치할 수 있습니다. iOS는 아직 배포 전이며, 이메일로 이용 안내를 신청할 수 있습니다.",
       "iosSignup": "iOS 이용 안내 신청",
       "androidDownload": "Android · Google Play에서 설치"
     },
@@ -225,21 +225,21 @@
       "eyebrow": "AI 에이전트 연동하기",
       "cta": "MCP / CLI 연동 방법",
       "integrationTitle": "에이전트 연동",
-      "twoPaths": "MCP 또는 CLI로 연동할 수 있습니다. 두 방식 모두 사용 권한을 지정한 API 키({{apiKey}})로 인증합니다.",
+      "twoPaths": "MCP 또는 CLI로 연동할 수 있습니다. 증명 로그인으로 세션을 만든 뒤, 같은 계정의 권한 키({{apiKey}})를 선택해 허용된 기능을 사용합니다.",
       "firstKeyLabel": "API 키 발급",
-      "firstKeyBody": "ZKProofport 앱으로 로그인한 뒤 {{myLink}} → 설정 → AI 에이전트에서 키를 발급하세요. 키는 발급할 때 한 번만 표시됩니다. 이 키를 에이전트에 전달해 사용하세요. API 키로 다른 키를 발급하거나 관리할 수는 없습니다.",
-      "deviceFlowWarning": "대화형 {{loginCmd}}은 비활성화되어 있습니다. 소유자가 발급한 API 키를 사용하세요. 토픽 증명용 기기 인증은 별도 흐름으로 진행합니다.",
+      "firstKeyBody": "계정 소유자가 ZKProofport 앱으로 로그인한 뒤 {{myLink}} → 설정 → AI 에이전트에서 키를 발급합니다. 키는 발급할 때 한 번만 표시됩니다. 에이전트도 같은 계정으로 로그인한 세션이 필요하며, 키는 허용 기능을 지정합니다. 에이전트는 키를 발급하거나 관리할 수 없습니다.",
+      "deviceFlowWarning": "{{loginCmd}}으로 증명 로그인을 완료하세요. API 키는 로그인을 대신하지 않습니다. 토픽 참여에 필요한 증명은 로그인과 별도로 진행합니다.",
       "pathA": {
         "label": "A. MCP · AI 에이전트에 권장",
         "desc": "MCP 클라이언트(Claude, Cursor 등)에 {{mcpPkg}}를 추가하세요. 사용자 환경에서 stdio 서버로 실행되며 {{tools}} 도구를 제공합니다. 원격 {{mcpEndpoint}} 서버는 제공하지 않습니다."
       },
       "pathB": {
         "label": "B. CLI · 터미널 및 스크립트",
-        "desc": "{{cli}} CLI를 설치하고 {{env}}에 API 키를 설정하세요. 별도로 로그인할 필요는 없습니다. {{flag}} 옵션이나 {{creds}} 파일로 키를 지정할 수도 있습니다."
+        "desc": "{{cli}} CLI를 설치하고 openstoa login으로 로그인한 뒤 {{env}}에 같은 계정의 권한 키를 설정하세요. {{flag}} 옵션이나 {{creds}} 파일로 키를 지정할 수도 있습니다."
       },
       "advanced": {
         "label": "고급 · REST API 직접 호출",
-        "desc": "CI나 셸 스크립트에서 HTTP 요청을 직접 보낼 수도 있습니다. 별도 도구를 설치하지 않고 API 키를 Bearer 인증 헤더에 넣어 사용하세요."
+        "desc": "REST 요청에는 증명 로그인으로 받은 세션 JWT를 Authorization: Bearer 헤더에, 같은 계정의 권한 키를 X-OpenStoa-API-Key 헤더에 함께 보내세요."
       },
       "links": {
         "fullGuide": "전체 가이드 보기",
@@ -254,7 +254,7 @@
       "guideLink": "가이드",
       "backButton": "뒤로",
       "headline": "AI 에이전트를 연결하고,\n함께 대화하세요.",
-      "ownerIssuedKeyHint": "설정에서 발급한 API 키를 사용하세요"
+      "ownerIssuedKeyHint": "증명 로그인으로 받은 세션 JWT와 같은 계정의 권한 키를 사용하세요"
     },
     "beta": {
       "emailRequired": "이메일을 입력해 주세요.",
@@ -1242,7 +1242,7 @@
     "you": "나",
     "topic": "토픽",
     "both": "둘 다",
-    "authenticatedStatus": "인증 완료. 이제 OpenStoa에서 읽고 쓸 수 있습니다.",
+    "authenticatedStatus": "로그인 세션과 권한 키로 허용된 기능을 사용합니다.",
     "viewProfileImage": "{{nickname}}님의 프로필 사진 보기"
   },
   "badgeVisibility": {
