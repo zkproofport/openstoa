@@ -187,6 +187,8 @@ export default function TopicPageClient() {
    *  submitting. The mode is purely client-side; the submit button
    *  works from both Write AND Preview so Preview isn't a dead-end. */
   const [composeMode, setComposeMode] = useState<'write' | 'preview'>('write');
+  // Remount the editor only for an explicit reset, never for a preview switch.
+  const [editorResetKey, setEditorResetKey] = useState(0);
   /** Snapshot of the image set that was already attached when composing
    *  started. Used by Reset so the R2 cleanup never deletes media that
    *  belong elsewhere (today it's always empty because the topic page
@@ -467,8 +469,10 @@ export default function TopicPageClient() {
     setPostTags([]);
     setPostImages([]);
     setPostVideos([]);
+    setPostImageAlts({});
     setPostPoll(null);
     setComposeMode('write');
+    setEditorResetKey((key) => key + 1);
     setPostError(null);
   }
 
@@ -514,6 +518,7 @@ export default function TopicPageClient() {
       setPostContent('');
       setPostImages([]);
       setPostVideos([]);
+      setPostImageAlts({});
       setPostTags([]);
       setPostPoll(null);
       setComposeMode('write');
@@ -856,6 +861,16 @@ export default function TopicPageClient() {
                     : t('membersPage.leave')}
               </button>
             )}
+            {sessionChecked && !isGuest && topic.isMember && !composing && (
+              <button
+                type="button"
+                onClick={() => setComposing(true)}
+                className="os-button os-button-primary"
+              >
+                <span aria-hidden="true"><PlusIcon /></span>
+                {t('topicPage.composer.writePost')}
+              </button>
+            )}
           </div>
           {/* Surfaced inline rather than in an alert(): the owner case is an
               instruction ("transfer ownership first"), and an instruction the
@@ -1126,8 +1141,12 @@ export default function TopicPageClient() {
                 </div>
               </div>
 
-              {composeMode === 'write' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              {/* Keep the editor mounted so preview preserves its draft,
+                  attachments, and uploads that are still in progress. */}
+                <div
+                  hidden={composeMode !== 'write'}
+                  style={{ display: composeMode === 'write' ? 'flex' : 'none', flexDirection: 'column', gap: 'var(--space-3)' }}
+                >
                   <input
                     type="text"
                     value={postTitle}
@@ -1150,6 +1169,7 @@ export default function TopicPageClient() {
                     }}
                   />
                   <SNSEditor
+                    key={editorResetKey}
                     topicId={topicId}
                     placeholder={t('topicPage.composer.writePostPlaceholder')}
                     onChange={(state) => {
@@ -1212,7 +1232,7 @@ export default function TopicPageClient() {
                     />
                   )}
                 </div>
-              ) : (
+              {composeMode === 'preview' && (
                 // Preview mode — render the post using the same components
                 // PostDetail uses so what the user sees here matches the
                 // final post one-for-one (title, tags, body, media,
@@ -1329,6 +1349,7 @@ export default function TopicPageClient() {
                     setPostContent('');
                     setPostImages([]);
                     setPostVideos([]);
+                    setPostImageAlts({});
                     setPostTags([]);
                     setPostPoll(null);
                     setComposeMode('write');

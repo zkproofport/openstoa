@@ -36,7 +36,7 @@ interface HeaderProps {
  */
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} target={href === "/docs" ? "_blank" : undefined} rel={href === "/docs" ? "noopener noreferrer" : undefined} className={`os-header-link header-nav-link os-label${href === "/docs" ? " desktop-docs-link" : ""}`}>
+    <Link href={href} target={href === "/docs" ? "_blank" : undefined} rel={href === "/docs" ? "noopener noreferrer" : undefined} className={`os-header-link header-nav-link os-label${href === "/docs" ? " header-docs-link" : ""}`}>
       {children}
     </Link>
   );
@@ -68,15 +68,10 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
   const sessionChecked = !isPending;
 
   return (
-    // `has-app-shell` = "CommunityLayout is around this header, so a drawer, a
-    // left sidebar and a tab bar carry navigation". `onMenuToggle` is only ever
-    // passed from there, so its presence IS that signal. It was previously
-    // named after the phone-width chrome alone, which stopped being true once
-    // it also gated a desktop-width rule (the three nav links, which the
-    // sidebar duplicates at every width) — the old name is gone entirely, and
-    // `header.test.tsx` asserts no occurrence of it survives anywhere.
+    // The app shell supplies sidebar/drawer navigation. Docs remains in every header.
     <header className={`os-header${onMenuToggle ? ' has-app-shell' : ''}`} role="banner">
       <div
+        className="header-inner"
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           width: '100%', maxWidth: 1400, margin: '0 auto', padding: '0 var(--space-5)',
@@ -178,31 +173,16 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           </Link>
           */}
 
-          {/* Explore / Recorded / Docs — rendered ONLY on the standalone pages.
-              `LeftSidebar` carries all three at every width it is on screen
-              (the desktop rail and, below 768px, `CommunityLayout`'s drawer),
-              so inside the app shell these were a second copy of the same
-              three destinations on desktop and a hidden-by-CSS overflow risk
-              on a phone. They are now absent from the DOM there rather than
-              hidden, which is the honest version of the same result.
-
-              The gate is `!onMenuToggle`, i.e. NOT `.has-app-shell`: `/docs`,
-              `/recovery` and `/profile` render this Header on their own, with
-              no sidebar, no drawer and no tab bar. Deleting the links
-              unconditionally would leave those three pages with no navigation
-              at all — this is the ONE place they still exist. Below 768px the
-              style block still hides them even here (the standalone row cannot
-              fit three text links next to the wordmark, theme, language and
-              the session chip at 320px); the logo mark remains the way home.
-              Icons instead of text were considered and rejected — "explore" /
-              "recorded" / "docs" have no glyph a user reads unambiguously. */}
+          {/* Explore and Recorded also live in the app shell sidebar.
+              Docs stays visible here on every page and at every width. */}
           {!onMenuToggle && (
             <>
               <NavLink href="/topics/explore">{t('header.explore')}</NavLink>
               <NavLink href="/recorded">{t('header.recorded')}</NavLink>
-              <NavLink href="/docs">{t('header.docs')}</NavLink>
             </>
           )}
+
+          <NavLink href="/docs">{t('header.docs')}</NavLink>
 
           {/* FIX7: the "Messages" text link that used to live here full-page-
               navigated to `/dm`, duplicating this chat toggle button — two
@@ -287,41 +267,27 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
           .header-nav {
             gap: var(--space-1) !important;
           }
-          /* The overflow fix is REMOVAL, not shrinking. This row carried nine
-             controls at 390px with only a padding reduction to absorb them, so
-             the wordmark overlapped EXPLORE and the nickname chip was clipped
-             off-screen — and the shrunk targets broke the 44px minimum while
-             not solving anything.
-
-             Inside the app shell the three text links are no longer rendered at
-             ALL widths (see the JSX), so this rule now only reaches the
-             standalone pages, where they ARE rendered and where the row still
-             cannot fit them next to the wordmark, the theme toggle, the
-             language select and the session chip at 320px. Their destinations
-             are still one tap away there via the logo mark -> /topics. */
-          .header-nav-link {
+          /* Keep Docs visible while the other text destinations use the sidebar. */
+          .header-nav-link:not(.header-docs-link) {
             display: none !important;
           }
-          /* Centre the logo mark in the bar — the phone convention, and the
-             fix for the specific complaint: with the right-hand nav emptied
-             out, justify-content: space-between jammed the mark against the
-             hamburger and left the rest of the bar void.
-
-             Absolute against .os-header (which is position: sticky, so it IS
-             the containing block) and NOT a flex trick, because the row's two
-             sides are asymmetric by construction — a 44px hamburger on one
-             side, nothing on the other. Centring inside the remaining flex
-             space would therefore park the mark right of centre and, worse,
-             move it again the moment anything is added back to either side.
-             left: 50% is measured against the header, so it holds regardless.
-
-             Only under .has-app-shell: the standalone header still has its
-             wordmark, its nav links and a full search bar in the middle of the
-             row, and an absolutely-positioned mark would sit on top of them.
-
-             At 320px (the narrowest supported width) the hamburger's box ends
-             68px in — 24px row padding + 44px target — and the centred 24px
-             mark spans 148..172px, so the two cannot collide. */
+          /* Standalone pages retain preferences and account controls. Allow
+             those controls to wrap so Docs stays reachable on narrow screens. */
+          .os-header:not(.has-app-shell) .header-inner {
+            flex-wrap: wrap;
+            gap: 8px;
+            padding-block: 6px !important;
+          }
+          .os-header:not(.has-app-shell) .header-nav {
+            flex-wrap: wrap;
+            min-width: 0;
+            max-width: 100%;
+          }
+          .os-header:not(.has-app-shell) .header-nav > .os-header-btn {
+            max-width: 100% !important;
+          }
+          /* Centre the app-shell mark independently of the hamburger on the
+             left and the always-visible Docs link on the right. */
           .has-app-shell .header-brand {
             position: absolute;
             left: 50%;
@@ -334,10 +300,7 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
              Sign in CTA (a guest signs in at the point of need, the same
              moment a member would have acted).
 
-             What is left at 390px is a hamburger and the logo mark, which is
-             the whole point: every one of these has a home in the drawer or
-             the tab bar, so keeping a second copy in the header was not
-             redundancy the user could ignore — it was the row overflowing.
+             The mobile row keeps the hamburger, centred logo and Docs link.
 
              Scoped to .has-app-shell: /docs, /recovery and /profile
              render this Header WITHOUT CommunityLayout, so they have neither a
@@ -359,12 +322,6 @@ export default function Header({ onMenuToggle, menuOpen, onChatToggle, chatOpen 
             display: none !important;
           }
         }
-        /* The @media (max-width: 380px) block that used to sit here shrank
-           .header-nav-link's padding and tracking to buy width. It was dead
-           code — 380px is inside the 767px range above, where those links are
-           already display: none — and it survived only because nothing pointed
-           that out. Shrinking a tap target to fit is also the approach the
-           row's whole redesign rejected. */
       `}</style>
     </header>
   );

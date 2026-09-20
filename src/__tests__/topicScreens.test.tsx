@@ -45,7 +45,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/topics',
 }));
 
-// The shell, the editors and the shared post chrome are not under test.
+// Keep the real SNSEditor for composer draft regression coverage; mock unrelated chrome.
 vi.mock('@/components/CommunityLayout', () => ({
   default: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
 }));
@@ -54,7 +54,6 @@ vi.mock('@/components/PostCard', () => ({
     React.createElement('article', { 'data-testid': 'post' }, post.id),
 }));
 vi.mock('@/components/Spinner', () => ({ default: () => React.createElement('div', { 'data-testid': 'spinner' }) }));
-vi.mock('@/components/SNSEditor', () => ({ default: () => React.createElement('div', { 'data-testid': 'editor' }) }));
 vi.mock('@/components/SNSContent', () => ({
   default: ({ html }: { html?: string }) => React.createElement('div', { 'data-testid': 'body' }, html ?? ''),
 }));
@@ -610,5 +609,92 @@ describe('typography contract in the two redesigned files', () => {
       ...[...src.matchAll(/gap:\s*(\d+)\b/g)],
     ].filter((m) => Number(m[1]) >= 4);
     expect(hits.map((m) => m[0])).toEqual([]);
+  });
+});
+
+
+describe('topic composer draft across Write / Preview', () => {
+  async function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  async function openDraft() {
+    await mountTopic({ role: 'member' });
+    await click(buttonNamed(en.topicPage.composer.writePost));
+    await typeInto(q<HTMLInputElement>(`input[placeholder="${en.topicPage.composer.postTitlePlaceholder}"]`)!, 'Draft title');
+    await typeInto(q<HTMLTextAreaElement>('textarea')!, '작성 중인 본문 🌱\nSecond line');
+  }
+
+  const mode = (label: string) => qa<HTMLButtonElement>('[role="tab"]').find(b => b.textContent === label);
+
+  it('keeps text, images, image descriptions and video links across repeated previews and further editing', async () => {
+    await openDraft();
+    const imageUrl = 'https://cdn.example.com/draft.png';
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ publicUrl: imageUrl })));
+    await act(async () => {
+      const fileInput = q<HTMLInputElement>('input[type="file"]')!;
+      Object.defineProperty(fileInput, 'files', { value: [new File(['image'], 'draft.png', { type: 'image/png' })] });
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await typeInto(q<HTMLInputElement>(`input[placeholder="${en.snsEditor.describeImage}"]`)!, '새싹 사진');
+    await click(q<HTMLButtonElement>(`button[title="${en.snsEditor.videoLinkTitle}"]`)!);
+    const videoUrl = 'https://youtu.be/abcdefghijk';
+    await typeInto(q<HTMLInputElement>('input[type="url"]')!, videoUrl);
+    await click(qa<HTMLButtonElement>('button').find(b => b.textContent === en.common.add));
+
+    for (let i = 0; i < 2; i++) {
+      await click(mode(en.topicPage.composer.preview));
+      expect(q('[data-testid="body"]')?.textContent).toBe('작성 중인 본문 🌱\nSecond line');
+      await click(mode(en.topicPage.composer.write));
+      expect(q<HTMLTextAreaElement>('textarea')?.value).toBe('작성 중인 본문 🌱\nSecond line');
+      expect(q<HTMLInputElement>(`input[placeholder="${en.topicPage.composer.postTitlePlaceholder}"]`)?.value).toBe('Draft title');
+      expect(q<HTMLInputElement>(`input[placeholder="${en.snsEditor.describeImage}"]`)?.value).toBe('새싹 사진');
+      expect(q(`button[aria-label="${en.snsEditor.removeVideo}"]`)).not.toBeNull();
+    }
+
+    await typeInto(q<HTMLTextAreaElement>('textarea')!, 'Updated after preview');
+    await act(async () => { q('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    const submission = vi.mocked(fetch).mock.calls.find(([url, init]) => String(url) === '/api/topics/t1/posts' && init?.method === 'POST');
+    expect(JSON.parse(submission![1]!.body as string)).toMatchObject({
+      title: 'Draft title', content: 'Updated after preview',
+      media: { images: [imageUrl], videos: [videoUrl], imageAlts: { [imageUrl]: '새싹 사진' } },
+    });
+  });
+
+  it('retains an image whose upload finishes while Preview is open', async () => {
+    await openDraft();
+    let finishUpload!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>((resolve) => { finishUpload = resolve; }));
+    await act(async () => {
+      const fileInput = q<HTMLInputElement>('input[type="file"]')!;
+      Object.defineProperty(fileInput, 'files', { value: [new File(['image'], 'pending.png', { type: 'image/png' })] });
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await click(mode(en.topicPage.composer.preview));
+    const imageUrl = 'https://cdn.example.com/pending.png';
+    await act(async () => { finishUpload(new Response(JSON.stringify({ publicUrl: imageUrl }))); });
+    await click(mode(en.topicPage.composer.write));
+    expect(q(`img[src="${imageUrl}"]`)).not.toBeNull();
+    expect(q<HTMLTextAreaElement>('textarea')?.value).toBe('작성 중인 본문 🌱\nSecond line');
+  });
+
+  it.each(['write', 'preview'] as const)('explicit Reset clears both the draft and the editor from %s mode', async (from) => {
+    await openDraft();
+    if (from === 'preview') await click(mode(en.topicPage.composer.preview));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      await click(q<HTMLButtonElement>(`button[title="${en.topicPage.composer.reset}"]`)!);
+      expect(q<HTMLTextAreaElement>('textarea')?.value).toBe('');
+      expect(q<HTMLInputElement>(`input[placeholder="${en.topicPage.composer.postTitlePlaceholder}"]`)?.value).toBe('');
+      await click(mode(en.topicPage.composer.preview));
+      await click(mode(en.topicPage.composer.write));
+      expect(q<HTMLTextAreaElement>('textarea')?.value).toBe('');
+    } finally {
+      confirm.mockRestore();
+    }
   });
 });

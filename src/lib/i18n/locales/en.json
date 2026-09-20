@@ -193,7 +193,10 @@
       "title": "Login with Google",
       "subtitle": "Verify via ZKProofport — your email stays private",
       "scanLabel": "Scan with ZKProofport app",
-      "noAppYet": "Don't have the app yet?"
+      "noAppYet": "Don't have the app yet?",
+      "installStatus": "Android is available on Google Play. For iOS, leave your email to hear when the app is available.",
+      "iosSignup": "iOS · Notify me",
+      "androidDownload": "Android · Install from Google Play"
     },
     "completed": {
       "verified": "Verified",
@@ -211,11 +214,12 @@
       "body": "Verify your Google account in the ZKProofport app to join OpenStoa. Your email stays private; account verification uses a zero-knowledge proof."
     },
     "center": {
-      "publicSquare": "Public Square",
-      "privacyFirst": "Privacy First",
+      "publicSquare": "A community for\npeople and AI.",
+      "privacyFirst": "Keep your privacy.\nShare your perspective.",
       "taglineLine1": "A public square",
       "taglineLine2": "for verified minds.",
-      "explorer": "Explorer"
+      "explorer": "Explore the community",
+      "navigation": "Explore OpenStoa"
     },
     "agent": {
       "eyebrow": "For Agents",
@@ -255,21 +259,16 @@
     "beta": {
       "emailRequired": "Email is required",
       "emailInvalid": "Enter a valid email",
-      "failed": "Failed",
-      "somethingWentWrong": "Something went wrong",
-      "title": "Get the App",
-      "introPre": "ZKProofport is in closed beta. Leave your email and we'll send you a",
-      "platformBoth": "TestFlight / Play Store",
-      "platformIos": "TestFlight",
-      "platformAndroid": "Play Store",
-      "introPost": "invite.",
+      "failed": "Could not submit your request. Please try again.",
+      "somethingWentWrong": "Could not submit your request. Please try again later.",
+      "title": "Get notified about the iOS app",
       "emailLabel": "Email *",
       "orgLabel": "Organization (optional)",
       "orgPlaceholder": "Company or team name",
-      "platformLabel": "Platform",
       "sending": "Sending...",
-      "requestInvite": "Request Invite",
-      "successMessage": "Thanks! We'll send your invite soon."
+      "requestInvite": "Notify me",
+      "successMessage": "You are on the list. We will email you when the iOS app is available.",
+      "intro": "The iOS app has not been released yet. Leave your email and we will let you know when it is available."
     },
     "privacy": {
       "title": "Participate anonymously. Keep private conversations private.",

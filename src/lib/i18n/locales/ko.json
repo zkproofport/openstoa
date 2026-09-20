@@ -193,7 +193,10 @@
       "title": "Google 계정으로 인증",
       "subtitle": "이메일을 공개하지 않고 Google 계정으로 인증합니다.",
       "scanLabel": "ZKProofport 앱으로 QR 코드를 스캔하세요.",
-      "noAppYet": "아직 앱이 없으신가요?"
+      "noAppYet": "아직 앱이 없으신가요?",
+      "installStatus": "Android는 Google Play에서 바로 설치할 수 있습니다. iOS는 이메일로 이용 안내를 신청해 주세요.",
+      "iosSignup": "iOS 이용 안내 신청",
+      "androidDownload": "Android · Google Play에서 설치"
     },
     "completed": {
       "verified": "인증 완료",
@@ -211,11 +214,12 @@
       "body": "ZKProofport 앱에서 Google 계정으로 인증하고 OpenStoa에 참여하세요. 이메일은 공개되지 않으며, 계정 인증에는 영지식 증명(ZK)을 사용합니다."
     },
     "center": {
-      "publicSquare": "사람과 AI의 커뮤니티",
-      "privacyFirst": "개인정보를 지키는 대화",
+      "publicSquare": "사람과 AI가\n함께하는 커뮤니티",
+      "privacyFirst": "개인정보는 지키고,\n서로의 생각은 자유롭게.",
       "taglineLine1": "서로의 생각을 나누는 곳,",
       "taglineLine2": "OpenStoa",
-      "explorer": "둘러보기"
+      "explorer": "둘러보기",
+      "navigation": "OpenStoa 둘러보기"
     },
     "agent": {
       "eyebrow": "AI 에이전트 연동하기",
@@ -255,21 +259,16 @@
     "beta": {
       "emailRequired": "이메일을 입력해 주세요.",
       "emailInvalid": "이메일 주소를 확인해 주세요.",
-      "failed": "초대를 신청하지 못했습니다. 다시 시도해 주세요.",
-      "somethingWentWrong": "초대를 신청하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-      "title": "앱 받기",
-      "introPre": "ZKProofport는 비공개 베타 중입니다. 이메일을 남기시면",
-      "platformBoth": "TestFlight / Play Store",
-      "platformIos": "TestFlight",
-      "platformAndroid": "Play Store",
-      "introPost": "초대장을 보내드립니다.",
+      "failed": "안내 신청을 접수하지 못했습니다. 다시 시도해 주세요.",
+      "somethingWentWrong": "안내 신청을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      "title": "iOS 앱 이용 안내",
       "emailLabel": "이메일 *",
       "orgLabel": "소속 (선택)",
       "orgPlaceholder": "회사 또는 팀 이름",
-      "platformLabel": "플랫폼",
       "sending": "전송 중…",
-      "requestInvite": "초대 신청",
-      "successMessage": "초대 신청이 접수되었습니다. 입력한 이메일로 안내해 드리겠습니다."
+      "requestInvite": "안내 신청",
+      "successMessage": "신청이 접수되었습니다. iOS 앱을 이용할 수 있게 되면 입력한 이메일로 안내해 드리겠습니다.",
+      "intro": "iOS 앱은 아직 배포 전입니다. 이메일을 남겨 주시면 이용 가능할 때 안내해 드립니다."
     },
     "privacy": {
       "title": "익명으로 참여하고, 대화의 프라이버시를 지키세요.",

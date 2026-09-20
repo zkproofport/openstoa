@@ -16,14 +16,8 @@ export type Theme = 'light' | 'dark';
 
 export const THEME_STORAGE_KEY = 'openstoa.theme';
 
-/**
- * Dark, matching the base `:root` block in globals.css.
- *
- * Not an aesthetic preference: the app was built dark, so dark is the mode
- * every surface is known to render correctly in. A first-time visitor should
- * land on the one that is verified, and choose the other deliberately.
- */
-export const DEFAULT_THEME: Theme = 'dark';
+/** Light for first-time visitors; a saved choice takes precedence. */
+export const DEFAULT_THEME: Theme = 'light';
 
 export function isTheme(value: unknown): value is Theme {
   return value === 'light' || value === 'dark';
