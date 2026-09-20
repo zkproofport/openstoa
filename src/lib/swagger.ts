@@ -97,6 +97,16 @@ const options: swaggerJsdoc.Options = {
         Session: {
           type: 'object',
           properties: {
+            authorization: {
+              type: 'object',
+              description: 'Present only when the selected API key is validated for this session; contains no raw key.',
+              required: ['apiKeyId', 'capabilities', 'historyGrant'],
+              properties: {
+                apiKeyId: { type: 'string' },
+                capabilities: { type: 'array', items: { type: 'string' } },
+                historyGrant: { type: 'string', description: 'Granted chat history scope' },
+              },
+            },
             profileImage: { type: 'string', nullable: true },
             badges: { type: 'array', items: { $ref: '#/components/schemas/PublicBadge' } },
             userId: {

@@ -23,6 +23,9 @@ const ROUTE = '/api/auth/session';
  *       right after `POST /api/auth/verify/ai` to confirm the token resolves and to check
  *       the current nickname. A default nickname is ready to use; changing it is optional.
  *       Returns `profileImage` and all enabled public verification `badges` (empty on badge lookup failure).
+ *       When a selected permission key is valid for this session, `authorization` contains
+ *       its `apiKeyId`, granted `capabilities` and `historyGrant`. Raw API keys are never returned.
+ *       An invalid, revoked or differently owned selected key returns HTTP 200 with `{ authenticated: false }`.
  *     operationId: getSession
  *     x-related-skills: [auth-details]
  *     responses:
@@ -75,6 +78,7 @@ export async function GET(request: NextRequest) {
     logger.info(ROUTE, 'Session valid', { userId: session.userId, nickname, totalRecorded, role, isAI: session.isAI });
     return NextResponse.json({
       userId: session.userId,
+      ...(session.apiKeyId?{authorization:{apiKeyId:session.apiKeyId,capabilities:session.apiKeyCmd??[],historyGrant:session.apiKeyHistoryGrant}}:{}),
       nickname,
       profileImage: user[0]?.profileImage ?? null,
       badges: identity.badges,

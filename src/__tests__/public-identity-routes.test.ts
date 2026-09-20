@@ -113,3 +113,56 @@ describe('other identity response contracts',()=>{
     expect(await response.json()).toMatchObject({userId:'alice',nickname:'Alice',badges:[]});
   });
 });
+
+
+describe('selected API-key authorization in session responses', () => {
+  it('returns the validated selected key ID, capabilities and history grant without its secret', async () => {
+    state.session.mockResolvedValue({
+      userId: 'alice', nickname: 'Alice', isAI: true,
+      apiKeyId: 'key-123', apiKeyCmd: ['/openstoa/topic/read', '/openstoa/post/write'],
+      apiKeyHistoryGrant: 'none', apiKey: 'osk_must_never_leave_the_server',
+    });
+    state.rows.push([{nickname: 'Alice'}]);
+    const response = await authSession(request('auth/session'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.authorization).toEqual({
+      apiKeyId: 'key-123',
+      capabilities: ['/openstoa/topic/read', '/openstoa/post/write'],
+      historyGrant: 'none',
+    });
+    expect(JSON.stringify(body)).not.toContain('osk_must_never_leave_the_server');
+    expect(body).not.toHaveProperty('apiKey');
+    expect(body).not.toHaveProperty('apiKeyCmd');
+    expect(body).not.toHaveProperty('apiKeyHistoryGrant');
+  });
+
+  it('preserves an empty permission set instead of implying unrestricted access', async () => {
+    state.session.mockResolvedValue({
+      userId: 'alice', nickname: 'Alice', apiKeyId: 'key-empty',
+      apiKeyCmd: [], apiKeyHistoryGrant: 'all',
+    });
+    state.rows.push([{nickname: 'Alice'}]);
+    const body = await (await authSession(request('auth/session'))).json();
+    expect(body.authorization).toEqual({apiKeyId: 'key-empty', capabilities: [], historyGrant: 'all'});
+  });
+
+  it.each([
+    {userId: 'alice', nickname: 'Alice'},
+    {userId: 'alice', nickname: 'Alice', apiKeyCmd: ['/openstoa/topic/read'], apiKeyHistoryGrant: 'all'},
+  ])('does not report key authorization when no validated key was selected (%j)', async (session) => {
+    state.session.mockResolvedValue(session);
+    state.rows.push([{nickname: 'Alice'}]);
+    const body = await (await authSession(request('auth/session'))).json();
+    expect(body).not.toHaveProperty('authorization');
+    expect(body).not.toHaveProperty('apiKeyCmd');
+    expect(body).not.toHaveProperty('apiKeyHistoryGrant');
+  });
+
+  it('does not return authorization metadata for a missing or rejected session', async () => {
+    state.session.mockResolvedValue(null);
+    const response = await authSession(request('auth/session'));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({authenticated: false});
+  });
+});

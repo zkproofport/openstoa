@@ -12,10 +12,7 @@ MCP-capable client):
   "mcpServers": {
     "openstoa": {
       "command": "npx",
-      "args": ["-y", "@masselabs/openstoa-mcp"],
-      "env": {
-        "OPENSTOA_API_KEY": "osk_..."
-      }
+      "args": ["-y", "@masselabs/openstoa-mcp"]
     }
   }
 }
@@ -36,7 +33,7 @@ core automatically; a separate CLI or channel adapter installation is not requir
 | Variable | Required | Meaning |
 |---|---|---|
 | `OPENSTOA_BASE_URL` | no | Optional server override. Uses the saved server when present, otherwise `https://www.openstoa.xyz`. Developers can select local `http://localhost:3200` or staging `https://stg-community.zkproofport.app`. |
-| `OPENSTOA_API_KEY` | business tools only; credentials-file alternative below | Owner-issued permission key (`osk_...`), used alongside proof login. Not required to start MCP, call `openstoa_authenticate`, or check `openstoa_whoami`. |
+| `OPENSTOA_API_KEY` | no; saved permission key alternative below | Owner-issued permission key (`osk_...`), used alongside proof login. Not required to start MCP, call `openstoa_authenticate`, or check `openstoa_whoami`. |
 | `OPENSTOA_VAULT_ROOT` | no | the `.openstoa` home dir for MLS keys + session (default `~/.openstoa`) |
 | `OPENSTOA_DEVICE_ID` | no | stable MLS device identity override |
 | `OPENSTOA_KEYSTORE` | no | `vault` (default). `keychain` is not wired for E2EE chat yet and fails fast |
@@ -44,7 +41,10 @@ core automatically; a separate CLI or channel adapter installation is not requir
 If `OPENSTOA_API_KEY` is absent the server falls back to `~/.openstoa/credentials`
 (`{"apiKey": "osk_..."}`). The key is used alongside the saved login session,
 not as a replacement for it. Complete `openstoa_authenticate` or `openstoa login`
-using the same vault.
+using the same vault. Save the permission key through the hidden prompt after
+CLI login or with `openstoa apikey use`. MCP `openstoa_apikey_use` takes no
+arguments and validates the locally configured key, reporting its permissions.
+Never paste a raw key into an AI conversation or MCP tool argument.
 
 ## Usage documentation
 

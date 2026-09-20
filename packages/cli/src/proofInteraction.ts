@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline';
+import { Writable } from 'node:stream';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fmtValue } from './format';
@@ -8,6 +9,7 @@ import type { Commands, ProofWorkflowResult, TopicProofOptions } from '@masselab
 export interface ProofTerminal {
   isTTY(): boolean;
   ask(question: string): Promise<string>;
+  askSecret?(question: string): Promise<string>;
   write(text: string): void;
   sleep(ms: number): Promise<void>;
   openBrowser(url: string): Promise<void>;
@@ -30,6 +32,20 @@ export const defaultProofTerminal: ProofTerminal = {
     reader.once('SIGINT', () => finish('cancel'));
     reader.once('close', () => finish('cancel'));
     reader.question(question, finish);
+  }),
+  askSecret: question => new Promise(resolve => {
+    const silent = new Writable({write(_chunk, _encoding, done) { done(); }});
+    const reader = createInterface({input:process.stdin,output:silent,terminal:true});
+    // Disable TTY echo before exposing the prompt: pasted input can arrive immediately.
+    process.stderr.write(question);
+    let finished=false;
+    const finish=(answer:string)=>{
+      if(finished)return;finished=true;reader.close();silent.end();
+      process.stderr.write('\n');resolve(answer.trim());
+    };
+    reader.once('SIGINT',()=>finish(''));
+    reader.once('close',()=>finish(''));
+    reader.question('',finish);
   }),
   async openBrowser(value) {
     const url = new URL(value);

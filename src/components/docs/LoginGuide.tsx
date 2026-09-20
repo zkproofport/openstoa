@@ -16,7 +16,7 @@ export default function LoginGuide(){
       <p>{text('loginMcpAi')}</p><pre className={styles.code}>{'openstoa_authenticate {"method":"ai","approved":true}\nopenstoa_authenticate {"operationId":"<operationId>"}\nopenstoa_authenticate {"operationId":"<operationId>","cancel":true}'}</pre>
     </section>
     <section className={styles.card}><h2>{text('loginKeyTitle')}</h2><p>{text('loginKeyBody')}</p>
-      <pre className={styles.code}>{'export OPENSTOA_API_KEY="osk_..."\nopenstoa topics list'}</pre><p>{text('loginCredentialChoice')}</p>
+      <pre className={styles.code}>{'openstoa apikey use\nopenstoa topics list'}</pre><p>{text('loginCredentialChoice')}</p>
     </section>
     <section className={styles.card}><h2>{text('loginResponseTitle')}</h2><p>{text('loginResponseBody')}</p><p>{text('loginRedirectBody')}</p></section>
   </div>;

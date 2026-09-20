@@ -84,7 +84,10 @@ describe('CLI documentation contract', () => {
         expect(description?.trim().length, entry.command).toBeGreaterThan(10);
       }
       expect(['agent', 'owner', 'local', 'unavailable']).toContain(entry.access);
-      if (entry.command.startsWith('apikey ')) expect(entry.access).toBe('owner');
+      if (entry.command.startsWith('apikey ')) {
+        expect(entry.access).toBe(entry.command === 'apikey use' ? 'agent' : 'owner');
+        expect(entry.scopes).toEqual([]);
+      }
     }
   });
   it('keeps unavailable operations explicitly deprecated in generated OpenAPI', () => {

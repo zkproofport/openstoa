@@ -18,7 +18,6 @@ integrations.
 
 ```bash
 openstoa login
-export OPENSTOA_API_KEY="osk_..."                 # permission key selected after proof login
 ```
 
 CLI and MCP connect to `https://www.openstoa.xyz` by default. To use another
@@ -26,6 +25,9 @@ server, choose `--base-url` or `OPENSTOA_BASE_URL`; an existing saved server is
 also respected. For example, developers can select `http://localhost:3200` or
 `https://stg-community.zkproofport.app`. App login displays a QR code directly
 in the terminal after consent and waits for verification in the same process.
+After login, enter an owner-issued permission key in the hidden prompt. The CLI
+validates and saves it locally, then displays its permissions. Use `openstoa apikey use`
+to select a key later; environment variables are optional.
 Help works without a server URL,
 login session or API key: `openstoa --help`, `openstoa login --help`, and
 `openstoa topics join --help` show the relevant commands and options.

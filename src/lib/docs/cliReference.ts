@@ -52,6 +52,7 @@ export const EXPLICIT_CLI_REFERENCE: readonly CliReferenceEntry[] = [
   command('dm read', 'dm read <topicId> [--limit <n>] [--since <iso>] [--before <messageId>]', 'cliDmRead', ['/openstoa/topic/read', '/openstoa/chat/read']),
   command('profile get', 'profile get', 'cliProfileGet'),
   command('profile set-nickname', 'profile set-nickname <nickname>', 'cliProfileSetNickname', ['/openstoa/profile/edit']),
+  command('apikey use', 'apikey use', 'cliApikeyUse'),
   command('apikey create', 'apikey create --name <name> [--cmd <list>] [--history-grant <scope>] [--no-ai]', 'cliApikeyCreate', [], 'owner'),
   command('apikey list', 'apikey list', 'cliApikeyList', [], 'owner'),
   command('apikey update', 'apikey update <id> --cmd <list> --history-grant <scope>', 'cliApikeyUpdate', [], 'owner'),

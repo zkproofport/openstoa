@@ -4,7 +4,7 @@
  * `@masselabs/openstoa` SDK (typed REST + E2EE MLS chat), so they cannot diverge.
  */
 export { Commands, createCommands, resolveApiKey } from './commands';
-export type { CommandsDeps, LoginResult } from './commands';
+export type { CommandsDeps, LoginResult, PermissionKeyStatus } from './commands';
 export type {AuthenticateInput,AuthenticateResult} from './loginWorkflow';
 export { FileSessionStore, MemorySessionStore } from './session';
 export type { SessionData, SessionStore } from './session';

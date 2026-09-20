@@ -7,10 +7,10 @@ const consent = { status: 'consent_required', methods: ['app', 'ai'], message: '
 const pending = { status: 'pending', operationId: 'login-123', method: 'app', browserUrl: 'https://openstoa.test/login#approvalToken=browser-secret', expiresAt: '2099-01-01T00:00:00Z', pollAfterMs: 1500 };
 const authenticated = { status: 'authenticated', operationId: 'login-123', userId: 'u1', nickname: '테스트🦉', isAI: true };
 function harness(tty = false) {
-  const commands = { authenticate: vi.fn().mockResolvedValue(consent), login: vi.fn(), whoami: vi.fn() };
+  const commands = { authenticate: vi.fn().mockResolvedValue(consent), login: vi.fn(), whoami: vi.fn(), configureApiKey: vi.fn().mockResolvedValue({configured:true}) };
   const factory = vi.fn(async () => commands as unknown as Commands);
   const out: string[] = [];
-  const terminal = { isTTY: () => tty, ask: vi.fn().mockResolvedValueOnce('yes').mockResolvedValueOnce('app'), write: vi.fn(), sleep: vi.fn().mockResolvedValue(undefined), openBrowser: vi.fn().mockResolvedValue(undefined) };
+  const terminal = { askSecret: vi.fn().mockResolvedValue('osk_'+'a'.repeat(48)), isTTY: () => tty, ask: vi.fn().mockResolvedValueOnce('yes').mockResolvedValueOnce('app'), write: vi.fn(), sleep: vi.fn().mockResolvedValue(undefined), openBrowser: vi.fn().mockResolvedValue(undefined) };
   const program = buildProgram(factory, text => out.push(text), terminal);
   const guard = (command: typeof program) => { command.exitOverride().configureOutput({ writeErr: () => {} }); command.commands.forEach(guard); }; guard(program);
   return { commands, out, terminal, factory, run: (args: string[]) => program.parseAsync(['node', 'openstoa', ...args]) };
@@ -197,11 +197,14 @@ it.each([false,true])('AI login waits quietly, shows each actionable URL/code on
  await h.run(['login','--method','ai','--approved','--wait']);
  expect(h.commands.authenticate).toHaveBeenNthCalledWith(1,expect.objectContaining({method:'ai',approved:true}));
  for(const [input] of h.commands.authenticate.mock.calls.slice(1))expect(input).toEqual(expect.objectContaining({operationId:'ai-login-123'}));
- expect(h.terminal.write.mock.calls.map(([text])=>text)).toEqual([
+ const deviceWrites=h.terminal.write.mock.calls.map(([text])=>text);
+ expect(deviceWrites.filter(text=>text.startsWith('Open https://'))).toEqual([
   'Open https://google.com/device and enter AAAA-BBBB',
   'Open https://google.com/device and enter CCCC-DDDD',
   'Open https://accounts.google.com/device and enter CCCC-DDDD',
  ]);
+ expect(deviceWrites.join('')).not.toMatch(/\"status\"\s*:\s*\"pending\"/);
+ expect(deviceWrites.join('')).not.toContain('pending poll');
  expect(h.out).toHaveLength(1);expect(h.out[0]).toMatch(/logged in/i);expect(h.out[0]).toContain('테스트🦉');
  expect(h.out[0].trim()).not.toMatch(/^[{[]/);expect(h.terminal.ask).not.toHaveBeenCalled();
  if(tty)expect(h.terminal.openBrowser.mock.calls).toEqual([['https://google.com/device'],['https://accounts.google.com/device']]);
@@ -214,6 +217,72 @@ it('JSON AI wait emits the final identity only on stdout and one human device in
  for(const response of [initial,initial,device,...Array(20).fill(device),{...authenticated,operationId:'ai-login-123'}])h.commands.authenticate.mockResolvedValueOnce(response);
  await h.run(['--json','login','--method','ai','--approved','--wait']);
  expect(h.out).toHaveLength(1);expect(JSON.parse(h.out[0])).toEqual({...authenticated,operationId:'ai-login-123'});
- expect(h.terminal.write.mock.calls.map(([text])=>text)).toEqual(['Open https://google.com/device and enter AAAA-BBBB']);
+ const deviceWrites=h.terminal.write.mock.calls.map(([text])=>text);
+ expect(deviceWrites.filter(text=>text.startsWith('Open https://'))).toEqual(['Open https://google.com/device and enter AAAA-BBBB']);
+ expect(deviceWrites.join('')).not.toMatch(/\"status\"\s*:\s*\"pending\"/);
  expect(h.terminal.ask).not.toHaveBeenCalled();expect(h.terminal.openBrowser).not.toHaveBeenCalled();
+});
+
+it('interactive proof login asks for a missing permission key through secret input and never outputs it',async()=>{
+ const h=harness(true);const raw='osk_'+'a'.repeat(48);h.commands.authenticate.mockResolvedValue(authenticated);
+ h.commands.configureApiKey.mockResolvedValueOnce({configured:false}).mockResolvedValueOnce({configured:true});
+ await h.run(['login','--operation-id','login-123']);
+ expect(h.terminal.askSecret).toHaveBeenCalledOnce();expect(h.terminal.ask).not.toHaveBeenCalled();
+ expect(h.commands.configureApiKey.mock.calls).toEqual([[],[raw]]);
+ expect(h.out.join('')+h.terminal.write.mock.calls.flat().join('')).not.toContain(raw);
+});
+it('interactive login reuses a validated selected key without asking for it again',async()=>{
+ const h=harness(true);h.commands.authenticate.mockResolvedValue(authenticated);await h.run(['login','--operation-id','login-123']);
+ expect(h.commands.configureApiKey).toHaveBeenCalledExactlyOnceWith();expect(h.terminal.askSecret).not.toHaveBeenCalled();
+});
+it.each([false,true])('noninteractive/JSON login offers apikey use without prompting (JSON=%s)',async json=>{
+ const h=harness(json);h.commands.authenticate.mockResolvedValue(authenticated);h.commands.configureApiKey.mockResolvedValue({configured:false});
+ await h.run([...(json?['--json']:[]),'login','--operation-id','login-123']);
+ expect(h.terminal.askSecret).not.toHaveBeenCalled();expect(h.terminal.ask).not.toHaveBeenCalled();
+ expect(h.terminal.write.mock.calls.flat().join('')).toContain('openstoa apikey use');
+ expect(h.out).toHaveLength(1);if(json)expect(JSON.parse(h.out[0])).toEqual(authenticated);else expect(h.out[0]).toMatch(/logged in/i);
+});
+it('apikey use asks for a secret interactively and does not echo it',async()=>{
+ const h=harness(true);const raw='osk_'+'a'.repeat(48);await h.run(['apikey','use']);
+ expect(h.terminal.askSecret).toHaveBeenCalledOnce();expect(h.commands.configureApiKey).toHaveBeenCalledWith(raw);
+ expect(h.out.join('')+h.terminal.write.mock.calls.flat().join('')).not.toContain(raw);
+});
+it('explicit machine apikey use validates the global key without prompting and returns only status',async()=>{
+ const h=harness(true);const raw='osk_'+'a'.repeat(48);await h.run(['--json','--api-key',raw,'apikey','use']);
+ expect(h.commands.configureApiKey).toHaveBeenCalledWith(raw);expect(h.terminal.askSecret).not.toHaveBeenCalled();
+ expect(JSON.parse(h.out.join(''))).toEqual({configured:true});expect(h.out.join('')).not.toContain(raw);
+});
+it('missing key authorization gives apikey use guidance without restarting login or prompting',async()=>{
+ const h=harness(true);h.commands.whoami.mockRejectedValue(new OpenStoaApiError(403,'GET','/api/profile',{code:'api_key_required',error:'Select an API key'}));
+ await h.run(['whoami']);expect(h.out.join('')).toContain('openstoa apikey use');expect(h.out.join('').trim()).not.toMatch(/^[{[]/);
+ expect(h.commands.authenticate).not.toHaveBeenCalled();expect(h.terminal.askSecret).not.toHaveBeenCalled();
+});
+it('JSON missing-key authorization preserves structured guidance without prompts',async()=>{
+ const h=harness(true);h.commands.whoami.mockRejectedValue(new OpenStoaApiError(403,'GET','/api/profile',{code:'api_key_required',error:'Select an API key'}));
+ await h.run(['--json','whoami']);expect(JSON.parse(h.out.join(''))).toMatchObject({code:'api_key_required'});
+ expect(h.commands.authenticate).not.toHaveBeenCalled();expect(h.terminal.askSecret).not.toHaveBeenCalled();
+});
+
+it('login validates a supplied startup key after authentication and displays its permissions without echoing it',async()=>{
+ const h=harness(true);const raw='osk_'+'a'.repeat(48);const order:string[]=[];
+ h.commands.authenticate.mockImplementation(async()=>{order.push('login');return authenticated;});
+ h.commands.configureApiKey.mockImplementation(async()=>{order.push('key');return {configured:true,apiKeyId:'key-1',capabilities:['feed:read','post:write'],historyGrant:'30d'};});
+ await h.run(['--api-key',raw,'login','--operation-id','login-123']);
+ expect(order).toEqual(['login','key']);expect(h.terminal.askSecret).not.toHaveBeenCalled();
+ const text=h.out.join('')+h.terminal.write.mock.calls.flat().join('');
+ for(const value of ['feed:read','post:write','30d'])expect(text).toContain(value);
+ expect(text).not.toContain(raw);
+});
+
+it('a rejected selected key after successful login allows a secret replacement without logging in again',async()=>{
+ const h=harness(true);const raw='osk_'+'a'.repeat(48);h.commands.authenticate.mockResolvedValue(authenticated);
+ h.commands.configureApiKey.mockRejectedValueOnce(new Error('The selected key is invalid')).mockResolvedValueOnce({configured:true});
+ await h.run(['login','--operation-id','login-123']);
+ expect(h.commands.authenticate).toHaveBeenCalledOnce();expect(h.terminal.askSecret).toHaveBeenCalledOnce();
+ expect(h.commands.configureApiKey).toHaveBeenLastCalledWith(raw);
+ const text=h.out.join('')+h.terminal.write.mock.calls.flat().join('');expect(text).not.toContain(raw);expect(text).toMatch(/logged in/i);
+});
+it.each(['api_scope_denied','api_key_invalid','owner_session_required'])('permission refusal %s never initiates a new login or secret prompt',async code=>{
+ const h=harness(true);h.commands.whoami.mockRejectedValue(new OpenStoaApiError(403,'GET','/api/profile',{code,error:'Permission refused'}));
+ await expect(h.run(['whoami'])).rejects.toThrow();expect(h.commands.authenticate).not.toHaveBeenCalled();expect(h.terminal.askSecret).not.toHaveBeenCalled();
 });

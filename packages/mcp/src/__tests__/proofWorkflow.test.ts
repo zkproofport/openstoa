@@ -21,7 +21,8 @@ it.each([['openstoa_topic_join', { topicId: 't1' }], ['openstoa_topic_join_invit
 });
 it('exposes explicit consent, status, resume and cancel with no private-key argument', async () => {
   const h = harness();
-  expect(h.registry.size).toBe(89);
+  expect(h.registry.size).toBe(90);
+  expect(h.registry.has('openstoa_apikey_use')).toBe(true);
   const schema = z.object(h.registry.get('openstoa_proof_continue')!.schema).strict();
   expect(schema.safeParse({ operationId: 'op1', method: 'ai' }).success).toBe(false);
   expect(schema.safeParse({ operationId: 'op1', method: 'ai', approved: false }).success).toBe(false);
