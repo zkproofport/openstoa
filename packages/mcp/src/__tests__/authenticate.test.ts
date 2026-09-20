@@ -6,15 +6,16 @@ import { registerTools, type ToolResult } from '../tools';
 function harness() {
   const authenticate = vi.fn().mockResolvedValue({ status: 'consent_required', methods: ['app', 'ai'] });
   const whoami = vi.fn();
+  const configureApiKey=vi.fn().mockResolvedValue({configured:true,apiKeyId:'key-1',capabilities:['feed:read'],historyGrant:'none'});
   const registry = new Map<string, { schema: Record<string, z.ZodTypeAny>; run: (a: Record<string, unknown>) => Promise<ToolResult> }>();
-  registerTools({ tool(name, _description, schema, run) { registry.set(name, { schema, run }); } }, { authenticate, whoami } as unknown as Commands);
+  registerTools({ tool(name, _description, schema, run) { registry.set(name, { schema, run }); } }, { authenticate, whoami, configureApiKey } as unknown as Commands);
   const tool = () => { expect(registry.has('openstoa_authenticate')).toBe(true); return registry.get('openstoa_authenticate')!; };
-  return { authenticate, whoami, registry, schema: () => z.object(tool().schema).strict(), async call(input: Record<string, unknown> = {}) {
+  return { authenticate, whoami, configureApiKey, registry, schema: () => z.object(tool().schema).strict(), async call(input: Record<string, unknown> = {}) {
     const result = await tool().run(z.object(tool().schema).strict().parse(input));
     expect(result.isError).toBeUndefined(); return JSON.parse(result.content[0].text);
   } };
 }
-it('registers authentication without removing any existing tool', () => { expect(harness().registry.size).toBe(89); });
+it('registers authentication without removing any existing tool', () => { expect(harness().registry.size).toBe(90); });
 it('an empty tool call requests consent without injecting approval', async () => {
   const h = harness(); expect(await h.call()).toMatchObject({ status: 'consent_required' });
   expect(h.authenticate).toHaveBeenCalledOnce(); expect(h.authenticate.mock.calls[0][0]?.approved).not.toBe(true);
@@ -50,4 +51,18 @@ it.each(['API_KEY_REQUIRED', 'API_KEY_SCOPE_DENIED', 'API_KEY_OWNER_MISMATCH'])(
   h.whoami.mockRejectedValue(new OpenStoaApiError(403, 'GET', '/api/profile', { error: 'Permission key refused', code }));
   const response = await h.registry.get('openstoa_whoami')!.run({});
   expect(response.isError).toBe(true); expect(h.authenticate).not.toHaveBeenCalled();
+});
+
+it('MCP exposes selected-key validation without accepting raw secrets in tool arguments',async()=>{
+ const h=harness();const tool=h.registry.get('openstoa_apikey_use');expect(tool).toBeDefined();
+ const schema=z.object(tool!.schema).strict();expect(schema.safeParse({}).success).toBe(true);
+ for(const argument of [{apiKey:'osk_secret'},{key:'osk_secret'},{token:'session-secret'}])expect(schema.safeParse(argument).success).toBe(false);
+ const result=await tool!.run({});expect(result.isError).not.toBe(true);
+ expect(JSON.parse(result.content[0].text)).toEqual({configured:true,apiKeyId:'key-1',capabilities:['feed:read'],historyGrant:'none'});
+ expect(h.configureApiKey).toHaveBeenCalledExactlyOnceWith();expect(h.authenticate).not.toHaveBeenCalled();
+});
+it('MCP missing configured permission key returns status without trying proof login',async()=>{
+ const h=harness();h.configureApiKey.mockResolvedValue({configured:false});
+ const tool=h.registry.get('openstoa_apikey_use');expect(tool).toBeDefined();const result=await tool!.run({});
+ expect(JSON.parse(result.content[0].text)).toMatchObject({configured:false});expect(h.authenticate).not.toHaveBeenCalled();
 });

@@ -1,17 +1,8 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import {randomUUID} from 'node:crypto';
 
-/**
- * Optional `<home>/credentials` file — a persistent alternative to the
- * `OPENSTOA_API_KEY` env var for agents that can't (or shouldn't) rely on the
- * calling process's environment (design §7 follow-up, API-key auth). Lets an
- * operator bootstrap once with `openstoa login`, mint a scoped key via
- * `openstoa apikey create`, and drop it here so every subsequent CLI/MCP
- * invocation authenticates with NO interactive login at all.
- *
- * Read-only from this package's perspective — nothing here ever WRITES the
- * file; that's an operator/deployment concern, kept simple on purpose.
- */
+/** Locally selected permission key. Proof login remains a separate requirement. */
 export interface Credentials {
   apiKey?: string;
 }
@@ -28,5 +19,17 @@ export async function readCredentials(home: string): Promise<Credentials | null>
     // Missing file, bad JSON, permission error — treat as "no credentials"
     // rather than crash agent startup over an optional bootstrap file.
     return null;
+  }
+}
+
+/** Atomically replace the selected key; neither terminal output nor logs contain it. */
+export async function writeCredentials(home: string, credentials: Credentials): Promise<void> {
+  await fs.mkdir(home, {recursive:true, mode:0o700});
+  const temporary=path.join(home, `.credentials-${randomUUID()}`);
+  try {
+    await fs.writeFile(temporary, JSON.stringify(credentials)+'\n', {mode:0o600, flag:'wx'});
+    await fs.rename(temporary, path.join(home,'credentials'));
+  } finally {
+    await fs.rm(temporary, {force:true});
   }
 }

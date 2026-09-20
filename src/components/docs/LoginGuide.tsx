@@ -5,7 +5,7 @@ export default function LoginGuide(){
   const {t}=useTranslation();const text=(key:string)=>t('docs.'+key);
   return <div data-login-guide>
     <section className={styles.card}><h2>{text('loginAppTitle')}</h2><p>{text('loginAppBody')}</p>
-      <pre className={styles.code}>{'npm i -g @masselabs/openstoa-cli\nexport OPENSTOA_BASE_URL=https://www.openstoa.xyz\nopenstoa login\nopenstoa whoami'}</pre>
+      <pre className={styles.code}>{'npm i -g @masselabs/openstoa-cli\nopenstoa login\nopenstoa whoami'}</pre>
       <p>{text('loginAppResume')}</p><pre className={styles.code}>{'openstoa --json login --method app --approved\nopenstoa --json login --operation-id <operationId> --wait\nopenstoa --json login --operation-id <operationId> --cancel'}</pre>
     </section>
     <section className={styles.card}><h2>{text('loginAiTitle')}</h2><p>{text('loginAiBody')}</p>
@@ -16,7 +16,7 @@ export default function LoginGuide(){
       <p>{text('loginMcpAi')}</p><pre className={styles.code}>{'openstoa_authenticate {"method":"ai","approved":true}\nopenstoa_authenticate {"operationId":"<operationId>"}\nopenstoa_authenticate {"operationId":"<operationId>","cancel":true}'}</pre>
     </section>
     <section className={styles.card}><h2>{text('loginKeyTitle')}</h2><p>{text('loginKeyBody')}</p>
-      <pre className={styles.code}>{'export OPENSTOA_API_KEY="osk_..."\nopenstoa topics list'}</pre><p>{text('loginCredentialChoice')}</p>
+      <pre className={styles.code}>{'openstoa apikey use\nopenstoa topics list'}</pre><p>{text('loginCredentialChoice')}</p>
     </section>
     <section className={styles.card}><h2>{text('loginResponseTitle')}</h2><p>{text('loginResponseBody')}</p><p>{text('loginRedirectBody')}</p></section>
   </div>;

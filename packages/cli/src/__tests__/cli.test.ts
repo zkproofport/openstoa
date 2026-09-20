@@ -13,11 +13,12 @@ function harness(overrides: Partial<Record<keyof Commands, (...a: unknown[]) => 
   const make = (method: string) => (...args: unknown[]) => {
     calls.push({ method, args });
     const fn = overrides[method as keyof Commands];
-    return Promise.resolve(fn ? (fn as (...a: unknown[]) => unknown)(...args) : {});
+    return Promise.resolve(fn ? (fn as (...a: unknown[]) => unknown)(...args) : method === 'configureApiKey' ? {configured:true} : {});
   };
   const cmds = {
     login: make('login'),
     authenticate: make('authenticate'),
+    configureApiKey: make('configureApiKey'),
     // Keep a legacy-method sentinel: login must use the shared workflow.
     loginWithGoogle: make('loginWithGoogle'),
     logout: make('logout'),

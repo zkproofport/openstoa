@@ -21,9 +21,9 @@ function harness(tty = false) {
   return { commands, out, terminal, run: (args: string[]) => program.parseAsync(['node', 'openstoa', ...args]) };
 }
 
-it.each([['topics', 'join', 't1'], ['topics', 'join-invite', 'code'], ['topics', 'create', '--title', 'T', '--category-id', 'c1', '--proof-type', 'kyc']])('noninteractive %j returns structured consent guidance without starting proof', async (...args) => {
+it.each([['topics', 'join', 't1'], ['topics', 'join-invite', 'code'], ['topics', 'create', '--title', 'T', '--category-id', 'c1', '--proof-type', 'kyc']])('explicit JSON %j returns structured consent guidance without starting proof', async (...args) => {
   const h = harness();
-  await h.run(args);
+  await h.run(['--json',...args]);
   expect(JSON.parse(h.out.join(''))).toEqual(required);
   expect(h.terminal.ask).not.toHaveBeenCalled();
   expect(h.commands.proofContinue).not.toHaveBeenCalled();
@@ -116,4 +116,16 @@ it.each([['status', 'proofStatus'], ['resume', 'proofResume'], ['cancel', 'proof
   expect(h.commands[method]).toHaveBeenCalledExactlyOnceWith('op1');
   expect(h.commands.proofContinue).not.toHaveBeenCalled();
   expect(h.terminal.ask).not.toHaveBeenCalled();
+});
+
+it.each([['topics','join','t1'],['topics','join-invite','code'],['topics','create','--title','T','--category-id','c1','--proof-type','kyc']])('non-TTY proof requirement without --json uses readable guidance (%j)',async(...args)=>{
+ const h=harness(false);await h.run(args);
+ const text=h.out.join('');expect(text).toContain('KYC proof required');expect(text).toContain('op1');expect(text.trim()).not.toMatch(/^[{[]/);
+ expect(h.terminal.ask).not.toHaveBeenCalled();expect(h.commands.proofContinue).not.toHaveBeenCalled();
+});
+it('explicit proof resume without --json formats its completed payload as human text',async()=>{
+ const h=harness(false);await h.run(['proof','resume','op1']);
+ const text=h.out.join('');expect(text).toContain('completed');expect(text).toContain('t1');
+ expect(text).not.toContain('"topicId"');expect(text).not.toContain('"joined"');
+ expect(h.commands.proofResume).toHaveBeenCalledExactlyOnceWith('op1');
 });

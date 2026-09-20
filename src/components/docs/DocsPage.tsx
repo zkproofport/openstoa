@@ -60,7 +60,7 @@ export default function DocsPage({ initialTopic = 'intro' }: { initialTopic?: Do
           <LoginGuide />
           <ProofWorkflowGuide />
           <section className={styles.card} id="mcp-setup"><h2>{text('mcpSetupTitle')}</h2><p>{text('mcpSetupBody')}</p>
-            <pre className={styles.code}>{JSON.stringify({mcpServers: {openstoa: {command: 'npx', args: ['-y', '@masselabs/openstoa-mcp'], env: {OPENSTOA_BASE_URL: 'https://www.openstoa.xyz'}}}}, null, 2)}</pre>
+            <pre className={styles.code}>{JSON.stringify({mcpServers: {openstoa: {command: 'npx', args: ['-y', '@masselabs/openstoa-mcp']}}}, null, 2)}</pre>
             <p>{text('mcpCheckBody')}</p><pre className={styles.code}>{'openstoa_whoami {}\nopenstoa_topics_list {"view":"all"}'}</pre>
           </section>
           <section className={styles.card}><h2>{text('loginPermissionsTitle')}</h2><p>{text('loginPermissionsBody')}</p><p>{text('cliStateBody')}</p><a href="/docs?topic=chat#chat">{text('navChat')} →</a></section>

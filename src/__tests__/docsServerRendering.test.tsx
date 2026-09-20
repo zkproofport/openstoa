@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import Page from '@/app/docs/page';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { DOCS_TOPICS } from '@/lib/docs/navigation';
+import { CLI_REFERENCE } from '@/lib/docs/cliReference';
 import { translate } from '@/lib/i18n';
 vi.mock('@/components/Header', () => ({ default: () => null }));
 
@@ -16,7 +17,10 @@ describe('docs are readable without browser JavaScript', () => {
     for (const topic of DOCS_TOPICS) expect(html).toContain(`/docs?topic=${topic.id}#${topic.id}`);
     expect(html).toContain(translate('en', `docs.${label}`));
     if (id === 'login') expect(html).toContain('OPENSTOA_API_KEY');
-    if (id === 'commands') expect(html.match(/data-cli-command=/g)).toHaveLength(88);
+    if (id === 'commands') {
+      expect(html.match(/data-cli-command=/g)).toHaveLength(CLI_REFERENCE.length);
+      expect(html).toContain('data-cli-command="apikey use"');
+    }
     if (id === 'topics') expect(html).toContain('proof_required');
     if (id === 'chat') expect(html).toContain('MLS');
   });

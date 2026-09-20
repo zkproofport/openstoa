@@ -9,7 +9,7 @@ import {unhandledRouteError} from '@/lib/apiError';
  *     tags: [Auth]
  *     operationId: startCliLogin
  *     summary: Start an explicitly approved app proof login for CLI/MCP
- *     description: Creates a ten-minute login bound to a SHA256 code verifier. Display browserUrl to the user; poll the login endpoint with the locally retained verifier. Never send tokens in redirect URLs.
+ *     description: Creates a ten-minute login bound to a SHA256 code verifier. After explicit user consent, approved=true starts the mobile proof request and returns deepLink for a terminal or client-rendered QR code. Otherwise show browserUrl for browser approval. Poll with the locally retained verifier; only a verified proof creates a session. Never send tokens in redirect URLs.
  *     security: []
  *     requestBody:
  *       required: true
@@ -20,17 +20,19 @@ import {unhandledRouteError} from '@/lib/apiError';
  *             required: [codeChallenge]
  *             properties:
  *               codeChallenge: { type: string, description: 'Base64url SHA256 of a locally generated 43–128-character code verifier' }
+ *               approved: { type: boolean, default: false, description: 'Set true only after explicit user consent to start the mobile proof request immediately' }
  *               redirect_url: { type: string, description: 'Same-origin OpenStoa page to open after browser login; default /my' }
  *     responses:
  *       202:
- *         description: Login pending user approval
+ *         description: Login pending approval or mobile proof
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
  *                 loginId: { type: string }
- *                 browserUrl: { type: string }
+ *                 browserUrl: { type: string, description: Optional browser approval URL }
+ *                 deepLink: { type: string, description: App link for QR rendering; returned when explicitly approved }
  *                 expiresAt: { type: integer }
  *                 pollAfterMs: { type: integer }
  *       400: { description: Invalid challenge or redirect }

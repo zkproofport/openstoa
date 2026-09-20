@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DocsPage from '@/components/docs/DocsPage';
 import { DOCS_TOPICS } from '@/lib/docs/navigation';
+import { CLI_REFERENCE } from '@/lib/docs/cliReference';
 import { translate } from '@/lib/i18n';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 vi.mock('@/components/Header', () => ({ default: () => null }));
@@ -65,7 +66,8 @@ describe('subject-based documentation', () => {
     const host = document.createElement('div'); const root = createRoot(host);
     try {
       act(() => root.render(<I18nProvider initialLocale="en"><DocsPage /></I18nProvider>));
-      expect(host.querySelectorAll('[data-cli-command]').length).toBe(88);
+      expect(host.querySelectorAll('[data-cli-command]')).toHaveLength(CLI_REFERENCE.length);
+      expect(host.querySelector('[data-cli-command="apikey use"]')).not.toBeNull();
       expect(host.querySelector('main h1')?.textContent).toBe('CLI command reference');
     } finally { act(() => root.unmount()); }
   });

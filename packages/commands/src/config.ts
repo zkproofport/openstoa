@@ -5,7 +5,7 @@ import * as path from 'node:path';
 export type KeystoreBackend = 'vault' | 'keychain';
 
 export interface CommandConfig {
-  /** OpenStoa origin, e.g. `http://localhost:3200`. Falls back to OPENSTOA_BASE_URL then the saved session. */
+  /** OpenStoa origin, e.g. `http://localhost:3200`. Uses OPENSTOA_BASE_URL, then the saved session, then https://www.openstoa.xyz. */
   baseUrl?: string;
   /** The `.openstoa` home directory (keys + session). Defaults to `~/.openstoa`. */
   vaultRoot?: string;

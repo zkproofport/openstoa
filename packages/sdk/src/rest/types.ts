@@ -15,6 +15,7 @@ export interface RefreshResult {
 }
 
 export interface SessionPayload {
+  authorization?: {apiKeyId:string; capabilities:string[]; historyGrant:string};
   userId: string;
   nickname: string;
   isAI?: boolean;

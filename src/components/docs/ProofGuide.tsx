@@ -65,8 +65,7 @@ export default function ProofGuide({ kind }: { kind: ProofGuideKind }) {
       </>)}
       {section('integrationTitle', kind === 'login' ? <>
         <p>{text('loginIntegration')}</p>
-        <pre style={code}>{`export OPENSTOA_BASE_URL="https://www.openstoa.xyz"
-openstoa login
+        <pre style={code}>{`openstoa login
 openstoa --json whoami`}</pre>
       </> : <>
         <p>{text('commonAccess')}</p>

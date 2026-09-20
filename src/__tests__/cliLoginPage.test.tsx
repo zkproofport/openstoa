@@ -179,3 +179,17 @@ it('expires even if response headers arrive but reading its JSON body stalls',as
  expect(container.textContent).toContain(translate('en','cliLogin.expired'));
  expect(fetchMock).toHaveBeenCalledTimes(1);expect(assign).not.toHaveBeenCalled();
 });
+
+it.each(['en','ko'] as const)('consent copy appears once and approval actions are visibly styled in %s',async locale=>{
+ await render(locale);
+ const consent=translate(locale,'cliLogin.consent');
+ expect(container.textContent!.split(consent).length-1).toBe(1);
+ for(const key of ['approve','decline']){
+  const button=Array.from(container.querySelectorAll('button')).find(node=>node.textContent?.trim()===translate(locale,`cliLogin.${key}`));
+  expect(button?.className).toMatch(/os-button/);
+ }
+ expect(fetchMock).not.toHaveBeenCalled();
+ expect(container.querySelector('img')).toBeNull();
+ await press('approve',locale);
+ expect(container.querySelector('img')?.getAttribute('src')).toContain('data:image/png');
+});

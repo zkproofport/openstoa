@@ -1,12 +1,15 @@
 import { createInterface } from 'node:readline';
+import { Writable } from 'node:stream';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fmtValue } from './format';
 import type { Commands, ProofWorkflowResult, TopicProofOptions } from '@masselabs/openstoa-commands';
 
 /** Terminal capabilities are injectable; machine callers never use prompts. */
 export interface ProofTerminal {
   isTTY(): boolean;
   ask(question: string): Promise<string>;
+  askSecret?(question: string): Promise<string>;
   write(text: string): void;
   sleep(ms: number): Promise<void>;
   openBrowser(url: string): Promise<void>;
@@ -30,6 +33,20 @@ export const defaultProofTerminal: ProofTerminal = {
     reader.once('close', () => finish('cancel'));
     reader.question(question, finish);
   }),
+  askSecret: question => new Promise(resolve => {
+    const silent = new Writable({write(_chunk, _encoding, done) { done(); }});
+    const reader = createInterface({input:process.stdin,output:silent,terminal:true});
+    // Disable TTY echo before exposing the prompt: pasted input can arrive immediately.
+    process.stderr.write(question);
+    let finished=false;
+    const finish=(answer:string)=>{
+      if(finished)return;finished=true;reader.close();silent.end();
+      process.stderr.write('\n');resolve(answer.trim());
+    };
+    reader.once('SIGINT',()=>finish(''));
+    reader.once('close',()=>finish(''));
+    reader.question('',finish);
+  }),
   async openBrowser(value) {
     const url = new URL(value);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Unsupported proof browser URL');
@@ -47,7 +64,7 @@ export function formatProofWorkflow(state: ProofWorkflowResult): string {
   if (state.verificationUrl) lines.push(`Verification URL: ${state.verificationUrl}`);
   if (state.userCode) lines.push(`User code: ${state.userCode}`);
   if (state.deepLink && !state.browserUrl) lines.push(`Open in ZKProofport: ${state.deepLink}`);
-  if (state.status === 'completed') lines.push(JSON.stringify(state.result, null, 2));
+  if (state.status === 'completed') lines.push(fmtValue(state.result));
   return lines.filter(Boolean).join('\n');
 }
 

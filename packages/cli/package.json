@@ -34,11 +34,13 @@
   },
   "dependencies": {
     "@masselabs/openstoa-commands": "^0.2.1",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@masselabs/openstoa": "^0.2.1",
     "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

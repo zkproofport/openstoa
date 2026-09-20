@@ -5,8 +5,15 @@ import type {SessionStore,PendingLogin} from './session';
 export interface AuthenticateInput {method?:'app'|'ai';approved?:boolean;operationId?:string;cancel?:boolean;redirectUrl?:string;}
 export interface AuthenticateResult {
   status:'consent_required'|'pending'|'authenticated'|'cancelled'|'expired'|'failed';
-  operationId?:string;message:string;browserUrl?:string;verificationUrl?:string;userCode?:string;
+  operationId?:string;message:string;deepLink?:string;browserUrl?:string;verificationUrl?:string;userCode?:string;
   expiresAt?:number;pollAfterMs:number;userId?:string;nickname?:string;isAI?:boolean;
+}
+function mobileLink(value:unknown):string|undefined {
+  if(value===undefined)return undefined;
+  if(typeof value!=='string')throw new Error('Invalid login QR link');
+  const url=new URL(value);
+  if(url.protocol!=='zkproofport:'||url.hostname!=='proof-request'||url.username||url.password)throw new Error('Invalid login QR link');
+  return value;
 }
 interface Deps {rest:OpenStoaClient;baseUrl:string;store:SessionStore;prover?:typeof startAiTopicProof;adopt:(token:string,guard:()=>Promise<void>)=>Promise<{userId:string;nickname:string;isAI?:boolean}>;}
 export class LoginWorkflow {
@@ -35,7 +42,7 @@ export class LoginWorkflow {
       }
       await guard();
       if(pending.method==='app'){
-        const response=await rest.request<{status:string;token?:string}>(`/api/auth/cli-login/${pending.operationId}`,{method:'POST',body:{codeVerifier:pending.codeVerifier}});
+        const response=await rest.request<{status:string;token?:string;deepLink?:string}>(`/api/auth/cli-login/${pending.operationId}`,{method:'POST',body:{codeVerifier:pending.codeVerifier}});
         if(response.status==='completed'){
           if(typeof response.token!=='string'||!response.token.trim())throw new Error('Login completed without a session token');
           const identity=await this.deps.adopt(response.token,guard);await store.clear();
@@ -43,6 +50,10 @@ export class LoginWorkflow {
         }
         if(response.status==='cancelled'){await store.clear();return {status:'cancelled',operationId:pending.operationId,message:'Login cancelled.',pollAfterMs:2000};}
         if(response.status!=='pending')throw new Error('Unexpected login status');
+        const deepLink=mobileLink(response.deepLink);
+        if(deepLink&&deepLink!==pending.deepLink){
+          await guard();pending.deepLink=deepLink;await store.write({baseUrl,pendingLogin:pending});
+        }
       }else{
         const handle=this.handles.get(pending.operationId);
         if(!handle){await store.clear();return {status:'failed',operationId:pending.operationId,message:'The AI login process ended. Start a new approved login; use app mode to continue across CLI runs.',pollAfterMs:2000};}
@@ -70,11 +81,11 @@ export class LoginWorkflow {
     const method=input.method??'app';
     if(method==='app'){
       const codeVerifier=randomBytes(32).toString('base64url');
-      const result=await rest.request<{loginId:string;browserUrl:string;expiresAt:number|string}>('/api/auth/cli-login',{method:'POST',body:{codeChallenge:createHash('sha256').update(codeVerifier).digest('base64url'),...(input.redirectUrl?{redirect_url:input.redirectUrl}:{})}});
+      const result=await rest.request<{loginId:string;browserUrl:string;deepLink?:string;expiresAt:number|string}>('/api/auth/cli-login',{method:'POST',body:{approved:true,codeChallenge:createHash('sha256').update(codeVerifier).digest('base64url'),...(input.redirectUrl?{redirect_url:input.redirectUrl}:{})}});
       const expiresAt=typeof result.expiresAt==='number'?result.expiresAt:Date.parse(result.expiresAt);
       const url=new URL(result.browserUrl);
       if(!/^[A-Za-z0-9_-]{1,128}$/.test(result.loginId)||url.origin!==new URL(baseUrl).origin||url.pathname!=='/login'||!Number.isFinite(expiresAt)||expiresAt<=Date.now())throw new Error('Invalid login handoff from server');
-      pending={operationId:result.loginId,method,baseUrl,codeVerifier,browserUrl:result.browserUrl,expiresAt};
+      pending={operationId:result.loginId,method,baseUrl,codeVerifier,browserUrl:result.browserUrl,deepLink:mobileLink(result.deepLink),expiresAt};
     }else{
       if(input.redirectUrl)throw new Error('redirectUrl is supported by app login only');
       const challenge=await rest.request<{challengeId:string;scope:string;expiresIn:number}>('/api/auth/challenge',{method:'POST',body:{purpose:'login'}});
@@ -86,5 +97,5 @@ export class LoginWorkflow {
     pending.credentialFingerprint=fingerprint();
     await store.write({baseUrl,pendingLogin:pending});return this.view(pending);
   }
-  private view(pending:PendingLogin):AuthenticateResult{return {status:'pending',operationId:pending.operationId,browserUrl:pending.browserUrl,expiresAt:pending.expiresAt,pollAfterMs:2000,message:'Complete the proof approval, then resume this same login operation.'};}
+  private view(pending:PendingLogin):AuthenticateResult{return {status:'pending',operationId:pending.operationId,browserUrl:pending.browserUrl,deepLink:pending.deepLink,expiresAt:pending.expiresAt,pollAfterMs:2000,message:'Complete the proof approval, then resume this same login operation.'};}
 }

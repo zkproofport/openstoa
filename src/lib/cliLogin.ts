@@ -36,15 +36,20 @@ export function loginRedirect(value:unknown,origin:string):string {
     ([...url.searchParams.keys()].some(key=>/token|secret|credential|code|key/i.test(key))||/token|secret|credential|code|key/i.test(url.hash)))throw new CliLoginError(400,'redirect_url must be an OpenStoa page on the same origin');
   return url.pathname+url.search+url.hash;
 }
-export async function startCliLogin(origin:string,input:{codeChallenge?:unknown;redirect_url?:unknown}) {
+export async function startCliLogin(origin:string,input:{codeChallenge?:unknown;redirect_url?:unknown;approved?:unknown}) {
   if(typeof input.codeChallenge!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(input.codeChallenge))throw new CliLoginError(400,'A SHA256 codeChallenge is required');
+  if(input.approved!==undefined&&typeof input.approved!=='boolean')throw new CliLoginError(400,'approved must be a boolean');
   const redirectUrl=loginRedirect(input.redirect_url,origin);
   const loginId=randomUUID(),approvalToken=randomBytes(32).toString('base64url');
   const expiresAt=Date.now()+TTL*1000;
   const record:RecordData={codeChallenge:input.codeChallenge,approvalHash:hash(approvalToken),redirectUrl,expiresAt,approved:false};
+  if(input.approved===true){
+    Object.assign(record,await createRelayProofRequest(COMMUNITY_SCOPE,{circuitType:'oidc_domain_attestation',message:'Approve Google account login for your OpenStoa CLI or AI agent'}));
+    record.approved=true;
+  }
   await redis.set(`community:cli-login:${loginId}`,JSON.stringify(record),'EX',TTL);
   const url=new URL('/login',origin);url.searchParams.set('loginId',loginId);url.hash=new URLSearchParams({approvalToken}).toString();
-  return {loginId,browserUrl:url.toString(),expiresAt,pollAfterMs:2000};
+  return {loginId,browserUrl:url.toString(),expiresAt,pollAfterMs:2000,...(record.deepLink?{deepLink:record.deepLink}:{})};
 }
 export async function readCliLogin(loginId:string,input:{approvalToken?:unknown;codeVerifier?:unknown;cancel?:unknown}):Promise<CliLoginState> {
   if(!/^[A-Za-z0-9_-]{1,100}$/.test(loginId))throw new CliLoginError(400,'Invalid login id');
@@ -84,7 +89,7 @@ export async function readCliLogin(loginId:string,input:{approvalToken?:unknown;
     if(!record.approved)return {status:'pending',pollAfterMs:2000};
     if(!record.identity){
       let result;try{result=await pollProofResult(record.requestId!);}catch(error){if(error instanceof RelayRequestNotFoundError)throw new CliLoginError(410,'Login proof expired');throw error;}
-      if(result.status==='pending')return {status:'pending',pollAfterMs:2000,...(browser?{deepLink:record.deepLink}:{})};
+      if(result.status==='pending')return {status:'pending',pollAfterMs:2000,deepLink:record.deepLink};
       if(result.status!=='completed'||!result.proof||!result.publicInputs||result.circuit!=='oidc_domain_attestation')throw new CliLoginError(400,'Google login proof is required');
       let inputs:string[];try{inputs=normalizePublicInputs(result.publicInputs);}catch{throw new CliLoginError(400,'Invalid login proof');}
       if(inputs.length!==148||!inputs.every(value=>/^0x[0-9a-fA-F]{64}$/.test(value))||BigInt(inputs[147])!==0n||extractScope(inputs,'oidc_domain_attestation')!==computeScopeHash(COMMUNITY_SCOPE))throw new CliLoginError(400,'Login proof provider or scope mismatch');

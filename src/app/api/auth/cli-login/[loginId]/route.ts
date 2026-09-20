@@ -10,7 +10,7 @@ import {unhandledRouteError} from '@/lib/apiError';
  *     tags: [Auth]
  *     operationId: completeCliLogin
  *     summary: Poll or cancel a bound login and receive the verified session
- *     description: Supply exactly one credential. CLI/MCP sends its local codeVerifier and receives token only on completion. Browser sends the fragment approvalToken after explicit approval; completion sets an HttpOnly session cookie and returns a safe redirectUrl, never a JSON token. Repeated completion returns the same session within the request lifetime.
+ *     description: Supply exactly one credential. CLI/MCP sends its local codeVerifier and receives token only on completion; pending approved requests include deepLink for QR rendering. Browser sends the fragment approvalToken after explicit approval; completion sets an HttpOnly session cookie and returns a safe redirectUrl, never a JSON token. Repeated completion returns the same session within the request lifetime.
  *     security: []
  *     parameters:
  *       - in: path
@@ -29,7 +29,7 @@ import {unhandledRouteError} from '@/lib/apiError';
  *               cancel: { type: boolean }
  *     responses:
  *       200: { description: "Completed or cancelled; browser receives cookie and redirectUrl, CLI receives token and identity" }
- *       202: { description: Awaiting approval or proof; pollAfterMs and browser-only deepLink }
+ *       202: { description: Awaiting approval or proof; pollAfterMs and deepLink once approved for either authorized client }
  *       400: { description: Invalid or rejected Google login proof }
  *       403: { description: Invalid login credential }
  *       410: { description: Login request expired }

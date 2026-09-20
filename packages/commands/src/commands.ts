@@ -8,7 +8,7 @@
  * layer only moves plaintext into `sendChat` / out of `readChat` in-process; it
  * never logs message bodies or keys, and never touches ciphertext directly.
  */
-import { ChatClient, getRestOperation, OpenStoaApiError } from '@masselabs/openstoa';
+import { ChatClient, OpenStoaClient, getRestOperation, OpenStoaApiError } from '@masselabs/openstoa';
 import type {
   ChatMessage,
   Topic,
@@ -26,7 +26,7 @@ import type {
   ApiKeyCreateResult,
 } from '@masselabs/openstoa';
 import { FileSessionStore, MemorySessionStore, type SessionData, type SessionStore } from './session';
-import { readCredentials } from './credentials';
+import { readCredentials, writeCredentials } from './credentials';
 import { resolveHome, type CommandConfig } from './config';
 import * as path from 'node:path';
 import {LoginWorkflow,type AuthenticateInput} from './loginWorkflow';
@@ -58,7 +58,12 @@ export interface LoginResult {
   isAI?: boolean;
 }
 
+export interface PermissionKeyStatus {
+  configured:boolean; apiKeyId?:string; capabilities?:string[]; historyGrant?:string;
+}
+
 export interface CommandsDeps {
+  credentialsHome?:string;
   loginStore?: SessionStore;
   loginProver?: typeof startAiTopicProof;
   proofStore?: ProofOperationStore;
@@ -70,6 +75,7 @@ export interface CommandsDeps {
 }
 
 export class Commands {
+  private readonly credentialsHome?:string;
   private readonly loginFlow: LoginWorkflow;
   private readonly proofs: TopicProofWorkflow;
   private readonly chat: ChatClient;
@@ -78,6 +84,7 @@ export class Commands {
   private session: SessionData | null;
 
   constructor(deps: CommandsDeps) {
+    this.credentialsHome=deps.credentialsHome;
     this.chat = deps.chat;
     this.store = deps.sessionStore;
     this.baseUrl = deps.baseUrl;
@@ -97,6 +104,25 @@ export class Commands {
   }
 
   authenticate(input:AuthenticateInput={}) { return this.loginFlow.run(input); }
+
+  /** Select an existing owner-issued permission key; this never creates a key. */
+  async configureApiKey(input?:string):Promise<PermissionKeyStatus> {
+    this.requireAuth();
+    const saved=this.credentialsHome?await readCredentials(this.credentialsHome):null;
+    const apiKey=input??this.chat.rest.getApiKey()??saved?.apiKey;
+    if(apiKey===undefined)return {configured:false};
+    if(!/^osk_[0-9a-f]{48}$/.test(apiKey))throw new Error('Invalid API key format. Enter the complete owner-issued key.');
+    const candidate=new OpenStoaClient({baseUrl:this.baseUrl,token:this.chat.rest.getToken()??undefined,apiKey});
+    let identity:SessionPayload;
+    try { identity=await candidate.auth.session(); }
+    catch { throw new Error('Could not validate the API key. Check your login and key, then try again.'); }
+    if(!identity.userId||identity.userId!==this.session?.userId)throw new Error('This API key is invalid, revoked, or belongs to another account.');
+    if(!this.credentialsHome)throw new Error('Permission key storage is not configured.');
+    await writeCredentials(this.credentialsHome,{apiKey});
+    this.chat.rest.setApiKey(apiKey);
+    const authorization=identity.authorization;
+    return {configured:true,...(authorization?{apiKeyId:authorization.apiKeyId,capabilities:authorization.capabilities,historyGrant:authorization.historyGrant}:{})};
+  }
 
   // ── auth ────────────────────────────────────────────────────────────────
 
@@ -514,12 +540,7 @@ export async function createCommands(config: CommandConfig = {}): Promise<Comman
   const home = resolveHome(config.vaultRoot);
   const sessionStore = new FileSessionStore(path.join(home, 'session.json'));
   const saved = await sessionStore.read();
-  const baseUrl = config.baseUrl ?? process.env.OPENSTOA_BASE_URL ?? saved?.baseUrl;
-  if (!baseUrl) {
-    throw new Error(
-      'No OpenStoa base URL. Pass --base-url, set OPENSTOA_BASE_URL, or run `openstoa login --base-url <url>` first.',
-    );
-  }
+  const baseUrl = config.baseUrl ?? process.env.OPENSTOA_BASE_URL ?? saved?.baseUrl ?? 'https://www.openstoa.xyz';
   // Load identity and authorization independently. A selected key never
   // replaces the saved proof-login session.
   const apiKey = await resolveApiKey(config, home);
@@ -530,5 +551,5 @@ export async function createCommands(config: CommandConfig = {}): Promise<Comman
     apiKey,
     token: saved?.token,
   });
-  return new Commands({ chat, sessionStore, baseUrl, session: saved, proofStore:new FileProofOperationStore(path.join(home,'proof-operations')),loginStore:new FileSessionStore(path.join(home,'login-operation.json')) });
+  return new Commands({ chat, credentialsHome:home, sessionStore, baseUrl, session: saved, proofStore:new FileProofOperationStore(path.join(home,'proof-operations')),loginStore:new FileSessionStore(path.join(home,'login-operation.json')) });
 }

@@ -55,7 +55,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
 
   // Login shares the CLI workflow; tools return identity, never session tokens.
   host.tool('openstoa_authenticate',
-    'Sign in using an explicitly approved app QR proof or local AI Google device flow. With no approval return consent guidance. After user approval call with approved:true and method app/ai; show browserUrl or verificationUrl/userCode. Poll with operationId until authenticated; session is saved locally automatically. cancel:true cancels. Login establishes identity. Business tools also require an owner-issued API key whose permissions limit each request. Do not ask for private keys or tokens in messages.',
+    'Sign in using an explicitly approved app QR proof or local AI Google device flow. With no approval return consent guidance. After user approval call with approved:true and method app/ai; show the app deepLink as a QR (browserUrl is optional) or verificationUrl/userCode. Poll with operationId until authenticated; session is saved locally automatically. cancel:true cancels. Login establishes identity. Then call openstoa_apikey_use to validate the locally configured key and inspect its permissions. If missing, have the user run openstoa apikey use locally in the same vault. Business tools require that owner-issued permission key. Do not ask for private keys or tokens in messages.',
     {method:z.enum(['app','ai']).optional(),approved:z.boolean().optional(),operationId:z.string().optional(),cancel:z.boolean().optional(),redirectUrl:z.string().optional()},
     wrap(a=>commands.authenticate(a as Parameters<Commands['authenticate']>[0])));
   host.tool(
@@ -249,6 +249,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       }),
     ),
   );
+  host.tool('openstoa_apikey_use', 'Validate and save the locally configured permission key after proof login. Returns its actual permissions without the key. No secret arguments: configure locally with openstoa apikey use in the same vault. This selects an existing owner-issued key; it never creates one.', {}, wrap(() => commands.configureApiKey()));
   host.tool('openstoa_apikey_list', 'List your API keys (metadata only — never the raw key). ACCOUNT-OWNER ONLY: for the account owner to run from their own real session. Agent sessions are denied even without an API key; human owner sessions must not attach a permission key.', {}, wrap(() => commands.apiKeyList()));
   host.tool(
     'openstoa_apikey_update',
