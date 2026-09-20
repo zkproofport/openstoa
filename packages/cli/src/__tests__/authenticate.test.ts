@@ -185,3 +185,35 @@ it('declining interactive login prints readable cancellation rather than JSON',a
  const text=h.out.join('');expect(text).toMatch(/cancelled/i);expect(text.trim()).not.toMatch(/^[{[]/);
  expect(h.commands.authenticate.mock.calls.some(([input])=>input?.approved===true)).toBe(false);
 });
+
+it.each([false,true])('AI login waits quietly, shows each actionable URL/code once and finishes in human language (TTY=%s)',async tty=>{
+ const h=harness(tty);
+ const initial={status:'pending',operationId:'ai-login-123',method:'ai',pollAfterMs:1000,message:'Preparing Google device authorization'};
+ const first={...initial,verificationUrl:'https://google.com/device',userCode:'AAAA-BBBB'};
+ const newCode={...first,userCode:'CCCC-DDDD'};
+ const newUrl={...newCode,verificationUrl:'https://accounts.google.com/device'};
+ const responses=[initial,initial,first,...Array.from({length:20},(_,i)=>({...first,pollAfterMs:1000+i,message:`pending poll ${i}`})),newCode,newCode,newUrl,newUrl,{...authenticated,operationId:'ai-login-123'}];
+ for(const response of responses)h.commands.authenticate.mockResolvedValueOnce(response);
+ await h.run(['login','--method','ai','--approved','--wait']);
+ expect(h.commands.authenticate).toHaveBeenNthCalledWith(1,expect.objectContaining({method:'ai',approved:true}));
+ for(const [input] of h.commands.authenticate.mock.calls.slice(1))expect(input).toEqual(expect.objectContaining({operationId:'ai-login-123'}));
+ expect(h.terminal.write.mock.calls.map(([text])=>text)).toEqual([
+  'Open https://google.com/device and enter AAAA-BBBB',
+  'Open https://google.com/device and enter CCCC-DDDD',
+  'Open https://accounts.google.com/device and enter CCCC-DDDD',
+ ]);
+ expect(h.out).toHaveLength(1);expect(h.out[0]).toMatch(/logged in/i);expect(h.out[0]).toContain('테스트🦉');
+ expect(h.out[0].trim()).not.toMatch(/^[{[]/);expect(h.terminal.ask).not.toHaveBeenCalled();
+ if(tty)expect(h.terminal.openBrowser.mock.calls).toEqual([['https://google.com/device'],['https://accounts.google.com/device']]);
+ else expect(h.terminal.openBrowser).not.toHaveBeenCalled();
+});
+it('JSON AI wait emits the final identity only on stdout and one human device instruction on stderr',async()=>{
+ const h=harness(true);
+ const initial={status:'pending',operationId:'ai-login-123',method:'ai',pollAfterMs:1000};
+ const device={...initial,verificationUrl:'https://google.com/device',userCode:'AAAA-BBBB'};
+ for(const response of [initial,initial,device,...Array(20).fill(device),{...authenticated,operationId:'ai-login-123'}])h.commands.authenticate.mockResolvedValueOnce(response);
+ await h.run(['--json','login','--method','ai','--approved','--wait']);
+ expect(h.out).toHaveLength(1);expect(JSON.parse(h.out[0])).toEqual({...authenticated,operationId:'ai-login-123'});
+ expect(h.terminal.write.mock.calls.map(([text])=>text)).toEqual(['Open https://google.com/device and enter AAAA-BBBB']);
+ expect(h.terminal.ask).not.toHaveBeenCalled();expect(h.terminal.openBrowser).not.toHaveBeenCalled();
+});
