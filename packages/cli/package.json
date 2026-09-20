@@ -1,6 +1,6 @@
 {
   "name": "@masselabs/openstoa-cli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "OpenStoa CLI (`openstoa`) — REST + E2EE chat for AI agents and humans, over @masselabs/openstoa. Shares one command core with the OpenStoa MCP server.",
   "license": "MIT",
   "repository": {
@@ -33,12 +33,12 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@masselabs/openstoa-commands": "^0.2.1",
+    "@masselabs/openstoa-commands": "^0.2.2",
     "commander": "^12.1.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
-    "@masselabs/openstoa": "^0.2.1",
+    "@masselabs/openstoa": "^0.2.2",
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",
     "tsup": "^8.0.0",

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/zkproofport/openstoa/compare/openstoa-sdk-v0.2.1...openstoa-sdk-v0.2.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* complete proof login, permission key setup and human CLI output ([#9](https://github.com/zkproofport/openstoa/issues/9)) ([38fa43d](https://github.com/zkproofport/openstoa/commit/38fa43d2b8c521b925f72e5c2facc1920a6b05a2))
+
 ## [0.2.1](https://github.com/zkproofport/openstoa/compare/openstoa-sdk-v0.2.0...openstoa-sdk-v0.2.1) (2026-09-18)
 
 
