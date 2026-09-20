@@ -5,6 +5,7 @@
  * MCP server stay in lockstep. `--json` emits the raw structured result.
  */
 import { Command, Option } from 'commander';
+import QRCode from 'qrcode';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { OpenStoaApiError, createCommands, isEntrypoint, REST_OPERATIONS, isProofWorkflowResult, type ProofWorkflowResult, type OperationParameter, type Commands, type CommandConfig, type CreateTopicInput, type TopicProofOptions } from '@masselabs/openstoa-commands';
@@ -78,7 +79,7 @@ export function buildProgram(
   program
     .name('openstoa')
     .description('OpenStoa CLI — REST + E2EE chat over @masselabs/openstoa (same core as the MCP server)')
-    .option('--base-url <url>', 'OpenStoa origin (else OPENSTOA_BASE_URL, else the saved session)')
+    .option('--base-url <url>', 'OpenStoa origin (else OPENSTOA_BASE_URL, saved session, then https://www.openstoa.xyz)')
     .option('--vault-root <dir>', 'the .openstoa home dir for keys + session (default ~/.openstoa)')
     .option('--keystore <backend>', 'keystore backend: vault (default); keychain is not supported for chat')
     .option('--device-id <id>', 'stable MLS device identity override')
@@ -100,7 +101,11 @@ export function buildProgram(
     const cmds = await factory(config());
     let result:T|ProofWorkflowResult;
     try {result=await fn(cmds);} catch(error) {
-      if(error instanceof OpenStoaApiError && error.status===401){write(JSON.stringify({status:'authentication_required',methods:['app','ai'],message:'Login is required before API-key authorization. Complete proof login, then retry this operation.',next:{cli:'openstoa login',mcp:'openstoa_authenticate'}}));return;}
+      if(error instanceof OpenStoaApiError && error.status===401){
+        const guidance={status:'authentication_required',methods:['app','ai'],message:'Login is required before API-key authorization. Complete proof login, then retry this operation.',next:{cli:'openstoa login',mcp:'openstoa_authenticate'}};
+        write(globals().json?JSON.stringify(guidance):'Login required. Run `openstoa login`, then try this command again.');
+        return;
+      }
       throw error;
     }
     if (isProofWorkflowResult(result)) {
@@ -110,7 +115,7 @@ export function buildProgram(
       } else if (options.wait || (interactive && !options.proofControl && state.status === 'pending')) {
         state = await waitForProof(cmds, state, terminal, { openBrowser: !globals().json });
       }
-      if (globals().json || !terminal.isTTY()) write(JSON.stringify(state, null, 2));
+      if (globals().json) write(JSON.stringify(state, null, 2));
       else if (state.status === 'completed' && !options.proofControl) write(human(state.result as T));
       else write(formatProofWorkflow(state));
       return;
@@ -161,7 +166,7 @@ export function buildProgram(
       if(state.status==='consent_required'&&interactive){
         terminal.write(state.message);
         const consent=(await terminal.ask('Sign this CLI into your account? [y/N] ')).toLowerCase();
-        if(!['y','yes'].includes(consent)){write(JSON.stringify({status:'cancelled'}));return;}
+        if(!['y','yes'].includes(consent)){write('Login cancelled.');return;}
         method=method??(await terminal.ask('Proof method (app/ai): ')).toLowerCase();
         if(!['app','ai'].includes(method))throw new Error('method must be app or ai');
         state=await commands.authenticate({method,approved:true,redirectUrl:opts.redirectUrl});
@@ -176,12 +181,28 @@ export function buildProgram(
         }
       };
       const opened=new Set<string>();
+      const shown=new Set<string>();
+      const showInstructions=async()=>{
+        // Only actionable handoff details are printed, once; polling stays quiet.
+        const details=JSON.stringify([state.deepLink,state.browserUrl,state.verificationUrl,state.userCode]);
+        if(shown.has(details))return;
+        shown.add(details);
+        if(state.deepLink){
+          terminal.write('Scan this QR code with ZKProofport to sign in. This terminal will wait for you.');
+          terminal.write(await QRCode.toString(state.deepLink,{type:'terminal',small:true,errorCorrectionLevel:'L'}));
+          if(state.browserUrl)terminal.write(`Or approve in your browser: ${state.browserUrl}`);
+        }else if(state.verificationUrl){
+          terminal.write(`Open ${state.verificationUrl}${state.userCode?` and enter ${state.userCode}`:''}`);
+        }else if(state.browserUrl){
+          terminal.write(`Open this page and approve login to show the QR code: ${state.browserUrl}`);
+        }
+      };
       process.on('SIGINT',onInterrupt);
       try{
         while(state.status==='pending'&&(opts.wait||interactive)){
-          terminal.write(JSON.stringify(state));
+          await showInstructions();
           const url=state.browserUrl??state.verificationUrl;
-          if(url&&interactive&&!opened.has(url)){opened.add(url);try{await terminal.openBrowser(url);}catch{terminal.write('Open the login URL above to continue.');}}
+          if(url&&!state.deepLink&&interactive&&!opened.has(url)){opened.add(url);try{await terminal.openBrowser(url);}catch{terminal.write('Open the login URL above to continue.');}}
           if(interrupted){state=await (cancelPromise??commands.authenticate({operationId:state.operationId,cancel:true}));break;}
           await terminal.sleep(state.pollAfterMs);
           if(interrupted){state=await cancelPromise!;break;}
@@ -190,7 +211,10 @@ export function buildProgram(
           if(interrupted){state=await cancelPromise!;break;}
         }
       }finally{process.off('SIGINT',onInterrupt);}
-      write(JSON.stringify(state,null,globals().json?undefined:2));
+      if(state.status==='pending'&&!globals().json)await showInstructions();
+      if(globals().json)write(JSON.stringify(state));
+      else if(state.status==='authenticated')write(`Logged in as ${state.nickname} (${state.userId}).`);
+      else if(state.status!=='pending')write(state.message??`Login ${state.status}.`);
     });
 
   program
@@ -502,9 +526,9 @@ export function buildProgram(
     .action((id: string) => run((c) => c.apiKeyRevoke(id), (r) => `Revoked ${r.id}`));
 
   chat.command('history <topicId>').description('decrypt the archived history available to this device and key')
-    .action((topicId: string) => run((c) => c.chatHistory(topicId), (rows) => JSON.stringify(rows, null, 2)));
+    .action((topicId: string) => run((c) => c.chatHistory(topicId), fmt.fmtValue));
   dm.command('history <topicId>').description('decrypt archived DM history available to this device and key')
-    .action((topicId: string) => run((c) => c.chatHistory(topicId), (rows) => JSON.stringify(rows, null, 2)));
+    .action((topicId: string) => run((c) => c.chatHistory(topicId), fmt.fmtValue));
   chat.command('share-keys <topicId>').description('share locally held history keys with existing member devices')
     .action((topicId: string) => run((c) => c.chatShareKeys(topicId), (result) => `Shared ${result.shared} key bundles`));
 
@@ -536,13 +560,13 @@ export function buildProgram(
       const input = { ...options };
       if (operation.id === 'topic_join_invite') delete input.wait;
       positions.forEach((parameter, index) => { input[parameter.name] = args[index]; });
-      return run((c) => c.executeOperation(operation.id, input), (result) => JSON.stringify(result, null, 2), operation.id === 'topic_join_invite' ? options as TopicActionOptions : {});
+      return run((c) => c.executeOperation(operation.id, input), fmt.fmtValue, operation.id === 'topic_join_invite' ? options as TopicActionOptions : {});
     });
   }
 
   const topicHelp = '\nProof workflow: obtain consent before --approved. AI proof generation requires --wait in non-interactive/JSON mode; keep this process running. With app --wait, open the returned browser URL and scan its QR; no second terminal is needed. Existing --proof and --public-inputs must be supplied together and cannot be combined with --method, --approved or --provider. Private/secret topics require an invitation.\nDocs: https://www.openstoa.xyz/docs?topic=topics#topics';
   for (const name of ['create', 'join', 'join-invite']) topics.commands.find(c => c.name() === name)!.addHelpText('after', topicHelp);
-  program.commands.find(c => c.name() === 'login')!.addHelpText('after', '\nLogin establishes identity; an API key only grants permissions for business operations. App mode opens a browser approval/QR page. AI login requires --wait in non-interactive/JSON mode. User consent is required before --approved. Resume/cancel using --operation-id in the same vault and server.\nDocs: https://www.openstoa.xyz/docs?topic=login#login');
+  program.commands.find(c => c.name() === 'login')!.addHelpText('after', '\nLogin establishes identity; an API key only grants permissions for business operations. App mode displays a QR directly in this terminal; scan it with ZKProofport. The browser approval page is optional. AI login requires --wait in non-interactive/JSON mode. User consent is required before --approved. Resume/cancel using --operation-id in the same vault and server.\nDocs: https://www.openstoa.xyz/docs?topic=login#login');
   program.addHelpText('after', '\nStart with openstoa login. Business requests use the saved proof-login session plus a same-account permission key; public guest reads remain available. For command options use openstoa <command> --help.\nDocs: https://www.openstoa.xyz/docs?topic=commands#commands');
   return program;
 }

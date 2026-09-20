@@ -41,3 +41,26 @@ it('post update can remove an unvoted poll and clear tags using the actual API p
   await program.parseAsync(['node', 'openstoa', '--json', 'post', 'update', 'p1', '--poll', 'null', '--tags', '']);
   expect(postUpdate).toHaveBeenCalledWith('p1', expect.objectContaining({ poll: null, tags: [] }));
 });
+
+it('generic feed output is readable by default and preserves nested UTF-8, false, zero and empty values',async()=>{
+ const result={posts:[{id:'p1',title:'한국어 🔐',author:{nickname:'테스트'},score:0,hidden:false}],cursor:null,extra:[]};
+ const executeOperation=vi.fn().mockResolvedValue(result);const output:string[]=[];
+ const program=buildProgram(async()=>({executeOperation} as unknown as Commands),text=>output.push(text));
+ await program.parseAsync(['node','openstoa','feed']);
+ const text=output.join('');expect(text.trim()).not.toMatch(/^[{[]/);
+ for(const value of ['한국어 🔐','테스트','0','false','posts'])expect(text).toContain(value);
+ expect(executeOperation).toHaveBeenCalledOnce();
+});
+it.each([['chat','history'],['dm','history']])('%s %s defaults to readable history without requiring --json',async(group,leaf)=>{
+ const chatHistory=vi.fn().mockResolvedValue([{messageId:'m1',plaintext:'대화 🔐',sender:{nickname:'유저'}}]);
+ const output:string[]=[];const program=buildProgram(async()=>({chatHistory} as unknown as Commands),text=>output.push(text));
+ await program.parseAsync(['node','openstoa',group,leaf,'t1']);
+ const text=output.join('');expect(text.trim()).not.toMatch(/^[{[]/);expect(text).toContain('대화 🔐');expect(text).toContain('m1');
+ expect(chatHistory).toHaveBeenCalledExactlyOnceWith('t1');
+});
+it('an empty generic REST response displays an empty-result message instead of JSON brackets',async()=>{
+ const executeOperation=vi.fn().mockResolvedValue([]);const output:string[]=[];
+ const program=buildProgram(async()=>({executeOperation} as unknown as Commands),text=>output.push(text));
+ await program.parseAsync(['node','openstoa','feed']);
+ expect(output.join('').trim()).toBe('(empty)');
+});

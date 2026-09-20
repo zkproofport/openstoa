@@ -207,3 +207,48 @@ describe('CLI login service contract',()=>{
   expect(mocks.set.mock.calls.some(call=>call.includes('NX'))).toBe(true);
  });
 });
+
+describe('terminal-approved app QR handoff',()=>{
+ it('explicit terminal consent creates one relay request immediately and verifier polls retain its QR without a browser',async()=>{
+  const started=await startCliLogin(origin,{codeChallenge,approved:true} as Parameters<typeof startCliLogin>[1]);
+  expect(started).toMatchObject({deepLink:'zkproofport://proof-request?data=login-proof'});
+  expect(mocks.createRelay).toHaveBeenCalledOnce();
+  for(let i=0;i<3;i++)expect(await readCliLogin(started.loginId,{codeVerifier:verifier})).toMatchObject({status:'pending',deepLink:'zkproofport://proof-request?data=login-proof'});
+  expect(mocks.createRelay).toHaveBeenCalledOnce();
+  expect(mocks.session).not.toHaveBeenCalled();
+ });
+ it('legacy unapproved starts still wait for browser consent, then authenticated verifier receives the same QR',async()=>{
+  const started=await startCliLogin(origin,{codeChallenge});
+  expect(started).not.toHaveProperty('deepLink');
+  const before=await readCliLogin(started.loginId,{codeVerifier:verifier});
+  expect(before).not.toHaveProperty('deepLink');expect(mocks.createRelay).not.toHaveBeenCalled();
+  const browser=await readCliLogin(started.loginId,{approvalToken:approvalToken(started.browserUrl)});
+  expect(await readCliLogin(started.loginId,{codeVerifier:verifier})).toMatchObject({status:'pending',deepLink:browser.deepLink});
+  expect(mocks.createRelay).toHaveBeenCalledOnce();
+  await expect(readCliLogin(started.loginId,{codeVerifier:'w'.repeat(43)})).rejects.toMatchObject({status:403});
+  expect(mocks.session).not.toHaveBeenCalled();
+ });
+ it.each([false,undefined])('non-approved client value %s never creates proof before browser consent',async approved=>{
+  await startCliLogin(origin,{codeChallenge,approved} as Parameters<typeof startCliLogin>[1]);
+  expect(mocks.createRelay).not.toHaveBeenCalled();
+ });
+});
+
+it.each(['true','false','',null,1,{},[]])('rejects malformed terminal approval instead of inferring consent (%#)',async approved=>{
+ await expect(startCliLogin(origin,{codeChallenge,approved})).rejects.toMatchObject({status:400});
+ expect(mocks.createRelay).not.toHaveBeenCalled();expect(mocks.data.size).toBe(0);
+});
+it('relay failure during terminal-approved start never persists a broken login or issues a session',async()=>{
+ mocks.createRelay.mockRejectedValue(new Error('relay unavailable'));
+ await expect(startCliLogin(origin,{codeChallenge,approved:true})).rejects.toThrow('relay unavailable');
+ expect(mocks.data.size).toBe(0);expect(mocks.session).not.toHaveBeenCalled();
+});
+it('terminal-approved proof completion preserves isolated CLI and browser session roles',async()=>{
+ const started=await startCliLogin(origin,{codeChallenge,approved:true});
+ mocks.poll.mockResolvedValue(validProof());
+ const cli=await readCliLogin(started.loginId,{codeVerifier:verifier});
+ expect(cli).toMatchObject({status:'completed',token:'cli-session-token'});expect(cli).not.toHaveProperty('browserToken');
+ const browser=await readCliLogin(started.loginId,{approvalToken:approvalToken(started.browserUrl)});
+ expect(browser).toMatchObject({status:'completed',browserToken:'browser-session-token'});expect(browser).not.toHaveProperty('token');
+ expect(mocks.createRelay).toHaveBeenCalledOnce();
+});

@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fmtValue } from './format';
 import type { Commands, ProofWorkflowResult, TopicProofOptions } from '@masselabs/openstoa-commands';
 
 /** Terminal capabilities are injectable; machine callers never use prompts. */
@@ -47,7 +48,7 @@ export function formatProofWorkflow(state: ProofWorkflowResult): string {
   if (state.verificationUrl) lines.push(`Verification URL: ${state.verificationUrl}`);
   if (state.userCode) lines.push(`User code: ${state.userCode}`);
   if (state.deepLink && !state.browserUrl) lines.push(`Open in ZKProofport: ${state.deepLink}`);
-  if (state.status === 'completed') lines.push(JSON.stringify(state.result, null, 2));
+  if (state.status === 'completed') lines.push(fmtValue(state.result));
   return lines.filter(Boolean).join('\n');
 }
 

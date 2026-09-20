@@ -256,3 +256,37 @@ describe('AI authentication lifecycle (mocked prover and verifier)', () => {
     expect(h.request).not.toHaveBeenCalled(); expect(await h.sessionStore.read()).toEqual(originalSession);
   });
 });
+
+describe('terminal QR transport',()=>{
+ const deepLink='zkproofport://proof-request?data=eyJyZXF1ZXN0SWQiOiJhcHAtbG9naW4ifQ';
+ it('sends explicit approval and persists the returned mobile link across a process restart',async()=>{
+  const h=build();h.request.mockResolvedValue({...startResponse(),deepLink});
+  const started=await h.authenticate({method:'app',approved:true});
+  expect(h.request).toHaveBeenCalledWith('/api/auth/cli-login',expect.objectContaining({body:expect.objectContaining({approved:true})}));
+  expect(started).toMatchObject({status:'pending',deepLink});
+  expect(await pendingRecord(h.loginStore)).toMatchObject({deepLink});
+  const resumed=build(h.loginStore);resumed.request.mockResolvedValue({status:'pending'});
+  expect(await resumed.authenticate({operationId:started.operationId})).toMatchObject({status:'pending',deepLink});
+ });
+ it('learns the mobile link from a resumed legacy browser-approved request and saves it',async()=>{
+  const h=build();const started=await h.authenticate({method:'app',approved:true});
+  h.request.mockResolvedValue({status:'pending',deepLink});
+  expect(await h.authenticate({operationId:started.operationId})).toMatchObject({deepLink});
+  expect(await pendingRecord(h.loginStore)).toMatchObject({deepLink});
+ });
+ it.each(['https://evil.test/collect','javascript:alert(1)','zkproofport://wrong-route?data=x','', ' ', null, 42])('rejects an invalid supplied QR deep link without changing login identity (%#)',async deepLink=>{
+  const h=build();h.request.mockResolvedValue({...startResponse(),deepLink});
+  await expect(h.authenticate({method:'app',approved:true})).rejects.toThrow();
+  expect(h.chat.useToken).not.toHaveBeenCalled();
+  expect(await h.sessionStore.read()).toEqual(originalSession);
+ });
+});
+
+it('an unsafe mobile link returned by resume is rejected without overwriting the saved safe link or session',async()=>{
+ const deepLink='zkproofport://proof-request?data=safe';const h=build();h.request.mockResolvedValue({...startResponse(),deepLink});
+ const started=await h.authenticate({method:'app',approved:true});
+ h.request.mockResolvedValue({status:'pending',deepLink:'https://evil.test/collect'});
+ await expect(h.authenticate({operationId:started.operationId})).rejects.toThrow();
+ expect(await pendingRecord(h.loginStore)).toMatchObject({deepLink});
+ expect(await h.sessionStore.read()).toEqual(originalSession);expect(h.chat.useToken).not.toHaveBeenCalled();
+});

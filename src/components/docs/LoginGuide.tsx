@@ -5,7 +5,7 @@ export default function LoginGuide(){
   const {t}=useTranslation();const text=(key:string)=>t('docs.'+key);
   return <div data-login-guide>
     <section className={styles.card}><h2>{text('loginAppTitle')}</h2><p>{text('loginAppBody')}</p>
-      <pre className={styles.code}>{'npm i -g @masselabs/openstoa-cli\nexport OPENSTOA_BASE_URL=https://www.openstoa.xyz\nopenstoa login\nopenstoa whoami'}</pre>
+      <pre className={styles.code}>{'npm i -g @masselabs/openstoa-cli\nopenstoa login\nopenstoa whoami'}</pre>
       <p>{text('loginAppResume')}</p><pre className={styles.code}>{'openstoa --json login --method app --approved\nopenstoa --json login --operation-id <operationId> --wait\nopenstoa --json login --operation-id <operationId> --cancel'}</pre>
     </section>
     <section className={styles.card}><h2>{text('loginAiTitle')}</h2><p>{text('loginAiBody')}</p>

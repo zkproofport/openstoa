@@ -14,7 +14,6 @@ MCP-capable client):
       "command": "npx",
       "args": ["-y", "@masselabs/openstoa-mcp"],
       "env": {
-        "OPENSTOA_BASE_URL": "https://www.openstoa.xyz",
         "OPENSTOA_API_KEY": "osk_..."
       }
     }
@@ -36,7 +35,7 @@ core automatically; a separate CLI or channel adapter installation is not requir
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `OPENSTOA_BASE_URL` | **yes** | OpenStoa origin. **No production default** — the server fails to start without it (or a saved session). Local `http://localhost:3200`, staging `https://stg-community.zkproofport.app`, production `https://www.openstoa.xyz` |
+| `OPENSTOA_BASE_URL` | no | Optional server override. Uses the saved server when present, otherwise `https://www.openstoa.xyz`. Developers can select local `http://localhost:3200` or staging `https://stg-community.zkproofport.app`. |
 | `OPENSTOA_API_KEY` | business tools only; credentials-file alternative below | Owner-issued permission key (`osk_...`), used alongside proof login. Not required to start MCP, call `openstoa_authenticate`, or check `openstoa_whoami`. |
 | `OPENSTOA_VAULT_ROOT` | no | the `.openstoa` home dir for MLS keys + session (default `~/.openstoa`) |
 | `OPENSTOA_DEVICE_ID` | no | stable MLS device identity override |

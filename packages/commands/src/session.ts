@@ -9,7 +9,7 @@ import * as path from 'node:path';
 export interface PendingLogin {
   operationId:string; baseUrl:string; method:'app'|'ai'; expiresAt:number;
   credentialFingerprint?:string;
-  codeVerifier?:string; browserUrl?:string; challengeId?:string;
+  codeVerifier?:string; browserUrl?:string; deepLink?:string; challengeId?:string;
 }
 export interface SessionData {
   pendingLogin?: PendingLogin;

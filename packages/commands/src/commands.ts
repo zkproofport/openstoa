@@ -514,12 +514,7 @@ export async function createCommands(config: CommandConfig = {}): Promise<Comman
   const home = resolveHome(config.vaultRoot);
   const sessionStore = new FileSessionStore(path.join(home, 'session.json'));
   const saved = await sessionStore.read();
-  const baseUrl = config.baseUrl ?? process.env.OPENSTOA_BASE_URL ?? saved?.baseUrl;
-  if (!baseUrl) {
-    throw new Error(
-      'No OpenStoa base URL. Pass --base-url, set OPENSTOA_BASE_URL, or run `openstoa login --base-url <url>` first.',
-    );
-  }
+  const baseUrl = config.baseUrl ?? process.env.OPENSTOA_BASE_URL ?? saved?.baseUrl ?? 'https://www.openstoa.xyz';
   // Load identity and authorization independently. A selected key never
   // replaces the saved proof-login session.
   const apiKey = await resolveApiKey(config, home);

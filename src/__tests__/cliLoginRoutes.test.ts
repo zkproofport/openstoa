@@ -78,3 +78,19 @@ it('rejects an out-of-range Host port instead of using the internal bind address
  const req=new NextRequest('http://0.0.0.0:3200/api/auth/cli-login',{method:'POST',headers:{host:'example.com:65536','content-type':'application/json'},body:JSON.stringify({codeChallenge:'c'.repeat(43)})});
  expect((await start(req)).status).toBe(400);expect(mocks.start).not.toHaveBeenCalled();
 });
+
+it('forwards terminal consent and returns its immediate QR without issuing a browser cookie',async()=>{
+ const body={codeChallenge:'c'.repeat(43),approved:true};
+ mocks.start.mockResolvedValue({loginId:'login-id',deepLink:'zkproofport://proof-request?data=proof',browserUrl:origin+'/login?loginId=login-id#approvalToken=browser-secret'});
+ const response=await start(request('/api/auth/cli-login',body));
+ expect(response.status).toBe(202);
+ expect(mocks.start).toHaveBeenCalledWith(origin,body);
+ expect(await response.json()).toMatchObject({deepLink:'zkproofport://proof-request?data=proof'});
+ expect(mocks.cookie).not.toHaveBeenCalled();
+});
+it('authenticated CLI verifier receives a pending mobile QR without browser cookies',async()=>{
+ mocks.read.mockResolvedValue({status:'pending',deepLink:'zkproofport://proof-request?data=proof'});
+ const response=await read(request('/api/auth/cli-login/login-id',{codeVerifier:'v'.repeat(43)}),context);
+ expect(response.status).toBe(202);expect(await response.json()).toMatchObject({deepLink:'zkproofport://proof-request?data=proof'});
+ expect(mocks.cookie).not.toHaveBeenCalled();
+});

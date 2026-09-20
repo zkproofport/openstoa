@@ -4,6 +4,7 @@ import {useTranslation} from '@/lib/i18n/I18nProvider';
 import {apiFetch} from '@/lib/apiFetch';
 import LocaleSwitcher from '@/components/LocaleSwitcher';
 import ThemeToggle from '@/components/ThemeToggle';
+import Spinner from '@/components/Spinner';
 
 type Status='loading'|'consent'|'pending'|'completed'|'cancelled'|'expired'|'error'|'invalid';
 export default function CliLoginPage(){
@@ -63,12 +64,23 @@ export default function CliLoginPage(){
     finish('cancelled');
   }
   return <main style={{minHeight:'100dvh',background:'var(--color-bg-primary)',color:'var(--color-text-primary)',padding:'var(--space-5)'}}>
-    <header style={{display:'flex',justifyContent:'space-between',maxWidth:640,margin:'0 auto'}}><a href="/">OpenStoa</a><div><LocaleSwitcher/><ThemeToggle/></div></header>
-    <section style={{maxWidth:560,margin:'var(--space-7) auto',padding:'var(--space-5)',border:'1px solid var(--color-border-default)',borderRadius:'var(--radius-card)',textAlign:'center'}}>
-      <h1>{t('cliLogin.title')}</h1><p>{t('cliLogin.description')}</p>
-      {status==='consent'&&<><p>{t('cliLogin.consent')}</p><button onClick={approve}>{t('cliLogin.approve')}</button><button onClick={()=>void decline()}>{t('cliLogin.decline')}</button></>}
-      <p role="status">{t(`cliLogin.${status}`)}</p>
-      {status==='pending'&&<>{qr&&<img src={qr} alt={t('proofGate.qrAlt')} width={280} height={280}/>}{deepLink&&<p><a href={deepLink}>{t('proofGate.openInApp')}</a></p>}<button onClick={()=>void decline()}>{t('cliLogin.decline')}</button></>}
+    <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'var(--space-3)',maxWidth:900,margin:'0 auto'}}>
+      <a href="/" style={{fontWeight:700,textDecoration:'none',color:'inherit'}}>OpenStoa</a>
+      <div style={{display:'flex',alignItems:'center',gap:'var(--space-2)'}}><LocaleSwitcher/><ThemeToggle/></div>
+    </header>
+    <section aria-labelledby="cli-login-title" style={{maxWidth:560,margin:'var(--space-7) auto',padding:'var(--space-5)',border:'1px solid var(--color-border-default)',borderRadius:'var(--radius-modal)',textAlign:'center'}}>
+      <h1 id="cli-login-title" style={{fontSize:'var(--text-heading-lg)',fontWeight:700,lineHeight:1.3,margin:'0 0 var(--space-4)'}}>{t('cliLogin.title')}</h1>
+      <p style={{lineHeight:1.7,color:'var(--color-text-secondary)',margin:'0 0 var(--space-4)'}}>{t('cliLogin.description')}</p>
+      <p role="status" aria-live="polite" style={{lineHeight:1.7,margin:'var(--space-4) 0'}}>{t(`cliLogin.${status}`)}</p>
+      {status==='consent'&&<div style={{display:'flex',justifyContent:'center',gap:'var(--space-3)',flexWrap:'wrap',marginTop:'var(--space-5)'}}>
+        <button type="button" className="os-button os-button-primary" onClick={approve}>{t('cliLogin.approve')}</button>
+        <button type="button" className="os-button" onClick={()=>void decline()}>{t('cliLogin.decline')}</button>
+      </div>}
+      {status==='pending'&&<>
+        {qr?<img src={qr} alt={t('proofGate.qrAlt')} width={280} height={280} style={{display:'block',maxWidth:'100%',height:'auto',margin:'var(--space-4) auto'}}/>:<Spinner/>}
+        {deepLink&&<p><a className="os-button os-button-primary" href={deepLink}>{t('proofGate.openInApp')}</a></p>}
+        <button type="button" className="os-button" onClick={()=>void decline()}>{t('cliLogin.decline')}</button>
+      </>}
     </section>
   </main>;
 }

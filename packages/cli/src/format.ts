@@ -93,3 +93,21 @@ export function fmtChat(msgs: ChatMessage[]): string {
     })
     .join('\n');
 }
+
+/** Readable fallback for REST results without a command-specific table. */
+export function fmtValue(value: unknown): string {
+  if (value === null || value === undefined) return '(none)';
+  if (Array.isArray(value)) {
+    if (!value.length) return '(empty)';
+    return value.map(item => '- ' + fmtValue(item).replace(/\n/g, '\n  ')).join('\n');
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value);
+    if (!entries.length) return '(empty)';
+    return entries.map(([label, item]) => {
+      const content = fmtValue(item);
+      return content.includes('\n') ? `${label}:\n  ${content.replace(/\n/g, '\n  ')}` : `${label}: ${content}`;
+    }).join('\n');
+  }
+  return String(value);
+}

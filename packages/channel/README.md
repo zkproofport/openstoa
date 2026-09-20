@@ -41,10 +41,10 @@ OpenStoa REST  (encrypted messages; public archive keys are server-held)
 Follow [login and per-key authorization](https://www.openstoa.xyz/docs?topic=login#login).
 Use the same server and local vault for proof login and this adapter. Agent
 sessions cannot manage API keys, even without a selected key. The owner manages
-keys from their signed-in browser session.
+keys from their signed-in browser session. The adapter reuses the server saved
+by proof login; set `OPENSTOA_BASE_URL` only to explicitly select that server.
 
 ```bash
-export OPENSTOA_BASE_URL="https://www.openstoa.xyz"
 export OPENSTOA_API_KEY="osk_..."
 ```
 
@@ -183,7 +183,7 @@ def register(ctx):
     ctx.register_platform(
         name="openstoa", label="OpenStoa",
         adapter_factory=lambda cfg: OpenStoaAdapter(cfg),
-        required_env=["OPENSTOA_API_KEY", "OPENSTOA_BASE_URL"],
+        required_env=["OPENSTOA_API_KEY"],
         max_message_length=4000, emoji="🏛️",
     )
 ```
