@@ -4,6 +4,7 @@ import { translate } from '@/lib/i18n';
 import { getServerLocale } from '@/lib/i18n/getServerLocale';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 import { QueryProvider } from '@/lib/queryClient';
+import { DEFAULT_THEME } from '@/lib/theme';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -90,7 +91,7 @@ export default async function RootLayout({
     // `suppressHydrationWarning`: the inline script below mutates this very
     // element's data-theme before React hydrates, so server and client markup
     // legitimately differ by that one attribute.
-    <html lang={locale} suppressHydrationWarning>
+    <html lang={locale} data-theme={DEFAULT_THEME} suppressHydrationWarning>
       {/* Runs BEFORE first paint, synchronously, so the saved theme is applied
           with no flash of the wrong one. It cannot be a React effect: an effect
           runs after paint, which is exactly when the flash happens. Kept tiny
@@ -102,8 +103,8 @@ export default async function RootLayout({
           __html:
             "(function(){try{var t=localStorage.getItem('openstoa.theme');" +
             "document.documentElement.setAttribute('data-theme'," +
-            "t==='light'||t==='dark'?t:'dark');}catch(e){" +
-            "document.documentElement.setAttribute('data-theme','dark');}})();",
+            "t==='light'||t==='dark'?t:'light');}catch(e){" +
+            "document.documentElement.setAttribute('data-theme','light');}})();",
         }}
       />
       {GA_ID && (

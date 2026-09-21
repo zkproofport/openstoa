@@ -18,7 +18,7 @@
  *              the drawer + tab bar already provide is hidden: the wordmark
  *              TEXT (the logo mark stays), the theme toggle, the language
  *              select, and the session chip / guest Sign in CTA. What is
- *              left is a hamburger and the logo mark.
+ *              left is a hamburger, the logo mark and Docs.
  *   authz    — the hidden set is the SAME for a guest and a member: the
  *              guest's Sign in CTA goes too, since a guest signs in at the
  *              point of need, not from a permanent header button
@@ -31,11 +31,8 @@
  *              of nothing in a row meant to be empty
  *
  * Header polish pass — three more rows:
- *   contract — Explore / Recorded / Docs are absent from the DOM at EVERY
- *              width when the app shell is present (`LeftSidebar` carries all
- *              three), and PRESENT when it is not. The second half is the
- *              regression that would strand `/docs`, `/recovery`, `/profile`
- *              with no navigation whatsoever, so it is asserted first.
+ *   contract — Docs is always present. Explore / Recorded remain standalone
+ *              header links because the app shell sidebar already carries them.
  *   naming   — the old phone-only class name is renamed to `has-app-shell`;
  *              the old string must not survive anywhere under `src/`, comments
  *              included (which is why this file never spells it out either —
@@ -180,7 +177,7 @@ describe('AUTHZ: guest', () => {
  * the header's own <style> under the right scope. Verified visually at 390px
  * on staging before landing.
  */
-describe('MOBILE: below 768px the header keeps only the hamburger + logo mark', () => {
+describe('MOBILE: below 768px the app shell header keeps the hamburger, logo and Docs', () => {
   /** The header's inline <style> block — the rules under test live here. */
   function css(): string {
     return container.querySelector('style')?.textContent ?? '';
@@ -271,15 +268,14 @@ describe('MOBILE: below 768px the header keeps only the hamburger + logo mark', 
     expect(hidden(placeholder)).toBe(true);
   });
 
-  it('the search bar stays hidden, and the nav-link hide rule survives for the STANDALONE header', async () => {
+  it('the search bar and other nav links stay hidden on mobile while Docs remains visible', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ userId: 'me', nickname: 'me' }))));
     await render({ onMenuToggle: vi.fn(), onChatToggle: vi.fn() });
 
-    // Inside the app shell the three links are no longer rendered at all, so
-    // this rule is now dead weight HERE — but it is the only thing keeping the
-    // standalone row (wordmark + three links + theme + language + chip) from
-    // overflowing at 320px, and that header shares this same <style> block.
-    expect(css()).toMatch(/\.header-nav-link\s*{\s*display: none !important/);
+    expect(css()).toMatch(/\.header-nav-link:not\(\.header-docs-link\)\s*{\s*display: none !important/);
+    const docs = container.querySelector('a[href="/docs"]');
+    expect(docs?.classList.contains('header-docs-link')).toBe(true);
+    expect(docs?.classList.contains('desktop-docs-link')).toBe(false);
     expect(css()).toMatch(/\.header-search-wrap\s*{\s*display: none !important/);
   });
 
@@ -362,24 +358,19 @@ describe('GHOST HAMBURGER', () => {
   });
 });
 
-/**
- * Explore / Recorded / Docs. `LeftSidebar` renders all three, and it is on
- * screen at every width the app shell exists at (desktop rail, phone drawer),
- * so inside the shell the header copies were duplicates — on desktop too, not
- * just on a phone. Outside the shell they are the ONLY navigation there is.
- */
-describe('NAV LINKS: removed inside the app shell, kept outside it', () => {
+/** Docs is available regardless of app shell or session state. */
+describe('NAV LINKS: Docs always visible, other links kept outside the app shell', () => {
   const NAV_HREFS = ['/topics/explore', '/recorded', '/docs'];
 
   function navLinks(): string[] {
     return NAV_HREFS.filter((href) => container.querySelector(`a[href="${href}"]`) !== null);
   }
 
-  it('are ABSENT from the DOM when the app shell is present — at every width, not hidden by a media query', async () => {
+  it('keeps Docs in the app shell header for signed-in users', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ userId: 'me', nickname: 'me' }))));
     await render({ onMenuToggle: vi.fn(), onChatToggle: vi.fn() });
 
-    expect(navLinks()).toEqual([]);
+    expect(navLinks()).toEqual(['/docs']);
   });
 
   it('REGRESSION: are PRESENT on a standalone header (/docs, /recovery, /profile) — otherwise those pages have NO navigation', async () => {
@@ -400,11 +391,11 @@ describe('NAV LINKS: removed inside the app shell, kept outside it', () => {
     expect(navLinks()).toEqual(NAV_HREFS);
   });
 
-  it('AUTHZ: and a guest inside the app shell gets none of them either', async () => {
+  it('AUTHZ: a guest inside the app shell also gets Docs', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json(null))));
     await render({ onMenuToggle: vi.fn() });
 
-    expect(navLinks()).toEqual([]);
+    expect(navLinks()).toEqual(['/docs']);
   });
 
   it('UTF-8: the ko locale renders the same three destinations, translated (Korean labels are the longer ones)', async () => {

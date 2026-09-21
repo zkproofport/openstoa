@@ -166,12 +166,10 @@ export default function SNSEditor({
 
   /** One picture's description, as the author types it. */
   const updateImageAlt = useCallback((url: string, text: string) => {
-    setImageAlts((prev) => {
-      const next = { ...prev, [url]: text };
-      emit({ content, images, videos, imageAlts: next });
-      return next;
-    });
-  }, [emit, content, images, videos]);
+    const next = { ...imageAlts, [url]: text };
+    setImageAlts(next);
+    emit({ content, images, videos, imageAlts: next });
+  }, [emit, content, images, videos, imageAlts]);
 
   // Auto-grow textarea to fit content.
   const autoGrow = useCallback(() => {

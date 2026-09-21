@@ -68,8 +68,8 @@ async function mount() {
 const button = () => container.querySelector('button');
 
 describe('theme store', () => {
-  it('defaults to dark — the mode every surface is known to render correctly in', () => {
-    expect(DEFAULT_THEME).toBe('dark');
+  it('defaults to light for first-time visitors', () => {
+    expect(DEFAULT_THEME).toBe('light');
   });
 
   it('round-trips a choice through storage', () => {

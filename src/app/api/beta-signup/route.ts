@@ -13,8 +13,8 @@ const ROUTE = '/api/beta-signup';
  * /api/beta-signup:
  *   post:
  *     tags: [Auth]
- *     summary: Request beta invite
- *     description: Submit email and platform preference to request a closed beta invite for the ZKProofport mobile app.
+ *     summary: Request iOS app availability information
+ *     description: Submit an email to receive ZKProofport iOS app availability information. Android is available directly on Google Play without an application. The platform field is retained for compatibility with older clients.
  *     operationId: betaSignup
  *     security: []
  *     requestBody:
@@ -35,7 +35,7 @@ const ROUTE = '/api/beta-signup';
  *                 enum: [iOS, Android, Both]
  *     responses:
  *       200:
- *         description: Beta invite request submitted
+ *         description: App availability information request submitted
  *         content:
  *           application/json:
  *             schema:
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
   const htmlBody = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="padding:32px 40px 24px 40px;border-bottom:1px solid #e5e7eb;">
-      <div style="font-size:22px;font-weight:600;color:#111827;margin:0 0 4px 0;">Beta Invite Request</div>
+      <div style="font-size:22px;font-weight:600;color:#111827;margin:0 0 4px 0;">App Availability Information Request</div>
       <div style="font-size:13px;color:#6b7280;">OpenStoa</div>
     </div>
     <div style="padding:24px 40px;border-bottom:1px solid #e5e7eb;">
@@ -83,13 +83,13 @@ export async function POST(req: NextRequest) {
       <div style="font-size:15px;color:#111827;">${trimmedOrg ? `${trimmedOrg} &lt;${trimmedEmail}&gt;` : trimmedEmail}</div>
     </div>
     <div style="padding:32px 40px;background:#f9fafb;border-bottom:1px solid #e5e7eb;">
-      <div style="font-size:15px;line-height:1.6;color:#111827;white-space:pre-wrap;">${trimmedEmail}${trimmedOrg ? ` (${trimmedOrg})` : ''} has requested a beta invite for the ZKProofport app through the OpenStoa community page.
+      <div style="font-size:15px;line-height:1.6;color:#111827;white-space:pre-wrap;">${trimmedEmail}${trimmedOrg ? ` (${trimmedOrg})` : ''} has requested app availability information through the OpenStoa community page.
 
 - Organization: ${trimmedOrg || 'N/A'}
 - Platform: ${resolvedPlatform}
 - Source: OpenStoa community login page
 
-Please register this email as a tester on the corresponding platform (App Store Connect / Google Play Console) and send an invite.</div>
+For iOS, notify the requester when the app becomes available. Android is already available on Google Play and requires no beta signup or tester invitation: https://play.google.com/store/apps/details?id=com.masselabs.zkproofport</div>
     </div>
     <div style="padding:24px 40px;background:#f9fafb;">
       <div style="font-size:12px;color:#9ca3af;">${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}</div>
@@ -104,7 +104,7 @@ Please register this email as a tester on the corresponding platform (App Store 
       from: FROM_EMAIL,
       to: SUPPORT_EMAIL,
       replyTo: trimmedEmail,
-      subject: `[Beta Invite] ${trimmedEmail} — ${resolvedPlatform}`,
+      subject: `[App Availability] ${trimmedEmail} — ${resolvedPlatform}`,
       html: htmlBody,
     });
   } catch (error) {

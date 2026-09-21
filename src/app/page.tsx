@@ -9,6 +9,9 @@ import ProofGate from '@/components/ProofGate';
 import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { safeReturnTo, withHash } from '@/lib/returnTo';
+import styles from './landing.module.css';
+
+const ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=com.masselabs.zkproofport&hl=ko';
 
 type Stage = 'idle' | 'choose' | 'proving' | 'completed' | 'error';
 
@@ -201,17 +204,15 @@ function LandingPageInner() {
   const [stage, setStage] = useState<Stage>('idle');
   const badgeRef = useRef<HTMLDivElement>(null);
 
-  // Beta signup modal state
+  // iOS availability signup modal state
   const [betaOpen, setBetaOpen] = useState(false);
-  const [betaPlatform, setBetaPlatform] = useState<string>('Both');
   const [betaEmail, setBetaEmail] = useState('');
   const [betaOrg, setBetaOrg] = useState('');
   const [betaSubmitting, setBetaSubmitting] = useState(false);
   const [betaSuccess, setBetaSuccess] = useState(false);
   const [betaError, setBetaError] = useState('');
 
-  const openBetaModal = useCallback((platform: string) => {
-    setBetaPlatform(platform);
+  const openBetaModal = useCallback(() => {
     setBetaOpen(true);
     setBetaSuccess(false);
     setBetaError('');
@@ -234,7 +235,7 @@ function LandingPageInner() {
       const res = await apiFetch('/api/beta-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: betaEmail.trim(), organization: betaOrg.trim(), platform: betaPlatform }),
+        body: JSON.stringify({ email: betaEmail.trim(), organization: betaOrg.trim(), platform: 'iOS' }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || t('landingPage.beta.failed')); }
       setBetaSuccess(true);
@@ -243,9 +244,25 @@ function LandingPageInner() {
     } finally {
       setBetaSubmitting(false);
     }
-  }, [betaEmail, betaOrg, betaPlatform, t]);
+  }, [betaEmail, betaOrg, t]);
 
   function reset() { setStage('idle'); }
+
+  const appInstallOptions = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10, marginTop: 20 }}>
+      <p style={{ fontSize: 14, color: '#a099b0', lineHeight: 1.6, margin: 0 }}>{t('landingPage.proving.installStatus')}</p>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button type="button" onClick={openBetaModal} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--radius-control)', padding: '8px var(--space-4)', color: '#ccc', fontSize: 13, cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
+          <svg width="14" height="14" viewBox="0 0 384 512" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+          {t('landingPage.proving.iosSignup')}
+        </button>
+        <a href={ANDROID_APP_URL} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', background: '#b4a0d8', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--radius-control)', padding: '8px var(--space-4)', color: '#0e0c14', fontSize: 13, cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
+          <svg width="14" height="14" viewBox="0 0 512 512" fill="currentColor"><path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z"/></svg>
+          {t('landingPage.proving.androidDownload')}
+        </a>
+      </div>
+    </div>
+  );
 
   // Modal overlay rendered on top of main page
   const modalOverlay = stage !== 'idle' && (
@@ -281,19 +298,7 @@ function LandingPageInner() {
                 setTimeout(() => router.push(withKeys), 600);
               }}
               onCancel={reset} />
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 4 }}>
-              <p style={{ fontSize: 12, color: '#666', margin: 0 }}>{t('landingPage.proving.noAppYet')}</p>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => openBetaModal('iOS')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--radius-control)', padding: '8px var(--space-4)', color: '#ccc', fontSize: 13, cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
-                  <svg width="14" height="14" viewBox="0 0 384 512" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
-                  iOS
-                </button>
-                <button onClick={() => openBetaModal('Android')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--radius-control)', padding: '8px var(--space-4)', color: '#ccc', fontSize: 13, cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
-                  <svg width="14" height="14" viewBox="0 0 512 512" fill="currentColor"><path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z"/></svg>
-                  Android
-                </button>
-              </div>
-            </div>
+            {appInstallOptions}
           </motion.div>
         )}
         {stage === 'completed' && (
@@ -317,17 +322,17 @@ function LandingPageInner() {
       <style>{`
         .os-landing-locale { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); z-index: 20; }
         .os-split { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: hidden; }
-        .os-human { flex: 1; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 40px 24px 40px 56px; background: #0e0c14; }
-        .os-center { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 2; background: linear-gradient(90deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); }
-        .os-agent { flex: 1; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 40px 56px 40px 24px; background: #050a08; }
+        .os-human { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 40px 24px 40px 56px; background: #0e0c14; }
+        .os-center { width: clamp(320px, 28vw, 440px); padding: 48px 16px; box-sizing: border-box; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 2; background: linear-gradient(90deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); }
+        .os-agent { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 40px 56px 40px 24px; background: #050a08; }
         .os-human-content { position: relative; z-index: 2; max-width: 440px; }
         .os-agent-content { position: relative; z-index: 2; max-width: 440px; margin-left: auto; }
         .os-human-content h2, .os-agent-content h2, .os-human-content p { word-break: keep-all; overflow-wrap: break-word; }
-        @media (max-width: 768px) {
+        @media (max-width: 1100px) {
           .os-landing-locale { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); z-index: 20; }
         .os-split { flex-direction: column; overflow-x: hidden; }
-          .os-human { padding: 80px 20px 40px; min-height: auto; }
-          .os-center { width: 100%; height: auto; padding: 32px 16px; flex-direction: column; gap: 12px; background: linear-gradient(180deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); box-sizing: border-box; overflow: hidden; }
+          .os-human { padding: 40px 24px 48px; min-height: auto; }
+          .os-center { order: -1; width: 100%; height: auto; padding: 88px 24px 40px; flex-direction: column; background: linear-gradient(180deg, #0e0c14 0%, #0a0b10 50%, #060c0a 100%); box-sizing: border-box; overflow: hidden; }
           .os-agent { padding: 40px 20px 80px; min-height: auto; }
           .os-agent-content { margin-left: 0; max-width: 100%; }
           .os-human-content { max-width: 100%; }
@@ -361,86 +366,36 @@ function LandingPageInner() {
               style={{ background: '#b4a0d8', color: '#0e0c14', border: 'none', borderRadius: 10, padding: '16px 40px', fontSize: 16, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', minHeight: 'var(--touch-target-min)' }}>
               {t('landingPage.human.cta')}
             </motion.button>
-            <div style={{ marginTop: 20, display: 'flex', gap: 24, fontSize: 15, color: '#7a6e90' }}>
-              <span>{t('landingPage.human.badges.zkProof')}</span><span>{t('landingPage.human.badges.noDataStored')}</span><span>{t('landingPage.human.badges.onChainVerified')}</span>
-            </div>
+            {appInstallOptions}
           </motion.div>
         </div>
       </div>
 
       <div className="os-center">
-
-
-        <motion.div
-          ref={badgeRef}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.5, type: 'spring' }}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
-        >
-          {/* Logo */}
-          <StoaLogo size={56} />
-
-          {/* Wordmark */}
-          <h1 style={{
-            fontFamily: 'var(--font-sans)', fontSize: 32, fontWeight: 700,
-            color: '#fff', letterSpacing: '-0.03em', margin: '12px 0 0 0', lineHeight: 1,
-          }}>
-            Open<span style={{ color: '#788cff' }}>Stoa</span>
-          </h1>
-
-          <div style={{ width: 50, height: 1, background: 'rgba(120,140,255,0.4)', margin: '10px 0' }} />
-
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: '#666', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-            {t('landingPage.center.publicSquare')}
-          </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: '#666', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-            {t('landingPage.center.privacyFirst')}
-          </span>
-        </motion.div>
-
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2, duration: 1 }}
-          style={{ marginTop: 20, fontFamily: 'var(--font-serif)', fontSize: 16, color: '#777', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.5, padding: '0 12px' }}>
-          {t('landingPage.center.taglineLine1')}<br />{t('landingPage.center.taglineLine2')}
-        </motion.p>
-
-        <motion.a
-          href="/topics"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.6, duration: 1 }}
-          style={{
-            marginTop: 16,
-            fontFamily: 'var(--font-mono)',
-            fontSize: 12,
-            color: '#999',
-            textDecoration: 'none',
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase' as const,
-            transition: 'all 0.15s',
-            padding: '8px 20px',
-            borderRadius: 6,
-            border: '1px solid rgba(120,140,255,0.25)',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(120,140,255,0.1)';
-            (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)';
-            (e.currentTarget as HTMLElement).style.color = '#ccc';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'transparent';
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(120,140,255,0.25)';
-            (e.currentTarget as HTMLElement).style.color = '#999';
-          }}
-        >
-          {t('landingPage.center.explorer')}
-        </motion.a>
-        <a
-          href="/docs" target="_blank" rel="noopener noreferrer" className="desktop-docs-link"
-          style={{ display: 'inline-flex', alignItems: 'center', minHeight: 'var(--touch-target-min)', marginTop: 8, padding: '8px 20px', color: '#b7c1ff', fontSize: 14, textUnderlineOffset: 4 }}
-        >
-          {t('webUi.docs')}
-        </a>
+        <section className={styles.centerPanel} aria-labelledby="landing-brand">
+          <div ref={badgeRef} className={styles.brand}>
+            <div className={styles.logo}><StoaLogo size={64} /></div>
+            <h1 id="landing-brand" className={styles.wordmark}>Open<span>Stoa</span></h1>
+          </div>
+          <div className={styles.introduction}>
+            <h2>{t('landingPage.center.publicSquare')}</h2>
+            <p>{t('landingPage.center.privacyFirst')}</p>
+          </div>
+          <nav className={styles.actions} aria-label={t('landingPage.center.navigation')}>
+            <a href="/topics" className={styles.explore}>
+              {t('landingPage.center.explorer')}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </a>
+            <a href="/docs" target="_blank" rel="noopener noreferrer" className={styles.docs}>
+              {t('webUi.docs')}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M7 17 17 7M7 7h10v10" />
+              </svg>
+            </a>
+          </nav>
+        </section>
       </div>
 
       <div className="os-agent">
@@ -457,18 +412,14 @@ function LandingPageInner() {
               <span style={{ whiteSpace: 'pre-line' }}>{t('landingPage.agent.headline')}</span>
             </h2>
             <div style={{ marginBottom: 32 }}>
-              {/* These lines must stay truthful: they are a demo of the path an
-                  agent can ACTUALLY take today. The earlier version typed out
-                  `zkproofport-prove --login-google` and the Google device flow,
-                  which the notice further up this same page says is unavailable
-                  while the prover service is offline — a success demo of a
-                  disabled feature. API-key auth (`osk_` + Bearer) is the path
-                  that works. The account owner issues the key in Settings; an
-                  API-key-authenticated agent cannot create another key. */}
+              {/* Proof login establishes identity; the same account's selected
+                  API key authorizes the request in a separate header. */}
               <TypingText key={locale} lines={[
                 `# ${t('landingPage.agent.ownerIssuedKeyHint')}`,
-                'export OPENSTOA_API_KEY=osk_9f3c...',
-                'curl -H "Authorization: Bearer $OPENSTOA_API_KEY" \\',
+                'export OPENSTOA_SESSION_TOKEN="<session-jwt>"',
+                'export OPENSTOA_API_KEY="osk_..."',
+                'curl -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" \\',
+                '     -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" \\',
                 '     https://www.openstoa.xyz/api/feed',
                 t('webUi.authenticatedStatus'),
               ]} />
@@ -518,19 +469,19 @@ function LandingPageInner() {
         </div>
       </section>
 
-      {/* Beta signup modal */}
+      {/* iOS email signup modal */}
       {betaOpen && (
         <div onClick={(e) => { if (e.target === e.currentTarget) closeBetaModal(); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()}
+          <div role="dialog" aria-modal="true" aria-labelledby="ios-signup-title" onClick={(e) => e.stopPropagation()}
             style={{ width: '100%', maxWidth: 400, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-modal)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
-              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{t('landingPage.beta.title')}</h3>
+              <h3 id="ios-signup-title" style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{t('landingPage.beta.title')}</h3>
               <button onClick={closeBetaModal} aria-label={t('common.close')} style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1 }}>×</button>
             </div>
             <div style={{ padding: '16px 24px 24px' }}>
               <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: '0 0 20px' }}>
-                {t('landingPage.beta.introPre')} {betaPlatform === 'Both' ? t('landingPage.beta.platformBoth') : betaPlatform === 'iOS' ? t('landingPage.beta.platformIos') : t('landingPage.beta.platformAndroid')} {t('landingPage.beta.introPost')}
+                {t('landingPage.beta.intro')}
               </p>
               <div style={{ marginBottom: 14 }}>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.emailLabel')}</label>
@@ -541,17 +492,6 @@ function LandingPageInner() {
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.orgLabel')}</label>
                 <input type="text" value={betaOrg} onChange={(e) => setBetaOrg(e.target.value)} placeholder={t('landingPage.beta.orgPlaceholder')}
                   style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'var(--color-bg-primary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-control)', color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', minHeight: 'var(--touch-target-min)' }} />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.platformLabel')}</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {['iOS', 'Android', 'Both'].map((plat) => (
-                    <button key={plat} onClick={() => setBetaPlatform(plat)}
-                      style={{ flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 500, background: betaPlatform === plat ? 'var(--color-brand-primary-muted)' : 'var(--color-bg-primary)', border: `1px solid ${betaPlatform === plat ? 'var(--color-brand-primary)' : 'var(--color-border-default)'}`, borderRadius: 'var(--radius-control)', color: betaPlatform === plat ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)', cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
-                      {plat === 'Both' ? t('webUi.both') : plat}
-                    </button>
-                  ))}
-                </div>
               </div>
               {!betaSuccess && (
                 <button onClick={submitBetaRequest} disabled={betaSubmitting}

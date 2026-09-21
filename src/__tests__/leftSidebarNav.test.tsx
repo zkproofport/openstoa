@@ -453,9 +453,9 @@ describe('LeftSidebar — Preferences group', () => {
 
     const row = prefsRow();
     expect(row).toBeDefined();
-    // Theme: the toggle is named for its destination ("switch to light"),
-    // and starts from the DOM's own data-theme (dark by default).
-    expect(row!.querySelector('button[aria-label="Switch to light theme"]')).not.toBeNull();
+    // Theme: the toggle is named for its destination ("switch to dark"),
+    // and starts from the DOM's own data-theme (light by default).
+    expect(row!.querySelector('button[aria-label="Switch to dark theme"]')).not.toBeNull();
     // Language: the same `LocaleSwitcher` the header renders — one <select>
     // (it used to be one button per locale) with an option per locale, each
     // named in its own language and never translated.

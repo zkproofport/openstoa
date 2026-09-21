@@ -45,9 +45,43 @@ describe('web locale omissions', () => {
     for (const link of [links[0], doc.querySelector('a[href="/docs?topic=login#login"]')!]) {
       expect(link.getAttribute('target')).toBe('_blank');
       expect(link.getAttribute('rel')).toContain('noopener');
-      expect(link.classList.contains('desktop-docs-link')).toBe(true);
+    }
+    expect(links[0].classList.contains('desktop-docs-link')).toBe(false);
+    expect(links[0].closest('nav')?.getAttribute('aria-label')).toBe(translate(locale, 'landingPage.center.navigation'));
+    for (const badge of ['zkProof', 'noDataStored', 'onChainVerified']) {
+      expect([...doc.querySelectorAll('.os-human-content span')].map(span => span.textContent)).not.toContain(translate(locale, `landingPage.human.badges.${badge}`));
     }
     expect((doc.querySelector('.os-human-content h2') as HTMLElement).style.fontFamily).toBe('var(--font-sans)');
+    const android = doc.querySelector('a[href*="play.google.com/store/apps/details"]');
+    expect(android?.getAttribute('href')).toBe('https://play.google.com/store/apps/details?id=com.masselabs.zkproofport&hl=ko');
+    expect(android?.textContent?.trim()).toBe(translate(locale, 'landingPage.proving.androidDownload'));
+    expect(android?.getAttribute('target')).toBe('_blank');
+    expect(doc.body.textContent).toContain(translate(locale, 'landingPage.proving.installStatus'));
+  });
+
+  it('collects email for iOS only and keeps the Android download available during login', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    apiFetch.mockResolvedValue({ ok: true });
+    container = document.createElement('div');
+    root = createRoot(container);
+    await act(async () => root!.render(<I18nProvider initialLocale="en"><LandingPage /></I18nProvider>));
+    const button = (key: string) => [...container!.querySelectorAll('button')].find(b => b.textContent?.trim() === translate('en', key))!;
+    await act(async () => button('landingPage.human.cta').click());
+    expect(container.querySelectorAll('a[href*="play.google.com/store/apps/details"]')).toHaveLength(2);
+    await act(async () => button('landingPage.proving.iosSignup').click());
+    const dialog = container.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain(translate('en', 'landingPage.beta.intro'));
+    expect(dialog.textContent).not.toContain('Android');
+    const email = dialog.querySelector('input[type="email"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(email, 'reader@example.com');
+      email.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => button('landingPage.beta.requestInvite').click());
+    expect(apiFetch).toHaveBeenCalledWith('/api/beta-signup', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ email: 'reader@example.com', organization: '', platform: 'iOS' }),
+    }));
+    expect(dialog.textContent).toContain(translate('en', 'landingPage.beta.successMessage'));
   });
 
   it('lets a signed-out visitor switch the landing page language and persists their choice', () => {

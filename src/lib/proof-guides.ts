@@ -167,7 +167,7 @@ export const PROOF_GUIDES: Record<string, ProofGuide> = {
         {
           step: 1,
           title: 'Open ZKProofport App',
-          description: 'Open the ZKProofport mobile app on your device. Download from the App Store or Google Play if not installed.',
+          description: 'Open the ZKProofport mobile app. Android is available on Google Play without a beta signup: https://play.google.com/store/apps/details?id=com.masselabs.zkproofport. iOS has not been released yet; request availability information on the OpenStoa home page.',
         },
         {
           step: 2,
