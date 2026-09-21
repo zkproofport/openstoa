@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/zkproofport/openstoa/compare/openstoa-server-v0.2.2...openstoa-server-v0.2.3) (2026-09-21)
+
+
+### Bug Fixes
+
+* clean up editor upload timers on unmount ([64adbc6](https://github.com/zkproofport/openstoa/commit/64adbc6049045245351299d9125625299e239f56))
+* integrate deployed UI changes with current login improvements ([28bcc08](https://github.com/zkproofport/openstoa/commit/28bcc08d278775c3c2aef03c97b1ac0fd0a91600))
+
 ## [0.2.2](https://github.com/zkproofport/openstoa/compare/openstoa-server-v0.2.1...openstoa-server-v0.2.2) (2026-09-20)
 
 

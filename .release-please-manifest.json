@@ -1,5 +1,5 @@
 {
-  ".": "0.2.2",
+  ".": "0.2.3",
   "packages/sdk": "0.2.2",
   "packages/commands": "0.2.2",
   "packages/cli": "0.2.2",
