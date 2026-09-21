@@ -1,3 +1,4 @@
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,7 +18,6 @@ import { QueryErrorState } from '../../components/QueryErrorState';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { SearchBar } from '../../components/SearchBar';
-import { initialFor } from '../../lib/peerProfile';
 import { buildDmCandidatesPath, type DmCandidate } from '../../lib/dmCandidates';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
@@ -179,19 +179,9 @@ export function NewConversationScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('openstoa.peerProfile.message', { nickname: item.nickname })}
               >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initialFor(item.nickname)}</Text>
-                </View>
-                <View style={styles.rowContent}>
-                  <Text style={styles.peerName} numberOfLines={1}>
-                    {item.nickname}
-                  </Text>
-                  {subtitle ? (
-                    <Text style={styles.sharedTopic} numberOfLines={1}>
-                      {subtitle}
-                    </Text>
-                  ) : null}
-                </View>
+                <UserIdentity identity={item} size={44}>
+                  {subtitle ? <Text style={styles.sharedTopic} numberOfLines={1}>{subtitle}</Text> : null}
+                </UserIdentity>
               </TouchableOpacity>
             );
           }}

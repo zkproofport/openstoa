@@ -1,3 +1,4 @@
+import { userFacingError } from '../i18n/userFacingError';
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -218,7 +219,7 @@ export function PollRenderer({ postId, poll, inert }: PollRendererProps) {
       patchPoll(res.poll);
       setPendingIds([]);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = userFacingError(err, t);
       Alert.alert(t('openstoa.poll.voteFailed'), msg);
     } finally {
       setSubmitting(false);
@@ -233,7 +234,7 @@ export function PollRenderer({ postId, poll, inert }: PollRendererProps) {
       );
       patchPoll(res.poll);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = userFacingError(err, t);
       Alert.alert(t('openstoa.poll.voteFailed'), msg);
     } finally {
       setSubmitting(false);

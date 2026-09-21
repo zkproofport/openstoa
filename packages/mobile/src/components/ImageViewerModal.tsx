@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useState } from 'react';
 import {
   Modal,
@@ -76,6 +77,7 @@ export default function ImageViewerModal({
   saveLabel,
   closeLabel,
 }: Props) {
+  const { t } = useTranslation();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -172,7 +174,7 @@ export default function ImageViewerModal({
             style={styles.iconBtn}
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel={closeLabel ?? 'Close'}
+            accessibilityLabel={closeLabel ?? t('openstoa.common.close')}
             testID="image-viewer-close"
             // A 44pt target on a 24pt glyph: the visual weight stays light while
             // the thing a thumb has to hit does not.

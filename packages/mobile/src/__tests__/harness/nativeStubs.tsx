@@ -38,6 +38,7 @@ export const ClipPath = host('ClipPath');
 export const LinearGradient = host('LinearGradient');
 export const Stop = host('Stop');
 export const Polygon = host('Polygon');
+export const Polyline = host('Polyline');
 export const Ellipse = host('Ellipse');
 /** SVG's own `Text`, deliberately a DIFFERENT host name from react-native's. */
 export const Text = host('SvgText');

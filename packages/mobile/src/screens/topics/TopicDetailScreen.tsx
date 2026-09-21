@@ -1,3 +1,6 @@
+import { generateTopicProof } from '../../lib/topicProof';
+import { WorkspaceProofProvider } from '../../components/WorkspaceProofProvider';
+import { userFacingError } from '../../i18n/userFacingError';
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -238,6 +241,7 @@ export function TopicDetailScreen() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState('');
   const [q, setQ] = useState('');
+  const [workspaceProvider, setWorkspaceProvider] = useState<'google' | 'microsoft' | null>(null);
 
   const topicQuery = useQuery<TopicDetailResponse>({
     queryKey: topicKeys.detail(topicId),
@@ -277,28 +281,9 @@ export function TopicDetailScreen() {
   const joinMutation = useMutation({
     mutationFn: async () => {
       const topic = topicQuery.data?.topic;
-      const proofType = topic?.proofType;
-
-      if (proofType && proofType !== 'none') {
-        try {
-          const circuitMap: Record<string, 'coinbase_attestation' | 'coinbase_country_attestation' | 'oidc_domain_attestation'> = {
-            kyc: 'coinbase_attestation',
-            country: 'coinbase_country_attestation',
-            google_workspace: 'oidc_domain_attestation',
-            microsoft_365: 'oidc_domain_attestation',
-            workspace: 'oidc_domain_attestation',
-          };
-          const circuit = circuitMap[proofType];
-          if (circuit) {
-            await host.generateProof({ scope: topicId, circuit });
-          }
-        } catch {
-          Alert.alert(t('openstoa.topics.proofRequiredTitle'), t('openstoa.topics.proofRequiredMessage'));
-          return;
-        }
-      }
-
-      await client.post(`/api/topics/${topicId}/join`);
+      if (!topic) throw new Error('Topic is not loaded');
+      const proof = await generateTopicProof(client, host, topic, workspaceProvider);
+      await client.post(`/api/topics/${topicId}/join`, proof);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: topicKeys.detail(topicId) });
@@ -315,7 +300,8 @@ export function TopicDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ['my-topics'] });
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.topics.joinFailedTitle'), err.message);
+      if ((err as Error & { kind?: string }).kind === 'HOST_TOPIC_PROOF_REPORTED') return;
+      Alert.alert(t('openstoa.topics.joinFailedTitle'), userFacingError(err, t));
     },
   });
 
@@ -347,7 +333,7 @@ export function TopicDetailScreen() {
       navigation.goBack();
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.topicDetail.leaveFailedTitle'), err.message);
+      Alert.alert(t('openstoa.topicDetail.leaveFailedTitle'), userFacingError(err, t));
     },
   });
 
@@ -375,7 +361,7 @@ export function TopicDetailScreen() {
       queryClient.invalidateQueries({ queryKey: topicKeys.postsAll(topicId) });
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.topicDetail.pinFailed'), err.message);
+      Alert.alert(t('openstoa.topicDetail.pinFailed'), userFacingError(err, t));
     },
   });
 
@@ -678,6 +664,9 @@ export function TopicDetailScreen() {
                 : t('openstoa.topicDetail.archiveRetention.noteWindowed')}
           </Text>
         ) : null}
+        {!isMember && topic.proofType === 'workspace' && (!topic.visibility || topic.visibility === 'public') ? (
+          <WorkspaceProofProvider value={workspaceProvider} onChange={setWorkspaceProvider} disabled={joinMutation.isPending} />
+        ) : null}
         {isMember ? null : topic.visibility && topic.visibility !== 'public' ? (
           /*
            * No Join button on a topic that cannot be joined this way.
@@ -696,7 +685,7 @@ export function TopicDetailScreen() {
           <TouchableOpacity
             style={[styles.actionButton, joinMutation.isPending && styles.actionButtonDisabled]}
             onPress={handleJoin}
-            disabled={joinMutation.isPending}
+            disabled={joinMutation.isPending || (topic.proofType === 'workspace' && !workspaceProvider)}
           >
             {joinMutation.isPending ? (
               <ActivityIndicator size="small" color={colors.text.inverted} />

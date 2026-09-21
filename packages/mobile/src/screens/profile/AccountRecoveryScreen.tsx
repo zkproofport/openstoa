@@ -1,3 +1,4 @@
+import { userFacingError } from '../../i18n/userFacingError';
 /**
  * Phase 4 account-recovery screen (mini-app). Mirrors the web AccountRecovery
  * component: back up the E2EE chat master_key via a synced passkey (host WebAuthn
@@ -54,9 +55,9 @@ export function AccountRecoveryScreen() {
     try {
       setState(await http.getBackup());
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(userFacingError(e, t, 'openstoa.recovery.loadFailed'));
     }
-  }, [http]);
+  }, [http, t]);
 
   useEffect(() => {
     void refresh();
@@ -72,7 +73,7 @@ export function AccountRecoveryScreen() {
     try {
       await fn();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(userFacingError(e, t, 'openstoa.recovery.failed'));
     } finally {
       setBusy(false);
     }
@@ -111,7 +112,7 @@ export function AccountRecoveryScreen() {
       const mk = await getDeviceMasterKey(secureStore);
       const code = await km.backupWithRecoveryCode(mk, http.postRecovery);
       setShownCode(code);
-      setMsg('Recovery code created. Store it now — it is shown only once.');
+      setMsg(t('openstoa.recovery.codeCreated'));
       await backUpKeychain();
       await refresh();
     });
@@ -122,7 +123,7 @@ export function AccountRecoveryScreen() {
       const mk = await getDeviceMasterKey(secureStore);
       const { credentialId, prfOutputB64 } = await host.passkeyPrf({ mode: 'create', saltB64: PRF_SALT_B64 });
       await km.backupWithPasskey(mk, credentialId, kb.unb64(prfOutputB64), http.postPasskey);
-      setMsg('Passkey registered for recovery.');
+      setMsg(t('openstoa.recovery.passkeyCreated'));
       await backUpKeychain();
       await refresh();
     });
@@ -195,7 +196,7 @@ export function AccountRecoveryScreen() {
       if (!secureStore || !host.passkeyPrf) throw new Error('Passkey recovery is unavailable on this device.');
       const { prfOutputB64 } = await host.passkeyPrf({ mode: 'get', saltB64: PRF_SALT_B64 });
       const mk = await km.recoverWithPasskey(kb.unb64(prfOutputB64), http.getBackup);
-      if (!mk) throw new Error(t('openstoa.recovery.passkeyNoBackup'));
+      if (!mk) throw new Error('PASSKEY_NO_BACKUP');
       await recoverAndReopenRooms(mk);
       setMsg(t('openstoa.recovery.recovered'));
       setPartial(t('openstoa.recovery.gapNotice'));

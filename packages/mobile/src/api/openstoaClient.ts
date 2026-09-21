@@ -66,6 +66,8 @@ export class OpenStoaApiError extends Error {
      * must come from `message` or `serverMessage`; this field is for the log.
      */
     readonly debugMessage: string,
+    /** Structured API metadata, such as a 402 proof requirement; never render raw. */
+    readonly responseBody?: unknown,
   ) {
     // The message IS the user-facing sentence: the server's own words when it
     // wrote any, and otherwise a plain statement with no internals in it. Every
@@ -233,6 +235,10 @@ export class OpenStoaNetworkError extends Error {
  * 500's opaque `errorId` shape — yields null so the caller shows its own copy
  * instead of putting infrastructure text on screen.
  */
+function readServerBody(body: string): unknown {
+  try { return JSON.parse(body); } catch { return undefined; }
+}
+
 function readServerError(body: string): string | null {
   if (!body) return null;
   try {
@@ -716,6 +722,7 @@ export class OpenStoaClient {
         path,
         readServerError(text),
         `${method} ${path} → ${res.status}: ${text}`,
+        readServerBody(text),
       );
     }
 

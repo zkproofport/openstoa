@@ -137,6 +137,6 @@ describe('the second-device warning', () => {
     const koStale = (
       (ko as unknown as Dict).openstoa.takeover.staleBackup as unknown as { body: string }
     ).body;
-    expect(koStale).toContain('그 폰뿐');
+    expect(koStale).toContain('해당 기기에서 다시 백업');
   });
 });

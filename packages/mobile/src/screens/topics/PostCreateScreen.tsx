@@ -1,3 +1,4 @@
+import { userFacingError } from '../../i18n/userFacingError';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { postKeys, topicKeys } from '@openstoa/api-types';
 import {
@@ -792,7 +793,7 @@ function PostCreateScreenAuthed() {
       );
       setImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = userFacingError(err, t);
       Alert.alert(t('openstoa.common.uploadFailed'), msg);
     } finally {
       setUploading(false);
@@ -889,7 +890,7 @@ function PostCreateScreenAuthed() {
       }
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.postCreate.failed'), err.message);
+      Alert.alert(t('openstoa.postCreate.failed'), userFacingError(err, t));
     },
   });
 
@@ -1146,7 +1147,7 @@ function PostCreateScreenAuthed() {
                     setTagInput(v);
                     setShowSuggestions(v.trim().length >= 1);
                   }}
-                  placeholder={tags.length === 0 ? 'Add tags…' : ''}
+                  placeholder={tags.length === 0 ? t('openstoa.postCreate.tagsPlaceholder') : ''}
                   placeholderTextColor={colors.text.tertiary}
                   onSubmitEditing={() => {
                     if (tagInput.trim()) addTag(tagInput);
@@ -1357,6 +1358,7 @@ interface PreviewBlockProps {
 }
 
 function PreviewBlock({ title, content, images, videos, poll, tags, styles, emptyLabel, colors }: PreviewBlockProps) {
+  const { t } = useTranslation();
   // Preview mode mirrors PostDetail/PostCard: link taps open the in-app
   // browser and OG cards fade in alongside the body text. PreviewBlock is
   // declared outside the screen component so it grabs navigation via the
@@ -1404,10 +1406,10 @@ function PreviewBlock({ title, content, images, videos, poll, tags, styles, empt
             </View>
           ))}
           <Text style={styles.previewPollMeta}>
-            {poll.multipleChoice ? '복수 선택 · ' : ''}
+            {poll.multipleChoice ? `${t('openstoa.poll.multipleChoice')} · ` : ''}
             {poll.closesAt
-              ? `마감: ${new Date(poll.closesAt).toLocaleString()}`
-              : '무제한'}
+              ? t('openstoa.poll.closesAt', { date: new Date(poll.closesAt).toLocaleString() })
+              : t('openstoa.pollEditor.duration_off')}
           </Text>
         </View>
       ) : null}

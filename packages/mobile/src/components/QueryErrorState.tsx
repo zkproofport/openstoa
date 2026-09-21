@@ -1,3 +1,4 @@
+import { userFacingError } from '../i18n/userFacingError';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +9,7 @@ import { RADIUS, TOUCH_TARGET_MIN, TYPE_SCALE } from '../theme/tokens';
 export interface QueryErrorStateProps {
   /** What failed to load, in the reader's terms — "Couldn't load topics". */
   title: string;
-  /** The thrown error. Its `message` is already a sentence for a person. */
+  /** The thrown error, translated before display. */
   error: unknown;
   /** Fetch again. Usually react-query's `refetch`. */
   onRetry: () => void;
@@ -75,7 +76,7 @@ export function QueryErrorState({ title, error, onRetry, testID }: QueryErrorSta
   return (
     <View style={styles.center} testID={testID ?? 'query-error-state'}>
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.body}>{describe(error, t('openstoa.common.errorFallback'))}</Text>
+      <Text style={styles.body}>{userFacingError(error, t)}</Text>
       <TouchableOpacity
         style={styles.retryBtn}
         onPress={onRetry}
@@ -86,19 +87,4 @@ export function QueryErrorState({ title, error, onRetry, testID }: QueryErrorSta
       </TouchableOpacity>
     </View>
   );
-}
-
-/**
- * The sentence under the title.
- *
- * `Error.message` is deliberately trusted here: `openstoaClient` builds every
- * failure it throws with a message written for a person — the server's own
- * words for a refusal, "check your connection" for an unreachable one — and the
- * endpoint lives on a separate field precisely so this can be rendered
- * directly. A throw from anywhere else gets the generic line rather than
- * `[object Object]`.
- */
-function describe(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  return fallback;
 }

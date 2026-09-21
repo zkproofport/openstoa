@@ -1,3 +1,7 @@
+import { generateTopicProof } from '../../lib/topicProof';
+import { WorkspaceProofProvider } from '../../components/WorkspaceProofProvider';
+import { categoryLabel } from '../../i18n/categoryLabel';
+import { userFacingError } from '../../i18n/userFacingError';
 import React, { useState } from 'react';
 import { listKeys } from '@openstoa/api-types';
 import {
@@ -238,10 +242,12 @@ export function TopicCreateScreen() {
   const styles = makeStyles(colors);
   // Null when the host hands over an unusable base URL — the affordance is then
   // hidden rather than opening a broken WebView (see lib/docsLink).
-  const tiersUrl = buildTiersUrl(useHost().getEnvironment().openstoaBaseUrl);
+  const host = useHost();
+  const tiersUrl = buildTiersUrl(host.getEnvironment().openstoaBaseUrl);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [workspaceProvider, setWorkspaceProvider] = useState<'google' | 'microsoft' | null>(null);
   const [proofType, setProofType] = useState<ProofType>('none');
   const [categoryId, setCategoryId] = useState<string>('');
   const [visibility, setVisibility] = useState<Visibility>('public');
@@ -250,7 +256,7 @@ export function TopicCreateScreen() {
   const [archiveRetentionDays, setArchiveRetentionDays] =
     useState<ArchiveRetentionDays>(ARCHIVE_RETENTION_DEFAULT);
   const [countryCodes, setCountryCodes] = useState('');
-  const [countryMode, setCountryMode] = useState<'include' | 'exclude'>('include');
+  const countryMode = 'include' as const;
   const [requiredDomain, setRequiredDomain] = useState('');
 
   const PROOF_TYPE_OPTIONS: { value: ProofType; label: string; wip?: boolean }[] = [
@@ -298,14 +304,16 @@ export function TopicCreateScreen() {
       if ((proofType === 'google_workspace' || proofType === 'microsoft_365' || proofType === 'workspace') && requiredDomain.trim()) {
         body.requiredDomain = requiredDomain.trim();
       }
-      return client.post<CreateTopicResponse>('/api/topics', body);
+      const proof = await generateTopicProof(client, host, body, workspaceProvider);
+      return client.post<CreateTopicResponse>('/api/topics', { ...body, ...proof });
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['topics'] });
       navigation.replace('TopicDetail', { topicId: res.topic.id });
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.topicCreate.createFailed'), err.message);
+      if ((err as Error & { kind?: string }).kind === 'HOST_TOPIC_PROOF_REPORTED') return;
+      Alert.alert(t('openstoa.topicCreate.createFailed'), userFacingError(err, t));
     },
   });
 
@@ -314,7 +322,8 @@ export function TopicCreateScreen() {
   };
 
   const canSubmit =
-    title.trim().length > 0 && !!categoryId && !createMutation.isPending;
+    title.trim().length > 0 && !!categoryId && !createMutation.isPending &&
+    (proofType !== 'workspace' || workspaceProvider !== null);
 
   return (
     <KeyboardAvoidingView
@@ -377,7 +386,7 @@ export function TopicCreateScreen() {
                       isSelected && styles.pickerOptionTextSelected,
                     ]}
                   >
-                    {cat.icon ? `${cat.icon}  ` : ''}{cat.name}
+                    {cat.icon ? `${cat.icon}  ` : ''}{categoryLabel(cat, t)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -501,20 +510,7 @@ export function TopicCreateScreen() {
         {proofType === 'country' && (
           <View style={{ marginTop: 12, gap: 10 }}>
             <Text style={styles.label}>{t('openstoa.topicCreate.countryMode')}</Text>
-            <View style={styles.modeRow}>
-              {(['include', 'exclude'] as const).map((mode) => (
-                <TouchableOpacity
-                  key={mode}
-                  style={[styles.modeBtn, countryMode === mode ? styles.modeBtnActive : styles.modeBtnInactive]}
-                  onPress={() => setCountryMode(mode)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.modeBtnText, { color: countryMode === mode ? colors.brand.primary : colors.text.secondary }]}>
-                    {mode === 'include' ? t('openstoa.topicCreate.countryInclude') : t('openstoa.topicCreate.countryExclude')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <Text style={styles.infoText}>{t('openstoa.topicCreate.countryInclude')}</Text>
             <Text style={[styles.label, { marginTop: 4 }]}>{t('openstoa.topicCreate.countryCodes')}</Text>
             <TextInput
               style={styles.extraInput}
@@ -525,6 +521,10 @@ export function TopicCreateScreen() {
               autoCapitalize="characters"
             />
           </View>
+        )}
+
+        {proofType === 'workspace' && (
+          <WorkspaceProofProvider value={workspaceProvider} onChange={setWorkspaceProvider} disabled={createMutation.isPending} />
         )}
 
         {/* Workspace-specific extra fields */}

@@ -1,10 +1,9 @@
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useCallback, useState } from 'react';
 import { sessionKeys } from '@openstoa/api-types';
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
-  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -19,11 +18,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useHost } from '@openstoa/miniapp-bridge';
-import type { Badge, DomainBadgeStatus, Post, SessionInfo } from '@openstoa/api-types';
+import type { Post, SessionInfo } from '@openstoa/api-types';
 import { reportFailure } from '../../api/failure';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useRequireAuth, GuestFallbackView } from '../../auth';
 import { PostCard } from '../../components/PostCard';
+import { BadgeVisibilitySettings } from '../../components/BadgeVisibilitySettings';
 import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import { GatedImage } from '../../components/GatedImage';
@@ -64,26 +64,6 @@ interface MyTopicsResponse {
 
 interface ProfileImageResponse {
   profileImage: string | null;
-}
-
-// Maps the proof-type string returned by /api/profile/badges to a short
-// human label for chips. Mirrors the proof type IDs in `ProofType`
-// (packages/api-types). Unknown types fall back to the raw string.
-function badgeLabelFor(type: string): string {
-  switch (type) {
-    case 'kyc':
-      return 'KYC';
-    case 'country':
-      return 'Country';
-    case 'google_workspace':
-      return 'Google Workspace';
-    case 'microsoft_365':
-      return 'Microsoft 365';
-    case 'workspace':
-      return 'Workspace';
-    default:
-      return type;
-  }
 }
 
 function makeStyles(colors: ThemeColors) {
@@ -191,77 +171,6 @@ function makeStyles(colors: ThemeColors) {
     joinedAt: {
       fontSize: TYPE_SCALE.caption,
       color: colors.text.tertiary,
-    },
-
-    // Domain badge
-    domainBadgeSection: {
-      backgroundColor: colors.background.primary,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      marginTop: 8,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border.default,
-    },
-    domainBadgeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    domainText: {
-      fontSize: TYPE_SCALE.caption,
-      color: colors.text.secondary,
-      marginTop: 2,
-    },
-    toggleButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 6,
-      borderRadius: RADIUS.pill,
-      borderWidth: 1,
-    },
-    toggleButtonActive: {
-      backgroundColor: colors.brand.primaryMuted,
-      borderColor: colors.brand.primary,
-    },
-    toggleButtonInactive: {
-      backgroundColor: colors.background.secondary,
-      borderColor: colors.border.strong,
-    },
-    toggleButtonText: {
-      fontSize: TYPE_SCALE.label,
-      fontWeight: '700',
-    },
-    toggleButtonTextActive: {
-      color: colors.brand.primary,
-    },
-    toggleButtonTextInactive: {
-      color: colors.text.tertiary,
-    },
-
-    // Badges
-    badgesSection: {
-      backgroundColor: colors.background.primary,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      marginTop: 8,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border.default,
-    },
-    badgeScroll: {
-      marginTop: 8,
-    },
-    badgeChip: {
-      backgroundColor: colors.brand.primaryMuted,
-      borderRadius: RADIUS.pill,
-      paddingHorizontal: 12,
-      paddingVertical: 5,
-      marginRight: 8,
-    },
-    badgeLabel: {
-      fontSize: TYPE_SCALE.label,
-      fontWeight: '600',
-      color: colors.brand.primary,
     },
 
     // Tab bar
@@ -535,32 +444,6 @@ export function ProfileHomeScreen() {
     enabled: !isGuest,
   });
 
-  const badgesQuery = useQuery<Badge[]>({
-    queryKey: ['profile', 'badges'],
-    queryFn: async () => {
-      const res = await client.get<{ badges: Badge[] }>('/api/profile/badges');
-      return res.badges ?? [];
-    },
-    enabled: !isGuest,
-  });
-
-  const domainBadgeQuery = useQuery<DomainBadgeStatus>({
-    queryKey: ['profile', 'domain-badge'],
-    queryFn: async () => {
-      const raw = await client.get<{ domains?: string[]; availableDomain?: string | null }>(
-        '/api/profile/domain-badge',
-      );
-      const domains = raw.domains ?? [];
-      return {
-        domains,
-        availableDomain: raw.availableDomain ?? null,
-        enabled: domains.length > 0,
-        domain: domains[0],
-      };
-    },
-    enabled: !isGuest,
-  });
-
   const postsQuery = useQuery<MyPostsResponse>({
     queryKey: ['my', 'posts', q],
     queryFn: () => {
@@ -603,57 +486,19 @@ export function ProfileHomeScreen() {
 
   const isRefreshing =
     sessionQuery.isRefetching ||
-    profileImageQuery.isRefetching ||
-    badgesQuery.isRefetching ||
-    domainBadgeQuery.isRefetching;
+    profileImageQuery.isRefetching;
 
   const handleRefresh = useCallback(() => {
     void sessionQuery.refetch();
     void profileImageQuery.refetch();
-    void badgesQuery.refetch();
-    void domainBadgeQuery.refetch();
+    void queryClient.invalidateQueries({ queryKey: ['profile', 'badges'] });
     if (activeTab === 'posts') void postsQuery.refetch();
     if (activeTab === 'bookmarks') void bookmarksQuery.refetch();
     if (activeTab === 'recorded') {
       if (recordedSub === 'by-me') void recordedQuery.refetch();
       else void recordedOnMineQuery.refetch();
     }
-  }, [activeTab, recordedSub, sessionQuery, profileImageQuery, badgesQuery, domainBadgeQuery, postsQuery, bookmarksQuery, recordedQuery, recordedOnMineQuery]);
-
-  // Domain badge ON/OFF mirrors the web flow at openstoa/src/app/my/page.tsx.
-  // The badge is just an opt-in toggle on top of a workspace verification
-  // (Google Workspace / Microsoft 365) that the user already produced when
-  // joining a workspace-gated topic — a generic Google login is NOT a
-  // workspace proof and won't populate `availableDomain`. So:
-  //   • If `availableDomain` is set → POST opts the cached domain in.
-  //   • If not, show guidance to verify by joining a workspace topic.
-  const handleDomainBadgeToggle = useCallback(async () => {
-    const data = domainBadgeQuery.data;
-    if (!data) return;
-    if (data.enabled) {
-      try {
-        await client.delete('/api/profile/domain-badge');
-        await queryClient.invalidateQueries({ queryKey: ['profile', 'domain-badge'] });
-      } catch (e) {
-        reportFailure(host, e, 'E9001');
-      }
-      return;
-    }
-    if (!data.availableDomain) {
-      Alert.alert(
-        t('openstoa.profile.domainBadge.enableTitle'),
-        // Matches web copy in openstoa/src/app/my/page.tsx:877.
-        t('openstoa.profile.domainBadge.noWorkspaceProof'),
-      );
-      return;
-    }
-    try {
-      await client.post('/api/profile/domain-badge');
-      await queryClient.invalidateQueries({ queryKey: ['profile', 'domain-badge'] });
-    } catch (e) {
-      reportFailure(host, e, 'E9000');
-    }
-  }, [domainBadgeQuery.data, client, queryClient, host, t]);
+  }, [activeTab, recordedSub, sessionQuery, profileImageQuery, queryClient, postsQuery, bookmarksQuery, recordedQuery, recordedOnMineQuery]);
 
   // Settings icon (gear) → straight to Edit profile. Edit profile owns
   // logout / delete account / domain badge / nickname / photo, so there's
@@ -724,8 +569,6 @@ export function ProfileHomeScreen() {
   // undefined to prevent the screen from crashing while the next sessionQuery
   // refetch / refresh resolves.
   const shortId = session.userId ? session.userId.slice(0, 8) : '';
-  const badges = badgesQuery.data ?? [];
-  const domainBadge = domainBadgeQuery.data;
   const profileImage = profileImageQuery.data?.profileImage ?? session.profileImage ?? null;
   const totalRecorded = session.totalRecorded ?? 0;
 
@@ -811,35 +654,13 @@ export function ProfileHomeScreen() {
               >
                 <SettingsIcon size={22} color={colors.text.secondary} />
               </TouchableOpacity>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => navigation.navigate('EditProfile')}
-              >
-                {profileImage ? (
-                  <GatedImage
-                    uri={profileImage}
-                    style={styles.avatarImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.avatarCircle}>
-                    <Text style={styles.avatarInitial}>
-                      {session.nickname.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
+              <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('EditProfile')}>
+                <UserIdentity identity={{ ...session, profileImage }} size={80} vertical nameStyle={styles.nickname} />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
                 <Text style={styles.editPhotoText}>{t('openstoa.profile.editPhoto')}</Text>
               </TouchableOpacity>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.nickname}>{session.nickname}</Text>
-                {session.role === 'admin' && (
-                  <View style={styles.adminChip}>
-                    <Text style={styles.adminChipText}>{t('openstoa.profile.adminChip')}</Text>
-                  </View>
-                )}
-              </View>
+              {session.role === 'admin' && <View style={styles.adminChip}><Text style={styles.adminChipText}>{t('openstoa.profile.adminChip')}</Text></View>}
               <Text style={styles.userId}>#{shortId}</Text>
               <Text style={styles.joinedAt}>
                 {t('openstoa.profile.joined', { when: formatRelativeTime(new Date(session.verifiedAt).toISOString()) })}
@@ -856,57 +677,7 @@ export function ProfileHomeScreen() {
               </View>
             </View>
 
-            {/* Domain badge section */}
-            {domainBadgeQuery.data !== undefined && (
-              <View style={styles.domainBadgeSection}>
-                <View style={styles.domainBadgeRow}>
-                  <View>
-                    <Text style={styles.sectionLabel}>{t('openstoa.profile.domainBadge.label')}</Text>
-                    {domainBadge?.enabled && domainBadge.domain ? (
-                      <Text style={styles.domainText}>{domainBadge.domain}</Text>
-                    ) : (
-                      <Text style={styles.domainText}>{t('openstoa.profile.notSet')}</Text>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleButton,
-                      domainBadge?.enabled ? styles.toggleButtonActive : styles.toggleButtonInactive,
-                    ]}
-                    onPress={() => void handleDomainBadgeToggle()}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleButtonText,
-                        domainBadge?.enabled
-                          ? styles.toggleButtonTextActive
-                          : styles.toggleButtonTextInactive,
-                      ]}
-                    >
-                      {domainBadge?.enabled ? 'OFF' : 'ON'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Badges */}
-            {badges.length > 0 && (
-              <View style={styles.badgesSection}>
-                <Text style={styles.sectionLabel}>{t('openstoa.profile.badges')}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
-                  {badges.map((badge) => (
-                    // Server returns `{type, verifiedAt, expiresAt}` — no `id`
-                    // or `label`. Derive a readable label from the proof
-                    // type and key by type since each user has one badge
-                    // per proof type.
-                    <View key={badge.type} style={styles.badgeChip}>
-                      <Text style={styles.badgeLabel}>{badgeLabelFor(badge.type)}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
+            <BadgeVisibilitySettings />
 
             {/* Tab selector — part of the non-sticky header, scrolls
                 out of view normally. The sticky chrome below (Search +

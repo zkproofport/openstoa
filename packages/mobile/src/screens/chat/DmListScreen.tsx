@@ -1,3 +1,4 @@
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useCallback } from 'react';
 import {
   ActivityIndicator,
@@ -20,7 +21,6 @@ import { useThemeColors } from '../../theme/ThemeContext';
 import type { ThemeColors } from '../../theme/colors';
 import type { ChatStackParamList } from '../../navigation/stacks/ChatStack';
 import { formatRelativeTime } from '../../utils/relativeTime';
-import { initialFor } from '../../lib/peerProfile';
 import { RADIUS, TYPE_SCALE } from '../../theme/tokens';
 
 type Nav = NativeStackNavigationProp<ChatStackParamList, 'DmList'>;
@@ -30,7 +30,7 @@ type Nav = NativeStackNavigationProp<ChatStackParamList, 'DmList'>;
 // decrypted only inside ChatRoom via the MLS session).
 interface DmChannel {
   topicId: string;
-  peer: { userId: string; nickname: string; profileImage: string | null };
+  peer: import('../../lib/peerProfile').PeerProfileTarget;
   lastActivityAt: string | null;
 }
 
@@ -191,14 +191,7 @@ export function DmListScreen() {
             })
           }
         >
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initialFor(item.peer.nickname)}</Text>
-          </View>
-          <View style={styles.rowContent}>
-            <Text style={styles.peerName} numberOfLines={1}>
-              {item.peer.nickname}
-            </Text>
-          </View>
+          <View style={styles.rowContent}><UserIdentity identity={item.peer} size={44} /></View>
           {item.lastActivityAt ? (
             <Text style={styles.time}>{formatRelativeTime(item.lastActivityAt)}</Text>
           ) : null}

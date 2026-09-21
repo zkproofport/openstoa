@@ -1,3 +1,7 @@
+import { generateTopicProof } from '../../lib/topicProof';
+import { WorkspaceProofProvider } from '../../components/WorkspaceProofProvider';
+import { categoryLabel } from '../../i18n/categoryLabel';
+import { userFacingError } from '../../i18n/userFacingError';
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { listKeys } from '@openstoa/api-types';
 import {
@@ -151,6 +155,8 @@ export function TopicsHomeScreen() {
   const [sortKey, setSortKey] = useState<SortKey>('hot');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteNeedsProvider, setInviteNeedsProvider] = useState(false);
+  const [inviteProvider, setInviteProvider] = useState<'google' | 'microsoft' | null>(null);
   const [membershipFilter, setMembershipFilter] = useState<'all' | 'joined'>('all');
   const [searchDraft, setSearchDraft] = useState('');
   const [q, setQ] = useState('');
@@ -203,10 +209,33 @@ export function TopicsHomeScreen() {
   const inviteJoinMutation = useMutation({
     mutationFn: async (pasted: string) => {
       const invite = parseInviteLink(pasted);
-      if (!invite) throw new Error(t('openstoa.topics.invite.invalidCode'));
-      const res = await client.post<InviteJoinResponse>(
-        `/api/topics/join/${encodeURIComponent(invite.code)}`,
-      );
+      if (!invite) throw new Error('INVALID_INVITE_CODE');
+      const path = `/api/topics/join/${encodeURIComponent(invite.code)}`;
+      let res: InviteJoinResponse;
+      try {
+        res = await client.post<InviteJoinResponse>(path);
+      } catch (error) {
+        if (!(error instanceof OpenStoaApiError) || error.status !== 402) throw error;
+        const body = error.responseBody as { proofRequirement?: { type?: unknown; domain?: unknown; allowedCountries?: unknown } } | undefined;
+        const requirement = body?.proofRequirement;
+        if (!requirement || typeof requirement.type !== 'string' || requirement.type === 'none') throw error;
+        if (requirement.type === 'workspace' && !inviteProvider) {
+          setInviteNeedsProvider(true);
+          throw Object.assign(new Error('Choose a workspace provider'), { kind: 'INVITE_PROVIDER_REQUIRED' });
+        }
+        // Close the mini-app modal before the host opens its proof-request modal.
+        setInviteOpen(false);
+        const proof = await generateTopicProof(client, host, {
+          proofType: requirement.type,
+          requiredDomain: typeof requirement.domain === 'string' ? requirement.domain : undefined,
+          allowedCountries: Array.isArray(requirement.allowedCountries) && requirement.allowedCountries.every(country => typeof country === 'string')
+            ? requirement.allowedCountries : undefined,
+        }, inviteProvider);
+        res = await client.post<InviteJoinResponse>(path, proof);
+      }
+      if (res.success !== true || typeof res.topicId !== 'string' || !res.topicId) {
+        throw new Error('Invalid invite join response');
+      }
       // Only after the join. A link whose token expired can still carry a
       // perfectly good fragment, and importing from it would put keys for a
       // topic this device is not in — and cannot leave — into its keychain.
@@ -225,6 +254,8 @@ export function TopicsHomeScreen() {
     },
     onSuccess: (res) => {
       setInviteOpen(false);
+      setInviteNeedsProvider(false);
+      setInviteProvider(null);
       if (typeof res.history === 'number') {
         Alert.alert(
           t('openstoa.topics.invite.joinedTitle'),
@@ -244,6 +275,9 @@ export function TopicsHomeScreen() {
       navigation.navigate('TopicDetail', { topicId: res.topicId });
     },
     onError: (err: Error) => {
+      const kind = (err as Error & { kind?: string }).kind;
+      if (kind === 'INVITE_PROVIDER_REQUIRED' || kind === 'HOST_TOPIC_PROOF_REPORTED') return;
+      setInviteOpen(true);
       // Read the STATUS, not the message text. This used to search the message
       // for "409" and "404", which only worked because the message was the raw
       // request line — the same string that was putting `/api/...` on screen
@@ -255,7 +289,7 @@ export function TopicsHomeScreen() {
           ? t('openstoa.topics.invite.alreadyMember')
           : status === 404
           ? t('openstoa.topics.invite.invalidCode')
-          : err.message;
+          : userFacingError(err, t);
       Alert.alert(t('openstoa.topics.invite.joinFailedTitle'), msg);
     },
   });
@@ -302,7 +336,7 @@ export function TopicsHomeScreen() {
     const all = { slug: null, label: t('openstoa.topics.category.all') };
     const cats = (categoriesQuery.data?.categories ?? []).map((c) => ({
       slug: c.slug,
-      label: c.name,
+      label: categoryLabel(c, t),
     }));
     return [all, ...cats];
   }, [categoriesQuery.data, t]);
@@ -460,14 +494,16 @@ export function TopicsHomeScreen() {
       )}
       <InvitePromptModal
         visible={inviteOpen}
-        onClose={() => setInviteOpen(false)}
+        onClose={() => { setInviteOpen(false); setInviteNeedsProvider(false); setInviteProvider(null); }}
         onSubmit={async (pasted) => {
           // Swallowed here because the mutation's onError already surfaces it;
           // the modal only needs to know when the attempt is over.
           await inviteJoinMutation.mutateAsync(pasted).catch(() => undefined);
         }}
         submitting={inviteJoinMutation.isPending}
-      />
+      >
+        {inviteNeedsProvider && <WorkspaceProofProvider value={inviteProvider} onChange={setInviteProvider} disabled={inviteJoinMutation.isPending} />}
+      </InvitePromptModal>
     </View>
   );
 }

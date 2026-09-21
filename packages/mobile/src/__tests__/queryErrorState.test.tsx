@@ -19,19 +19,24 @@
  *
  * EDGE-CASE MATRIX (CLAUDE.md) → coverage here
  *   contract   → the title, the reason and a working Retry all render
- *   integrity  → the reason shown is the error's own sentence, and carries no
+ *   integrity  → the reason is translated for the current language, and carries no
  *                endpoint (the leak this pairs with)
  *   hostile    → a thrown non-Error, and an Error with an empty message, still
  *                produce a readable line instead of "[object Object]" or blank
  *   empty      → a whitespace-only message falls back rather than rendering air
  *   boundary   → Retry fires exactly once per press, and again on a second
  *                press — a disabled-after-first-try button would strand people
- *   UTF-8      → a Korean server sentence survives
+ *   UTF-8      → a Korean UI localizes the error regardless of server language
  *   authz / very large / race → N/A: a presentational component with no caller
  *                identity, no async state and no input it does not receive.
  */
 import { describe, it, expect } from 'vitest';
 import React from 'react';
+import { createInstance } from 'i18next';
+import { I18nextProvider } from 'react-i18next';
+import ko from '../i18n/locales/ko.json';
+import en from '../i18n/locales/en.json';
+import { userFacingError } from '../i18n/userFacingError';
 import { render } from './harness/render';
 import { QueryErrorState } from '../components/QueryErrorState';
 import { OpenStoaApiError, OpenStoaNetworkError } from '../api/openstoaClient';
@@ -49,7 +54,7 @@ describe('QueryErrorState', () => {
     );
 
     expect(r.text()).toContain(TITLE);
-    expect(r.text()).toContain('Could not reach the server');
+    expect(r.text()).toContain('openstoa.errors.connection');
     expect(r.root.findAll((n) => n.props?.testID === 'query-error-retry').length).toBeGreaterThan(0);
   });
 
@@ -67,7 +72,7 @@ describe('QueryErrorState', () => {
     expect(r.text()).not.toContain('/api/');
   });
 
-  it('INTEGRITY: a server refusal shows the server’s own words', async () => {
+  it('INTEGRITY: a server refusal uses localized permission guidance', async () => {
     const r = await render(
       <QueryErrorState
         title={TITLE}
@@ -76,21 +81,25 @@ describe('QueryErrorState', () => {
       />,
     );
 
-    expect(r.text()).toContain('You are not a member.');
+    expect(r.text()).toContain('openstoa.errors.forbidden');
+    expect(r.text()).not.toContain('You are not a member.');
     expect(r.text()).not.toContain('403');
   });
 
-  it('UTF-8: a Korean sentence survives', async () => {
+  it('UTF-8: Korean UI translates a refusal instead of displaying the server sentence', async () => {
+    const i18n = createInstance();
+    await i18n.init({ lng: 'ko', resources: { ko: { translation: ko } } });
     const korean = '이 토픽에 접근할 수 없어요.';
     const r = await render(
-      <QueryErrorState
+      <I18nextProvider i18n={i18n}><QueryErrorState
         title={TITLE}
         error={new OpenStoaApiError(403, '/api/topics', korean, 'GET … → 403')}
         onRetry={() => {}}
-      />,
+      /></I18nextProvider>,
     );
 
-    expect(r.text()).toContain(korean);
+    expect(r.text()).toContain(ko.openstoa.errors.forbidden);
+    expect(r.text()).not.toContain(korean);
   });
 
   it.each([
@@ -122,4 +131,17 @@ describe('QueryErrorState', () => {
     await r.press(button());
     expect(presses).toBe(2);
   });
+});
+
+// A timeout must not claim the operation never happened; a server fault must
+// not invent a connection failure.
+it('localizes failure states and keeps diagnostic text out in both languages', async () => {
+  for (const [locale, resource] of [['ko', ko], ['en', en]] as const) {
+    const i18n = createInstance();
+    await i18n.init({ lng: locale, resources: { [locale]: { translation: resource } } });
+    expect(userFacingError({ kind: 'RATE_LIMITED' }, i18n.t)).toBe(resource.openstoa.errors.rateLimited);
+    expect(userFacingError({ name: 'OpenStoaTimeoutError' }, i18n.t)).toBe(resource.openstoa.errors.timeout);
+    expect(userFacingError(new OpenStoaApiError(500, '/api/topics', '<html>upstream failed</html>', 'debug'), i18n.t)).toBe(resource.openstoa.common.errorFallback);
+    expect(userFacingError(new OpenStoaApiError(409, '/api/profile/nickname', 'Nickname already taken', 'debug'), i18n.t)).toBe(resource.openstoa.errors.nicknameTaken);
+  }
 });

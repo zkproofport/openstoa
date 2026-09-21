@@ -74,6 +74,6 @@ describe('a refused read does not undo a recovery', () => {
     expect(s).toMatch(/[가-힣]/);
     expect(s).not.toMatch(/[A-Za-z]{4,}/);
     // The whole point: it must not send them back for their code.
-    expect(s).toContain('다시 복구하지 않아도');
+    expect(s).toContain('복구를 반복하지 않아도');
   });
 });

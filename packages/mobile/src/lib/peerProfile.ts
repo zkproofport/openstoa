@@ -7,18 +7,10 @@
  * under `src/__tests__` run; no screen/component here has render-level tests).
  */
 
-/** Shape shared with the server's `Badge` (src/lib/verification-cache.ts) and
- * `GET /api/dm/candidates` / `GET /api/topics/{topicId}/members` responses. */
-export interface PeerBadge {
-  type: string;
-  label: string;
-  domain?: string | null;
-}
+import type { PublicBadge } from '@openstoa/api-types';
+export type PeerBadge = PublicBadge;
 
-/** Everything the profile card needs to render. `badges` and `isAI` are
- * optional because not every surface that opens the card knows them —
- * ChatRoomScreen's message rows carry no badge data (no per-message badge
- * endpoint exists), so the card simply omits the badge section there. */
+/** Identity data is batched into the containing API response. */
 export interface PeerProfileTarget {
   userId: string;
   nickname: string;

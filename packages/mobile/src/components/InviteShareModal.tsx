@@ -1,3 +1,4 @@
+import { userFacingError } from '../i18n/userFacingError';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -225,7 +226,7 @@ export function InviteShareModal({ visible, onClose, topicId, visibility }: Invi
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('openstoa.topics.invite.joinFailedTitle'));
+      setError(userFacingError(err, t));
     } finally {
       setSharing(false);
     }

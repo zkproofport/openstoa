@@ -66,6 +66,7 @@ export const Image = Object.assign(host('Image'), {
 
 export const KeyboardAvoidingView = host('KeyboardAvoidingView');
 export const TouchableOpacity = host('TouchableOpacity');
+export const TouchableWithoutFeedback = host('TouchableWithoutFeedback');
 export const Pressable = host('Pressable');
 
 /**

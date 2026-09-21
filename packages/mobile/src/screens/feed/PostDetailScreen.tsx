@@ -1,3 +1,5 @@
+import { userFacingError } from '../../i18n/userFacingError';
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { postKeys, topicKeys } from '@openstoa/api-types';
 import {
@@ -30,7 +32,6 @@ import { MediaGallery } from '../../components/MediaGallery';
 import { PollRenderer } from '../../components/PollRenderer';
 import { PostContent, extractMediaItems, stripVideoUrls } from '../../components/PostContent';
 import { PostBodyWithOg } from '../../components/PostBodyWithOg';
-import { GatedImage } from '../../components/GatedImage';
 import { ArrowUpIcon, ArrowDownIcon, CommentIcon, EyeIcon, ShareIcon, BookmarkIcon, RecordIcon, TrashIcon } from '../../components/icons';
 import Feather from 'react-native-vector-icons/Feather';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -66,53 +67,6 @@ function truncateId(id: string | null | undefined, head = 6, tail = 4): string {
   if (!id) return '';
   if (id.length <= head + tail + 3) return id;
   return `${id.slice(0, head)}…${id.slice(-tail)}`;
-}
-
-function initials(name: string | null | undefined): string {
-  if (!name) return '?';
-  return name.charAt(0).toUpperCase();
-}
-
-// ---------------------------------------------------------------------------
-// Avatar component (matches TopicMembersScreen pattern)
-// ---------------------------------------------------------------------------
-
-function Avatar({
-  src,
-  name,
-  size,
-  colors,
-}: {
-  src?: string | null;
-  name?: string | null;
-  size: number;
-  colors: ThemeColors;
-}) {
-  if (src) {
-    return (
-      <GatedImage
-        uri={src}
-        style={{ width: size, height: size, borderRadius: RADIUS.pill }}
-        resizeMode="cover"
-      />
-    );
-  }
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: RADIUS.pill,
-        backgroundColor: colors.background.tertiary,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Text style={{ fontSize: size * 0.4, color: colors.text.tertiary, fontWeight: '600' }}>
-        {initials(name)}
-      </Text>
-    </View>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -583,16 +537,9 @@ function CommentRow({
   return (
     <View style={styles.commentRow}>
       <View style={styles.commentHeader}>
-        <Avatar src={null} name={comment.authorNickname} size={28} colors={colors} />
-        <View style={styles.commentAuthorInfo}>
-          <Text style={styles.commentAuthor}>
-            {comment.authorNickname ?? truncateId(comment.authorId, 6, 4)}
-            {comment.isAI ? ' 🤖' : ''}
-          </Text>
-          <Text style={styles.commentMeta}>
-            {truncateId(comment.authorId, 6, 4)} · {formatRelativeTime(comment.createdAt)}
-          </Text>
-        </View>
+        <View style={{ flex: 1 }}><UserIdentity identity={{ userId: comment.authorId ?? '', nickname: comment.authorNickname ?? truncateId(comment.authorId, 6, 4), profileImage: comment.authorProfileImage, badges: comment.badges, isAI: comment.isAI }} size={28}>
+          <Text style={styles.commentMeta}>{truncateId(comment.authorId, 6, 4)} · {formatRelativeTime(comment.createdAt)}</Text>
+        </UserIdentity></View>
         {canDelete && (
           <TouchableOpacity
             style={styles.deleteBtn}
@@ -764,6 +711,8 @@ export function PostDetailScreen() {
   // count changes (e.g. after handleRecord finishes).
   interface RecordRow {
     id: string;
+    recorderId?: string;
+    recorderBadges?: import('@openstoa/api-types').PublicBadge[];
     recorderNickname: string | null;
     recorderProfileImage: string | null;
     txHash: string | null;
@@ -895,7 +844,7 @@ export function PostDetailScreen() {
     try {
       await Share.share({ message: url, url, title: post?.title ?? 'OpenStoa post' });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = userFacingError(err, t);
       Alert.alert(t('openstoa.common.shareFailed'), msg);
     }
   }, [client, post?.topicId, post?.title, postId]);
@@ -943,7 +892,7 @@ export function PostDetailScreen() {
               }
               Alert.alert(
                 t('openstoa.postDetail.recordFailedTitle'),
-                localiseRecordReason(reason) ?? reason,
+                localiseRecordReason(reason) ?? userFacingError(e, t),
               );
               void queryClient.invalidateQueries({ queryKey: ['record-status', postId] });
             } finally {
@@ -1052,7 +1001,7 @@ export function PostDetailScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>
-          {postError ? (postError as Error).message : t('openstoa.postDetail.notFound')}
+          {postError ? userFacingError(postError, t) : t('openstoa.postDetail.notFound')}
         </Text>
       </View>
     );
@@ -1122,7 +1071,7 @@ export function PostDetailScreen() {
                   queryClient.invalidateQueries({ queryKey: topicKeys.postsAll(postTopicId) });
                   navigation.goBack();
                 } catch (err) {
-                  const msg = err instanceof Error ? err.message : String(err);
+                  const msg = userFacingError(err, t);
                   Alert.alert(t('openstoa.postDetail.deleteFailed'), msg);
                 }
               },
@@ -1204,16 +1153,9 @@ export function PostDetailScreen() {
           </View>
         ) : null}
         <View style={styles.authorRow}>
-          <Avatar src={post.authorProfileImage} name={post.authorNickname} size={36} colors={colors} />
-          <View style={styles.authorInfo}>
-            <Text style={styles.authorName}>
-              {post.authorNickname ?? truncateId(post.authorId, 6, 4)}
-              {post.isAI ? ' 🤖' : ''}
-            </Text>
-            <Text style={styles.authorMeta}>
-              {truncateId(post.authorId, 6, 4)} · {formatRelativeTime(post.createdAt)}
-            </Text>
-          </View>
+          <View style={{ flex: 1 }}><UserIdentity identity={{ userId: post.authorId, nickname: post.authorNickname ?? truncateId(post.authorId, 6, 4), profileImage: post.authorProfileImage, badges: post.badges, isAI: post.isAI }} size={36}>
+            <Text style={styles.authorMeta}>{truncateId(post.authorId, 6, 4)} · {formatRelativeTime(post.createdAt)}</Text>
+          </UserIdentity></View>
           {/* Kebab menu — surfaces author edit/delete, topic-owner pin/unpin,
               and platform-admin moderation. Hidden when the current user
               has no available actions on this post. */}
@@ -1496,21 +1438,9 @@ export function PostDetailScreen() {
                   ?? null;
                 return (
                   <View key={r.id} style={styles.recordRow}>
-                    <Avatar
-                      src={r.recorderProfileImage}
-                      name={r.recorderNickname}
-                      size={28}
-                      colors={colors}
-                    />
-                    <View style={styles.recordMain}>
-                      <Text style={styles.recordNickname} numberOfLines={1}>
-                        {r.recorderNickname ?? t('openstoa.postCard.author.anon')}
-                      </Text>
-                      <Text style={styles.recordMeta}>
-                        {formatRelativeTime(r.createdAt)}
-                        {r.contentHashMatch ? '' : ` · ${t('openstoa.postDetail.recordContentMismatch')}`}
-                      </Text>
-                    </View>
+                    <View style={styles.recordMain}><UserIdentity identity={{ userId: r.recorderId ?? '', nickname: r.recorderNickname ?? t('openstoa.postCard.author.anon'), profileImage: r.recorderProfileImage, badges: r.recorderBadges }} size={28}>
+                      <Text style={styles.recordMeta}>{formatRelativeTime(r.createdAt)}{r.contentHashMatch ? '' : ` · ${t('openstoa.postDetail.recordContentMismatch')}`}</Text>
+                    </UserIdentity></View>
                     {url ? (
                       <TouchableOpacity
                         activeOpacity={0.7}

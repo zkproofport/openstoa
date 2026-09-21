@@ -1,3 +1,4 @@
+import { userFacingError } from '../../i18n/userFacingError';
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { topicKeys } from '@openstoa/api-types';
 import {
@@ -159,7 +160,7 @@ export function TopicEditScreen() {
       navigation.goBack();
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.topicEdit.saveFailed'), err.message);
+      Alert.alert(t('openstoa.topicEdit.saveFailed'), userFacingError(err, t));
     },
   });
 
@@ -174,7 +175,7 @@ export function TopicEditScreen() {
       navigation.navigate('TopicsHome');
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.topicEdit.saveFailed'), err.message);
+      Alert.alert(t('openstoa.topicEdit.saveFailed'), userFacingError(err, t));
     },
   });
 

@@ -1,3 +1,5 @@
+import { userFacingError } from '../../i18n/userFacingError';
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useCallback, useLayoutEffect } from 'react';
 import { topicKeys } from '@openstoa/api-types';
 import {
@@ -28,6 +30,7 @@ type Props = NativeStackScreenProps<TopicsStackParamList, 'TopicRequests'>;
 type Nav = NativeStackNavigationProp<TopicsStackParamList, 'TopicRequests'>;
 
 interface JoinRequestItem {
+  badges?: import('@openstoa/api-types').PublicBadge[];
   id: string;
   userId: string;
   nickname: string;
@@ -164,22 +167,16 @@ export function TopicRequestsScreen() {
       queryClient.invalidateQueries({ queryKey: topicKeys.members(topicId) });
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.requests.actionFailed'), err.message);
+      Alert.alert(t('openstoa.requests.actionFailed'), userFacingError(err, t));
     },
   });
 
   const renderItem = useCallback(
     ({ item }: { item: JoinRequestItem }) => (
       <View style={styles.row}>
-        <View style={styles.avatar}>
-          <Feather name="user" size={18} color={colors.text.tertiary} />
-        </View>
-        <View style={styles.rowText}>
-          <Text style={styles.nickname} numberOfLines={1}>
-            {item.nickname}
-          </Text>
+        <View style={styles.rowText}><UserIdentity identity={item} size={36}>
           <Text style={styles.timeText}>{formatRelativeTime(item.createdAt)}</Text>
-        </View>
+        </UserIdentity></View>
         <View style={styles.actions}>
           <TouchableOpacity
             style={[styles.actionBtn, styles.rejectBtn]}

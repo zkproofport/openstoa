@@ -1,3 +1,5 @@
+import { userFacingError } from '../i18n/userFacingError';
+import { UserIdentity } from './UserIdentity';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, type LayoutChangeEvent, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -19,7 +21,6 @@ import { useOpenStoaSession } from '../stores/sessionStore';
 import { usePostMutations } from '../hooks/usePostMutations';
 import { useAuthGuardedAction, useRequireAuth } from '../auth';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
-import { GatedImage } from './GatedImage';
 
 // Lazy clipboard load — same pattern as ChatRoomScreen
 type ClipboardModule = typeof import('@react-native-clipboard/clipboard').default;
@@ -44,26 +45,6 @@ export interface PostCardProps {
   post: Post & { reactions?: ReactionSummary[] };
   topicTitle?: string;
   onPress: () => void;
-}
-
-// Avatar palette — must stay in lockstep with src/components/Avatar.tsx
-// (web Avatar). Same hash function (charCodeAt of first letter modulo
-// palette length) so the same nickname renders the same colour on web
-// and mobile.
-const AVATAR_PALETTE = [
-  '#3b82f6', // blue
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#f97316', // orange
-  '#22c55e', // green
-  '#06b6d4', // cyan
-  '#eab308', // yellow
-  '#ef4444', // red
-];
-
-function avatarColor(name: string): string {
-  const code = name.charCodeAt(0) || 0;
-  return AVATAR_PALETTE[code % AVATAR_PALETTE.length];
 }
 
 // Fixed visual-height threshold for the "Show more" toggle. Char/line
@@ -461,7 +442,7 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
     try {
       await Share.share({ message: url, url, title: post.title ?? 'OpenStoa post' });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = userFacingError(err, t);
       Alert.alert(t('openstoa.common.shareFailed'), msg);
     }
   }, [client, post.id, post.topicId, post.title]);
@@ -557,33 +538,9 @@ export function PostCard({ post, topicTitle, onPress }: PostCardProps) {
             visual parity holds even when the author hasn't uploaded a
             profile image. */}
         <View style={styles.authorRow}>
-          {post.authorProfileImage ? (
-            <GatedImage
-              uri={post.authorProfileImage}
-              style={styles.authorAvatar}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={[
-                styles.authorAvatarFallback,
-                { backgroundColor: avatarColor(post.authorNickname ?? '?') },
-              ]}
-            >
-              <Text style={styles.authorAvatarFallbackText}>
-                {(post.authorNickname ?? '?').charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <View style={styles.authorMetaRow}>
-            <Text style={styles.authorNickname} numberOfLines={1}>
-              {post.authorNickname ?? t('openstoa.postCard.author.anon')}
-            </Text>
-            <Text style={styles.authorSeparator}>·</Text>
-            <Text style={styles.authorTimestamp}>
-              {formatRelativeTime(post.createdAt)}
-            </Text>
-          </View>
+          <UserIdentity identity={{ userId: post.authorId, nickname: post.authorNickname ?? t('openstoa.postCard.author.anon'), profileImage: post.authorProfileImage, badges: post.badges, isAI: post.isAI }} size={28}>
+            <Text style={styles.authorTimestamp}>{formatRelativeTime(post.createdAt)}</Text>
+          </UserIdentity>
         </View>
 
         {/* Title — pinned posts get a small thumbtack icon prefix

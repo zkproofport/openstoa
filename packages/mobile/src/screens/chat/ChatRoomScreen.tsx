@@ -1,4 +1,6 @@
+import { userFacingError } from '../../i18n/userFacingError';
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchWithTimeout } from '../../api/timeout';
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useSyncExternalStore,
   useCallback,
   useEffect,
@@ -906,7 +908,7 @@ export function ChatRoomScreen() {
     mutationFn: ({ userId }: { userId: string }) =>
       client.post<{ topicId: string }>('/api/dm', { userId }),
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.dm.actionFailed'), err.message);
+      Alert.alert(t('openstoa.dm.actionFailed'), userFacingError(err, t));
     },
   });
   const openDmFromProfile = useCallback(
@@ -1032,6 +1034,18 @@ export function ChatRoomScreen() {
    * same answer, and that answer is what shipped.
    */
   const [cachedMessages, setCachedMessages] = useState<LocalMessage[]>([]);
+  // Cached decrypted history deliberately stores no badge snapshot. Resolve
+  // current public badges in one batched room request, shared with Members.
+  const { data: cachedAuthorData } = useQuery<{ members: PeerProfileTarget[] }>({
+    queryKey: topicKeys.members(topicId),
+    queryFn: () => client.get(`/api/topics/${topicId}/members`),
+    enabled: cachedMessages.length > 0,
+    staleTime: 0,
+  });
+  const cachedAuthorBadges = useMemo(() => new Map(
+    (cachedAuthorData?.members ?? []).map(member => [member.userId, member.badges ?? []]),
+  ), [cachedAuthorData]);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -1094,8 +1108,10 @@ export function ChatRoomScreen() {
       (a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
-    return merged;
-  }, [data, sentMessages, catchupMessages, liveMessages, cachedMessages, recovered]);
+    return merged.map(message => message.badges !== undefined ? message : {
+      ...message, badges: cachedAuthorBadges.get(message.userId) ?? [],
+    });
+  }, [data, sentMessages, catchupMessages, liveMessages, cachedMessages, recovered, cachedAuthorBadges]);
 
   /*
    * Remember the room as rendered, so the next launch can paint before it asks.
@@ -2313,9 +2329,7 @@ export function ChatRoomScreen() {
             t(`openstoa.chat.media.error.${err.reason}`, {
               limit: Math.floor(MAX_CHAT_MEDIA_BYTES / (1024 * 1024)),
             })
-          : err instanceof Error
-            ? err.message
-            : String(err);
+          : userFacingError(err, t);
       Alert.alert(t('openstoa.chat.media.title'), message);
     } finally {
       setUploading(false);
@@ -3575,14 +3589,14 @@ function MessageBody({ item, sameAuthor, isOwn, styles, navigation, client, onIm
               userId: item.userId,
               nickname: item.nickname,
               profileImage: item.profileImage,
+              badges: item.badges,
               isAI: item.isAI,
             })
           }
           accessibilityRole="button"
           accessibilityLabel={item.nickname}
         >
-          <Text style={styles.bubbleAuthor}>{displayNickname(item.nickname ?? '')}</Text>
-          {item.isAI ? <Text style={styles.aiBadge}>AI</Text> : null}
+          <UserIdentity identity={{ userId: item.userId, nickname: displayNickname(item.nickname ?? ''), profileImage: item.profileImage, badges: item.badges, isAI: item.isAI }} size={24} nameStyle={styles.bubbleAuthor} />
         </TouchableOpacity>
       ) : null}
 

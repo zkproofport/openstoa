@@ -1,3 +1,5 @@
+import { userFacingError } from '../../i18n/userFacingError';
+import type { TFunction } from 'i18next';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -62,34 +64,50 @@ interface CreateKeyResponse {
 // raw path, so a newly-added server capability still renders (just unlabelled).
 // Mirrors the web app's `src/lib/apiKeyForm.ts` CMD_LABELS.
 const CMD_LABELS: Record<string, string> = {
-  '/openstoa/topic/join': 'Join topics',
-  '/openstoa/topic/leave': 'Leave / remove members',
-  '/openstoa/post/read': 'Read posts',
-  '/openstoa/post/write': 'Create & edit posts',
-  '/openstoa/post/delete': 'Delete posts',
-  '/openstoa/comment/read': 'Read comments',
-  '/openstoa/comment/write': 'Write comments',
-  '/openstoa/chat/read': 'Read chat & history',
-  '/openstoa/chat/send': 'Send chat messages',
-  '/openstoa/profile/read': 'Read profile',
-  '/openstoa/profile/edit': 'Edit profile',
-  '/ai/summarize': 'Summarize',
-  '/ai/search': 'Search',
+  '/openstoa/topic/read': 'openstoa.apiKeys.capabilities.readTopics',
+  '/openstoa/topic/create': 'openstoa.apiKeys.capabilities.createTopics',
+  '/openstoa/topic/edit': 'openstoa.apiKeys.capabilities.editTopics',
+  '/openstoa/topic/delete': 'openstoa.apiKeys.capabilities.deleteTopics',
+  '/openstoa/topic/manage-members': 'openstoa.apiKeys.capabilities.manageMembers',
+  '/openstoa/post/react': 'openstoa.apiKeys.capabilities.reactPosts',
+  '/openstoa/post/record': 'openstoa.apiKeys.capabilities.recordPosts',
+  '/openstoa/comment/delete': 'openstoa.apiKeys.capabilities.deleteComments',
+  '/openstoa/upload/write': 'openstoa.apiKeys.capabilities.uploadImages',
+  '/openstoa/upload/delete': 'openstoa.apiKeys.capabilities.deleteUploads',
+  '/openstoa/media/read': 'openstoa.apiKeys.capabilities.readMedia',
+  '/openstoa/notification/read': 'openstoa.apiKeys.capabilities.readNotifications',
+  '/openstoa/notification/write': 'openstoa.apiKeys.capabilities.writeNotifications',
+  '/openstoa/chat/manage-keys': 'openstoa.apiKeys.capabilities.manageChatKeys',
+
+  '/openstoa/topic/join': 'openstoa.apiKeys.capabilities.topicJoin',
+  '/openstoa/topic/leave': 'openstoa.apiKeys.capabilities.topicLeave',
+  '/openstoa/post/read': 'openstoa.apiKeys.capabilities.postRead',
+  '/openstoa/post/write': 'openstoa.apiKeys.capabilities.postWrite',
+  '/openstoa/post/delete': 'openstoa.apiKeys.capabilities.postDelete',
+  '/openstoa/comment/read': 'openstoa.apiKeys.capabilities.commentRead',
+  '/openstoa/comment/write': 'openstoa.apiKeys.capabilities.commentWrite',
+  '/openstoa/chat/read': 'openstoa.apiKeys.capabilities.chatRead',
+  '/openstoa/chat/send': 'openstoa.apiKeys.capabilities.chatSend',
+  '/openstoa/profile/read': 'openstoa.apiKeys.capabilities.profileRead',
+  '/openstoa/profile/edit': 'openstoa.apiKeys.capabilities.profileEdit',
+  '/ai/summarize': 'openstoa.apiKeys.capabilities.summarize',
+  '/ai/search': 'openstoa.apiKeys.capabilities.search',
 };
 
 // History (chat archive) scope choices — a subset of the server's isValidTakScope
 // grammar (none | Nd | since_epoch:N | full) that covers the common cases.
 const HISTORY_SCOPES: { key: string; label: string }[] = [
-  { key: 'none', label: 'No history' },
-  { key: '7d', label: 'Last 7 days' },
-  { key: '30d', label: 'Last 30 days' },
-  { key: 'full', label: 'Full history' },
+  { key: 'none', label: 'openstoa.apiKeys.historyScopes.none' },
+  { key: '7d', label: 'openstoa.apiKeys.historyScopes.7d' },
+  { key: '30d', label: 'openstoa.apiKeys.historyScopes.30d' },
+  { key: 'full', label: 'openstoa.apiKeys.historyScopes.full' },
 ];
 
 const MAX_NAME_LEN = 100;
 
-function scopeLabel(scope: string): string {
-  return HISTORY_SCOPES.find((s) => s.key === scope)?.label ?? scope;
+function scopeLabel(scope: string, t: TFunction): string {
+  const choice = HISTORY_SCOPES.find((s) => s.key === scope);
+  return choice ? t(choice.label) : scope;
 }
 
 function fmtDate(iso: string | null): string {
@@ -225,12 +243,13 @@ function CapabilityToggles({
   styles: ReturnType<typeof makeStyles>;
   colors: ThemeColors;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {allowedCmd.map((cmd) => (
         <View key={cmd} style={styles.capRow}>
           <View style={{ flex: 1, marginRight: 12 }}>
-            <Text style={styles.capLabel}>{CMD_LABELS[cmd] ?? cmd}</Text>
+            <Text style={styles.capLabel}>{CMD_LABELS[cmd] ? t(CMD_LABELS[cmd]) : cmd}</Text>
             <Text style={styles.capPath}>{cmd}</Text>
           </View>
           <Switch
@@ -254,6 +273,7 @@ function HistoryScopeChips({
   onChange: (v: string) => void;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.scopeRow}>
       {HISTORY_SCOPES.map((s) => {
@@ -265,7 +285,7 @@ function HistoryScopeChips({
             onPress={() => onChange(s.key)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.scopeChipLabel, active && styles.scopeChipLabelActive]}>{s.label}</Text>
+            <Text style={[styles.scopeChipLabel, active && styles.scopeChipLabelActive]}>{t(s.label)}</Text>
           </TouchableOpacity>
         );
       })}
@@ -314,7 +334,7 @@ export function AiPermissionsScreen() {
       setNewHistory('none');
     },
     onError: (e) => {
-      Alert.alert(t('openstoa.apiKeys.createFailedTitle'), e instanceof Error ? e.message : String(e));
+      Alert.alert(t('openstoa.apiKeys.createFailedTitle'), userFacingError(e, t));
     },
   });
 
@@ -358,7 +378,7 @@ export function AiPermissionsScreen() {
       setEditingId(null);
     },
     onError: (e) => {
-      Alert.alert(t('openstoa.apiKeys.editFailedTitle'), e instanceof Error ? e.message : String(e));
+      Alert.alert(t('openstoa.apiKeys.editFailedTitle'), userFacingError(e, t));
     },
   });
   const saveEdit = useCallback(
@@ -378,7 +398,7 @@ export function AiPermissionsScreen() {
       setEditingId((cur) => (cur === data.id ? null : cur));
     },
     onError: (e) => {
-      Alert.alert(t('openstoa.apiKeys.revokeFailedTitle'), e instanceof Error ? e.message : String(e));
+      Alert.alert(t('openstoa.apiKeys.revokeFailedTitle'), userFacingError(e, t));
     },
   });
   const confirmRevoke = useCallback(
@@ -407,7 +427,7 @@ export function AiPermissionsScreen() {
     return (
       <View style={[styles.root, styles.center, { paddingHorizontal: 24 }]}>
         <Text style={{ fontSize: TYPE_SCALE.bodySmall, color: colors.text.secondary, marginBottom: 12, textAlign: 'center' }}>
-          {keysQuery.error instanceof Error ? keysQuery.error.message : t('openstoa.apiKeys.loadFailed')}
+          {userFacingError(keysQuery.error, t, 'openstoa.apiKeys.loadFailed')}
         </Text>
         <TouchableOpacity style={styles.secondaryButton} onPress={() => void keysQuery.refetch()}>
           <Text style={styles.secondaryButtonText}>{t('openstoa.common.retry')}</Text>
@@ -516,10 +536,10 @@ export function AiPermissionsScreen() {
                     <View style={styles.keyMetaRow}>
                       <Text style={styles.keyMetaText}>
                         {t('openstoa.apiKeys.scopeLabel', {
-                          value: k.cmd.length === 0 ? t('openstoa.apiKeys.scopeNone') : k.cmd.map((c) => CMD_LABELS[c] ?? c).join(', '),
+                          value: k.cmd.length === 0 ? t('openstoa.apiKeys.scopeNone') : k.cmd.map((c) => CMD_LABELS[c] ? t(CMD_LABELS[c]) : c).join(', '),
                         })}
                       </Text>
-                      <Text style={styles.keyMetaText}>{t('openstoa.apiKeys.historyLabel', { value: scopeLabel(k.historyGrant) })}</Text>
+                      <Text style={styles.keyMetaText}>{t('openstoa.apiKeys.historyLabel', { value: scopeLabel(k.historyGrant, t) })}</Text>
                       <Text style={styles.keyMetaText}>{t('openstoa.apiKeys.createdLabel', { value: fmtDate(k.createdAt) })}</Text>
                       <Text style={styles.keyMetaText}>{t('openstoa.apiKeys.lastUsedLabel', { value: fmtDate(k.lastUsedAt) })}</Text>
                     </View>

@@ -1,3 +1,4 @@
+import { userFacingError } from './i18n/userFacingError';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { sessionVerdictForStatus, userIdFromToken } from './lib/sessionVerdict';
 import { StyleSheet, View } from 'react-native';
@@ -389,7 +390,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
           return 'welcome' as const;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          if (msg !== 'LOGGED_OUT') setErrorMsg(msg);
+          if (msg !== 'LOGGED_OUT') setErrorMsg(userFacingError(err, t));
           session.clear();
           return 'welcome' as const;
         }
@@ -639,7 +640,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
           console.warn(
             `[OpenStoaApp] sign-in attempt ${attempt} failed after ${waitedMs}ms: ${msg}`,
           );
-          setErrorMsg(msg === 'LOGGED_OUT' ? null : msg);
+          setErrorMsg(msg === 'LOGGED_OUT' ? null : userFacingError(err, t, 'openstoa.welcome.signInFailed'));
           setPhase('welcome');
         } finally {
           if (deadlineTimer) clearTimeout(deadlineTimer);

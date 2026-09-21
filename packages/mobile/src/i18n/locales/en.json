@@ -29,7 +29,8 @@
       "signingIn": "Opening secure sign-in…",
       "continueAsGuest": "Continue as guest",
       "legal": "Your identity is never shared. Only your anonymous nullifier is stored.",
-      "signInTimedOut": "Sign-in didn't finish in time. Please try again."
+      "signInTimedOut": "Sign-in didn't finish in time. Please try again.",
+      "signInFailed": "Could not sign in. Please try again."
     },
     "signInPrompt": {
       "title": "Sign in to continue",
@@ -143,7 +144,22 @@
       "recordedCount": "records",
       "searchPlaceholder": "Search my posts…",
       "adminChip": "Admin",
-      "settingsA11y": "Settings"
+      "settingsA11y": "Settings",
+      "badgeVisibility": {
+        "description": "Verified badges are visible by default beside your identity throughout OpenStoa, including your login verification. Turn off any badge to hide it from others. Hiding a badge does not change your verification or topic access.",
+        "visible": "Display on",
+        "hidden": "Display off",
+        "hideLabel": "Hide {{badge}} badge",
+        "showLabel": "Show {{badge}} badge",
+        "empty": "No active verifications yet.",
+        "loadFailed": "Could not load verification badges.",
+        "types": {
+          "kyc": "KYC verification",
+          "country": "Country verification",
+          "oidc_domain": "Organization domain",
+          "oidc_login": "Account verification"
+        }
+      }
     },
     "editProfile": {
       "nickname": "Nickname",
@@ -192,7 +208,8 @@
       "chatRecoverySection": "Chat recovery",
       "chatRecoveryAction": "Back up & recover encrypted chat keys",
       "removePhotoTitle": "Remove profile photo",
-      "removePhotoBody": "Remove your profile photo?"
+      "removePhotoBody": "Remove your profile photo?",
+      "removePhoto": "Remove"
     },
     "topics": {
       "detailTitle": "Topic",
@@ -365,11 +382,11 @@
       "archiveRetention": {
         "label": "Chat history",
         "hint": "How long this topic keeps its encrypted chat archive. Choose once — it cannot be changed later.",
-        "cost": "A shorter window means less to catch up on: anything older is deleted for everyone, so a member who joins later sees less.",
+        "cost": "A shorter retention period leaves less history to share with new members. Older messages are deleted when the topic is used.",
         "options": {
           "unlimited": {
             "label": "Keep forever",
-            "desc": "Nothing is deleted. A member who joins later can read the whole conversation."
+            "desc": "Keep history without a time limit. What new members can read depends on the topic type and invitation."
           },
           "year1": {
             "label": "1 year",
@@ -381,7 +398,7 @@
           },
           "days30": {
             "label": "30 days",
-            "desc": "Messages older than 30 days are deleted. A later joiner sees the last month only."
+            "desc": "Messages older than 30 days are deleted when the topic is used."
           }
         }
       },
@@ -417,7 +434,8 @@
       "tagsLabel": "Tags",
       "tagHint": "· press Enter or comma to add",
       "describeImage": "Describe",
-      "describeImageFor": "Describe photo {{n}}"
+      "describeImageFor": "Describe photo {{n}}",
+      "tagsPlaceholder": "Add tags…"
     },
     "pollEditor": {
       "title": "Poll",
@@ -442,7 +460,8 @@
       "closed": "Closed",
       "closesInMinutes": "{{n}}m left",
       "closesInHours": "{{n}}h left",
-      "closesInDays": "{{n}}d left"
+      "closesInDays": "{{n}}d left",
+      "closesAt": "Closes: {{date}}"
     },
     "postDetail": {
       "commentsHeader": "Comments ({{count}})",
@@ -553,7 +572,9 @@
       "historySignedOut": "Signed out, so the conversation could not be loaded.",
       "historyUnavailable": "The conversation could not be loaded.",
       "joinedRoom": "{{nickname}} entered the chat",
-      "leftRoom": "{{nickname}} left the chat"
+      "leftRoom": "{{nickname}} left the chat",
+      "mute": "Mute notifications for this topic",
+      "unmute": "Unmute notifications for this topic"
     },
     "dm": {
       "title": "Direct Messages",
@@ -614,7 +635,42 @@
       "scopeNone": "none",
       "historyLabel": "History: {{value}}",
       "createdLabel": "Created: {{value}}",
-      "lastUsedLabel": "Last used: {{value}}"
+      "lastUsedLabel": "Last used: {{value}}",
+      "historyScopes": {
+        "none": "No history",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "full": "Full history"
+      },
+      "capabilities": {
+        "topicJoin": "Join topics",
+        "topicLeave": "Leave / remove members",
+        "postRead": "Read posts",
+        "postWrite": "Create & edit posts",
+        "postDelete": "Delete posts",
+        "commentRead": "Read comments",
+        "commentWrite": "Write comments",
+        "chatRead": "Read chat & history",
+        "chatSend": "Send chat messages",
+        "profileRead": "Read profile",
+        "profileEdit": "Edit profile",
+        "summarize": "Summarize",
+        "search": "Search",
+        "readTopics": "Read topics and members",
+        "createTopics": "Create topics",
+        "editTopics": "Edit topic settings",
+        "deleteTopics": "Delete topics",
+        "manageMembers": "Manage members and invitations",
+        "reactPosts": "Vote, react and bookmark",
+        "recordPosts": "Record posts on-chain",
+        "deleteComments": "Delete comments",
+        "uploadImages": "Upload images",
+        "deleteUploads": "Delete uploaded images",
+        "readMedia": "Read uploaded images",
+        "readNotifications": "Read notification settings",
+        "writeNotifications": "Change notification settings",
+        "manageChatKeys": "Share chat encryption keys"
+      }
     },
     "recovery": {
       "keychainUploadFailed": "Your recovery key is saved, but this device could not upload its chat keys just now. Reopen this screen while online to finish the backup.",
@@ -641,7 +697,14 @@
       "recoverWithCode": "Recover with code",
       "identity": "Identity {{id}}…",
       "passkeyNoBackup": "Recovery failed — this passkey has no backup on file.",
-      "keysPending": "The chat keys have not arrived yet. The recovery itself is done and the keys are fetched again on their own — there is no need to recover a second time."
+      "keysPending": "The chat keys have not arrived yet. The recovery itself is done and the keys are fetched again on their own — there is no need to recover a second time.",
+      "passkeyUnavailable": "Passkey recovery is unavailable on this device. Use your recovery code.",
+      "invalidCode": "This recovery code is not valid. Check your saved code.",
+      "codeFailed": "The code is incorrect or has no matching backup. Check your recovery code.",
+      "codeCreated": "Recovery code created. Save it now; it is only shown once.",
+      "passkeyCreated": "Passkey registered for recovery.",
+      "failed": "Could not complete the recovery action. Try again.",
+      "loadFailed": "Could not load recovery settings. Reopen this screen."
     },
     "recoveryNudge": {
       "title": "Back up your chat keys",
@@ -782,6 +845,27 @@
     "a11y": {
       "photoInPost": "Photo {{n}} of {{total}} in this post",
       "photoInPostSingle": "Photo in this post"
+    },
+    "errors": {
+      "nicknameTaken": "This nickname is already in use. Choose another one.",
+      "signIn": "Please sign in again to continue.",
+      "rateLimited": "Too many requests. Wait a moment before trying again.",
+      "connection": "Could not connect to the server. Check your connection and try again.",
+      "timeout": "The response timed out. Check whether your request completed before trying again.",
+      "forbidden": "You do not have permission for this action. Check your membership and access.",
+      "notFound": "The requested item could not be found. Refresh the list.",
+      "conflict": "This request conflicts with the current state. Refresh and check again.",
+      "invalidInput": "The input could not be accepted. Check it and try again."
+    },
+    "categories": {
+      "base-layer2": "Base & Layer 2",
+      "defi-trading": "DeFi & Trading",
+      "nft-gaming": "NFT & Gaming",
+      "privacy-zk": "Privacy & ZK",
+      "development": "Development",
+      "governance": "Governance",
+      "free-talk": "Free Talk",
+      "announcements": "Announcements"
     }
   }
 }

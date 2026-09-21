@@ -1,3 +1,4 @@
+import { userFacingError } from '../i18n/userFacingError';
 import { useCallback } from 'react';
 import { postKeys, topicKeys } from '@openstoa/api-types';
 import { Alert } from 'react-native';
@@ -247,7 +248,7 @@ export function usePostMutations(postId: string) {
         void queryClient.invalidateQueries({ queryKey: postKeys.detail(postId) });
         return { ok: true };
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = userFacingError(e, t);
         if (isNotAMember(e)) {
           return { ok: false, reason: 'not_member', message: msg };
         }
@@ -288,7 +289,7 @@ export function usePostMutations(postId: string) {
           ...p,
           isPinned: currentPinned,
         }));
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = userFacingError(e, t);
         return { ok: false, message: msg };
       }
     },

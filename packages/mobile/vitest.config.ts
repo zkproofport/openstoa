@@ -116,6 +116,8 @@ export default defineConfig({
       // something these do not define fails loudly at import — which is the
       // point: a mock that quietly answers everything hides the change it
       // should have surfaced.
+      'react-native-linear-gradient': path.join(HARNESS, 'linearGradientStub.tsx'),
+      'react-native-vector-icons/MaterialCommunityIcons': path.join(HARNESS, 'iconStub.tsx'),
       'react-native-vector-icons/Feather': path.join(HARNESS, 'iconStub.tsx'),
       'react-native-vector-icons/MaterialIcons': path.join(HARNESS, 'iconStub.tsx'),
       'react-native-vector-icons/Ionicons': path.join(HARNESS, 'iconStub.tsx'),

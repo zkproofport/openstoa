@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+import { userFacingError } from '../i18n/userFacingError';
 /**
  * Turning a thrown request error into something a person can act on.
  *
@@ -80,8 +82,12 @@ export function describeFailure(e: unknown, fallbackCode: string): Failure {
  * Show a failed write in the host's error modal, and hand back the parts a
  * screen may want to place itself (the inline reason).
  */
-export function reportFailure(host: HostApi, e: unknown, fallbackCode: string): Failure {
+export function reportFailure(host: HostApi, e: unknown, fallbackCode: string, t?: TFunction): Failure {
   const failure = describeFailure(e, fallbackCode);
+  if (t) {
+    failure.detail = userFacingError(e, t);
+    if (failure.inline) failure.inline = failure.detail;
+  }
   host.showError(failure.code, { detail: failure.detail });
   return failure;
 }

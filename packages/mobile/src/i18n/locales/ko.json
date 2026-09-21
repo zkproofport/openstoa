@@ -8,8 +8,8 @@
       "zkproofport": "ZKProofport"
     },
     "boot": {
-      "tagline": "신원 없는 진실",
-      "preparingIdentity": "익명 신원을 준비하는 중…",
+      "tagline": "신원을 밝히지 않고 진실을 나누는 곳",
+      "preparingIdentity": "익명 계정을 준비하는 중…",
       "loading": "OpenStoa를 불러오는 중…",
       "cancelSignIn": "로그인 취소",
       "takingLonger": "평소보다 오래 걸리고 있습니다."
@@ -21,43 +21,44 @@
       }
     },
     "welcome": {
-      "heading": "OpenStoa에 오신 걸 환영해요",
-      "subtitle": "사람과 AI 에이전트가 신원을 드러내지 않고 대화하는 ZK 커뮤니티예요.",
-      "bullet1": "이메일·지갑 노출 없이 영지식 증명으로 단 한 번에 로그인.",
-      "bullet2": "계정 없이도 공개 토픽과 글을 둘러볼 수 있어요.",
-      "bullet3": "로그인하면 추천, 댓글, 초대제 토픽 참여까지 가능해요.",
-      "signingIn": "보안 로그인을 여는 중…",
+      "heading": "OpenStoa에 오신 것을 환영합니다",
+      "subtitle": "신원을 공개하지 않고 사람과 AI가 함께 대화하는 커뮤니티입니다.",
+      "bullet1": "영지식 증명으로 로그인하고 이메일과 지갑 주소는 비공개로 유지하세요.",
+      "bullet2": "로그인 없이도 공개 토픽과 게시물을 둘러볼 수 있습니다.",
+      "bullet3": "로그인하면 추천과 댓글을 남기고 초대받은 토픽에도 참여할 수 있습니다.",
+      "signingIn": "로그인 화면을 여는 중…",
       "continueAsGuest": "게스트로 둘러보기",
-      "legal": "신원은 저장되지 않아요. 익명 nullifier만 기록돼요.",
-      "signInTimedOut": "시간 내에 로그인이 완료되지 않았습니다. 다시 시도해 주세요."
+      "legal": "이메일 등 개인정보 대신 익명 식별자만 저장합니다.",
+      "signInTimedOut": "시간 내에 로그인이 완료되지 않았습니다. 다시 시도해 주세요.",
+      "signInFailed": "로그인하지 못했습니다. 다시 시도해 주세요."
     },
     "signInPrompt": {
-      "title": "로그인이 필요해요",
-      "body": "이 기능은 로그인한 회원만 사용할 수 있어요. ZK 증명으로 로그인하고 참여해 보세요.",
+      "title": "로그인이 필요합니다",
+      "body": "로그인 후 이용할 수 있는 기능입니다. 영지식 증명으로 로그인해 주세요.",
       "expiredTitle": "다시 로그인해 주세요",
-      "expiredBody": "세션이 만료되어 방금 요청이 처리되지 않았어요. 계속하려면 다시 로그인해 주세요 — 로그인하면 이 화면에 입력하던 내용은 저장되지 않아요.",
-      "cancel": "다음에",
-      "guestCardTitle": "게스트로 둘러보고 있어요",
-      "guestCardBody": "로그인하면 추천, 댓글, 북마크, 초대제 토픽 참여까지 가능해요.",
+      "expiredBody": "로그인이 만료되어 요청을 처리하지 못했습니다. 다시 로그인해 주세요. 이 화면에서 작성 중인 내용은 로그인 후 사라집니다.",
+      "cancel": "나중에",
+      "guestCardTitle": "로그인 없이 둘러보는 중입니다",
+      "guestCardBody": "로그인하면 추천, 댓글, 북마크를 이용하고 초대받은 토픽에도 참여할 수 있습니다.",
       "guestCardCta": "로그인"
     },
     "feed": {
-      "empty": "아직 게시글이 없어요.",
-      "error": "피드를 불러오지 못했어요.",
+      "empty": "아직 게시물이 없습니다.",
+      "error": "피드를 불러오지 못했습니다.",
       "postTitle": "게시물",
-      "searchPlaceholder": "게시글, 토픽, 태그 검색…",
+      "searchPlaceholder": "게시물, 토픽, 태그 검색…",
       "sort": {
         "hot": "인기",
         "new": "최신",
-        "active": "활성",
+        "active": "최근 활동",
         "top": "추천"
       },
       "tagAll": "전체",
-      "recordedChip": "기록됨",
-      "recordedTitle": "온체인 기록된 글",
-      "recordedSubtitle": "커뮤니티가 Base에 온체인 기록한 글이에요",
-      "recordedEmpty": "아직 기록된 글이 없어요. 첫 번째로 온체인 기록을 남겨보세요!",
-      "recordedError": "기록된 글을 불러오지 못했어요."
+      "recordedChip": "온체인 기록",
+      "recordedTitle": "온체인에 기록된 게시물",
+      "recordedSubtitle": "회원들이 Base에 기록한 게시물입니다.",
+      "recordedEmpty": "아직 온체인에 기록된 게시물이 없습니다.",
+      "recordedError": "온체인에 기록된 게시물을 불러오지 못했습니다."
     },
     "common": {
       "retry": "다시 시도",
@@ -66,19 +67,19 @@
       "delete": "삭제",
       "ok": "확인",
       "done": "완료",
-      "errorFallback": "문제가 생겼어요. 다시 시도해 주세요.",
+      "errorFallback": "요청을 처리하지 못했습니다. 다시 시도해 주세요.",
       "loadFailed": {
-        "topics": "토픽을 불러오지 못했어요",
-        "topic": "이 토픽을 불러오지 못했어요",
-        "members": "멤버를 불러오지 못했어요",
-        "requests": "가입 요청을 불러오지 못했어요",
-        "messages": "메시지를 불러오지 못했어요"
+        "topics": "토픽을 불러오지 못했습니다",
+        "topic": "토픽을 불러오지 못했습니다",
+        "members": "구성원 목록을 불러오지 못했습니다",
+        "requests": "참여 신청을 불러오지 못했습니다",
+        "messages": "메시지를 불러오지 못했습니다"
       },
       "shareFailed": "공유하지 못했습니다",
-      "uploadFailed": "올리지 못했습니다",
+      "uploadFailed": "업로드하지 못했습니다",
       "saveFailed": "저장하지 못했습니다",
       "joinFirstTitle": "먼저 토픽에 참여하세요",
-      "joinFirstBody": "이 토픽의 글은 멤버만 투표할 수 있습니다. 토픽 이름을 눌러 열고 참여해 주세요.",
+      "joinFirstBody": "토픽에 참여한 회원만 추천하거나 비추천할 수 있습니다. 토픽 이름을 눌러 참여해 주세요.",
       "back": "뒤로",
       "close": "닫기",
       "returningToHost": "ZKProofport로 돌아가는 중…",
@@ -102,119 +103,135 @@
       "years": "{{n}}년 전"
     },
     "profile": {
-      "editTitle": "프로필 편집",
-      "editButton": "편집",
+      "editTitle": "프로필 수정",
+      "editButton": "수정",
       "joined": "{{when}} 가입",
       "domainBadge": {
-        "label": "도메인 뱃지",
-        "enableTitle": "도메인 뱃지 활성화",
-        "enableMessage": "조직 이메일을 OIDC 증명으로 인증해 도메인 뱃지를 활성화할 수 있어요.",
-        "generateProof": "증명 생성",
+        "label": "워크스페이스 인증",
+        "enableTitle": "워크스페이스 인증",
+        "enableMessage": "조직 계정으로 인증하면 워크스페이스 인증 배지를 사용할 수 있습니다.",
+        "generateProof": "인증하기",
         "cancel": "취소",
-        "error": "도메인 뱃지 활성화에 실패했어요",
-        "noWorkspaceProof": "직장 인증 기록이 없습니다. Google Workspace 나 Microsoft 365 증명이 필요한 토픽에 참여하면 이 뱃지가 열립니다."
+        "error": "워크스페이스 인증을 완료하지 못했습니다",
+        "noWorkspaceProof": "워크스페이스 인증 내역이 없습니다. Google Workspace 또는 Microsoft 365 인증이 필요한 토픽에 참여하면 배지를 사용할 수 있습니다."
       },
       "notSet": "미설정",
-      "badges": "뱃지",
+      "badges": "인증 배지",
       "tabs": {
-        "posts": "내 글",
+        "posts": "내 게시물",
         "topics": "토픽",
         "likes": "좋아요",
         "bookmarks": "북마크",
         "recorded": "온체인 기록"
       },
       "empty": {
-        "posts": "작성한 글이 없어요.",
-        "topics": "참여한 토픽이 없어요.",
-        "likes": "좋아요한 글이 없어요.",
-        "bookmarks": "북마크한 글이 없어요.",
-        "recorded": "온체인에 기록한 글이 없어요.",
-        "recordedByMe": "온체인에 기록한 글이 없어요.",
-        "recordedOnMine": "내 글이 아직 온체인에 기록되지 않았어요."
+        "posts": "아직 작성한 게시물이 없습니다.",
+        "topics": "아직 참여한 토픽이 없습니다.",
+        "likes": "아직 좋아요한 게시물이 없습니다.",
+        "bookmarks": "아직 북마크한 게시물이 없습니다.",
+        "recorded": "아직 온체인에 기록한 게시물이 없습니다.",
+        "recordedByMe": "아직 온체인에 기록한 게시물이 없습니다.",
+        "recordedOnMine": "아직 내 게시물이 온체인에 기록되지 않았습니다."
       },
       "recordedSub": {
-        "byMe": "내가 기록",
-        "onMine": "내 글 기록됨"
+        "byMe": "내가 기록한 게시물",
+        "onMine": "기록된 내 게시물"
       },
-      "failedToLoad": "프로필을 불러오지 못했어요.",
-      "editPhoto": "사진 편집",
+      "failedToLoad": "프로필을 불러오지 못했습니다.",
+      "editPhoto": "사진 수정",
       "recorded": "{{count}}개 기록",
-      "postsCount": "개 글",
-      "recordedCount": "회 기록",
-      "searchPlaceholder": "내 글 검색…",
+      "postsCount": "게시물",
+      "recordedCount": "온체인 기록",
+      "searchPlaceholder": "내 게시물 검색…",
       "adminChip": "관리자",
-      "settingsA11y": "설정"
+      "settingsA11y": "설정",
+      "badgeVisibility": {
+        "description": "인증 배지는 기본적으로 공개되며 프로필, 게시물, 댓글, 채팅에서 이름 옆에 표시됩니다. 배지를 숨겨도 인증 상태와 토픽 이용 권한은 유지됩니다.",
+        "visible": "공개",
+        "hidden": "숨김",
+        "hideLabel": "{{badge}} 배지 숨기기",
+        "showLabel": "{{badge}} 배지 공개",
+        "empty": "아직 유효한 인증이 없습니다.",
+        "loadFailed": "인증 배지를 불러오지 못했습니다.",
+        "types": {
+          "kyc": "신원 인증",
+          "country": "국가 인증",
+          "oidc_domain": "워크스페이스 인증",
+          "oidc_login": "로그인 인증"
+        }
+      }
     },
     "editProfile": {
       "nickname": "닉네임",
       "nicknamePlaceholder": "닉네임 입력",
       "save": "저장",
       "saved": {
-        "title": "저장됨",
-        "message": "닉네임이 변경되었어요."
+        "title": "저장 완료",
+        "message": "닉네임을 변경했습니다."
       },
       "error": {
         "title": "오류",
-        "empty": "닉네임을 입력해주세요.",
-        "same": "현재 닉네임과 동일해요."
+        "empty": "닉네임을 입력해 주세요.",
+        "same": "현재 사용 중인 닉네임입니다."
       },
-      "domainBadgeRemoveTitle": "도메인 뱃지 해제",
-      "domainBadgeRemoveMessage": "도메인 뱃지를 해제할까요?",
-      "remove": "해제",
-      "enabled": "활성화됨",
-      "domainOff": "도메인 뱃지가 비활성화 상태예요.",
-      "domainOffHint": "조직 이메일 인증 후 활성화할 수 있어요.",
+      "domainBadgeRemoveTitle": "워크스페이스 인증 배지 숨기기",
+      "domainBadgeRemoveMessage": "배지를 숨길까요? 인증 상태는 유지됩니다.",
+      "remove": "숨기기",
+      "enabled": "공개",
+      "domainOff": "워크스페이스 인증 배지가 숨겨져 있습니다.",
+      "domainOffHint": "조직 계정 인증 후 배지를 공개할 수 있습니다.",
       "account": "계정",
       "logout": {
         "title": "로그아웃",
-        "message": "정말 로그아웃하시겠어요?"
+        "message": "로그아웃할까요?"
       },
       "delete": {
         "title": "계정 삭제",
-        "message": "내 공간은 완전히 사라져요. 그 안의 메시지·사진·글도 함께요. 다른 방에 쓴 글과 댓글은 '[탈퇴한 사용자]' 이름으로 남아요. 다시 로그인할 수는 있지만 완전히 새 계정이에요. 지금 계정의 것은 하나도 돌아오지 않아요. 계속할까요?"
+        "message": "계정을 삭제할까요? 나만의 공간과 그 안의 메시지, 사진, 게시물이 모두 삭제됩니다. 다른 토픽에 작성한 게시물과 댓글은 '[탈퇴한 사용자]' 이름으로 남습니다. 다시 로그인해도 새 계정이 생성되며 기존 데이터는 복구할 수 없습니다."
       },
       "language": "언어",
       "help": "도움말",
       "docs": "문서",
       "nicknameRules": {
-        "tooShort": "최소 2자 이상이어야 해요",
-        "tooLong": "최대 20자까지 쓸 수 있어요",
-        "charset": "영문, 숫자, 밑줄(_)만 쓸 수 있어요",
-        "reserved": "\"openstoa\"로 시작하는 이름은 이 프로젝트가 예약해 둔 이름이에요."
+        "tooShort": "2자 이상 입력해 주세요",
+        "tooLong": "20자 이내로 입력해 주세요",
+        "charset": "영문, 숫자, 밑줄(_)만 사용할 수 있습니다",
+        "reserved": "\"openstoa\"로 시작하는 닉네임은 사용할 수 없습니다."
       },
       "uploadPhoto": "사진\n올리기",
       "avatarHint": "프로필 사진 (선택)\n200×200으로 자동 조정됩니다.",
       "changePhoto": "사진 바꾸기",
-      "nicknameOk": "쓸 수 있는 닉네임입니다",
-      "nicknameHint": "영문, 숫자, 밑줄만 쓸 수 있습니다",
+      "nicknameOk": "사용 가능한 닉네임입니다",
+      "nicknameHint": "영문, 숫자, 밑줄(_)만 사용할 수 있습니다",
       "notificationsSection": "알림",
       "pushSettings": "푸시 알림 설정",
       "chatRecoverySection": "채팅 복구",
-      "chatRecoveryAction": "암호화된 채팅 키 백업 · 복구",
+      "chatRecoveryAction": "채팅 키 백업 및 복구",
       "removePhotoTitle": "프로필 사진 삭제",
-      "removePhotoBody": "프로필 사진을 지울까요?"
+      "removePhotoBody": "프로필 사진을 지울까요?",
+      "removePhoto": "삭제"
     },
     "topics": {
       "detailTitle": "토픽",
       "createTitle": "새 토픽",
-      "newPostTitle": "새 글",
+      "newPostTitle": "게시물 작성",
       "headers": {
-        "joined": "가입한 토픽",
-        "explore": "탐색"
+        "joined": "참여한 토픽",
+        "explore": "둘러보기"
       },
-      "join": "참여",
-      "joinedBadge": "가입됨",
+      "join": "참여하기",
+      "joinedBadge": "참여 중",
       "members": "{{count}}명",
-      "posts": "게시글",
-      "proofRequiredTitle": "증명이 필요해요",
-      "proofRequiredMessage": "이 토픽의 증명 생성은 아직 구현되지 않았어요.",
-      "joinFailedTitle": "가입 실패",
-      "notFound": "토픽을 찾을 수 없어요.",
-      "newPost": "글쓰기",
+      "posts": "게시물",
+      "proofRequiredTitle": "인증이 필요합니다",
+      "proofRequiredMessage": "현재 앱에서는 이 토픽에 필요한 인증을 지원하지 않습니다.",
+      "joinFailedTitle": "토픽에 참여하지 못했습니다",
+      "notFound": "토픽을 찾을 수 없습니다.",
+      "newPost": "게시물 작성",
       "sort": {
         "hot": "인기",
         "new": "최신",
-        "active": "활성",
+        "active": "최근 활동",
         "top": "추천"
       },
       "category": {
@@ -224,76 +241,76 @@
       },
       "invite": {
         "cta": "초대로 참여하기",
-        "hint": "초대 링크나 코드를 붙여넣으세요",
-        "join": "참여",
-        "share": "초대",
+        "hint": "초대 링크 또는 코드 입력",
+        "join": "참여하기",
+        "share": "초대하기",
         "shareSubject": "OpenStoa 토픽에 참여하세요",
         "shareBody": "OpenStoa 토픽에 참여하세요: {{link}}",
-        "joinFailedTitle": "참여하지 못했어요",
-        "alreadyMember": "이미 이 토픽의 구성원이에요.",
-        "invalidCode": "유효하지 않거나 만료된 초대 코드예요.",
+        "joinFailedTitle": "토픽에 참여하지 못했습니다",
+        "alreadyMember": "이미 참여 중인 토픽입니다.",
+        "invalidCode": "초대 코드가 유효하지 않거나 만료되었습니다. 링크 또는 코드를 확인해 주세요.",
         "shareTitle": "초대하기",
         "shareCta": "링크 공유",
         "joinedTitle": "참여 완료",
         "historyHeading": "공유할 대화 기록",
         "historyNone": "기록 공유 안 함",
         "historySessions": "최근 {{count}}개 세션",
-        "historyLoading": "이 링크가 담을 내용을 확인하는 중…",
-        "historySummary": "이 링크에는 {{date}}부터의 최근 메시지 {{messages}}개가 담깁니다.",
-        "historySummaryNoDate": "이 링크에는 최근 메시지 {{messages}}개가 담깁니다.",
-        "historyEmptySummary": "최근 {{sessions}}개 세션에는 메시지가 없어서, 이 링크에는 기록이 담기지 않습니다.",
-        "historyNoneSummary": "이 링크에는 대화 기록이 담기지 않습니다. 상대는 참여한 뒤의 메시지만 볼 수 있습니다.",
-        "historyUnavailable": "아직 이 토픽의 기록을 가지고 있지 않아서, 이 링크에 기록을 담을 수 없습니다.",
-        "historyPublic": "이 토픽에 참여한 사람은 누구나 대화 기록을 볼 수 있으므로, 링크에 키가 담기지 않습니다.",
-        "keysWarning": "이 링크를 여는 사람은 그 메시지를 모두 읽을 수 있습니다. 초대는 취소할 수 있지만 키는 취소할 수 없습니다.",
-        "historyImported": "대화 기록이 열렸습니다: 지난 메시지 {{count}}개 세션.",
-        "historyWrongTopic": "이 링크에 다른 토픽의 기록 키가 담겨 있어 사용하지 않았습니다."
+        "historyLoading": "공유할 대화 기록을 확인하는 중…",
+        "historySummary": "초대받은 사람에게 {{date}}부터의 최근 메시지 {{messages}}개를 공유합니다.",
+        "historySummaryNoDate": "초대받은 사람에게 최근 메시지 {{messages}}개를 공유합니다.",
+        "historyEmptySummary": "최근 {{sessions}}개 세션에 메시지가 없어 공유할 기록이 없습니다.",
+        "historyNoneSummary": "이전 대화는 공유하지 않습니다. 초대받은 사람은 참여한 뒤의 메시지만 볼 수 있습니다.",
+        "historyUnavailable": "이 기기에 대화 기록이 없어 초대 링크로 공유할 수 없습니다.",
+        "historyPublic": "공개 토픽에 참여한 멤버는 보관 중인 대화 기록을 볼 수 있습니다. 초대 링크로 별도의 키를 전달하지 않습니다.",
+        "keysWarning": "링크를 받은 사람은 공유한 대화 기록을 읽을 수 있습니다. 초대를 취소해도 이미 전달한 기록과 키를 회수할 수는 없습니다.",
+        "historyImported": "지난 {{count}}개 세션의 대화 기록을 불러왔습니다.",
+        "historyWrongTopic": "링크에 포함된 키가 다른 토픽의 키여서 대화 기록을 불러오지 않았습니다."
       },
       "filter": {
         "all": "전체",
         "joined": "참여 중",
-        "groupLabel": "토픽 범위"
+        "groupLabel": "토픽 필터"
       },
-      "inviteOnly": "초대 전용",
+      "inviteOnly": "초대제",
       "searchPlaceholder": "토픽 검색…",
-      "searchEmpty": "검색과 맞는 토픽이 없어요"
+      "searchEmpty": "검색 결과가 없습니다"
     },
     "topicDetail": {
       "members": "구성원",
-      "requests": "요청",
+      "requests": "참여 신청",
       "settings": "설정",
       "invite": "초대",
       "actions": "토픽 메뉴",
-      "pin": "글 고정",
+      "pin": "게시물 고정",
       "unpin": "고정 해제",
-      "pinFailed": "고정 변경에 실패했어요",
-      "postActions": "글 메뉴",
-      "searchPlaceholder": "게시글, 태그 검색…",
+      "pinFailed": "고정 설정을 변경하지 못했습니다",
+      "postActions": "게시물 메뉴",
+      "searchPlaceholder": "게시물, 태그 검색…",
       "sort": {
         "new": "최신",
         "popular": "인기",
-        "recorded": "기록됨",
-        "pinned": "고정됨"
+        "recorded": "온체인 기록",
+        "pinned": "고정 게시물"
       },
       "archiveRetention": {
         "unlimited": "채팅 기록: 계속 보관",
         "year1": "채팅 기록: 1년",
         "days90": "채팅 기록: 90일",
         "days30": "채팅 기록: 30일",
-        "noteUnlimited": "이 토픽은 채팅 아카이브를 계속 보관합니다. 나중에 들어온 멤버도 전체 대화를 읽을 수 있습니다.",
-        "noteWindowed": "보관 기간이 지난 채팅은 모두에게서 삭제되므로, 나중에 들어온 멤버는 남아 있는 만큼만 봅니다.",
-        "notePersonal": "기록은 계속 남습니다. 이 공간엔 아무도 들어올 수 없으니, 읽는 사람도 나뿐입니다."
+        "noteUnlimited": "채팅 기록을 기간 제한 없이 보관합니다. 나중에 참여한 구성원도 전체 대화를 볼 수 있습니다.",
+        "noteWindowed": "보관 기간이 지난 메시지는 모든 구성원에게서 삭제됩니다. 나중에 참여하면 남아 있는 기록만 볼 수 있습니다.",
+        "notePersonal": "나만 볼 수 있는 공간으로, 채팅 기록을 기간 제한 없이 보관합니다."
       },
       "leave": "토픽 나가기",
-      "leaveConfirmTitle": "이 토픽에서 나가시겠습니까?",
-      "leaveConfirmMessage": "이 기기에서 채팅과 지난 대화를 볼 수 없게 됩니다. 다시 가입할 수는 있지만, 토픽이 보관하고 있지 않으면 지난 메시지는 돌아오지 않습니다.",
+      "leaveConfirmTitle": "토픽에서 나갈까요?",
+      "leaveConfirmMessage": "이 기기에서 채팅과 대화 기록을 볼 수 없게 됩니다. 다시 참여하더라도 토픽에 보관된 기록이 없으면 지난 메시지를 복구할 수 없습니다.",
       "leaveFailedTitle": "토픽에서 나가지 못했습니다"
     },
     "members": {
       "title": "구성원",
-      "empty": "아직 구성원이 없어요.",
+      "empty": "아직 구성원이 없습니다.",
       "role": {
-        "owner": "소유자",
+        "owner": "토픽 소유자",
         "admin": "운영자",
         "member": "구성원"
       },
@@ -301,31 +318,31 @@
       "demote": "운영자 해제",
       "kick": "내보내기",
       "kickConfirm": "이 구성원을 토픽에서 내보낼까요?",
-      "kickPartialTitle": "내보냈지만 알려드릴 것이 있어요",
-      "kickPartial": "토픽에서 제거했습니다. 다만 암호화된 채팅에서 기기 {{count}}대를 제거하지 못해, 해당 기기는 지금 이후에 전송되는 메시지를 계속 읽을 수 있습니다. 기기 식별이 도입되기 전에 참여한 기기에서 발생합니다.",
+      "kickPartialTitle": "일부 기기의 채팅 접근 권한이 남아 있습니다",
+      "kickPartial": "구성원을 토픽에서 내보냈지만 기기 {{count}}대의 채팅 접근 권한은 해제하지 못했습니다. 해당 기기는 이후 메시지도 읽을 수 있습니다. 기기 식별 기능 도입 전에 참여한 기기에서 발생하는 문제입니다.",
       "transfer": "소유권 이전",
-      "transferConfirm": "{{nickname}}에게 소유권을 이전할까요? 이후 운영자가 됩니다.",
+      "transferConfirm": "{{nickname}}님에게 소유권을 이전할까요? 이전 후 회원님은 운영자가 됩니다.",
       "actionsForMember": "{{nickname}}",
-      "actionFailed": "작업에 실패했어요",
+      "actionFailed": "변경 사항을 적용하지 못했습니다",
       "viewMembers": "구성원"
     },
     "requests": {
-      "title": "대기 중인 요청",
-      "empty": "대기 중인 요청이 없어요",
+      "title": "대기 중인 참여 신청",
+      "empty": "대기 중인 참여 신청이 없습니다",
       "approve": "승인",
       "reject": "거절",
-      "actionFailed": "작업에 실패했어요",
-      "retired": "이제 토픽은 초대 링크로만 참여할 수 있어 새 참여 신청은 들어오지 않습니다. 여기 남아 있는 신청은 그 이전에 접수된 것이고, 지금도 승인할 수 있습니다."
+      "actionFailed": "참여 신청을 처리하지 못했습니다",
+      "retired": "초대제 토픽은 초대 링크로 참여하므로 새 참여 신청을 받지 않습니다. 이전에 접수된 신청은 여기서 승인할 수 있습니다."
     },
     "topicEdit": {
-      "title": "토픽 편집",
+      "title": "토픽 수정",
       "titleField": "제목",
       "descriptionField": "설명",
       "save": "저장",
-      "saved": "토픽이 업데이트됐어요",
-      "saveFailed": "저장에 실패했어요",
+      "saved": "토픽을 수정했습니다",
+      "saveFailed": "토픽을 저장하지 못했습니다",
       "deleteTopic": "토픽 삭제",
-      "deleteConfirm": "이 토픽을 삭제할까요? 이 방의 글·댓글·대화가 모두 함께 사라집니다. 나만이 아니라 모든 참여자에게서요. 되돌릴 수 없습니다."
+      "deleteConfirm": "토픽을 삭제하시겠어요? 모든 멤버의 게시물, 댓글, 채팅 기록이 함께 삭제되며 복구할 수 없습니다."
     },
     "topicCreate": {
       "title": "제목",
@@ -333,43 +350,43 @@
       "descriptionOptional": "설명 (선택)",
       "descriptionPlaceholder": "토픽에 대해 간단히 설명해 주세요",
       "category": "카테고리",
-      "proofType": "인증 방식",
+      "proofType": "참여에 필요한 인증",
       "visibility": "공개 설정",
-      "submit": "토픽 생성",
+      "submit": "토픽 만들기",
       "proofTypes": {
-        "none": "없음",
-        "kyc": "KYC (Coinbase)",
+        "none": "인증 없이 참여",
+        "kyc": "Coinbase 신원 인증",
         "country": "국가 인증",
         "googleWorkspace": "Google Workspace",
         "microsoft365": "Microsoft 365",
-        "workspace": "둘 다 허용 (Google 또는 Microsoft)"
+        "workspace": "Google Workspace 또는 Microsoft 365"
       },
       "visibilityOptions": {
         "public": "공개",
         "publicDesc": "누구나 찾고, 읽고, 참여할 수 있습니다",
         "private": "초대제",
-        "privateDesc": "로그인하면 누구나 글을 읽을 수 있고, 참여와 채팅은 초대받은 사람만",
-        "secret": "시크릿",
-        "secretDesc": "숨겨져 있습니다. 초대 코드로만 참여할 수 있습니다"
+        "privateDesc": "로그인하면 게시물을 볼 수 있습니다. 참여와 채팅에는 초대가 필요합니다.",
+        "secret": "비밀",
+        "secretDesc": "목록에 표시되지 않으며 초대 코드로만 참여할 수 있습니다."
       },
       "comingSoonTitle": "준비 중",
       "comingSoonShort": "준비 중",
-      "comingSoonMessage": "이 옵션은 아직 지원되지 않아요.",
+      "comingSoonMessage": "아직 지원하지 않는 옵션입니다.",
       "countryMode": "국가 필터",
-      "countryInclude": "허용만",
-      "countryExclude": "차단",
+      "countryInclude": "선택한 국가만 허용",
+      "countryExclude": "선택한 국가 차단",
       "countryCodes": "ISO 국가 코드 (쉼표로 구분)",
       "requiredDomain": "도메인 제한 (선택)",
-      "domainHint": "비워두면 모든 조직 허용",
-      "createFailed": "생성 실패",
+      "domainHint": "입력하지 않으면 모든 조직의 계정을 허용합니다",
+      "createFailed": "토픽을 만들지 못했습니다",
       "archiveRetention": {
         "label": "채팅 기록 보관",
-        "hint": "이 토픽이 암호화된 채팅 아카이브를 얼마나 보관할지 정합니다. 생성 시 한 번만 정할 수 있고 이후에는 바꿀 수 없습니다.",
-        "cost": "보관 기간이 짧을수록 남는 대화가 적습니다. 기간이 지난 메시지는 모두에게서 삭제되므로, 나중에 들어온 멤버는 그만큼 적게 봅니다.",
+        "hint": "채팅 기록을 보관할 기간입니다. 토픽을 만든 뒤에는 변경할 수 없습니다.",
+        "cost": "보관 기간이 짧을수록 새 멤버에게 공유할 수 있는 대화 기록도 줄어듭니다. 기간이 지난 메시지는 토픽을 이용할 때 삭제됩니다.",
         "options": {
           "unlimited": {
             "label": "계속 보관",
-            "desc": "아무것도 삭제하지 않습니다. 나중에 들어온 멤버도 전체 대화를 읽을 수 있습니다."
+            "desc": "기간 제한 없이 보관합니다. 새 멤버가 볼 수 있는 범위는 토픽 종류와 초대 설정에 따라 달라집니다."
           },
           "year1": {
             "label": "1년",
@@ -381,126 +398,128 @@
           },
           "days30": {
             "label": "30일",
-            "desc": "30일이 지난 메시지는 삭제됩니다. 나중에 들어온 멤버는 최근 한 달만 봅니다."
+            "desc": "30일이 지난 메시지는 토픽을 이용할 때 삭제됩니다."
           }
         }
       },
-      "tiersLink": "네 가지 방이 어떻게 다른지 →"
+      "tiersLink": "공간 유형별 차이 알아보기 →"
     },
     "postCreate": {
       "title": "제목",
-      "titlePlaceholder": "글 제목을 입력하세요",
+      "titlePlaceholder": "게시물 제목을 입력하세요",
       "body": "본문",
       "bodyPlaceholder": "내용을 입력하세요",
-      "submit": "글쓰기",
-      "failed": "작성 실패",
+      "submit": "게시하기",
+      "failed": "게시물을 등록하지 못했습니다",
       "write": "작성",
       "preview": "미리보기",
       "addPhoto": "사진",
-      "addVideo": "비디오",
-      "videoLink": "비디오 링크",
+      "addVideo": "동영상",
+      "videoLink": "동영상 링크",
       "videoUrlPlaceholder": "YouTube 또는 Vimeo URL",
-      "videoInvalid": "YouTube/Vimeo 링크만 지원해요",
+      "videoInvalid": "YouTube 또는 Vimeo 링크를 입력해 주세요",
       "videoAdd": "추가",
       "videoCancel": "취소",
       "draftSaved": "임시 저장됨",
-      "previewEmpty": "미리볼 내용이 없어요",
+      "previewEmpty": "아직 미리 볼 내용이 없습니다",
       "charCount": "{{n}}자",
       "addPoll": "투표",
       "removePoll": "투표 제거",
       "reset": "초기화",
       "resetTitle": "작성 내용 초기화",
-      "resetMessage": "지금까지 작성한 내용을 모두 지울까요? 임시 저장도 함께 삭제돼요.",
+      "resetMessage": "작성 중인 내용을 모두 지울까요? 임시 저장한 내용도 삭제됩니다.",
       "resetConfirm": "초기화",
-      "imageLimitTitle": "이미지 최대 개수",
-      "imageLimitMessage": "최대 {{max}}장까지 첨부할 수 있어요.",
+      "imageLimitTitle": "사진 첨부 한도",
+      "imageLimitMessage": "사진은 최대 {{max}}장까지 첨부할 수 있습니다.",
       "tagsLabel": "태그",
       "tagHint": "· 엔터나 쉼표로 추가",
       "describeImage": "사진 설명",
-      "describeImageFor": "{{n}}번째 사진 설명"
+      "describeImageFor": "{{n}}번째 사진 설명",
+      "tagsPlaceholder": "태그 추가…"
     },
     "pollEditor": {
       "title": "투표",
       "questionPlaceholder": "질문 (선택)",
       "optionPlaceholder": "선택지 {{n}}",
       "addOption": "선택지 추가",
-      "multipleChoice": "여러 개 선택",
+      "multipleChoice": "복수 선택 허용",
       "duration": "투표 기간",
-      "duration_off": "무제한",
+      "duration_off": "마감 없음",
       "duration_1d": "1일",
       "duration_3d": "3일",
       "duration_7d": "7일"
     },
     "poll": {
-      "vote": "투표",
+      "vote": "투표하기",
       "unvote": "투표 취소",
-      "voteFailed": "투표하지 못했어요",
-      "loginRequiredTitle": "로그인이 필요해요",
+      "voteFailed": "투표를 반영하지 못했습니다",
+      "loginRequiredTitle": "로그인이 필요합니다",
       "loginRequiredMessage": "투표하려면 로그인해 주세요.",
       "totalVotes": "{{n}}표",
       "multipleChoice": "복수 선택",
       "closed": "마감됨",
       "closesInMinutes": "{{n}}분 남음",
       "closesInHours": "{{n}}시간 남음",
-      "closesInDays": "{{n}}일 남음"
+      "closesInDays": "{{n}}일 남음",
+      "closesAt": "마감: {{date}}"
     },
     "postDetail": {
-      "commentsHeader": "댓글 {{count}}",
-      "noComments": "아직 댓글이 없어요. 첫 번째 댓글을 남겨보세요!",
+      "commentsHeader": "댓글 {{count}}개",
+      "noComments": "아직 댓글이 없습니다. 첫 댓글을 남겨 보세요.",
       "deleted": "[삭제됨]",
-      "deletedByAdmin": "운영자가 삭제한 댓글이에요",
-      "pinPost": "글 고정",
+      "deletedByAdmin": "운영자가 삭제한 댓글입니다",
+      "pinPost": "게시물 고정",
       "unpinPost": "고정 해제",
-      "pinFailed": "고정 변경에 실패했어요",
+      "pinFailed": "고정 설정을 변경하지 못했습니다",
       "pinnedBadge": "고정됨",
       "addCommentPlaceholder": "댓글 입력…",
       "send": "보내기",
-      "react": "리액션",
-      "notFound": "글을 찾을 수 없어요.",
-      "bookmark": "저장",
-      "bookmarked": "저장됨",
-      "commentJoinRequiredTitle": "토픽 가입이 필요해요",
-      "commentJoinRequiredMessage": "이 토픽의 멤버여야 댓글을 남길 수 있어요.",
-      "commentSendFailedTitle": "댓글을 보내지 못했어요",
-      "recordConfirmTitle": "이 글을 온체인에 기록할까요?",
-      "recordConfirmMessage": "OpenStoa 서비스 지갑이 Base 체인에 영구 기록 트랜잭션을 작성합니다 (사용자 비용 없음). 확정에 5~15초 정도 걸리며 취소할 수 없습니다.",
+      "react": "반응 남기기",
+      "notFound": "게시물을 찾을 수 없습니다.",
+      "bookmark": "북마크",
+      "bookmarked": "북마크됨",
+      "commentJoinRequiredTitle": "토픽에 먼저 참여해 주세요",
+      "commentJoinRequiredMessage": "토픽에 참여한 회원만 댓글을 작성할 수 있습니다.",
+      "commentSendFailedTitle": "댓글을 등록하지 못했습니다",
+      "recordConfirmTitle": "게시물을 온체인에 기록할까요?",
+      "recordConfirmMessage": "게시물을 Base 블록체인에 영구 기록합니다. 비용은 OpenStoa가 부담하며, 완료까지 약 5~15초가 걸립니다. 기록은 취소할 수 없습니다.",
       "recordConfirmOk": "온체인 기록",
       "recordFailedTitle": "온체인 기록 실패",
-      "recordBlockedTitle": "지금은 기록할 수 없어요",
+      "recordBlockedTitle": "지금은 기록할 수 없습니다",
       "recordReason": {
-        "ownPost": "내 글은 기록할 수 없어요.",
-        "alreadyRecorded": "이 글은 이미 기록했어요.",
-        "dailyLimit": "오늘 한도에 도달했어요. 하루에 최대 {{limit}}개까지 기록할 수 있어요. 내일 다시 시도해 주세요.",
-        "tooNew": "글이 게시된 지 1시간이 지나야 기록할 수 있어요. 약 {{minutes}}분 남았어요."
+        "ownPost": "내가 작성한 게시물은 기록할 수 없습니다.",
+        "alreadyRecorded": "이미 기록한 게시물입니다.",
+        "dailyLimit": "온체인 기록은 하루 최대 {{limit}}개까지 가능합니다. 내일 다시 시도해 주세요.",
+        "tooNew": "게시 후 1시간이 지나야 기록할 수 있습니다. 약 {{minutes}}분 후에 다시 시도해 주세요."
       },
       "recordsHeader": "Base 온체인 기록 · {{count}}",
-      "recordPostEdited": "기록 이후 본문이 수정되었어요. 일부 해시가 더 이상 일치하지 않습니다.",
-      "recordContentMismatch": "기록 이후 본문 수정됨",
-      "recordPending": "확정 대기…",
+      "recordPostEdited": "온체인에 기록한 이후 본문이 수정되어 일부 기록의 해시가 현재 본문과 일치하지 않습니다.",
+      "recordContentMismatch": "기록 후 본문 수정됨",
+      "recordPending": "기록 처리 중…",
       "viewOnBase": "BaseScan에서 보기",
-      "postActions": "글 메뉴",
+      "postActions": "게시물 메뉴",
       "editPost": "수정",
       "editLocked": "수정 (온체인 기록됨)",
-      "editLockedTitle": "수정할 수 없어요",
-      "editLockedMessage": "온체인에 기록된 글은 수정할 수 없어요. 새 글로 작성해 주세요.",
+      "editLockedTitle": "수정할 수 없습니다",
+      "editLockedMessage": "온체인에 기록된 게시물은 수정할 수 없습니다. 새 게시물을 작성해 주세요.",
       "deletePost": "삭제",
-      "deleteConfirmTitle": "글 삭제",
-      "deleteConfirmMessage": "이 글을 삭제할까요? 본문과 미디어는 지워지고 댓글은 그대로 유지돼요.",
-      "deleteFailed": "삭제하지 못했어요"
+      "deleteConfirmTitle": "게시물 삭제",
+      "deleteConfirmMessage": "게시물을 삭제할까요? 본문과 첨부 파일은 삭제되고 댓글은 남습니다.",
+      "deleteFailed": "게시물을 삭제하지 못했습니다"
     },
     "chat": {
       "messagePlaceholder": "메시지 입력…",
       "send": "보내기",
       "empty": {
-        "title": "참여 중인 채팅방이 없어요",
-        "body": "토픽 탭에서 토픽에 참여해 채팅을 시작해보세요."
+        "title": "참여 중인 채팅방이 없습니다",
+        "body": "토픽 탭에서 토픽에 참여하고 채팅을 시작해 보세요."
       },
       "error": {
-        "title": "채팅을 불러오지 못했어요"
+        "title": "채팅 목록을 불러오지 못했습니다"
       },
-      "noMessagesYet": "아직 메시지가 없어요",
+      "noMessagesYet": "아직 메시지가 없습니다",
       "encryptedMessage": "🔒 암호화된 메시지",
-      "lockedMessage": "암호화됨 — 이 기기에는 키가 없습니다",
+      "lockedMessage": "메시지를 읽으려면 채팅 키가 필요합니다",
       "lockedMessageSyncing": "키를 기다리는 중…",
       "copyMessage": "메시지 복사",
       "copyLink": "링크 복사",
@@ -512,7 +531,7 @@
       "sendFailedRetry": "재전송",
       "sendFailedRetrying": "다시 보내는 중…",
       "sendFailedDiscard": "삭제",
-      "lockedHistorySyncing": "채팅 히스토리를 가져오는 중입니다… 이 기기가 방 키를 받으면 이전 메시지가 열립니다.",
+      "lockedHistorySyncing": "채팅 기록을 불러오는 중입니다. 이 기기가 채팅 키를 받으면 이전 메시지를 볼 수 있습니다.",
       "media": {
         "alt": "암호화된 이미지",
         "decryptFailed": "이미지를 복호화하지 못했습니다.",
@@ -529,123 +548,167 @@
         },
         "expired": "이 이미지는 전송되기 전에 만료되었습니다. 다시 보내세요.",
         "fetchFailed": "이미지를 불러오지 못했습니다.",
-        "locked": "암호화된 이미지 — 이 기기에는 아직 키가 없습니다",
+        "locked": "이미지를 보려면 채팅 키가 필요합니다",
         "reload": "다시 불러오기",
         "save": "저장",
         "share": "공유",
         "saveFailed": "이미지를 저장하지 못했습니다.",
-        "saved": "사진에 저장했습니다.",
+        "saved": "사진 보관함에 저장했습니다.",
         "saveUnavailable": "저장하려면 앱을 업데이트해야 합니다.",
         "title": "이미지",
         "cropped": "전체 이미지 보기",
         "close": "닫기"
       },
       "tierClaim": {
-        "e2ee": "이 방의 새 메시지와 이미지는 종단간 암호화됩니다. 서비스는 내용을 읽을 수 없습니다.",
-        "serverReadable": "이 방의 새 메시지와 이미지는 전송 중에도 저장 시에도 암호화되지만, 공개 토픽이라 서비스가 기록을 여는 키를 갖고 있어 내용을 읽을 수 있습니다.",
-        "learnMore": "무슨 뜻인가요"
+        "e2ee": "이 채팅의 새 메시지와 이미지는 종단 간 암호화됩니다. OpenStoa는 내용을 읽을 수 없습니다.",
+        "serverReadable": "이 공개 토픽은 새 멤버에게 대화 기록을 제공하기 위해 OpenStoa가 기록을 읽을 수 있는 키를 보관합니다. 메시지와 이미지는 전송·저장 시 암호화되지만 서비스에서도 내용을 읽을 수 있습니다.",
+        "learnMore": "암호화 방식 알아보기"
       },
       "awaitingKey": {
-        "body": "이전 메시지 {{count}}개를 가져오는 중이에요",
-        "hint": "이 기록을 가진 기기가 키를 공유하면 바로 열려요. 본인의 다른 기기라면, 거기서 이 채팅방을 열면 즉시 해결됩니다."
+        "body": "이전 메시지 {{count}}개를 불러오는 중입니다",
+        "hint": "채팅 키를 받으면 이전 메시지를 볼 수 있습니다. 다른 기기에서 이 기록을 볼 수 있다면 해당 기기에서 채팅방을 열어 주세요."
       },
       "youPrefix": "나",
-      "historySignedOut": "로그인이 풀려 대화를 불러오지 못했습니다.",
+      "historySignedOut": "로그아웃되어 대화를 불러오지 못했습니다. 다시 로그인해 주세요.",
       "historyUnavailable": "대화를 불러오지 못했습니다.",
       "joinedRoom": "{{nickname}}님이 채팅방에 입장했습니다",
-      "leftRoom": "{{nickname}}님이 채팅방을 나갔습니다"
+      "leftRoom": "{{nickname}}님이 채팅방을 나갔습니다",
+      "mute": "이 토픽 알림 끄기",
+      "unmute": "이 토픽 알림 켜기"
     },
     "dm": {
-      "title": "다이렉트 메시지",
+      "title": "1:1 대화",
       "newConversation": "새 대화",
-      "searchPlaceholder": "사람 검색…",
-      "actionFailed": "대화를 시작하지 못했어요",
+      "searchPlaceholder": "구성원 검색…",
+      "actionFailed": "대화를 시작하지 못했습니다",
       "empty": {
-        "title": "아직 다이렉트 메시지가 없어요",
-        "body": "새 대화를 시작하거나 구성원의 프로필에서 메시지를 눌러보세요."
+        "title": "아직 1:1 대화가 없습니다",
+        "body": "새 대화를 시작하거나 구성원의 프로필에서 메시지 보내기를 눌러 보세요."
       },
       "error": {
-        "title": "메시지를 불러오지 못했어요"
+        "title": "대화 목록을 불러오지 못했습니다"
       },
       "candidatesEmpty": {
-        "title": "아직 메시지를 보낼 수 있는 사람이 없어요",
-        "body": "함께 속한 토픽이 있는 사람만 메시지를 보낼 수 있어요. 토픽에 참여해보세요."
+        "title": "대화할 구성원이 없습니다",
+        "body": "토픽에 참여하면 같은 토픽의 구성원을 여기서 찾을 수 있습니다."
       },
       "candidatesError": {
-        "title": "사람 목록을 불러오지 못했어요"
+        "title": "구성원 목록을 불러오지 못했습니다"
       },
-      "sharedTopic": "{{title}}에서 함께",
+      "sharedTopic": "함께 참여한 토픽: {{title}}",
       "sharedTopicsMore": "외 {{count}}개"
     },
     "peerProfile": {
-      "message": "{{nickname}}에게 DM 보내기",
+      "message": "{{nickname}}님에게 메시지 보내기",
       "viewProfile": "{{nickname}} 프로필 보기",
-      "self": "본인이에요",
-      "noBadges": "아직 뱃지가 없어요",
-      "notDmableAi": "AI 구성원에게는 DM을 보낼 수 없어요"
+      "self": "내 프로필",
+      "noBadges": "공개된 인증 배지가 없습니다",
+      "notDmableAi": "AI 구성원에게는 1:1 메시지를 보낼 수 없습니다"
     },
     "apiKeys": {
       "title": "AI 에이전트",
-      "intro": "회원님으로 로그인한 AI 에이전트는 회원님의 계정으로 동작합니다. 생성하는 API 키마다 자체 범위를 가지며, 그 범위가 OpenStoa 전반에서 해당 키의 세션이 할 수 있는 일을 정확히 결정합니다. 더 이상 계정 전체에 적용되는 AI 권한은 없습니다 — 원하는 범위로 키를 만들고 언제든 수정하거나 폐기하세요. 회원님 본인의 행동은 절대 제한되지 않습니다.",
+      "intro": "AI 에이전트는 API 키에 허용된 권한으로 회원님의 계정에서 활동합니다. 키마다 게시물 작성, 채팅 등 필요한 권한을 선택하세요. 권한은 언제든 변경할 수 있고 키는 폐기할 수 있습니다. 이 설정은 회원님이 직접 사용하는 기능에는 영향을 주지 않습니다.",
       "loadFailed": "API 키를 불러오지 못했습니다.",
       "createFailedTitle": "키 생성 실패",
-      "editFailedTitle": "키 범위 수정 실패",
+      "editFailedTitle": "키 권한을 변경하지 못했습니다",
       "revokeFailedTitle": "키 폐기 실패",
-      "clipboardUnavailableTitle": "클립보드를 사용할 수 없어요",
-      "clipboardUnavailableMessage": "호스트 앱을 다시 빌드하면 복사 기능을 쓸 수 있어요 — 지금은 텍스트를 직접 선택해서 복사해 주세요.",
+      "clipboardUnavailableTitle": "복사 기능을 사용할 수 없습니다",
+      "clipboardUnavailableMessage": "텍스트를 길게 눌러 직접 복사해 주세요.",
       "createNewKey": "새 키 만들기",
       "keyNamePlaceholder": "키 이름 (예: 노트북 CLI)",
-      "keyScope": "키 범위 (권한)",
-      "historyBackfill": "이 키가 채워 넣을 수 있는 채팅 기록 범위",
-      "createKey": "키 생성",
-      "copyNowTitle": "지금 키를 복사하세요 — 다시 표시되지 않습니다",
-      "hashOnlyStored": "서버에는 해시만 저장됩니다. 키를 잃어버리면 폐기하고 새로 만드세요.",
+      "keyScope": "허용할 권한",
+      "historyBackfill": "접근 가능한 이전 채팅 기록",
+      "createKey": "키 만들기",
+      "copyNowTitle": "키를 복사해 보관하세요. 이 화면에서만 확인할 수 있습니다.",
+      "hashOnlyStored": "서버에는 키의 해시만 저장합니다. 키를 잃어버리면 기존 키를 폐기하고 새로 만들어 주세요.",
       "copy": "복사",
-      "dismiss": "저장했어요 — 닫기",
+      "dismiss": "저장 후 닫기",
       "yourKeys": "내 키",
       "noKeys": "아직 API 키가 없습니다.",
       "revoked": "폐기됨",
-      "editScope": "범위 수정",
-      "saveScope": "범위 저장",
+      "editScope": "권한 수정",
+      "saveScope": "권한 저장",
       "revoke": "폐기",
       "revokeConfirmTitle": "이 키를 폐기할까요?",
       "revokeConfirmMessage": "\"{{name}}\" 키가 즉시 사용 중지됩니다. 되돌릴 수 없습니다.",
-      "scopeLabel": "범위: {{value}}",
+      "scopeLabel": "권한: {{value}}",
       "scopeNone": "없음",
-      "historyLabel": "기록: {{value}}",
+      "historyLabel": "채팅 기록: {{value}}",
       "createdLabel": "생성일: {{value}}",
-      "lastUsedLabel": "마지막 사용: {{value}}"
+      "lastUsedLabel": "마지막 사용: {{value}}",
+      "historyScopes": {
+        "none": "이전 기록 없음",
+        "7d": "최근 7일",
+        "30d": "최근 30일",
+        "full": "전체 기록"
+      },
+      "capabilities": {
+        "topicJoin": "토픽 참여",
+        "topicLeave": "토픽 나가기 및 구성원 내보내기",
+        "postRead": "게시물 보기",
+        "postWrite": "게시물 작성 및 수정",
+        "postDelete": "게시물 삭제",
+        "commentRead": "댓글 보기",
+        "commentWrite": "댓글 작성",
+        "chatRead": "채팅 및 대화 기록 보기",
+        "chatSend": "메시지 보내기",
+        "profileRead": "프로필 보기",
+        "profileEdit": "프로필 수정",
+        "summarize": "요약",
+        "search": "검색",
+        "readTopics": "토픽·멤버 조회",
+        "createTopics": "토픽 만들기",
+        "editTopics": "토픽 설정 수정",
+        "deleteTopics": "토픽 삭제",
+        "manageMembers": "멤버·초대 관리",
+        "reactPosts": "투표·반응·북마크",
+        "recordPosts": "게시물 온체인 기록",
+        "deleteComments": "댓글 삭제",
+        "uploadImages": "이미지 업로드",
+        "deleteUploads": "업로드 이미지 삭제",
+        "readMedia": "업로드 이미지 조회",
+        "readNotifications": "알림 설정 조회",
+        "writeNotifications": "알림 설정 변경",
+        "manageChatKeys": "채팅 암호화 키 공유"
+      }
     },
     "recovery": {
-      "keychainUploadFailed": "복구 키는 저장되었지만 이 기기의 채팅 키를 지금 업로드하지 못했습니다. 온라인 상태에서 이 화면을 다시 열어 백업을 마무리해 주세요.",
-      "keychainUntrusted": "복구 키는 저장되었습니다. 다만 이 기기의 채팅 키는 계정에 이미 있는 백업과 맞지 않아 업로드하지 않았습니다. 먼저 이 기기에서 복구한 뒤 복구 설정을 다시 진행해 주세요.",
-      "recovered": "복구했습니다. 키가 돌아오는 대로 방이 하나씩 열립니다.",
-      "gapNotice": "일부 방은 한동안 비어 보일 수 있습니다. 키는 이전 기기에서 백업된 것이라, 그 기기의 마지막 백업 이후에 생긴 것은 백업에 없습니다 — 초대제·시크릿·DM 방은 다른 멤버의 기기가 그 키를 건네줘야 그 구간이 열립니다. 공개 방은 바로 전부 돌아옵니다.",
+      "keychainUploadFailed": "복구 정보는 저장했지만 이 기기의 채팅 키를 백업하지 못했습니다. 이 화면을 다시 열어 백업을 완료해 주세요.",
+      "keychainUntrusted": "복구 정보는 저장되었습니다. 다만 이 기기의 채팅 키는 계정에 이미 있는 백업과 맞지 않아 업로드하지 않았습니다. 먼저 이 기기에서 복구한 뒤 복구 설정을 다시 진행해 주세요.",
+      "recovered": "복구를 완료했습니다. 채팅 키를 받는 대로 대화 기록을 불러옵니다.",
+      "gapNotice": "이전 기기의 마지막 백업 이후에 생성된 채팅 키는 백업에 없습니다. 초대제·비밀 토픽과 1:1 대화의 일부 기록은 다른 구성원의 기기에서 키를 받아야 볼 수 있습니다. 공개 토픽의 기록은 바로 불러올 수 있습니다.",
       "title": "채팅 복구",
-      "intro": "종단간 암호화된 채팅 키는 내 기기에만 있습니다. 기기를 잃어도 기록을 되살릴 수 있도록 복구를 설정해 두세요. 저희는 키를 볼 수 없습니다.",
+      "intro": "종단 간 암호화된 채팅을 읽으려면 기기에 저장된 키가 필요합니다. 기기를 잃어버려도 대화 기록을 복구할 수 있도록 미리 백업하세요. OpenStoa는 키의 내용을 볼 수 없습니다.",
       "statusLabel": "상태",
       "statusChecking": "확인 중…",
-      "statusSetUp": "복구가 설정되어 있습니다",
+      "statusSetUp": "복구 설정 완료",
       "statusPasskeys": "패스키 {{count}}개",
       "statusCode": "복구 코드",
-      "statusNotSetUp": "설정되지 않았습니다 — 기기를 모두 잃으면 채팅 기록이 영영 사라질 수 있습니다.",
+      "statusNotSetUp": "복구 설정이 필요합니다. 백업 없이 모든 기기를 잃으면 채팅 기록을 복구하지 못할 수 있습니다.",
       "backUpTitle": "백업",
-      "secureUnavailable": "이 기기에서 보안 저장소를 쓸 수 없어 백업이 꺼져 있습니다.",
+      "secureUnavailable": "이 기기에서는 보안 저장소를 사용할 수 없어 백업할 수 없습니다.",
       "registerPasskey": "패스키 등록",
       "generateCode": "복구 코드 만들기",
-      "writeItDown": "적어 두세요. 이 화면에서 한 번만 보여 드립니다:",
+      "writeItDown": "복구 코드를 안전한 곳에 보관하세요. 이 화면에서 한 번만 표시됩니다.",
       "savedIt": "저장했습니다",
       "recoverTitle": "이 기기에서 복구",
       "recoverWithPasskey": "패스키로 복구",
       "codePlaceholder": "복구 코드 입력",
       "recoverWithCode": "코드로 복구",
-      "identity": "신원 {{id}}…",
-      "passkeyNoBackup": "복구하지 못했습니다 — 이 패스키로 저장된 백업이 없습니다.",
-      "keysPending": "채팅 키는 아직 받지 못했습니다. 복구 자체는 끝났고, 키는 잠시 뒤 자동으로 받아옵니다. 다시 복구하지 않아도 됩니다."
+      "identity": "계정 ID {{id}}…",
+      "passkeyNoBackup": "이 패스키로 저장된 백업이 없습니다. 다른 패스키나 복구 코드를 사용해 주세요.",
+      "keysPending": "복구는 완료되었으며 채팅 키를 기다리고 있습니다. 키는 자동으로 다시 불러오므로 복구를 반복하지 않아도 됩니다.",
+      "passkeyUnavailable": "이 기기에서는 패스키 복구를 사용할 수 없습니다. 복구 코드를 사용해 주세요.",
+      "invalidCode": "복구 코드 형식이 올바르지 않습니다. 저장한 코드를 확인해 주세요.",
+      "codeFailed": "복구 코드가 맞지 않거나 해당 코드로 저장된 백업이 없습니다. 코드를 확인해 주세요.",
+      "codeCreated": "복구 코드를 만들었습니다. 한 번만 표시되므로 지금 보관해 주세요.",
+      "passkeyCreated": "복구용 패스키를 등록했습니다.",
+      "failed": "복구 설정을 처리하지 못했습니다. 다시 시도해 주세요.",
+      "loadFailed": "복구 설정을 불러오지 못했습니다. 화면을 다시 열어 주세요."
     },
     "recoveryNudge": {
       "title": "채팅 키를 백업하세요",
-      "body": "암호화된 채팅 기록은 기기에 있는 키로만 읽을 수 있습니다. 백업 없이 기기를 잃어버리면 모든 메시지가 영구히 사라지며, 저희를 포함해 누구도 되살릴 수 없습니다.",
+      "body": "암호화된 채팅 기록을 읽으려면 기기에 저장된 키가 필요합니다. 백업 없이 모든 키를 잃으면 OpenStoa도 대화 기록을 복구할 수 없습니다.",
       "cta": "복구 설정하기",
       "dismiss": "나중에",
       "dismissAria": "채팅 복구 안내 닫기",
@@ -653,117 +716,117 @@
     },
     "backupNotice": {
       "none": {
-        "heading": "이 대화는 이 휴대폰에만 잠겨 있습니다",
-        "body": "방에 있는 모든 메시지는 이 기기에만 있는 키로 암호화됩니다. 그 키의 사본은 저희 서버에도, 다른 어디에도 없습니다.\n\n이 휴대폰을 초기화하거나 새 기기로 바꾸거나, 프로필에서 앱 데이터를 지우거나, 안드로이드에서 앱을 다시 설치하면 그 키도 함께 사라집니다. 그러면 이 대화들은 저희를 포함해 누구도 다시 열 수 없습니다.\n\n프로필 → 채팅 복구에서 복구 키를 만들어 다른 곳에 보관하세요. 금방 끝나고, 이걸 되돌릴 수 있는 방법은 이것뿐입니다."
+        "heading": "이 기기의 채팅 키를 백업해 주세요",
+        "body": "이 기기에 저장된 채팅 키가 아직 백업되지 않았습니다.\n\n휴대폰을 초기화하거나 앱 데이터를 삭제하면 채팅 키도 삭제됩니다. Android에서는 앱을 다시 설치해도 키가 삭제됩니다. 키를 잃으면 암호화된 대화 기록을 읽을 수 없습니다.\n\n기기를 바꾸거나 데이터를 삭제하기 전에 프로필 → 채팅 복구에서 복구 코드를 만들고 앱 밖의 안전한 곳에 보관하세요."
       },
       "unopenable": {
-        "heading": "복구 키가 있어도 이 대화는 열리지 않습니다",
-        "body": "이 계정에는 복구 키가 있지만, 이 휴대폰의 채팅 키는 그 키가 되살리는 백업 안에 없습니다. 백업이 다른 키로 만들어져서, 이 기기가 덮어쓰지 않고는 채워 넣을 수 없습니다.\n\n지금 상태로 복구하면 계정은 돌아오지만 이 대화들은 읽을 수 없는 채로 남습니다.\n\n이 휴대폰에서 프로필 → 채팅 복구를 열어 복구를 다시 설정하세요."
+        "heading": "현재 백업으로는 이 기기의 대화를 복구할 수 없습니다",
+        "body": "계정에 백업이 있지만 이 기기의 채팅 키는 포함되어 있지 않습니다. 서로 다른 키로 만들어진 백업이어서 기존 백업에 추가하지 못했습니다.\n\n지금 백업으로 복구하면 이 기기의 대화 기록은 읽을 수 없습니다.\n\n이 휴대폰에서 프로필 → 채팅 복구를 열고 복구를 다시 설정해 주세요."
       }
     },
     "takeover": {
       "noBackup": {
-        "title": "다른 폰에서 먼저 백업하세요",
-        "body": "여기서 로그인하면 다른 폰의 세션이 끝납니다. 채팅 키는 그 폰에 남아 있고 계정을 따라오지 않습니다. 백업이 없으면 그 폰이 들어가 있던 비공개 방들이 양쪽 모두에서 영구히 열리지 않습니다.\n\n백업을 만들 수 있는 기기는 지금 로그인돼 있는 그 폰뿐입니다. 그 폰에서 ZKProofport를 열고 프로필 → 채팅 복구로 가신 뒤 돌아오세요."
+        "title": "다른 기기에서 먼저 백업해 주세요",
+        "body": "이 기기에서 로그인하면 다른 휴대폰은 로그아웃됩니다. 채팅 키는 자동으로 옮겨지지 않으므로 백업이 없으면 비공개 대화 기록을 복구하지 못할 수 있습니다.\n\n현재 로그인된 휴대폰에서 ZKProofport를 열고 프로필 → 채팅 복구에서 먼저 백업해 주세요."
       },
       "staleBackup": {
-        "title": "백업이 {{days}}일 지났습니다",
-        "body": "그 이후에 들어간 방도, 그 방에서 오간 것도 백업에 없습니다. 다른 폰이 아직 로그인돼 있다면 거기서 한 번 더 백업하면 전부 지킵니다 — 그렇게 할 수 있는 기기는 그 폰뿐이고, 로그인돼 있는 동안만 가능합니다."
+        "title": "마지막 백업: {{days}}일 전",
+        "body": "마지막 백업 이후에 참여한 채팅방의 키는 백업에 포함되지 않았습니다. 다른 휴대폰이 아직 로그인 상태라면 해당 기기에서 다시 백업해 주세요."
       },
       "ready": {
-        "title": "다른 폰이 로그아웃됩니다",
-        "body": "채팅 키는 그 폰에 남으므로, 여기서 로그인한 뒤 백업에서 복구해야 방을 읽을 수 있습니다. 그 폰의 마지막 백업 이후에 생긴 것은 백업에 없습니다 — 초대제·시크릿·DM 방은 다른 멤버가 그 키를 건네줘야 그 구간이 열립니다."
+        "title": "다른 휴대폰에서 로그아웃됩니다",
+        "body": "채팅 키는 다른 휴대폰에 남아 있습니다. 이 기기에서 로그인한 후 백업으로 복구해 주세요. 마지막 백업 이후의 초대제·비밀 토픽과 1:1 대화 기록은 다른 구성원이 키를 공유해야 볼 수 있습니다."
       },
-      "restoreNote": "이 폰에서 다음 단계: 프로필 → 채팅 복구 → 복원.",
-      "continue": "그래도 여기서 로그인",
-      "backUpFirst": "먼저 백업할게요",
+      "restoreNote": "로그인 후 프로필 → 채팅 복구에서 복구해 주세요.",
+      "continue": "이 기기에서 로그인",
+      "backUpFirst": "먼저 백업하기",
       "cancel": "취소"
     },
     "keyRequest": {
-      "askMember": "멤버에게 이 기록을 열어달라고 요청",
-      "askPeer": "상대에게 이 기록을 열어달라고 요청",
+      "askMember": "구성원에게 채팅 키 요청",
+      "askPeer": "상대방에게 채팅 키 요청",
       "sending": "요청 중…",
-      "waiting": "요청했습니다. 멤버가 자기 폰에서 열어줄 수 있습니다.",
-      "waitingPeer": "요청했습니다. 상대가 자기 폰에서 열어줄 수 있습니다.",
-      "granted": "열렸습니다 — 곧 메시지가 보입니다.",
+      "waiting": "요청을 보냈습니다. 구성원이 채팅 키를 공유할 때까지 기다려 주세요.",
+      "waitingPeer": "요청을 보냈습니다. 상대방이 채팅 키를 공유할 때까지 기다려 주세요.",
+      "granted": "채팅 키를 받았습니다. 메시지를 불러오는 중입니다.",
       "failed": "요청을 보내지 못했습니다. 다시 시도해 주세요.",
-      "pendingTitle": "키를 기다리는 사람이 있습니다",
-      "pendingRow": "이 방의 지난 기록 일부를 못 읽는 멤버가 있습니다.",
-      "grant": "열어주기",
+      "pendingTitle": "채팅 키 공유 요청이 있습니다",
+      "pendingRow": "일부 대화 기록을 읽지 못하는 구성원이 있습니다.",
+      "grant": "채팅 키 공유",
       "retryGrant": "다시 시도",
-      "cannotHelp": "이 기기도 그 구간을 갖고 있지 않습니다.",
-      "aloneHere": "여기엔 열어줄 사람이 없습니다. 복구 코드를 넣어 보세요 — 그래도 안 열린다면, 이 메시지는 기기가 백업을 남기기 전에 쓰인 것입니다.",
+      "cannotHelp": "이 기기에도 해당 기록의 키가 없습니다.",
+      "aloneHere": "채팅 키를 공유할 구성원이 없습니다. 복구 코드를 사용해 보세요. 백업에 해당 키가 없으면 메시지를 복구할 수 없습니다.",
       "askUnsure": "키 요청 보내기"
     },
     "inAppBrowser": {
       "blockedTitle": "이 링크는 열 수 없습니다",
-      "blockedBody": "글 속 링크는 웹 페이지로 열립니다. 이 주소는 웹 주소가 아닙니다."
+      "blockedBody": "웹 주소만 열 수 있습니다. 링크가 올바른지 확인해 주세요."
     },
     "firstRunRecovery": {
-      "title": "복구 키를 저장하세요",
-      "bodyFirstRun": "채팅 기록은 이 휴대폰에만 있는 키로 암호화됩니다. 이 복구 키가 있어야 다른 기기에서, 또는 이 휴대폰이 초기화된 뒤에도 다시 읽을 수 있습니다.",
-      "bodyNoBackup": "이 계정에는 복구 키가 없습니다. 없는 상태에서 휴대폰을 잃으면 그 안의 암호화된 대화는 모두 사라집니다. 저희를 포함해 누구도 되살릴 수 없습니다.",
-      "warning": "사본이 ‘나만의 공간’에 남지만, 같은 키로 잠겨 있어 백업이 되지 못합니다. 앱 밖에도 하나 보관하세요.",
+      "title": "복구 코드를 보관해 주세요",
+      "bodyFirstRun": "기기를 바꾸거나 초기화한 후에도 암호화된 채팅을 읽으려면 채팅 키를 복구해야 합니다. 복구 코드를 안전한 곳에 보관하세요.",
+      "bodyNoBackup": "아직 복구 코드가 없습니다. 백업 없이 채팅 키를 잃으면 OpenStoa도 암호화된 대화 기록을 복구할 수 없습니다.",
+      "warning": "나만의 공간에도 사본이 저장되지만 채팅 키가 없으면 읽을 수 없습니다. 반드시 앱 밖에도 보관하세요.",
       "copy": "복사",
       "copied": "복사됨",
       "stored": "저장했습니다",
       "later": "나중에",
-      "generating": "복구 키를 만드는 중…",
-      "failed": "복구 키를 만들지 못했습니다. 프로필 → 채팅 복구에서 다시 시도할 수 있습니다.",
-      "noteHeading": "복구 키",
-      "noteWarning": "반드시 앱 밖에도 보관하세요. 이 메시지는 그 키가 지키는 것과 같은 키로 암호화돼 있어서, 이 휴대폰이 키를 잃으면 이 메시지도 읽을 수 없습니다."
+      "generating": "복구 코드를 만드는 중…",
+      "failed": "복구 코드를 만들지 못했습니다. 프로필 → 채팅 복구에서 다시 시도해 주세요.",
+      "noteHeading": "복구 코드",
+      "noteWarning": "반드시 앱 밖의 안전한 곳에도 보관하세요. 이 메시지도 채팅 키로 암호화되어 있어 키를 잃으면 읽을 수 없습니다."
     },
     "deviceData": {
       "title": "기기 데이터",
-      "row": "캐시 비우기 또는 기기에서 지우기",
+      "row": "캐시 및 기기 데이터 삭제",
       "running": "처리 중…",
       "checking": "키 백업을 확인하는 중…",
       "clearCache": {
         "title": "캐시 비우기",
-        "explain": "다시 내려받을 수 있는 사본만 지워 저장 공간을 확보합니다. 복호화된 메시지, 대화 기록, 채팅 목록, 저장된 사진이 대상입니다. 키는 건드리지 않고 모든 방도 그대로 열립니다. 다음에 열 때 조금 느려질 뿐입니다.",
+        "explain": "다시 내려받을 수 있는 메시지, 대화 목록, 사진 등의 사본을 삭제해 저장 공간을 확보합니다. 채팅 키와 참여 정보는 유지됩니다. 다음에 채팅방을 열 때 데이터를 다시 불러옵니다.",
         "action": "캐시 비우기",
         "confirmTitle": "캐시를 비울까요?",
-        "confirmBody": "여기서 지운 것은 다음에 방을 열 때 서버에서 다시 받아옵니다. 채팅 키와 방 참여 상태는 그대로입니다."
+        "confirmBody": "삭제한 데이터는 다음에 채팅방을 열 때 다시 불러옵니다. 채팅 키와 참여 정보는 유지됩니다."
       },
       "eraseDevice": {
-        "title": "이 기기에서 완전히 지우기",
-        "explain": "채팅 키를 포함해 OpenStoa가 이 휴대폰에 저장한 모든 것을 지웁니다. 로그아웃되며, 이 기기로는 참여 중인 어떤 방도 더 이상 읽을 수 없습니다.",
-        "backupFirst": "먼저 키를 백업하세요 — 프로필 → 채팅 복구. 백업이 없으면 저희를 포함해 누구도 되돌릴 수 없습니다.",
+        "title": "이 기기의 데이터 삭제",
+        "explain": "채팅 키를 포함해 이 휴대폰에 저장된 OpenStoa 데이터를 모두 삭제하고 로그아웃합니다. 다시 채팅을 읽으려면 백업에서 키를 복구해야 합니다.",
+        "backupFirst": "프로필 → 채팅 복구에서 먼저 백업하세요. 백업 없이 채팅 키를 삭제하면 대화 기록을 복구하지 못할 수 있습니다.",
         "action": "이 기기에서 지우기",
         "confirmTitle": "이 기기에서 지울까요?",
         "confirmBody": "이 휴대폰의 채팅 키가 삭제되고 로그아웃됩니다. 다시 로그인한 뒤 백업에서 복구하면 방을 되찾을 수 있습니다.",
         "staleBackupTitle": "이 기기에서 지울까요?",
-        "staleBackupBody": "마지막 키 백업이 {{days}}일 전입니다. 그 이후에 참여한 방은 백업에 없으므로 지운 뒤에는 읽을 수 없습니다. 백업에 포함된 방은 다시 로그인한 뒤 복구할 수 있습니다.",
+        "staleBackupBody": "마지막 백업은 {{days}}일 전입니다. 이후 참여한 채팅방의 키는 백업에 없을 수 있습니다. 백업에 포함된 키는 다시 로그인한 후 복구할 수 있습니다.",
         "noBackupTitle": "키 백업이 없습니다",
-        "noBackupBody": "이 기기의 채팅 키를 백업한 적이 없습니다. 프로필 → 채팅 복구에서 먼저 백업하면 되돌릴 수 있게 됩니다.",
+        "noBackupBody": "이 기기의 채팅 키가 백업되지 않았습니다. 프로필 → 채팅 복구에서 먼저 백업해 주세요.",
         "finalTitle": "백업 없이 지울까요?",
-        "finalBody": "백업 없이 지우면 이 기기의 채팅 이력은 영구히 못 읽습니다. 다른 기기도, 서버도, 저희도 복구할 수 없습니다.",
-        "finalAction": "영구히 지우기"
+        "finalBody": "백업 없이 채팅 키를 삭제하면 이 기기의 암호화된 대화 기록을 복구할 수 없습니다.",
+        "finalAction": "백업 없이 삭제"
       },
       "result": {
         "doneTitle": "완료",
-        "doneBody": "모두 지웠습니다.",
+        "doneBody": "데이터를 삭제했습니다.",
         "partialTitle": "일부만 완료",
-        "partialBody": "일부 항목을 지우지 못했습니다. 다시 시도해 보시고, 숫자가 그대로면 앱을 다시 실행한 뒤 시도하세요.",
+        "partialBody": "일부 데이터를 삭제하지 못했습니다. 다시 시도해 주세요. 같은 문제가 반복되면 앱을 다시 실행해 주세요.",
         "blockedTitle": "이 버전에서는 지원되지 않습니다",
-        "blockedBody": "이 버전의 앱은 저장된 데이터를 삭제할 수 없습니다. ZKProofport를 업데이트한 뒤 다시 시도하세요. 아무것도 지워지지 않았습니다.",
-        "counts": "저장 항목 {{keys}}개와 파일 {{files}}개를 지우고, {{kept}}개를 유지했습니다."
+        "blockedBody": "이 버전에서는 저장된 데이터를 삭제할 수 없습니다. ZKProofport를 업데이트한 후 다시 시도해 주세요. 데이터는 삭제되지 않았습니다.",
+        "counts": "저장 항목 {{keys}}개와 파일 {{files}}개를 삭제했습니다. 유지된 항목은 {{kept}}개입니다."
       },
       "size": {
-        "line": "비우면 약 {{free}}를 확보합니다. 약 {{keep}}는 남습니다 — 키, 방 참여 상태, 아카이브입니다."
+        "line": "약 {{free}}의 공간을 확보할 수 있습니다. 채팅 키, 참여 정보, 보관된 기록 등 약 {{keep}}는 유지됩니다."
       }
     },
     "notificationSettings": {
       "sectionTitle": "알림",
       "pushLabel": "푸시 알림",
       "onHint": "새 채팅 메시지를 이 기기로 알려 드립니다.",
-      "offHint": "알림이 모두 꺼져 있습니다 — 어떤 토픽도 알려 드리지 않습니다.",
-      "accountWide": "계정 전체 스위치라 토픽별 설정보다 우선합니다. 꺼져 있는 동안에는 음소거하지 않은 토픽도 알리지 않습니다. 특정 채팅만 끄려면 그 채팅방 상단에서 음소거하세요.",
-      "mutedCount": " 지금 음소거한 토픽이 {{count}}개 있습니다.",
-      "blocked": "이 기기가 이 앱의 알림을 막고 있어, 여기서 켜는 것만으로는 알림이 오지 않습니다. 시스템 설정에서 알림을 먼저 허용해 주세요.",
+      "offHint": "모든 토픽의 푸시 알림이 꺼져 있습니다.",
+      "accountWide": "모든 기기에 적용되는 계정 설정입니다. 끄면 토픽별 설정과 관계없이 푸시 알림을 받지 않습니다. 특정 채팅방만 끄려면 해당 채팅방 상단의 알림 버튼을 누르세요.",
+      "mutedCount": "알림을 끈 토픽이 {{count}}개 있습니다.",
+      "blocked": "기기 설정에서 앱 알림이 차단되어 있습니다. 푸시 알림을 받으려면 시스템 설정에서 ZKProofport 알림을 허용해 주세요.",
       "openSystemSettings": "시스템 설정 열기",
       "openSettingsFailedTitle": "설정을 열지 못했습니다",
-      "openSettingsFailedBody": "기기의 설정 앱을 열어 ZKProofport 의 알림을 허용해 주세요."
+      "openSettingsFailedBody": "기기의 설정 앱에서 ZKProofport 알림을 허용해 주세요."
     },
     "attach": {
       "title": "사진 첨부",
@@ -771,17 +834,38 @@
       "pasteFromClipboard": "클립보드에서 붙여넣기",
       "noImageInClipboard": "클립보드에 사진이 없습니다",
       "pickerUnavailableTitle": "사진 보관함을 열 수 없습니다",
-      "pickerUnavailableBody": "이 기능을 쓰려면 호스트 앱을 다시 빌드해야 합니다 (expo-image-picker 미포함).",
+      "pickerUnavailableBody": "이 버전에서는 사진 보관함을 열 수 없습니다. ZKProofport를 업데이트한 후 다시 시도해 주세요.",
       "clipboardUnavailableTitle": "클립보드를 쓸 수 없습니다",
-      "clipboardUnavailableBody": "이 기능을 쓰려면 호스트 앱을 다시 빌드해야 합니다 (클립보드 모듈 미포함)."
+      "clipboardUnavailableBody": "이 버전에서는 클립보드의 사진을 붙여넣을 수 없습니다. 사진 보관함에서 선택해 주세요."
     },
     "notifications": {
       "loadFailed": "알림 설정을 불러오지 못했습니다. 뒤로 갔다가 다시 시도해 주세요.",
-      "permissionNotAsked": "이 기기는 아직 알림 권한을 요청받지 않았습니다. 메시지가 처음 도착할 때 물어봅니다."
+      "permissionNotAsked": "아직 알림 권한이 설정되지 않았습니다. 첫 메시지가 도착하면 알림 허용 여부를 묻습니다."
     },
     "a11y": {
-      "photoInPost": "이 글의 사진 {{total}}장 중 {{n}}번째",
-      "photoInPostSingle": "이 글에 붙은 사진"
+      "photoInPost": "게시물 사진 {{total}}장 중 {{n}}번째",
+      "photoInPostSingle": "게시물에 첨부된 사진"
+    },
+    "errors": {
+      "nicknameTaken": "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요.",
+      "signIn": "로그인이 필요합니다. 다시 로그인해 주세요.",
+      "rateLimited": "요청이 많아 잠시 이용이 제한되었습니다. 잠시 후 다시 시도해 주세요.",
+      "connection": "서버에 연결하지 못했습니다. 연결 상태를 확인한 후 다시 시도해 주세요.",
+      "timeout": "응답 시간이 초과되었습니다. 요청이 처리되었는지 확인한 후 다시 시도해 주세요.",
+      "forbidden": "이 작업을 수행할 권한이 없습니다. 토픽 참여 여부와 이용 권한을 확인해 주세요.",
+      "notFound": "요청한 항목을 찾을 수 없습니다. 목록을 새로고침해 주세요.",
+      "conflict": "현재 상태에서는 요청을 처리할 수 없습니다. 새로고침한 후 다시 확인해 주세요.",
+      "invalidInput": "입력한 내용을 처리할 수 없습니다. 내용을 확인한 후 다시 시도해 주세요."
+    },
+    "categories": {
+      "base-layer2": "Base 및 레이어 2",
+      "defi-trading": "DeFi 및 트레이딩",
+      "nft-gaming": "NFT 및 게임",
+      "privacy-zk": "프라이버시 및 ZK",
+      "development": "개발",
+      "governance": "거버넌스",
+      "free-talk": "자유 토론",
+      "announcements": "공지사항"
     }
   }
 }

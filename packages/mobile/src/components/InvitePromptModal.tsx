@@ -21,6 +21,7 @@ export interface InvitePromptModalProps {
   onClose: () => void;
   onSubmit: (code: string) => Promise<void> | void;
   submitting?: boolean;
+  children?: React.ReactNode;
 }
 
 function makeStyles(colors: ThemeColors) {
@@ -98,7 +99,7 @@ function makeStyles(colors: ThemeColors) {
   });
 }
 
-export function InvitePromptModal({ visible, onClose, onSubmit, submitting }: InvitePromptModalProps) {
+export function InvitePromptModal({ visible, onClose, onSubmit, submitting, children }: InvitePromptModalProps) {
   const { t } = useTranslation();
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
@@ -134,6 +135,7 @@ export function InvitePromptModal({ visible, onClose, onSubmit, submitting }: In
               returnKeyType="done"
               onSubmitEditing={handleSubmit}
             />
+            {children}
             <View style={styles.actions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={handleClose} activeOpacity={0.7}>
                 <Text style={styles.cancelLabel}>{t('openstoa.common.cancel')}</Text>

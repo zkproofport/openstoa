@@ -1,3 +1,4 @@
+import { userFacingError } from '../../i18n/userFacingError';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -142,7 +143,7 @@ export function NotificationSettingsScreen() {
       setOsState((prev) => applyRegistrationOutcome(prev, outcome));
     },
     onError: (e) => {
-      Alert.alert(t('openstoa.common.saveFailed'), e instanceof Error ? e.message : String(e));
+      Alert.alert(t('openstoa.common.saveFailed'), userFacingError(e, t));
     },
   });
 

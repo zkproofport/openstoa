@@ -1,8 +1,8 @@
 import React from 'react';
+import { UserIdentity, usePublicBadges } from './UserIdentity';
 import {
   ActivityIndicator,
   Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,9 +12,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { canDm, dmUnavailableReason, initialFor, type PeerProfileTarget } from '../lib/peerProfile';
+import { canDm, dmUnavailableReason, type PeerProfileTarget } from '../lib/peerProfile';
 import { RADIUS, TYPE_SCALE } from '../theme/tokens';
-import { GatedImage } from './GatedImage';
 
 export interface PeerProfileCardProps {
   /** The tapped member/author, or null to render nothing (mirrors the
@@ -49,71 +48,7 @@ function makeStyles(colors: ThemeColors) {
       paddingBottom: 20,
       alignItems: 'center',
     },
-    avatar: {
-      width: 76,
-      height: 76,
-      borderRadius: RADIUS.pill,
-      backgroundColor: colors.brand.primaryMuted,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 12,
-    },
-    avatarImage: {
-      width: 76,
-      height: 76,
-      borderRadius: RADIUS.pill,
-      backgroundColor: colors.background.tertiary,
-    },
-    avatarInitial: {
-      fontSize: TYPE_SCALE.headingLarge,
-      fontWeight: '700',
-      color: colors.brand.primary,
-    },
-    nameRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      maxWidth: '100%',
-    },
-    nickname: {
-      fontSize: TYPE_SCALE.bodyLarge,
-      fontWeight: '700',
-      color: colors.text.primary,
-      flexShrink: 1,
-    },
-    aiBadge: {
-      fontSize: TYPE_SCALE.label,
-      fontWeight: '700',
-      color: colors.background.primary,
-      backgroundColor: colors.brand.primary,
-      overflow: 'hidden',
-      borderRadius: RADIUS.control,
-      paddingHorizontal: 5,
-      paddingVertical: 2,
-      marginLeft: 6,
-    },
-    badgeScroll: {
-      marginTop: 12,
-      maxWidth: '100%',
-    },
-    badgeRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: 6,
-      marginTop: 12,
-    },
-    badgeChip: {
-      backgroundColor: colors.brand.primaryMuted,
-      borderRadius: RADIUS.pill,
-      paddingHorizontal: 12,
-      paddingVertical: 5,
-    },
-    badgeLabel: {
-      fontSize: TYPE_SCALE.label,
-      fontWeight: '600',
-      color: colors.brand.primary,
-    },
+    nickname: { fontSize: TYPE_SCALE.bodyLarge, fontWeight: '700', color: colors.text.primary, flexShrink: 1 },
     note: {
       marginTop: 12,
       fontSize: TYPE_SCALE.caption,
@@ -170,10 +105,10 @@ export function PeerProfileCard({
   const { colors } = useThemeColors();
   const styles = makeStyles(colors);
 
+  const badges = usePublicBadges(target?.userId ?? '', target?.badges);
   if (!target) return null;
 
   const showDm = canDm(viewerUserId, target);
-  const badges = target.badges ?? [];
   // Three honest end-states, not one blank box: self, no badges, and
   // not-DM-able are independent facts that can combine (your own card is
   // `self` + usually also no badges) — each gets its own line instead of
@@ -186,42 +121,8 @@ export function PeerProfileCard({
         <View style={styles.backdrop}>
           <TouchableWithoutFeedback>
             <View style={styles.card}>
-              <View style={styles.avatar}>
-                {target.profileImage ? (
-                  <GatedImage
-                    uri={target.profileImage}
-                    style={styles.avatarImage}
-                  />
-                ) : (
-                  <Text style={styles.avatarInitial}>{initialFor(target.nickname)}</Text>
-                )}
-              </View>
-
-              <View style={styles.nameRow}>
-                <Text style={styles.nickname} numberOfLines={1}>
-                  {target.nickname}
-                </Text>
-                {target.isAI ? <Text style={styles.aiBadge}>AI</Text> : null}
-              </View>
-
-              {badges.length > 0 ? (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.badgeScroll}
-                  contentContainerStyle={styles.badgeRow}
-                >
-                  {badges.map((b, i) => (
-                    <View key={`${b.type}-${b.domain ?? ''}-${i}`} style={styles.badgeChip}>
-                      <Text style={styles.badgeLabel} numberOfLines={1}>
-                        {b.domain ? `${b.label} · ${b.domain}` : b.label}
-                      </Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              ) : (
-                <Text style={styles.note}>{t('openstoa.peerProfile.noBadges')}</Text>
-              )}
+              <UserIdentity identity={target} size={76} vertical nameStyle={styles.nickname} />
+              {badges.length === 0 && <Text style={styles.note}>{t('openstoa.peerProfile.noBadges')}</Text>}
 
               {unavailable === 'self' ? (
                 <Text style={styles.note}>{t('openstoa.peerProfile.self')}</Text>

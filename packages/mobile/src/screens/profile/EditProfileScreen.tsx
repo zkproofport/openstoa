@@ -1,3 +1,5 @@
+import { userFacingError } from '../../i18n/userFacingError';
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useCallback, useEffect, useState } from 'react';
 import { sessionKeys } from '@openstoa/api-types';
 import {
@@ -30,7 +32,8 @@ import { useOpenStoaMutation as useMutation } from '../../hooks/useOpenStoaMutat
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useHost } from '@openstoa/miniapp-bridge';
-import type { DomainBadgeStatus, SessionInfo } from '@openstoa/api-types';
+import { BadgeVisibilitySettings } from '../../components/BadgeVisibilitySettings';
+import type { SessionInfo } from '@openstoa/api-types';
 import { useOpenStoaClient } from '../../hooks/useOpenStoaClient';
 import { useOpenStoaSession } from '../../stores/sessionStore';
 import { useThemeColors } from '../../theme/ThemeContext';
@@ -337,22 +340,6 @@ export function EditProfileScreen() {
     queryFn: () => client.get<SessionInfo>('/api/auth/session'),
   });
 
-  const domainBadgeQuery = useQuery<DomainBadgeStatus>({
-    queryKey: ['profile', 'domain-badge'],
-    queryFn: async () => {
-      const raw = await client.get<{ domains?: string[]; availableDomain?: string | null }>(
-        '/api/profile/domain-badge',
-      );
-      const domains = raw.domains ?? [];
-      return {
-        domains,
-        availableDomain: raw.availableDomain ?? null,
-        enabled: domains.length > 0,
-        domain: domains[0],
-      };
-    },
-  });
-
   // API returns { profileImage } (see openstoa/src/app/api/profile/image/route.ts).
   // The previous `imageUrl` field name caused uploads to fail to render
   // because the query value was always undefined.
@@ -420,7 +407,7 @@ export function EditProfileScreen() {
       void queryClient.invalidateQueries({ queryKey: ['profile', 'image'] });
       void queryClient.invalidateQueries({ queryKey: sessionKeys.current() });
     } catch (err) {
-      Alert.alert(t('openstoa.common.uploadFailed'), err instanceof Error ? err.message : String(err));
+      Alert.alert(t('openstoa.common.uploadFailed'), userFacingError(err, t));
     } finally {
       setImageUploading(false);
     }
@@ -433,7 +420,7 @@ export function EditProfileScreen() {
       void queryClient.invalidateQueries({ queryKey: sessionKeys.current() });
     },
     onError: (e) => {
-      reportFailure(host, e, 'E9006');
+      reportFailure(host, e, 'E9006', t);
     },
   });
 
@@ -441,7 +428,7 @@ export function EditProfileScreen() {
     Alert.alert(t('openstoa.editProfile.removePhotoTitle'), t('openstoa.editProfile.removePhotoBody'), [
       { text: t('openstoa.common.cancel'), style: 'cancel' },
       {
-        text: t('openstoa.editProfile.remove'),
+        text: t('openstoa.editProfile.removePhoto'),
         style: 'destructive',
         onPress: () => removeImageMutation.mutate(),
       },
@@ -492,18 +479,8 @@ export function EditProfileScreen() {
        * reason came from the server it is also shown under the field, because
        * the field is where the fix is.
        */
-      const failure = reportFailure(host, e, 'E9003');
+      const failure = reportFailure(host, e, 'E9003', t);
       if (failure.inline) setValidationError(failure.inline);
-    },
-  });
-
-  const domainBadgeOptOutMutation = useMutation({
-    mutationFn: () => client.delete('/api/profile/domain-badge'),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['profile', 'domain-badge'] });
-    },
-    onError: (e) => {
-      reportFailure(host, e, 'E9004');
     },
   });
 
@@ -524,17 +501,6 @@ export function EditProfileScreen() {
     }
     nicknameMutation.mutate(trimmed);
   }, [nickname, sessionQuery.data?.nickname, nicknameMutation, t]);
-
-  const handleDomainBadgeOptOut = useCallback(() => {
-    Alert.alert(t('openstoa.editProfile.domainBadgeRemoveTitle'), t('openstoa.editProfile.domainBadgeRemoveMessage'), [
-      { text: t('openstoa.common.cancel'), style: 'cancel' },
-      {
-        text: t('openstoa.editProfile.remove'),
-        style: 'destructive',
-        onPress: () => domainBadgeOptOutMutation.mutate(),
-      },
-    ]);
-  }, [domainBadgeOptOutMutation, t]);
 
   const handleLogout = useCallback(() => {
     Alert.alert(t('openstoa.editProfile.logout.title'), t('openstoa.editProfile.logout.message'), [
@@ -588,7 +554,7 @@ export function EditProfileScreen() {
                 // Navigation may have been unmounted; ignore.
               }
             } catch (e) {
-              reportFailure(host, e, 'E9005');
+              reportFailure(host, e, 'E9005', t);
             }
           },
         },
@@ -596,7 +562,6 @@ export function EditProfileScreen() {
     );
   }, [client, host, t, navigation]);
 
-  const domainBadge = domainBadgeQuery.data;
   // Cache-bust on every fetch so a fresh upload renders immediately instead
   // of the host's Image cache serving the stale URL from before the update.
   const rawProfileImage = absolutizeMediaUrl(profileImageQuery.data?.profileImage ?? null, client.getBaseUrl());
@@ -611,6 +576,7 @@ export function EditProfileScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {sessionQuery.data && <View style={styles.section}><UserIdentity identity={{ ...sessionQuery.data, profileImage: profileImageUrl }} size={48} /></View>}
         {/* Profile image section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('openstoa.profile.editPhoto')}</Text>
@@ -705,43 +671,7 @@ export function EditProfileScreen() {
           <Text style={styles.charCount}>{nickname.length}/20</Text>
         </View>
 
-        {/* Domain badge section */}
-        {domainBadge !== undefined && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('openstoa.profile.domainBadge.label')}</Text>
-            {domainBadge.enabled ? (
-              <View style={styles.domainBadgeInfo}>
-                <View style={styles.domainBadgeActive}>
-                  <Text style={styles.domainBadgeActiveText}>
-                    {domainBadge.domain ?? t('openstoa.editProfile.enabled')}
-                  </Text>
-                  <View style={styles.activeDot} />
-                </View>
-                <TouchableOpacity
-                  style={[
-                    styles.domainBadgeButton,
-                    domainBadgeOptOutMutation.isPending && styles.saveButtonDisabled,
-                  ]}
-                  onPress={handleDomainBadgeOptOut}
-                  disabled={domainBadgeOptOutMutation.isPending}
-                >
-                  {domainBadgeOptOutMutation.isPending ? (
-                    <ActivityIndicator size="small" color={colors.status.danger} />
-                  ) : (
-                    <Text style={styles.domainBadgeButtonText}>{t('openstoa.editProfile.remove')}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.domainBadgeInfo}>
-                <Text style={styles.domainBadgeOffText}>
-                  {t('openstoa.editProfile.domainOff')}{'\n'}
-                  {t('openstoa.editProfile.domainOffHint')}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
+        <BadgeVisibilitySettings />
 
         {/* Notifications — the account-wide push switch (P-M), reconciled with
             the OS notification permission on the settings screen itself. */}

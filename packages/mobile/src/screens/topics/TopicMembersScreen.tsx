@@ -1,3 +1,5 @@
+import { userFacingError } from '../../i18n/userFacingError';
+import { UserIdentity } from '../../components/UserIdentity';
 import React, { useCallback, useState } from 'react';
 import { topicKeys } from '@openstoa/api-types';
 import {
@@ -137,7 +139,7 @@ export function TopicMembersScreen() {
     mutationFn: ({ userId }: { userId: string }) =>
       client.post<{ topicId: string }>('/api/dm', { userId }),
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.members.actionFailed'), err.message);
+      Alert.alert(t('openstoa.members.actionFailed'), userFacingError(err, t));
     },
   });
 
@@ -203,7 +205,7 @@ export function TopicMembersScreen() {
       queryClient.invalidateQueries({ queryKey: topicKeys.members(topicId) });
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.members.actionFailed'), err.message);
+      Alert.alert(t('openstoa.members.actionFailed'), userFacingError(err, t));
     },
   });
 
@@ -226,7 +228,7 @@ export function TopicMembersScreen() {
       }
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.members.actionFailed'), err.message);
+      Alert.alert(t('openstoa.members.actionFailed'), userFacingError(err, t));
     },
   });
 
@@ -239,7 +241,7 @@ export function TopicMembersScreen() {
       queryClient.invalidateQueries({ queryKey: topicKeys.detail(topicId) });
     },
     onError: (err: Error) => {
-      Alert.alert(t('openstoa.members.actionFailed'), err.message);
+      Alert.alert(t('openstoa.members.actionFailed'), userFacingError(err, t));
     },
   });
 
@@ -372,15 +374,9 @@ export function TopicMembersScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('openstoa.peerProfile.viewProfile', { nickname: item.nickname })}
           >
-            <View style={styles.avatar}>
-              <Feather name="user" size={18} color={colors.text.tertiary} />
-            </View>
-            <View style={styles.rowText}>
-              <Text style={styles.nickname} numberOfLines={1}>
-                {item.nickname}
-              </Text>
+            <UserIdentity identity={item} size={36}>
               <Text style={styles.roleText}>{roleLabel}</Text>
-            </View>
+            </UserIdentity>
           </TouchableOpacity>
           {item.userId !== sessionUserId ? (
             <TouchableOpacity

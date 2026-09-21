@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useCallback } from 'react';
 import { TouchableOpacity } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +31,7 @@ export interface TopicMuteButtonProps {
 }
 
 export function TopicMuteButton({ topicId, size = 20 }: TopicMuteButtonProps) {
+  const { t } = useTranslation();
   const client = useOpenStoaClient();
   const queryClient = useQueryClient();
   const { colors } = useThemeColors();
@@ -84,7 +86,7 @@ export function TopicMuteButton({ topicId, size = 20 }: TopicMuteButtonProps) {
       accessibilityRole="button"
       accessibilityState={{ selected: muted }}
       accessibilityLabel={
-        muted ? 'Unmute notifications for this topic' : 'Mute notifications for this topic'
+        muted ? t('openstoa.chat.unmute') : t('openstoa.chat.mute')
       }
       style={{ opacity: toggle.isPending ? 0.5 : 1, marginRight: 4 }}
       activeOpacity={0.7}

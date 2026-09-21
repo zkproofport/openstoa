@@ -299,7 +299,7 @@ describe('sign-in cannot strand the app on the boot screen', () => {
     expect(useOpenStoaSession.getState().mode).toBe('authenticated');
   });
 
-  it('a login that REJECTS still reports its own reason, not the timeout copy', async () => {
+  it('a login that REJECTS shows localized failure copy, not raw diagnostics or timeout copy', async () => {
     const login = vi.fn(async () => {
       throw new Error('relay refused the proof');
     });
@@ -309,7 +309,8 @@ describe('sign-in cannot strand the app on the boot screen', () => {
     await advance(10);
 
     expect(rendered.text()).toContain(WELCOME);
-    expect(rendered.text()).toContain('relay refused the proof');
+    expect(rendered.text()).toContain('openstoa.welcome.signInFailed');
+    expect(rendered.text()).not.toContain('relay refused the proof');
     expect(rendered.text()).not.toContain(TIMED_OUT);
   });
 });
