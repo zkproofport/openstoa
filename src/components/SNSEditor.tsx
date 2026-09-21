@@ -131,6 +131,18 @@ export default function SNSEditor({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
+  const uploadResetTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const limitErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(uploadResetTimerRef.current);
+      clearTimeout(limitErrorTimerRef.current);
+    };
+  }, []);
 
   const [content, setContent] = useState(initialState?.content ?? '');
   const [images, setImages] = useState<string[]>(initialState?.images ?? []);
@@ -249,7 +261,8 @@ export default function SNSEditor({
       const msg = t('snsEditor.imageLimitReached', { max: maxImages });
       setLimitError(msg);
       try { window.alert(msg); } catch {}
-      setTimeout(() => setLimitError(null), 3000);
+      clearTimeout(limitErrorTimerRef.current);
+      limitErrorTimerRef.current = setTimeout(() => setLimitError(null), 3000);
       return;
     }
     const trimmed = imageFiles.slice(0, remainingSlots);
@@ -261,18 +274,23 @@ export default function SNSEditor({
       });
       setLimitError(msg);
       try { window.alert(msg); } catch {}
-      setTimeout(() => setLimitError(null), 3000);
+      clearTimeout(limitErrorTimerRef.current);
+      limitErrorTimerRef.current = setTimeout(() => setLimitError(null), 3000);
     }
 
+    clearTimeout(uploadResetTimerRef.current);
     setUploadTotal(prev => prev + trimmed.length);
 
     const results = await Promise.all(
       trimmed.map(async (file) => {
         const url = await uploadFile(file);
-        setUploading(prev => prev + 1);
+        if (mountedRef.current) setUploading(prev => prev + 1);
         return url;
       })
     );
+
+    // Closing/resetting the composer must not revive its draft or timers.
+    if (!mountedRef.current) return;
 
     const newUrls = results.filter((u): u is string => u !== null);
     if (newUrls.length > 0) {
@@ -281,7 +299,8 @@ export default function SNSEditor({
       emit({ content, images: nextImages, videos });
     }
 
-    setTimeout(() => {
+    clearTimeout(uploadResetTimerRef.current);
+    uploadResetTimerRef.current = setTimeout(() => {
       setUploading(0);
       setUploadTotal(0);
     }, 500);
