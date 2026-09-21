@@ -30,7 +30,7 @@ export interface ChatOnMobileOnlyProps {
   inline?: boolean;
 }
 
-const APP_STORE_URL = 'https://apps.apple.com/app/zkproofport/id0000000000';
+const APP_STORE_URL = 'https://apps.apple.com/kr/app/zkproofport/id6803903114';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.masselabs.zkproofport';
 
 export default function ChatOnMobileOnly({ inline = false }: ChatOnMobileOnlyProps) {
