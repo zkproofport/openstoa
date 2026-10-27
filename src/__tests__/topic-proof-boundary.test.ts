@@ -1,7 +1,11 @@
-import {coinbaseIssuerInputs,oidcIssuerInputs,jwksFetch,encodedBool} from './fixtures/trusted-proof';
+import {coinbaseIssuerInputs,oidcIssuerInputs,jwksFetch,encodedBool,OIDC_AUDIENCES} from './fixtures/trusted-proof';
+import {createHash} from 'node:crypto';
 import {clearOidcKeyCache} from '@zkproofport-app/core';
 /** Edge matrix: malformed/empty/oversized hex; invalid verifier and RPC; cross-account scope;
- * country predicate/provider; guest/member/personal/invite refusal; cache isolation.
+ * country predicate/provider; guest/member/personal/invite refusal; cache isolation;
+ * OIDC v2 nonce binding: a device-flow (mode 0) proof needs no request; an app (mode 1)
+ * proof joins only with the request a proof-only poll kept for it, is refused without
+ * one, and is refused when the kept request is for another request id.
  * No live forged requests: route tests execute locally with DB/RPC/Redis isolated. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
@@ -46,7 +50,7 @@ describe('topic proof predicates and cache provenance',()=>{
  it('rejects a mismatched country predicate before verification',async()=>{state.topic={id,visibility:'public',proofType:'country',allowedCountries:['US']};expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice',['KR'])})).status).toBe(400);expect(state.verify).not.toHaveBeenCalled();});
  it('refuses unknown proof types instead of falling back to OIDC',async()=>{state.topic.proofType='future';expect((await join()).status).toBe(400);});
  it.each(['personal','member','guest'])('refuses %s without touching proof state',async(kind)=>{if(kind==='personal')state.topic.personal=true;if(kind==='member')state.member={userId:'alice'};if(kind==='guest')state.session=null as never;expect([401,403,409]).toContain((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')})).status);expect(state.cache.size).toBe(0);expect(state.verify).not.toHaveBeenCalled();});
- const workspace=(provider:number,domain='company.com')=>{const p=oidcIssuerInputs();Buffer.from(computeScopeHash(COMMUNITY_SCOPE+':topic:alice').slice(2),'hex').forEach((n,i)=>p[83+i]=field(n));Buffer.from(domain).forEach((n,i)=>p[18+i]=field(n));p[82]=field(domain.length);p[147]=field(provider);return p;};
+ const workspace=(provider:number,domain='company.com')=>{const p=oidcIssuerInputs(provider===1?{provider,aud:OIDC_AUDIENCES.microsoft}:{provider});Buffer.from(computeScopeHash(COMMUNITY_SCOPE+':topic:alice').slice(2),'hex').forEach((n,i)=>p[83+i]=field(n));Buffer.from(domain).forEach((n,i)=>p[18+i]=field(n));p[82]=field(domain.length);p[147]=field(provider);return p;};
  it('enforces provider on both fresh and cached workspace proofs',async()=>{state.topic.proofType='google_workspace';state.topic.requiredDomain='company.com';expect((await join({proof:'0xab',publicInputs:workspace(1)})).status).toBe(400);expect((await join({proof:'0xab',publicInputs:workspace(0)})).status).toBe(201);state.topic.proofType='microsoft_365';expect((await join()).status).toBe(402);});
  it('generic workspace accepts either known provider but still checks domain',async()=>{state.topic.proofType='workspace';state.topic.requiredDomain='company.com';expect((await join({proof:'0xab',publicInputs:workspace(1)})).status).toBe(201);state.topic.requiredDomain='other.com';expect((await join()).status).toBe(402);expect((await join({proof:'0xab',publicInputs:workspace(1)})).status).toBe(400);});
  it('checks circuit-specific field count',async()=>{state.topic.proofType='country';state.topic.allowedCountries=['KR'];expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')})).status).toBe(400);});
@@ -62,7 +66,7 @@ describe('every topic membership entry path verifies proofs',()=>{
 });
 
 describe('workspace gates prove an allowed email domain, not an organization subscription',()=>{
- function oidc(domain:string,provider:number) {const p=oidcIssuerInputs();Buffer.from(computeScopeHash(COMMUNITY_SCOPE+':topic:alice').slice(2),'hex').forEach((n,i)=>p[83+i]=field(n));Buffer.from(domain).forEach((n,i)=>p[18+i]=field(n));p[82]=field(domain.length);p[147]=field(provider);return p;}
+ function oidc(domain:string,provider:number) {const p=oidcIssuerInputs(provider===1?{provider,aud:OIDC_AUDIENCES.microsoft}:{provider});Buffer.from(computeScopeHash(COMMUNITY_SCOPE+':topic:alice').slice(2),'hex').forEach((n,i)=>p[83+i]=field(n));Buffer.from(domain).forEach((n,i)=>p[18+i]=field(n));p[82]=field(domain.length);p[147]=field(provider);return p;}
  it.each([['gmail.com',0],['googlemail.com',0],['outlook.com',1],['hotmail.com',1],['live.com',1],['msn.com',1]] as const)('rejects consumer domain %s for a workspace gate',async(domain,provider)=>{state.topic.proofType='workspace';expect((await join({proof:'0xab',publicInputs:oidc(domain,provider)})).status).toBe(400);expect(state.values).not.toHaveBeenCalled();expect(state.cache.size).toBe(0);});
  it('rejects a cached consumer domain even if account-bound provenance exists',async()=>{const {saveVerificationCache}=await import('@/lib/verification-cache');await saveVerificationCache('alice','oidc_domain',{domain:'gmail.com',provider:0,topicScope:computeScopeHash(COMMUNITY_SCOPE+':topic:alice')});state.topic.proofType='workspace';expect((await join()).status).toBe(402);});
  it('continues to accept a verified custom domain matching the topic',async()=>{state.topic.proofType='google_workspace';state.topic.requiredDomain='company.com';expect((await join({proof:'0xab',publicInputs:oidc('company.com',0)})).status).toBe(201);expect((await join()).status).toBe(201);});
@@ -73,4 +77,14 @@ describe('legacy approvals cannot bypass requester proof requirements',()=>{
  it.each(['kyc','country','workspace'])('refuses approval of an unverified %s requester',async(proofType)=>{state.topic.proofType=proofType;state.topic.allowedCountries=['KR'];state.member={role:'owner'};expect((await approve({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')})).status).toBe(402);expect(state.values).not.toHaveBeenCalled();expect(state.update).not.toHaveBeenCalled();});
  it('allows approval after the requester has verified their own proof',async()=>{const {requireTopicProof}=await import('@/lib/topic-proof');expect(await requireTopicProof('bob',{proofType:'kyc'},{proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:bob')})).toBeNull();state.member={role:'owner'};expect((await approve()).status).toBe(200);expect(state.update).toHaveBeenCalledOnce();expect(state.values).toHaveBeenCalledWith({topicId:id,userId:'bob',role:'member'});});
  it('keeps open-topic approvals available',async()=>{state.topic.proofType='none';state.member={role:'admin'};expect((await approve()).status).toBe(200);});
+});
+
+describe('an app (nonce-bound) workspace proof needs the request its proof-only poll kept',()=>{
+ const REQUEST={scope:COMMUNITY_SCOPE+':topic:alice',requestId:'6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f'};
+ const appWorkspace=(request=REQUEST)=>{const p=oidcIssuerInputs({nonceMode:1,request});Buffer.from('company.com').forEach((n,i)=>p[18+i]=field(n));p[82]=field('company.com'.length);return p;};
+ const keep=(proof:string,request:unknown)=>state.cache.set('community:oidc-bound-proof:'+createHash('sha256').update(proof).digest('hex'),JSON.stringify(request));
+ it('joins with the kept request',async()=>{state.topic.proofType='google_workspace';state.topic.requiredDomain='company.com';keep('0xab',REQUEST);expect((await join({proof:'0xab',publicInputs:appWorkspace()})).status).toBe(201);expect(state.verify).toHaveBeenCalledOnce();});
+ it('is refused without a kept request, before any contract call',async()=>{state.topic.proofType='google_workspace';state.topic.requiredDomain='company.com';expect((await join({proof:'0xab',publicInputs:appWorkspace()})).status).toBe(400);expect(state.verify).not.toHaveBeenCalled();expect(state.values).not.toHaveBeenCalled();});
+ it('is refused when the kept request is another request',async()=>{state.topic.proofType='google_workspace';state.topic.requiredDomain='company.com';keep('0xab',{...REQUEST,requestId:'0b9a8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d'});expect((await join({proof:'0xab',publicInputs:appWorkspace()})).status).toBe(400);expect(state.verify).not.toHaveBeenCalled();});
+ it('a request kept for another proof does not cover this one',async()=>{state.topic.proofType='google_workspace';state.topic.requiredDomain='company.com';keep('0xcd',REQUEST);expect((await join({proof:'0xab',publicInputs:appWorkspace()})).status).toBe(400);expect(state.verify).not.toHaveBeenCalled();});
 });

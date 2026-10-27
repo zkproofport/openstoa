@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import ProofGate from '@/components/ProofGate';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
-vi.mock('@/lib/relay', () => ({ createSDK: () => ({ generateQRCode: async () => 'data:image/png;base64,test' }) }));
+vi.mock('qrcode', () => ({ toDataURL: async () => 'data:image/png;base64,test' }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 afterEach(() => { if (root) act(() => root.unmount()); vi.unstubAllGlobals(); });

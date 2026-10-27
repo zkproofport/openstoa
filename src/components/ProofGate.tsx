@@ -113,41 +113,29 @@ export default function ProofGate({
       const data = await res.json();
       setDeepLink(data.deepLink);
 
-      // Generate QR — use SDK if available, else raw qrcode lib
-      try {
-        const { createSDK } = await import('@/lib/relay');
-        const sdk = createSDK();
-        const url = await sdk.generateQRCode(data.deepLink, {
-          width: qrSize,
-          margin: 2,
-          // A QR code is not a themed surface. The format assumes DARK modules
-          // on a LIGHT quiet zone, and scanners are only required to handle
-          // that polarity — inverting it (as this did, #ededed on #0a0a0a)
-          // works on some cameras and not others, which on the login path
-          // means "sometimes you cannot sign in". Fixed black-on-white in both
-          // themes, deliberately; `lightColor` also paints the margin, so the
-          // quiet zone stays correct whatever sits behind it.
-          //
-          // These two literals must NOT be tokenized. They are arguments to a
-          // canvas renderer, not CSS: a `var(--…)` here reaches
-          // `qrcode/lib/renderer/utils.js` and throws
-          // "Invalid hex color: var(--color-text-primary)" — which is exactly
-          // how this broke.
-          darkColor: '#000000',
-          lightColor: '#ffffff',
-        });
-        setQrDataUrl(url);
-      } catch {
-        // Fallback to qrcode library
-        const QRCode = await import('qrcode');
-        const url = await QRCode.toDataURL(data.deepLink, {
-          width: qrSize,
-          margin: 2,
-          // Same contract as above — renderer arguments, never CSS.
-          color: { dark: '#000000', light: '#ffffff' },
-        });
-        setQrDataUrl(url);
-      }
+      // Generate the QR with the qrcode library directly. `@/lib/relay` is
+      // server code (relay SDK, ephemeral signer, Redis request records) and
+      // must not be imported into the browser bundle.
+      const QRCode = await import('qrcode');
+      const url = await QRCode.toDataURL(data.deepLink, {
+        width: qrSize,
+        margin: 2,
+        // A QR code is not a themed surface. The format assumes DARK modules
+        // on a LIGHT quiet zone, and scanners are only required to handle
+        // that polarity — inverting it (as this did, #ededed on #0a0a0a)
+        // works on some cameras and not others, which on the login path
+        // means "sometimes you cannot sign in". Fixed black-on-white in both
+        // themes, deliberately; `light` also paints the margin, so the quiet
+        // zone stays correct whatever sits behind it.
+        //
+        // These two literals must NOT be tokenized. They are arguments to a
+        // canvas renderer, not CSS: a `var(--…)` here reaches
+        // `qrcode/lib/renderer/utils.js` and throws
+        // "Invalid hex color: var(--color-text-primary)" — which is exactly
+        // how this broke.
+        color: { dark: '#000000', light: '#ffffff' },
+      });
+      setQrDataUrl(url);
 
       setState('active');
 

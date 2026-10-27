@@ -1,5 +1,6 @@
 /**
- * verifyTrustedTopicProof / verifyProofFromRelay on @zkproofport-app/core 0.2.0.
+ * verifyTrustedTopicProof / verifyProofFromRelay on @zkproofport-app/core 0.3.0
+ * (OIDC v2: 214 public inputs, audience / nonce / now policy).
  *
  * Edge matrix (each row maps to a test below):
  *  - environment: production / staging / development / local route each circuit to
@@ -17,6 +18,16 @@
  *  - contract: false, a non-true value and an RPC failure all answer invalid, never throw.
  *  - integrity: OpenStoa's counts equal core's layouts; every (environment, circuit)
  *    chain has a pinned verifier in core.
+ *  - OIDC request binding (core 0.3.0): a mode-0 (device flow) proof verifies with no
+ *    request; a mode-1 (app) proof without its request, or with any nonce_mode other
+ *    than 0, is refused before any network call; with the right request it verifies;
+ *    another requestId, another scope (also Korean / emoji scopes), a non-UUID or
+ *    upper-case requestId are refused; a v1 (148-input) proof is refused; a `now`
+ *    16 minutes old is refused.
+ *  - relay results: an OIDC result verifies only against the request OpenStoa
+ *    recorded for the POLLED id (not the id the result carries); no record, a
+ *    corrupt record, a record for another circuit, and Redis down are all refused /
+ *    rejected, never verified without the request; non-OIDC results read no record.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ethers as realEthers } from 'ethers';
@@ -28,7 +39,7 @@ import {
   MDL_KR_PUBLIC_INPUT_LAYOUT,
   RPC_ENDPOINTS,
 } from '@zkproofport-app/core';
-import { coinbaseIssuerInputs, oidcIssuerInputs, testJwk, jwksFetch, encodedBool, proofField } from './fixtures/trusted-proof';
+import { coinbaseIssuerInputs, oidcIssuerInputs, testJwk, jwksFetch, encodedBool, proofField, OIDC_AUDIENCES } from './fixtures/trusted-proof';
 
 const state = vi.hoisted(() => ({
   providers: [] as string[],
@@ -46,6 +57,13 @@ vi.mock('ethers', async () => {
   }
   return { ...actual, ethers: { ...actual.ethers, JsonRpcProvider: FakeProvider } };
 });
+const store = vi.hoisted(() => ({ data: new Map<string, string>(), down: false }));
+vi.mock('@/lib/redis', () => ({
+  redis: {
+    get: async (key: string) => { if (store.down) throw new Error('redis down'); return store.data.get(key) ?? null; },
+    set: async (key: string, value: string) => { if (store.down) throw new Error('redis down'); store.data.set(key, value); return 'OK'; },
+  },
+}));
 
 import {
   verifyTrustedTopicProof,
@@ -66,6 +84,8 @@ function validInputs(circuit: VerifiableCircuit): string[] {
 }
 
 beforeEach(() => {
+  store.data.clear();
+  store.down = false;
   state.providers.length = 0;
   state.calls.length = 0;
   state.result.mockReset().mockResolvedValue(encodedBool(true));
@@ -189,17 +209,15 @@ describe('issuer anchors are checked by core before the contract', () => {
     [0, 'https://www.googleapis.com/oauth2/v3/certs'],
     [1, 'https://login.microsoftonline.com/organizations/discovery/v2.0/keys'],
   ])('provider %i key is fetched from its fixed JWKS URL without following redirects', async (provider, url) => {
-    const inputs = oidcIssuerInputs();
-    inputs[147] = proofField(provider);
-    expect((await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', inputs)).valid).toBe(true);
+    const inputs = oidcIssuerInputs(provider === 1 ? { provider, aud: OIDC_AUDIENCES.microsoft } : { provider });
+    expect(await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', inputs)).toEqual({ valid: true });
     expect(fetch).toHaveBeenCalledWith(url, expect.objectContaining({ redirect: 'error' }));
     expect(state.calls).toHaveLength(1);
   });
 
   it('a Microsoft key scoped to one tenant is refused', async () => {
     vi.stubGlobal('fetch', vi.fn(jwksFetch([{ ...testJwk, issuer: 'https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0' }])));
-    const inputs = oidcIssuerInputs();
-    inputs[147] = proofField(1);
+    const inputs = oidcIssuerInputs({ provider: 1, aud: OIDC_AUDIENCES.microsoft });
     expect((await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', inputs)).valid).toBe(false);
     expect(state.calls).toHaveLength(0);
   });
@@ -219,31 +237,31 @@ describe('the relay\'s verifier claim is compared, never used', () => {
   }) as never;
 
   it('a differing verifierAddress is refused without a call', async () => {
-    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x000000000000000000000000000000000000dEaD', chainId: 84532 }));
+    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x000000000000000000000000000000000000dEaD', chainId: 84532 }), 'r');
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/Refusing rather than trusting the response/);
     expect(state.calls).toHaveLength(0);
   });
 
   it('a differing chainId is refused without a call', async () => {
-    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x42d165a48256Ae184e1dE4e7E6372E870E2bC883', chainId: 8453 }));
+    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x42d165a48256Ae184e1dE4e7E6372E870E2bC883', chainId: 8453 }), 'r');
     expect(result.valid).toBe(false);
     expect(state.calls).toHaveLength(0);
   });
 
   it('the pinned address in checksum case is accepted', async () => {
-    expect(await verifyProofFromRelay(relayResult({ verifierAddress: '0x42d165a48256Ae184e1dE4e7E6372E870E2bC883', chainId: 84532 }))).toEqual({ valid: true });
+    expect(await verifyProofFromRelay(relayResult({ verifierAddress: '0x42d165a48256Ae184e1dE4e7E6372E870E2bC883', chainId: 84532 }), 'r')).toEqual({ valid: true });
     expect(state.calls[0].to).toBe('0x42d165a48256ae184e1de4e7e6372e870e2bc883');
   });
 
   it('no claim at all is accepted and verified on the pinned verifier', async () => {
-    expect((await verifyProofFromRelay(relayResult({}))).valid).toBe(true);
+    expect((await verifyProofFromRelay(relayResult({}), 'r')).valid).toBe(true);
     expect(state.calls).toHaveLength(1);
   });
 
   it.each([['circuit', undefined], ['circuit', ''], ['proof', undefined], ['publicInputs', undefined]])(
     'a result with no %s is refused', async (field, value) => {
-      expect((await verifyProofFromRelay(relayResult({ [field]: value }))).valid).toBe(false);
+      expect((await verifyProofFromRelay(relayResult({ [field]: value }), 'r')).valid).toBe(false);
       expect(state.calls).toHaveLength(0);
     });
 
@@ -252,7 +270,7 @@ describe('the relay\'s verifier claim is compared, never used', () => {
     const result = await verifyProofFromRelay(relayResult({
       circuit: 'mdl_kr_region', publicInputs: validInputs('mdl_kr_region'),
       verifierAddress: '0x044116dF792eB424c9648DF2DeEda97aFa617Ac0', chainId: 84532,
-    }));
+    }), 'r');
     expect(result).toEqual({ valid: true });
   });
 });
@@ -298,5 +316,144 @@ describe('integrity against core', () => {
         expect(RPC_ENDPOINTS[chainId]).toBeTruthy();
       }
     }
+  });
+});
+
+const REQUEST_ID = '6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f';
+const OTHER_REQUEST_ID = '0b9a8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d';
+const SCOPE = 'zkproofport-community';
+const appProof = (request = { scope: SCOPE, requestId: REQUEST_ID }) => oidcIssuerInputs({ nonceMode: 1, request });
+
+describe('OIDC v2: the request an app proof answers is checked by core', () => {
+  it('a device-flow (mode 0) proof verifies with no request', async () => {
+    expect(await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', oidcIssuerInputs())).toEqual({ valid: true });
+    expect(state.calls).toHaveLength(1);
+  });
+
+  it('an app (mode 1) proof without its request is refused before any network call', async () => {
+    const result = await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', appProof());
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/needs the request it answers/);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it.each([2, 255])('nonce_mode %i without a request is refused before any network call', async (mode) => {
+    const inputs = oidcIssuerInputs();
+    inputs[180] = proofField(mode);
+    expect((await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', inputs)).valid).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('an app proof with the request it is bound to verifies', async () => {
+    expect(await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', appProof(), undefined,
+      { scope: SCOPE, requestId: REQUEST_ID })).toEqual({ valid: true });
+    expect(state.calls).toHaveLength(1);
+  });
+
+  it.each(['zkproofport-community:topic:사용자', 'scope 🚀 with\ttab'])('a UTF-8 scope %j binds and verifies', async (scope) => {
+    const request = { scope, requestId: REQUEST_ID };
+    expect(await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', appProof(request), undefined, request)).toEqual({ valid: true });
+  });
+
+  it.each([
+    ['another requestId', { scope: SCOPE, requestId: OTHER_REQUEST_ID }, /nonce is bound/],
+    ['another scope', { scope: 'zkproofport-community:topic:alice', requestId: REQUEST_ID }, /scope/],
+    ['an upper-case requestId', { scope: SCOPE, requestId: REQUEST_ID.toUpperCase() }, /requestId|UUID/i],
+    ['a non-UUID requestId', { scope: SCOPE, requestId: 'r' }, /requestId|UUID/i],
+    ['a blank scope', { scope: '   ', requestId: REQUEST_ID }, /scope/],
+  ])('an app proof checked against %s is refused without a contract call', async (_label, request, message) => {
+    const result = await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', appProof(), undefined, request);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(message);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it('a v1 proof (148 inputs) is refused', async () => {
+    const result = await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', oidcIssuerInputs().slice(0, 148));
+    expect(result.valid).toBe(false);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it('a proof whose now is 16 minutes old is refused', async () => {
+    const inputs = oidcIssuerInputs({ now: Math.floor(Date.now() / 1000) - 16 * 60 });
+    const result = await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', inputs);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/behind/);
+  });
+
+  it('the Google web client in mode 0 is refused (it is the app client, always nonce bound)', async () => {
+    const inputs = oidcIssuerInputs({ aud: OIDC_AUDIENCES.googleWeb });
+    expect((await verifyTrustedTopicProof('oidc_domain_attestation', '0xab', inputs)).valid).toBe(false);
+  });
+});
+
+describe('an OIDC relay result is verified against the request OpenStoa recorded', () => {
+  const oidcResult = (extra: Record<string, unknown> = {}) => ({
+    requestId: REQUEST_ID, status: 'completed', circuit: 'oidc_domain_attestation', proof: '0xab',
+    publicInputs: appProof(), ...extra,
+  }) as never;
+  const record = (requestId: string, value: unknown) =>
+    store.data.set(`community:relay-request:${requestId}`, typeof value === 'string' ? value : JSON.stringify(value));
+
+  it('the recorded scope and the polled id verify, and the request is returned', async () => {
+    record(REQUEST_ID, { scope: SCOPE, circuit: 'oidc_domain_attestation' });
+    expect(await verifyProofFromRelay(oidcResult(), REQUEST_ID)).toEqual({
+      valid: true, request: { scope: SCOPE, requestId: REQUEST_ID },
+    });
+  });
+
+  it('no record refuses the proof without verifying it', async () => {
+    const result = await verifyProofFromRelay(oidcResult(), REQUEST_ID);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/no record of relay request/);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it.each([['not JSON', '{oops'], ['an array', '[]'], ['no scope', { circuit: 'oidc_domain_attestation' }], ['a numeric scope', { scope: 1, circuit: 'oidc_domain_attestation' }]])(
+    'a corrupt record (%s) is treated as none', async (_label, value) => {
+      record(REQUEST_ID, value);
+      expect((await verifyProofFromRelay(oidcResult(), REQUEST_ID)).valid).toBe(false);
+      expect(state.calls).toHaveLength(0);
+    });
+
+  it('a record for another circuit refuses the proof', async () => {
+    record(REQUEST_ID, { scope: SCOPE, circuit: 'coinbase_attestation' });
+    const result = await verifyProofFromRelay(oidcResult(), REQUEST_ID);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/created for coinbase_attestation/);
+  });
+
+  it('the polled id is used, not the id the result carries', async () => {
+    // The proof is bound to REQUEST_ID; OpenStoa polled OTHER_REQUEST_ID and
+    // the relay answered with a result naming REQUEST_ID.
+    record(OTHER_REQUEST_ID, { scope: SCOPE, circuit: 'oidc_domain_attestation' });
+    record(REQUEST_ID, { scope: SCOPE, circuit: 'oidc_domain_attestation' });
+    const result = await verifyProofFromRelay(oidcResult({ requestId: REQUEST_ID }), OTHER_REQUEST_ID);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/nonce is bound/);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it('a recorded scope other than the one the proof was made for is refused', async () => {
+    record(REQUEST_ID, { scope: 'zkproofport-community:topic:alice', circuit: 'oidc_domain_attestation' });
+    expect((await verifyProofFromRelay(oidcResult(), REQUEST_ID)).valid).toBe(false);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it('Redis down rejects: the proof is never verified without its request', async () => {
+    store.down = true;
+    await expect(verifyProofFromRelay(oidcResult(), REQUEST_ID)).rejects.toThrow(/redis down/);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it('a non-OIDC result reads no record', async () => {
+    store.down = true;
+    const result = await verifyProofFromRelay({
+      requestId: 'r', status: 'completed', circuit: 'coinbase_attestation', proof: '0xab',
+      publicInputs: validInputs('coinbase_attestation'),
+    } as never, 'r');
+    expect(result).toEqual({ valid: true });
   });
 });

@@ -61,7 +61,7 @@ function normalizedProof(value:any,circuit:string):{proof:string;publicInputs:st
  if(!value||typeof value.proof!=='string'||!/^0x(?:[a-f0-9]{2})+$/i.test(value.proof)||value.proof.length>131074)throw new Error('Invalid proof result');
  let inputs=value.publicInputs;
  if(Array.isArray(inputs)&&inputs.every((v:unknown)=>typeof v==='string'&&/^0x[a-f0-9]{1,64}$/i.test(v)))inputs='0x'+inputs.map((v:string)=>v.slice(2).padStart(64,'0')).join('');
- const count=({coinbase_attestation:128,coinbase_country_attestation:150,oidc_domain_attestation:148} as Record<string,number>)[circuit];
+ const count=({coinbase_attestation:128,coinbase_country_attestation:150,oidc_domain_attestation:214} as Record<string,number>)[circuit];
  if(!count||typeof inputs!=='string'||!/^0x(?:[a-f0-9]{64})+$/i.test(inputs)||inputs.length!==2+count*64)throw new Error('Invalid proof public inputs');
  return {proof:value.proof,publicInputs:inputs};
 }

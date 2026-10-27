@@ -576,11 +576,8 @@ describe('var(--…) never reaches a non-CSS colour sink', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('the QR renderer still gets real hex, in both its primary and fallback call', () => {
+  it('the QR renderer still gets real hex', () => {
     const src = source('src/components/ProofGate.tsx');
-    // Primary path (custom renderer) and the `qrcode` fallback both take colours.
-    expect(src).toMatch(/darkColor: '#[0-9a-fA-F]{6}'/);
-    expect(src).toMatch(/lightColor: '#[0-9a-fA-F]{6}'/);
     expect(src).toMatch(/dark: '#[0-9a-fA-F]{6}', light: '#[0-9a-fA-F]{6}'/);
   });
 });

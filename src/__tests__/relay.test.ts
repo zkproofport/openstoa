@@ -1,3 +1,19 @@
+/**
+ * createRelayProofRequest / pollProofResult.
+ *
+ * Edge matrix for the request side (each row maps to a test below):
+ *  - circuit: each of the six OpenStoa circuits is sent as itself with its own
+ *    message; missing, '', wrong case, prototype keys and a core circuit OpenStoa
+ *    does not request (giwa_attestation) throw naming the known ids, before the SDK.
+ *  - dApp icon: production / staging / development / local each map to their icon;
+ *    unset, '', 'Production', prototype keys and an unknown env throw naming the
+ *    known envs, before the SDK; an explicit dappIcon is used as given.
+ *  - OIDC request record: an OIDC request records { scope, circuit } under its
+ *    requestId with a TTL; non-OIDC requests write nothing; a failed write fails
+ *    the request (the proof could never be bound).
+ *  - OIDC scope: blank / whitespace / over 4096 UTF-8 bytes refused before the SDK;
+ *    exactly 4096 bytes, Korean and emoji scopes accepted.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockSDKInstance = vi.hoisted(() => ({
@@ -12,15 +28,21 @@ vi.mock('@zkproofport-app/sdk', () => {
   return { ProofportSDK: SDK };
 });
 
-vi.mock('ethers', () => ({
-  ethers: { Wallet: { createRandom: vi.fn().mockReturnValue({}) } },
-}));
+vi.mock('ethers', async () => {
+  const actual = await vi.importActual<typeof import('ethers')>('ethers');
+  return { ethers: { ...actual.ethers, Wallet: { createRandom: vi.fn().mockReturnValue({}) } } };
+});
+
+const redisSet = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/redis', () => ({ redis: { set: redisSet } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockSDKInstance.createRelayRequest.mockResolvedValue({ requestId: 'req-123', deepLink: 'zkproofport://test' });
   mockSDKInstance.pollResult.mockResolvedValue({ status: 'completed', proof: '0x...' });
   delete process.env.RELAY_URL;
+  redisSet.mockReset().mockResolvedValue('OK');
+  vi.stubEnv('APP_ENV', 'staging');
   vi.resetModules();
 });
 
@@ -28,7 +50,7 @@ describe('createRelayProofRequest', () => {
   it('returns requestId and deepLink', async () => {
     const { createRelayProofRequest } = await import('@/lib/relay');
 
-    const result = await createRelayProofRequest('zkproofport-community');
+    const result = await createRelayProofRequest('zkproofport-community', { circuitType: 'coinbase_attestation' });
 
     expect(result.requestId).toBe('req-123');
     expect(result.deepLink).toBe('zkproofport://test');
@@ -41,7 +63,7 @@ describe('createRelayProofRequest', () => {
     const { ProofportSDK } = await import('@zkproofport-app/sdk');
     const { createRelayProofRequest } = await import('@/lib/relay');
 
-    await createRelayProofRequest('zkproofport-community');
+    await createRelayProofRequest('zkproofport-community', { circuitType: 'coinbase_attestation' });
 
     expect(ProofportSDK).toHaveBeenCalledWith({ relayUrl: 'http://relay:4001' });
     expect((ProofportSDK as any).create).not.toHaveBeenCalled();
@@ -53,7 +75,7 @@ describe('createRelayProofRequest', () => {
     const { ProofportSDK } = await import('@zkproofport-app/sdk');
     const { createRelayProofRequest } = await import('@/lib/relay');
 
-    await createRelayProofRequest('zkproofport-community');
+    await createRelayProofRequest('zkproofport-community', { circuitType: 'coinbase_attestation' });
 
     expect((ProofportSDK as any).create).toHaveBeenCalled();
     expect(ProofportSDK).not.toHaveBeenCalledWith(expect.objectContaining({ relayUrl: expect.anything() }));
@@ -144,5 +166,104 @@ describe('pollProofResult', () => {
     const { pollProofResult } = await import('@/lib/relay');
 
     await expect(pollProofResult('req-w')).rejects.toBe('a raw string throw');
+  });
+});
+
+describe('the circuit is never filled in', () => {
+  it.each([undefined, '', 'COINBASE_ATTESTATION', '__proto__', 'constructor', 'hasOwnProperty', 'giwa_attestation'])(
+    'circuit %j throws naming the known circuits, before the SDK', async (circuit) => {
+      const { createRelayProofRequest } = await import('@/lib/relay');
+      await expect(createRelayProofRequest('s', { circuitType: circuit as never }))
+        .rejects.toThrow(/Unknown circuit .*Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation, mdl_kr_ownership, mdl_kr_age, mdl_kr_region/);
+      expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
+    });
+
+  it.each([
+    ['coinbase_attestation', 'Verify your Coinbase KYC to access OpenStoa'],
+    ['coinbase_country_attestation', 'Verify your country via Coinbase attestation for OpenStoa'],
+    ['oidc_domain_attestation', 'Verify your organization affiliation for OpenStoa'],
+    ['mdl_kr_ownership', 'Verify Korea Mobile ID ownership for OpenStoa'],
+    ['mdl_kr_age', 'Verify Korea Mobile ID age threshold for OpenStoa'],
+    ['mdl_kr_region', 'Verify Korea Mobile ID residence region for OpenStoa'],
+  ])('%s is requested as itself with its own message', async (circuit, message) => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('s', { circuitType: circuit as never });
+    const [sent, , options] = mockSDKInstance.createRelayRequest.mock.calls[0];
+    expect(sent).toBe(circuit);
+    expect(options.message).toBe(message);
+  });
+
+  it.each([['google', 'Google Workspace'], ['microsoft', 'Microsoft 365']] as const)(
+    'the OIDC message names %s', async (provider, name) => {
+      const { createRelayProofRequest } = await import('@/lib/relay');
+      await createRelayProofRequest('s', { circuitType: 'oidc_domain_attestation', provider });
+      expect(mockSDKInstance.createRelayRequest.mock.calls[0][2].message).toBe(`Verify ${name} affiliation for OpenStoa`);
+    });
+});
+
+describe('the dApp icon comes from a table keyed by APP_ENV', () => {
+  it.each([
+    ['production', 'https://www.openstoa.xyz/icon.png'],
+    ['staging', 'https://stg-community.zkproofport.app/icon.png'],
+    ['development', 'http://localhost:3200/icon.png'],
+    ['local', 'http://localhost:3200/icon.png'],
+  ])('%s -> %s', async (env, icon) => {
+    vi.stubEnv('APP_ENV', env);
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('s', { circuitType: 'coinbase_attestation' });
+    expect(mockSDKInstance.createRelayRequest.mock.calls[0][2].dappIcon).toBe(icon);
+  });
+
+  it.each([undefined, '', 'Production', 'test', '__proto__', 'constructor'])(
+    'APP_ENV %j throws naming the known environments, before the SDK', async (env) => {
+      vi.stubEnv('APP_ENV', env as string);
+      const { createRelayProofRequest, dappIconFor } = await import('@/lib/relay');
+      expect(() => dappIconFor(env)).toThrow(/Unknown APP_ENV .*Known: production, staging, development, local/);
+      await expect(createRelayProofRequest('s', { circuitType: 'coinbase_attestation' })).rejects.toThrow(/Unknown APP_ENV/);
+      expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
+    });
+
+  it('an explicit dappIcon is used as given', async () => {
+    vi.stubEnv('APP_ENV', 'unknown');
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('s', { circuitType: 'coinbase_attestation', dappIcon: 'https://x.test/i.png' });
+    expect(mockSDKInstance.createRelayRequest.mock.calls[0][2].dappIcon).toBe('https://x.test/i.png');
+  });
+});
+
+describe('an OIDC request is recorded so its proof can be bound to it', () => {
+  it('records { scope, circuit } under the relay requestId with a TTL', async () => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('zkproofport-community', { circuitType: 'oidc_domain_attestation' });
+    expect(redisSet).toHaveBeenCalledExactlyOnceWith(
+      'community:relay-request:req-123',
+      JSON.stringify({ scope: 'zkproofport-community', circuit: 'oidc_domain_attestation' }),
+      'EX', 1800,
+    );
+  });
+
+  it.each(['coinbase_attestation', 'coinbase_country_attestation', 'mdl_kr_age'])('%s writes no record', async (circuit) => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('s', { circuitType: circuit as never });
+    expect(redisSet).not.toHaveBeenCalled();
+  });
+
+  it('a failed record write fails the request', async () => {
+    redisSet.mockRejectedValue(new Error('redis down'));
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await expect(createRelayProofRequest('s', { circuitType: 'oidc_domain_attestation' })).rejects.toThrow('redis down');
+  });
+
+  it.each(['', '   ', '\n\t', 'a'.repeat(4097), '가'.repeat(1366)])('OIDC scope of %#th shape is refused before the SDK', async (scope) => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await expect(createRelayProofRequest(scope, { circuitType: 'oidc_domain_attestation' })).rejects.toThrow(/non-blank scope/);
+    expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
+    expect(redisSet).not.toHaveBeenCalled();
+  });
+
+  it.each(['a'.repeat(4096), 'zkproofport-community:topic:사용자', 'scope 🚀'])('OIDC scope %#th shape is accepted', async (scope) => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest(scope, { circuitType: 'oidc_domain_attestation' });
+    expect(JSON.parse(redisSet.mock.calls[0][1]).scope).toBe(scope);
   });
 });

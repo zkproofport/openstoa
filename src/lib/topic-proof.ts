@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import {
   COMMUNITY_SCOPE, computeScopeHash, extractScope, extractCountryList,
-  extractIsIncluded, extractDomain, verifyTrustedTopicProof,
+  extractIsIncluded, extractDomain, verifyTrustedTopicProof, PUBLIC_INPUT_COUNTS,
 } from './proof';
+import { OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, type OidcRequestContext } from '@zkproofport-app/core';
+import { boundOidcProofRequest } from './oidcRequestContext';
 import { circuitToCacheType, getVerificationCache, saveVerificationCache } from './verification-cache';
 import { buildProofRequirement } from './proof-guides';
 
@@ -19,11 +21,6 @@ const CIRCUITS: Record<string, string> = {
   workspace: 'oidc_domain_attestation',
   google_workspace: 'oidc_domain_attestation',
   microsoft_365: 'oidc_domain_attestation',
-};
-const INPUT_COUNTS: Record<string, number> = {
-  coinbase_attestation: 128,
-  coinbase_country_attestation: 150,
-  oidc_domain_attestation: 148,
 };
 const REQUIRED_PROVIDERS: Record<string, number> = { google_workspace: 0, microsoft_365: 1 };
 
@@ -110,7 +107,7 @@ export async function requireTopicProof(
     if (typeof proof !== 'string' || proof.length > 131074 || !/^0x(?:[0-9a-fA-F]{2})+$/.test(proof)) {
       throw new Error('Invalid proof');
     }
-    const count = INPUT_COUNTS[circuit];
+    const count = PUBLIC_INPUT_COUNTS[circuit as keyof typeof PUBLIC_INPUT_COUNTS];
     let inputs: string[];
     if (typeof publicInputs === 'string' && new RegExp(`^0x[0-9a-fA-F]{${count * 64}}$`).test(publicInputs)) {
       inputs = publicInputs.slice(2).match(/.{64}/g)!.map(value => '0x' + value);
@@ -124,6 +121,7 @@ export async function requireTopicProof(
 
     let verifiedDomain: string | undefined;
     let provider: number | undefined;
+    let oidcRequest: OidcRequestContext | undefined;
     if (type === 'country') {
       const actual = countryPredicate({
         allowedCountries: extractCountryList(inputs, circuit),
@@ -133,14 +131,22 @@ export async function requireTopicProof(
     }
     if (circuit === 'oidc_domain_attestation') {
       verifiedDomain = extractDomain(inputs, circuit)?.toLowerCase().trim();
-      provider = Number(BigInt(inputs[147]));
+      provider = Number(BigInt(inputs[OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.PROVIDER]));
       if (!acceptsWorkspaceDomain(verifiedDomain, provider)
         || (domain && domain !== verifiedDomain)
         || (expectedProvider !== undefined && expectedProvider !== provider)) {
         throw new Error('Workspace predicate mismatch');
       }
+      // A nonce-bound proof from the app reached the client through a
+      // proof-only poll, which kept the request it was verified against.
+      // Without that record the binding cannot be checked: refused.
+      if (BigInt(inputs[OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.NONCE_MODE]) !== 0n) {
+        const bound = await boundOidcProofRequest(proof);
+        if (!bound) throw new Error('No request known for this nonce-bound proof');
+        oidcRequest = bound;
+      }
     }
-    const verification = await verifyTrustedTopicProof(circuit, proof, inputs);
+    const verification = await verifyTrustedTopicProof(circuit, proof, inputs, undefined, oidcRequest);
     if (!verification.valid) throw new Error('Proof verification failed');
     await saveVerificationCache(userId, circuitToCacheType(circuit), {
       domain: verifiedDomain, topicScope: scopeHash, countryPredicate: predicate, provider,

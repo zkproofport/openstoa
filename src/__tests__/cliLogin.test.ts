@@ -102,7 +102,8 @@ describe('CLI login service contract',()=>{
   expect(cli).toMatchObject({status:'completed',token:expect.any(String),userId:'0x'+'11'.repeat(32),nickname:'검증 사용자 🔐'});expect(cli.browserToken).toBeUndefined();expect(web.token).toBeUndefined();expect(web.browserToken).toBeTruthy();
   expect(await readCliLogin(started.loginId,{codeVerifier:verifier})).toEqual(cli);expect(await readCliLogin(started.loginId,browser)).toEqual(web);
   expect(mocks.session).toHaveBeenCalledTimes(2);expect(mocks.verify).toHaveBeenCalledOnce();
-  expect(mocks.verify).toHaveBeenCalledWith('oidc_domain_attestation','0xaabb',expect.any(Array));
+  // The proof is checked against the relay request this login created (scope + id): core binds its nonce to exactly that.
+  expect(mocks.verify).toHaveBeenCalledWith('oidc_domain_attestation','0xaabb',expect.any(Array),undefined,{scope:COMMUNITY_SCOPE,requestId:'relay-login'});
  });
  it.each([
   ['KYC',{...validProof(),circuit:'coinbase_attestation',publicInputs:Array(128).fill(proofField(0))}],
@@ -113,6 +114,7 @@ describe('CLI login service contract',()=>{
   ['malformed inputs',{...validProof(),publicInputs:['0x00']}],
   ['non-hex provider',{...validProof(),publicInputs:validProof().publicInputs.map((value,index)=>index===147?'0xGG':value)}],
   ['missing proof',{...validProof(),proof:undefined}],
+  ['v1 proof (148 inputs)',{...validProof(),publicInputs:validProof().publicInputs.slice(0,148)}],
  ])('rejects %s and never issues sessions',async(_name,result)=>{
   const started=await startCliLogin(origin,{codeChallenge});await readCliLogin(started.loginId,{approvalToken:approvalToken(started.browserUrl)});mocks.poll.mockResolvedValue(result);
   await expect(readCliLogin(started.loginId,{codeVerifier:verifier})).rejects.toMatchObject({status:400});expect(mocks.session).not.toHaveBeenCalled();expect(mocks.ensureUser).not.toHaveBeenCalled();

@@ -1,6 +1,8 @@
 import { ethers } from 'ethers';
 import { ProofportSDK } from '@zkproofport-app/sdk';
 import type { CircuitType, RelayProofResult } from '@zkproofport-app/sdk';
+import { OIDC_MAX_SCOPE_BYTES } from '@zkproofport-app/core';
+import { rememberRelayRequest } from './oidcRequestContext';
 
 function createSDK(): ProofportSDK {
   const relayUrl = process.env.RELAY_URL;
@@ -19,72 +21,108 @@ function createSDK(): ProofportSDK {
   return sdk;
 }
 
-// Extend SDK CircuitType with experimental circuits that ship outside of
-// @zkproofport-app/sdk (the three mdl_kr_* Korea Mobile ID predicate
-// circuits). The relay itself accepts any circuitId string (see
-// proofport-relay/src/index.ts), and the SDK's runtime path tolerates
-// unknown circuits — only its TypeScript narrowing rejects them — so a
-// single `as CircuitType` cast at the call site is enough.
+// The circuits OpenStoa requests proofs for: the ones it can also verify
+// (VerifiableCircuit in ./proof). The three mdl_kr_* Korea Mobile ID circuits
+// are not in the SDK's CircuitType narrowing; the relay accepts any circuitId
+// string (proofport-relay/src/index.ts), so they are cast at the call site.
 export type ExtendedCircuitType =
-  | CircuitType
+  | 'coinbase_attestation'
+  | 'coinbase_country_attestation'
+  | 'oidc_domain_attestation'
   | 'mdl_kr_ownership'
   | 'mdl_kr_age'
   | 'mdl_kr_region';
 
+const PROVIDER_NAMES: Record<'google' | 'microsoft', string> = {
+  google: 'Google Workspace',
+  microsoft: 'Microsoft 365',
+};
+
+// What the proof request asks the person to confirm, per circuit. Also the
+// list of circuits OpenStoa requests at all: a circuit not in it is refused,
+// never sent as some other circuit's request.
+const DEFAULT_MESSAGES: Record<ExtendedCircuitType, (provider?: 'google' | 'microsoft') => string> = {
+  coinbase_attestation: () => 'Verify your Coinbase KYC to access OpenStoa',
+  coinbase_country_attestation: () => 'Verify your country via Coinbase attestation for OpenStoa',
+  oidc_domain_attestation: (provider) =>
+    `Verify ${provider ? PROVIDER_NAMES[provider] : 'your organization'} affiliation for OpenStoa`,
+  mdl_kr_ownership: () => 'Verify Korea Mobile ID ownership for OpenStoa',
+  mdl_kr_age: () => 'Verify Korea Mobile ID age threshold for OpenStoa',
+  mdl_kr_region: () => 'Verify Korea Mobile ID residence region for OpenStoa',
+};
+
+export const RELAY_CIRCUITS = Object.keys(DEFAULT_MESSAGES) as ExtendedCircuitType[];
+
+export function isRelayCircuit(value: unknown): value is ExtendedCircuitType {
+  return typeof value === 'string' && Object.hasOwn(DEFAULT_MESSAGES, value);
+}
+
+// The icon the ZKProofport app shows for an OpenStoa request, per deployment
+// environment (APP_ENV, the same keys proof verification uses).
+const DAPP_ICONS: Record<string, string> = {
+  production: 'https://www.openstoa.xyz/icon.png',
+  staging: 'https://stg-community.zkproofport.app/icon.png',
+  development: 'http://localhost:3200/icon.png',
+  local: 'http://localhost:3200/icon.png',
+};
+
+export function dappIconFor(environment: string | undefined): string {
+  if (!environment || !Object.hasOwn(DAPP_ICONS, environment)) {
+    throw new Error(`Unknown APP_ENV '${environment}'. Known: ${Object.keys(DAPP_ICONS).join(', ')}.`);
+  }
+  return DAPP_ICONS[environment];
+}
+
 export async function createRelayProofRequest(
   scope: string,
-  options?: {
+  options: {
+    circuitType: ExtendedCircuitType;
     dappName?: string;
     dappIcon?: string;
     message?: string;
-    circuitType?: ExtendedCircuitType;
     countryList?: string[];
     isIncluded?: boolean;
     domain?: string;
     provider?: 'google' | 'microsoft';
   },
 ): Promise<{ requestId: string; deepLink: string }> {
+  const circuit = options?.circuitType;
+  if (!isRelayCircuit(circuit)) {
+    throw new Error(`Unknown circuit '${circuit}'. Known: ${RELAY_CIRCUITS.join(', ')}.`);
+  }
+  // Core binds an app OIDC proof to keccak256(scope) and refuses a blank
+  // scope or one over OIDC_MAX_SCOPE_BYTES at verification; refuse it here,
+  // before the person proves for a request that can never verify.
+  if (circuit === 'oidc_domain_attestation'
+    && (typeof scope !== 'string' || scope.trim() === '' || Buffer.byteLength(scope, 'utf8') > OIDC_MAX_SCOPE_BYTES)) {
+    throw new Error(`An OIDC proof request needs a non-blank scope of at most ${OIDC_MAX_SCOPE_BYTES} UTF-8 bytes.`);
+  }
+  const dappIcon = options.dappIcon ?? dappIconFor(process.env.APP_ENV);
   const sdk = createSDK();
-  const circuit: ExtendedCircuitType = options?.circuitType ?? 'coinbase_attestation';
   const inputs: Record<string, unknown> = { scope };
   if (circuit === 'coinbase_country_attestation') {
-    inputs.countryList = options?.countryList ?? [];
-    inputs.isIncluded = options?.isIncluded ?? true;
+    inputs.countryList = options.countryList ?? [];
+    inputs.isIncluded = options.isIncluded ?? true;
   }
   if (circuit === 'oidc_domain_attestation') {
-    if (options?.domain) inputs.domain = options.domain;
-    if (options?.provider) inputs.provider = options.provider;
-  }
-
-  // Default message per circuit type
-  let defaultMessage: string;
-  if (circuit === 'oidc_domain_attestation') {
-    const providerName = options?.provider === 'microsoft' ? 'Microsoft 365' : options?.provider === 'google' ? 'Google Workspace' : 'your organization';
-    defaultMessage = `Verify ${providerName} affiliation for OpenStoa`;
-  } else if (circuit === 'coinbase_country_attestation') {
-    defaultMessage = 'Verify your country via Coinbase attestation for OpenStoa';
-  } else if (circuit === 'mdl_kr_ownership') {
-    defaultMessage = 'Verify Korea Mobile ID ownership for OpenStoa';
-  } else if (circuit === 'mdl_kr_age') {
-    defaultMessage = 'Verify Korea Mobile ID age threshold for OpenStoa';
-  } else if (circuit === 'mdl_kr_region') {
-    defaultMessage = 'Verify Korea Mobile ID residence region for OpenStoa';
-  } else {
-    defaultMessage = 'Verify your Coinbase KYC to access OpenStoa';
+    if (options.domain) inputs.domain = options.domain;
+    if (options.provider) inputs.provider = options.provider;
   }
 
   // SDK CircuitType is narrowed to production circuits; mdl_kr_* are
   // forwarded verbatim to the relay (envelope-only validation; see
   // proofport-relay WALLET_SIGNATURE_CIRCUITS).
   const relay = await sdk.createRelayRequest(circuit as CircuitType, inputs as any, {
-    dappName: options?.dappName ?? 'OpenStoa',
-    dappIcon: options?.dappIcon ?? (
-      process.env.APP_ENV === 'production' ? 'https://www.openstoa.xyz/icon.png'
-        : process.env.APP_ENV === 'staging' ? 'https://stg-community.zkproofport.app/icon.png'
-        : 'http://localhost:3200/icon.png'
-    ),
-    message: options?.message ?? defaultMessage,
+    dappName: options.dappName ?? 'OpenStoa',
+    dappIcon,
+    message: options.message ?? DEFAULT_MESSAGES[circuit](options.provider),
   });
+  // An OIDC proof from the app is bound to this request's scope and id, and
+  // its verifier needs both to check that (verifyProofFromRelay). If the
+  // record cannot be written, the request is useless: fail now, not at poll.
+  if (circuit === 'oidc_domain_attestation') {
+    await rememberRelayRequest(relay.requestId, { scope, circuit });
+  }
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }
 

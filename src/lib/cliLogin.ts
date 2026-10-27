@@ -3,7 +3,8 @@ import {revokeSession} from './sessionStore';
 import {createHash, randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
 import {redis} from './redis';
 import {createRelayProofRequest, pollProofResult, RelayRequestNotFoundError} from './relay';
-import {COMMUNITY_SCOPE, computeScopeHash, extractScope, extractNullifier, normalizePublicInputs, verifyTrustedTopicProof} from './proof';
+import {COMMUNITY_SCOPE, computeScopeHash, extractScope, extractNullifier, normalizePublicInputs, verifyTrustedTopicProof, PUBLIC_INPUT_COUNTS} from './proof';
+import {OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT} from '@zkproofport-app/core';
 import {ensureUser} from './ensureUser';
 import {createSession} from './session';
 import {saveVerificationCache} from './verification-cache';
@@ -92,8 +93,10 @@ export async function readCliLogin(loginId:string,input:{approvalToken?:unknown;
       if(result.status==='pending')return {status:'pending',pollAfterMs:2000,deepLink:record.deepLink};
       if(result.status!=='completed'||!result.proof||!result.publicInputs||result.circuit!=='oidc_domain_attestation')throw new CliLoginError(400,'Google login proof is required');
       let inputs:string[];try{inputs=normalizePublicInputs(result.publicInputs);}catch{throw new CliLoginError(400,'Invalid login proof');}
-      if(inputs.length!==148||!inputs.every(value=>/^0x[0-9a-fA-F]{64}$/.test(value))||BigInt(inputs[147])!==0n||extractScope(inputs,'oidc_domain_attestation')!==computeScopeHash(COMMUNITY_SCOPE))throw new CliLoginError(400,'Login proof provider or scope mismatch');
-      const verification=await verifyTrustedTopicProof('oidc_domain_attestation',result.proof,inputs);
+      if(inputs.length!==PUBLIC_INPUT_COUNTS.oidc_domain_attestation||!inputs.every(value=>/^0x[0-9a-fA-F]{64}$/.test(value))||BigInt(inputs[OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.PROVIDER])!==0n||extractScope(inputs,'oidc_domain_attestation')!==computeScopeHash(COMMUNITY_SCOPE))throw new CliLoginError(400,'Login proof provider or scope mismatch');
+      // The proof answers the relay request this login created: core checks
+      // its nonce binding against exactly that scope and id.
+      const verification=await verifyTrustedTopicProof('oidc_domain_attestation',result.proof,inputs,undefined,{scope:COMMUNITY_SCOPE,requestId:record.requestId!});
       if(!verification.valid)throw new CliLoginError(400,'Login proof verification failed');
       await assertCurrent();
       const userId=extractNullifier(inputs,'oidc_domain_attestation');

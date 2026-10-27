@@ -106,11 +106,16 @@ describe('AI Google login adapter contract',()=>{
  it('preserves only required login verification/payment/TEE metadata for server verification',async()=>{
   const h=harness();const handle=startAiTopicProof({proofType:'google_login',scope:'zkproofport-community',consent:true},h.deps);
   const metadata={verification:{chainId:8453,verifierAddress:'0x1234'},paymentTxHash:'0x'+'ab'.repeat(32),attestation:{document:'test-attestation'}};
-  complete(h.child,148,{...metadata,jwt:'private-jwt',privateKey:'private-key',circuit:'coinbase_attestation',proofType:'kyc'});
+  complete(h.child,214,{...metadata,jwt:'private-jwt',privateKey:'private-key',circuit:'coinbase_attestation',proofType:'kyc'});
   const result=await handle.wait();expect(result.loginResult).toEqual({proof:'0xab',publicInputs:result.publicInputs,proofType:'google_login',...metadata});expect(JSON.stringify(result)).not.toContain('private-jwt');expect(JSON.stringify(result)).not.toContain('private-key');expect(handle.status()).toEqual({status:'completed'});
  });
+ it.each(['google_login','google_workspace','microsoft_365','workspace'] as const)('a v1 OIDC proof (148 inputs) from the prover is refused for %s: the server accepts only v2 (214)',async(proofType)=>{
+  const h=harness();const handle=startAiTopicProof({proofType,scope:proofType==='google_login'?'zkproofport-community':scope,consent:true,...({microsoft_365:{provider:'microsoft'},workspace:{provider:'google'}} as Record<string,object>)[proofType]} as never,h.deps);
+  complete(h.child,148);
+  await expect(handle.wait()).rejects.toThrow(/malformed proof output/);
+ });
  it('never carries login-only metadata into topic proof results',async()=>{
-  const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},h.deps);complete(h.child,148,{verification:{chainId:8453},paymentTxHash:'payment',attestation:{document:'tee'}});
-  expect(await handle.wait()).toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(148*32)});
+  const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},h.deps);complete(h.child,214,{verification:{chainId:8453},paymentTxHash:'payment',attestation:{document:'tee'}});
+  expect(await handle.wait()).toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(214*32)});
  });
 });

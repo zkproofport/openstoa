@@ -3,13 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ensureUser } from '@/lib/ensureUser';
 import { ethers } from 'ethers';
 import { consumeChallenge, markPaymentTxUsed } from '@/lib/challenge';
-import { COMMUNITY_SCOPE, verifyTrustedTopicProof, normalizePublicInputs } from '@/lib/proof';
 import {
-  extractScopeFromPublicInputs,
-  extractNullifierFromPublicInputs,
-  extractDomainFromPublicInputs,
-} from '@zkproofport-ai/sdk';
-// Note: normalizePublicInputs and detectCircuit no longer needed — ai-sdk handles hex strings directly
+  COMMUNITY_SCOPE,
+  verifyTrustedTopicProof,
+  normalizePublicInputs,
+  extractScope,
+  extractNullifier,
+  extractDomain,
+} from '@/lib/proof';
+import { OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT } from '@zkproofport-app/core';
 import { createSession, setSessionCookie } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
@@ -269,7 +271,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify proof on-chain using @zkproofport-ai/sdk
+    // Verify on-chain through core. The AI device flow proves without a nonce
+    // (nonce_mode 0) and there is no relay request here, so a nonce-bound
+    // proof is refused by verifyTrustedTopicProof.
     const verifiedInputs = normalizePublicInputs(result.publicInputs);
     const verification = await verifyTrustedTopicProof('oidc_domain_attestation', result.proof, verifiedInputs);
     if (!verification.valid) {
@@ -282,15 +286,12 @@ export async function POST(request: NextRequest) {
 
     logger.info(ROUTE, 'Proof verified on-chain', { challengeId });
 
-    // AI path: use @zkproofport-ai/sdk for all extraction (hex string input, auto circuit detection)
-    const rawPublicInputs = typeof result.publicInputs === 'string'
-      ? result.publicInputs
-      : '0x' + result.publicInputs.map((value: string) => value.replace(/^0x/, '')).join('');
-
+    // Every read below names the circuit that was just verified; nothing is
+    // inferred from the number of inputs.
     // Login requires generic Google OIDC proof only (proofType: "google_login")
     // Reject: kyc, country, google_workspace, microsoft_365, and missing proofType
     const proofType = result.proofType;
-    if (proofType !== 'google_login' || BigInt(verifiedInputs[147]) !== 0n) {
+    if (proofType !== 'google_login' || BigInt(verifiedInputs[OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT.PROVIDER]) !== 0n) {
       logger.warn(ROUTE, 'Non-Google-login proof rejected', { challengeId, proofType: proofType ?? 'missing' });
       return NextResponse.json(
         { error: `Login requires Google OIDC proof (--login-google). Received proofType: ${proofType ?? 'missing'}` },
@@ -299,7 +300,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify scope
-    const scope = extractScopeFromPublicInputs(rawPublicInputs);
+    const scope = extractScope(verifiedInputs, 'oidc_domain_attestation');
     const expectedScope = ethers.keccak256(ethers.toUtf8Bytes(COMMUNITY_SCOPE));
     if (!scope || scope !== expectedScope) {
       logger.warn(ROUTE, 'Scope mismatch', { challengeId, scope, expectedScope });
@@ -310,7 +311,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract nullifier as userId
-    const nullifier = extractNullifierFromPublicInputs(rawPublicInputs);
+    const nullifier = extractNullifier(verifiedInputs, 'oidc_domain_attestation');
     if (!nullifier) {
       logger.warn(ROUTE, 'Failed to extract nullifier', { challengeId });
       return NextResponse.json(
@@ -350,7 +351,7 @@ export async function POST(request: NextRequest) {
     const cacheType = circuitToCacheTypeForLogin(circuit);
     let domain: string | undefined;
     if (circuit === 'oidc_domain_attestation') {
-      domain = extractDomainFromPublicInputs(rawPublicInputs) ?? undefined;
+      domain = extractDomain(verifiedInputs, circuit) ?? undefined;
     }
     await saveVerificationCache(nullifier, cacheType, { domain });
 

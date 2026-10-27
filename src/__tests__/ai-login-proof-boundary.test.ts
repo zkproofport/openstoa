@@ -19,3 +19,20 @@ it('uses verified OIDC circuit for cache type even when result claims KYC',async
 it('does not let a Microsoft proof claim Google login through proofType metadata',async()=>{expect((await login('oidc_domain_attestation',1)).status).toBe(400);expect(state.session).not.toHaveBeenCalled();expect(state.save).not.toHaveBeenCalled();});
 it('accepts a verified Google login',async()=>{expect((await login()).status).toBe(200);expect(state.session).toHaveBeenCalledOnce();expect(state.save).toHaveBeenCalledWith(expect.any(String),'oidc_login',{domain:'gmail.com'});});
 it('does not issue a session or badge when cryptographic verification fails',async()=>{state.verify.mockResolvedValue({valid:false});expect((await login()).status).toBe(400);expect(state.session).not.toHaveBeenCalled();expect(state.save).not.toHaveBeenCalled();});
+it('an app (nonce-bound) proof cannot log in through the AI path: there is no request to bind it to',async()=>{
+ const actual=await vi.importActual<typeof import('@/lib/proof')>('@/lib/proof');
+ state.verify.mockImplementation(actual.verifyTrustedTopicProof);
+ const inputs=oidcIssuerInputs({nonceMode:1,request:{scope:COMMUNITY_SCOPE,requestId:'6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f'}});
+ const res=await POST(new NextRequest('http://localhost/api/auth/verify/ai',{method:'POST',body:JSON.stringify({challengeId:'challenge',result:{proof:'0xab',publicInputs:'0x'+inputs.map(v=>v.slice(2)).join(''),proofType:'google_login',verification:{}}})}));
+ expect(res.status).toBe(400);
+ expect((await res.json()).details).toMatch(/needs the request it answers/);
+ expect(state.session).not.toHaveBeenCalled();
+});
+it('a v1 login proof (148 inputs) is refused',async()=>{
+ const actual=await vi.importActual<typeof import('@/lib/proof')>('@/lib/proof');
+ state.verify.mockImplementation(actual.verifyTrustedTopicProof);
+ const inputs=oidcIssuerInputs().slice(0,148);
+ const res=await POST(new NextRequest('http://localhost/api/auth/verify/ai',{method:'POST',body:JSON.stringify({challengeId:'challenge',result:{proof:'0xab',publicInputs:'0x'+inputs.map(v=>v.slice(2)).join(''),proofType:'google_login',verification:{}}})}));
+ expect(res.status).toBe(400);
+ expect(state.session).not.toHaveBeenCalled();
+});

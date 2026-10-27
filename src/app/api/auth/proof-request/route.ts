@@ -2,7 +2,7 @@ import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { getSession } from '@/lib/session';
 import { topicProofScope } from '@/lib/topic-proof';
 import { NextRequest, NextResponse } from 'next/server';
-import { createRelayProofRequest, type ExtendedCircuitType } from '@/lib/relay';
+import { createRelayProofRequest, isRelayCircuit, RELAY_CIRCUITS } from '@/lib/relay';
 import { COMMUNITY_SCOPE } from '@/lib/proof';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
@@ -22,11 +22,12 @@ const ROUTE = '/api/auth/proof-request';
  *     operationId: createProofRequest
  *     security: []
  *     requestBody:
- *       required: false
+ *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [circuitType]
  *             properties:
  *               mode:
  *                 type: string
@@ -34,8 +35,11 @@ const ROUTE = '/api/auth/proof-request';
  *                 description: Proof mode requires authentication and uses the account-bound topic scope.
  *               circuitType:
  *                 type: string
- *                 enum: [coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation]
- *                 description: ZK circuit type to request proof for
+ *                 enum: [coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation, mdl_kr_ownership, mdl_kr_age, mdl_kr_region]
+ *                 description: >-
+ *                   ZK circuit type to request a proof for. Required: a missing or unknown value is
+ *                   refused with 400 and never replaced by another circuit. Login uses
+ *                   oidc_domain_attestation.
  *               scope:
  *                 type: string
  *                 description: Custom scope string for the proof request
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
 
   logger.info(ROUTE, 'POST request received');
   try {
-    let circuitType: ExtendedCircuitType = 'coinbase_attestation';
+    let circuitType: unknown;
     let scope = COMMUNITY_SCOPE;
     let countryList: string[] | undefined;
     let isIncluded: boolean | undefined;
@@ -86,20 +90,27 @@ export async function POST(request: NextRequest) {
     try {
       const body = await request.json();
       proofMode = body.mode === 'proof';
-      if (body.circuitType) circuitType = body.circuitType;
+      circuitType = body.circuitType;
       if (body.scope) scope = body.scope;
       if (Array.isArray(body.countryList)) countryList = body.countryList;
       if (typeof body.isIncluded === 'boolean') isIncluded = body.isIncluded;
       if (typeof body.domain === 'string') domain = body.domain;
       if (body.provider === 'google' || body.provider === 'microsoft') provider = body.provider;
     } catch {
-      // No body or invalid JSON — use defaults (login flow sends no body)
+      // No body or invalid JSON: circuitType stays unset and is refused below.
     }
 
     if (proofMode) {
       const session = await getSession(request);
       if (!session) return NextResponse.json({error:'Not authenticated'},{status:401});
       scope = topicProofScope(session.userId);
+    }
+
+    if (!isRelayCircuit(circuitType)) {
+      return NextResponse.json(
+        { error: `circuitType is required and must be one of: ${RELAY_CIRCUITS.join(', ')}.` },
+        { status: 400 },
+      );
     }
 
     logger.info(ROUTE, 'Creating relay proof request', { circuitType, scope, countryList, isIncluded, domain, provider });

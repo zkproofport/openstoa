@@ -11,6 +11,7 @@ import {
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
 import { createSession, setSessionCookie } from '@/lib/session';
+import { rememberBoundOidcProof } from '@/lib/oidcRequestContext';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -137,7 +138,7 @@ export async function GET(
 
     logger.info(ROUTE, 'Verifying proof on-chain', { requestId, proofLength: result.proof.length, publicInputsLength: result.publicInputs.length });
 
-    const verification = await verifyProofFromRelay(result);
+    const verification = await verifyProofFromRelay(result, requestId);
     if (!verification.valid) {
       logger.warn(ROUTE, 'Proof verification failed', { requestId, error: verification.error });
       return NextResponse.json(
@@ -162,6 +163,15 @@ export async function GET(
     if (mode === 'proof') {
       logger.info(ROUTE, 'Returning proof data (proof mode)', { requestId });
       const publicInputs = normalizePublicInputs(result.publicInputs);
+      // The topic gate this proof goes to next has no requestId; keep the
+      // request it was just verified against so the gate can check the
+      // nonce binding again (requireTopicProof).
+      if (circuit === 'oidc_domain_attestation') {
+        if (!verification.request) {
+          throw new Error(`OIDC proof for ${requestId} verified without its request`);
+        }
+        await rememberBoundOidcProof(result.proof, verification.request);
+      }
       return NextResponse.json({
         status: 'completed',
         proof: result.proof,
