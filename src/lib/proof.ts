@@ -1,11 +1,12 @@
-import { hasTrustedProofIssuer } from './proof-issuer';
 import { ethers } from 'ethers';
 import {
   extractScopeFromPublicInputs,
   extractNullifierFromPublicInputs,
   extractDomainFromPublicInputs,
+  verifyProofOnChain,
+  RPC_ENDPOINTS,
   COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
-} from '@zkproofport-app/sdk';
+} from '@zkproofport-app/core';
 import type { RelayProofResult } from '@zkproofport-app/sdk';
 
 export const COMMUNITY_SCOPE = 'zkproofport-community';
@@ -20,147 +21,139 @@ export function normalizePublicInputs(input: string | string[]): string[] {
   return chunks;
 }
 
-// mdl_kr_* verifiers are not part of @zkproofport-app/sdk (Korea Mobile ID
-// PoC). All three predicate verifiers share the HonkVerifier ABI; their
-// addresses are resolved at runtime from the circuits-repo Foundry
-// broadcast JSON, with the latest known deployment as the fallback if
-// the fetch fails. The resolution is cached in-process for 5 minutes.
+// Which chain each accepted circuit is verified on, per deployment
+// environment. The verifier contract itself is never chosen here: it is the
+// deployment @zkproofport-app/core pins for that circuit on that chain
+// (PINNED_VERIFIERS, generated from the circuits repo's deployment records).
+// Korea Mobile ID has no mainnet deployment, so it verifies on Base Sepolia in
+// every environment -- the same chain the app reports for it
+// (proofport-app/src/config/contracts.ts, OMNIONE_TESTNET).
 //
-// NOTE: once mDL is productionised, fold this parallel block (MDL_KR_VERIFIER_*,
-// packByteRangeAsBytes32, and the mdl branches in verifyProofFromRelay /
-// detectCircuit / extractScope / extractNullifier) into @zkproofport-app/sdk
-// and verify via the SDK uniformly (as the other circuits do), then delete it
-// from here. OpenStoa should not own circuit layout knowledge.
-type MdlKrVariant = 'mdl_kr_ownership' | 'mdl_kr_age' | 'mdl_kr_region';
+// Never select a verifier from a proof/relay-supplied address or chain id:
+// those are only compared with the pinned one, and a mismatch is refused.
+export type VerifiableCircuit =
+  | 'coinbase_attestation'
+  | 'coinbase_country_attestation'
+  | 'oidc_domain_attestation'
+  | 'mdl_kr_ownership'
+  | 'mdl_kr_age'
+  | 'mdl_kr_region';
 
-const MDL_KR_VERIFIER_FALLBACK: Record<MdlKrVariant, string> = {
-  // v4 (HS256-pending): nullifier = keccak(keccak(ci) || scope). signal_hash
-  // and cx_integrity_root removed from public inputs.
-  mdl_kr_ownership: '0x7602D09d24E6E16efF5AB981646872886376763E',
-  mdl_kr_age:       '0xcFF90FF8cEADc98f625300dc976eD85A3AA943Ba',
-  mdl_kr_region:    '0x435F0448F02F5Df9659D460181116BCaF37E518E',
+const BASE_MAINNET = 8453;
+const BASE_SEPOLIA = 84532;
+
+const TESTNET_CHAINS: Record<VerifiableCircuit, number> = {
+  coinbase_attestation: BASE_SEPOLIA,
+  coinbase_country_attestation: BASE_SEPOLIA,
+  oidc_domain_attestation: BASE_SEPOLIA,
+  mdl_kr_ownership: BASE_SEPOLIA,
+  mdl_kr_age: BASE_SEPOLIA,
+  mdl_kr_region: BASE_SEPOLIA,
 };
 
-const MDL_KR_VERIFIER_ABI = [
-  'function verify(bytes calldata _proof, bytes32[] calldata _publicInputs) external view returns (bool)',
-] as const;
-
-const MDL_KR_BROADCAST_URL: Record<MdlKrVariant, string> = {
-  mdl_kr_ownership:
-    'https://raw.githubusercontent.com/zkproofport/circuits/main/broadcast/DeployMdlKrOwnership.s.sol/84532/run-latest.json',
-  mdl_kr_age:
-    'https://raw.githubusercontent.com/zkproofport/circuits/main/broadcast/DeployMdlKrAge.s.sol/84532/run-latest.json',
-  mdl_kr_region:
-    'https://raw.githubusercontent.com/zkproofport/circuits/main/broadcast/DeployMdlKrRegion.s.sol/84532/run-latest.json',
+export const VERIFICATION_CHAINS: Record<string, Record<VerifiableCircuit, number>> = {
+  production: {
+    coinbase_attestation: BASE_MAINNET,
+    coinbase_country_attestation: BASE_MAINNET,
+    oidc_domain_attestation: BASE_MAINNET,
+    mdl_kr_ownership: BASE_SEPOLIA,
+    mdl_kr_age: BASE_SEPOLIA,
+    mdl_kr_region: BASE_SEPOLIA,
+  },
+  staging: TESTNET_CHAINS,
+  development: TESTNET_CHAINS,
+  local: TESTNET_CHAINS,
 };
 
-interface CachedAddress { address: string; fetchedAt: number; }
-const mdlKrAddressCache: Partial<Record<MdlKrVariant, CachedAddress>> = {};
-const MDL_KR_CACHE_TTL_MS = 5 * 60 * 1000;
+// Exact public-input count per circuit. Anything else is not that circuit's
+// proof, and is refused before an RPC call. Kept equal to core's own numbers
+// by a test (SIGNER_ROOT_LAYOUTS, OIDC_PUBLIC_INPUT_COUNT, MDL_KR layout).
+export const PUBLIC_INPUT_COUNTS: Record<VerifiableCircuit, number> = {
+  coinbase_attestation: 128,
+  coinbase_country_attestation: 150,
+  oidc_domain_attestation: 148,
+  mdl_kr_ownership: 97,
+  mdl_kr_age: 66,
+  mdl_kr_region: 96,
+};
 
-async function resolveMdlKrVerifierAddress(variant: MdlKrVariant): Promise<string> {
-  const now = Date.now();
-  const cached = mdlKrAddressCache[variant];
-  if (cached && now - cached.fetchedAt < MDL_KR_CACHE_TTL_MS) {
-    return cached.address;
-  }
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5_000);
-    const res = await fetch(MDL_KR_BROADCAST_URL[variant], { signal: controller.signal });
-    clearTimeout(timeout);
-    if (res.ok) {
-      const broadcast = (await res.json()) as { transactions?: Array<{ contractName?: string; contractAddress?: string }> };
-      const tx = broadcast.transactions?.find((t) => t.contractName === 'HonkVerifier');
-      if (tx?.contractAddress) {
-        mdlKrAddressCache[variant] = { address: tx.contractAddress, fetchedAt: now };
-        return tx.contractAddress;
-      }
-    }
-  } catch {
-    // network/JSON failure -> fall back below
-  }
-  return MDL_KR_VERIFIER_FALLBACK[variant];
+const FIELD_HEX = /^0x[0-9a-fA-F]{64}$/;
+
+/** What a relay result claims about its verifier. Compared, never used. */
+export interface ClaimedVerifier {
+  verifierAddress?: string;
+  chainId?: number;
 }
 
-async function verifyMdlKrOnChain(
-  variant: MdlKrVariant,
-  result: RelayProofResult,
+/**
+ * Verify a proof against the verifier core pins for `circuit` on the chain
+ * this environment uses for it. Core also checks the issuer anchor carried in
+ * the public inputs: the Coinbase signer-list root, and the OIDC provider key
+ * against Google's / Microsoft's live JWKS (fail closed).
+ *
+ * `claimed` is what a relay result said its verifier was. A differing address
+ * or chain is refused rather than checked somewhere the sender did not expect.
+ */
+export async function verifyTrustedTopicProof(
+  circuit: string,
+  proof: string,
+  publicInputs: string[],
+  claimed?: ClaimedVerifier,
 ): Promise<{ valid: boolean; error?: string }> {
-  const rpcUrl = process.env.RPC_URL || 'https://sepolia.base.org';
-  const verifierAddress = await resolveMdlKrVerifierAddress(variant);
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const verifier = new ethers.Contract(
-    verifierAddress,
-    MDL_KR_VERIFIER_ABI,
-    provider,
-  );
+  const environment = process.env.APP_ENV;
+  if (!environment || !Object.hasOwn(VERIFICATION_CHAINS, environment)) {
+    return { valid: false, error: `Unknown proof environment '${environment}'. Known: ${Object.keys(VERIFICATION_CHAINS).join(', ')}.` };
+  }
+  const chains = VERIFICATION_CHAINS[environment];
+  if (!Object.hasOwn(chains, circuit)) {
+    return { valid: false, error: `Unsupported verifier circuit '${circuit}'. Known: ${Object.keys(chains).join(', ')}.` };
+  }
+  const known = circuit as VerifiableCircuit;
+  const chainId = chains[known];
+  if (
+    !Array.isArray(publicInputs)
+    || publicInputs.length !== PUBLIC_INPUT_COUNTS[known]
+    || !publicInputs.every((value) => typeof value === 'string' && FIELD_HEX.test(value))
+  ) {
+    return { valid: false, error: `Expected ${PUBLIC_INPUT_COUNTS[known]} 32-byte public inputs for ${circuit}` };
+  }
+  if (typeof proof !== 'string' || !/^0x[0-9a-fA-F]+$/.test(proof)) {
+    return { valid: false, error: 'Proof is not hex' };
+  }
+  const rpcUrl = RPC_ENDPOINTS[chainId];
+  if (!rpcUrl) return { valid: false, error: `No RPC endpoint for chain ${chainId}` };
   try {
-    const publicInputs = Array.isArray(result.publicInputs)
-      ? result.publicInputs
-      : normalizePublicInputs(result.publicInputs as unknown as string);
-    const ok: boolean = await verifier.verify(result.proof, publicInputs);
-    return { valid: ok };
-  } catch (err) {
-    return {
-      valid: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    return await verifyProofOnChain(
+      known,
+      { proofHex: proof, publicInputsHex: publicInputs, numPublicInputs: publicInputs.length },
+      new ethers.JsonRpcProvider(rpcUrl),
+      { chainId },
+      claimed,
+    );
+  } catch {
+    return { valid: false, error: 'Proof verification failed' };
   }
 }
 
-// Pinned deployments, also recorded in proofport-app/src/config/contracts.ts.
-// Never select a verifier from proof/relay-controlled addresses or chain IDs.
-const MAINNET_TOPIC_VERIFIERS: Record<string, string> = {
-  coinbase_attestation: '0xF7dED73E7a7fc8fb030c35c5A88D40ABe6865382',
-  coinbase_country_attestation: '0xF3D5A09d2C85B28C52EF2905c1BE3a852b609D0C',
-  oidc_domain_attestation: '0x9677ba46ad226ce8b3c4517d9c0143e4d458beae',
-};
-const TESTNET_TOPIC_VERIFIERS: Record<string, string> = {
-  coinbase_attestation: '0x0036B61dBFaB8f3CfEEF77dD5D45F7EFBFE2035c',
-  coinbase_country_attestation: '0xdEe363585926c3c28327Efd1eDd01cf4559738cf',
-  oidc_domain_attestation: '0x27afdea349f247cf698f97fdfab59e1bf8bd0550',
-};
-const TOPIC_NETWORKS: Record<string, {rpc: string; verifiers: Record<string,string>}> = {
-  production: {rpc:'https://mainnet.base.org',verifiers:MAINNET_TOPIC_VERIFIERS},
-  staging: {rpc:'https://sepolia.base.org',verifiers:TESTNET_TOPIC_VERIFIERS},
-  development: {rpc:'https://sepolia.base.org',verifiers:TESTNET_TOPIC_VERIFIERS},
-  local: {rpc:'https://sepolia.base.org',verifiers:TESTNET_TOPIC_VERIFIERS},
-};
-export async function verifyTrustedTopicProof(circuit: string, proof: string, publicInputs: string[]): Promise<{valid: boolean; error?: string}> {
-  const environment = process.env.APP_ENV;
-  const network = environment && Object.hasOwn(TOPIC_NETWORKS, environment) ? TOPIC_NETWORKS[environment] : undefined;
-  if (!network) return {valid:false, error:`Unknown proof environment: ${environment}`};
-  const address = Object.hasOwn(network.verifiers, circuit) ? network.verifiers[circuit] : undefined;
-  if (!address) return {valid:false, error:`Unsupported verifier circuit: ${circuit}`};
-  try {
-    const counts: Record<string, number> = {coinbase_attestation:128, coinbase_country_attestation:150, oidc_domain_attestation:148};
-    if (publicInputs.length !== counts[circuit] || !publicInputs.every(value => /^0x[0-9a-fA-F]{64}$/.test(value)) || !await hasTrustedProofIssuer(circuit, publicInputs)) return {valid:false, error:'Untrusted proof issuer or input layout'};
-    const verifier = new ethers.Contract(address, MDL_KR_VERIFIER_ABI, new ethers.JsonRpcProvider(network.rpc));
-    return {valid: await verifier.verify(proof, publicInputs) === true};
-  } catch { return {valid:false, error:'Proof verification failed'}; }
-}
-
+/**
+ * Verify a relay result. The circuit must be named by the result: the
+ * verifier for that circuit then decides whether the proof is one, so no
+ * circuit is ever guessed from input length or from the relay's verifier
+ * address. The relay's verifierAddress/chainId are passed as a claim only.
+ */
 export async function verifyProofFromRelay(
   result: RelayProofResult,
 ): Promise<{ valid: boolean; error?: string }> {
+  if (!result.circuit || !result.proof || !result.publicInputs) {
+    return { valid: false, error: 'Incomplete proof result' };
+  }
   const inputs = Array.isArray(result.publicInputs)
     ? result.publicInputs
     : normalizePublicInputs(result.publicInputs as unknown as string);
-  const detected = detectCircuit(inputs, result.verifierAddress);
-  if (
-    detected === 'mdl_kr_ownership' ||
-    detected === 'mdl_kr_age' ||
-    detected === 'mdl_kr_region' ||
-    result.circuit === 'mdl_kr_ownership' ||
-    result.circuit === 'mdl_kr_age' ||
-    result.circuit === 'mdl_kr_region'
-  ) {
-    const variant = (result.circuit as MdlKrVariant | undefined) ?? (detected as MdlKrVariant);
-    return verifyMdlKrOnChain(variant, result);
-  }
-  if (!result.circuit || !result.proof) return {valid:false, error:'Incomplete proof result'};
-  return verifyTrustedTopicProof(result.circuit, result.proof, inputs);
+  return verifyTrustedTopicProof(result.circuit, result.proof, inputs, {
+    verifierAddress: result.verifierAddress,
+    chainId: result.chainId,
+  });
 }
 
 
@@ -173,27 +166,15 @@ const SUPPORTED_CIRCUITS = [
   'mdl_kr_region',
 ];
 
-// All three mdl_kr_* circuits share the same first four public-input
-// blocks (signal_hash, scope, nullifier_value, cx_integrity_root) at the
-// same offsets, so scope/nullifier extraction is identical across them.
-//   signal_hash       [0..32]
-//   scope             [32..64]
-//   nullifier_value   [64..96]
-//   cx_integrity_root [96..128]
-//   ... predicate-specific fields after that ...
-//
-// Total public-input field counts (used by detectCircuit):
-//   ownership: 32 + 32 + 32 + 32 + 1 + 32 = 161
-//   age:       32 + 32 + 32 + 32 + 1 + 1  = 130
-//   region:    32 + 32 + 32 + 32 + 32     = 160
-// v4 layout — signal_hash and cx_integrity_root removed. Public inputs now
-// start with scope (32) || nullifier_value (32) || predicate-specific tail.
+// Korea Mobile ID (v4) public inputs start with scope (32) || nullifier (32),
+// one byte per field, followed by a predicate-specific tail. Counts are in
+// PUBLIC_INPUT_COUNTS above. Same offsets as core's MDL_KR_PUBLIC_INPUT_LAYOUT;
+// this copy keeps its stricter one-byte-per-field check.
+type MdlKrVariant = 'mdl_kr_ownership' | 'mdl_kr_age' | 'mdl_kr_region';
+
 const MDL_KR_LAYOUT = {
   SCOPE_START: 0,
   NULLIFIER_START: 32,
-  OWNERSHIP_FIELDS: 97,   // scope(32) + nullifier(32) + disclose_flags(1) + owner_commit(32)
-  AGE_FIELDS: 66,         // scope(32) + nullifier(32) + age_threshold(1) + current_year(1)
-  REGION_FIELDS: 96,      // scope(32) + nullifier(32) + region_code(32)
 };
 
 // Each mdl_kr public-input field is a 32-byte hex string holding a
@@ -290,36 +271,9 @@ export function extractCountryList(publicInputs: string[], circuit: string): str
 
 /**
  * Extract domain from OIDC domain attestation public inputs.
- * Delegates to @zkproofport-app/sdk's extractDomainFromPublicInputs.
+ * Delegates to @zkproofport-app/core's extractDomainFromPublicInputs.
  * For AI agent path, use @zkproofport-ai/sdk's version instead.
  */
 export function extractDomain(publicInputs: string[], circuit: string): string | null {
   return extractDomainFromPublicInputs(publicInputs, circuit);
-}
-
-// Known verifier addresses → circuit mapping (Base Mainnet for SDK
-// circuits + Base Sepolia for the mdl_kr_* PoC). Address keys are
-// lower-cased so callers can match against verifierAddress.toLowerCase().
-const VERIFIER_CIRCUIT_MAP: Record<string, string> = {
-  '0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382': 'coinbase_attestation',
-  '0x9677ba46ad226ce8b3c4517d9c0143e4d458beae': 'oidc_domain_attestation',
-  '0x7602d09d24e6e16eff5ab981646872886376763e': 'mdl_kr_ownership',
-  '0xcff90ff8ceadc98f625300dc976ed85a3aa943ba': 'mdl_kr_age',
-  '0x435f0448f02f5df9659d460181116bcaf37e518e': 'mdl_kr_region',
-};
-
-export function detectCircuit(publicInputs: string[], verifierAddress?: string): string {
-  // 1. Use verifier address if available (most reliable).
-  if (verifierAddress) {
-    const circuit = VERIFIER_CIRCUIT_MAP[verifierAddress.toLowerCase()];
-    if (circuit) return circuit;
-  }
-  // 2. Fallback to public input count.
-  const len = publicInputs.length;
-  if (len === MDL_KR_LAYOUT.OWNERSHIP_FIELDS) return 'mdl_kr_ownership';
-  if (len === MDL_KR_LAYOUT.AGE_FIELDS) return 'mdl_kr_age';
-  if (len === MDL_KR_LAYOUT.REGION_FIELDS) return 'mdl_kr_region';
-  if (len === 148) return 'oidc_domain_attestation';
-  if (len > 128) return 'coinbase_country_attestation';
-  return 'coinbase_attestation';
 }

@@ -7,7 +7,6 @@ import {
   extractNullifier,
   extractScope,
   computeScopeHash,
-  detectCircuit,
   normalizePublicInputs,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
@@ -149,11 +148,20 @@ export async function GET(
 
     logger.info(ROUTE, 'Proof verified on-chain', { requestId });
 
+    // The circuit the result names, and the one the proof was just verified
+    // against. Never guessed from input length or the relay's verifier
+    // address; a result without one is refused here as well as in
+    // verifyProofFromRelay.
+    const circuit = result.circuit;
+    if (!circuit) {
+      logger.warn(ROUTE, 'Proof result names no circuit', { requestId });
+      return NextResponse.json({ error: 'Proof verification failed', details: 'Proof result names no circuit' }, { status: 400 });
+    }
+
     // Proof-only mode: return raw proof data without creating session
     if (mode === 'proof') {
       logger.info(ROUTE, 'Returning proof data (proof mode)', { requestId });
       const publicInputs = normalizePublicInputs(result.publicInputs);
-      const circuit = result.circuit || detectCircuit(publicInputs, result.verifierAddress);
       return NextResponse.json({
         status: 'completed',
         proof: result.proof,
@@ -164,22 +172,7 @@ export async function GET(
       });
     }
 
-    // Prefer the circuit the relay already resolved (result.circuit) — it is
-    // authoritative (verifyProofFromRelay used it for the on-chain check).
-    // detectCircuit's verifier-address / input-count heuristic misclassifies
-    // mdl_kr_* proofs as coinbase_attestation (the @zkproofport-app/sdk is
-    // unaware of mDL and returns a coinbase-shaped verifierAddress), which
-    // then reads scope/nullifier from the wrong offsets -> scope mismatch ->
-    // 400. Falling back to detection only when the relay gave no circuit keeps
-    // coinbase/oidc behaviour unchanged.
-    //
-    // NOTE: mDL verification currently lives in lib/proof.ts, not the SDK.
-    // Once mDL is productionised, migrate its circuit detection + scope /
-    // nullifier extraction + verifier addresses into @zkproofport-app/sdk and
-    // verify via the SDK uniformly (as the other circuits do), then drop this
-    // result.circuit preference. OpenStoa should not own circuit layout.
-    const circuit = result.circuit || detectCircuit(result.publicInputs, result.verifierAddress);
-    logger.info(ROUTE, 'Circuit resolved', { requestId, circuit, fromRelay: !!result.circuit });
+    logger.info(ROUTE, 'Circuit resolved', { requestId, circuit });
 
     // Verify scope
     logger.info(ROUTE, 'Extracting scope', { requestId, circuit });

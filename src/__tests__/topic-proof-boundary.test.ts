@@ -1,4 +1,5 @@
-import {coinbaseIssuerInputs,oidcIssuerInputs,testJwk} from './fixtures/trusted-proof';
+import {coinbaseIssuerInputs,oidcIssuerInputs,jwksFetch,encodedBool} from './fixtures/trusted-proof';
+import {clearOidcKeyCache} from '@zkproofport-app/core';
 /** Edge matrix: malformed/empty/oversized hex; invalid verifier and RPC; cross-account scope;
  * country predicate/provider; guest/member/personal/invite refusal; cache isolation.
  * No live forged requests: route tests execute locally with DB/RPC/Redis isolated. */
@@ -11,7 +12,8 @@ vi.mock('@/lib/db',()=>({db:{query:{topics:{findFirst:async()=>state.topic},topi
 vi.mock('@/lib/redis',()=>({redis:{get:async(k:string)=>state.cache.get(k)??null,set:async(k:string,v:string)=>{state.cache.set(k,v);return 'OK';},mget:async()=>[]}}));
 vi.mock('@/lib/chat',()=>({broadcastMembershipSystemEvent:async()=>{}}));
 vi.mock('@/lib/aiPermissions',()=>({requireAiCapability:async()=>null}));
-vi.mock('ethers',async()=>{const actual=await vi.importActual<typeof import('ethers')>('ethers'); return {...actual,ethers:{...actual.ethers,Contract: class {verify=state.verify;},JsonRpcProvider:class {}}};});
+// Core's verifier contract calls the provider; its answer is state.verify's.
+vi.mock('ethers',async()=>{const actual=await vi.importActual<typeof import('ethers')>('ethers'); return {...actual,ethers:{...actual.ethers,JsonRpcProvider:class {async call(){return encodedBool(await state.verify()===true);}}}};});
 import { POST } from '@/app/api/topics/[topicId]/join/route';
 import { PATCH as reviewRequest } from '@/app/api/topics/[topicId]/requests/route';
 import { POST as createTopic } from '@/app/api/topics/route';
@@ -20,7 +22,7 @@ const id='12345678-1234-4234-8234-123456789abc';
 const field=(n:number)=>'0x'+n.toString(16).padStart(64,'0');
 function inputs(scope:string, country?:string[]) { const p=coinbaseIssuerInputs(country?150:128);const start=country?86:64;Buffer.from(computeScopeHash(scope).slice(2),'hex').forEach((n,i)=>p[start+i]=field(n));if(country){p[84]=field(country.length);p[85]=field(1);Buffer.from(country.join('')).forEach((n,i)=>p[64+i]=field(n));}return p; }
 async function join(body:unknown={}) {return POST(new NextRequest('http://localhost/api/topics/'+id+'/join',{method:'POST',body:JSON.stringify(body)}),{params:Promise.resolve({topicId:id})});}
-beforeEach(()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({keys:[testJwk]})}));vi.stubEnv('APP_ENV','staging');state.session={userId:'alice'};state.topic={id,visibility:'public',proofType:'kyc'};state.member=null;state.values.mockReset().mockImplementation(()=>({returning:async()=>[state.topic]}));state.update.mockReset();state.verify.mockReset().mockResolvedValue(true);state.cache.clear();});
+beforeEach(()=>{clearOidcKeyCache();vi.stubGlobal('fetch',vi.fn(jwksFetch()));vi.stubEnv('APP_ENV','staging');state.session={userId:'alice'};state.topic={id,visibility:'public',proofType:'kyc'};state.member=null;state.values.mockReset().mockImplementation(()=>({returning:async()=>[state.topic]}));state.update.mockReset();state.verify.mockReset().mockResolvedValue(true);state.cache.clear();});
 describe('topic proof boundary',()=>{
  it('returns actionable replacement guidance for invalid proof without mutating membership',async()=>{state.verify.mockResolvedValue(false);const response=await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')});expect(response.status).toBe(400);expect(await response.json()).toMatchObject({error:'Invalid or unverifiable topic proof',proofScope:COMMUNITY_SCOPE+':topic:alice',proofRequirement:{type:'kyc',circuit:'coinbase_attestation'}});expect(state.values).not.toHaveBeenCalled();});
  it('does not authorize forged nonempty bytes with a matching community scope',async()=>{state.verify.mockResolvedValue(false);expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE)})).status).toBe(400);expect(state.values).not.toHaveBeenCalled();expect(state.cache.size).toBe(0);});

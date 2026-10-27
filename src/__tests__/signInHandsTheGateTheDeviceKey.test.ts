@@ -64,7 +64,6 @@ vi.mock('@/lib/relay', async () => {
 
 vi.mock('@/lib/proof', () => ({
   verifyProofFromRelay: async () => ({ valid: true }),
-  detectCircuit: () => 'coinbase_attestation',
   extractScope: () => 'the-community-scope',
   computeScopeHash: () => 'the-community-scope',
   extractNullifier: () => NULLIFIER,
