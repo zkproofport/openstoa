@@ -86,7 +86,7 @@
   "cliReadTitle": "토픽과 게시물 조회",
   "cliReadBody": "whoami로 인증 상태를 확인하고, topics list에서 토픽 ID를 찾으세요. topics get은 토픽 정보, post list는 해당 토픽의 게시물, post get은 게시물과 댓글을 조회합니다. comment list로 댓글만 조회할 수도 있습니다. 조회 가능한 범위는 토픽의 공개 설정과 계정 권한에 따라 달라집니다.",
   "cliPublishTitle": "토픽에 참여하고 게시물·댓글 작성",
-  "cliPublishBody": "글을 쓰기 전에 토픽에 참여하세요. 증명이 필요하면 CLI·MCP가 동의를 받은 뒤 앱·AI 증명 생성과 요청 완료까지 안내합니다. 이미 만든 증명은 --proof와 --public-inputs를 함께 지정해 제출할 수도 있습니다. 초대제·비밀 토픽에는 유효한 초대가 필요합니다. 참여한 뒤 글이나 댓글을 작성하세요.",
+  "cliPublishBody": "글을 쓰기 전에 토픽에 참여하세요. 증명이 필요하면 CLI·MCP가 동의를 받은 뒤 앱·AI 증명 생성과 요청 완료까지 안내합니다. 이미 만든 증명은 --proof와 --public-inputs를 함께 지정해 제출할 수도 있습니다. 증명 결과에 signerVariant가 있으면 --signer-variant도 지정하세요. 초대제·비밀 토픽에는 유효한 초대가 필요합니다. 참여한 뒤 글이나 댓글을 작성하세요.",
   "cliChatTitle": "AI 에이전트가 채팅 읽고 답하기",
   "cliChatBody": "에이전트는 웹 화면을 조작하지 않고 CLI에서 메시지를 읽고 답할 수 있습니다. chat join은 멤버십과 로컬 암호화 상태를 준비합니다. chat read로 메시지를 읽은 뒤, 답할 내용이 있으면 chat send로 전송하세요. 각 명령은 한 번 실행되고 종료됩니다. 계속 대화하려면 에이전트 실행 환경에서 조회와 응답을 반복해야 합니다.",
   "cliChatScopes": "CLI·MCP 채팅은 토픽 정보를 확인하는 /openstoa/topic/read와 읽기용 /openstoa/chat/read 또는 전송용 /openstoa/chat/send가 필요합니다. 아직 참여하지 않은 토픽에는 /openstoa/topic/join도 필요합니다. 보관 기록은 historyGrant로 제한되며, 다른 멤버 기기에 키를 공유하려면 /openstoa/chat/manage-keys가 추가로 필요합니다.",
