@@ -8,7 +8,7 @@
  * layer only moves plaintext into `sendChat` / out of `readChat` in-process; it
  * never logs message bodies or keys, and never touches ciphertext directly.
  */
-import { ChatClient, OpenStoaClient, getRestOperation, OpenStoaApiError } from '@masselabs/openstoa';
+import { ChatClient, OpenStoaClient, getRestOperation, OpenStoaApiError, checkSignerVariant } from '@masselabs/openstoa';
 import type {
   ChatMessage,
   Topic,
@@ -24,6 +24,7 @@ import type {
   ApiKeyCreateInput,
   ApiKeyUpdateInput,
   ApiKeyCreateResult,
+  SignerVariant,
 } from '@masselabs/openstoa';
 import { FileSessionStore, MemorySessionStore, type SessionData, type SessionStore } from './session';
 import { readCredentials, writeCredentials } from './credentials';
@@ -44,12 +45,18 @@ function splitTopicProofOptions<T extends object>(input: T) {
   if (method !== undefined && method !== 'app' && method !== 'ai') throw new Error('Unknown proof method');
   if (approved !== undefined && typeof approved !== 'boolean') throw new Error('Proof approval must be a boolean');
   if (provider !== undefined && provider !== 'google' && provider !== 'microsoft') throw new Error('Unknown proof provider');
-  const raw = input as { proof?: unknown; publicInputs?: unknown };
-  if ((raw.proof !== undefined || raw.publicInputs !== undefined)
+  const raw = input as { proof?: unknown; publicInputs?: unknown; signerVariant?: unknown };
+  if ((raw.proof !== undefined || raw.publicInputs !== undefined || raw.signerVariant !== undefined)
     && (method !== undefined || approved !== undefined || provider !== undefined)) {
-    throw new Error('Cannot combine existing proof/publicInputs with proof generation options');
+    throw new Error('Cannot combine existing proof/publicInputs/signerVariant with proof generation options');
   }
-  return { body: body as T, options: { method, approved, provider } };
+  // Which circuit package made a supplied proof. It means nothing without one,
+  // and an unknown value would be judged against the wrong verifier.
+  const signerVariant = checkSignerVariant(raw.signerVariant);
+  if (signerVariant !== undefined && raw.proof === undefined) throw new Error('signerVariant is only sent with proof and publicInputs');
+  const clean = body as T & { signerVariant?: unknown };
+  if (signerVariant === undefined) delete clean.signerVariant;
+  return { body: clean as T, options: { method, approved, provider } };
 }
 
 export interface LoginResult {
@@ -185,7 +192,7 @@ export class Commands {
    * A key granting only topic/join must not mutate membership and then fail on
    * an unrelated metadata or MLS permission. 202 remains a pending membership.
    */
-  async topicJoin(topicId:string,opts:({proof?:string;publicInputs?:string} & TopicProofOptions)={}):Promise<{topicId:string;joined:boolean;pending?:boolean;message?:string}|ProofWorkflowResult>{
+  async topicJoin(topicId:string,opts:({proof?:string;publicInputs?:string;signerVariant?:SignerVariant} & TopicProofOptions)={}):Promise<{topicId:string;joined:boolean;pending?:boolean;message?:string}|ProofWorkflowResult>{
     this.requireAuth();
     const { body, options } = splitTopicProofOptions(opts);
     try { return await this.topicJoinRaw(topicId, body); }
@@ -194,7 +201,7 @@ export class Commands {
 
   private async topicJoinRaw(
     topicId: string,
-    opts: { proof?: string; publicInputs?: string } = {},
+    opts: { proof?: string; publicInputs?: string; signerVariant?: SignerVariant } = {},
   ): Promise<{ topicId: string; joined: boolean; pending?: boolean; message?: string }> {
     this.requireAuth();
     if (opts.proof || opts.publicInputs) {
@@ -202,7 +209,7 @@ export class Commands {
       if (!opts.publicInputs || !opts.publicInputs.trim()) throw new Error('topic join: publicInputs is required when proof is set');
     }
     const response = await this.chat.rest.request<Response>(`/api/topics/${topicId}/join`, {
-      method:'POST', body:opts.proof?{proof:opts.proof,publicInputs:opts.publicInputs}:{}, raw:true,
+      method:'POST', body:opts.proof?{proof:opts.proof,publicInputs:opts.publicInputs,...(opts.signerVariant!==undefined?{signerVariant:opts.signerVariant}:{})}:{}, raw:true,
     });
     const result = await response.json().catch(()=>({})) as Record<string,unknown>;
     if(response.status===202)return {topicId,joined:false,pending:true,message:typeof result.message==='string'?result.message:'Join request submitted; awaiting owner approval.'};

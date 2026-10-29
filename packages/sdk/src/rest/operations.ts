@@ -31,6 +31,31 @@ export interface RestOperation {
 const path = (name: string): OperationParameter => ({ name, location: 'path', type: 'string', required: true, description: name });
 const query = (name: string, description: string, extra: Partial<OperationParameter> = {}): OperationParameter => ({ name, location: 'query', type: 'string', description, ...extra });
 const body = (name: string, description: string, extra: Partial<OperationParameter> = {}): OperationParameter => ({ name, location: 'body', type: 'string', required: true, description, ...extra });
+/**
+ * The circuit package a topic proof came from, as its result reports it
+ * (`@zkproofport-app/core`'s SIGNER_VARIANTS). The server picks the verifier by
+ * it; absent means `standard`.
+ */
+export const SIGNER_VARIANTS = ['standard', 'android', 'android_factory'] as const;
+export type SignerVariant = (typeof SIGNER_VARIANTS)[number];
+
+function shownValue(value: unknown): string {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return `a value of type ${value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value}`;
+}
+
+/** Absent stays absent; anything else must be a known variant, or this throws naming it and the known ones. */
+export function checkSignerVariant(value: unknown): SignerVariant | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string' && (SIGNER_VARIANTS as readonly string[]).includes(value)) return value as SignerVariant;
+  throw new Error(`Unknown signerVariant ${shownValue(value)}. Known: ${SIGNER_VARIANTS.join(', ')}.`);
+}
+
+const signerVariantParameter = (): OperationParameter => ({
+  name: 'signerVariant', location: 'body', type: 'string', required: false, choices: SIGNER_VARIANTS,
+  description: 'Which circuit package made the proof (standard, android or android_factory), copied unchanged from the proof result; omit it when the result has none, which means standard. Only sent with proof.',
+});
 const paging = [query('limit', 'Maximum results (1–100; default 20)', { type: 'number', min: 1, max: 100 }), query('offset', 'Pagination offset (default 0)', { type: 'number', min: 0 })];
 const search = query('q', 'Search text');
 const postId = path('postId');
@@ -68,7 +93,7 @@ export const REST_OPERATIONS: readonly RestOperation[] = [
   op('topic_delete', ['topics', 'delete'], 'DELETE', '/api/topics/{topicId}', 'Delete a topic as its creator/owner or a site administrator.', [topicId], { access: 'Topic owner/creator or site administrator; personal topics cannot be deleted here.' }),
   op('topic_invite', ['topics', 'invite'], 'POST', '/api/topics/{topicId}/invite', 'Create a single-use topic invite token.', [topicId, body('expiresInHours', 'Expiry in whole hours (default 168)', { type: 'number', required: false, min: 1, max: 720 })], { access: 'Any public-topic member; private/secret topics require owner or admin.' }),
   op('topic_invite_lookup', ['topics', 'invite-lookup'], 'GET', '/api/topics/join/{inviteCode}', 'Preview a topic invite.', [path('inviteCode')]),
-  op('topic_join_invite', ['topics', 'join-invite'], 'POST', '/api/topics/join/{inviteCode}', 'Join a topic using an invite token. Proof-gated topics require proof and publicInputs generated for the account-bound scope from an authenticated challenge request, or a matching verified cache. Then use chat join to initialize local encryption.', [path('inviteCode'), body('proof', 'ZK proof bytes as a 0x-prefixed hex string', { required: false }), body('publicInputs', 'ZK proof public inputs as a packed 0x-prefixed hex string (required alongside proof)', { required: false })]),
+  op('topic_join_invite', ['topics', 'join-invite'], 'POST', '/api/topics/join/{inviteCode}', 'Join a topic using an invite token. Proof-gated topics require proof and publicInputs generated for the account-bound scope from an authenticated challenge request, or a matching verified cache. Then use chat join to initialize local encryption.', [path('inviteCode'), body('proof', 'ZK proof bytes as a 0x-prefixed hex string', { required: false }), body('publicInputs', 'ZK proof public inputs as a packed 0x-prefixed hex string (required alongside proof)', { required: false }), signerVariantParameter()]),
   op('topic_requests', ['topics', 'requests'], 'GET', '/api/topics/{topicId}/requests', 'List legacy topic join requests.', [topicId, query('status', 'Request status (default pending)', { choices: ['pending', 'all'] })], { access: 'Topic owner or admin.' }),
   op('topic_approve', ['topics', 'approve'], 'PATCH', '/api/topics/{topicId}/requests', 'Approve a legacy topic join request; the requester must already have matching trusted verification for proof-gated topics. The approver cannot submit proof on their behalf.', [topicId, body('requestId', 'Request ID')], { body: { action: 'approve' }, access: 'Topic owner or admin.' }),
   op('topic_reject', ['topics', 'reject'], 'PATCH', '/api/topics/{topicId}/requests', 'Reject a legacy topic join request.', [topicId, body('requestId', 'Request ID')], { body: { action: 'reject' }, access: 'Topic owner or admin.' }),
@@ -114,11 +139,12 @@ export function prepareRestOperation(id: string, input: Record<string, unknown>)
       continue;
     }
     const label = `${id}: ${parameter.name}`;
+    // Before the type checks, so a wrong-typed value is also named next to the accepted ones.
+    if (parameter.choices && !parameter.choices.includes(value as string | number)) throw new Error(`${label} must be one of ${parameter.choices.join(', ')}; got ${shownValue(value)}`);
     if (parameter.type === 'string' && (typeof value !== 'string' || (parameter.required && !value.trim()))) throw new Error(`${label} must be a non-empty string`);
     if (parameter.type === 'boolean' && typeof value !== 'boolean') throw new Error(`${label} must be a boolean`);
     if (parameter.type === 'number' && (typeof value !== 'number' || !Number.isSafeInteger(value))) throw new Error(`${label} must be a whole number`);
     if (parameter.type === 'strings' && (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'string' || !item.trim()))) throw new Error(`${label} must be a non-empty string array`);
-    if (parameter.choices && !parameter.choices.includes(value as string | number)) throw new Error(`${label} must be one of ${parameter.choices.join(', ')}`);
     const size = typeof value === 'number' ? value : typeof value === 'string' ? value.length : undefined;
     if (size !== undefined && parameter.min !== undefined && size < parameter.min) throw new Error(`${label} must be at least ${parameter.min}`);
     if (size !== undefined && parameter.max !== undefined && size > parameter.max) throw new Error(`${label} must be at most ${parameter.max}`);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OpenStoaClient, OpenStoaApiError } from '../rest/openStoaClient';
-import { REST_OPERATIONS, prepareRestOperation } from '../rest/operations';
+import { REST_OPERATIONS, SIGNER_VARIANTS, checkSignerVariant, prepareRestOperation } from '../rest/operations';
 import { OPERATION_CONTRACTS } from './operationContracts';
 
 describe('public REST operation contracts', () => {
@@ -59,5 +59,39 @@ describe('public REST operation contracts', () => {
     const client = new OpenStoaClient({ baseUrl: 'https://example.test', token: 'verified-session', apiKey: 'osk_test', fetch });
     await expect(client.operation('topic_join_invite', { inviteCode: 'invite', [field]: ['0xab'] })).rejects.toThrow(`${field} must be`);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('signerVariant on a topic proof', () => {
+  const VARIANTS = ['standard', 'android', 'android_factory'] as const;
+  const UNKNOWN: unknown[] = ['ios', '', 'ANDROID', ' android', 'аndroid', '__proto__', 'toString', 42, null, {}, ['android'], true];
+  it('lists exactly the three circuit packages', () => {
+    expect(SIGNER_VARIANTS).toEqual(VARIANTS);
+  });
+  it.each(VARIANTS)('topic_join_invite sends %s unchanged with the proof', async signerVariant => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true })));
+    const client = new OpenStoaClient({ baseUrl: 'https://example.test', token: 'verified-session', apiKey: 'osk_test', fetch });
+    await client.operation('topic_join_invite', { inviteCode: 'invite', proof: '0xab', publicInputs: '0x01', signerVariant });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ proof: '0xab', publicInputs: '0x01', signerVariant });
+  });
+  it('topic_join_invite leaves an absent signerVariant absent', () => {
+    expect(prepareRestOperation('topic_join_invite', { inviteCode: 'invite', proof: '0xab', publicInputs: '0x01', signerVariant: undefined }).options.body)
+      .toEqual({ proof: '0xab', publicInputs: '0x01' });
+  });
+  it.each(UNKNOWN)('topic_join_invite refuses %j before HTTP, naming it and the known values', async signerVariant => {
+    const fetch = vi.fn();
+    const client = new OpenStoaClient({ baseUrl: 'https://example.test', token: 'verified-session', apiKey: 'osk_test', fetch });
+    await expect(client.operation('topic_join_invite', { inviteCode: 'invite', proof: '0xab', publicInputs: '0x01', signerVariant }))
+      .rejects.toThrow(/signerVariant must be one of standard, android, android_factory; got /);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(VARIANTS)('checkSignerVariant returns %s unchanged', value => expect(checkSignerVariant(value)).toBe(value));
+  it('checkSignerVariant keeps absent absent', () => expect(checkSignerVariant(undefined)).toBeUndefined());
+  it.each(UNKNOWN)('checkSignerVariant refuses %j by name', value => {
+    expect(() => checkSignerVariant(value)).toThrow(/^Unknown signerVariant .+\. Known: standard, android, android_factory\.$/);
+  });
+  it('names a refused string exactly as sent', () => {
+    expect(() => checkSignerVariant('ios')).toThrow('Unknown signerVariant "ios".');
+    expect(() => prepareRestOperation('topic_requests', { topicId: 't1', status: 'approved' })).toThrow('must be one of pending, all; got "approved"');
   });
 });

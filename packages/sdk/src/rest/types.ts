@@ -1,3 +1,4 @@
+import type { SignerVariant } from './operations';
 /**
  * Wire types mirroring openstoa/src/app/api/** handler responses. Kept minimal
  * and additive — only the fields the agent chat/topic/post flows read today.
@@ -69,6 +70,11 @@ export interface CreateTopicInput {
    * a member (or agent) who joins later reads less back from `/archive`.
    */
   chatArchiveRetentionDays?: 0 | 365 | 90 | 30;
+  /** Creation proof, when the chosen proofType requires one. */
+  proof?: string;
+  publicInputs?: string | string[];
+  /** Which circuit package made `proof`, copied from its result; omit for standard. */
+  signerVariant?: SignerVariant;
   [k: string]: unknown;
 }
 

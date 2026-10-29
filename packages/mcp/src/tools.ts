@@ -8,7 +8,7 @@
  * the agent's MLS keys in its vault (same custody model as the CLI).
  */
 import { z } from 'zod';
-import { OpenStoaApiError, REST_OPERATIONS, type Commands, type CreateTopicInput, type TopicProofOptions } from '@masselabs/openstoa-commands';
+import { OpenStoaApiError, REST_OPERATIONS, SIGNER_VARIANTS, type Commands, type CreateTopicInput, type SignerVariant, type TopicProofOptions } from '@masselabs/openstoa-commands';
 
 export interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
@@ -30,6 +30,20 @@ const topicProofSchema = {
   approved: z.boolean().optional().describe('Set true only after the user consents to proof generation and finishing this action.'),
   provider: z.enum(['google', 'microsoft']).optional().describe('Identity provider for workspace domain proofs.'),
 };
+/** A fixed set of strings; a refusal names what was sent and what is accepted. */
+function choiceOf(choices: readonly string[]): z.ZodTypeAny {
+  if (choices.length === 0) throw new Error('A choice parameter needs at least one choice');
+  return z.enum(choices as [string, ...string[]], {
+    errorMap: (_issue, ctx) => {
+      const value = ctx.data;
+      const shown = typeof value === 'string' ? JSON.stringify(value) : `a value of type ${value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value}`;
+      return { message: `Unknown value ${shown}. Expected one of ${choices.join(', ')}.` };
+    },
+  });
+}
+const signerVariantField = () => choiceOf(SIGNER_VARIANTS).optional().describe(
+  'Which circuit package made the supplied proof (standard, android or android_factory), copied unchanged from the proof result. Omit it when the result has none (standard). Only with proof and publicInputs.',
+);
 function topicProofOptions(input: Record<string, unknown>): TopicProofOptions {
   return {
     ...(input.method !== undefined ? {method: input.method as TopicProofOptions['method']} : {}),
@@ -37,7 +51,7 @@ function topicProofOptions(input: Record<string, unknown>): TopicProofOptions {
     ...(input.provider !== undefined ? {provider: input.provider as TopicProofOptions['provider']} : {}),
   };
 }
-const topicProofGuidance = ' With user consent, supply method app/ai and approved:true to start a required proof in this call (default app). Show browserUrl for its app QR page or verificationUrl/userCode from proof_status. Keep this MCP process running; use proof_status then proof_resume to finish the saved action once. Without consent return proof_required. No proof generation occurs if the action already succeeds. Existing proof/publicInputs cannot be combined with generation options.';
+const topicProofGuidance = ' With user consent, supply method app/ai and approved:true to start a required proof in this call (default app). Show browserUrl for its app QR page or verificationUrl/userCode from proof_status. Keep this MCP process running; use proof_status then proof_resume to finish the saved action once. Without consent return proof_required. No proof generation occurs if the action already succeeds. Existing proof/publicInputs (with signerVariant when the proof result carries one) cannot be combined with generation options.';
 
 export function registerTools(host: ToolHost, commands: Commands): void {
   const ok = (data: unknown): ToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
@@ -96,6 +110,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
       requiredDomain: z.string().optional(),
       proof: z.string().optional(),
       publicInputs: z.string().optional(),
+      signerVariant: signerVariantField(),
       image: z.string().optional(),
       chatArchiveRetentionDays: z
         .union([z.literal(0), z.literal(365), z.literal(90), z.literal(30)])
@@ -116,6 +131,7 @@ export function registerTools(host: ToolHost, commands: Commands): void {
         requiredDomain: a.requiredDomain as string | undefined,
         proof: a.proof as string | undefined,
         publicInputs: a.publicInputs as string | undefined,
+        signerVariant: a.signerVariant as SignerVariant | undefined,
         image: a.image as string | undefined,
         chatArchiveRetentionDays: a.chatArchiveRetentionDays as 0 | 365 | 90 | 30 | undefined,
       }),
@@ -124,8 +140,8 @@ export function registerTools(host: ToolHost, commands: Commands): void {
   host.tool(
     'openstoa_topic_join',
     'Join topic membership. Private/secret topics require an invitation. Use chat_join separately to initialize MLS encryption. The server verifies proof, account scope and topic conditions.' + topicProofGuidance,
-    { topicId: z.string(), proof: z.string().optional(), publicInputs: z.string().optional(), ...topicProofSchema },
-    wrap((a) => commands.topicJoin(a.topicId as string, { ...topicProofOptions(a), proof: a.proof as string | undefined, publicInputs: a.publicInputs as string | undefined })),
+    { topicId: z.string(), proof: z.string().optional(), publicInputs: z.string().optional(), signerVariant: signerVariantField(), ...topicProofSchema },
+    wrap((a) => commands.topicJoin(a.topicId as string, { ...topicProofOptions(a), proof: a.proof as string | undefined, publicInputs: a.publicInputs as string | undefined, signerVariant: a.signerVariant as SignerVariant | undefined })),
   );
   host.tool('openstoa_topic_leave', 'Leave a topic; owners must transfer ownership first.', { topicId: z.string() }, wrap((a) => commands.topicLeave(a.topicId as string)));
   host.tool(
@@ -290,7 +306,8 @@ export function registerTools(host: ToolHost, commands: Commands): void {
         }
         default: throw new Error(`Unknown operation parameter type ${String(parameter.type)}`);
       }
-      if (parameter.choices) field = field.refine((value) => parameter.choices!.includes(value), { message: `Expected one of ${parameter.choices.join(', ')}` });
+      if (parameter.choices && parameter.choices.every((choice) => typeof choice === 'string')) field = choiceOf(parameter.choices as readonly string[]);
+      else if (parameter.choices) field = field.refine((value) => parameter.choices!.includes(value), { message: `Expected one of ${parameter.choices.join(', ')}` });
       if (!parameter.required) field = field.optional();
       schema[parameter.name] = field.describe(parameter.description);
     }

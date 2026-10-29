@@ -32,11 +32,11 @@ export type {
   ApiKeyCreateResult,
 } from '@masselabs/openstoa';
 
-export { REST_OPERATIONS, getRestOperation, prepareRestOperation } from '@masselabs/openstoa';
-export type { RestOperation, OperationParameter } from '@masselabs/openstoa';
+export { REST_OPERATIONS, getRestOperation, prepareRestOperation, SIGNER_VARIANTS, checkSignerVariant } from '@masselabs/openstoa';
+export type { RestOperation, OperationParameter, SignerVariant } from '@masselabs/openstoa';
 
 export {isProofWorkflowResult,TopicProofWorkflow,FileProofOperationStore,MemoryProofOperationStore} from './topicProofWorkflow';
-export type {ProofWorkflowResult,ProofRequirement,ProofContinueInput,ProofAction,ProofOperationStore} from './topicProofWorkflow';
+export type {ProofWorkflowResult,ProofRequirement,ProofContinueInput,ProofAction,ProofOperationStore,TopicProof} from './topicProofWorkflow';
 
 export { OpenStoaApiError } from '@masselabs/openstoa';
 

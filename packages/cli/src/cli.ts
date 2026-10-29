@@ -8,7 +8,7 @@ import { Command, Option } from 'commander';
 import QRCode from 'qrcode';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
-import { OpenStoaApiError, createCommands, isEntrypoint, REST_OPERATIONS, isProofWorkflowResult, type ProofWorkflowResult, type OperationParameter, type Commands, type PermissionKeyStatus, type CommandConfig, type CreateTopicInput, type TopicProofOptions } from '@masselabs/openstoa-commands';
+import { OpenStoaApiError, createCommands, isEntrypoint, REST_OPERATIONS, SIGNER_VARIANTS, isProofWorkflowResult, type ProofWorkflowResult, type OperationParameter, type Commands, type PermissionKeyStatus, type CommandConfig, type CreateTopicInput, type SignerVariant, type TopicProofOptions } from '@masselabs/openstoa-commands';
 import * as fmt from './format';
 import { defaultProofTerminal, formatProofWorkflow, interactWithProof, waitForProof, type ProofTerminal } from './proofInteraction';
 
@@ -283,9 +283,10 @@ export function buildProgram(
     .option('--wait', 'wait for the app QR or AI proof, then finish this topic action')
     .option('--proof <hex>', 'ZK proof bytes for a proof-gated topic (KYC / country / workspace)')
     .option('--public-inputs <hex>', 'ZK proof public inputs (required alongside --proof)')
-    .action((topicId: string, opts: { proof?: string; publicInputs?: string } & TopicActionOptions) =>
+    .addOption(new Option('--signer-variant <variant>', 'circuit package that made --proof, copied from its result; omit for standard').choices(SIGNER_VARIANTS))
+    .action((topicId: string, opts: { proof?: string; publicInputs?: string; signerVariant?: SignerVariant } & TopicActionOptions) =>
       run(
-        (c) => c.topicJoin(topicId, { proof: opts.proof, publicInputs: opts.publicInputs, ...topicProofOptions(opts) }),
+        (c) => c.topicJoin(topicId, { proof: opts.proof, publicInputs: opts.publicInputs, signerVariant: opts.signerVariant, ...topicProofOptions(opts) }),
         (r) => (r.pending ? `Join request pending approval for ${r.topicId}` : `Joined ${r.topicId}`),
         opts,
       ),
@@ -322,12 +323,13 @@ export function buildProgram(
     .option('--wait', 'wait for the app QR or AI proof, then finish this topic action')
     .option('--proof <hex>', 'creation proof when required')
     .option('--public-inputs <hex>', 'public inputs for the creation proof')
+    .addOption(new Option('--signer-variant <variant>', 'circuit package that made --proof, copied from its result; omit for standard').choices(SIGNER_VARIANTS))
     .option('--image <url>', 'uploaded topic image URL')
     .option(
       '--chat-archive-retention-days <days>',
       'how long chat history is kept: 0 (forever, default) | 365 | 90 | 30. Set once, at creation',
     )
-    .action((opts: { title: string; description?: string; visibility?: string; categoryId?: string; proofType?: CreateTopicInput['proofType']; chatArchiveRetentionDays?: string; allowedCountries?: string; requiredDomain?: string; proof?: string; publicInputs?: string; image?: string } & TopicActionOptions) =>
+    .action((opts: { title: string; description?: string; visibility?: string; categoryId?: string; proofType?: CreateTopicInput['proofType']; chatArchiveRetentionDays?: string; allowedCountries?: string; requiredDomain?: string; proof?: string; publicInputs?: string; signerVariant?: SignerVariant; image?: string } & TopicActionOptions) =>
       run(
         (c) =>
           c.topicCreate({
@@ -340,6 +342,7 @@ export function buildProgram(
             requiredDomain: opts.requiredDomain,
             proof: opts.proof,
             publicInputs: opts.publicInputs,
+            signerVariant: opts.signerVariant,
             image: opts.image,
             ...topicProofOptions(opts),
             // Commander hands over a string; the route accepts only a number and
@@ -595,6 +598,8 @@ export function buildProgram(
     for (const parameter of operation.parameters.filter((entry) => entry.location !== 'path')) {
       const flag = '--' + parameter.name.replace(/[A-Z]/g, (letter) => '-' + letter.toLowerCase());
       const option = new Option(`${flag} <value>`, parameter.description).argParser((value) => parseOperationValue(parameter, value));
+      // A string enum is refused by name at the flag, listing the accepted values.
+      if (parameter.type === 'string' && parameter.choices?.every((choice) => typeof choice === 'string')) option.choices(parameter.choices as readonly string[]);
       if (parameter.required) option.makeOptionMandatory();
       command.addOption(option);
     }
@@ -613,7 +618,7 @@ export function buildProgram(
     });
   }
 
-  const topicHelp = '\nProof workflow: obtain consent before --approved. AI proof generation requires --wait in non-interactive/JSON mode; keep this process running. With app --wait, open the returned browser URL and scan its QR; no second terminal is needed. Existing --proof and --public-inputs must be supplied together and cannot be combined with --method, --approved or --provider. Private/secret topics require an invitation.\nDocs: https://www.openstoa.xyz/docs?topic=topics#topics';
+  const topicHelp = '\nProof workflow: obtain consent before --approved. AI proof generation requires --wait in non-interactive/JSON mode; keep this process running. With app --wait, open the returned browser URL and scan its QR; no second terminal is needed. Existing --proof and --public-inputs must be supplied together (add --signer-variant when the proof result carries one) and cannot be combined with --method, --approved or --provider. Private/secret topics require an invitation.\nDocs: https://www.openstoa.xyz/docs?topic=topics#topics';
   for (const name of ['create', 'join', 'join-invite']) topics.commands.find(c => c.name() === name)!.addHelpText('after', topicHelp);
   program.commands.find(c => c.name() === 'login')!.addHelpText('after', '\nLogin establishes identity; an API key only grants permissions for business operations. App mode displays a QR directly in this terminal; scan it with ZKProofport. The browser approval page is optional. AI login requires --wait in non-interactive/JSON mode. User consent is required before --approved. Resume/cancel using --operation-id in the same vault and server.\nDocs: https://www.openstoa.xyz/docs?topic=login#login');
   program.addHelpText('after', '\nStart with openstoa login. Business requests use the saved proof-login session plus a same-account permission key; public guest reads remain available. For command options use openstoa <command> --help.\nDocs: https://www.openstoa.xyz/docs?topic=commands#commands');

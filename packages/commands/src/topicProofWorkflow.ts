@@ -3,6 +3,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {promises as fs} from 'node:fs';
 import * as path from 'node:path';
 import {startAiTopicProof,type AiTopicProofHandle} from './aiTopicProof';
+import {checkSignerVariant,type SignerVariant} from '@masselabs/openstoa';
 
 export type ProofMethod='app'|'ai';
 export type ProofProvider='google'|'microsoft';
@@ -53,17 +54,21 @@ export class FileProofOperationStore implements ProofOperationStore {
  }
 }
 interface Rest {getApiKey?():string|null;getToken():string|null;request<T=any>(url:string,options?:any):Promise<T>}
-interface WorkflowDeps {rest:Rest;baseUrl:string;store:ProofOperationStore;submit:(action:ProofAction,proof:{proof:string;publicInputs:string})=>Promise<unknown>;now?:()=>number;startAi?:typeof startAiTopicProof;submitTimeoutMs?:number}
+interface WorkflowDeps {rest:Rest;baseUrl:string;store:ProofOperationStore;submit:(action:ProofAction,proof:TopicProof)=>Promise<unknown>;now?:()=>number;startAi?:typeof startAiTopicProof;submitTimeoutMs?:number}
 const CIRCUITS:Record<string,string>={kyc:'coinbase_attestation',country:'coinbase_country_attestation',google_workspace:'oidc_domain_attestation',microsoft_365:'oidc_domain_attestation',workspace:'oidc_domain_attestation'};
 const TTL=15*60*1000;
 const TERMINAL=new Set(['completed','cancelled','expired','failed']);
-function normalizedProof(value:any,circuit:string):{proof:string;publicInputs:string}{
+/** A proof ready to submit. signerVariant is present only when the proof's result carried one. */
+export interface TopicProof {proof:string;publicInputs:string;signerVariant?:SignerVariant}
+function normalizedProof(value:any,circuit:string):TopicProof{
  if(!value||typeof value.proof!=='string'||!/^0x(?:[a-f0-9]{2})+$/i.test(value.proof)||value.proof.length>131074)throw new Error('Invalid proof result');
  let inputs=value.publicInputs;
  if(Array.isArray(inputs)&&inputs.every((v:unknown)=>typeof v==='string'&&/^0x[a-f0-9]{1,64}$/i.test(v)))inputs='0x'+inputs.map((v:string)=>v.slice(2).padStart(64,'0')).join('');
  const count=({coinbase_attestation:193,coinbase_country_attestation:150,oidc_domain_attestation:214} as Record<string,number>)[circuit];
  if(!count||typeof inputs!=='string'||!/^0x(?:[a-f0-9]{64})+$/i.test(inputs)||inputs.length!==2+count*64)throw new Error('Invalid proof public inputs');
- return {proof:value.proof,publicInputs:inputs};
+ // The server picks the verifier by this; absent means standard, and an unknown value is refused here.
+ const signerVariant=checkSignerVariant(value.signerVariant);
+ return {proof:value.proof,publicInputs:inputs,...(signerVariant!==undefined?{signerVariant}:{})};
 }
 export class TopicProofWorkflow {
  private readonly ai=new Map<string,AiTopicProofHandle>();private readonly now:()=>number;
@@ -90,7 +95,7 @@ export class TopicProofWorkflow {
   const requirement:ProofRequirement={type:raw.type,circuitType:raw.circuit};
   if(raw.domain!=null){if(typeof raw.domain!=='string'||raw.domain.length>253)throw new Error('Invalid proof domain');requirement.domain=raw.domain;}
   if(raw.allowedCountries!=null){if(!Array.isArray(raw.allowedCountries)||!raw.allowedCountries.length||raw.allowedCountries.length>10||!raw.allowedCountries.every((v:unknown)=>typeof v==='string'&&/^[A-Z]{2}$/.test(v)))throw new Error('Invalid proof country requirement');requirement.allowedCountries=raw.allowedCountries;}
-  const clean=structuredClone(action);if('input'in clean){delete clean.input.proof;delete clean.input.publicInputs;}
+  const clean=structuredClone(action);if('input'in clean){delete clean.input.proof;delete clean.input.publicInputs;delete clean.input.signerVariant;}
   const r:Operation={version:1,id:randomUUID(),action:clean,fingerprint:this.fingerprint(),baseUrl:this.deps.baseUrl,scope:body.proofScope,requirement,expiresAt:this.now()+TTL,state:'proof_required'};
   await this.deps.store.write(r);return this.view(r,raw.type==='workspace'?{requiredInputs:['provider (google or microsoft)']}:{});
  }
@@ -120,7 +125,7 @@ export class TopicProofWorkflow {
    try{await this.deps.store.write(r);}catch(error){this.stopAi(r.id);throw error;}return this.view(r);
   });
  }
- private async poll(r:Operation):Promise<{result:ProofWorkflowResult;proof?:{proof:string;publicInputs:string}}>{
+ private async poll(r:Operation):Promise<{result:ProofWorkflowResult;proof?:TopicProof}>{
   if(TERMINAL.has(r.state)||r.state==='proof_required'||r.state==='submitting')return {result:this.view(r)};
   if(r.method==='ai'){
    const handle=this.ai.get(r.id);
