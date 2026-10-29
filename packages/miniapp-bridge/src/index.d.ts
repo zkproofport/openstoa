@@ -53,7 +53,7 @@ export interface PushNotificationTap {
 export interface HostApi {
   getEnvironment(): HostEnvironmentInfo;
   getOpenStoaToken(): Promise<string | null>;
-  loginToOpenStoa(opts?: { force?: boolean; method?: 'oidc' | 'mdl'; takeover?: boolean }): Promise<AuthResult>;
+  loginToOpenStoa(opts?: { force?: boolean; method?: 'oidc'; takeover?: boolean }): Promise<AuthResult>;
   logoutFromOpenStoa(): Promise<void>;
   setOpenStoaToken(token: string): Promise<void>;
   /**

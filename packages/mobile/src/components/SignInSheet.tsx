@@ -74,8 +74,8 @@ export function SignInSheetProvider({ children }: SignInSheetProviderProps) {
   const { colors } = useThemeColors();
   // WHICH methods to offer is not this component's decision — it comes from
   // `signInMethods.ts`, the same list WelcomeScreen renders. This sheet used to
-  // keep its own copy of that list, which is how mDL ended up hidden on Welcome
-  // and still reachable here for the 1.0.0 beta.
+  // keep its own copy of that list, which is how a method ended up hidden on
+  // Welcome and still reachable here.
   const methods = useOfferedSignInMethods();
   const [visible, setVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);

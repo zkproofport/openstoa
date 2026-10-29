@@ -11,9 +11,9 @@
  * What was duplicated was not the chrome — it was the LIST. Each surface built
  * its own button stack out of its own translation keys and its own handler per
  * method, so "offer this method" was two edits and "stop offering it" was two
- * edits too. It was done as one: mDL was hidden for the 1.0.0 corporate beta on
- * `WelcomeScreen` only, and the sheet kept showing "Sign in with Mobile ID" to
- * anyone a gate interrupted. A tester found it on production-shaped staging.
+ * edits too. It was done as one: a method was hidden on `WelcomeScreen` only,
+ * and the sheet kept showing it to anyone a gate interrupted. A tester found it
+ * on production-shaped staging.
  *
  * So the list lives here, once, as data:
  *
@@ -43,7 +43,7 @@
  * `SignInLauncher.tsx`, which imports this type rather than restating it, so
  * the two can never drift apart.
  */
-export type SignInMethodId = 'oidc' | 'mdl';
+export type SignInMethodId = 'oidc';
 
 export interface SignInMethod {
   /** Passed straight to the launcher to select the proof flavour. */
@@ -65,17 +65,7 @@ export interface SignInMethod {
   developerOnly: boolean;
 }
 
-/**
- * Every sign-in method the mini-app knows how to start, in display order.
- *
- * `mDL` is `enabled: false` for the 1.0.0 corporate beta (Masse Labs): the
- * Korea Mobile ID path is still host-experimental and out of scope for that
- * release, and shipping a half-finished second sign-in path — even behind
- * Developer Mode — is a support burden on a build going to outside testers.
- * Nothing is deleted: the launcher argument, the copy and the translations all
- * still exist. TO RESTORE: set `enabled: true`. The button then reappears under
- * Developer Mode, on BOTH surfaces, exactly as it did before.
- */
+/** Every sign-in method the mini-app knows how to start, in display order. */
 export const SIGN_IN_METHODS: readonly SignInMethod[] = Object.freeze([
   Object.freeze({
     id: 'oidc',
@@ -83,14 +73,6 @@ export const SIGN_IN_METHODS: readonly SignInMethod[] = Object.freeze([
     emphasis: 'primary',
     enabled: true,
     developerOnly: false,
-  }),
-  Object.freeze({
-    id: 'mdl',
-    labelKey: 'openstoa.signIn.method.mdl',
-    emphasis: 'secondary',
-    // Hidden for the 1.0.0 corporate beta — see the block comment above.
-    enabled: false,
-    developerOnly: true,
   }),
 ]) as readonly SignInMethod[];
 
@@ -104,7 +86,7 @@ export interface SignInMethodContext {
  * if it has one.
  *
  * Exported so a test can apply the REAL rule to a hypothetical method — e.g.
- * "if mDL's `enabled` were flipped back, would it be offered?" — without
+ * "if this method were developer-only, would it be offered?" — without
  * reimplementing the condition. A test that restates the rule agrees with
  * itself no matter what this file does, which is the one thing a guard on this
  * file must not be.

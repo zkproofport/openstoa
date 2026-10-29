@@ -89,7 +89,7 @@ const DEADLINE_MS = 8 * 60 * 1000;
 
 // i18next is not initialised in this harness, so `t(key)` hands back the key.
 // Asserting on keys rather than on English copy keeps these tests alive through
-// a wording change — the same choice `welcomeMdlButton.test.tsx` makes.
+// a wording change — the same choice `signInSurfaces.test.tsx` makes.
 const WELCOME = 'openstoa.welcome.heading';
 // The sign-in button's label is shared by every sign-in surface now, so it
 // lives under `openstoa.signIn.method.*` rather than under this screen's own

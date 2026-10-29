@@ -26,7 +26,6 @@ import type { SignInMethodId } from './signInMethods';
 /**
  * `method` selects the proof flavor:
  *   - `'oidc'` (default) — Google / Microsoft OIDC sign-in
- *   - `'mdl'`            — Korea Mobile ID via OmniOne CX (experimental)
  *
  * The union comes from `signInMethods.ts` rather than being restated here, so
  * the launcher and the offered-methods list cannot drift: adding a method there

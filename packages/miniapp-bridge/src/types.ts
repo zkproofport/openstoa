@@ -82,9 +82,9 @@ export interface HostApi {
      * (`zkProofportHostApi.loginToOpenStoa`) — it was missing from the type
      * only, and nothing caught that because `packages/mobile` is excluded from
      * every tsconfig in the repo (see the host's `tsconfig.json` exclude).
-     * Omitted → the host's default (OIDC).
+     * Omitted → the host's default (OIDC). OIDC is the only method.
      */
-    method?: 'oidc' | 'mdl';
+    method?: 'oidc';
     /**
      * End the session on the account's other phone.
      *
@@ -387,7 +387,7 @@ export interface HostApi {
 
   /**
    * Whether the host has Developer Mode enabled. Mini-app uses this to
-   * gate experimental affordances (e.g. mDL login) so they only appear
+   * gate experimental affordances so they only appear
    * when the host user has explicitly opted in.
    *
    * Returns `false` on hosts that don't expose Developer Mode.

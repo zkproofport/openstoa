@@ -119,7 +119,7 @@ function OpenStoaAppInner(_props: OpenStoaAppProps) {
   const { colors } = useThemeColors();
   const { t } = useTranslation();
   // Which sign-in methods this build offers, Developer Mode already applied.
-  // The list itself — including the mDL kill switch for the 1.0.0 beta — lives
+  // The list itself lives
   // in `auth/signInMethods.ts`, shared with the SignInSheet.
   const signInMethods = useOfferedSignInMethods();
   const [phase, setPhase] = useState<Phase>('booting');

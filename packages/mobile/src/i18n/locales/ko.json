@@ -16,8 +16,7 @@
     },
     "signIn": {
       "method": {
-        "oidc": "Google로 로그인",
-        "mdl": "모바일 신분증으로 로그인"
+        "oidc": "Google로 로그인"
       }
     },
     "welcome": {

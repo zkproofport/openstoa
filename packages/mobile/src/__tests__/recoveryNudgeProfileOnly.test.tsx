@@ -17,9 +17,9 @@
  *
  * WHY STRUCTURAL AND NOT "FEED DOES NOT RENDER IT". A test that mounts one
  * other screen and finds no banner is one new screen away from being wrong, and
- * this repo has already shipped exactly that mistake: the mDL button was hidden
- * on `WelcomeScreen` and left visible on `SignInSheet`, with a green suite
- * (`welcomeMdlButton.test.tsx` records the postmortem). The assertion here is
+ * this repo has already shipped exactly that mistake: a sign-in button was
+ * hidden on `WelcomeScreen` and left visible on `SignInSheet`, with a green
+ * suite (`signInSurfaces.test.tsx` records the postmortem). The assertion here is
  * over the WHOLE mini-app source: the set of files that render `<RecoveryNudge`
  * is exactly one, named. A second mount anywhere — a new tab, a modal, a
  * re-added root mount — fails this regardless of which screen it is.

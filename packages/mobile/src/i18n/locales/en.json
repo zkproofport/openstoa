@@ -16,8 +16,7 @@
     },
     "signIn": {
       "method": {
-        "oidc": "Sign in with Google",
-        "mdl": "Sign in with Mobile ID"
+        "oidc": "Sign in with Google"
       }
     },
     "welcome": {
