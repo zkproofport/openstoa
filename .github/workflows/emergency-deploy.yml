@@ -1,0 +1,351 @@
+# Emergency OpenStoa deploy -- FALLBACK ONLY.
+#
+# Why this exists: since 2026-10-28 the monorepo that normally deploys this
+# service (zkproofport/proofport-app-dev, `deploy.yml`, service `community`)
+# cannot run GitHub Actions (an organisation billing problem refuses every job
+# in private repositories). This repository is public, so its jobs still run.
+# Use this workflow only while the normal path is unavailable. Return to
+# deploy.yml as soon as it runs again; its next run must use a monorepo commit
+# whose openstoa gitlink CONTAINS what this workflow deployed, or it rolls the
+# service back.
+#
+# Environments: `staging` only for now. The `production` row is present but
+# refused; the user enables it on the store-release day.
+#
+# KEEP IN SYNC with the monorepo's deploy.yml (community parts). Anything that
+# differs makes switching back change the running service:
+#   - image build: context = this repository root, Dockerfile.prod, platform
+#     linux/amd64, build arg NEXT_PUBLIC_RELAY_URL (stg-relay / relay), tags
+#     `<env>-<sha>` and `<env>-latest` (here <sha> is this repository's commit;
+#     there it is the monorepo's)
+#   - Cloud Run service proofport-community-<env>, port 3200, cpu 1, memory
+#     1Gi, min/max instances (staging 0/5, production 1/20),
+#     --allow-unauthenticated, VPC connector proofport-vpc with
+#     private-ranges-only egress
+#   - the non-secret environment variables NODE_ENV, APP_ENV,
+#     REQUIRE_PAYMENT_TX, PUSH_MODE (set below with --update-env-vars)
+#   - deployer identity (the same service account as deploy.yml)
+#
+# What is deliberately NOT copied: the secret values deploy.yml sets
+# (DATABASE_URL, REDIS_URL, COMMUNITY_JWT_SECRET, R2_*, RESEND_API_KEY,
+# RECORD_BOARD_ADDRESS, RECORD_SERVICE_PRIVATE_KEY, BASE_SEPOLIA_RPC_URL,
+# GEMINI_API_KEY, OPENAI_API_KEY, FCM_SERVICE_ACCOUNT) and the Cloud SQL
+# instance. They live in the monorepo's secrets, which cannot be read back, and
+# are already set on the running service; `gcloud run deploy` keeps every
+# variable and annotation it is not told to change, so this workflow updates
+# only the non-secret variables and checks, before and after, that the others
+# are still there.
+#
+# Repository secrets (Settings > Secrets and variables > Actions), secrets so
+# this public repository's logs mask them:
+#   GCP_WORKLOAD_IDENTITY_PROVIDER (github-actions-pool/providers/github-openstoa,
+#   which accepts only this file on refs/heads/main via workflow_dispatch),
+#   GCP_SERVICE_ACCOUNT, GCP_REGION, GCP_ARTIFACT_REGISTRY, GCP_PROJECT,
+#   GCP_PROJECT_NUMBER
+
+name: Emergency deploy (fallback)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      deployed_openstoa_sha:
+        description: >-
+          OpenStoa commit currently running, when the running image was built
+          by the monorepo (its tag then carries a monorepo commit). Resolve with
+          `git ls-tree <monorepo-sha> openstoa`. Leave empty otherwise.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: emergency-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy OpenStoa ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      # The auth step exports the project id into every later step's
+      # environment, and gcloud prints the project number in service URLs.
+      # This repository's logs are public; mask both.
+      - name: Mask project identifiers
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          GCP_PROJECT_NUMBER: ${{ secrets.GCP_PROJECT_NUMBER }}
+        run: |
+          if [ -z "$GCP_PROJECT" ] || [ -z "$GCP_PROJECT_NUMBER" ]; then
+            echo "GCP_PROJECT and GCP_PROJECT_NUMBER secrets are required" >&2
+            exit 1
+          fi
+          echo "::add-mask::$GCP_PROJECT"
+          echo "::add-mask::$GCP_PROJECT_NUMBER"
+
+      - name: Refuse anything but main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Refusing to deploy from $GITHUB_REF; only refs/heads/main deploys." >&2
+            exit 1
+          fi
+
+      # Same rows as deploy.yml's "Set environment variables" step and its
+      # community build arg.
+      - name: Resolve environment row
+        id: env
+        env:
+          ENV: ${{ inputs.environment }}
+        run: |
+          case "$ENV" in
+            staging)
+              RELAY_URL=https://stg-relay.zkproofport.app
+              PUBLIC_URL=https://stg-community.zkproofport.app
+              MIN_INSTANCES=0
+              MAX_INSTANCES=5
+              ;;
+            production)
+              # Present so the row exists; enabled by the user on release day.
+              echo "Production deploys from this workflow are not enabled yet." >&2
+              echo "Deploy production through the monorepo's deploy.yml, or enable this row first." >&2
+              exit 1
+              ;;
+            *)
+              echo "Unknown environment '$ENV'. Known: staging, production." >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "ENV=$ENV"
+            echo "RELAY_URL=$RELAY_URL"
+            echo "PUBLIC_URL=$PUBLIC_URL"
+            echo "MIN_INSTANCES=$MIN_INSTANCES"
+            echo "MAX_INSTANCES=$MAX_INSTANCES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record source commit
+        id: src
+        run: echo "SHA=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Refuse to roll back the running service
+        env:
+          SERVICE: proofport-community-${{ steps.env.outputs.ENV }}
+          REGION: ${{ secrets.GCP_REGION }}
+          DEPLOYED_OPENSTOA_SHA: ${{ inputs.deployed_openstoa_sha }}
+          SHA: ${{ steps.src.outputs.SHA }}
+        run: |
+          IMAGE=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(spec.template.spec.containers[0].image)')
+          TAG_SHA=$(printf '%s' "$IMAGE" | sed -n 's/.*:[a-z]*-\([0-9a-f]\{40\}\)$/\1/p')
+          if [ -z "$TAG_SHA" ]; then
+            echo "Running image tag carries no commit; cannot check ancestry." >&2
+            exit 1
+          fi
+          if git cat-file -e "${TAG_SHA}^{commit}" 2>/dev/null; then
+            RUNNING="$TAG_SHA"
+            echo "Running image was built by this workflow from $RUNNING"
+          elif [ -n "$DEPLOYED_OPENSTOA_SHA" ]; then
+            RUNNING="$DEPLOYED_OPENSTOA_SHA"
+            echo "Running image was built by the monorepo ($TAG_SHA); OpenStoa commit given as $RUNNING"
+          else
+            echo "Running image tag $TAG_SHA is not a commit of this repository (a monorepo build)." >&2
+            echo "Pass deployed_openstoa_sha = git ls-tree $TAG_SHA openstoa." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$RUNNING" "$SHA"; then
+            echo "Running OpenStoa $RUNNING is not an ancestor of $SHA; deploying would drop it." >&2
+            exit 1
+          fi
+          echo "OK: $RUNNING is contained in $SHA"
+
+      # The secret variables and the Cloud SQL instance are kept from the
+      # running service (see the header). Refuse to deploy if any is missing,
+      # since nothing here could put it back.
+      - name: Check the running service carries the kept settings
+        env:
+          SERVICE: proofport-community-${{ steps.env.outputs.ENV }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          DESC=$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json)
+          MISSING=""
+          for NAME in DATABASE_URL REDIS_URL COMMUNITY_JWT_SECRET R2_ACCOUNT_ID R2_ACCESS_KEY_ID \
+                      R2_SECRET_ACCESS_KEY R2_BUCKET_NAME R2_PUBLIC_URL RESEND_API_KEY \
+                      RECORD_BOARD_ADDRESS RECORD_SERVICE_PRIVATE_KEY BASE_SEPOLIA_RPC_URL \
+                      GEMINI_API_KEY OPENAI_API_KEY FCM_SERVICE_ACCOUNT; do
+            if ! printf '%s' "$DESC" | jq -e --arg n "$NAME" \
+                '[.spec.template.spec.containers[0].env[]? | select(.name == $n)] | length == 1' >/dev/null; then
+              MISSING="$MISSING $NAME"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "The service lacks:$MISSING" >&2
+            exit 1
+          fi
+          SQL=$(printf '%s' "$DESC" | jq -r '.spec.template.metadata.annotations["run.googleapis.com/cloudsql-instances"] // empty')
+          if [ -z "$SQL" ]; then
+            echo "The service has no Cloud SQL instance attached." >&2
+            exit 1
+          fi
+          echo "Kept settings present (15 variables, Cloud SQL instance attached)."
+
+      - name: Configure Docker for Artifact Registry
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Community image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.prod
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.GCP_ARTIFACT_REGISTRY }}/proofport-community:${{ steps.env.outputs.ENV }}-${{ steps.src.outputs.SHA }}
+            ${{ secrets.GCP_ARTIFACT_REGISTRY }}/proofport-community:${{ steps.env.outputs.ENV }}-latest
+          build-args: |
+            NEXT_PUBLIC_RELAY_URL=${{ steps.env.outputs.RELAY_URL }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.src.outputs.SHA }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # --update-env-vars, not --set-env-vars: the secret variables already on
+      # the service are kept (see the header).
+      - name: Deploy Community to Cloud Run
+        env:
+          SERVICE: proofport-community-${{ steps.env.outputs.ENV }}
+          REGION: ${{ secrets.GCP_REGION }}
+          IMAGE: ${{ secrets.GCP_ARTIFACT_REGISTRY }}/proofport-community:${{ steps.env.outputs.ENV }}-${{ steps.src.outputs.SHA }}
+          ENV: ${{ steps.env.outputs.ENV }}
+          MIN_INSTANCES: ${{ steps.env.outputs.MIN_INSTANCES }}
+          MAX_INSTANCES: ${{ steps.env.outputs.MAX_INSTANCES }}
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --region "$REGION" \
+            --image "$IMAGE" \
+            --platform managed \
+            --port 3200 \
+            --cpu 1 \
+            --memory 1Gi \
+            --min-instances "$MIN_INSTANCES" \
+            --max-instances "$MAX_INSTANCES" \
+            --allow-unauthenticated \
+            --update-env-vars "^;;^NODE_ENV=production;;APP_ENV=${ENV};;REQUIRE_PAYMENT_TX=false;;PUSH_MODE=ciphertext" \
+            --vpc-connector proofport-vpc \
+            --vpc-egress private-ranges-only \
+            --quiet
+
+      - name: Check the new revision still carries the kept settings
+        env:
+          SERVICE: proofport-community-${{ steps.env.outputs.ENV }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          DESC=$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json)
+          MISSING=""
+          for NAME in DATABASE_URL REDIS_URL COMMUNITY_JWT_SECRET R2_ACCOUNT_ID R2_ACCESS_KEY_ID \
+                      R2_SECRET_ACCESS_KEY R2_BUCKET_NAME R2_PUBLIC_URL RESEND_API_KEY \
+                      RECORD_BOARD_ADDRESS RECORD_SERVICE_PRIVATE_KEY BASE_SEPOLIA_RPC_URL \
+                      GEMINI_API_KEY OPENAI_API_KEY FCM_SERVICE_ACCOUNT; do
+            if ! printf '%s' "$DESC" | jq -e --arg n "$NAME" \
+                '[.spec.template.spec.containers[0].env[]? | select(.name == $n)] | length == 1' >/dev/null; then
+              MISSING="$MISSING $NAME"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "The service lacks:$MISSING" >&2
+            exit 1
+          fi
+          SQL=$(printf '%s' "$DESC" | jq -r '.spec.template.metadata.annotations["run.googleapis.com/cloudsql-instances"] // empty')
+          if [ -z "$SQL" ]; then
+            echo "The service has no Cloud SQL instance attached." >&2
+            exit 1
+          fi
+          echo "Kept settings present (15 variables, Cloud SQL instance attached)."
+
+      - name: Verify revision and health
+        env:
+          SERVICE: proofport-community-${{ steps.env.outputs.ENV }}
+          REGION: ${{ secrets.GCP_REGION }}
+          SHA: ${{ steps.src.outputs.SHA }}
+          ENV: ${{ steps.env.outputs.ENV }}
+          PUBLIC_URL: ${{ steps.env.outputs.PUBLIC_URL }}
+        run: |
+          REVISION=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+          TRAFFIC=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(status.traffic[0].revisionName,status.traffic[0].percent)')
+          TEMPLATE_IMAGE=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(spec.template.spec.containers[0].image)')
+          REVISION_DIGEST=$(gcloud run revisions describe "$REVISION" --region "$REGION" \
+            --format='value(status.imageDigest)' | sed 's/.*@//')
+          echo "Revision: $REVISION"
+          echo "Traffic:  $TRAFFIC"
+          echo "Digest:   $REVISION_DIGEST"
+          case "$TEMPLATE_IMAGE" in
+            *":${ENV}-${SHA}") ;;
+            *) echo "Service template image tag is not ${ENV}-${SHA}" >&2; exit 1 ;;
+          esac
+          case "$TRAFFIC" in
+            "${REVISION}"*100) ;;
+            *) echo "Traffic is not 100% on $REVISION: $TRAFFIC" >&2; exit 1 ;;
+          esac
+          REPO_PATH=${TEMPLATE_IMAGE%:*}
+          HOST=${REPO_PATH%%/*}
+          NAME=${REPO_PATH#*/}
+          TOKEN=$(gcloud auth print-access-token)
+          INDEX=$(curl -fsS -D - -H "Authorization: Bearer $TOKEN" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
+            "https://${HOST}/v2/${NAME}/manifests/${ENV}-${SHA}")
+          if ! printf '%s' "$INDEX" | grep -qi "$REVISION_DIGEST"; then
+            echo "Revision digest $REVISION_DIGEST is not in tag ${ENV}-${SHA}" >&2
+            exit 1
+          fi
+          echo "Revision $REVISION runs tag ${ENV}-${SHA}"
+          # /api/health answers before the database is read; /api/stats reads it.
+          for i in $(seq 1 10); do
+            HEALTH=$(curl -fsS -m 10 "${PUBLIC_URL}/api/health" || true)
+            STATS=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "${PUBLIC_URL}/api/stats" || echo 000)
+            if printf '%s' "$HEALTH" | grep -q '"status":"ok"' && [ "$STATS" = "200" ]; then
+              echo "Health: $HEALTH"
+              echo "Stats:  HTTP $STATS"
+              break
+            fi
+            if [ "$i" = 10 ]; then
+              echo "${PUBLIC_URL} did not answer: health '$HEALTH', stats HTTP $STATS" >&2
+              exit 1
+            fi
+            sleep 6
+          done
+          {
+            echo "### OpenStoa deployed (emergency workflow)"
+            echo ""
+            echo "- Environment: \`${ENV}\`"
+            echo "- OpenStoa commit: \`${SHA}\`"
+            echo "- Revision: \`${REVISION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
