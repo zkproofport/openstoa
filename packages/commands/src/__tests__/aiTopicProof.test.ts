@@ -5,6 +5,10 @@
  * The subprocess is controlled here: no real prover, OAuth login, or charge.
  */
 import { spawn as nodeSpawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveAiTopicProverPath, spawnAiTopicProver, startAiTopicProof } from '../aiTopicProof';
@@ -117,5 +121,36 @@ describe('AI Google login adapter contract',()=>{
  it('never carries login-only metadata into topic proof results',async()=>{
   const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},h.deps);complete(h.child,214,{verification:{chainId:8453},paymentTxHash:'payment',attestation:{document:'tee'}});
   expect(await handle.wait()).toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(214*32)});
+ });
+});
+
+describe('Coinbase KYC v2 from the installed prover',()=>{
+ /** Node's lookup, from a file up through each node_modules: the sdk's exports offer no require condition to resolve with. */
+ function packageDir(from:string,name:string):string{
+  for(let dir=dirname(from);;dir=dirname(dir)){
+   const candidate=join(dir,'node_modules',name);
+   if(existsSync(join(candidate,'package.json')))return candidate;
+   if(dirname(dir)===dir)throw new Error(`${name} is not installed above ${from}`);
+  }
+ }
+ it.each([128,192,194])('a KYC proof with %i public inputs is refused: v2 has exactly 193 (128 is v1)',async(count)=>{
+  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);complete(h.child,count);
+  await expect(handle.wait()).rejects.toMatchObject({code:'invalid_output'});
+ });
+ it('a v1 KYC proof packed as one hex string is refused too',async()=>{
+  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);
+  h.child.stdout.emit('data',JSON.stringify({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*128)}));h.child.emit('close',0);
+  await expect(handle.wait()).rejects.toMatchObject({code:'invalid_output'});
+ });
+ it('the installed prover proves Coinbase KYC v2, and the adapter accepts exactly what it emits',async()=>{
+  const prover=resolveAiTopicProverPath();
+  const sdkDir=packageDir(prover,'@zkproofport-ai/sdk');
+  const sdk=await import(pathToFileURL(join(sdkDir,'dist','index.js')).href) as {circuitBindsAction?:(id:string)=>boolean};
+  // v2 binds an optional EIP-712 action; every release that proves v1 has no such export or answers false.
+  expect(sdk.circuitBindsAction?.('coinbase_attestation')).toBe(true);
+  const core=createRequire(join(sdkDir,'package.json'))('@zkproofport-app/core') as {COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT?:number};
+  expect(core.COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT).toBe(193);
+  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);complete(h.child,core.COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT);
+  await expect(handle.wait()).resolves.toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*193)});
  });
 });
