@@ -1,9 +1,19 @@
 import { ethers } from 'ethers';
-import { deriveOidcNonceBinding, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, OIDC_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, deriveOidcNonceBinding, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, OIDC_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
 export const proofField = (n: number | bigint) => '0x' + n.toString(16).padStart(64, '0');
-export function coinbaseIssuerInputs(length = 128): string[] {
+/**
+ * Coinbase issuer inputs carrying the published Coinbase signer root.
+ * 193 = Coinbase KYC v2: root at 96-127 and attested_at (192) = the clock,
+ * which core holds to a 15-minute window. 150 = Coinbase Country: root at
+ * 32-63. Any other length keeps the root at 32 (a shape core refuses).
+ */
+export function coinbaseIssuerInputs(length = COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT): string[] {
   const inputs = Array(length).fill(proofField(0));
-  Buffer.from('b60da9815c76261b61a1e91f199de5845fc171a6500e57c4240d2ac61d85e2bf', 'hex').forEach((n, i) => inputs[32 + i] = proofField(n));
+  const rootStart = length === COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT ? COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT.MERKLE_ROOT_START : 32;
+  Buffer.from('b60da9815c76261b61a1e91f199de5845fc171a6500e57c4240d2ac61d85e2bf', 'hex').forEach((n, i) => inputs[rootStart + i] = proofField(n));
+  if (length === COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT) {
+    inputs[COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT.ATTESTED_AT] = proofField(Math.floor(Date.now() / 1000));
+  }
   return inputs;
 }
 // `issuer` is the template Microsoft attaches to multi-tenant keys; core

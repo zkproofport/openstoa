@@ -103,9 +103,14 @@ export async function requireTopicProof(
   }
 
   try {
-    const { proof, publicInputs } = data;
+    const { proof, publicInputs, signerVariant } = data;
     if (typeof proof !== 'string' || proof.length > 131074 || !/^0x(?:[0-9a-fA-F]{2})+$/.test(proof)) {
       throw new Error('Invalid proof');
+    }
+    // Which circuit package made the proof, exactly as its result said; core
+    // refuses a value the circuit has no package for. Absent = standard.
+    if (signerVariant !== undefined && (typeof signerVariant !== 'string' || signerVariant.length > 32)) {
+      throw new Error('Invalid signerVariant');
     }
     const count = PUBLIC_INPUT_COUNTS[circuit as keyof typeof PUBLIC_INPUT_COUNTS];
     let inputs: string[];
@@ -146,7 +151,7 @@ export async function requireTopicProof(
         oidcRequest = bound;
       }
     }
-    const verification = await verifyTrustedTopicProof(circuit, proof, inputs, undefined, oidcRequest);
+    const verification = await verifyTrustedTopicProof(circuit, proof, inputs, undefined, oidcRequest, signerVariant);
     if (!verification.valid) throw new Error('Proof verification failed');
     await saveVerificationCache(userId, circuitToCacheType(circuit), {
       domain: verifiedDomain, topicScope: scopeHash, countryPredicate: predicate, provider,

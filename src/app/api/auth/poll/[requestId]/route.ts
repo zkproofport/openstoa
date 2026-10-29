@@ -177,6 +177,10 @@ export async function GET(
         proof: result.proof,
         publicInputs,
         circuit,
+        // Which circuit package made the proof (absent = standard). Send it
+        // back unchanged with the proof to the topic gate, which verifies
+        // against that package's pinned verifier.
+        ...(result.signerVariant ? { signerVariant: result.signerVariant } : {}),
         // Derived only after cryptographic verification; never relay metadata.
         scopeHash: extractScope(publicInputs, circuit),
       });

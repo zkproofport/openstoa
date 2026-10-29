@@ -5,6 +5,7 @@ import {
   extractDomainFromPublicInputs,
   verifyProofOnChain,
   RPC_ENDPOINTS,
+  COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,
   COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
   OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT,
   type OidcRequestContext,
@@ -59,7 +60,8 @@ export const VERIFICATION_CHAINS: Record<string, Record<VerifiableCircuit, numbe
 // proof, and is refused before an RPC call. Kept equal to core's own numbers
 // by a test (SIGNER_ROOT_LAYOUTS, OIDC_PUBLIC_INPUT_COUNT).
 export const PUBLIC_INPUT_COUNTS: Record<VerifiableCircuit, number> = {
-  coinbase_attestation: 128,
+  // Coinbase KYC v2 (193). A v1 proof (128) is refused here and by core.
+  coinbase_attestation: COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,
   coinbase_country_attestation: 150,
   oidc_domain_attestation: 214,
 };
@@ -86,6 +88,11 @@ export interface ClaimedVerifier {
  * (nonce_mode 1, made by the ZKProofport app) is refused without it: core
  * checks the binding only against a request it is given, so verifying one
  * without its request would accept a proof made for any other request.
+ *
+ * `signerVariant` is which circuit package made the proof, as its result says
+ * (`standard`, `android`, `android_factory`; absent means `standard`). It only
+ * selects among the verifiers core pins for the circuit; core refuses a value
+ * the circuit has no package for, and a claim the proof's length contradicts.
  */
 export async function verifyTrustedTopicProof(
   circuit: string,
@@ -93,6 +100,7 @@ export async function verifyTrustedTopicProof(
   publicInputs: string[],
   claimed?: ClaimedVerifier,
   oidcRequest?: OidcRequestContext,
+  signerVariant?: string,
 ): Promise<{ valid: boolean; error?: string }> {
   const environment = process.env.APP_ENV;
   if (!environment || !Object.hasOwn(VERIFICATION_CHAINS, environment)) {
@@ -114,6 +122,9 @@ export async function verifyTrustedTopicProof(
   if (typeof proof !== 'string' || !/^0x[0-9a-fA-F]+$/.test(proof)) {
     return { valid: false, error: 'Proof is not hex' };
   }
+  if (signerVariant !== undefined && typeof signerVariant !== 'string') {
+    return { valid: false, error: 'signerVariant must be a string' };
+  }
   if (
     known === 'oidc_domain_attestation'
     && oidcRequest === undefined
@@ -130,7 +141,10 @@ export async function verifyTrustedTopicProof(
       new ethers.JsonRpcProvider(rpcUrl),
       { chainId },
       claimed,
-      known === 'oidc_domain_attestation' && oidcRequest !== undefined ? { request: oidcRequest } : undefined,
+      {
+        ...(known === 'oidc_domain_attestation' && oidcRequest !== undefined ? { request: oidcRequest } : {}),
+        ...(signerVariant !== undefined ? { signerVariant } : {}),
+      },
     );
   } catch {
     return { valid: false, error: 'Proof verification failed' };
@@ -160,8 +174,10 @@ export async function verifyProofFromRelay(
     ? result.publicInputs
     : normalizePublicInputs(result.publicInputs as unknown as string);
   const claimed = { verifierAddress: result.verifierAddress, chainId: result.chainId };
+  // Which package made the proof; passed through unchanged, never guessed.
+  const signerVariant = result.signerVariant ?? undefined;
   if (result.circuit !== 'oidc_domain_attestation') {
-    return verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed);
+    return verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, undefined, signerVariant);
   }
   const recorded = await relayRequestFor(requestId);
   if (!recorded) {
@@ -171,7 +187,7 @@ export async function verifyProofFromRelay(
     return { valid: false, error: `Relay request ${requestId} was created for ${recorded.circuit}, not ${result.circuit}` };
   }
   const request = { scope: recorded.scope, requestId };
-  const verification = await verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, request);
+  const verification = await verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, request, signerVariant);
   return verification.valid ? { ...verification, request } : verification;
 }
 

@@ -24,7 +24,7 @@ import { POST as createTopic } from '@/app/api/topics/route';
 import { POST as inviteJoin } from '@/app/api/topics/join/[inviteCode]/route';
 const id='12345678-1234-4234-8234-123456789abc';
 const field=(n:number)=>'0x'+n.toString(16).padStart(64,'0');
-function inputs(scope:string, country?:string[]) { const p=coinbaseIssuerInputs(country?150:128);const start=country?86:64;Buffer.from(computeScopeHash(scope).slice(2),'hex').forEach((n,i)=>p[start+i]=field(n));if(country){p[84]=field(country.length);p[85]=field(1);Buffer.from(country.join('')).forEach((n,i)=>p[64+i]=field(n));}return p; }
+function inputs(scope:string, country?:string[]) { const p=coinbaseIssuerInputs(country?150:193);const start=country?86:128;Buffer.from(computeScopeHash(scope).slice(2),'hex').forEach((n,i)=>p[start+i]=field(n));if(country){p[84]=field(country.length);p[85]=field(1);Buffer.from(country.join('')).forEach((n,i)=>p[64+i]=field(n));}return p; }
 async function join(body:unknown={}) {return POST(new NextRequest('http://localhost/api/topics/'+id+'/join',{method:'POST',body:JSON.stringify(body)}),{params:Promise.resolve({topicId:id})});}
 beforeEach(()=>{clearOidcKeyCache();vi.stubGlobal('fetch',vi.fn(jwksFetch()));vi.stubEnv('APP_ENV','staging');state.session={userId:'alice'};state.topic={id,visibility:'public',proofType:'kyc'};state.member=null;state.values.mockReset().mockImplementation(()=>({returning:async()=>[state.topic]}));state.update.mockReset();state.verify.mockReset().mockResolvedValue(true);state.cache.clear();});
 describe('topic proof boundary',()=>{

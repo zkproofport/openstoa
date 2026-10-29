@@ -141,7 +141,7 @@ export default function InviteJoinPage() {
     };
   }, [inviteCode, absorbHistory]);
 
-  async function handleJoin(proofData?: {proof: string; publicInputs: string[]}) {
+  async function handleJoin(proofData?: {proof: string; publicInputs: string[]; signerVariant?: string}) {
     if (joiningRef.current || !topic) return;
     joiningRef.current = true;
     setJoining(true);
@@ -343,7 +343,7 @@ export default function InviteJoinPage() {
                 countryList={proofRequirement.allowedCountries ?? undefined}
                 isIncluded={proofRequirement.type === 'country' ? true : undefined}
                 provider={proofRequirement.type === 'google_workspace' ? 'google' : proofRequirement.type === 'microsoft_365' ? 'microsoft' : provider || undefined}
-                onProofData={({proof, publicInputs}) => { void handleJoin({proof, publicInputs}); }}
+                onProofData={({proof, publicInputs, signerVariant}) => { void handleJoin({proof, publicInputs, ...(signerVariant ? {signerVariant} : {})}); }}
                 onCancel={() => setProofRequirement(null)}
               />}
             </div>

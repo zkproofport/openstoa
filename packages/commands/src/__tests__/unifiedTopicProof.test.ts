@@ -15,7 +15,7 @@ function fixture(kind:typeof kinds[number],status=402){
   if(path===original)return new Response(JSON.stringify(businessStatus===402?proofRequired:businessStatus>=400?{error:'not allowed'}:{topic:{id:'created'},joined:true,topicId:'t1'}),{status:businessStatus});
   if(path==='/api/auth/challenge')return Response.json({scope});
   if(path==='/api/auth/proof-request')return Response.json({requestId:'request-1',deepLink:'zkproofport://proof-request?data=x',scope,circuitType:'coinbase_attestation'});
-  if(path==='/api/auth/poll/request-1')return Response.json({status:'completed',circuit:'coinbase_attestation',scopeHash:'0x54397129f0b3b0e5c469a48458023d6386775b7f54c34ae43fb6b09fc47d4ecf',proof:'0xaabb',publicInputs:Array(128).fill('0x'+'01'.padStart(64,'0'))});
+  if(path==='/api/auth/poll/request-1')return Response.json({status:'completed',circuit:'coinbase_attestation',scopeHash:'0x54397129f0b3b0e5c469a48458023d6386775b7f54c34ae43fb6b09fc47d4ecf',proof:'0xaabb',publicInputs:Array(193).fill('0x'+'01'.padStart(64,'0'))});
   throw new Error('Unexpected test route '+path);
  });
  const chat=new ChatClient({baseUrl:'https://openstoa.test',token:'session-fixture',apiKey:'osk_fixture',fetch:fetch as typeof globalThis.fetch});

@@ -77,7 +77,7 @@ const CIRCUITS = Object.keys(PUBLIC_INPUT_COUNTS) as VerifiableCircuit[];
 const ENVIRONMENTS = ['production', 'staging', 'development', 'local'];
 
 function validInputs(circuit: VerifiableCircuit): string[] {
-  if (circuit === 'coinbase_attestation') return coinbaseIssuerInputs(128);
+  if (circuit === 'coinbase_attestation') return coinbaseIssuerInputs(193);
   if (circuit === 'coinbase_country_attestation') return coinbaseIssuerInputs(150);
   if (circuit === 'oidc_domain_attestation') return oidcIssuerInputs();
   throw new Error(`No fixture for circuit '${circuit}'. Known: ${CIRCUITS.join(', ')}.`);
@@ -107,15 +107,15 @@ describe('environment and circuit select core\'s pinned verifier', () => {
     expect(state.calls[0].to).toBe(getPinnedVerifier(circuit, chainId).address);
   });
 
-  it('production Coinbase KYC is Base mainnet, staging is the beta.19 Base Sepolia verifier', async () => {
+  it('production Coinbase KYC is the Base mainnet v2 verifier, staging the Base Sepolia v2 one', async () => {
     vi.stubEnv('APP_ENV', 'production');
     await verifyTrustedTopicProof('coinbase_attestation', '0xab', validInputs('coinbase_attestation'));
     vi.stubEnv('APP_ENV', 'staging');
     await verifyTrustedTopicProof('coinbase_attestation', '0xab', validInputs('coinbase_attestation'));
     expect(state.providers).toEqual(['https://mainnet.base.org', 'https://sepolia.base.org']);
     expect(state.calls.map((c) => c.to)).toEqual([
-      '0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382',
-      '0x42d165a48256ae184e1de4e7e6372e870e2bc883',
+      '0x6fc22d3576fb70457d1529b3f70f711a3cba7a7f',
+      '0x1885aa2283db21ad0fc63a2df98efe92f31908e6',
     ]);
   });
 
@@ -167,7 +167,7 @@ describe('public inputs and proof bytes are checked before any network call', ()
 
 describe('issuer anchors are checked by core before the contract', () => {
   it('a Coinbase proof over a signer root of the prover\'s choosing is refused', async () => {
-    const result = await verifyTrustedTopicProof('coinbase_attestation', '0xab', Array(128).fill(proofField(0)));
+    const result = await verifyTrustedTopicProof('coinbase_attestation', '0xab', Array(193).fill(proofField(0)));
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/signer-list root/);
     expect(state.calls).toHaveLength(0);
@@ -238,14 +238,14 @@ describe('the relay\'s verifier claim is compared, never used', () => {
   });
 
   it('a differing chainId is refused without a call', async () => {
-    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x42d165a48256Ae184e1dE4e7E6372E870E2bC883', chainId: 8453 }), 'r');
+    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x1885aA2283DB21ad0fc63A2Df98efe92F31908E6', chainId: 8453 }), 'r');
     expect(result.valid).toBe(false);
     expect(state.calls).toHaveLength(0);
   });
 
   it('the pinned address in checksum case is accepted', async () => {
-    expect(await verifyProofFromRelay(relayResult({ verifierAddress: '0x42d165a48256Ae184e1dE4e7E6372E870E2bC883', chainId: 84532 }), 'r')).toEqual({ valid: true });
-    expect(state.calls[0].to).toBe('0x42d165a48256ae184e1de4e7e6372e870e2bc883');
+    expect(await verifyProofFromRelay(relayResult({ verifierAddress: '0x1885aA2283DB21ad0fc63A2Df98efe92F31908E6', chainId: 84532 }), 'r')).toEqual({ valid: true });
+    expect(state.calls[0].to).toBe('0x1885aa2283db21ad0fc63a2df98efe92f31908e6');
   });
 
   it('no claim at all is accepted and verified on the pinned verifier', async () => {

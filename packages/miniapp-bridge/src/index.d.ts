@@ -15,6 +15,12 @@ export interface ProofResult {
   proof: string;
   publicInputs: string[];
   numPublicInputs?: number;
+  /**
+   * Which circuit package made the proof (`standard`, `android`,
+   * `android_factory`); absent means `standard`. Send it with the proof
+   * unchanged: the server verifies against that package's verifier.
+   */
+  signerVariant?: string;
 }
 
 export interface ProofInputs {

@@ -171,6 +171,15 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *                 description: >-
  *                   Public inputs of the proof as 0x-prefixed hex strings (one element per field).
  *                   Layout depends on the circuit — see `proofport-cli`.
+ *               signerVariant:
+ *                 type: string
+ *                 enum: [standard, android, android_factory]
+ *                 description: >-
+ *                   Which circuit package made the proof, copied unchanged from the proof result's
+ *                   `signerVariant` (the mobile app reports `android` or `android_factory` for an Android
+ *                   phone's proof). Omit it for a proof whose result has none, including every proof from
+ *                   the AI prover: omitted means `standard`. The server verifies against that package's
+ *                   pinned verifier and refuses a value the circuit has no package for.
  *               image:
  *                 type: string
  *                 description: >-
@@ -589,7 +598,7 @@ export async function POST(request: NextRequest) {
     }
     const effectiveProofType = proofType || (requiresCountryProof ? 'country' : 'none');
 
-    const proofFailure = await requireTopicProof(session.userId, {proofType:effectiveProofType, requiredDomain, allowedCountries, countryMode:body.countryMode}, {proof, publicInputs});
+    const proofFailure = await requireTopicProof(session.userId, {proofType:effectiveProofType, requiredDomain, allowedCountries, countryMode:body.countryMode}, {proof, publicInputs, signerVariant: body.signerVariant});
     if (proofFailure) return proofFailure;
 
     const inviteCode = crypto.randomBytes(8).toString('hex');

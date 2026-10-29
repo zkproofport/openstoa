@@ -41,6 +41,7 @@ export default function JoinPage() {
   const [proofData, setProofData] = useState<{
     proof: string;
     publicInputs: string[];
+    signerVariant?: string;
   } | null>(null);
   // For workspace (either) topics, joiner picks their provider — null until selected
   const [joinProvider, setJoinProvider] = useState<'google' | 'microsoft' | null>(null);
@@ -90,6 +91,7 @@ export default function JoinPage() {
       if (proofData) {
         body.proof = proofData.proof;
         body.publicInputs = proofData.publicInputs;
+        if (proofData.signerVariant) body.signerVariant = proofData.signerVariant;
       }
 
       const res = await apiFetch(`/api/topics/${topicInfo.id}/join`, {
@@ -305,8 +307,8 @@ export default function JoinPage() {
                     effectiveProofType === 'workspace' ? t('joinPage.scan.workspace', { provider: joinProvider === 'microsoft' ? t('joinPage.providerMicrosoft') : t('joinPage.providerGoogle') }) :
                     t('joinPage.scan.default')
                   }
-                  onProofData={({ proof, publicInputs }) => {
-                    setProofData({ proof, publicInputs });
+                  onProofData={({ proof, publicInputs, signerVariant }) => {
+                    setProofData({ proof, publicInputs, signerVariant });
                     setProofDone(true);
                   }}
                 />

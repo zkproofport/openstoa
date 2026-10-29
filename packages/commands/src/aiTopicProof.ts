@@ -54,7 +54,7 @@ const MAX_STDOUT_BYTES = 256 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
 const MAX_STDERR_LINE = 4096;
 const INPUT_COUNTS: Record<AiTopicProofType, number> = {
-  google_login: 214, kyc: 128, country: 150, google_workspace: 214, microsoft_365: 214, workspace: 214,
+  google_login: 214, kyc: 193, country: 150, google_workspace: 214, microsoft_365: 214, workspace: 214,
 };
 const CHILD_ENV_KEYS = [
   'PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SystemRoot', 'APPDATA',

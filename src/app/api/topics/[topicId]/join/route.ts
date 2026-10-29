@@ -91,6 +91,15 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                   Public inputs of the proof as an array of 0x-prefixed hex strings (one
  *                   element per field). The shape varies per circuit — see the circuit's
  *                   public-input layout in `proofport-cli`.
+ *               signerVariant:
+ *                 type: string
+ *                 enum: [standard, android, android_factory]
+ *                 description: >-
+ *                   Which circuit package made the proof, copied unchanged from the proof result's
+ *                   `signerVariant` (the mobile app reports `android` or `android_factory` for an Android
+ *                   phone's proof). Omit it for a proof whose result has none, including every proof from
+ *                   the AI prover: omitted means `standard`. The server verifies against that package's
+ *                   pinned verifier and refuses a value the circuit has no package for.
  *     responses:
  *       201:
  *         description: Joined public topic immediately

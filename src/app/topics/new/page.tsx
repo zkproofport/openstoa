@@ -47,6 +47,7 @@ export default function NewTopicPage() {
     proof: string;
     publicInputs: string[];
     circuit: string;
+    signerVariant?: string;
   } | null>(null);
   const [proofDone, setProofDone] = useState(false);
   // Key to force ProofGate remount when proof params change
@@ -153,7 +154,7 @@ export default function NewTopicPage() {
           image: imageUrl,
           visibility,
           chatArchiveRetentionDays: archiveRetentionDays,
-          ...(proofData ? { proof: proofData.proof, publicInputs: proofData.publicInputs, circuit: proofData.circuit } : {}),
+          ...(proofData ? { proof: proofData.proof, publicInputs: proofData.publicInputs, circuit: proofData.circuit, ...(proofData.signerVariant ? { signerVariant: proofData.signerVariant } : {}) } : {}),
         }),
       });
 
@@ -691,8 +692,8 @@ export default function NewTopicPage() {
                       autoStart={false}
                       qrSize={200}
                       label={t('newTopicPage.scan.country')}
-                      onProofData={({ proof, publicInputs, circuit }) => {
-                        setProofData({ proof, publicInputs, circuit });
+                      onProofData={({ proof, publicInputs, circuit, signerVariant }) => {
+                        setProofData({ proof, publicInputs, circuit, signerVariant });
                         setProofDone(true);
                       }}
                     />
@@ -732,8 +733,8 @@ export default function NewTopicPage() {
                       autoStart={false}
                       qrSize={200}
                       label={t('newTopicPage.scan.kyc')}
-                      onProofData={({ proof, publicInputs, circuit }) => {
-                        setProofData({ proof, publicInputs, circuit });
+                      onProofData={({ proof, publicInputs, circuit, signerVariant }) => {
+                        setProofData({ proof, publicInputs, circuit, signerVariant });
                         setProofDone(true);
                       }}
                     />
@@ -923,8 +924,8 @@ export default function NewTopicPage() {
                             : proofType === 'workspace' ? (creatorProvider === 'microsoft' ? t('joinPage.providerMicrosoft') : t('joinPage.providerGoogle'))
                             : t('joinPage.providerGoogle'),
                         })}
-                        onProofData={({ proof, publicInputs, circuit }) => {
-                          setProofData({ proof, publicInputs, circuit });
+                        onProofData={({ proof, publicInputs, circuit, signerVariant }) => {
+                          setProofData({ proof, publicInputs, circuit, signerVariant });
                           setProofDone(true);
                         }}
                       />

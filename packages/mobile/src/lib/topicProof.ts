@@ -47,5 +47,9 @@ export async function generateTopicProof(
   if (!result.proof || !Array.isArray(result.publicInputs) || result.publicInputs.length === 0) {
     throw new Error('Proof generation did not return a complete proof');
   }
-  return { proof: result.proof, publicInputs: result.publicInputs };
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    ...(typeof result.signerVariant === 'string' ? { signerVariant: result.signerVariant } : {}),
+  };
 }

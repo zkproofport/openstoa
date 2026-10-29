@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { extractNullifier, extractScope, computeScopeHash, extractCountryList } from '@/lib/proof';
 import { ethers } from 'ethers';
 
-// Generate mock publicInputs: 128 hex strings for coinbase_attestation
+// Generate mock publicInputs: one field element per byte
 function generateMockPublicInputs(length: number): string[] {
   const inputs: string[] = [];
   for (let i = 0; i < length; i++) {
@@ -18,7 +18,7 @@ function generateMockWithKnownValues(
   nullifierBytes: number[],
   scopeBytes: number[],
 ): string[] {
-  const length = circuit === 'coinbase_attestation' ? 128 : 150;
+  const length = circuit === 'coinbase_attestation' ? 193 : 150;
   const inputs: string[] = new Array(length).fill(
     '0x' + '00'.padStart(64, '0'),
   );
@@ -27,8 +27,9 @@ function generateMockWithKnownValues(
   let scopeStart: number;
 
   if (circuit === 'coinbase_attestation') {
-    nullifierStart = 96;
-    scopeStart = 64;
+    // Coinbase KYC v2: scope 128-159, nullifier 160-191.
+    nullifierStart = 160;
+    scopeStart = 128;
   } else {
     nullifierStart = 118;
     scopeStart = 86;
@@ -86,14 +87,14 @@ describe('extractNullifier', () => {
   });
 
   it('should throw for unsupported circuit', () => {
-    const inputs = generateMockPublicInputs(128);
+    const inputs = generateMockPublicInputs(193);
     expect(() => extractNullifier(inputs, 'unknown_circuit')).toThrow(
       "Unknown circuit 'unknown_circuit' for nullifier extraction. Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation.",
     );
   });
 
   it.each(['mdl_kr_ownership', 'mdl_kr_age', 'mdl_kr_region'])('refuses the removed %s by name, for scope and nullifier', (circuit) => {
-    const inputs = generateMockPublicInputs(128);
+    const inputs = generateMockPublicInputs(193);
     const known = 'Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation.';
     expect(() => extractNullifier(inputs, circuit)).toThrow(`Unknown circuit '${circuit}' for nullifier extraction. ${known}`);
     expect(() => extractScope(inputs, circuit)).toThrow(`Unknown circuit '${circuit}' for scope extraction. ${known}`);
@@ -160,7 +161,7 @@ describe('extractScope', () => {
   });
 
   it('should throw for unsupported circuit', () => {
-    const inputs = generateMockPublicInputs(128);
+    const inputs = generateMockPublicInputs(193);
     expect(() => extractScope(inputs, 'unknown_circuit')).toThrow(
       "Unknown circuit 'unknown_circuit' for scope extraction. Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation.",
     );

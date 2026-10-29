@@ -26,7 +26,7 @@ interface ProofGateProps {
   /** Called when mode='login' and proof completes */
   onLogin?: (result: { requestId: string; nullifier?: string; needsNickname?: boolean }) => void;
   /** Called when mode='proof' and proof completes */
-  onProofData?: (result: { proof: string; publicInputs: string[]; circuit: string }) => void;
+  onProofData?: (result: { proof: string; publicInputs: string[]; circuit: string; signerVariant?: string }) => void;
 
   /** Label shown below the QR code */
   label?: string;
@@ -161,6 +161,7 @@ export default function ProofGate({
                 proof: pollData.proof,
                 publicInputs: pollData.publicInputs,
                 circuit: pollData.circuit ?? circuitType,
+                ...(typeof pollData.signerVariant === 'string' ? { signerVariant: pollData.signerVariant } : {}),
               });
             } else if (mode === 'login' && onLogin) {
               onLogin({
