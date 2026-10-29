@@ -56,32 +56,31 @@ describe('web locale omissions', () => {
     expect(android?.getAttribute('href')).toBe('https://play.google.com/store/apps/details?id=com.masselabs.zkproofport&hl=ko');
     expect(android?.textContent?.trim()).toBe(translate(locale, 'landingPage.proving.androidDownload'));
     expect(android?.getAttribute('target')).toBe('_blank');
+    const ios = doc.querySelector('a[href*="apps.apple.com"]');
+    expect(ios?.getAttribute('href')).toBe('https://apps.apple.com/kr/app/zkproofport/id6803903114');
+    expect(ios?.textContent?.trim()).toBe(translate(locale, 'landingPage.proving.iosDownload'));
+    expect(ios?.getAttribute('target')).toBe('_blank');
+    expect(ios?.getAttribute('rel')).toContain('noopener');
     expect(doc.body.textContent).toContain(translate(locale, 'landingPage.proving.installStatus'));
   });
 
-  it('collects email for iOS only and keeps the Android download available during login', async () => {
+  it.each(['en', 'ko'] as const)('offers both store downloads during login without email signup in %s', async (locale) => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
     apiFetch.mockResolvedValue({ ok: true });
     container = document.createElement('div');
     root = createRoot(container);
-    await act(async () => root!.render(<I18nProvider initialLocale="en"><LandingPage /></I18nProvider>));
-    const button = (key: string) => [...container!.querySelectorAll('button')].find(b => b.textContent?.trim() === translate('en', key))!;
+    await act(async () => root!.render(<I18nProvider initialLocale={locale}><LandingPage /></I18nProvider>));
+    const button = (key: string) => [...container!.querySelectorAll('button')].find(b => b.textContent?.trim() === translate(locale, key))!;
     await act(async () => button('landingPage.human.cta').click());
     expect(container.querySelectorAll('a[href*="play.google.com/store/apps/details"]')).toHaveLength(2);
-    await act(async () => button('landingPage.proving.iosSignup').click());
-    const dialog = container.querySelector('[role="dialog"]')!;
-    expect(dialog.textContent).toContain(translate('en', 'landingPage.beta.intro'));
-    expect(dialog.textContent).not.toContain('Android');
-    const email = dialog.querySelector('input[type="email"]')!;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(email, 'reader@example.com');
-      email.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await act(async () => button('landingPage.beta.requestInvite').click());
-    expect(apiFetch).toHaveBeenCalledWith('/api/beta-signup', expect.objectContaining({
-      method: 'POST', body: JSON.stringify({ email: 'reader@example.com', organization: '', platform: 'iOS' }),
-    }));
-    expect(dialog.textContent).toContain(translate('en', 'landingPage.beta.successMessage'));
+    const iosLinks = [...container.querySelectorAll('a[href*="apps.apple.com"]')];
+    expect(iosLinks).toHaveLength(2);
+    for (const link of iosLinks) {
+      expect(link.getAttribute('href')).toBe('https://apps.apple.com/kr/app/zkproofport/id6803903114');
+      expect(link.textContent?.trim()).toBe(translate(locale, 'landingPage.proving.iosDownload'));
+    }
+    expect(container.querySelector('input[type="email"]')).toBeNull();
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
   it('lets a signed-out visitor switch the landing page language and persists their choice', () => {

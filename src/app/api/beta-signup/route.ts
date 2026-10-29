@@ -13,8 +13,8 @@ const ROUTE = '/api/beta-signup';
  * /api/beta-signup:
  *   post:
  *     tags: [Auth]
- *     summary: Request iOS app availability information
- *     description: Submit an email to receive ZKProofport iOS app availability information. Android is available directly on Google Play without an application. The platform field is retained for compatibility with older clients.
+ *     summary: Legacy app availability inquiry
+ *     description: Legacy inquiry endpoint retained for older clients. Both iOS and Android are available directly from the App Store and Google Play without signup.
  *     operationId: betaSignup
  *     security: []
  *     requestBody:
@@ -89,7 +89,9 @@ export async function POST(req: NextRequest) {
 - Platform: ${resolvedPlatform}
 - Source: OpenStoa community login page
 
-For iOS, notify the requester when the app becomes available. Android is already available on Google Play and requires no beta signup or tester invitation: https://play.google.com/store/apps/details?id=com.masselabs.zkproofport</div>
+Both iOS and Android are available without signup or tester invitations. Share the appropriate download link:
+iOS: https://apps.apple.com/kr/app/zkproofport/id6803903114
+Android: https://play.google.com/store/apps/details?id=com.masselabs.zkproofport</div>
     </div>
     <div style="padding:24px 40px;background:#f9fafb;">
       <div style="font-size:12px;color:#9ca3af;">${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}</div>

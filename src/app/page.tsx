@@ -1,8 +1,6 @@
 'use client';
 
-import { apiFetch } from '@/lib/apiFetch';
-import { localizeApiError } from '@/lib/i18n/errorMessages';
-import { useState, useEffect, Suspense, useRef, useCallback } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProofGate from '@/components/ProofGate';
@@ -11,6 +9,7 @@ import { useTranslation } from '@/lib/i18n/I18nProvider';
 import { safeReturnTo, withHash } from '@/lib/returnTo';
 import styles from './landing.module.css';
 
+const IOS_APP_URL = 'https://apps.apple.com/kr/app/zkproofport/id6803903114';
 const ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=com.masselabs.zkproofport&hl=ko';
 
 type Stage = 'idle' | 'choose' | 'proving' | 'completed' | 'error';
@@ -204,58 +203,16 @@ function LandingPageInner() {
   const [stage, setStage] = useState<Stage>('idle');
   const badgeRef = useRef<HTMLDivElement>(null);
 
-  // iOS availability signup modal state
-  const [betaOpen, setBetaOpen] = useState(false);
-  const [betaEmail, setBetaEmail] = useState('');
-  const [betaOrg, setBetaOrg] = useState('');
-  const [betaSubmitting, setBetaSubmitting] = useState(false);
-  const [betaSuccess, setBetaSuccess] = useState(false);
-  const [betaError, setBetaError] = useState('');
-
-  const openBetaModal = useCallback(() => {
-    setBetaOpen(true);
-    setBetaSuccess(false);
-    setBetaError('');
-  }, []);
-
-  const closeBetaModal = useCallback(() => {
-    setBetaOpen(false);
-    setBetaEmail('');
-    setBetaOrg('');
-    setBetaSuccess(false);
-    setBetaError('');
-  }, []);
-
-  const submitBetaRequest = useCallback(async () => {
-    if (!betaEmail.trim()) { setBetaError(t('landingPage.beta.emailRequired')); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(betaEmail.trim())) { setBetaError(t('landingPage.beta.emailInvalid')); return; }
-    setBetaSubmitting(true);
-    setBetaError('');
-    try {
-      const res = await apiFetch('/api/beta-signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: betaEmail.trim(), organization: betaOrg.trim(), platform: 'iOS' }),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || t('landingPage.beta.failed')); }
-      setBetaSuccess(true);
-    } catch (err) {
-      setBetaError(localizeApiError(err, t, 'landingPage.beta.somethingWentWrong'));
-    } finally {
-      setBetaSubmitting(false);
-    }
-  }, [betaEmail, betaOrg, t]);
-
   function reset() { setStage('idle'); }
 
   const appInstallOptions = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10, marginTop: 20 }}>
       <p style={{ fontSize: 14, color: '#a099b0', lineHeight: 1.6, margin: 0 }}>{t('landingPage.proving.installStatus')}</p>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button type="button" onClick={openBetaModal} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--radius-control)', padding: '8px var(--space-4)', color: '#ccc', fontSize: 13, cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
+        <a href={IOS_APP_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--radius-control)', padding: '8px var(--space-4)', color: '#ccc', fontSize: 13, cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
           <svg width="14" height="14" viewBox="0 0 384 512" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
-          {t('landingPage.proving.iosSignup')}
-        </button>
+          {t('landingPage.proving.iosDownload')}
+        </a>
         <a href={ANDROID_APP_URL} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', background: '#b4a0d8', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--radius-control)', padding: '8px var(--space-4)', color: '#0e0c14', fontSize: 13, cursor: 'pointer', minHeight: 'var(--touch-target-min)' }}>
           <svg width="14" height="14" viewBox="0 0 512 512" fill="currentColor"><path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z"/></svg>
           {t('landingPage.proving.androidDownload')}
@@ -468,51 +425,6 @@ function LandingPageInner() {
           </a>
         </div>
       </section>
-
-      {/* iOS email signup modal */}
-      {betaOpen && (
-        <div onClick={(e) => { if (e.target === e.currentTarget) closeBetaModal(); }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="ios-signup-title" onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 400, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-modal)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
-              <h3 id="ios-signup-title" style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{t('landingPage.beta.title')}</h3>
-              <button onClick={closeBetaModal} aria-label={t('common.close')} style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1 }}>×</button>
-            </div>
-            <div style={{ padding: '16px 24px 24px' }}>
-              <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: '0 0 20px' }}>
-                {t('landingPage.beta.intro')}
-              </p>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.emailLabel')}</label>
-                <input type="email" value={betaEmail} onChange={(e) => setBetaEmail(e.target.value)} placeholder="you@example.com"
-                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'var(--color-bg-primary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-control)', color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', minHeight: 'var(--touch-target-min)' }} />
-              </div>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t('landingPage.beta.orgLabel')}</label>
-                <input type="text" value={betaOrg} onChange={(e) => setBetaOrg(e.target.value)} placeholder={t('landingPage.beta.orgPlaceholder')}
-                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, background: 'var(--color-bg-primary)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-control)', color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', minHeight: 'var(--touch-target-min)' }} />
-              </div>
-              {!betaSuccess && (
-                <button onClick={submitBetaRequest} disabled={betaSubmitting}
-                  style={{ width: '100%', padding: 12, fontSize: 15, fontWeight: 600, background: 'var(--color-brand-primary)', color: 'var(--color-text-inverted)', border: 'none', borderRadius: 'var(--radius-control)', cursor: betaSubmitting ? 'not-allowed' : 'pointer', opacity: betaSubmitting ? 0.5 : 1, minHeight: 'var(--touch-target-min)' }}>
-                  {betaSubmitting ? t('landingPage.beta.sending') : t('landingPage.beta.requestInvite')}
-                </button>
-              )}
-              {betaSuccess && (
-                <div style={{ marginTop: 8, padding: 12, background: 'color-mix(in srgb, var(--color-brand-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-brand-accent) 20%, transparent)', borderRadius: 'var(--radius-control)', color: 'var(--color-brand-accent)', fontSize: 14, textAlign: 'center' }}>
-                  {t('landingPage.beta.successMessage')}
-                </div>
-              )}
-              {betaError && (
-                <div style={{ marginTop: 8, padding: 12, background: 'color-mix(in srgb, var(--color-status-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-status-danger) 20%, transparent)', borderRadius: 'var(--radius-control)', color: 'var(--color-status-danger)', fontSize: 14, textAlign: 'center' }}>
-                  {betaError}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

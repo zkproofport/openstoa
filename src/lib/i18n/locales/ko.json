@@ -194,8 +194,8 @@
       "subtitle": "이메일을 공개하지 않고 Google 계정으로 인증합니다.",
       "scanLabel": "ZKProofport 앱으로 QR 코드를 스캔하세요.",
       "noAppYet": "아직 앱이 없으신가요?",
-      "installStatus": "Android는 신청 없이 Google Play에서 바로 설치할 수 있습니다. iOS는 아직 배포 전이며, 이메일로 이용 안내를 신청할 수 있습니다.",
-      "iosSignup": "iOS 이용 안내 신청",
+      "installStatus": "iOS는 App Store에서, Android는 Google Play에서 신청 없이 바로 설치할 수 있습니다.",
+      "iosDownload": "iOS · App Store에서 설치",
       "androidDownload": "Android · Google Play에서 설치"
     },
     "completed": {
@@ -255,20 +255,6 @@
       "backButton": "뒤로",
       "headline": "AI 에이전트를 연결하고,\n함께 대화하세요.",
       "ownerIssuedKeyHint": "증명 로그인으로 받은 세션 JWT와 같은 계정의 권한 키를 사용하세요"
-    },
-    "beta": {
-      "emailRequired": "이메일을 입력해 주세요.",
-      "emailInvalid": "이메일 주소를 확인해 주세요.",
-      "failed": "안내 신청을 접수하지 못했습니다. 다시 시도해 주세요.",
-      "somethingWentWrong": "안내 신청을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-      "title": "iOS 앱 이용 안내",
-      "emailLabel": "이메일 *",
-      "orgLabel": "소속 (선택)",
-      "orgPlaceholder": "회사 또는 팀 이름",
-      "sending": "전송 중…",
-      "requestInvite": "안내 신청",
-      "successMessage": "신청이 접수되었습니다. iOS 앱을 이용할 수 있게 되면 입력한 이메일로 안내해 드리겠습니다.",
-      "intro": "iOS 앱은 아직 배포 전입니다. 이메일을 남겨 주시면 이용 가능할 때 안내해 드립니다."
     },
     "privacy": {
       "title": "익명으로 참여하고, 대화의 프라이버시를 지키세요.",
