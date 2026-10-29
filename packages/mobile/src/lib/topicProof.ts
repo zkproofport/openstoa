@@ -47,9 +47,26 @@ export async function generateTopicProof(
   if (!result.proof || !Array.isArray(result.publicInputs) || result.publicInputs.length === 0) {
     throw new Error('Proof generation did not return a complete proof');
   }
+  const signerVariant = checkedSignerVariant(result.signerVariant);
   return {
     proof: result.proof,
     publicInputs: result.publicInputs,
-    ...(typeof result.signerVariant === 'string' ? { signerVariant: result.signerVariant } : {}),
+    ...(signerVariant !== undefined ? { signerVariant } : {}),
   };
+}
+
+/**
+ * The circuit packages a host proof can come from (core's SIGNER_VARIANTS).
+ * The server picks the verifier by this value, so an unknown one is refused
+ * here rather than posted for it to judge against the wrong package.
+ */
+export const SIGNER_VARIANTS = ['standard', 'android', 'android_factory'] as const;
+export type SignerVariant = (typeof SIGNER_VARIANTS)[number];
+
+/** Absent means standard and stays absent; anything else must be a known variant. */
+function checkedSignerVariant(value: unknown): SignerVariant | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string' && (SIGNER_VARIANTS as readonly string[]).includes(value)) return value as SignerVariant;
+  const shown = typeof value === 'string' ? JSON.stringify(value) : `of type ${value === null ? 'null' : typeof value}`;
+  throw new Error(`Unknown signerVariant ${shown}. Known: ${SIGNER_VARIANTS.join(', ')}.`);
 }

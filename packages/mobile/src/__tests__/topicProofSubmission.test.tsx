@@ -209,3 +209,61 @@ it.each(['join', 'create'])('does not duplicate the host ErrorModal for %s failu
   expect((Alert as unknown as {alerts: unknown[]}).alerts).toEqual([]);
   expect(calls.some(call => call.path === '/api/topics' || call.path.endsWith('/join'))).toBe(false);
 });
+
+// The host reports which circuit package made the proof; the server picks the
+// verifier by it. Known values go out unchanged, absent stays absent, and
+// anything else is refused before a membership or topic is posted.
+const SIGNER_VARIANTS = ['standard', 'android', 'android_factory'] as const;
+const UNKNOWN_SIGNER_VARIANTS: unknown[] = ['ios', '', 'ANDROID', 42, null, ' android', 'android\n', '__proto__', 'toString', {}, ['android'], true];
+
+async function createKycTopic(generateProof: () => Promise<unknown>) {
+  const { rendered } = await renderScreen(<TopicCreateScreen />, { host: hostDouble({ generateProof: generateProof as never }) });
+  await ready(rendered, 'openstoa.topicCreate.submit');
+  const title = rendered.root.findAll(n => (n.type as unknown as string) === 'TextInput')[0];
+  await act(async () => title.props.onChangeText('Proof topic'));
+  await rendered.press(rendered.pressableWith('openstoa.topicCreate.proofTypes.kyc')!);
+  await rendered.press(rendered.pressableWith('openstoa.topicCreate.submit')!);
+  return rendered;
+}
+async function joinKycTopic(generateProof: () => Promise<unknown>) {
+  const { rendered } = await renderScreen(<TopicDetailScreen />, { host: hostDouble({ generateProof: generateProof as never }), params: { topicId: 'topic' } });
+  await ready(rendered, 'openstoa.topics.join');
+  await rendered.press(rendered.pressableWith('openstoa.topics.join')!);
+  return rendered;
+}
+
+it.each(SIGNER_VARIANTS)('join forwards signerVariant %s unchanged', async signerVariant => {
+  await joinKycTopic(async () => ({ ...proof, signerVariant }));
+  expect(calls.find(call => call.path.endsWith('/join'))?.body).toEqual({ ...proof, signerVariant });
+});
+
+it.each(SIGNER_VARIANTS)('create forwards signerVariant %s unchanged', async signerVariant => {
+  await createKycTopic(async () => ({ ...proof, signerVariant }));
+  const body = calls.find(call => call.path === '/api/topics')?.body;
+  expect(body).toMatchObject(proof);
+  expect(body.signerVariant).toBe(signerVariant);
+});
+
+it.each(['join', 'create'])('%s leaves an absent signerVariant absent, even as an undefined key', async action => {
+  const generateProof = async () => ({ ...proof, signerVariant: undefined });
+  if (action === 'join') await joinKycTopic(generateProof); else await createKycTopic(generateProof);
+  const body = calls.find(call => call.path === (action === 'join' ? '/api/topics/topic/join' : '/api/topics'))?.body;
+  expect(body).toMatchObject(proof);
+  expect(Object.keys(body)).not.toContain('signerVariant');
+});
+
+it.each(UNKNOWN_SIGNER_VARIANTS)('join refuses signerVariant %j and posts nothing', async signerVariant => {
+  const generateProof = vi.fn(async () => ({ ...proof, signerVariant }));
+  await joinKycTopic(generateProof);
+  await flushUntil(() => (Alert as unknown as { alerts: unknown[] }).alerts.length > 0);
+  expect(generateProof).toHaveBeenCalledOnce();
+  expect(calls.map(call => call.path)).toEqual(['/api/auth/challenge']);
+});
+
+it.each(UNKNOWN_SIGNER_VARIANTS)('create refuses signerVariant %j and posts nothing', async signerVariant => {
+  const generateProof = vi.fn(async () => ({ ...proof, signerVariant }));
+  await createKycTopic(generateProof);
+  await flushUntil(() => (Alert as unknown as { alerts: unknown[] }).alerts.length > 0);
+  expect(generateProof).toHaveBeenCalledOnce();
+  expect(calls.map(call => call.path)).toEqual(['/api/auth/challenge']);
+});

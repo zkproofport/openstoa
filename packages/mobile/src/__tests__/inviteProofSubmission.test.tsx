@@ -89,3 +89,30 @@ it('lets an either-provider invite joiner choose Microsoft before retrying', asy
   expect(generateProof).toHaveBeenCalledWith({scope, circuit: 'oidc_domain_attestation', provider: 'microsoft'});
   expect(imported).toHaveBeenCalledExactlyOnceWith('topic', {1: key});
 });
+
+it.each(['standard', 'android', 'android_factory'])('forwards signerVariant %s unchanged on the invite retry', async signerVariant => {
+  const {rendered} = await screen(vi.fn(async () => ({...proof, signerVariant})));
+  await submit(rendered);
+  expect(wire.at(-1)).toEqual({path: '/api/topics/join/invite-code', body: {...proof, signerVariant}});
+  expect(imported).toHaveBeenCalledOnce();
+});
+
+it('leaves an absent signerVariant absent on the invite retry', async () => {
+  const {rendered} = await screen(vi.fn(async () => ({...proof, signerVariant: undefined})));
+  await submit(rendered);
+  expect(wire.at(-1)).toEqual({path: '/api/topics/join/invite-code', body: proof});
+  expect(Object.keys(wire.at(-1)!.body as object)).not.toContain('signerVariant');
+});
+
+it.each(['ios', '', 'ANDROID', 42, null, {}] as unknown[])('refuses signerVariant %j on the invite path: no retry, no keys', async signerVariant => {
+  const generateProof = vi.fn(async () => ({...proof, signerVariant}));
+  const {rendered, nav} = await screen(generateProof);
+  await submit(rendered);
+  expect(generateProof).toHaveBeenCalledOnce();
+  expect(wire).toEqual([
+    {path: '/api/topics/join/invite-code', body: undefined},
+    {path: '/api/auth/challenge', body: undefined},
+  ]);
+  expect(imported).not.toHaveBeenCalled();
+  expect(nav.navigate.calls).toEqual([]);
+});
