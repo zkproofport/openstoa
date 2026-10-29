@@ -41,7 +41,7 @@ async function checkPrompt(source:string){
  // already-declared TypeScript dev dependency; no tsx or new package required.
  const compile=(text:string)=>ts.transpileModule(text,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
  await writeFile(join(directory,'proofInteraction.mjs'),compile(source).replace("from './format'","from './format.mjs'"));
- await writeFile(join(directory,'format.mjs'),compile(await readFile(resolve(process.cwd(),'src/format.ts'),'utf8')));
+ await writeFile(join(directory,'format.mjs'),compile(await readFile(new URL('../format.ts',import.meta.url),'utf8')));
  await writeFile(join(directory,'prompt.mjs'),String.raw`
 import {defaultProofTerminal} from './proofInteraction.mjs';
 const original=process.stderr.write.bind(process.stderr);
@@ -61,7 +61,9 @@ process.stdin.pause();
  return JSON.parse(child.stdout) as {sent:boolean;accepted:boolean;echoed:boolean;returncode:number};
 }
 it.skipIf(process.platform==='win32')('disables terminal echo before showing a secret prompt, including immediate paste',async()=>{
- const source=await readFile(resolve(process.cwd(),'src/proofInteraction.ts'),'utf8');
+ // The module under test, located from this test file: the root suite runs
+ // this file from the repository root, the package CI job from packages/cli.
+ const source=await readFile(new URL('../proofInteraction.ts',import.meta.url),'utf8');
  const actual=await checkPrompt(source);
  expect(actual).toEqual({sent:true,accepted:true,echoed:false,returncode:0});
  // Negative control reintroduces the original ordering only in a temporary

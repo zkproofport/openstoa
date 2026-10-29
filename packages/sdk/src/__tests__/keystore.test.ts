@@ -2,11 +2,19 @@
  * FileVaultStore unit tests: round-trip, per-topic namespacing, 0600/0700 perms,
  * path-traversal safety, and the createKeyStore factory fallback.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { FileVaultStore, createKeyStore, createFileVaultStore } from '../keystore';
+
+// The fallback test below is about a machine WITHOUT a usable keytar. Where the
+// native addon is installed (a developer Mac), leaving it real made that test
+// write to the person's OS keychain and hang on it until the 5 s timeout. So
+// keytar is made unavailable here, which is the state the test describes.
+vi.mock('keytar', () => {
+  throw new Error('keytar is unavailable in this test');
+});
 
 let root: string;
 
