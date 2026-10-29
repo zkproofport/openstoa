@@ -15,10 +15,10 @@ it('authenticated challenge is bound to API-key or browser account',async()=>{st
 it('authenticated topic request overrides caller-selected scope',async()=>{state.session={userId:'alice'};await proofRequest(request({mode:'proof',scope:'attacker',circuitType:'coinbase_attestation'}));expect(state.relay).toHaveBeenCalledWith('zkproofport-community:topic:alice',expect.anything());});
 it('topic proof request requires authentication',async()=>{expect((await proofRequest(request({mode:'proof'}))).status).toBe(401);expect(state.relay).not.toHaveBeenCalled();});
 it('logged-in reauthentication keeps the login scope',async()=>{state.session={userId:'alice'};await proofRequest(request({circuitType:'oidc_domain_attestation',provider:'google'}));expect(state.relay).toHaveBeenCalledWith('zkproofport-community',expect.anything());});
-it.each([[undefined],[{}],[{circuitType:''}],[{circuitType:'COINBASE_ATTESTATION'}],[{circuitType:'__proto__'}],[{circuitType:'giwa_attestation'}],[{circuitType:['oidc_domain_attestation']}]])('login request with circuitType from %j is refused, never defaulted',async(body)=>{
+it.each([[undefined],[{}],[{circuitType:''}],[{circuitType:'COINBASE_ATTESTATION'}],[{circuitType:'__proto__'}],[{circuitType:'giwa_attestation'}],[{circuitType:'mdl_kr_ownership'}],[{circuitType:'mdl_kr_age'}],[{circuitType:'mdl_kr_region'}],[{circuitType:['oidc_domain_attestation']}]])('login request with circuitType from %j is refused, never defaulted',async(body)=>{
  const res=await proofRequest(body===undefined?new NextRequest('http://localhost/api/auth/proof-request',{method:'POST'}):request(body));
  expect(res.status).toBe(400);
- expect((await res.json()).error).toMatch(/circuitType is required and must be one of: coinbase_attestation, .*mdl_kr_region/);
+ expect((await res.json()).error).toMatch(/^circuitType is required and must be one of: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation\.$/);
  expect(state.relay).not.toHaveBeenCalled();
 });
 it('a topic proof request with no circuitType is refused after authentication',async()=>{state.session={userId:'alice'};expect((await proofRequest(request({mode:'proof'}))).status).toBe(400);expect(state.relay).not.toHaveBeenCalled();});

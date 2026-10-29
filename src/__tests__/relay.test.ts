@@ -170,11 +170,12 @@ describe('pollProofResult', () => {
 });
 
 describe('the circuit is never filled in', () => {
-  it.each([undefined, '', 'COINBASE_ATTESTATION', '__proto__', 'constructor', 'hasOwnProperty', 'giwa_attestation'])(
+  it.each([undefined, '', 'COINBASE_ATTESTATION', '__proto__', 'constructor', 'hasOwnProperty', 'giwa_attestation',
+    'mdl_kr_ownership', 'mdl_kr_age', 'mdl_kr_region'])(
     'circuit %j throws naming the known circuits, before the SDK', async (circuit) => {
       const { createRelayProofRequest } = await import('@/lib/relay');
       await expect(createRelayProofRequest('s', { circuitType: circuit as never }))
-        .rejects.toThrow(/Unknown circuit .*Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation, mdl_kr_ownership, mdl_kr_age, mdl_kr_region/);
+        .rejects.toThrow(/Unknown circuit .*Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation\.$/);
       expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
     });
 
@@ -182,9 +183,6 @@ describe('the circuit is never filled in', () => {
     ['coinbase_attestation', 'Verify your Coinbase KYC to access OpenStoa'],
     ['coinbase_country_attestation', 'Verify your country via Coinbase attestation for OpenStoa'],
     ['oidc_domain_attestation', 'Verify your organization affiliation for OpenStoa'],
-    ['mdl_kr_ownership', 'Verify Korea Mobile ID ownership for OpenStoa'],
-    ['mdl_kr_age', 'Verify Korea Mobile ID age threshold for OpenStoa'],
-    ['mdl_kr_region', 'Verify Korea Mobile ID residence region for OpenStoa'],
   ])('%s is requested as itself with its own message', async (circuit, message) => {
     const { createRelayProofRequest } = await import('@/lib/relay');
     await createRelayProofRequest('s', { circuitType: circuit as never });
@@ -242,7 +240,7 @@ describe('an OIDC request is recorded so its proof can be bound to it', () => {
     );
   });
 
-  it.each(['coinbase_attestation', 'coinbase_country_attestation', 'mdl_kr_age'])('%s writes no record', async (circuit) => {
+  it.each(['coinbase_attestation', 'coinbase_country_attestation'])('%s writes no record', async (circuit) => {
     const { createRelayProofRequest } = await import('@/lib/relay');
     await createRelayProofRequest('s', { circuitType: circuit as never });
     expect(redisSet).not.toHaveBeenCalled();

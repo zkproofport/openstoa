@@ -35,7 +35,7 @@ const ROUTE = '/api/auth/proof-request';
  *                 description: Proof mode requires authentication and uses the account-bound topic scope.
  *               circuitType:
  *                 type: string
- *                 enum: [coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation, mdl_kr_ownership, mdl_kr_age, mdl_kr_region]
+ *                 enum: [coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation]
  *                 description: >-
  *                   ZK circuit type to request a proof for. Required: a missing or unknown value is
  *                   refused with 400 and never replaced by another circuit. Login uses

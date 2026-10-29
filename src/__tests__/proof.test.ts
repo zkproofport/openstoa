@@ -88,8 +88,15 @@ describe('extractNullifier', () => {
   it('should throw for unsupported circuit', () => {
     const inputs = generateMockPublicInputs(128);
     expect(() => extractNullifier(inputs, 'unknown_circuit')).toThrow(
-      'Unsupported circuit for nullifier extraction',
+      "Unknown circuit 'unknown_circuit' for nullifier extraction. Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation.",
     );
+  });
+
+  it.each(['mdl_kr_ownership', 'mdl_kr_age', 'mdl_kr_region'])('refuses the removed %s by name, for scope and nullifier', (circuit) => {
+    const inputs = generateMockPublicInputs(128);
+    const known = 'Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation.';
+    expect(() => extractNullifier(inputs, circuit)).toThrow(`Unknown circuit '${circuit}' for nullifier extraction. ${known}`);
+    expect(() => extractScope(inputs, circuit)).toThrow(`Unknown circuit '${circuit}' for scope extraction. ${known}`);
   });
 
   it('should not throw for all supported circuits', () => {
@@ -155,7 +162,7 @@ describe('extractScope', () => {
   it('should throw for unsupported circuit', () => {
     const inputs = generateMockPublicInputs(128);
     expect(() => extractScope(inputs, 'unknown_circuit')).toThrow(
-      'Unsupported circuit for scope extraction',
+      "Unknown circuit 'unknown_circuit' for scope extraction. Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation.",
     );
   });
 

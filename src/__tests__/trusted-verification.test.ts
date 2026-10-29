@@ -5,8 +5,9 @@
  * Edge matrix (each row maps to a test below):
  *  - environment: production / staging / development / local route each circuit to
  *    its chain and core's pinned verifier; unset, unknown, prototype keys refused.
- *  - circuit: the six accepted ids; unknown, empty, prototype keys and core circuits
- *    OpenStoa does not accept (giwa_attestation, dojang_playground) refused.
+ *  - circuit: the three accepted ids; unknown, empty, prototype keys, core circuits
+ *    OpenStoa does not accept (giwa_attestation, dojang_playground) and the removed
+ *    Korea Mobile ID ids (mdl_kr_*) refused naming the known ids.
  *  - public inputs: exact count per circuit; count-1, count+1, empty; non-hex, short
  *    and non-string fields refused before any network call.
  *  - proof bytes: empty, bare 0x and non-hex refused.
@@ -36,7 +37,6 @@ import {
   getPinnedVerifier,
   OIDC_PUBLIC_INPUT_COUNT,
   SIGNER_ROOT_LAYOUTS,
-  MDL_KR_PUBLIC_INPUT_LAYOUT,
   RPC_ENDPOINTS,
 } from '@zkproofport-app/core';
 import { coinbaseIssuerInputs, oidcIssuerInputs, testJwk, jwksFetch, encodedBool, proofField, OIDC_AUDIENCES } from './fixtures/trusted-proof';
@@ -80,7 +80,7 @@ function validInputs(circuit: VerifiableCircuit): string[] {
   if (circuit === 'coinbase_attestation') return coinbaseIssuerInputs(128);
   if (circuit === 'coinbase_country_attestation') return coinbaseIssuerInputs(150);
   if (circuit === 'oidc_domain_attestation') return oidcIssuerInputs();
-  return Array(PUBLIC_INPUT_COUNTS[circuit]).fill(proofField(0));
+  throw new Error(`No fixture for circuit '${circuit}'. Known: ${CIRCUITS.join(', ')}.`);
 }
 
 beforeEach(() => {
@@ -119,13 +119,6 @@ describe('environment and circuit select core\'s pinned verifier', () => {
     ]);
   });
 
-  it('Korea Mobile ID verifies on Base Sepolia even in production', async () => {
-    vi.stubEnv('APP_ENV', 'production');
-    expect((await verifyTrustedTopicProof('mdl_kr_age', '0xab', validInputs('mdl_kr_age'))).valid).toBe(true);
-    expect(state.providers).toEqual(['https://sepolia.base.org']);
-    expect(state.calls[0].to).toBe('0x45d4850a9b197ceba185b5069fb13ce0be1dc6d6');
-  });
-
   it.each([undefined, '', 'unknown', 'Production', '__proto__', 'constructor', 'toString'])(
     'environment %j is refused without a call', async (env) => {
       vi.stubEnv('APP_ENV', env as string);
@@ -135,11 +128,12 @@ describe('environment and circuit select core\'s pinned verifier', () => {
       expect(state.calls).toHaveLength(0);
     });
 
-  it.each(['missing', '', '__proto__', 'constructor', 'hasOwnProperty', 'giwa_attestation', 'dojang_playground', 'COINBASE_ATTESTATION'])(
-    'circuit %j is refused without a call', async (circuit) => {
+  it.each(['missing', '', '__proto__', 'constructor', 'hasOwnProperty', 'giwa_attestation', 'dojang_playground', 'COINBASE_ATTESTATION',
+    'mdl_kr_ownership', 'mdl_kr_age', 'mdl_kr_region'])(
+    'circuit %j is refused without a call, naming the known circuits', async (circuit) => {
       const result = await verifyTrustedTopicProof(circuit, '0xab', validInputs('coinbase_attestation'));
       expect(result.valid).toBe(false);
-      expect(result.error).toMatch(/Unsupported verifier circuit/);
+      expect(result.error).toBe(`Unsupported verifier circuit '${circuit}'. Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation.`);
       expect(state.calls).toHaveLength(0);
     });
 });
@@ -265,13 +259,15 @@ describe('the relay\'s verifier claim is compared, never used', () => {
       expect(state.calls).toHaveLength(0);
     });
 
-  it('a mobile ID result reported on Base Sepolia passes in production', async () => {
+  it.each(['mdl_kr_ownership', 'mdl_kr_age', 'mdl_kr_region'])('a %s relay result is refused as unknown', async (circuit) => {
     vi.stubEnv('APP_ENV', 'production');
     const result = await verifyProofFromRelay(relayResult({
-      circuit: 'mdl_kr_region', publicInputs: validInputs('mdl_kr_region'),
+      circuit, publicInputs: Array(96).fill(proofField(0)),
       verifierAddress: '0x044116dF792eB424c9648DF2DeEda97aFa617Ac0', chainId: 84532,
     }), 'r');
-    expect(result).toEqual({ valid: true });
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/Unsupported verifier circuit .*Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation\./);
+    expect(state.calls).toHaveLength(0);
   });
 });
 
@@ -303,9 +299,7 @@ describe('integrity against core', () => {
     expect(PUBLIC_INPUT_COUNTS.coinbase_attestation).toBe(SIGNER_ROOT_LAYOUTS.coinbase_attestation.publicInputCount);
     expect(PUBLIC_INPUT_COUNTS.coinbase_country_attestation).toBe(SIGNER_ROOT_LAYOUTS.coinbase_country_attestation.publicInputCount);
     expect(PUBLIC_INPUT_COUNTS.oidc_domain_attestation).toBe(OIDC_PUBLIC_INPUT_COUNT);
-    expect(PUBLIC_INPUT_COUNTS.mdl_kr_ownership).toBe(MDL_KR_PUBLIC_INPUT_LAYOUT.OWNERSHIP_OWNER_COMMIT_END + 1);
-    expect(PUBLIC_INPUT_COUNTS.mdl_kr_age).toBe(MDL_KR_PUBLIC_INPUT_LAYOUT.AGE_CURRENT_YEAR + 1);
-    expect(PUBLIC_INPUT_COUNTS.mdl_kr_region).toBe(MDL_KR_PUBLIC_INPUT_LAYOUT.REGION_CODE_END + 1);
+    expect(CIRCUITS.sort()).toEqual(['coinbase_attestation', 'coinbase_country_attestation', 'oidc_domain_attestation']);
   });
   it('every environment names the same circuits, each with a pinned verifier and an RPC endpoint', () => {
     for (const env of Object.keys(VERIFICATION_CHAINS)) {

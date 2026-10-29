@@ -28,19 +28,12 @@ export function normalizePublicInputs(input: string | string[]): string[] {
 // environment. The verifier contract itself is never chosen here: it is the
 // deployment @zkproofport-app/core pins for that circuit on that chain
 // (PINNED_VERIFIERS, generated from the circuits repo's deployment records).
-// Korea Mobile ID has no mainnet deployment, so it verifies on Base Sepolia in
-// every environment -- the same chain the app reports for it
-// (proofport-app/src/config/contracts.ts, OMNIONE_TESTNET).
-//
 // Never select a verifier from a proof/relay-supplied address or chain id:
 // those are only compared with the pinned one, and a mismatch is refused.
 export type VerifiableCircuit =
   | 'coinbase_attestation'
   | 'coinbase_country_attestation'
-  | 'oidc_domain_attestation'
-  | 'mdl_kr_ownership'
-  | 'mdl_kr_age'
-  | 'mdl_kr_region';
+  | 'oidc_domain_attestation';
 
 const BASE_MAINNET = 8453;
 const BASE_SEPOLIA = 84532;
@@ -49,9 +42,6 @@ const TESTNET_CHAINS: Record<VerifiableCircuit, number> = {
   coinbase_attestation: BASE_SEPOLIA,
   coinbase_country_attestation: BASE_SEPOLIA,
   oidc_domain_attestation: BASE_SEPOLIA,
-  mdl_kr_ownership: BASE_SEPOLIA,
-  mdl_kr_age: BASE_SEPOLIA,
-  mdl_kr_region: BASE_SEPOLIA,
 };
 
 export const VERIFICATION_CHAINS: Record<string, Record<VerifiableCircuit, number>> = {
@@ -59,9 +49,6 @@ export const VERIFICATION_CHAINS: Record<string, Record<VerifiableCircuit, numbe
     coinbase_attestation: BASE_MAINNET,
     coinbase_country_attestation: BASE_MAINNET,
     oidc_domain_attestation: BASE_MAINNET,
-    mdl_kr_ownership: BASE_SEPOLIA,
-    mdl_kr_age: BASE_SEPOLIA,
-    mdl_kr_region: BASE_SEPOLIA,
   },
   staging: TESTNET_CHAINS,
   development: TESTNET_CHAINS,
@@ -70,14 +57,11 @@ export const VERIFICATION_CHAINS: Record<string, Record<VerifiableCircuit, numbe
 
 // Exact public-input count per circuit. Anything else is not that circuit's
 // proof, and is refused before an RPC call. Kept equal to core's own numbers
-// by a test (SIGNER_ROOT_LAYOUTS, OIDC_PUBLIC_INPUT_COUNT, MDL_KR layout).
+// by a test (SIGNER_ROOT_LAYOUTS, OIDC_PUBLIC_INPUT_COUNT).
 export const PUBLIC_INPUT_COUNTS: Record<VerifiableCircuit, number> = {
   coinbase_attestation: 128,
   coinbase_country_attestation: 150,
   oidc_domain_attestation: 214,
-  mdl_kr_ownership: 97,
-  mdl_kr_age: 66,
-  mdl_kr_region: 96,
 };
 
 const FIELD_HEX = /^0x[0-9a-fA-F]{64}$/;
@@ -192,74 +176,25 @@ export async function verifyProofFromRelay(
 }
 
 
-const SUPPORTED_CIRCUITS = [
-  'coinbase_attestation',
-  'coinbase_country_attestation',
-  'oidc_domain_attestation',
-  'mdl_kr_ownership',
-  'mdl_kr_age',
-  'mdl_kr_region',
-];
+const SUPPORTED_CIRCUITS: readonly VerifiableCircuit[] = Object.keys(PUBLIC_INPUT_COUNTS) as VerifiableCircuit[];
 
-// Korea Mobile ID (v4) public inputs start with scope (32) || nullifier (32),
-// one byte per field, followed by a predicate-specific tail. Counts are in
-// PUBLIC_INPUT_COUNTS above. Same offsets as core's MDL_KR_PUBLIC_INPUT_LAYOUT;
-// this copy keeps its stricter one-byte-per-field check.
-type MdlKrVariant = 'mdl_kr_ownership' | 'mdl_kr_age' | 'mdl_kr_region';
-
-const MDL_KR_LAYOUT = {
-  SCOPE_START: 0,
-  NULLIFIER_START: 32,
-};
-
-// Each mdl_kr public-input field is a 32-byte hex string holding a
-// single byte (Noir flattens [u8; N] arrays to one field per byte).
-// Extract a byte range and re-pack as 0x-prefixed hex.
-function packByteRangeAsBytes32(publicInputs: string[], start: number, length: number): string {
-  if (publicInputs.length < start + length) {
-    throw new Error(`publicInputs too short: need ${start + length}, got ${publicInputs.length}`);
+function requireSupportedCircuit(circuit: string, what: string): VerifiableCircuit {
+  if (!(SUPPORTED_CIRCUITS as readonly string[]).includes(circuit)) {
+    throw new Error(`Unknown circuit '${circuit}' for ${what} extraction. Known: ${SUPPORTED_CIRCUITS.join(', ')}.`);
   }
-  const hex = publicInputs
-    .slice(start, start + length)
-    .map((field) => {
-      const n = Number(BigInt(field));
-      if (n < 0 || n > 0xff) {
-        throw new Error(`mdl_kr field at index ${start} expected single byte, got ${n}`);
-      }
-      return n.toString(16).padStart(2, '0');
-    })
-    .join('');
-  return '0x' + hex;
-}
-
-function isMdlKr(circuit: string): circuit is MdlKrVariant {
-  return (
-    circuit === 'mdl_kr_ownership' ||
-    circuit === 'mdl_kr_age' ||
-    circuit === 'mdl_kr_region'
-  );
+  return circuit as VerifiableCircuit;
 }
 
 export function extractNullifier(publicInputs: string[], circuit: string): string {
-  if (!SUPPORTED_CIRCUITS.includes(circuit)) {
-    throw new Error(`Unsupported circuit for nullifier extraction: ${circuit}`);
-  }
-  if (isMdlKr(circuit)) {
-    return packByteRangeAsBytes32(publicInputs, MDL_KR_LAYOUT.NULLIFIER_START, 32);
-  }
-  const nullifier = extractNullifierFromPublicInputs(publicInputs, circuit);
+  const known = requireSupportedCircuit(circuit, 'nullifier');
+  const nullifier = extractNullifierFromPublicInputs(publicInputs, known);
   if (!nullifier) throw new Error(`Failed to extract nullifier for circuit: ${circuit}`);
   return nullifier;
 }
 
 export function extractScope(publicInputs: string[], circuit: string): string {
-  if (!SUPPORTED_CIRCUITS.includes(circuit)) {
-    throw new Error(`Unsupported circuit for scope extraction: ${circuit}`);
-  }
-  if (isMdlKr(circuit)) {
-    return packByteRangeAsBytes32(publicInputs, MDL_KR_LAYOUT.SCOPE_START, 32);
-  }
-  const scope = extractScopeFromPublicInputs(publicInputs, circuit);
+  const known = requireSupportedCircuit(circuit, 'scope');
+  const scope = extractScopeFromPublicInputs(publicInputs, known);
   if (!scope) throw new Error(`Failed to extract scope for circuit: ${circuit}`);
   return scope;
 }

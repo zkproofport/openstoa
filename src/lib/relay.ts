@@ -22,16 +22,11 @@ function createSDK(): ProofportSDK {
 }
 
 // The circuits OpenStoa requests proofs for: the ones it can also verify
-// (VerifiableCircuit in ./proof). The three mdl_kr_* Korea Mobile ID circuits
-// are not in the SDK's CircuitType narrowing; the relay accepts any circuitId
-// string (proofport-relay/src/index.ts), so they are cast at the call site.
+// (VerifiableCircuit in ./proof).
 export type ExtendedCircuitType =
   | 'coinbase_attestation'
   | 'coinbase_country_attestation'
-  | 'oidc_domain_attestation'
-  | 'mdl_kr_ownership'
-  | 'mdl_kr_age'
-  | 'mdl_kr_region';
+  | 'oidc_domain_attestation';
 
 const PROVIDER_NAMES: Record<'google' | 'microsoft', string> = {
   google: 'Google Workspace',
@@ -46,9 +41,6 @@ const DEFAULT_MESSAGES: Record<ExtendedCircuitType, (provider?: 'google' | 'micr
   coinbase_country_attestation: () => 'Verify your country via Coinbase attestation for OpenStoa',
   oidc_domain_attestation: (provider) =>
     `Verify ${provider ? PROVIDER_NAMES[provider] : 'your organization'} affiliation for OpenStoa`,
-  mdl_kr_ownership: () => 'Verify Korea Mobile ID ownership for OpenStoa',
-  mdl_kr_age: () => 'Verify Korea Mobile ID age threshold for OpenStoa',
-  mdl_kr_region: () => 'Verify Korea Mobile ID residence region for OpenStoa',
 };
 
 export const RELAY_CIRCUITS = Object.keys(DEFAULT_MESSAGES) as ExtendedCircuitType[];
@@ -109,10 +101,7 @@ export async function createRelayProofRequest(
     if (options.provider) inputs.provider = options.provider;
   }
 
-  // SDK CircuitType is narrowed to production circuits; mdl_kr_* are
-  // forwarded verbatim to the relay (envelope-only validation; see
-  // proofport-relay WALLET_SIGNATURE_CIRCUITS).
-  const relay = await sdk.createRelayRequest(circuit as CircuitType, inputs as any, {
+  const relay = await sdk.createRelayRequest(circuit satisfies CircuitType, inputs as any, {
     dappName: options.dappName ?? 'OpenStoa',
     dappIcon,
     message: options.message ?? DEFAULT_MESSAGES[circuit](options.provider),
