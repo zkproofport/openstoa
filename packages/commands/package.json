@@ -1,6 +1,6 @@
 {
   "name": "@masselabs/openstoa-commands",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Shared command core for the OpenStoa CLI and MCP server — one code path over @masselabs/openstoa (REST + E2EE chat).",
   "license": "MIT",
   "repository": {
@@ -39,7 +39,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@masselabs/openstoa": "^0.2.2",
+    "@masselabs/openstoa": "^0.2.3",
     "@noble/hashes": "2.0.1",
     "@zkproofport-ai/mcp": "0.4.4",
     "@zkproofport-app/core": "0.4.0-beta.3"

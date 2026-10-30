@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/zkproofport/openstoa/compare/openstoa-sdk-v0.2.2...openstoa-sdk-v0.2.3) (2026-10-30)
+
+
+### Bug Fixes
+
+* **commands:** carry signerVariant with every CLI/MCP topic proof ([2e38ac5](https://github.com/zkproofport/openstoa/commit/2e38ac5fc2c0a6490075e918f23bb6ef12f1c97d))
+
 ## [0.2.2](https://github.com/zkproofport/openstoa/compare/openstoa-sdk-v0.2.1...openstoa-sdk-v0.2.2) (2026-09-20)
 
 

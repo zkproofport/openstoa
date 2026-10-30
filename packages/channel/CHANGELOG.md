@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.3](https://github.com/zkproofport/openstoa/compare/openstoa-channel-v0.2.2...openstoa-channel-v0.2.3) (2026-10-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @masselabs/openstoa bumped from ^0.2.2 to ^0.2.3
+    * @masselabs/openstoa-commands bumped from ^0.2.2 to ^0.3.0
+
 ## [0.2.2](https://github.com/zkproofport/openstoa/compare/openstoa-channel-v0.2.1...openstoa-channel-v0.2.2) (2026-09-20)
 
 

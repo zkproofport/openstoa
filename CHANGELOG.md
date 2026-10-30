@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.0](https://github.com/zkproofport/openstoa/compare/openstoa-server-v0.2.2...openstoa-server-v0.3.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* accept Coinbase Country v2 proofs (core 0.4.0-beta.3)
+* **proof:** verify Coinbase KYC v2 and Android signer proofs (core 0.4.0-beta.1)
+* **proof:** remove the Korea Mobile ID circuits
+
+### Features
+
+* accept Coinbase Country v2 proofs (core 0.4.0-beta.3) ([c7b9d8d](https://github.com/zkproofport/openstoa/commit/c7b9d8dcabcf39e86f8d6e7d7817844ca4756261))
+* **mobile:** synchronize proof flows, public badges and Korean UI ([aa2c016](https://github.com/zkproofport/openstoa/commit/aa2c0167d1d6a1a68e76e864f723f244bd81d100))
+* **proof:** remove the Korea Mobile ID circuits ([01effcd](https://github.com/zkproofport/openstoa/commit/01effcd3c8005fa488e5b327e4f0a41e71b3941e))
+* **proof:** verify Coinbase KYC v2 and Android signer proofs (core 0.4.0-beta.1) ([ce5df6e](https://github.com/zkproofport/openstoa/commit/ce5df6eedbf97ce81a07581acd39614713735472))
+* **proof:** verify OIDC v2 proofs against their relay request (core 0.3.0) ([c97c792](https://github.com/zkproofport/openstoa/commit/c97c792ab4bab85d2f05b0edc7218bd6a5eb1051))
+* **proof:** verify through @zkproofport-app/core 0.2.0 pinned verifiers ([fb72225](https://github.com/zkproofport/openstoa/commit/fb72225ebdbbdc698898d7b21398b8aec9a6fec0))
+
+
+### Bug Fixes
+
+* clean up editor upload timers on unmount ([64adbc6](https://github.com/zkproofport/openstoa/commit/64adbc6049045245351299d9125625299e239f56))
+* integrate deployed UI changes with current login improvements ([28bcc08](https://github.com/zkproofport/openstoa/commit/28bcc08d278775c3c2aef03c97b1ac0fd0a91600))
+* link released iOS app from OpenStoa install guidance ([c16d6e8](https://github.com/zkproofport/openstoa/commit/c16d6e888a7a2ebf2e7f56dbda48d856ca84949c))
+
 ## [0.2.2](https://github.com/zkproofport/openstoa/compare/openstoa-server-v0.2.1...openstoa-server-v0.2.2) (2026-09-20)
 
 
