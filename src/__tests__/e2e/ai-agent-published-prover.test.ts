@@ -23,7 +23,8 @@
  * (testnet USDC on Base Sepolia), optional E2E_OIDC_JWT. Spends testnet USDC.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { getBaseUrl, publicGet, E2E_DEVICE_HEADERS } from './helpers';
 
 const BASE = getBaseUrl();
@@ -36,12 +37,17 @@ function required(name: string): string {
   return value;
 }
 
-/** Runs the published prove CLI. Keys travel in the child's environment only. */
-function prove(args: string[]): Record<string, unknown> {
+/**
+ * Runs the published prove CLI. Keys travel in the child's environment only.
+ * Asynchronously, never execFileSync: a proof takes ~40 s, and a blocked event
+ * loop cannot see the server close the idle keep-alive socket, so the next
+ * fetch is written onto a dead socket ("other side closed").
+ */
+async function prove(args: string[]): Promise<Record<string, unknown>> {
   if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(MCP_VERSION)) {
     throw new Error(`E2E_PROVE_MCP_VERSION must be an exact published version; got '${MCP_VERSION}'`);
   }
-  const out = execFileSync('npx', [
+  const { stdout: out } = await promisify(execFile)('npx', [
     '-y', '-p', `@zkproofport-ai/mcp@${MCP_VERSION}`, 'zkproofport-prove',
     ...args, '--pay-with', 'key', '--pay-on', 'base-sepolia', '--silent',
   ], {
@@ -53,7 +59,6 @@ function prove(args: string[]): Record<string, unknown> {
     },
     timeout: 600_000,
     encoding: 'utf-8',
-    stdio: ['ignore', 'pipe', 'pipe'],
   });
   const result = JSON.parse(out.trim());
   console.log(`[E2E] @zkproofport-ai/mcp@${MCP_VERSION} ${args[0]}: proof ${(String(result.proof).length - 2) / 2} bytes`);
@@ -104,7 +109,7 @@ describe.sequential('AI agent with the published prove CLI', () => {
   it.skipIf(!OIDC_JWT)('logs in with an OIDC proof from the prover [needs E2E_OIDC_JWT from a human device sign-in]', async () => {
     const challenge = await (await fetch(`${BASE}/api/auth/challenge`, { method: 'POST' })).json();
     expect(challenge.scope).toBe('zkproofport-community');
-    const result = prove(['oidc_domain', '--jwt', OIDC_JWT!, '--scope', challenge.scope]);
+    const result = await prove(['oidc_domain', '--jwt', OIDC_JWT!, '--scope', challenge.scope]);
     const res = await fetch(`${BASE}/api/auth/verify/ai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -120,7 +125,7 @@ describe.sequential('AI agent with the published prove CLI', () => {
       console.log('[E2E] no OIDC login session (E2E_OIDC_JWT absent): the KYC step runs on a staging dev-login session');
       agentToken = await devLogin('a');
     }
-    const result = prove(['coinbase_kyc', '--scope', await topicScope(agentToken)]);
+    const result = await prove(['coinbase_kyc', '--scope', await topicScope(agentToken)]);
     expect(Array.isArray(result.publicInputs) ? result.publicInputs.length : (String(result.publicInputs).length - 2) / 64).toBe(193);
     const res = await authed('/api/topics', agentToken, {
       method: 'POST',
@@ -136,14 +141,14 @@ describe.sequential('AI agent with the published prove CLI', () => {
     const refused = await authed(`/api/topics/${kycTopicId}/join`, second, { method: 'POST', body: '{}' });
     expect(refused.status).toBe(402);
     expect((await refused.json()).proofRequirement.circuit).toBe('coinbase_attestation');
-    const result = prove(['coinbase_kyc', '--scope', await topicScope(second)]);
+    const result = await prove(['coinbase_kyc', '--scope', await topicScope(second)]);
     const joined = await authed(`/api/topics/${kycTopicId}/join`, second, { method: 'POST', body: JSON.stringify(kycBody(result)) });
     expect(joined.status, await joined.clone().text()).toBe(201);
   }, 900_000);
 
   it('the same proof replayed by another account is refused (scope is per account)', async () => {
     expect(kycTopicId).toBeTruthy();
-    const first = prove(['coinbase_kyc', '--scope', await topicScope(agentToken)]);
+    const first = await prove(['coinbase_kyc', '--scope', await topicScope(agentToken)]);
     const third = await devLogin('c');
     const res = await authed(`/api/topics/${kycTopicId}/join`, third, { method: 'POST', body: JSON.stringify(kycBody(first)) });
     expect(res.status).toBe(400);
