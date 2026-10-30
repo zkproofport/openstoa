@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
 import { normaliseSearchQuery } from '@/lib/search';
-import { requireTopicProof } from '@/lib/topic-proof';
+import { canonicalCountryList, requireTopicProof } from '@/lib/topic-proof';
 import { ARCHIVE_RETENTION_CHOICES, parseArchiveRetentionDays } from '@/lib/archiveRetention';
 import { hasNulByte } from '@/lib/textGuard';
 import { readStatesForTopics, emptyReadState } from '@/lib/chatUnread';
@@ -116,8 +116,11 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *       sending `proofType` (preferred) or the legacy `requiresCountryProof` boolean. Supported
  *       gates and the circuit each needs (same matrix as `POST /api/topics/{topicId}/join`):
  *         - `none` (default) — no proof, anyone can join.
- *         - `country` (legacy: `requiresCountryProof=true`) — `coinbase_country_attestation` over
- *           `allowedCountries` (ISO 3166-1 alpha-2 codes).
+ *         - `country` (legacy: `requiresCountryProof=true`) — `coinbase_country_attestation`
+ *           (Coinbase Country v2, 215 public inputs) over `allowedCountries`: 1 to 10 ISO 3166-1
+ *           alpha-2 codes, stored upper-cased without duplicates. The creator's proof must be an
+ *           inclusion proof over exactly that list (as a set of codes), made within the last
+ *           15 minutes.
  *         - `kyc` — `coinbase_attestation`.
  *         - `workspace` / `google_workspace` / `microsoft_365` — `oidc_domain_attestation` with the
  *           allowed domain configured separately on the topic.
@@ -156,7 +159,12 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *                 type: array
  *                 items:
  *                   type: string
- *                 description: ISO 3166-1 alpha-2 country codes allowed (used when `proofType=country`).
+ *                 description: >-
+ *                   ISO 3166-1 alpha-2 country codes allowed (required when `proofType=country`):
+ *                   1 to 10 two-letter codes, e.g. `["KR", "US"]`. Stored upper-cased and without
+ *                   duplicates; every country proof for the topic (the creator's and each joiner's)
+ *                   must be made over exactly this list. An empty, longer or malformed list is
+ *                   refused with 400.
  *               proof:
  *                 type: string
  *                 description: >-
@@ -169,8 +177,10 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *                 items:
  *                   type: string
  *                 description: >-
- *                   Public inputs of the proof as 0x-prefixed hex strings (one element per field).
- *                   Layout depends on the circuit — see `proofport-cli`.
+ *                   Public inputs of the proof, copied unchanged from the proof result, as
+ *                   0x-prefixed 32-byte hex strings (one element per field). The count is fixed per
+ *                   circuit: 193 for `coinbase_attestation`, 215 for `coinbase_country_attestation`,
+ *                   214 for `oidc_domain_attestation`; any other count is refused with 400.
  *               signerVariant:
  *                 type: string
  *                 enum: [standard, android, android_factory]
@@ -597,8 +607,11 @@ export async function POST(request: NextRequest) {
       );
     }
     const effectiveProofType = proofType || (requiresCountryProof ? 'country' : 'none');
+    // Stored as every proof for the topic must carry it (upper case, no
+    // duplicates); requireTopicProof refuses a list that is not 1-10 codes.
+    const storedCountries = effectiveProofType === 'country' ? canonicalCountryList(allowedCountries) : allowedCountries;
 
-    const proofFailure = await requireTopicProof(session.userId, {proofType:effectiveProofType, requiredDomain, allowedCountries, countryMode:body.countryMode}, {proof, publicInputs, signerVariant: body.signerVariant});
+    const proofFailure = await requireTopicProof(session.userId, {proofType:effectiveProofType, requiredDomain, allowedCountries: storedCountries, countryMode:body.countryMode}, {proof, publicInputs, signerVariant: body.signerVariant});
     if (proofFailure) return proofFailure;
 
     const inviteCode = crypto.randomBytes(8).toString('hex');
@@ -621,7 +634,7 @@ export async function POST(request: NextRequest) {
         creatorId: session.userId,
         categoryId,
         requiresCountryProof: requiresCountryProof ?? false,
-        allowedCountries: allowedCountries ?? null,
+        allowedCountries: storedCountries ?? null,
         proofType: effectiveProofType,
         requiredDomain: effectiveDomain,
         inviteCode,

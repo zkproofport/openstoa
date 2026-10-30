@@ -1,19 +1,53 @@
 import { ethers } from 'ethers';
-import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, deriveOidcNonceBinding, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, OIDC_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT, deriveOidcNonceBinding, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, OIDC_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
 export const proofField = (n: number | bigint) => '0x' + n.toString(16).padStart(64, '0');
+const COINBASE_LAYOUTS_BY_COUNT: Record<number, { MERKLE_ROOT_START: number; ATTESTED_AT: number }> = {
+  [COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT]: COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT,
+  [COINBASE_COUNTRY_PUBLIC_INPUT_COUNT]: COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
+};
+const COINBASE_SIGNER_ROOT = 'b60da9815c76261b61a1e91f199de5845fc171a6500e57c4240d2ac61d85e2bf';
 /**
- * Coinbase issuer inputs carrying the published Coinbase signer root.
- * 193 = Coinbase KYC v2: root at 96-127 and attested_at (192) = the clock,
- * which core holds to a 15-minute window. 150 = Coinbase Country: root at
- * 32-63. Any other length keeps the root at 32 (a shape core refuses).
+ * Coinbase issuer inputs carrying the published Coinbase signer root and
+ * attested_at = the clock (core holds it to a 15-minute window), at each v2
+ * circuit's offsets: 193 = Coinbase KYC v2 (root 96-127, attested_at 192),
+ * 215 = Coinbase Country v2 (root 96-127, attested_at 214; see
+ * countryIssuerInputs for its list). Any other length keeps the root at 32,
+ * a shape core refuses.
  */
 export function coinbaseIssuerInputs(length = COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT): string[] {
   const inputs = Array(length).fill(proofField(0));
-  const rootStart = length === COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT ? COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT.MERKLE_ROOT_START : 32;
-  Buffer.from('b60da9815c76261b61a1e91f199de5845fc171a6500e57c4240d2ac61d85e2bf', 'hex').forEach((n, i) => inputs[rootStart + i] = proofField(n));
-  if (length === COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT) {
-    inputs[COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT.ATTESTED_AT] = proofField(Math.floor(Date.now() / 1000));
-  }
+  const layout = Object.hasOwn(COINBASE_LAYOUTS_BY_COUNT, length) ? COINBASE_LAYOUTS_BY_COUNT[length] : undefined;
+  const rootStart = layout ? layout.MERKLE_ROOT_START : 32;
+  Buffer.from(COINBASE_SIGNER_ROOT, 'hex').forEach((n, i) => inputs[rootStart + i] = proofField(n));
+  if (layout) inputs[layout.ATTESTED_AT] = proofField(Math.floor(Date.now() / 1000));
+  return inputs;
+}
+export interface CountryInputOptions {
+  /** The list written into country_list, in this order. Codes are written byte for byte, so lower case stays lower case. */
+  countries?: readonly string[];
+  /** country_list_length; defaults to countries.length. */
+  length?: number;
+  /** is_included; defaults to 1. */
+  isIncluded?: number;
+  /** The scope string whose keccak256 is written at 150-181. */
+  scope?: string;
+}
+/**
+ * A Coinbase Country v2 public-input vector (215 fields) that passes core's
+ * issuer check: the Coinbase signer root, a fresh attested_at, and the list,
+ * length, inclusion flag and scope hash at COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.
+ */
+export function countryIssuerInputs(options: CountryInputOptions = {}): string[] {
+  const L = COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT;
+  const inputs = coinbaseIssuerInputs(COINBASE_COUNTRY_PUBLIC_INPUT_COUNT);
+  const countries = options.countries ?? ['KR'];
+  countries.forEach((code, slot) => {
+    inputs[L.COUNTRY_LIST_START + 2 * slot] = proofField(code.charCodeAt(0));
+    inputs[L.COUNTRY_LIST_START + 2 * slot + 1] = proofField(code.charCodeAt(1));
+  });
+  inputs[L.COUNTRY_LIST_LENGTH] = proofField(options.length ?? countries.length);
+  inputs[L.IS_INCLUDED] = proofField(options.isIncluded ?? 1);
+  keccakBytes(options.scope ?? 'zkproofport-community').forEach((byte, i) => inputs[L.SCOPE_START + i] = proofField(byte));
   return inputs;
 }
 // `issuer` is the template Microsoft attaches to multi-tenant keys; core

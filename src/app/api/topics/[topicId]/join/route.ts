@@ -39,15 +39,19 @@ const ROUTE = '/api/topics/[topicId]/join';
  *       `proofType` field:
  *         - `none` (or unset / `requiresCountryProof=false`) — no proof required.
  *         - `country` (legacy: `requiresCountryProof=true`) — circuit
- *           `coinbase_country_attestation`. Proves the caller's residence country is in the
- *           topic's allowed list.
+ *           `coinbase_country_attestation` (Coinbase Country v2, 215 public inputs; a 150-input
+ *           v1 proof is refused). Proves the caller's residence country is in the topic's
+ *           allowed list. The proof must be an inclusion proof (`isIncluded=true`) over exactly
+ *           the topic's `allowedCountries` (compared as a set of codes, order does not matter),
+ *           and its Coinbase attestation timestamp must be under 15 minutes old, so submit it
+ *           soon after generating it.
  *         - `kyc` — circuit `coinbase_attestation`. Proves Coinbase KYC completion.
  *         - `workspace` / `google_workspace` / `microsoft_365` — circuit
  *           `oidc_domain_attestation`. Proves the caller's verified Google or Microsoft account
  *           belongs to the topic's allowed domain.
  *
  *       Generate the proof through the app/AI workflow for the matching circuit, then send
- *       `{ proof, publicInputs }`, or use matching valid cached verification. Missing proof/cache
+ *       `{ proof, publicInputs, signerVariant? }`, or use matching valid cached verification. Missing proof/cache
  *       returns 402 with `proofRequirement` and `proofScope`; invalid submitted proofs return 400,
  *       while predicate/permission failures may return 403. Verified predicates are cached per
  *       account for 30 days. Topic proofs must commit to the
@@ -88,9 +92,11 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                       type: string
  *                   - type: string
  *                 description: >-
- *                   Public inputs of the proof as an array of 0x-prefixed hex strings (one
- *                   element per field). The shape varies per circuit — see the circuit's
- *                   public-input layout in `proofport-cli`.
+ *                   Public inputs of the proof, copied unchanged from the proof result: an array of
+ *                   0x-prefixed 32-byte hex strings (one element per field) or one concatenated hex
+ *                   string. The count is fixed per circuit: 193 for `coinbase_attestation`, 215 for
+ *                   `coinbase_country_attestation`, 214 for `oidc_domain_attestation`; any other
+ *                   count is refused with 400.
  *               signerVariant:
  *                 type: string
  *                 enum: [standard, android, android_factory]

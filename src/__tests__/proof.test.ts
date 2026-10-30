@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { extractNullifier, extractScope, computeScopeHash, extractCountryList } from '@/lib/proof';
+import { extractNullifier, extractScope, computeScopeHash, extractCountryCondition } from '@/lib/proof';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT } from '@zkproofport-app/core';
+import { countryIssuerInputs } from './fixtures/trusted-proof';
 import { ethers } from 'ethers';
 
 // Generate mock publicInputs: one field element per byte
@@ -18,22 +20,15 @@ function generateMockWithKnownValues(
   nullifierBytes: number[],
   scopeBytes: number[],
 ): string[] {
-  const length = circuit === 'coinbase_attestation' ? 193 : 150;
-  const inputs: string[] = new Array(length).fill(
-    '0x' + '00'.padStart(64, '0'),
-  );
-
-  let nullifierStart: number;
-  let scopeStart: number;
-
-  if (circuit === 'coinbase_attestation') {
-    // Coinbase KYC v2: scope 128-159, nullifier 160-191.
-    nullifierStart = 160;
-    scopeStart = 128;
-  } else {
-    nullifierStart = 118;
-    scopeStart = 86;
-  }
+  // Each circuit's v2 layout, from core.
+  const LAYOUTS = {
+    coinbase_attestation: { count: COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, layout: COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT },
+    coinbase_country_attestation: { count: COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, layout: COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT },
+  } as const;
+  const { count, layout } = LAYOUTS[circuit];
+  const inputs: string[] = new Array(count).fill('0x' + '00'.padStart(64, '0'));
+  const nullifierStart = layout.NULLIFIER_START;
+  const scopeStart = layout.SCOPE_START;
 
   for (let i = 0; i < 32; i++) {
     inputs[nullifierStart + i] =
@@ -197,52 +192,43 @@ describe('computeScopeHash', () => {
   });
 });
 
-// Build a coinbase_country_attestation publicInputs array with given countries encoded
-// at indices 64-83 (country_list) and 84 (country_list_length).
-function buildCountryInputs(countries: string[]): string[] {
-  // 150 fields total for coinbase_country_attestation
-  const inputs: string[] = new Array(150).fill('0x' + '00'.padStart(64, '0'));
-  let byteIdx = 0;
-  for (const country of countries) {
-    inputs[64 + byteIdx] = '0x' + country.charCodeAt(0).toString(16).padStart(64, '0');
-    inputs[64 + byteIdx + 1] = '0x' + country.charCodeAt(1).toString(16).padStart(64, '0');
-    byteIdx += 2;
-  }
-  // country_list_length = number of countries
-  inputs[84] = '0x' + countries.length.toString(16).padStart(64, '0');
-  return inputs;
-}
-
-describe('extractCountryList', () => {
-  it('should extract a single country', () => {
-    const inputs = buildCountryInputs(['KR']);
-    const result = extractCountryList(inputs, 'coinbase_country_attestation');
-    expect(result).toEqual(['KR']);
+// Coinbase Country v2: country_list 128-147, length 148, is_included 149,
+// read through core's readCountryCondition.
+describe('extractCountryCondition', () => {
+  it('reads a single country', () => {
+    expect(extractCountryCondition(countryIssuerInputs({ countries: ['KR'] }), 'coinbase_country_attestation'))
+      .toEqual({ countryList: ['KR'], isIncluded: true });
   });
 
-  it('should extract multiple countries', () => {
-    const inputs = buildCountryInputs(['US', 'JP', 'KR']);
-    const result = extractCountryList(inputs, 'coinbase_country_attestation');
-    expect(result).toEqual(['US', 'JP', 'KR']);
+  it('reads several countries in proof order', () => {
+    expect(extractCountryCondition(countryIssuerInputs({ countries: ['US', 'JP', 'KR'] }), 'coinbase_country_attestation'))
+      .toEqual({ countryList: ['US', 'JP', 'KR'], isIncluded: true });
   });
 
-  it('should return empty array when country_list_length is 0', () => {
-    const inputs = buildCountryInputs([]);
-    const result = extractCountryList(inputs, 'coinbase_country_attestation');
-    expect(result).toEqual([]);
+  it('reads an exclusion flag', () => {
+    expect(extractCountryCondition(countryIssuerInputs({ countries: ['KR'], isIncluded: 0 }), 'coinbase_country_attestation'))
+      .toEqual({ countryList: ['KR'], isIncluded: false });
   });
 
-  it('should throw for unsupported circuit', () => {
-    const inputs = buildCountryInputs(['KR']);
-    expect(() => extractCountryList(inputs, 'coinbase_attestation')).toThrow(
-      'Unsupported circuit for country_list extraction',
+  it.each([
+    ['length 0', { countries: [], length: 0 }, /country_list_length/],
+    ['length 11', { countries: Array(10).fill('KR'), length: 11 }, /country_list_length/],
+    ['is_included 2', { countries: ['KR'], isIncluded: 2 }, /is_included/],
+    ['lower-case code', { countries: ['kr'] }, /upper-case country code/],
+    ['bytes past the length', { countries: ['KR', 'US'], length: 1 }, /past country_list_length/],
+  ])('refuses %s', (_label, options, message) => {
+    expect(() => extractCountryCondition(countryIssuerInputs(options), 'coinbase_country_attestation')).toThrow(message);
+  });
+
+  it('refuses another circuit', () => {
+    expect(() => extractCountryCondition(countryIssuerInputs(), 'coinbase_attestation')).toThrow(
+      'Unsupported circuit for country list extraction',
     );
   });
 
-  it('should throw when publicInputs is too short', () => {
-    const shortInputs = new Array(80).fill('0x' + '00'.padStart(64, '0'));
-    expect(() => extractCountryList(shortInputs, 'coinbase_country_attestation')).toThrow(
-      'publicInputs too short: missing country_list_length field',
+  it('refuses a v1 (150-input) vector by its count', () => {
+    expect(() => extractCountryCondition(countryIssuerInputs().slice(0, 150), 'coinbase_country_attestation')).toThrow(
+      /Expected 215 public inputs; got 150/,
     );
   });
 });

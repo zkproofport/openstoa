@@ -1,4 +1,4 @@
-import {beforeEach,expect,it,vi} from 'vitest';
+import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {NextRequest} from 'next/server';
 // Verification itself (pinned verifiers, issuer anchors, relay claims) is in trusted-verification.test.ts.
 const state=vi.hoisted(()=>({session:null as null|{userId:string},relay:vi.fn()}));
@@ -22,3 +22,11 @@ it.each([[undefined],[{}],[{circuitType:''}],[{circuitType:'COINBASE_ATTESTATION
  expect(state.relay).not.toHaveBeenCalled();
 });
 it('a topic proof request with no circuitType is refused after authentication',async()=>{state.session={userId:'alice'};expect((await proofRequest(request({mode:'proof'}))).status).toBe(400);expect(state.relay).not.toHaveBeenCalled();});
+
+// Coinbase Country: an invalid list or a missing direction is the caller's error (400), named.
+describe('Coinbase Country proof requests',()=>{
+ // The relay library's own input check runs; only the network call is replaced.
+ beforeEach(()=>{state.relay.mockImplementation(async(_scope:string,options:{countryList?:unknown;isIncluded?:unknown})=>{const {countryConditionFor}=await vi.importActual<typeof import('@/lib/relay')>('@/lib/relay');countryConditionFor(options.countryList,options.isIncluded);return {requestId:'id',deepLink:'zkproofport://test'};});});
+ it.each([[undefined,true],[[],true],[['kr'],true],[Array(11).fill('KR'),true],[['KR'],undefined]])('countryList %j / isIncluded %j is a 400 naming the problem',async(countryList,isIncluded)=>{state.session={userId:'alice'};const res=await proofRequest(request({mode:'proof',circuitType:'coinbase_country_attestation',countryList,isIncluded}));expect(res.status).toBe(400);expect((await res.json()).error).toMatch(/countryList|isIncluded/);});
+ it('a valid list is passed through unchanged',async()=>{state.session={userId:'alice'};const res=await proofRequest(request({mode:'proof',circuitType:'coinbase_country_attestation',countryList:['KR','US'],isIncluded:true}));expect(res.status).toBe(200);expect(state.relay).toHaveBeenCalledWith('zkproofport-community:topic:alice',expect.objectContaining({countryList:['KR','US'],isIncluded:true}));});
+});

@@ -2,7 +2,7 @@ import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { getSession } from '@/lib/session';
 import { topicProofScope } from '@/lib/topic-proof';
 import { NextRequest, NextResponse } from 'next/server';
-import { createRelayProofRequest, isRelayCircuit, RELAY_CIRCUITS } from '@/lib/relay';
+import { createRelayProofRequest, isRelayCircuit, RELAY_CIRCUITS, RelayRequestInputError } from '@/lib/relay';
 import { COMMUNITY_SCOPE } from '@/lib/proof';
 import { logger } from '@/lib/logger';
 import { unhandledRouteError } from '@/lib/apiError';
@@ -47,10 +47,18 @@ const ROUTE = '/api/auth/proof-request';
  *                 type: array
  *                 items:
  *                   type: string
- *                 description: ISO 3166-1 alpha-2 country codes for country attestation
+ *                 description: >-
+ *                   Required for `coinbase_country_attestation`: 1 to 10 upper-case ISO 3166-1
+ *                   alpha-2 codes, e.g. `["KR", "US"]`. For a topic gate, send the topic's
+ *                   `proofRequirement.allowedCountries` unchanged. The proof's result is verified
+ *                   against exactly this list; a missing, empty, longer, lower-case or malformed
+ *                   list is refused with 400.
  *               isIncluded:
  *                 type: boolean
- *                 description: Whether countryList is an inclusion list (true) or exclusion list (false)
+ *                 description: >-
+ *                   Required for `coinbase_country_attestation`: `true` proves the country is in
+ *                   `countryList`, `false` that it is not. Topic gates accept only `true`. Never
+ *                   filled in: a missing value is refused with 400.
  *     responses:
  *       200:
  *         description: Proof request created successfully
@@ -72,6 +80,18 @@ const ROUTE = '/api/auth/proof-request';
  *                 circuitType:
  *                   type: string
  *                   description: Circuit type requested
+ *       400:
+ *         description: >-
+ *           `circuitType` missing or unknown, or a `coinbase_country_attestation` request without a
+ *           valid `countryList` (1 to 10 upper-case codes) or a boolean `isIncluded`. `error` names
+ *           which.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
  */
 export async function POST(request: NextRequest) {
   const authorizationError = await authorizeApiRequest(request, '/api/auth/proof-request');
@@ -125,6 +145,10 @@ export async function POST(request: NextRequest) {
       circuitType,
     });
   } catch (error) {
+    if (error instanceof RelayRequestInputError) {
+      logger.warn(ROUTE, 'Proof request inputs refused', { error: error.message });
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return unhandledRouteError(ROUTE, 'Failed to create relay proof request', error);
   }
 }

@@ -39,7 +39,7 @@
   "countryIntro": "Coinbase 인증 내역의 국가가 토픽의 허용 국가 목록에 포함됨을 증명합니다. 인증된 국가 정보에 대한 증명이며, 현재 GPS 위치를 확인하는 기능은 아닙니다.",
   "countryPrepare": "Coinbase KYC·인증 내역이 연결된 지갑을 준비하고 토픽의 allowedCountries를 확인하세요. 본인 국가 하나가 아니라 토픽에 설정된 허용 국가 목록 전체를 사용해야 합니다.",
   "countryGenerate": "모바일 요청은 circuitType=coinbase_country_attestation과 countryList, isIncluded=true를 사용합니다. 별도 증명 생성 CLI에서는 coinbase_country에 --countries와 --included true를 지정합니다. 토픽의 실제 국가 목록과 OpenStoa의 scope를 사용하세요.",
-  "countryVerify": "검증기는 국가 인증 회로의 증명을 확인합니다. 토픽 참여 시에는 포함 여부가 참인지 확인하고, 증명에 사용된 국가 목록 전체가 allowedCountries와 같은지 비교합니다. 다른 국가 목록으로 만든 증명은 유효해도 거절될 수 있습니다.",
+  "countryVerify": "검증기는 국가 인증 회로의 증명을 확인합니다. 토픽 참여 시에는 포함 여부가 참인지 확인하고, 증명에 사용된 국가 목록 전체가 allowedCountries와 같은지 비교합니다. 다른 국가 목록으로 만든 증명은 거절됩니다. 증명에 담긴 Coinbase 인증 시각이 15분 이내여야 하므로 생성한 뒤 바로 제출하세요.",
   "countryPrivacy": "증명에 사용한 국가 목록과 포함 여부는 공개 입력값입니다. 국가 배지는 유효한 국가 인증을 나타내며, 현재 위치를 추적한다는 뜻은 아닙니다.",
   "commonVerificationLimit": "토픽 생성·참여 시 서버가 지정된 회로의 검증기로 증명을 확인한 뒤 인증 결과를 저장합니다. 요청한 계정의 scope와 필요한 국가 목록·조직 도메인·인증 제공자가 일치해야 합니다. 이전 방식으로 만든 토픽 증명이나 기존 인증 캐시는 재인증이 필요합니다.",
   "workflowTitle": "CLI · MCP에서 증명까지 이어서 진행하기",

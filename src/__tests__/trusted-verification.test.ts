@@ -39,7 +39,7 @@ import {
   SIGNER_ROOT_LAYOUTS,
   RPC_ENDPOINTS,
 } from '@zkproofport-app/core';
-import { coinbaseIssuerInputs, oidcIssuerInputs, testJwk, jwksFetch, encodedBool, proofField, OIDC_AUDIENCES } from './fixtures/trusted-proof';
+import { coinbaseIssuerInputs, countryIssuerInputs, oidcIssuerInputs, testJwk, jwksFetch, encodedBool, proofField, OIDC_AUDIENCES } from './fixtures/trusted-proof';
 
 const state = vi.hoisted(() => ({
   providers: [] as string[],
@@ -74,11 +74,12 @@ import {
 } from '@/lib/proof';
 
 const CIRCUITS = Object.keys(PUBLIC_INPUT_COUNTS) as VerifiableCircuit[];
+const KR = { countryList: ['KR'], isIncluded: true };
 const ENVIRONMENTS = ['production', 'staging', 'development', 'local'];
 
 function validInputs(circuit: VerifiableCircuit): string[] {
   if (circuit === 'coinbase_attestation') return coinbaseIssuerInputs(193);
-  if (circuit === 'coinbase_country_attestation') return coinbaseIssuerInputs(150);
+  if (circuit === 'coinbase_country_attestation') return countryIssuerInputs({ countries: ['KR'] });
   if (circuit === 'oidc_domain_attestation') return oidcIssuerInputs();
   throw new Error(`No fixture for circuit '${circuit}'. Known: ${CIRCUITS.join(', ')}.`);
 }
@@ -100,7 +101,8 @@ describe('environment and circuit select core\'s pinned verifier', () => {
   it.each(rows)('%s / %s calls the pinned verifier on its chain', async (env, circuit) => {
     vi.stubEnv('APP_ENV', env);
     const chainId = VERIFICATION_CHAINS[env][circuit];
-    const result = await verifyTrustedTopicProof(circuit, '0xab', validInputs(circuit));
+    const result = await verifyTrustedTopicProof(circuit, '0xab', validInputs(circuit), undefined, undefined, undefined,
+      circuit === 'coinbase_country_attestation' ? KR : undefined);
     expect(result).toEqual({ valid: true });
     expect(state.providers).toEqual([RPC_ENDPOINTS[chainId]]);
     expect(state.calls).toHaveLength(1);
@@ -174,9 +176,11 @@ describe('issuer anchors are checked by core before the contract', () => {
   });
 
   it('a Country proof with a wrong signer root is refused', async () => {
-    const inputs = coinbaseIssuerInputs(150);
-    inputs[40] = proofField(7);
-    expect((await verifyTrustedTopicProof('coinbase_country_attestation', '0xab', inputs)).valid).toBe(false);
+    const inputs = countryIssuerInputs({ countries: ['KR'] });
+    inputs[100] = proofField(7);
+    const result = await verifyTrustedTopicProof('coinbase_country_attestation', '0xab', inputs, undefined, undefined, undefined, KR);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/signer-list root/);
     expect(state.calls).toHaveLength(0);
   });
 

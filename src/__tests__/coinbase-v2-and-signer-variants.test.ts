@@ -12,8 +12,7 @@
  *    OIDC, in staging (Base Sepolia) and production (Base mainnet); unknown
  *    ('ios', '', '__proto__'), non-string and a claim contradicted by the
  *    proof's length refused without a call; an Android-length proof with no
- *    claim refused; a variant on a circuit without that package (Country)
- *    refused.
+ *    claim refused. (Coinbase Country's variants: coinbase-country-v2.test.ts.)
  *  - relay results: the result's signerVariant reaches core (contract called
  *    is the android one); a response naming the standard contract for an
  *    android proof is refused.
@@ -152,13 +151,6 @@ describe('signerVariant selects among core\'s pinned verifiers', () => {
     const result = await verifyTrustedTopicProof('coinbase_attestation', ANDROID, coinbaseIssuerInputs());
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/does not say which signer made it/);
-    expect(state.calls).toHaveLength(0);
-  });
-
-  it('a variant on a circuit with no such package (Country) is refused', async () => {
-    const result = await verifyTrustedTopicProof('coinbase_country_attestation', ANDROID, coinbaseIssuerInputs(150), undefined, undefined, 'android');
-    expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/has no "android" signer variant/);
     expect(state.calls).toHaveLength(0);
   });
 });

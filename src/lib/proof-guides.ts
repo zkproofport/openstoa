@@ -283,6 +283,7 @@ curl --fail-with-body -sS -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
       PROVER_AVAILABILITY,
       'Requires a Coinbase account with country attestation on Base (EAS).',
       'The proof reveals only whether your country is in/not in the allowed list — not which country you are in.',
+      'The proof must be made over exactly the topic\'s allowedCountries (any order) with inclusion true, and submitted within 15 minutes of generating it: the Coinbase attestation time it carries must be fresh.',
       'The topic owner defines the allowed country list (ISO 3166-1 alpha-2 codes); direct topic join requires an inclusion proof.',
     ],
   },

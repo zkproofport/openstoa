@@ -1,6 +1,6 @@
-import {coinbaseIssuerInputs,oidcIssuerInputs,jwksFetch,encodedBool,OIDC_AUDIENCES} from './fixtures/trusted-proof';
+import {coinbaseIssuerInputs,countryIssuerInputs,oidcIssuerInputs,jwksFetch,encodedBool,OIDC_AUDIENCES} from './fixtures/trusted-proof';
 import {createHash} from 'node:crypto';
-import {clearOidcKeyCache} from '@zkproofport-app/core';
+import {clearOidcKeyCache,COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT} from '@zkproofport-app/core';
 /** Edge matrix: malformed/empty/oversized hex; invalid verifier and RPC; cross-account scope;
  * country predicate/provider; guest/member/personal/invite refusal; cache isolation;
  * OIDC v2 nonce binding: a device-flow (mode 0) proof needs no request; an app (mode 1)
@@ -24,7 +24,8 @@ import { POST as createTopic } from '@/app/api/topics/route';
 import { POST as inviteJoin } from '@/app/api/topics/join/[inviteCode]/route';
 const id='12345678-1234-4234-8234-123456789abc';
 const field=(n:number)=>'0x'+n.toString(16).padStart(64,'0');
-function inputs(scope:string, country?:string[]) { const p=coinbaseIssuerInputs(country?150:193);const start=country?86:128;Buffer.from(computeScopeHash(scope).slice(2),'hex').forEach((n,i)=>p[start+i]=field(n));if(country){p[84]=field(country.length);p[85]=field(1);Buffer.from(country.join('')).forEach((n,i)=>p[64+i]=field(n));}return p; }
+// A Coinbase KYC v2 proof over `scope`, or with `country` a Coinbase Country v2 inclusion proof over that list.
+function inputs(scope:string, country?:string[]) { if(country)return countryIssuerInputs({countries:country,scope});const p=coinbaseIssuerInputs();Buffer.from(computeScopeHash(scope).slice(2),'hex').forEach((n,i)=>p[COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT.SCOPE_START+i]=field(n));return p; }
 async function join(body:unknown={}) {return POST(new NextRequest('http://localhost/api/topics/'+id+'/join',{method:'POST',body:JSON.stringify(body)}),{params:Promise.resolve({topicId:id})});}
 beforeEach(()=>{clearOidcKeyCache();vi.stubGlobal('fetch',vi.fn(jwksFetch()));vi.stubEnv('APP_ENV','staging');state.session={userId:'alice'};state.topic={id,visibility:'public',proofType:'kyc'};state.member=null;state.values.mockReset().mockImplementation(()=>({returning:async()=>[state.topic]}));state.update.mockReset();state.verify.mockReset().mockResolvedValue(true);state.cache.clear();});
 describe('topic proof boundary',()=>{
@@ -62,6 +63,8 @@ describe('every topic membership entry path verifies proofs',()=>{
  it.each(['create','invite'])('%s refuses missing proof with no membership/cache mutation',async(path)=>{expect((await(path==='create'?create({}):invite())).status).toBe(402);expect(state.values).not.toHaveBeenCalled();expect(state.cache.size).toBe(0);});
  it.each(['create','invite'])('%s refuses forged proof even with claimed verifier validity',async(path)=>{state.verify.mockResolvedValue(false);const body={proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice'),verification:{valid:true,verifierAddress:'attacker'}};expect((await(path==='create'?create(body):invite(body))).status).toBe(400);expect(state.values).not.toHaveBeenCalled();expect(state.cache.size).toBe(0);});
  it.each(['create','invite'])('%s accepts cryptographically verified account-bound proof',async(path)=>{const body={proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')};expect((await(path==='create'?create(body):invite(body))).status).toBe(201);expect(state.verify).toHaveBeenCalledOnce();expect(state.values).toHaveBeenCalled();});
+ it('creation stores a country list as every proof must carry it: upper case, no duplicates',async()=>{expect((await create({proofType:'country',allowedCountries:['kr','US','KR'],proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice',['US','KR'])})).status).toBe(201);expect(state.values).toHaveBeenCalledWith(expect.objectContaining({allowedCountries:['KR','US']}));});
+ it('creation refuses a country proof over a list other than the topic\'s, before verification',async()=>{expect((await create({proofType:'country',allowedCountries:['KR'],proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice',['US'])})).status).toBe(400);expect(state.verify).not.toHaveBeenCalled();expect(state.values).not.toHaveBeenCalled();});
  it('creation refuses an exclusion predicate that the topic schema cannot persist',async()=>{expect((await create({proofType:'country',countryMode:'exclude',allowedCountries:['KR'],proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice',['KR'])})).status).toBe(400);expect(state.values).not.toHaveBeenCalled();});
 });
 

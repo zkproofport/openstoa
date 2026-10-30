@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { ProofportSDK } from '@zkproofport-app/sdk';
 import type { CircuitType, RelayProofResult } from '@zkproofport-app/sdk';
-import { OIDC_MAX_SCOPE_BYTES } from '@zkproofport-app/core';
+import { countryListError, OIDC_MAX_SCOPE_BYTES, type CountryCondition } from '@zkproofport-app/core';
 import { rememberRelayRequest } from './oidcRequestContext';
 
 function createSDK(): ProofportSDK {
@@ -65,6 +65,31 @@ export function dappIconFor(environment: string | undefined): string {
   return DAPP_ICONS[environment];
 }
 
+/**
+ * A proof request whose inputs the circuit would refuse. Its message names
+ * only what the caller sent wrong, so a route may answer it as a 400.
+ */
+export class RelayRequestInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RelayRequestInputError';
+  }
+}
+
+/**
+ * The country list and direction of a Coinbase Country request, exactly as
+ * asked: 1 to 10 upper-case ISO 3166-1 alpha-2 codes (core's countryListError)
+ * and an explicit isIncluded. Nothing is filled in.
+ */
+export function countryConditionFor(countryList: unknown, isIncluded: unknown): CountryCondition {
+  const listError = countryListError(countryList);
+  if (listError !== undefined) throw new RelayRequestInputError(`countryList: ${listError}`);
+  if (typeof isIncluded !== 'boolean') {
+    throw new RelayRequestInputError('isIncluded is required for coinbase_country_attestation and must be true or false.');
+  }
+  return { countryList: [...(countryList as string[])], isIncluded };
+}
+
 export async function createRelayProofRequest(
   scope: string,
   options: {
@@ -89,12 +114,17 @@ export async function createRelayProofRequest(
     && (typeof scope !== 'string' || scope.trim() === '' || Buffer.byteLength(scope, 'utf8') > OIDC_MAX_SCOPE_BYTES)) {
     throw new Error(`An OIDC proof request needs a non-blank scope of at most ${OIDC_MAX_SCOPE_BYTES} UTF-8 bytes.`);
   }
+  // A Country request carries its list and direction as asked, or is refused
+  // here, before the relay or the person spends anything on it.
+  const countryCondition = circuit === 'coinbase_country_attestation'
+    ? countryConditionFor(options.countryList, options.isIncluded)
+    : undefined;
   const dappIcon = options.dappIcon ?? dappIconFor(process.env.APP_ENV);
   const sdk = createSDK();
   const inputs: Record<string, unknown> = { scope };
-  if (circuit === 'coinbase_country_attestation') {
-    inputs.countryList = options.countryList ?? [];
-    inputs.isIncluded = options.isIncluded ?? true;
+  if (countryCondition) {
+    inputs.countryList = [...countryCondition.countryList];
+    inputs.isIncluded = countryCondition.isIncluded;
   }
   if (circuit === 'oidc_domain_attestation') {
     if (options.domain) inputs.domain = options.domain;
@@ -111,6 +141,11 @@ export async function createRelayProofRequest(
   // record cannot be written, the request is useless: fail now, not at poll.
   if (circuit === 'oidc_domain_attestation') {
     await rememberRelayRequest(relay.requestId, { scope, circuit });
+  }
+  // A Country proof's list is the prover's choice; its result is verified
+  // against the list asked for here (verifyProofFromRelay). Same rule.
+  if (countryCondition) {
+    await rememberRelayRequest(relay.requestId, { scope, circuit, countryCondition });
   }
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }

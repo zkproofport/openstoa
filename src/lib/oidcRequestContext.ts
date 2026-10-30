@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { OIDC_NOW_MAX_AGE_SECONDS, type OidcRequestContext } from '@zkproofport-app/core';
+import { countryListError, OIDC_NOW_MAX_AGE_SECONDS, type CountryCondition, type OidcRequestContext } from '@zkproofport-app/core';
 import { redis } from './redis';
 
 /**
@@ -11,6 +11,10 @@ import { redis } from './redis';
  * it, a mode-1 proof made for any other request would pass. So OpenStoa
  * records the scope of every OIDC relay request it creates, and a verifier
  * that cannot find the record refuses the proof (see `verifyProofFromRelay`).
+ *
+ * The same record holds a `coinbase_country_attestation` request's country
+ * list and direction: the proof's list is a public input the prover chooses,
+ * so its result is verified against the list OpenStoa asked for.
  */
 const REQUEST_KEY = (requestId: string) => `community:relay-request:${requestId}`;
 const BOUND_PROOF_KEY = (proof: string) =>
@@ -23,6 +27,15 @@ export const RELAY_REQUEST_TTL_SECONDS = 30 * 60;
 export interface RelayRequestRecord {
   scope: string;
   circuit: string;
+  /** Coinbase Country requests only: the list and direction asked for. */
+  countryCondition?: CountryCondition;
+}
+
+function parseCountryCondition(value: unknown): CountryCondition | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { countryList, isIncluded } = value as Record<string, unknown>;
+  if (countryListError(countryList) !== undefined || typeof isIncluded !== 'boolean') return null;
+  return { countryList: [...(countryList as string[])], isIncluded };
 }
 
 function parseRecord(raw: string | null): Record<string, unknown> | null {
@@ -45,7 +58,11 @@ export async function relayRequestFor(requestId: string): Promise<RelayRequestRe
   if (typeof requestId !== 'string' || requestId === '') return null;
   const record = parseRecord(await redis.get(REQUEST_KEY(requestId)));
   if (!record || typeof record.scope !== 'string' || typeof record.circuit !== 'string') return null;
-  return { scope: record.scope, circuit: record.circuit };
+  if (record.countryCondition === undefined) return { scope: record.scope, circuit: record.circuit };
+  // A condition that does not read back is a corrupt record, not "no condition".
+  const countryCondition = parseCountryCondition(record.countryCondition);
+  if (!countryCondition) return null;
+  return { scope: record.scope, circuit: record.circuit, countryCondition };
 }
 
 /**

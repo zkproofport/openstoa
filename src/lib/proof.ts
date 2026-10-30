@@ -6,8 +6,11 @@ import {
   verifyProofOnChain,
   RPC_ENDPOINTS,
   COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,
-  COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
+  COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,
   OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT,
+  OIDC_PUBLIC_INPUT_COUNT,
+  readCountryCondition,
+  type CountryCondition,
   type OidcRequestContext,
 } from '@zkproofport-app/core';
 import type { RelayProofResult } from '@zkproofport-app/sdk';
@@ -56,14 +59,15 @@ export const VERIFICATION_CHAINS: Record<string, Record<VerifiableCircuit, numbe
   local: TESTNET_CHAINS,
 };
 
-// Exact public-input count per circuit. Anything else is not that circuit's
-// proof, and is refused before an RPC call. Kept equal to core's own numbers
-// by a test (SIGNER_ROOT_LAYOUTS, OIDC_PUBLIC_INPUT_COUNT).
+// Exact public-input count per circuit, read from core. Anything else is not
+// that circuit's proof, and is refused before an RPC call.
 export const PUBLIC_INPUT_COUNTS: Record<VerifiableCircuit, number> = {
   // Coinbase KYC v2 (193). A v1 proof (128) is refused here and by core.
   coinbase_attestation: COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,
-  coinbase_country_attestation: 150,
-  oidc_domain_attestation: 214,
+  // Coinbase Country v2 (215). A v1 proof (150) is refused here and by core.
+  coinbase_country_attestation: COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,
+  // OIDC v2 (214). A v1 proof (148) is refused here and by core.
+  oidc_domain_attestation: OIDC_PUBLIC_INPUT_COUNT,
 };
 
 const FIELD_HEX = /^0x[0-9a-fA-F]{64}$/;
@@ -93,6 +97,12 @@ export interface ClaimedVerifier {
  * (`standard`, `android`, `android_factory`; absent means `standard`). It only
  * selects among the verifiers core pins for the circuit; core refuses a value
  * the circuit has no package for, and a claim the proof's length contradicts.
+ *
+ * `countryCondition` is the country list and direction a Coinbase Country
+ * proof must have been made against (the topic's list, or the list OpenStoa
+ * asked the relay for). The list is a public input the prover chooses and the
+ * wallet's signature does not cover it, so a Country proof is refused without
+ * one; core compares the two as sets of codes.
  */
 export async function verifyTrustedTopicProof(
   circuit: string,
@@ -101,6 +111,7 @@ export async function verifyTrustedTopicProof(
   claimed?: ClaimedVerifier,
   oidcRequest?: OidcRequestContext,
   signerVariant?: string,
+  countryCondition?: CountryCondition,
 ): Promise<{ valid: boolean; error?: string }> {
   const environment = process.env.APP_ENV;
   if (!environment || !Object.hasOwn(VERIFICATION_CHAINS, environment)) {
@@ -132,6 +143,9 @@ export async function verifyTrustedTopicProof(
   ) {
     return { valid: false, error: 'A request-bound OIDC proof (nonce_mode 1) needs the request it answers; none is known here' };
   }
+  if (known === 'coinbase_country_attestation' && countryCondition === undefined) {
+    return { valid: false, error: 'A Coinbase Country proof needs the country list it was asked for; none is known here' };
+  }
   const rpcUrl = RPC_ENDPOINTS[chainId];
   if (!rpcUrl) return { valid: false, error: `No RPC endpoint for chain ${chainId}` };
   try {
@@ -143,6 +157,7 @@ export async function verifyTrustedTopicProof(
       claimed,
       {
         ...(known === 'oidc_domain_attestation' && oidcRequest !== undefined ? { request: oidcRequest } : {}),
+        ...(known === 'coinbase_country_attestation' ? { countryCondition } : {}),
         ...(signerVariant !== undefined ? { signerVariant } : {}),
       },
     );
@@ -162,6 +177,11 @@ export async function verifyTrustedTopicProof(
  * created it (scope + requestId, see ./oidcRequestContext). No record, or a
  * record for another circuit, refuses the proof. `request` in the answer is
  * that request, for a caller that keeps the proof for later verification.
+ *
+ * A Coinbase Country result is verified against the country list and
+ * direction OpenStoa asked the relay for, recorded the same way; without that
+ * record the proof's list (the prover's choice) cannot be judged, so it is
+ * refused.
  */
 export async function verifyProofFromRelay(
   result: RelayProofResult,
@@ -176,15 +196,21 @@ export async function verifyProofFromRelay(
   const claimed = { verifierAddress: result.verifierAddress, chainId: result.chainId };
   // Which package made the proof; passed through unchanged, never guessed.
   const signerVariant = result.signerVariant ?? undefined;
-  if (result.circuit !== 'oidc_domain_attestation') {
+  if (result.circuit !== 'oidc_domain_attestation' && result.circuit !== 'coinbase_country_attestation') {
     return verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, undefined, signerVariant);
   }
   const recorded = await relayRequestFor(requestId);
   if (!recorded) {
-    return { valid: false, error: `OpenStoa has no record of relay request ${requestId}; an OIDC proof cannot be bound to it` };
+    return { valid: false, error: `OpenStoa has no record of relay request ${requestId}; a ${result.circuit} proof cannot be bound to it` };
   }
   if (recorded.circuit !== result.circuit) {
     return { valid: false, error: `Relay request ${requestId} was created for ${recorded.circuit}, not ${result.circuit}` };
+  }
+  if (result.circuit === 'coinbase_country_attestation') {
+    if (!recorded.countryCondition) {
+      return { valid: false, error: `Relay request ${requestId} has no recorded country list` };
+    }
+    return verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, undefined, signerVariant, recorded.countryCondition);
   }
   const request = { scope: recorded.scope, requestId };
   const verification = await verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, request, signerVariant);
@@ -219,40 +245,18 @@ export function computeScopeHash(scopeString: string): string {
   return ethers.keccak256(ethers.toUtf8Bytes(scopeString));
 }
 
-export function extractIsIncluded(publicInputs: string[], circuit: string): boolean {
-  if (circuit !== 'coinbase_country_attestation') {
-    throw new Error(`Unsupported circuit for is_included extraction: ${circuit}`);
-  }
-  const isIncludedField = publicInputs[COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.IS_INCLUDED];
-  if (isIncludedField === undefined) {
-    throw new Error('publicInputs too short: missing is_included field');
-  }
-  return BigInt(isIncludedField) === 1n;
-}
-
 /**
- * Extract country list from coinbase_country_attestation public inputs.
- * country_list occupies indices 64-83 (20 bytes, up to 10 countries).
- * country_list_length at index 84 indicates how many are used.
- * Each country is 2 ASCII bytes (ISO 3166-1 alpha-2).
+ * The country list and direction a `coinbase_country_attestation` proof was
+ * made against (public inputs 128-149), read by core: 1 to 10 upper-case
+ * codes, zero past the length, a 0/1 flag. Throws naming what is wrong.
  */
-export function extractCountryList(publicInputs: string[], circuit: string): string[] {
+export function extractCountryCondition(publicInputs: string[], circuit: string): CountryCondition {
   if (circuit !== 'coinbase_country_attestation') {
-    throw new Error(`Unsupported circuit for country_list extraction: ${circuit}`);
+    throw new Error(`Unsupported circuit for country list extraction: ${circuit}`);
   }
-  const lengthField = publicInputs[COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.COUNTRY_LIST_LENGTH];
-  if (lengthField === undefined) {
-    throw new Error('publicInputs too short: missing country_list_length field');
-  }
-  const countryCount = Number(BigInt(lengthField));
-  const countries: string[] = [];
-  const start = COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.COUNTRY_LIST_START;
-  for (let i = 0; i < countryCount * 2; i += 2) {
-    const byte1 = Number(BigInt(publicInputs[start + i]));
-    const byte2 = Number(BigInt(publicInputs[start + i + 1]));
-    countries.push(String.fromCharCode(byte1) + String.fromCharCode(byte2));
-  }
-  return countries;
+  const read = readCountryCondition(publicInputs);
+  if (!read.ok) throw new Error(read.error);
+  return read.condition;
 }
 
 /**

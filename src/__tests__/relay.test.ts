@@ -11,6 +11,11 @@
  *  - OIDC request record: an OIDC request records { scope, circuit } under its
  *    requestId with a TTL; non-OIDC requests write nothing; a failed write fails
  *    the request (the proof could never be bound).
+ *  - Coinbase Country (v2): the request records { scope, circuit, countryCondition }
+ *    (the list exactly as asked, and isIncluded); a failed write fails it; a missing,
+ *    empty, 11-code, lower-case, 3-letter, non-array list and a missing / non-boolean
+ *    isIncluded are refused with RelayRequestInputError before the SDK; 1 and 10
+ *    codes accepted. Nothing is filled in.
  *  - OIDC scope: blank / whitespace / over 4096 UTF-8 bytes refused before the SDK;
  *    exactly 4096 bytes, Korean and emoji scopes accepted.
  */
@@ -185,7 +190,7 @@ describe('the circuit is never filled in', () => {
     ['oidc_domain_attestation', 'Verify your organization affiliation for OpenStoa'],
   ])('%s is requested as itself with its own message', async (circuit, message) => {
     const { createRelayProofRequest } = await import('@/lib/relay');
-    await createRelayProofRequest('s', { circuitType: circuit as never });
+    await createRelayProofRequest('s', { circuitType: circuit as never, countryList: ['KR'], isIncluded: true });
     const [sent, , options] = mockSDKInstance.createRelayRequest.mock.calls[0];
     expect(sent).toBe(circuit);
     expect(options.message).toBe(message);
@@ -240,9 +245,9 @@ describe('an OIDC request is recorded so its proof can be bound to it', () => {
     );
   });
 
-  it.each(['coinbase_attestation', 'coinbase_country_attestation'])('%s writes no record', async (circuit) => {
+  it('coinbase_attestation writes no record', async () => {
     const { createRelayProofRequest } = await import('@/lib/relay');
-    await createRelayProofRequest('s', { circuitType: circuit as never });
+    await createRelayProofRequest('s', { circuitType: 'coinbase_attestation' });
     expect(redisSet).not.toHaveBeenCalled();
   });
 
@@ -263,5 +268,66 @@ describe('an OIDC request is recorded so its proof can be bound to it', () => {
     const { createRelayProofRequest } = await import('@/lib/relay');
     await createRelayProofRequest(scope, { circuitType: 'oidc_domain_attestation' });
     expect(JSON.parse(redisSet.mock.calls[0][1]).scope).toBe(scope);
+  });
+});
+
+describe('a Coinbase Country request carries its list as asked, and is recorded', () => {
+  const TEN = ['KR', 'US', 'JP', 'DE', 'FR', 'GB', 'CA', 'AU', 'SG', 'NZ'];
+
+  it.each([[['KR']], [TEN], [['US', 'KR']]])('list %j is sent and recorded unchanged', async (countryList) => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('zkproofport-community:topic:u', { circuitType: 'coinbase_country_attestation', countryList, isIncluded: true });
+    const [, inputs] = mockSDKInstance.createRelayRequest.mock.calls[0];
+    expect(inputs).toEqual({ scope: 'zkproofport-community:topic:u', countryList, isIncluded: true });
+    expect(redisSet).toHaveBeenCalledExactlyOnceWith(
+      'community:relay-request:req-123',
+      JSON.stringify({ scope: 'zkproofport-community:topic:u', circuit: 'coinbase_country_attestation', countryCondition: { countryList, isIncluded: true } }),
+      'EX', 1800,
+    );
+  });
+
+  it('an exclusion request records isIncluded false', async () => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('s', { circuitType: 'coinbase_country_attestation', countryList: ['KR'], isIncluded: false });
+    expect(JSON.parse(redisSet.mock.calls[0][1]).countryCondition).toEqual({ countryList: ['KR'], isIncluded: false });
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['empty', []],
+    ['11 codes', [...TEN, 'BR']],
+    ['lower case', ['kr']],
+    ['three letters', ['KOR']],
+    ['a string', 'KR'],
+    ['a non-string code', [82]],
+    ['SQL-shaped', ["K'; DROP --"]],
+    ['emoji', ['🇰🇷']],
+  ])('countryList %s is refused before the SDK', async (_label, countryList) => {
+    const { createRelayProofRequest, RelayRequestInputError } = await import('@/lib/relay');
+    const attempt = createRelayProofRequest('s', { circuitType: 'coinbase_country_attestation', countryList: countryList as never, isIncluded: true });
+    await expect(attempt).rejects.toBeInstanceOf(RelayRequestInputError);
+    await expect(attempt).rejects.toThrow(/^countryList: /);
+    expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
+    expect(redisSet).not.toHaveBeenCalled();
+  });
+
+  it.each([[undefined], ['true'], [1], [null]])('isIncluded %j is refused, never filled in', async (isIncluded) => {
+    const { createRelayProofRequest, RelayRequestInputError } = await import('@/lib/relay');
+    await expect(createRelayProofRequest('s', { circuitType: 'coinbase_country_attestation', countryList: ['KR'], isIncluded: isIncluded as never }))
+      .rejects.toBeInstanceOf(RelayRequestInputError);
+    expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
+  });
+
+  it('a failed record write fails the request', async () => {
+    redisSet.mockRejectedValue(new Error('redis down'));
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await expect(createRelayProofRequest('s', { circuitType: 'coinbase_country_attestation', countryList: ['KR'], isIncluded: true }))
+      .rejects.toThrow('redis down');
+  });
+
+  it('a country list on a KYC request is ignored, not sent', async () => {
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('s', { circuitType: 'coinbase_attestation', countryList: ['KR'], isIncluded: true });
+    expect(mockSDKInstance.createRelayRequest.mock.calls[0][1]).toEqual({ scope: 's' });
   });
 });

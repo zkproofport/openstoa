@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import {
-  COMMUNITY_SCOPE, computeScopeHash, extractScope, extractCountryList,
-  extractIsIncluded, extractDomain, verifyTrustedTopicProof, PUBLIC_INPUT_COUNTS,
+  COMMUNITY_SCOPE, computeScopeHash, extractScope, extractDomain, verifyTrustedTopicProof, PUBLIC_INPUT_COUNTS,
 } from './proof';
-import { OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, type OidcRequestContext } from '@zkproofport-app/core';
+import {
+  checkCountryListMatches, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, type CountryCondition, type OidcRequestContext,
+} from '@zkproofport-app/core';
 import { boundOidcProofRequest } from './oidcRequestContext';
 import { circuitToCacheType, getVerificationCache, saveVerificationCache } from './verification-cache';
 import { buildProofRequirement } from './proof-guides';
@@ -43,6 +44,17 @@ export interface TopicProofRequirement {
   countryMode?: string | null;
 }
 
+/**
+ * A topic's country list as stored and as every proof for it must carry it:
+ * upper case (the codes Coinbase attests and the circuit compares byte for
+ * byte), duplicates dropped, order kept. Anything that is not a list of
+ * strings is returned unchanged for countryPredicate to refuse.
+ */
+export function canonicalCountryList<T>(list: T): T | string[] {
+  if (!Array.isArray(list) || list.some(country => typeof country !== 'string')) return list;
+  return [...new Set((list as string[]).map(country => country.toUpperCase()))];
+}
+
 function countryPredicate(topic: TopicProofRequirement): string {
   if (!Array.isArray(topic.allowedCountries)
     || topic.allowedCountries.length < 1
@@ -53,8 +65,13 @@ function countryPredicate(topic: TopicProofRequirement): string {
   // The topic schema stores an inclusion list, not an exclusion mode.
   const mode = topic.countryMode ?? 'include';
   if (mode !== 'include') throw new Error('Invalid country mode');
-  const countries = [...new Set(topic.allowedCountries.map(country => country.toUpperCase()))].sort();
+  const countries = [...(canonicalCountryList(topic.allowedCountries) as string[])].sort();
   return createHash('sha256').update(JSON.stringify([mode, countries])).digest('hex');
+}
+
+/** What a country proof for this topic must have been made against: its list, inclusion. */
+function topicCountryCondition(topic: TopicProofRequirement): CountryCondition {
+  return { countryList: canonicalCountryList(topic.allowedCountries) as string[], isIncluded: true };
 }
 
 /** Shared by creation, direct join, and invitation join. No caller metadata is trusted. */
@@ -74,8 +91,12 @@ export async function requireTopicProof(
   const scopeHash = computeScopeHash(scope);
   const domain = topic.requiredDomain?.trim().toLowerCase();
   let predicate: string | undefined;
+  let countryCondition: CountryCondition | undefined;
   try {
-    if (type === 'country') predicate = countryPredicate(topic);
+    if (type === 'country') {
+      predicate = countryPredicate(topic);
+      countryCondition = topicCountryCondition(topic);
+    }
   } catch {
     return NextResponse.json({ error: 'Invalid country predicate' }, { status: 400 });
   }
@@ -127,12 +148,11 @@ export async function requireTopicProof(
     let verifiedDomain: string | undefined;
     let provider: number | undefined;
     let oidcRequest: OidcRequestContext | undefined;
-    if (type === 'country') {
-      const actual = countryPredicate({
-        allowedCountries: extractCountryList(inputs, circuit),
-        countryMode: extractIsIncluded(inputs, circuit) ? 'include' : 'exclude',
-      });
-      if (actual !== predicate) throw new Error('Country predicate mismatch');
+    // The proof's list and direction (Coinbase Country v2, 128-149) must be the
+    // topic's: refused here before any network call, and checked again by
+    // core when it verifies.
+    if (countryCondition && !checkCountryListMatches(inputs, countryCondition).ok) {
+      throw new Error('Country predicate mismatch');
     }
     if (circuit === 'oidc_domain_attestation') {
       verifiedDomain = extractDomain(inputs, circuit)?.toLowerCase().trim();
@@ -151,7 +171,7 @@ export async function requireTopicProof(
         oidcRequest = bound;
       }
     }
-    const verification = await verifyTrustedTopicProof(circuit, proof, inputs, undefined, oidcRequest, signerVariant);
+    const verification = await verifyTrustedTopicProof(circuit, proof, inputs, undefined, oidcRequest, signerVariant, countryCondition);
     if (!verification.valid) throw new Error('Proof verification failed');
     await saveVerificationCache(userId, circuitToCacheType(circuit), {
       domain: verifiedDomain, topicScope: scopeHash, countryPredicate: predicate, provider,
