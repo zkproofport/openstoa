@@ -4,6 +4,7 @@ import {promises as fs} from 'node:fs';
 import * as path from 'node:path';
 import {startAiTopicProof,type AiTopicProofHandle} from './aiTopicProof';
 import {checkSignerVariant,type SignerVariant} from '@masselabs/openstoa';
+import {COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,OIDC_PUBLIC_INPUT_COUNT} from '@zkproofport-app/core';
 
 export type ProofMethod='app'|'ai';
 export type ProofProvider='google'|'microsoft';
@@ -56,6 +57,8 @@ export class FileProofOperationStore implements ProofOperationStore {
 interface Rest {getApiKey?():string|null;getToken():string|null;request<T=any>(url:string,options?:any):Promise<T>}
 interface WorkflowDeps {rest:Rest;baseUrl:string;store:ProofOperationStore;submit:(action:ProofAction,proof:TopicProof)=>Promise<unknown>;now?:()=>number;startAi?:typeof startAiTopicProof;submitTimeoutMs?:number}
 const CIRCUITS:Record<string,string>={kyc:'coinbase_attestation',country:'coinbase_country_attestation',google_workspace:'oidc_domain_attestation',microsoft_365:'oidc_domain_attestation',workspace:'oidc_domain_attestation'};
+// Public-input count per circuit, from core (KYC v2, Country v2, OIDC v2).
+const INPUT_COUNTS:Record<string,number>={coinbase_attestation:COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,coinbase_country_attestation:COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,oidc_domain_attestation:OIDC_PUBLIC_INPUT_COUNT};
 const TTL=15*60*1000;
 const TERMINAL=new Set(['completed','cancelled','expired','failed']);
 /** A proof ready to submit. signerVariant is present only when the proof's result carried one. */
@@ -64,7 +67,7 @@ function normalizedProof(value:any,circuit:string):TopicProof{
  if(!value||typeof value.proof!=='string'||!/^0x(?:[a-f0-9]{2})+$/i.test(value.proof)||value.proof.length>131074)throw new Error('Invalid proof result');
  let inputs=value.publicInputs;
  if(Array.isArray(inputs)&&inputs.every((v:unknown)=>typeof v==='string'&&/^0x[a-f0-9]{1,64}$/i.test(v)))inputs='0x'+inputs.map((v:string)=>v.slice(2).padStart(64,'0')).join('');
- const count=({coinbase_attestation:193,coinbase_country_attestation:150,oidc_domain_attestation:214} as Record<string,number>)[circuit];
+ const count=Object.hasOwn(INPUT_COUNTS,circuit)?INPUT_COUNTS[circuit]:undefined;
  if(!count||typeof inputs!=='string'||!/^0x(?:[a-f0-9]{64})+$/i.test(inputs)||inputs.length!==2+count*64)throw new Error('Invalid proof public inputs');
  // The server picks the verifier by this; absent means standard, and an unknown value is refused here.
  const signerVariant=checkSignerVariant(value.signerVariant);

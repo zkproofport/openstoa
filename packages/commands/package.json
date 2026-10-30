@@ -41,7 +41,8 @@
   "dependencies": {
     "@masselabs/openstoa": "^0.2.2",
     "@noble/hashes": "2.0.1",
-    "@zkproofport-ai/mcp": "0.4.4"
+    "@zkproofport-ai/mcp": "0.4.4",
+    "@zkproofport-app/core": "0.4.0-beta.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

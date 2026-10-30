@@ -86,6 +86,22 @@ it('passes country inclusion and domain/provider requirements to the existing SD
  expect(x.request).toHaveBeenLastCalledWith('/api/auth/proof-request',expect.objectContaining({body:{mode:'proof',circuitType:'coinbase_country_attestation',countryList:['KR','US'],isIncluded:true}}));
 });
 
+// Coinbase Country v2 has 215 public inputs (core); a v1 proof (150) is refused before submission.
+it.each([[215,true],[150,false],[214,false],[216,false]])('a country result with %i public inputs is submitted: %s',async(count,ok)=>{
+ const x=setup();const e={status:402,body:{...x.error.body,proofRequirement:{type:'country',circuit:'coinbase_country_attestation',allowedCountries:['KR']}}};
+ const r=await x.workflow.required({kind:'join',topicId:'topic'},e);
+ x.request.mockImplementation(async(url:string)=>url==='/api/auth/challenge'?{scope:x.error.body.proofScope}:{scope:x.error.body.proofScope,circuitType:'coinbase_country_attestation',requestId:'id',deepLink:'zkproofport://proof-request?data=x'} as any);
+ await x.workflow.continue({operationId:r.operationId,method:'app',approved:true});
+ x.request.mockResolvedValue({...completed,circuit:'coinbase_country_attestation',publicInputs:Array(count).fill('0x'+'01'.padStart(64,'0')),signerVariant:'android'} as any);
+ if(ok){
+  expect((await x.workflow.resume(r.operationId)).status).toBe('completed');
+  expect(x.submit).toHaveBeenCalledWith({kind:'join',topicId:'topic'},{proof:'0xaabb',publicInputs:'0x'+'1'.padStart(64,'0').repeat(215),signerVariant:'android'});
+ } else {
+  await expect(x.workflow.resume(r.operationId)).rejects.toThrow('Invalid proof public inputs');
+  expect(x.submit).not.toHaveBeenCalled();
+ }
+});
+
 it('rejects absent or different verified scope hashes and malformed circuit input counts',async()=>{
  const x=setup();const r=await x.workflow.required({kind:'join',topicId:'topic'},x.error);await x.workflow.continue({operationId:r.operationId,method:'app',approved:true});
  for(const bad of [{...completed,scopeHash:undefined},{...completed,scopeHash:'0x'+'ff'.repeat(32)},{...completed,publicInputs:['0x01']}]){

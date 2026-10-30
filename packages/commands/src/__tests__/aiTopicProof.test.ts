@@ -137,6 +137,12 @@ describe('Coinbase KYC v2 from the installed prover',()=>{
   const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);complete(h.child,count);
   await expect(handle.wait()).rejects.toMatchObject({code:'invalid_output'});
  });
+ // Coinbase Country v2: exactly 215 public inputs (core); v1's 150 is refused here.
+ it.each([[215,true],[150,false],[214,false],[216,false]])('a country proof with %i public inputs: accepted %s',async(count,ok)=>{
+  const h=harness();const handle=startAiTopicProof({proofType:'country',countries:['KR'],scope,consent:true},h.deps);complete(h.child,count);
+  if(ok)await expect(handle.wait()).resolves.toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*215)});
+  else await expect(handle.wait()).rejects.toMatchObject({code:'invalid_output'});
+ });
  it('a v1 KYC proof packed as one hex string is refused too',async()=>{
   const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);
   h.child.stdout.emit('data',JSON.stringify({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*128)}));h.child.emit('close',0);

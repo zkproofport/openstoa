@@ -7,6 +7,7 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, OIDC_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
 
 export type AiTopicProofType = 'google_login' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace';
 export interface AiTopicProofInput {
@@ -53,8 +54,16 @@ export interface AiTopicProofDeps {
 const MAX_STDOUT_BYTES = 256 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
 const MAX_STDERR_LINE = 4096;
+// The public-input count of each circuit's current version, from core
+// (Coinbase KYC v2, Coinbase Country v2, OIDC v2). An older prover's output is
+// refused here rather than sent for the server to refuse.
 const INPUT_COUNTS: Record<AiTopicProofType, number> = {
-  google_login: 214, kyc: 193, country: 150, google_workspace: 214, microsoft_365: 214, workspace: 214,
+  google_login: OIDC_PUBLIC_INPUT_COUNT,
+  kyc: COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,
+  country: COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,
+  google_workspace: OIDC_PUBLIC_INPUT_COUNT,
+  microsoft_365: OIDC_PUBLIC_INPUT_COUNT,
+  workspace: OIDC_PUBLIC_INPUT_COUNT,
 };
 const CHILD_ENV_KEYS = [
   'PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SystemRoot', 'APPDATA',
