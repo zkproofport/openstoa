@@ -55,6 +55,8 @@ describe('AI topic proof adapter',()=>{
  });
  it.each([
   ['User denied the authorization request','authorization_denied'],
+  ['User declined the authorization request','authorization_denied'],
+  ['Device code expired before the sign-in finished. Please try again.','authorization_expired'],
   ['Device code expired. Please try again.','authorization_expired'],
   ['Device code flow timed out after 5 minutes','authorization_expired'],
   ['Payment required: 402 secret','payment_required'],

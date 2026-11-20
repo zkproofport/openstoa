@@ -14,7 +14,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "bin": {
     "openstoa-mcp": "./dist/server.js"
